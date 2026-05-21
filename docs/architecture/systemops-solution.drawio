@@ -1,0 +1,121 @@
+<mxfile host="app.diagrams.net" modified="2026-05-21T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="systemops-solution" name="SystemOps Solution">
+    <mxGraphModel dx="1820" dy="1160" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="SystemOps Core - Sistema inteligente para converter leads em consultas agendadas" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=28;fontStyle=1;fontColor=#172033;" vertex="1" parent="1">
+          <mxGeometry x="250" y="30" width="1300" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="Foco inicial: clinicas odontologicas | Tese: a clinica nao precisa apenas de mais leads, precisa operar melhor os leads que ja recebe" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontColor=#4A5568;" vertex="1" parent="1">
+          <mxGeometry x="285" y="80" width="1230" height="36" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="channels" value="Entrada de leads&#xa;&#xa;MVP: WhatsApp&#xa;&#xa;Porta plugavel para:
+Instagram / Meta Ads&#xa;Google Ads&#xa;Landing page&#xa;Indicacao&#xa;Telefone / recepcao" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F1FF;strokeColor=#4C7EDB;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="70" y="175" width="250" height="230" as="geometry"/>
+        </mxCell>
+        <mxCell id="capture" value="Captura e normalizacao&#xa;&#xa;Identifica origem&#xa;Evita duplicidade&#xa;Cria/atualiza lead&#xa;Registra campanha&#xa;Organiza historico" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7FBFF;strokeColor=#5B8DEF;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="175" width="250" height="230" as="geometry"/>
+        </mxCell>
+        <mxCell id="core" value="SystemOps Core&#xa;&#xa;Fonte oficial dos dados&#xa;Leads&#xa;Conversas&#xa;Status do funil&#xa;Playbook comercial&#xa;Regras da clinica&#xa;Logs e auditoria" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF7F2;strokeColor=#2F855A;fontSize=16;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="710" y="155" width="300" height="270" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent" value="Agente especialista em vendas&#xa;&#xa;Classifica temperatura&#xa;Identifica objecao&#xa;Sugere resposta&#xa;Sugere proxima acao&#xa;Recomenda follow-up&#xa;Sinaliza handoff humano&#xa;Nunca diagnostica" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E6;strokeColor=#D69E2E;fontSize=16;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="155" width="300" height="270" as="geometry"/>
+        </mxCell>
+        <mxCell id="team" value="Recepcao / Comercial&#xa;&#xa;Aprova ou edita resposta&#xa;Faz contato humano&#xa;Fecha horario&#xa;Marca resultado&#xa;Informa motivo de perda" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F0FF;strokeColor=#805AD5;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="175" width="250" height="230" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="arrow1" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#4A5568;" edge="1" parent="1" source="channels" target="capture">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="arrow2" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#4A5568;" edge="1" parent="1" source="capture" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="arrow3" value="contexto estruturado" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#4A5568;fontSize=13;" edge="1" parent="1" source="core" target="agent">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="arrow4" value="recomendacao" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#4A5568;fontSize=13;" edge="1" parent="1" source="agent" target="team">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="arrow5" value="decisao humana + resultado" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#805AD5;fontSize=13;dashed=1;" edge="1" parent="1" source="team" target="core">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1595" y="470"/>
+              <mxPoint x="860" y="470"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="platform" value="Camadas do produto SystemOps" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CBD5E0;fontSize=18;fontStyle=1;startSize=42;" vertex="1" parent="1">
+          <mxGeometry x="70" y="545" width="1650" height="430" as="geometry"/>
+        </mxCell>
+        <mxCell id="crm" value="CRM operacional&#xa;&#xa;Leads por etapa&#xa;Responsavel&#xa;Origem e campanha&#xa;Temperatura&#xa;Proxima acao" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7FBFF;strokeColor=#5B8DEF;fontSize=14;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="40" y="80" width="220" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="inbox" value="Inbox inteligente&#xa;&#xa;Historico da conversa&#xa;Resumo automatico&#xa;Perguntas respondidas&#xa;Sinais de intencao&#xa;Risco clinico" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7FBFF;strokeColor=#5B8DEF;fontSize=14;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="295" y="80" width="220" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="playbook" value="Playbook da clinica&#xa;&#xa;Tratamentos&#xa;Tom de voz&#xa;Objecoes comuns&#xa;Politica de preco&#xa;Regras de desconto" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7FBFF;strokeColor=#5B8DEF;fontSize=14;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="550" y="80" width="220" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="followup" value="Motor de follow-up&#xa;&#xa;Cadencias&#xa;Lembretes&#xa;Reativacao&#xa;Leads parados&#xa;Agenda vazia" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E6;strokeColor=#D69E2E;fontSize=14;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="805" y="80" width="220" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="calendar" value="Agenda inteligente&#xa;&#xa;MVP: Google Calendar&#xa;Fallback: disponibilidade manual&#xa;Depois: agenda propria opcional&#xa;Slots ociosos&#xa;Confirmacao e lembretes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF7F2;strokeColor=#2F855A;fontSize=14;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="1060" y="80" width="240" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="analytics" value="Metrica e ROI&#xa;&#xa;Tempo de resposta&#xa;Taxa de agendamento&#xa;Follow-ups executados&#xa;Receita estimada&#xa;ROI por campanha" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F0FF;strokeColor=#805AD5;fontSize=14;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="1335" y="80" width="240" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="automation" value="n8n / automacoes plugaveis&#xa;&#xa;Executa integracoes e tarefas externas, mas nao e a fonte oficial dos dados." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF5F5;strokeColor=#E53E3E;fontSize=15;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="405" y="295" width="360" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="external" value="Ferramentas externas&#xa;&#xa;WhatsApp Business API | Google Calendar | Instagram | Meta Ads | Google Ads | Email | Planilhas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#718096;fontSize=15;fontStyle=1;spacing=10;" vertex="1" parent="platform">
+          <mxGeometry x="850" y="295" width="520" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="autoToExt" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#718096;" edge="1" parent="platform" source="automation" target="external">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="coreToPlatform" value="dados, regras e eventos" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#2F855A;fontSize=13;" edge="1" parent="1" source="core" target="platform">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="860" y="545" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="journey" value="Fluxo pratico para vender mais" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CBD5E0;fontSize=18;fontStyle=1;startSize=42;" vertex="1" parent="1">
+          <mxGeometry x="70" y="1015" width="1650" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="step1" value="1. Lead chega" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F1FF;strokeColor=#4C7EDB;fontSize=15;fontStyle=1;" vertex="1" parent="journey">
+          <mxGeometry x="35" y="70" width="175" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="step2" value="2. Sistema entende contexto" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F1FF;strokeColor=#4C7EDB;fontSize=15;fontStyle=1;" vertex="1" parent="journey">
+          <mxGeometry x="245" y="70" width="210" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="step3" value="3. Agente recomenda resposta" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E6;strokeColor=#D69E2E;fontSize=15;fontStyle=1;" vertex="1" parent="journey">
+          <mxGeometry x="490" y="70" width="230" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="step4" value="4. Humano aprova" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F0FF;strokeColor=#805AD5;fontSize=15;fontStyle=1;" vertex="1" parent="journey">
+          <mxGeometry x="755" y="70" width="180" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="step5" value="5. Agenda e follow-up" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF7F2;strokeColor=#2F855A;fontSize=15;fontStyle=1;" vertex="1" parent="journey">
+          <mxGeometry x="970" y="70" width="210" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="step6" value="6. Resultado vira aprendizado" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F0FF;strokeColor=#805AD5;fontSize=15;fontStyle=1;" vertex="1" parent="journey">
+          <mxGeometry x="1215" y="70" width="240" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="step7" value="7. Gestor ve ROI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#718096;fontSize=15;fontStyle=1;" vertex="1" parent="journey">
+          <mxGeometry x="1490" y="70" width="130" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="s12" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4A5568;" edge="1" parent="journey" source="step1" target="step2"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s23" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4A5568;" edge="1" parent="journey" source="step2" target="step3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s34" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4A5568;" edge="1" parent="journey" source="step3" target="step4"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s45" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4A5568;" edge="1" parent="journey" source="step4" target="step5"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s56" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4A5568;" edge="1" parent="journey" source="step5" target="step6"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="s67" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4A5568;" edge="1" parent="journey" source="step6" target="step7"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

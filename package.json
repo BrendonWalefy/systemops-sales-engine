@@ -1,0 +1,33 @@
+{
+  "name": "systemops-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@auth/core": "^0.40.0",
+    "drizzle-orm": "^0.45.2",
+    "next": "^16.2.6",
+    "postgres": "^3.4.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

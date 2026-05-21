@@ -1,0 +1,37 @@
+import type { Clinic } from "@/domain/entities/clinic";
+import type { Conversation, Message } from "@/domain/entities/conversation";
+import type { Lead } from "@/domain/entities/lead";
+
+export type SalesAgentInput = {
+  clinic: Clinic;
+  lead: Lead;
+  conversation: Conversation;
+  messages: Message[];
+  playbook: string;
+};
+
+export type SalesAgentOutput = {
+  leadTemperature: "cold" | "warm" | "hot";
+  stage:
+    | "new_lead"
+    | "asked_price"
+    | "asked_availability"
+    | "objection"
+    | "ready_to_schedule"
+    | "clinical_sensitive"
+    | "unresponsive";
+  mainObjection: string | null;
+  suggestedReply: string;
+  nextAction: string;
+  followUp: string | null;
+  handoffRequired: boolean;
+  riskFlags: string[];
+  confidence: number;
+  model: string;
+  promptVersion: string;
+};
+
+export type SalesAgentGateway = {
+  analyze(input: SalesAgentInput): Promise<SalesAgentOutput>;
+};
+

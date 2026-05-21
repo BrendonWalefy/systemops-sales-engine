@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "required": [
+    "leadTemperature",
+    "stage",
+    "mainObjection",
+    "suggestedReply",
+    "nextAction",
+    "followUp",
+    "handoffRequired",
+    "riskFlags",
+    "confidence"
+  ],
+  "properties": {
+    "leadTemperature": {
+      "type": "string",
+      "enum": ["cold", "warm", "hot"]
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "new_lead",
+        "asked_price",
+        "asked_availability",
+        "objection",
+        "ready_to_schedule",
+        "clinical_sensitive",
+        "unresponsive"
+      ]
+    },
+    "mainObjection": {
+      "type": ["string", "null"]
+    },
+    "suggestedReply": {
+      "type": "string"
+    },
+    "nextAction": {
+      "type": "string"
+    },
+    "followUp": {
+      "type": ["string", "null"]
+    },
+    "handoffRequired": {
+      "type": "boolean"
+    },
+    "riskFlags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}
+
