@@ -56,6 +56,27 @@ export const followUpStatusEnum = pgEnum("follow_up_status", [
   "expired",
 ]);
 
+export const aiProviderEnum = pgEnum("ai_provider", ["openai"]);
+
+export const aiOperationEnum = pgEnum("ai_operation", [
+  "sales_conversation_analysis",
+  "conversation_summary",
+  "follow_up_suggestion",
+  "manual_analysis",
+]);
+
+export const whatsappProviderEnum = pgEnum("whatsapp_provider", ["meta_cloud_api"]);
+
+export const messageDirectionEnum = pgEnum("message_direction", ["inbound", "outbound"]);
+
+export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
+  "service",
+  "utility",
+  "marketing",
+  "authentication",
+  "unknown",
+]);
+
 export const clinics = pgTable("clinics", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -237,6 +258,51 @@ export const appointments = pgTable(
     clinicStartsAtIdx: index("appointments_clinic_starts_at_idx").on(
       table.clinicId,
       table.startsAt,
+    ),
+  }),
+);
+
+export const aiUsageCosts = pgTable(
+  "ai_usage_costs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    provider: aiProviderEnum("provider").notNull(),
+    model: text("model").notNull(),
+    operation: aiOperationEnum("operation").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    estimatedCostUsdMicros: integer("estimated_cost_usd_micros").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clinicCreatedAtIdx: index("ai_usage_costs_clinic_created_at_idx").on(
+      table.clinicId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const whatsappMessageCosts = pgTable(
+  "whatsapp_message_costs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    provider: whatsappProviderEnum("provider").notNull(),
+    providerMessageId: text("provider_message_id"),
+    direction: messageDirectionEnum("direction").notNull(),
+    category: whatsappCategoryEnum("category").notNull(),
+    estimatedCostUsdMicros: integer("estimated_cost_usd_micros").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clinicCreatedAtIdx: index("whatsapp_message_costs_clinic_created_at_idx").on(
+      table.clinicId,
+      table.createdAt,
     ),
   }),
 );

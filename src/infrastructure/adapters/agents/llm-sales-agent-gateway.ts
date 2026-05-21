@@ -10,4 +10,3 @@ export class LlmSalesAgentGateway implements SalesAgentGateway {
     throw new Error("Sales agent LLM gateway not implemented yet");
   }
 }
-

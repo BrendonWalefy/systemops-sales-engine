@@ -1,4 +1,5 @@
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
+import type { UsageCostTracker } from "@/application/ports/usage-cost-tracker";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { IncomingChannelMessage } from "@/application/ports/channel-adapter";
 import type { Conversation, Message } from "@/domain/entities/conversation";
@@ -7,6 +8,7 @@ import type { Lead } from "@/domain/entities/lead";
 export type RegisterIncomingMessageDependencies = {
   leadRepository: LeadRepository;
   conversationRepository: ConversationRepository;
+  usageCostTracker: UsageCostTracker;
   idGenerator: () => string;
   now: () => Date;
 };
@@ -77,8 +79,16 @@ export class RegisterIncomingMessage {
       updatedAt: now,
     });
     await this.deps.conversationRepository.appendMessage(message);
+    if (input.message.channel === "whatsapp") {
+      await this.deps.usageCostTracker.trackWhatsAppCost({
+        clinicId: input.clinicId,
+        provider: "meta_cloud_api",
+        providerMessageId: input.message.externalMessageId,
+        direction: "inbound",
+        category: "service",
+      });
+    }
 
     return { lead, conversation, message };
   }
 }
-

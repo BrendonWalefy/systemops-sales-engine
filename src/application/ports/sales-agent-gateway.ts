@@ -29,9 +29,12 @@ export type SalesAgentOutput = {
   confidence: number;
   model: string;
   promptVersion: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+  } | null;
 };
 
 export type SalesAgentGateway = {
   analyze(input: SalesAgentInput): Promise<SalesAgentOutput>;
 };
-

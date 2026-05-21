@@ -1,4 +1,5 @@
 import type { SalesAgentGateway } from "@/application/ports/sales-agent-gateway";
+import type { UsageCostTracker } from "@/application/ports/usage-cost-tracker";
 import type { SalesAgentRecommendation } from "@/domain/entities/agent-recommendation";
 import type { Clinic } from "@/domain/entities/clinic";
 import type { AgentRecommendationRepository } from "@/domain/repositories/agent-recommendation-repository";
@@ -10,6 +11,7 @@ export type AnalyzeSalesConversationDependencies = {
   conversationRepository: ConversationRepository;
   agentRecommendationRepository: AgentRecommendationRepository;
   salesAgent: SalesAgentGateway;
+  usageCostTracker: UsageCostTracker;
   idGenerator: () => string;
   now: () => Date;
 };
@@ -62,6 +64,17 @@ export class AnalyzeSalesConversation {
     };
 
     await this.deps.agentRecommendationRepository.save(recommendation);
+
+    if (output.usage) {
+      await this.deps.usageCostTracker.trackAiUsage({
+        clinicId: input.clinic.id,
+        provider: "openai",
+        model: output.model,
+        operation: "sales_conversation_analysis",
+        inputTokens: output.usage.inputTokens,
+        outputTokens: output.usage.outputTokens,
+      });
+    }
 
     return recommendation;
   }
