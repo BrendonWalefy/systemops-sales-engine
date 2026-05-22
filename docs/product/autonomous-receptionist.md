@@ -1,19 +1,19 @@
-# Recepcionista Comercial Autonoma
+# Recepcionista Comercial Autônoma
 
 ## Posicionamento
 
-A SystemOps deve evoluir para uma recepcionista comercial autonoma para clinicas, treinada para converter leads em avaliacoes agendadas 24/7.
+A SystemOps deve evoluir para uma recepcionista comercial autônoma para clínicas, treinada para converter leads em avaliações agendadas 24/7.
 
-Ela nao deve ser apenas um copiloto que sugere respostas. O valor de mercado esta em operar o funil:
+Ela não deve ser apenas um copiloto que sugere respostas. O valor de mercado está em operar o funil:
 
-- responder rapido;
+- responder rápido;
 - qualificar interesse;
-- contornar objecoes;
-- responder duvidas comerciais sem perder o foco em agendamento;
-- oferecer avaliacao gratuita quando a clinica permitir;
+- contornar objeções;
+- responder dúvidas comerciais sem perder o foco em agendamento;
+- oferecer avaliação gratuita quando a clínica permitir;
 - consultar agenda;
-- oferecer horarios;
-- confirmar avaliacao;
+- oferecer horários;
+- confirmar avaliação;
 - fazer follow-up;
 - chamar humano quando houver risco.
 
@@ -22,23 +22,23 @@ Ela nao deve ser apenas um copiloto que sugere respostas. O valor de mercado est
 O agente pode agir sozinho quando:
 
 - o lead cumprimenta;
-- pergunta preco;
+- pergunta preço;
 - pergunta sobre tratamento;
-- pede informacoes gerais;
-- pede horario;
-- escolhe um horario oferecido;
+- pede informações gerais;
+- pede horário;
+- escolhe um horário oferecido;
 - fica sem resposta;
-- precisa receber lembrete de avaliacao.
+- precisa receber lembrete de avaliação.
 
-## Handoff Obrigatorio
+## Handoff Obrigatório
 
 O agente deve parar e chamar humano quando:
 
-- houver dor, inchaco, sangramento, urgencia ou sintoma sensivel;
-- o lead pedir diagnostico;
-- o lead pedir prescricao;
-- houver irritacao;
-- houver negociacao fora da politica;
+- houver dor, inchaço, sangramento, urgência ou sintoma sensível;
+- o lead pedir diagnóstico;
+- o lead pedir prescrição;
+- houver irritação;
+- houver negociação fora da política;
 - o tema sair do playbook.
 
 ## Estados da Conversa
@@ -56,7 +56,7 @@ follow_up_due
 lost
 ```
 
-## MVP de Validacao
+## MVP de Validação
 
 Antes de plugar WhatsApp e Google Calendar reais, o produto deve provar a jornada com:
 
@@ -64,33 +64,33 @@ Antes de plugar WhatsApp e Google Calendar reais, o produto deve provar a jornad
 - agente mockado;
 - agenda mockada;
 - conversa multi-turno;
-- resposta automatica;
-- handoff em caso sensivel;
+- resposta automática;
+- handoff em caso sensível;
 - custo estimado de IA e WhatsApp.
 
-O criterio de validacao nao e "a resposta ficou bonita".
+O critério de validação não é "a resposta ficou bonita".
 
-O criterio e:
+O critério é:
 
-> O fluxo autonomo aproxima o lead de uma avaliacao agendada com menos dependencia da recepcao?
+> O fluxo autônomo aproxima o lead de uma avaliação agendada com menos dependência da recepção?
 
-## Estrategia Comercial
+## Estratégia Comercial
 
-O agente deve responder a pergunta do lead, mas nao pode deixar a conversa morrer na informacao.
+O agente deve responder a pergunta do lead, mas não pode deixar a conversa morrer na informação.
 
-Quando a clinica permitir avaliacao gratuita, o agente deve:
+Quando a clínica permitir avaliação gratuita, o agente deve:
 
-- cumprimentar conforme horario;
-- usar o nome do lead quando disponivel;
-- demonstrar empatia com a duvida;
+- cumprimentar conforme horário;
+- usar o nome do lead quando disponível;
+- demonstrar empatia com a dúvida;
 - responder de forma curta;
-- explicar que cada caso depende de avaliacao;
-- informar que a avaliacao e gratuita;
-- oferecer datas e horarios concretos;
+- explicar que cada caso depende de avaliação;
+- informar que a avaliação é gratuita;
+- oferecer datas e horários concretos;
 - pedir uma escolha objetiva do lead.
 
 Exemplo:
 
 ```txt
-Boa tarde, Mariana! Entendo sua pergunta. O valor pode variar conforme o objetivo e a avaliacao, entao prefiro nao te passar uma informacao rasa ou errada por aqui. A avaliacao e gratuita e ja consigo te encaixar em terca-feira as 15h, quarta-feira as 10h ou quinta-feira as 16h. Qual desses horarios seria melhor para voce?
+Boa tarde, Mariana! Entendo sua pergunta. O valor pode variar conforme o objetivo e a avaliação, então prefiro não te passar uma informação rasa ou errada por aqui. A avaliação é gratuita e já consigo te encaixar em terça-feira às 15h, quarta-feira às 10h ou quinta-feira às 16h. Qual desses horários seria melhor para você?
 ```

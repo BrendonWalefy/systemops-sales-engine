@@ -34,9 +34,9 @@ export type ReceptionistContext = {
 };
 
 const slots = [
-  { id: "slot-1", label: "terca-feira as 15h" },
-  { id: "slot-2", label: "quarta-feira as 10h" },
-  { id: "slot-3", label: "quinta-feira as 16h" },
+  { id: "slot-1", label: "terça-feira às 15h" },
+  { id: "slot-2", label: "quarta-feira às 10h" },
+  { id: "slot-3", label: "quinta-feira às 16h" },
 ];
 
 export function decideAutonomousReceptionistReply(
@@ -53,14 +53,14 @@ export function decideAutonomousReceptionistReply(
       stage: "handoff_required",
       action: "handoff_human",
       message:
-        `${opening} Entendi sua preocupacao. Para sua seguranca, vou chamar a equipe da clinica para avaliar seu caso e te responder com prioridade. Voce pode me confirmar seu nome completo?`,
+        `${opening} Entendi sua preocupação. Para sua segurança, vou chamar a equipe da clínica para avaliar seu caso e te responder com prioridade. Você pode me confirmar seu nome completo?`,
       leadTemperature: "hot",
       appointment: {
         status: "none",
         selectedSlot: null,
       },
       handoffRequired: true,
-      reason: "Mensagem contem sinal clinico sensivel.",
+      reason: "Mensagem contém sinal clínico sensível.",
       followUp: null,
     };
   }
@@ -70,15 +70,15 @@ export function decideAutonomousReceptionistReply(
     return {
       stage: "appointment_scheduled",
       action: "schedule_appointment",
-      message: `${opening} Perfeito, deixei sua avaliacao gratuita pre-agendada para ${offeredSlot.label}. A equipe da clinica vai confirmar os dados finais por aqui. Vai ser uma boa oportunidade para a doutora entender seu caso com calma e te orientar do jeito certo.`,
+      message: `${opening} Perfeito, deixei sua avaliação gratuita pré-agendada para ${offeredSlot.label}. A equipe da clínica vai confirmar os dados finais por aqui. Vai ser uma boa oportunidade para a doutora entender seu caso com calma e te orientar do jeito certo.`,
       leadTemperature: "hot",
       appointment: {
         status: "scheduled",
         selectedSlot: offeredSlot.label,
       },
       handoffRequired: false,
-      reason: "Lead escolheu um horario oferecido.",
-      followUp: "Enviar lembrete de confirmacao 24h antes da avaliacao.",
+      reason: "Lead escolheu um horário oferecido.",
+      followUp: "Enviar lembrete de confirmação 24h antes da avaliação.",
     };
   }
 
@@ -87,15 +87,15 @@ export function decideAutonomousReceptionistReply(
       stage: "offering_slots",
       action: "offer_slots",
       message:
-        `${opening} Que bom que voce quer se organizar. A avaliacao e gratuita e ajuda a doutora a entender seu caso antes de falar qualquer conduta ou valor. Tenho ${formatSlotsForMessage()} disponiveis. Qual fica melhor para voce?`,
+        `${opening} Que bom que você quer se organizar. A avaliação é gratuita e ajuda a doutora a entender seu caso antes de falar qualquer conduta ou valor. Tenho ${formatSlotsForMessage()} disponíveis. Qual fica melhor para você?`,
       leadTemperature: "hot",
       appointment: {
         status: "offered",
         selectedSlot: null,
       },
       handoffRequired: false,
-      reason: "Lead demonstrou intencao de agenda.",
-      followUp: "Se nao escolher horario em 2 horas, retomar oferecendo as duas opcoes novamente.",
+      reason: "Lead demonstrou intenção de agenda.",
+      followUp: "Se não escolher horário em 2 horas, retomar oferecendo as duas opções novamente.",
     };
   }
 
@@ -104,15 +104,15 @@ export function decideAutonomousReceptionistReply(
       stage: "offering_slots",
       action: "offer_slots",
       message:
-        `${opening} Entendo sua pergunta. O valor pode variar conforme o objetivo e a avaliacao, entao prefiro nao te passar uma informacao rasa ou errada por aqui. A avaliacao e gratuita e ja consigo te encaixar em ${formatSlotsForMessage()}. Qual desses horarios seria melhor para voce?`,
+        `${opening} Entendo sua pergunta. O valor pode variar conforme o objetivo e a avaliação, então prefiro não te passar uma informação rasa ou errada por aqui. A avaliação é gratuita e já consigo te encaixar em ${formatSlotsForMessage()}. Qual desses horários seria melhor para você?`,
       leadTemperature: "hot",
       appointment: {
         status: "offered",
         selectedSlot: null,
       },
       handoffRequired: false,
-      reason: "Lead perguntou preco; agente respondeu e ja ofereceu avaliacao gratuita com horarios.",
-      followUp: "Se nao responder em 2 horas, retomar com os horarios disponiveis e reforcar avaliacao gratuita.",
+      reason: "Lead perguntou preço; agente respondeu e já ofereceu avaliação gratuita com horários.",
+      followUp: "Se não responder em 2 horas, retomar com os horários disponíveis e reforçar avaliação gratuita.",
     };
   }
 
@@ -121,15 +121,15 @@ export function decideAutonomousReceptionistReply(
       stage: "offering_slots",
       action: "offer_slots",
       message:
-        `${opening} Consigo te orientar sim. Esse tratamento muda bastante de pessoa para pessoa, por isso a avaliacao gratuita e o melhor primeiro passo para entender seu objetivo e indicar o caminho correto. Temos ${formatSlotsForMessage()}. Quer que eu reserve um desses horarios para voce?`,
+        `${opening} Consigo te orientar sim. Esse tratamento muda bastante de pessoa para pessoa, por isso a avaliação gratuita é o melhor primeiro passo para entender seu objetivo e indicar o caminho correto. Temos ${formatSlotsForMessage()}. Quer que eu reserve um desses horários para você?`,
       leadTemperature: "warm",
       appointment: {
         status: "offered",
         selectedSlot: null,
       },
       handoffRequired: false,
-      reason: "Lead pediu informacao geral; agente respondeu e conduziu para avaliacao gratuita.",
-      followUp: "Se nao responder em 3 horas, enviar lembrete curto com os horarios disponiveis.",
+      reason: "Lead pediu informação geral; agente respondeu e conduziu para avaliação gratuita.",
+      followUp: "Se não responder em 3 horas, enviar lembrete curto com os horários disponíveis.",
     };
   }
 
@@ -137,15 +137,15 @@ export function decideAutonomousReceptionistReply(
     stage: "offering_slots",
     action: "offer_slots",
     message:
-      `${opening} Posso te ajudar por aqui. A avaliacao e gratuita e e o melhor caminho para a doutora entender seu caso e indicar o tratamento correto. Tenho ${formatSlotsForMessage()}. Quer que eu reserve um desses horarios?`,
+      `${opening} Posso te ajudar por aqui. A avaliação é gratuita e é o melhor caminho para a doutora entender seu caso e indicar o tratamento correto. Tenho ${formatSlotsForMessage()}. Quer que eu reserve um desses horários?`,
     leadTemperature: "warm",
     appointment: {
       status: "offered",
       selectedSlot: null,
     },
     handoffRequired: false,
-    reason: "Lead novo; agente abriu conversa ja oferecendo avaliacao gratuita com horarios.",
-    followUp: "Se nao responder em 4 horas, retomar com pergunta objetiva sobre qual horario prefere.",
+    reason: "Lead novo; agente abriu conversa já oferecendo avaliação gratuita com horários.",
+    followUp: "Se não responder em 4 horas, retomar com pergunta objetiva sobre qual horário prefere.",
   };
 }
 
@@ -192,13 +192,13 @@ function getGreeting(date: Date): string {
 }
 
 function asksPrice(text: string): boolean {
-  return ["preco", "valor", "quanto custa", "parcel", "orçamento", "orcamento"].some((term) =>
+  return ["preço", "preco", "valor", "quanto custa", "parcel", "orçamento", "orcamento"].some((term) =>
     text.includes(term),
   );
 }
 
 function asksAvailability(text: string): boolean {
-  return ["horario", "agenda", "marcar", "consulta", "avaliacao", "disponivel"].some((term) =>
+  return ["horário", "horario", "agenda", "marcar", "consulta", "avaliação", "avaliacao", "disponível", "disponivel"].some((term) =>
     text.includes(term),
   );
 }
@@ -208,26 +208,27 @@ function asksGeneralInfo(text: string): boolean {
     "como funciona",
     "me explica",
     "quero saber",
+    "informação",
     "informacao",
     "informações",
     "tratamento",
     "clareamento",
     "implante",
     "aparelho",
-    "harmonizacao",
     "harmonização",
+    "harmonizacao",
     "faceta",
   ].some((term) => text.includes(term));
 }
 
 function indicatesSchedulePreference(text: string): boolean {
-  return ["manha", "tarde", "noite", "essa semana", "amanha", "segunda", "terca", "quarta"].some(
+  return ["manhã", "manha", "tarde", "noite", "essa semana", "amanhã", "amanha", "segunda", "terça", "terca", "quarta"].some(
     (term) => text.includes(term),
   );
 }
 
 function hasClinicalRisk(text: string): boolean {
-  return ["dor", "inchado", "sangrando", "infeccao", "urgente", "emergencia"].some((term) =>
+  return ["dor", "inchado", "sangrando", "infecção", "infeccao", "urgente", "emergência", "emergencia"].some((term) =>
     text.includes(term),
   );
 }

@@ -10,8 +10,8 @@ import {
 const examples = [
   "Oi, quanto custa clareamento?",
   "Quero saber como funciona implante",
-  "Pode ser quarta as 10h",
-  "Estou com dor e inchado, o que eu faco?",
+  "Pode ser quarta às 10h",
+  "Estou com dor e inchado, o que eu faço?",
 ];
 
 type ChatMessage = DemoConversationInput["messages"][number];
@@ -35,11 +35,11 @@ export function DemoFlow() {
     }
 
     if (result.decision.appointment.status === "scheduled") {
-      return "Avaliacao agendada";
+      return "Avaliação agendada";
     }
 
     if (result.decision.appointment.status === "offered") {
-      return "Horarios oferecidos";
+      return "Horários oferecidos";
     }
 
     return "Atendimento autonomo";
@@ -65,7 +65,7 @@ export function DemoFlow() {
         setMessages(response.messages);
         setResult(response);
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Erro ao executar fluxo");
+        setError(caught instanceof Error ? caught.message : "Erro ao executar o fluxo");
       }
     });
   }
@@ -82,7 +82,7 @@ export function DemoFlow() {
       <section className="topbar">
         <div>
           <p className="eyebrow">SystemOps Core</p>
-          <h1>Recepcionista comercial autonoma</h1>
+          <h1>Recepcionista comercial autônoma</h1>
         </div>
         <div className="status-pill">{statusLabel}</div>
       </section>
@@ -107,7 +107,7 @@ export function DemoFlow() {
           </label>
 
           <div>
-            <p className="small-label">Cenarios rapidos</p>
+            <p className="small-label">Cenários rápidos</p>
             <div className="example-row">
               {examples.map((example) => (
                 <button
@@ -127,8 +127,8 @@ export function DemoFlow() {
           </button>
 
           <div className="automation-note">
-            O agente usa nome, saudacao por horario, empatia comercial, avaliacao gratuita e
-            horarios objetivos para aumentar conversao.
+            O agente usa nome, saudação por horário, empatia comercial, avaliação gratuita e
+            horários objetivos para aumentar conversão.
           </div>
         </div>
 
@@ -136,7 +136,7 @@ export function DemoFlow() {
           <div className="panel-header">
             <div>
               <p className="eyebrow">Atendimento 24/7</p>
-              <h2>Conversa autonoma</h2>
+              <h2>Conversa autônoma</h2>
             </div>
             {result ? <Confidence value={result.decision.leadTemperature} /> : null}
           </div>
@@ -174,7 +174,7 @@ export function DemoFlow() {
 
       <section className="bottom-grid">
         <div className="panel">
-          <p className="eyebrow">Decisao autonoma</p>
+          <p className="eyebrow">Decisão autônoma</p>
           {result ? (
             <div className="recommendation-grid">
               <Metric label="Acao" value={translateAction(result.decision.action)} />
@@ -183,11 +183,11 @@ export function DemoFlow() {
               <Metric label="Motivo" value={result.decision.reason} />
               <div className="reply-box">
                 <p className="small-label">Follow-up planejado</p>
-                <p>{result.decision.followUp ?? "Sem follow-up automatico neste caso."}</p>
+                <p>{result.decision.followUp ?? "Sem follow-up automático neste caso."}</p>
               </div>
             </div>
           ) : (
-            <div className="empty-state compact">Nenhuma decisao executada ainda.</div>
+            <div className="empty-state compact">Nenhuma decisão executada ainda.</div>
           )}
         </div>
 
@@ -231,8 +231,8 @@ function Confidence({ value }: { value: string }) {
 function translateAction(value: string): string {
   const labels: Record<string, string> = {
     send_message: "Enviar resposta",
-    offer_slots: "Oferecer horarios",
-    schedule_appointment: "Agendar avaliacao",
+    offer_slots: "Oferecer horários",
+    schedule_appointment: "Agendar avaliação",
     handoff_human: "Chamar humano",
   };
 
@@ -242,11 +242,11 @@ function translateAction(value: string): string {
 function translateStage(value: string): string {
   const labels: Record<string, string> = {
     new_lead: "Lead novo",
-    handling_price: "Tratando preco",
+    handling_price: "Tratando preço",
     collecting_schedule_preference: "Qualificando agenda",
-    offering_slots: "Oferecendo horarios",
-    appointment_scheduled: "Avaliacao agendada",
-    handoff_required: "Handoff obrigatorio",
+    offering_slots: "Oferecendo horários",
+    appointment_scheduled: "Avaliação agendada",
+    handoff_required: "Handoff obrigatório",
   };
 
   return labels[value] ?? value;
@@ -254,8 +254,8 @@ function translateStage(value: string): string {
 
 function translateAppointment(value: string): string {
   const labels: Record<string, string> = {
-    none: "Sem horario ainda",
-    offered: "Horarios enviados",
+    none: "Sem horário ainda",
+    offered: "Horários enviados",
     scheduled: "Pre-agendada",
   };
 

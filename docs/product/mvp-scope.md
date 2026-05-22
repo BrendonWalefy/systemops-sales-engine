@@ -2,16 +2,16 @@
 
 ## Objetivo
 
-Validar se a SystemOps consegue atuar como recepcionista comercial autonoma para converter leads em avaliacoes agendadas.
+Validar se a SystemOps consegue atuar como recepcionista comercial autônoma para converter leads em avaliações agendadas.
 
 ## Dentro do MVP
 
 - WhatsApp como primeiro canal de entrada.
 - Cadastro e deduplicacao simples de leads.
 - Historico de conversa.
-- Playbook comercial da clinica.
+- Playbook comercial da clínica.
 - Agente especialista em vendas com resposta automatica controlada.
-- Oferta ativa de avaliacao gratuita quando aplicavel.
+- Oferta ativa de avaliação gratuita quando aplicável.
 - Handoff humano para casos sensiveis.
 - Follow-up assistido.
 - Google Calendar para disponibilidade/agendamento.
@@ -32,4 +32,4 @@ Validar se a SystemOps consegue atuar como recepcionista comercial autonoma para
 - Aumentar consultas agendadas.
 - Dar visibilidade de motivos de perda.
 - Ter sugestoes do agente aceitas sem edicao relevante em boa parte dos casos.
-- Gerar avaliacoes agendadas em fluxos comuns sem intervencao humana.
+- Gerar avaliações agendadas em fluxos comuns sem intervenção humana.

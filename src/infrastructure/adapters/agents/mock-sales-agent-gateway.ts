@@ -16,7 +16,7 @@ export class MockSalesAgentGateway implements SalesAgentGateway {
         stage: "clinical_sensitive",
         mainObjection: "duvida_clinica_sensivel",
         suggestedReply:
-          "Entendi. Para te orientar com seguranca, vou chamar a equipe da clinica para avaliar seu caso e te responder da melhor forma. Voce pode me confirmar seu nome completo?",
+          "Entendi. Para te orientar com segurança, vou chamar a equipe da clínica para avaliar seu caso e te responder da melhor forma. Você pode me confirmar seu nome completo?",
         nextAction: "handoff_humano",
         followUp: null,
         handoffRequired: true,
@@ -37,10 +37,10 @@ export class MockSalesAgentGateway implements SalesAgentGateway {
         stage: "asked_price",
         mainObjection: "preco",
         suggestedReply:
-          "O valor pode variar conforme avaliacao e objetivo do tratamento. Para te passar uma orientacao correta, o ideal e agendar uma avaliacao com a doutora. Voce prefere ver horarios para esta semana ou para a proxima?",
+          "O valor pode variar conforme avaliação e objetivo do tratamento. Para te passar uma orientação correta, o ideal é agendar uma avaliação com a doutora. Você prefere ver horários para esta semana ou para a próxima?",
         nextAction: "tentar_agendamento",
         followUp:
-          "Se nao responder em 4 horas, enviar lembrete curto reforcando que a avaliacao ajuda a indicar o melhor caminho.",
+          "Se não responder em 4 horas, enviar lembrete curto reforçando que a avaliação ajuda a indicar o melhor caminho.",
         handoffRequired: false,
         riskFlags: [],
         confidence: 0.86,
@@ -59,9 +59,9 @@ export class MockSalesAgentGateway implements SalesAgentGateway {
         stage: "asked_availability",
         mainObjection: null,
         suggestedReply:
-          "Consigo te ajudar com os horarios. Temos algumas opcoes esta semana. Voce prefere manha ou tarde para sua avaliacao?",
+          "Consigo te ajudar com os horários. Temos algumas opções esta semana. Você prefere manhã ou tarde para sua avaliação?",
         nextAction: "consultar_agenda",
-        followUp: "Se escolher um periodo, consultar Google Calendar e oferecer dois horarios objetivos.",
+        followUp: "Se escolher um período, consultar Google Calendar e oferecer dois horários objetivos.",
         handoffRequired: false,
         riskFlags: [],
         confidence: 0.88,
@@ -79,9 +79,9 @@ export class MockSalesAgentGateway implements SalesAgentGateway {
       stage: "new_lead",
       mainObjection: null,
       suggestedReply:
-        "Oi, tudo bem? Posso te ajudar. Voce procura informacoes sobre qual tratamento ou gostaria de agendar uma avaliacao?",
+        "Oi, tudo bem? Posso te ajudar. Você procura informações sobre qual tratamento ou gostaria de agendar uma avaliação?",
       nextAction: "qualificar_interesse",
-      followUp: "Se nao responder em 6 horas, retomar com uma pergunta simples sobre o tratamento de interesse.",
+      followUp: "Se não responder em 6 horas, retomar com uma pergunta simples sobre o tratamento de interesse.",
       handoffRequired: false,
       riskFlags: [],
       confidence: 0.78,
@@ -116,4 +116,3 @@ function hasClinicalRisk(text: string): boolean {
 function estimateTokens(text: string): number {
   return Math.max(250, Math.ceil(text.length / 4));
 }
-
