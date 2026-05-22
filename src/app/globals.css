@@ -93,6 +93,10 @@ button {
   align-items: stretch;
 }
 
+.autonomous-workspace {
+  grid-template-columns: minmax(300px, 0.7fr) minmax(520px, 1.3fr);
+}
+
 .bottom-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -181,6 +185,81 @@ textarea:focus {
   border-color: var(--line);
   color: #263241;
   padding: 0 12px;
+}
+
+.reset-button {
+  width: 100%;
+}
+
+.automation-note {
+  border-left: 3px solid var(--accent);
+  background: #eef7f4;
+  color: #263241;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 12px;
+}
+
+.chat-panel {
+  min-height: 650px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-window {
+  min-height: 360px;
+  max-height: 440px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf9;
+  padding: 14px;
+}
+
+.chat-message {
+  width: min(82%, 640px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 11px 12px;
+}
+
+.chat-message.lead {
+  align-self: flex-start;
+}
+
+.chat-message.agent {
+  align-self: flex-end;
+  border-color: #b6d8d1;
+  background: #eaf6f3;
+}
+
+.chat-message span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chat-message p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 10px;
+  margin-top: 12px;
+  align-items: stretch;
+}
+
+.composer textarea {
+  resize: none;
 }
 
 .recommendation-grid,
@@ -274,5 +353,12 @@ textarea:focus {
   .cost-grid {
     grid-template-columns: 1fr;
   }
-}
 
+  .composer {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-message {
+    width: 100%;
+  }
+}

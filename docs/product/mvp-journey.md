@@ -8,9 +8,9 @@ WhatsApp
   -> RegisterIncomingMessage
   -> Lead + Conversation + Message
   -> AnalyzeSalesConversation
-  -> Recomendacao do agente
-  -> Recepcao aprova ou edita
-  -> Mensagem enviada
+  -> Decisao autonoma do agente
+  -> Regra de seguranca valida execucao
+  -> Mensagem enviada automaticamente ou handoff
   -> Google Calendar sugere/cria horario
   -> Follow-up ou resultado
   -> Metricas
@@ -23,10 +23,10 @@ WhatsApp
 3. O caso de uso `RegisterIncomingMessage` cria ou atualiza o lead.
 4. A conversa e a mensagem sao registradas no core.
 5. O agente recebe contexto da clinica, playbook, lead e historico.
-6. O agente retorna resposta sugerida, temperatura, objecao, proxima acao e risco.
-7. A recepcao aprova, edita ou rejeita.
+6. O agente decide resposta, proxima acao, risco e possibilidade de execucao automatica.
+7. Se for baixo risco, o sistema envia a resposta automaticamente.
 8. Se o lead quiser horario, o sistema consulta Google Calendar.
-9. A recepcao confirma ou cria o agendamento.
+9. Se o lead escolher horario, o sistema cria ou pre-agenda a avaliacao.
 10. Se o lead nao responder, o sistema cria follow-up.
 11. O resultado volta para metricas e aprendizado.
 
@@ -34,7 +34,7 @@ WhatsApp
 
 - Se WhatsApp API nao estiver pronta, a conversa pode ser cadastrada manualmente.
 - Se Google Calendar nao estiver organizado, a clinica pode informar disponibilidade manual.
-- Se IA sinalizar risco, o fluxo exige handoff humano.
+- Se IA sinalizar risco, o fluxo exige handoff humano e nao executa orientacao clinica.
 - Se uma integracao falhar, o core mantem o estado e registra pendencia operacional.
 
 ## Sem Furos de Integracao
@@ -44,7 +44,6 @@ Para evitar furos, cada integracao deve ser tratada como adapter:
 - WhatsApp nao cria regra de negocio.
 - Google Calendar nao decide prioridade comercial.
 - n8n nao define status oficial do lead.
-- IA nao envia mensagem sozinha no MVP.
+- IA so executa acoes permitidas por regra de negocio e seguranca.
 
 O SystemOps Core decide e registra o estado oficial.
-

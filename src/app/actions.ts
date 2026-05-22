@@ -1,19 +1,38 @@
 "use server";
 
-import { AnalyzeSalesConversation } from "@/application/use-cases/agents/analyze-sales-conversation";
-import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
-import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
-import type { Clinic } from "@/domain/entities/clinic";
 import type { Message } from "@/domain/entities/conversation";
-import type { Lead } from "@/domain/entities/lead";
-import type { SalesAgentRecommendation } from "@/domain/entities/agent-recommendation";
-import { MockSalesAgentGateway } from "@/infrastructure/adapters/agents/mock-sales-agent-gateway";
-import { InMemoryDemoStore } from "@/infrastructure/repositories/in-memory-demo-repositories";
+import {
+  decideAutonomousReceptionistReply,
+  estimateReceptionistUsage,
+  type ReceptionistDecision,
+} from "@/application/services/autonomous-receptionist";
+import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
 
-export type DemoFlowResult = {
-  lead: Lead;
-  messages: Message[];
-  recommendation: SalesAgentRecommendation;
+export type DemoConversationInput = {
+  leadName: string;
+  phone: string;
+  messages: Array<{
+    author: "lead" | "agent";
+    body: string;
+  }>;
+};
+
+export type AutonomousDemoResult = {
+  lead: {
+    name: string;
+    phone: string;
+    channel: "whatsapp";
+    status:
+      | "waiting_response"
+      | "in_conversation"
+      | "appointment_scheduled"
+      | "handoff_required";
+  };
+  messages: Array<{
+    author: "lead" | "agent";
+    body: string;
+  }>;
+  decision: ReceptionistDecision;
   costs: {
     aiUsd: string;
     whatsappUsd: string;
@@ -23,102 +42,52 @@ export type DemoFlowResult = {
   };
 };
 
-const demoClinic: Clinic = {
-  id: "clinic-demo-sorriso",
-  name: "Clinica Sorriso Demo",
-  specialty: "odontology",
-  city: "Sao Paulo",
-  toneOfVoice: "Acolhedor, claro, profissional e sem pressionar o paciente.",
-  commercialPolicy:
-    "Nao informar preco fechado sem avaliacao. Conduzir para avaliacao e evitar descontos fora da politica da clinica.",
-  createdAt: new Date("2026-01-01T00:00:00.000Z"),
-  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-};
+export async function runAutonomousReceptionistTurn(
+  input: DemoConversationInput,
+): Promise<AutonomousDemoResult> {
+  const now = new Date("2026-05-22T10:00:00.000Z");
+  const domainMessages = input.messages.map<Message>((message, index) => ({
+    id: `message-${index + 1}`,
+    conversationId: "demo-conversation",
+    author: message.author === "lead" ? "lead" : "agent",
+    body: message.body,
+    sentAt: now,
+    externalId: null,
+  }));
 
-const playbook = `
-Clinica odontologica focada em avaliacao consultiva.
-Objetivo comercial: transformar conversas em avaliacoes agendadas.
-Quando o lead perguntar preco, explicar que depende da avaliacao e conduzir para agenda.
-Quando houver dor, inchaco, sangramento ou urgencia, acionar humano.
-Tom: cuidadoso, objetivo e profissional.
-`;
-
-export async function runDemoFlow(input: {
-  leadName: string;
-  phone: string;
-  message: string;
-}): Promise<DemoFlowResult> {
-  const store = new InMemoryDemoStore();
-  let sequence = 0;
-  const idGenerator = () => `demo-${++sequence}`;
-  const now = () => new Date("2026-05-21T12:00:00.000Z");
-  const usageCostTracker = new DefaultUsageCostTracker({
-    usageCostRepository: store,
-    idGenerator,
-    now,
+  const decision = decideAutonomousReceptionistReply(domainMessages);
+  const usage = estimateReceptionistUsage(domainMessages, decision.message);
+  const aiCost = estimateAiCostUsdMicros({
+    clinicId: "clinic-demo-sorriso",
+    provider: "openai",
+    model: "gpt-4o-mini",
+    operation: "sales_conversation_analysis",
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
   });
-
-  const registerIncomingMessage = new RegisterIncomingMessage({
-    leadRepository: store,
-    conversationRepository: store,
-    usageCostTracker,
-    idGenerator,
-    now,
-  });
-
-  const analyzeSalesConversation = new AnalyzeSalesConversation({
-    leadRepository: store,
-    conversationRepository: store,
-    agentRecommendationRepository: store,
-    salesAgent: new MockSalesAgentGateway(),
-    usageCostTracker,
-    idGenerator,
-    now,
-  });
-
-  const incoming = await registerIncomingMessage.execute({
-    clinicId: demoClinic.id,
-    message: {
-      channel: "whatsapp",
-      externalContactId: input.phone,
-      externalThreadId: `whatsapp:${input.phone}`,
-      externalMessageId: `wamid.demo.${Date.now()}`,
-      name: input.leadName || null,
-      phone: input.phone || null,
-      email: null,
-      body: input.message,
-      receivedAt: now(),
-      campaignId: "instagram-bio",
-    },
-  });
-
-  const recommendation = await analyzeSalesConversation.execute({
-    clinic: demoClinic,
-    leadId: incoming.lead.id,
-    playbook,
-  });
-
-  const messages = await store.listMessages(incoming.conversation.id);
-  const aiUsage = store.aiUsageCosts.at(-1);
-  const whatsappCost = store.whatsappMessageCosts.reduce(
-    (total, cost) => total + cost.estimatedCostUsdMicros,
-    0,
-  );
-  const aiCost = store.aiUsageCosts.reduce(
-    (total, cost) => total + cost.estimatedCostUsdMicros,
-    0,
-  );
+  const whatsappCost = decision.action === "send_message" || decision.action === "offer_slots"
+    ? 0
+    : 0;
 
   return {
-    lead: incoming.lead,
-    messages,
-    recommendation,
+    lead: {
+      name: input.leadName,
+      phone: input.phone,
+      channel: "whatsapp",
+      status: decision.handoffRequired
+        ? "handoff_required"
+        : decision.appointment.status === "scheduled"
+          ? "appointment_scheduled"
+          : "in_conversation",
+    },
+    messages: [...input.messages, { author: "agent", body: decision.message }],
+    decision,
     costs: {
       aiUsd: formatUsdMicros(aiCost),
       whatsappUsd: formatUsdMicros(whatsappCost),
       totalUsd: formatUsdMicros(aiCost + whatsappCost),
-      inputTokens: aiUsage?.inputTokens ?? 0,
-      outputTokens: aiUsage?.outputTokens ?? 0,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
     },
   };
 }

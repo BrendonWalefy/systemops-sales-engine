@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Validar se a SystemOps ajuda uma clinica odontologica a converter mais leads em consultas agendadas.
+Validar se a SystemOps consegue atuar como recepcionista comercial autonoma para converter leads em avaliacoes agendadas.
 
 ## Dentro do MVP
 
@@ -10,8 +10,8 @@ Validar se a SystemOps ajuda uma clinica odontologica a converter mais leads em 
 - Cadastro e deduplicacao simples de leads.
 - Historico de conversa.
 - Playbook comercial da clinica.
-- Agente especialista em vendas como copiloto.
-- Aprovacao humana da resposta.
+- Agente especialista em vendas com resposta automatica controlada.
+- Handoff humano para casos sensiveis.
 - Follow-up assistido.
 - Google Calendar para disponibilidade/agendamento.
 - Metricas basicas: leads, tempo de resposta, agendamentos, perdas e follow-ups.
@@ -19,7 +19,6 @@ Validar se a SystemOps ajuda uma clinica odontologica a converter mais leads em 
 ## Fora do MVP
 
 - Agenda propria completa.
-- Automacao autonoma sem aprovacao.
 - Multiplos agentes especializados.
 - BI avancado.
 - App mobile.
@@ -32,4 +31,4 @@ Validar se a SystemOps ajuda uma clinica odontologica a converter mais leads em 
 - Aumentar consultas agendadas.
 - Dar visibilidade de motivos de perda.
 - Ter sugestoes do agente aceitas sem edicao relevante em boa parte dos casos.
-
+- Gerar avaliacoes agendadas em fluxos comuns sem intervencao humana.
