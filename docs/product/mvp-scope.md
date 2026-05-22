@@ -11,6 +11,7 @@ Validar se a SystemOps consegue atuar como recepcionista comercial autonoma para
 - Historico de conversa.
 - Playbook comercial da clinica.
 - Agente especialista em vendas com resposta automatica controlada.
+- Oferta ativa de avaliacao gratuita quando aplicavel.
 - Handoff humano para casos sensiveis.
 - Follow-up assistido.
 - Google Calendar para disponibilidade/agendamento.

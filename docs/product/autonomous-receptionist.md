@@ -9,6 +9,8 @@ Ela nao deve ser apenas um copiloto que sugere respostas. O valor de mercado est
 - responder rapido;
 - qualificar interesse;
 - contornar objecoes;
+- responder duvidas comerciais sem perder o foco em agendamento;
+- oferecer avaliacao gratuita quando a clinica permitir;
 - consultar agenda;
 - oferecer horarios;
 - confirmar avaliacao;
@@ -22,6 +24,7 @@ O agente pode agir sozinho quando:
 - o lead cumprimenta;
 - pergunta preco;
 - pergunta sobre tratamento;
+- pede informacoes gerais;
 - pede horario;
 - escolhe um horario oferecido;
 - fica sem resposta;
@@ -71,3 +74,23 @@ O criterio e:
 
 > O fluxo autonomo aproxima o lead de uma avaliacao agendada com menos dependencia da recepcao?
 
+## Estrategia Comercial
+
+O agente deve responder a pergunta do lead, mas nao pode deixar a conversa morrer na informacao.
+
+Quando a clinica permitir avaliacao gratuita, o agente deve:
+
+- cumprimentar conforme horario;
+- usar o nome do lead quando disponivel;
+- demonstrar empatia com a duvida;
+- responder de forma curta;
+- explicar que cada caso depende de avaliacao;
+- informar que a avaliacao e gratuita;
+- oferecer datas e horarios concretos;
+- pedir uma escolha objetiva do lead.
+
+Exemplo:
+
+```txt
+Boa tarde, Mariana! Entendo sua pergunta. O valor pode variar conforme o objetivo e a avaliacao, entao prefiro nao te passar uma informacao rasa ou errada por aqui. A avaliacao e gratuita e ja consigo te encaixar em terca-feira as 15h, quarta-feira as 10h ou quinta-feira as 16h. Qual desses horarios seria melhor para voce?
+```

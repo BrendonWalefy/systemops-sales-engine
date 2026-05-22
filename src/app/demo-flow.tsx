@@ -9,8 +9,8 @@ import {
 
 const examples = [
   "Oi, quanto custa clareamento?",
-  "Prefiro a tarde",
-  "Pode ser quinta as 16h",
+  "Quero saber como funciona implante",
+  "Pode ser quarta as 10h",
   "Estou com dor e inchado, o que eu faco?",
 ];
 
@@ -127,8 +127,8 @@ export function DemoFlow() {
           </button>
 
           <div className="automation-note">
-            O agente responde sozinho, oferece horarios, agenda quando o lead escolhe e para em
-            caso sensivel.
+            O agente usa nome, saudacao por horario, empatia comercial, avaliacao gratuita e
+            horarios objetivos para aumentar conversao.
           </div>
         </div>
 
@@ -261,4 +261,3 @@ function translateAppointment(value: string): string {
 
   return labels[value] ?? value;
 }
-

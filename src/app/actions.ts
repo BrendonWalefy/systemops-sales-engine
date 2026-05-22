@@ -55,7 +55,10 @@ export async function runAutonomousReceptionistTurn(
     externalId: null,
   }));
 
-  const decision = decideAutonomousReceptionistReply(domainMessages);
+  const decision = decideAutonomousReceptionistReply(domainMessages, {
+    leadName: input.leadName,
+    now,
+  });
   const usage = estimateReceptionistUsage(domainMessages, decision.message);
   const aiCost = estimateAiCostUsdMicros({
     clinicId: "clinic-demo-sorriso",
@@ -95,4 +98,3 @@ export async function runAutonomousReceptionistTurn(
 function formatUsdMicros(value: number): string {
   return `$${(value / 1_000_000).toFixed(6)}`;
 }
-
