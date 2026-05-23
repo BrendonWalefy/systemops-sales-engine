@@ -11,6 +11,8 @@ import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
 export type DemoConversationInput = {
   leadName: string;
   phone: string;
+  clinicName?: string;
+  simulatedHour?: number;
   messages: Array<{
     author: "lead" | "agent";
     body: string;
@@ -45,7 +47,8 @@ export type AutonomousDemoResult = {
 export async function runAutonomousReceptionistTurn(
   input: DemoConversationInput,
 ): Promise<AutonomousDemoResult> {
-  const now = new Date("2026-05-22T10:00:00.000Z");
+  const hour = input.simulatedHour ?? 10;
+  const now = new Date(`2026-05-22T${String(hour).padStart(2, "0")}:00:00`);
   const domainMessages = input.messages.map<Message>((message, index) => ({
     id: `message-${index + 1}`,
     conversationId: "demo-conversation",
@@ -57,6 +60,7 @@ export async function runAutonomousReceptionistTurn(
 
   const decision = decideAutonomousReceptionistReply(domainMessages, {
     leadName: input.leadName,
+    clinicName: input.clinicName,
     now,
   });
   const usage = estimateReceptionistUsage(domainMessages, decision.message);

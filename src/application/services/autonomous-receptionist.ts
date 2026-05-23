@@ -30,6 +30,7 @@ export type ReceptionistDecision = {
 
 export type ReceptionistContext = {
   leadName: string | null;
+  clinicName?: string;
   now: Date;
 };
 
@@ -46,7 +47,8 @@ export function decideAutonomousReceptionistReply(
   const lastLeadMessage =
     [...messages].reverse().find((message) => message.author === "lead")?.body ?? "";
   const normalized = normalize(lastLeadMessage);
-  const opening = buildOpening(context);
+  const isFirstMessage = messages.filter((m) => m.author === "lead").length <= 1;
+  const opening = buildOpening(context, isFirstMessage);
 
   if (hasClinicalRisk(normalized)) {
     return {
@@ -165,11 +167,14 @@ function normalize(text: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function buildOpening(context: ReceptionistContext): string {
+function buildOpening(context: ReceptionistContext, isFirstMessage: boolean): string {
   const name = getFirstName(context.leadName);
   const greeting = getGreeting(context.now);
+  const clinicIntro = isFirstMessage && context.clinicName
+    ? ` Você entrou em contato com a ${context.clinicName}.`
+    : "";
 
-  return name ? `${greeting}, ${name}!` : `${greeting}!`;
+  return name ? `${greeting}, ${name}!${clinicIntro}` : `${greeting}!${clinicIntro}`;
 }
 
 function getFirstName(name: string | null): string | null {
