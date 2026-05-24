@@ -96,10 +96,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // --- Pre-fetch history and check for pending slot offer ---
     const history = await conversationRepo.listMessages(conversation.id);
-    // A slot offer is pending if the last system message is a slot offer (not a confirmation clear)
+    // A slot offer is pending only if the last system message is a slot offer AND
+    // it was sent AFTER the lead's previous message (i.e., the offer was not stale from a past turn)
     const lastSystemMsg = [...history].reverse().find((m) => m.author === "system");
-    const pendingSlotOffer =
-      lastSystemMsg?.body.startsWith(SLOT_OFFER_MARKER) ? lastSystemMsg : null;
+    const leadMessages = history.filter((m) => m.author === "lead");
+    const previousLeadMsg = leadMessages[leadMessages.length - 2]; // -1 is current message
+    const offerIsRecent =
+      lastSystemMsg?.body.startsWith(SLOT_OFFER_MARKER) &&
+      (!previousLeadMsg ||
+        new Date(lastSystemMsg.sentAt).getTime() > new Date(previousLeadMsg.sentAt).getTime());
+    const pendingSlotOffer = offerIsRecent ? lastSystemMsg! : null;
 
     // --- Slot selection: lead responds 1/2/3 to a pending offer ---
     if (pendingSlotOffer && /^[123]$/.test(incomingText)) {
