@@ -35,9 +35,9 @@ export type ReceptionistContext = {
 };
 
 const slots = [
-  { id: "slot-1", label: "terça-feira às 15h" },
-  { id: "slot-2", label: "quarta-feira às 10h" },
-  { id: "slot-3", label: "quinta-feira às 16h" },
+  { id: "slot-1", label: "28/05 às 15h" },
+  { id: "slot-2", label: "29/05 às 10h" },
+  { id: "slot-3", label: "30/05 às 16h" },
 ];
 
 export function decideAutonomousReceptionistReply(
@@ -72,7 +72,7 @@ export function decideAutonomousReceptionistReply(
     return {
       stage: "appointment_scheduled",
       action: "schedule_appointment",
-      message: `${opening} Perfeito, deixei sua avaliação gratuita pré-agendada para ${offeredSlot.label}. A equipe da clínica vai confirmar os dados finais por aqui. Vai ser uma boa oportunidade para a doutora entender seu caso com calma e te orientar do jeito certo.`,
+      message: `${opening} Perfeito, deixei sua avaliação gratuita pré-agendada para ${offeredSlot.label}. A equipe da clínica vai confirmar os dados finais por aqui. Vai ser uma boa oportunidade para o doutor entender seu caso com calma e te orientar do jeito certo.`,
       leadTemperature: "hot",
       appointment: {
         status: "scheduled",
@@ -89,7 +89,7 @@ export function decideAutonomousReceptionistReply(
       stage: "offering_slots",
       action: "offer_slots",
       message:
-        `${opening} Que bom que você quer se organizar. A avaliação é gratuita e ajuda a doutora a entender seu caso antes de falar qualquer conduta ou valor. Tenho ${formatSlotsForMessage()} disponíveis. Qual fica melhor para você?`,
+        `${opening} Que bom que você quer se organizar. A avaliação é gratuita e ajuda o doutor a entender seu caso antes de falar qualquer conduta ou valor. Tenho estes horários disponíveis:${formatSlotsForMessage()}\n\nQual fica melhor para você?`,
       leadTemperature: "hot",
       appointment: {
         status: "offered",
@@ -106,7 +106,7 @@ export function decideAutonomousReceptionistReply(
       stage: "offering_slots",
       action: "offer_slots",
       message:
-        `${opening} Entendo sua pergunta. O valor pode variar conforme o objetivo e a avaliação, então prefiro não te passar uma informação rasa ou errada por aqui. A avaliação é gratuita e já consigo te encaixar em ${formatSlotsForMessage()}. Qual desses horários seria melhor para você?`,
+        `${opening} Entendo sua pergunta. O valor pode variar conforme o objetivo e a avaliação, então prefiro não te passar uma informação rasa ou errada por aqui. A avaliação é gratuita e já consigo te encaixar em um destes horários:${formatSlotsForMessage()}\n\nQual deles seria melhor para você?`,
       leadTemperature: "hot",
       appointment: {
         status: "offered",
@@ -123,7 +123,7 @@ export function decideAutonomousReceptionistReply(
       stage: "offering_slots",
       action: "offer_slots",
       message:
-        `${opening} Consigo te orientar sim. Esse tratamento muda bastante de pessoa para pessoa, por isso a avaliação gratuita é o melhor primeiro passo para entender seu objetivo e indicar o caminho correto. Temos ${formatSlotsForMessage()}. Quer que eu reserve um desses horários para você?`,
+        `${opening} Consigo te orientar sim. Esse tratamento muda bastante de pessoa para pessoa, por isso a avaliação gratuita é o melhor primeiro passo para entender seu objetivo e indicar o caminho correto. Temos estes horários:${formatSlotsForMessage()}\n\nQuer que eu reserve um deles para você?`,
       leadTemperature: "warm",
       appointment: {
         status: "offered",
@@ -139,7 +139,7 @@ export function decideAutonomousReceptionistReply(
     stage: "offering_slots",
     action: "offer_slots",
     message:
-      `${opening} Posso te ajudar por aqui. A avaliação é gratuita e é o melhor caminho para a doutora entender seu caso e indicar o tratamento correto. Tenho ${formatSlotsForMessage()}. Quer que eu reserve um desses horários?`,
+      `${opening} Posso te ajudar por aqui. A avaliação é gratuita e é o melhor caminho para o doutor entender seu caso e indicar o tratamento correto. Tenho estes horários:${formatSlotsForMessage()}\n\nQuer que eu reserve um deles?`,
     leadTemperature: "warm",
     appointment: {
       status: "offered",
@@ -239,15 +239,15 @@ function hasClinicalRisk(text: string): boolean {
 }
 
 function findOfferedSlotSelection(text: string) {
-  if (["terca", "terça", "15h", "primeiro"].some((term) => text.includes(term))) {
+  if (["28/05", "28", "15h", "primeiro"].some((term) => text.includes(term))) {
     return slots[0];
   }
 
-  if (["quarta", "10h", "segundo"].some((term) => text.includes(term))) {
+  if (["29/05", "29", "10h", "segundo"].some((term) => text.includes(term))) {
     return slots[1];
   }
 
-  if (["quinta", "16h", "terceiro"].some((term) => text.includes(term))) {
+  if (["30/05", "30", "16h", "terceiro"].some((term) => text.includes(term))) {
     return slots[2];
   }
 
@@ -255,5 +255,5 @@ function findOfferedSlotSelection(text: string) {
 }
 
 function formatSlotsForMessage(): string {
-  return `${slots[0]?.label}, ${slots[1]?.label} ou ${slots[2]?.label}`;
+  return `\n${slots.map((slot) => `• ${slot.label}`).join("\n")}`;
 }

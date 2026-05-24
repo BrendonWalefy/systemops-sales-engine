@@ -1,18 +1,16 @@
 "use client";
 
 import {
-  BarChart2,
   Bot,
   Calendar,
+  CheckCircle2,
   Clock,
-  DollarSign,
-  MessageSquare,
+  FileText,
   Moon,
   RotateCcw,
   Send,
   Sparkles,
   Sun,
-  Users2,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -22,30 +20,33 @@ import {
   type DemoConversationInput,
 } from "./actions";
 
-const businessHourExamples = [
-  "Oi, quanto custa clareamento?",
-  "Quero saber como funciona implante",
-  "Pode ser quarta às 10h",
-  "Estou com dor e inchado, o que eu faço?",
-];
-
-const afterHoursExamples = [
-  "Oi, vi de vocês no Instagram, como funciona?",
-  "Quero marcar avaliação de clareamento",
-  "Tem horário disponível essa semana?",
-  "Quanto custa harmonização facial?",
-];
-
-const navItems = [
-  { label: "Inbox", icon: MessageSquare, active: true },
-  { label: "CRM", icon: Users2, active: false },
-  { label: "Agenda", icon: Calendar, active: false },
-  { label: "Analytics", icon: BarChart2, active: false },
-  { label: "IA", icon: Sparkles, active: false },
+const demoScenarios = [
+  {
+    id: "price",
+    label: "Pergunta preço às 22h",
+    story: "São 22h14. A paciente veio do Instagram e quer saber valor antes de dormir.",
+    message: "Oi, vim pelo Instagram. Quanto custa clareamento?",
+    outcome: "Conduzir para avaliação gratuita",
+  },
+  {
+    id: "schedule",
+    label: "Quer marcar avaliação",
+    story: "A clínica está fechada, mas o lead já demonstra intenção clara de marcar.",
+    message: "Quero marcar avaliação de clareamento",
+    outcome: "Oferecer horários disponíveis",
+  },
+  {
+    id: "human",
+    label: "Precisa de humano",
+    story: "A mensagem parece sensível. A IA precisa proteger a clínica e chamar a equipe.",
+    message: "Estou com dor e inchado, o que eu faço?",
+    outcome: "Acionar a equipe da clínica",
+  },
 ];
 
 type ChatMessage = DemoConversationInput["messages"][number];
 type TimestampedMessage = ChatMessage & { timestamp: string };
+type DemoScenario = (typeof demoScenarios)[number];
 
 function getTime(hour: number): string {
   const mins = new Date().getMinutes().toString().padStart(2, "0");
@@ -55,20 +56,18 @@ function getTime(hour: number): string {
 export function DemoFlow() {
   const [leadName, setLeadName] = useState("Mariana Lima");
   const [phone, setPhone] = useState("+5511999990000");
-  const [clinicName, setClinicName] = useState("Clínica Sorri");
-  const [simulatedHour, setSimulatedHour] = useState<10 | 22>(10);
-  const [draft, setDraft] = useState(businessHourExamples[0] ?? "");
+  const [clinicName, setClinicName] = useState("Ximendes Odontologia");
+  const [simulatedHour, setSimulatedHour] = useState<10 | 22>(22);
+  const [selectedScenario, setSelectedScenario] = useState<DemoScenario>(demoScenarios[0]);
+  const [draft, setDraft] = useState(demoScenarios[0]?.message ?? "");
   const [messages, setMessages] = useState<TimestampedMessage[]>([]);
   const [result, setResult] = useState<AutonomousDemoResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [roiLeads, setRoiLeads] = useState(30);
-  const [roiTicket, setRoiTicket] = useState(1500);
   const chatRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isAfterHours = simulatedHour === 22;
-  const examples = isAfterHours ? afterHoursExamples : businessHourExamples;
 
   useEffect(() => {
     if (chatRef.current) {
@@ -77,8 +76,8 @@ export function DemoFlow() {
   }, [messages, isPending]);
 
   const statusLabel = useMemo(() => {
-    if (!result) return "Autonomia pronta";
-    if (result.decision.handoffRequired) return "Handoff humano";
+    if (!result) return "Demo pronta";
+    if (result.decision.handoffRequired) return "Equipe humana acionada";
     if (result.decision.appointment.status === "scheduled") return "Avaliação agendada";
     if (result.decision.appointment.status === "offered") return "Horários oferecidos";
     return "Atendimento autônomo";
@@ -92,8 +91,7 @@ export function DemoFlow() {
     return { label: "Lead frio", className: "temp-cold", score: 20 };
   }, [result]);
 
-  const roiExtra = Math.round(roiLeads * 0.07);
-  const roiRevenue = roiExtra * roiTicket;
+  const demoSummary = result ? getClientSummary(result) : null;
 
   function sendLeadMessage() {
     if (!draft.trim()) return;
@@ -139,8 +137,16 @@ export function DemoFlow() {
     setMessages([]);
     setResult(null);
     setError(null);
-    const ex = hour === 22 ? afterHoursExamples : businessHourExamples;
-    setDraft(ex[0] ?? "");
+    setDraft(selectedScenario.message);
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }
+
+  function chooseScenario(scenario: DemoScenario) {
+    setSelectedScenario(scenario);
+    setMessages([]);
+    setResult(null);
+    setError(null);
+    setDraft(scenario.message);
     setTimeout(() => textareaRef.current?.focus(), 50);
   }
 
@@ -148,39 +154,25 @@ export function DemoFlow() {
     setMessages([]);
     setResult(null);
     setError(null);
-    setDraft(examples[0] ?? "");
+    setDraft(selectedScenario.message);
     setTimeout(() => textareaRef.current?.focus(), 50);
   }
 
-  const leadInitial = (leadName.trim()[0] ?? "M").toUpperCase();
-
   return (
     <main className="app-shell" id="demo">
-      <aside className="sidebar">
-        <div className="brand-mark">
-          <Zap size={20} strokeWidth={2.5} />
-        </div>
-
-        <nav className="side-nav" aria-label="Navegação principal">
-          {navItems.map(({ label, icon: Icon, active }) => (
-            <button className={active ? "side-nav-item active" : "side-nav-item"} key={label} type="button">
-              <Icon size={16} strokeWidth={active ? 2.2 : 1.8} />
-              <span className="nav-label">{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-footer">
-          <span className="live-dot" />
-          <span className="footer-label">Piloto ativo</span>
-        </div>
-      </aside>
-
       <section className="product-area">
+        <div className="demo-browser">
+          <div className="browser-chrome" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <div />
+          </div>
+
         <header className="product-topbar">
           <div>
             <p className="eyebrow">Smart Inbox / WhatsApp</p>
-            <h1>Recepcionista comercial autônoma</h1>
+            <h1>Veja o que acontece quando um lead chama sua clínica</h1>
           </div>
           <div className="topbar-actions">
             <div className="time-toggle" role="group" aria-label="Simular horário">
@@ -211,49 +203,69 @@ export function DemoFlow() {
         {isAfterHours && (
           <div className="after-hours-banner">
             <Moon size={14} strokeWidth={2} />
-            <strong>Simulando atendimento às 22h</strong>
-            <span>— quando não há ninguém na clínica para responder</span>
+            <strong>{selectedScenario.story}</strong>
+            <span>A clínica não precisa esperar até amanhã para responder.</span>
           </div>
         )}
 
         <section className="kpi-strip" aria-label="Resumo operacional">
           <Metric
             icon={<Clock size={14} />}
-            label="Tempo de resposta"
+            label="Resposta imediata"
             value={isPending ? "Processando…" : "< 1 min"}
-            context="vs 4h média humana"
+            context="antes do lead esfriar"
             highlight={!isPending}
           />
           <Metric
             icon={<Sparkles size={14} />}
-            label="Temperatura"
+            label="Lead qualificado"
             value={result ? translateTemperature(result.decision.leadTemperature) : "Aguardando"}
-            context={result ? "score do lead" : "envie uma mensagem"}
+            context={result ? "pronto para a equipe" : "envie a mensagem"}
             temperatureClass={result ? `temp-${result.decision.leadTemperature}` : ""}
           />
           <Metric
             icon={<Calendar size={14} />}
-            label="Agenda"
+            label="Próximo passo"
             value={result ? translateAppointment(result.decision.appointment.status) : "Sem oferta"}
-            context={result?.decision.appointment.status === "scheduled" ? "agendado automaticamente" : "aguardando qualificação"}
-          />
-          <Metric
-            icon={<DollarSign size={14} />}
-            label="Custo por conversa"
-            value={result ? result.costs.totalUsd : "$0.000000"}
-            context="custo real de IA"
+            context={result?.decision.appointment.status === "scheduled" ? "confirmar avaliação" : "sem depender da recepção"}
           />
         </section>
 
         <section className="inbox-layout">
           <aside className="lead-panel panel">
-            <div className="lead-card-header">
-              <div className="avatar">{leadInitial}</div>
-              <div className="lead-info">
-                <p className="eyebrow">Lead ativo</p>
-                <h2>{leadName || "Lead sem nome"}</h2>
-                <span className="lead-phone">{phone}</span>
+            <div className="inbox-panel-header">
+              <div>
+                <h2>Inbox Comercial</h2>
+                <span>24 conversas ativas</span>
               </div>
+              <div className="online-pill">
+                <span className="live-dot" />
+                Online
+              </div>
+            </div>
+
+            <div className="conversation-list">
+              <button className="conversation-card active" type="button">
+                <div className="conversation-row">
+                  <strong>{leadName || "Mariana Lima"}</strong>
+                  <span className="unread-dot" />
+                </div>
+                <span>Alta intenção</span>
+              </button>
+              <button className="conversation-card" type="button">
+                <div className="conversation-row">
+                  <strong>Carlos M.</strong>
+                  <span className="unread-dot" />
+                </div>
+                <span>Aguardando orçamento</span>
+              </button>
+              <button className="conversation-card" type="button">
+                <div className="conversation-row">
+                  <strong>Beatriz A.</strong>
+                  <span className="unread-dot" />
+                </div>
+                <span>Retorno em 15 dias</span>
+              </button>
             </div>
 
             {temperatureConfig && (
@@ -269,45 +281,40 @@ export function DemoFlow() {
               </div>
             )}
 
-            <div className="form-stack">
-              <label>
-                Nome da clínica
-                <input value={clinicName} onChange={(e) => setClinicName(e.target.value)} />
-              </label>
-              <label>
-                Nome do lead
-                <input value={leadName} onChange={(e) => setLeadName(e.target.value)} />
-              </label>
-              <label>
-                Telefone
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} />
-              </label>
-            </div>
-
-            <div className="signal-list">
-              <Signal label="Canal" value="WhatsApp" />
-              <Signal label="Origem" value={isAfterHours ? "Rede social (22h)" : "Campanha clínica"} />
-              <Signal label="Objetivo" value="Agendar avaliação" />
-            </div>
-
             <div>
-              <p className="small-label">{isAfterHours ? "Cenários · 22h" : "Cenários rápidos"}</p>
+              <p className="small-label">Cenários da demo</p>
               <div className="example-row">
-                {examples.map((example) => (
+                {demoScenarios.map((scenario) => (
                   <button
-                    className="secondary-button scenario-button"
-                    key={example}
-                    onClick={() => {
-                      setDraft(example);
-                      textareaRef.current?.focus();
-                    }}
+                    className={`scenario-card ${selectedScenario.id === scenario.id ? "active" : ""}`}
+                    key={scenario.id}
+                    onClick={() => chooseScenario(scenario)}
                     type="button"
                   >
-                    {example}
+                    <strong>{scenario.label}</strong>
+                    <span>{scenario.outcome}</span>
                   </button>
                 ))}
               </div>
             </div>
+
+            <details className="demo-settings">
+              <summary>Personalizar demo</summary>
+              <div className="form-stack">
+                <label>
+                  Nome da clínica
+                  <input value={clinicName} onChange={(e) => setClinicName(e.target.value)} />
+                </label>
+                <label>
+                  Nome do lead
+                  <input value={leadName} onChange={(e) => setLeadName(e.target.value)} />
+                </label>
+                <label>
+                  Telefone
+                  <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+                </label>
+              </div>
+            </details>
 
             <button className="secondary-button reset-button" onClick={resetConversation} type="button">
               <RotateCcw size={14} />
@@ -322,6 +329,7 @@ export function DemoFlow() {
                   {isAfterHours ? "Atendimento noturno · 22h" : "Atendimento 24/7"}
                 </p>
                 <h2>Conversa com IA</h2>
+                <span className="chat-subtitle">Cliente vê a resposta em tempo real, como no WhatsApp.</span>
               </div>
               {temperatureConfig && (
                 <span className={`temp-badge ${temperatureConfig.className}`}>
@@ -340,16 +348,16 @@ export function DemoFlow() {
                   </div>
                   <strong>
                     {isAfterHours
-                      ? "São 22h. Nenhuma recepcionista disponível."
+                      ? "São 22h. O lead acabou de chamar."
                       : "Simule uma entrada de lead"}
                   </strong>
                   <span>
                     {isAfterHours
-                      ? "A IA responde em segundos, qualifica o interesse e pré-agenda a avaliação — sem que ninguém precise estar acordado."
-                      : "A recepcionista responde em menos de 1 minuto, qualifica o interesse, oferece horários e registra tudo automaticamente."}
+                      ? selectedScenario.story
+                      : "A IA responde em menos de 1 minuto, qualifica o interesse, oferece horários e registra tudo automaticamente."}
                   </span>
                   <div className="empty-hints">
-                    <span>↓ Escolha um cenário no painel esquerdo</span>
+                    <span>Escolha um cenário ou envie a mensagem atual</span>
                     <span>Enter para enviar</span>
                   </div>
                 </div>
@@ -415,16 +423,34 @@ export function DemoFlow() {
           </section>
 
           <aside className="intelligence-panel">
-            <section className="panel">
-              <p className="eyebrow">Decisão da IA</p>
+            <section className="panel client-result-panel">
+              <p className="eyebrow">Resultado para a clínica</p>
               {result ? (
-                <div className="decision-stack">
-                  <Signal label="Ação" value={translateAction(result.decision.action)} />
-                  <Signal label="Estado" value={translateStage(result.decision.stage)} />
-                  <Signal label="Motivo" value={result.decision.reason} />
+                <div className="client-result-stack">
+                  <div className={`result-hero ${result.decision.handoffRequired ? "warning" : ""}`}>
+                    <CheckCircle2 size={18} strokeWidth={2} />
+                    <strong>{demoSummary?.headline}</strong>
+                    <span>{demoSummary?.description}</span>
+                  </div>
+                  <div className="result-checklist">
+                    {demoSummary?.items.map((item) => (
+                      <div className="result-check" key={item}>
+                        <CheckCircle2 size={13} strokeWidth={2.2} />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="next-action-card">
+                    <span>Próxima ação</span>
+                    <strong>{getPrimaryActionLabel(result)}</strong>
+                    <button className="primary-button action-button" type="button">
+                      Executar agora
+                      <Send size={15} strokeWidth={2} />
+                    </button>
+                  </div>
                   {result.decision.followUp && (
                     <div className="reply-box">
-                      <p className="small-label">Follow-up planejado</p>
+                      <p className="small-label">Próximo contato</p>
                       <p>{result.decision.followUp}</p>
                     </div>
                   )}
@@ -432,92 +458,65 @@ export function DemoFlow() {
               ) : (
                 <div className="empty-state compact">
                   <Bot size={18} strokeWidth={1.5} style={{ marginBottom: 8, color: "var(--muted)", display: "block" }} />
-                  Aguardando primeira mensagem do lead.
+                  Envie a primeira mensagem para mostrar o resultado ao cliente.
                 </div>
               )}
             </section>
 
-            <section className="panel">
-              <p className="eyebrow">Custo estimado</p>
+            <section className="panel comparison-panel">
+              <p className="eyebrow">O que muda</p>
+              <div className="comparison-grid">
+                <div>
+                  <span>Sem SystemOps</span>
+                  <strong>Lead esperando</strong>
+                  <p>O lead esfria, compara concorrentes e a equipe começa o dia correndo atrás.</p>
+                </div>
+                <div className="with-systemops">
+                  <span>Com SystemOps</span>
+                  <strong>Responde agora</strong>
+                  <p>O lead recebe atenção, horários e encaminhamento antes de perder o interesse.</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel outcome-panel">
+              <p className="eyebrow">Ganho imediato</p>
+              <strong>{result ? "A clínica não perdeu esse lead." : "Mostre o antes e depois em uma conversa."}</strong>
+              <p>
+                {result
+                  ? "A equipe recebe o contexto pronto e sabe exatamente qual é o próximo passo."
+                  : "Quando a IA responder, este painel mostra o resultado prático para a operação."}
+              </p>
+            </section>
+
+            <details className="panel technical-details">
+              <summary>
+                <FileText size={14} strokeWidth={2} />
+                Detalhes operacionais
+              </summary>
               {result ? (
                 <div className="cost-list">
-                  <Signal label="OpenAI" value={result.costs.aiUsd} />
-                  <Signal label="WhatsApp" value={result.costs.whatsappUsd} />
+                  <Signal label="Ação" value={translateAction(result.decision.action)} />
+                  <Signal label="Status" value={translateStage(result.decision.stage)} />
+                  <Signal label="Motivo" value={result.decision.reason} />
+                  <Signal label="Custo IA" value={result.costs.aiUsd} />
                   <Signal label="Tokens" value={`${result.costs.inputTokens} in / ${result.costs.outputTokens} out`} />
-                  <div className="cost-comparison">
-                    <span>vs custo humano</span>
-                    <strong className="cost-saving">~97% menor</strong>
-                  </div>
                 </div>
               ) : (
-                <div className="empty-state compact">Sem consumo registrado.</div>
+                <div className="empty-state compact">Os detalhes aparecem depois da primeira resposta.</div>
               )}
-            </section>
-
-            <section className="panel roi-panel">
-              <div className="roi-header">
-                <p className="eyebrow" style={{ margin: 0 }}>Calculadora de ROI</p>
-                <span className="roi-badge">piloto</span>
-              </div>
-
-              <div className="roi-inputs">
-                <label className="roi-label">
-                  Leads por mês
-                  <div className="roi-input-row">
-                    <input
-                      className="roi-input"
-                      type="number"
-                      min={5}
-                      max={500}
-                      value={roiLeads}
-                      onChange={(e) => setRoiLeads(Math.max(1, Number(e.target.value)))}
-                    />
-                    <span className="roi-unit">leads</span>
-                  </div>
-                </label>
-                <label className="roi-label">
-                  Ticket médio
-                  <div className="roi-input-row">
-                    <span className="roi-currency">R$</span>
-                    <input
-                      className="roi-input"
-                      type="number"
-                      min={100}
-                      step={100}
-                      value={roiTicket}
-                      onChange={(e) => setRoiTicket(Math.max(100, Number(e.target.value)))}
-                    />
-                  </div>
-                </label>
-              </div>
-
-              <div className="roi-result">
-                <div className="roi-result-line">
-                  <span>Conversões extras estimadas</span>
-                  <strong>+{roiExtra} leads/mês</strong>
-                </div>
-                <div className="roi-result-highlight">
-                  <span>Receita adicional</span>
-                  <strong className="roi-revenue">
-                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(roiRevenue)}
-                    <span>/mês</span>
-                  </strong>
-                </div>
-                <p className="roi-disclaimer">
-                  Estimativa conservadora de 7% de melhoria na conversão com cobertura 24h.
-                </p>
-              </div>
-            </section>
+            </details>
 
             <section className="automation-note">
               <div className="automation-header">
                 <Zap size={13} strokeWidth={2.5} />
                 <p className="small-label" style={{ margin: 0 }}>Playbook ativo</p>
               </div>
-              <p>Nome, saudação por horário, empatia comercial, avaliação gratuita e horários objetivos.</p>
+              <p>Nome da clínica, saudação pelo horário, empatia comercial, avaliação gratuita e horários objetivos.</p>
             </section>
           </aside>
         </section>
+        </div>
       </section>
     </main>
   );
@@ -593,4 +592,52 @@ function translateAppointment(value: string): string {
     scheduled: "Pré-agendada",
   };
   return labels[value] ?? value;
+}
+
+function getClientSummary(result: AutonomousDemoResult) {
+  if (result.decision.handoffRequired) {
+    return {
+      headline: "Equipe humana chamada no momento certo",
+      description: "A IA protege a experiência do paciente e evita tratar caso sensível como venda comum.",
+      items: [
+        "Lead recebeu resposta imediata",
+        "Caso marcado como prioridade",
+        "Equipe sabe por que precisa assumir",
+      ],
+    };
+  }
+
+  if (result.decision.appointment.status === "scheduled") {
+    return {
+      headline: "Avaliação pré-agendada",
+      description: "A clínica acorda com o lead qualificado, horário escolhido e histórico completo.",
+      items: [
+        "Lead respondido em segundos",
+        "Horário escolhido pelo paciente",
+        "Equipe só precisa confirmar os dados finais",
+      ],
+    };
+  }
+
+  return {
+    headline: "Lead qualificado e conduzido para agenda",
+    description: "A IA respondeu, explicou o próximo passo e ofereceu horários sem depender da recepção.",
+    items: [
+      "Interesse identificado automaticamente",
+      "Avaliação gratuita oferecida",
+      "Horários enviados no mesmo atendimento",
+    ],
+  };
+}
+
+function getPrimaryActionLabel(result: AutonomousDemoResult): string {
+  if (result.decision.handoffRequired) {
+    return "Encaminhar para atendimento humano";
+  }
+
+  if (result.decision.appointment.status === "scheduled") {
+    return "Confirmar avaliação com a equipe";
+  }
+
+  return "Conduzir para agendamento";
 }
