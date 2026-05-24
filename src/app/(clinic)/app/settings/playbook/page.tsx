@@ -9,7 +9,19 @@ import { savePlaybook } from "./actions";
 
 async function getClinic() {
   const clinicId = process.env.PILOT_CLINIC_ID!;
-  const result = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+  const result = await db
+    .select({
+      id: clinics.id,
+      name: clinics.name,
+      toneOfVoice: clinics.toneOfVoice,
+      businessHours: clinics.businessHours,
+      commercialPolicy: clinics.commercialPolicy,
+      playbook: clinics.playbook,
+      autoReplyEnabled: clinics.autoReplyEnabled,
+    })
+    .from(clinics)
+    .where(eq(clinics.id, clinicId))
+    .limit(1);
   return result[0] ?? null;
 }
 

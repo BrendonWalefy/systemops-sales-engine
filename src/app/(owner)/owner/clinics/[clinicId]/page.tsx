@@ -57,7 +57,15 @@ export default async function ClinicDetailPage({
 }) {
   const { clinicId } = await params;
 
-  const [clinic] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+  const [clinic] = await db
+    .select({
+      id: clinics.id,
+      name: clinics.name,
+      autoReplyEnabled: clinics.autoReplyEnabled,
+    })
+    .from(clinics)
+    .where(eq(clinics.id, clinicId))
+    .limit(1);
   if (!clinic) notFound();
 
   const monthStart = startOfMonth();

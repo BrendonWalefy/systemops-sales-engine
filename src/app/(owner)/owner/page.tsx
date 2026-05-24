@@ -46,7 +46,14 @@ type ClinicRow = {
 };
 
 async function fetchAllClinics(): Promise<ClinicRow[]> {
-  const allClinics = await db.select().from(clinics).orderBy(clinics.name);
+  const allClinics = await db
+    .select({
+      id: clinics.id,
+      name: clinics.name,
+      autoReplyEnabled: clinics.autoReplyEnabled,
+    })
+    .from(clinics)
+    .orderBy(clinics.name);
   const monthStart = startOfMonth();
 
   const rows = await Promise.all(
