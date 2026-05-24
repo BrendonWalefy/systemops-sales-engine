@@ -23,7 +23,37 @@ export class WhatsAppChannelAdapter implements ChannelAdapter {
   }
 
   async send(message: OutgoingChannelMessage): Promise<void> {
-    void message;
-    throw new Error("WhatsApp send adapter not implemented yet");
+    await sendWhatsAppTextMessage(message.externalThreadId, message.body);
+  }
+}
+
+export async function sendWhatsAppTextMessage(to: string, text: string): Promise<void> {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  if (!accessToken || !phoneNumberId) {
+    throw new Error("WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID must be set");
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body: text },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`WhatsApp send failed (${response.status}): ${error}`);
   }
 }

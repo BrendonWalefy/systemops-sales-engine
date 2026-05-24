@@ -65,7 +65,7 @@ export const aiOperationEnum = pgEnum("ai_operation", [
   "manual_analysis",
 ]);
 
-export const whatsappProviderEnum = pgEnum("whatsapp_provider", ["meta_cloud_api"]);
+export const whatsappProviderEnum = pgEnum("whatsapp_provider", ["meta_cloud_api", "z_api"]);
 
 export const messageDirectionEnum = pgEnum("message_direction", ["inbound", "outbound"]);
 
@@ -84,6 +84,7 @@ export const clinics = pgTable("clinics", {
   city: text("city"),
   toneOfVoice: text("tone_of_voice"),
   commercialPolicy: text("commercial_policy"),
+  autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

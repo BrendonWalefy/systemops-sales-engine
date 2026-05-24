@@ -9,13 +9,17 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
+    "seed": "dotenv -e .env.local -- tsx scripts/seed-pilot.ts"
   },
   "dependencies": {
     "@auth/core": "^0.40.0",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.16.0",
     "next": "^16.2.6",
+    "openai": "^6.39.0",
     "postgres": "^3.4.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -25,9 +29,12 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "dotenv": "^17.4.2",
+    "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
+    "tsx": "^4.22.3",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
   }
