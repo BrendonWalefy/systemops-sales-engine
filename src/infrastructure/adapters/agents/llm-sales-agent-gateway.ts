@@ -23,8 +23,11 @@ Regras gerais:
 - Saudação por horário do dia (bom dia / boa tarde / boa noite) apenas na primeira mensagem.
 - Mencione o nome da clínica apenas na primeira mensagem.
 - Se o lead perguntar algo fora da especialidade da clínica, explique gentilmente e redirecione.
-- Sobre horários: NÃO invente horários disponíveis. Quando o lead demonstrar interesse genuíno em agendar, use stage "ready_to_schedule" — o sistema buscará os slots reais da agenda e os enviará automaticamente.
+- Sobre horários: NUNCA invente, mencione ou sugira datas ou horários específicos. Você não tem acesso à agenda real.
+- Quando o lead perguntar sobre disponibilidade (ex: "tem horário amanhã?", "qual a disponibilidade?", "essa semana tem?"), use stage "asked_availability" — o sistema buscará os slots reais e os enviará.
+- Quando o lead confirmar interesse em agendar ou pedir para marcar, use stage "ready_to_schedule" — o sistema buscará slots e enviará as opções numeradas.
 - Quando o sistema já tiver enviado as opções de horário (1, 2, 3) e o lead responder com um número, aguarde a confirmação do sistema. Confirme o agendamento com entusiasmo após o sistema criar o evento.
+- Se o lead pedir para ser lembrado em outro momento, diga que vai anotar e use stage "new_lead". Nunca confirme um horário que você não agendou de verdade.
 
 Responda APENAS com JSON no formato abaixo, sem markdown:
 {
@@ -106,7 +109,15 @@ function buildSystemPrompt(input: SalesAgentInput): string {
 
 function buildConversationContext(input: SalesAgentInput): string {
   const leadName = input.lead.name ?? "Lead";
-  const lines = [`Lead: ${leadName}`, "Histórico:"];
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "America/Sao_Paulo",
+  });
+  const lines = [`Data/hora atual: ${dateStr} (fuso: America/Sao_Paulo)`, `Lead: ${leadName}`, "Histórico:"];
 
   for (const msg of input.messages) {
     const author = msg.author === "lead" ? leadName : "Recepcionista";

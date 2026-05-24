@@ -144,7 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // --- Slot offer flow ---
-    if (decision.stage === "ready_to_schedule") {
+    if (decision.stage === "ready_to_schedule" || decision.stage === "asked_availability") {
       await handleSlotOffer({
         phone: body.phone,
         lead,
@@ -184,7 +184,7 @@ async function handleSlotOffer(params: {
 
   const calendar = new GoogleCalendarGateway(calendarId);
   const now = new Date();
-  const to = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000); // next 5 days
+  const to = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // next 14 days
 
   let slots: CalendarSlot[] = [];
   try {
