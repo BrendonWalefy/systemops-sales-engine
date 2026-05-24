@@ -5,9 +5,9 @@ import { Inbox, LayoutDashboard, BookText, Zap, LogOut } from "lucide-react";
 import { logout } from "@/app/login/actions";
 
 const NAV = [
-  { href: "/inbox", label: "Inbox", Icon: Inbox },
-  { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
-  { href: "/settings/playbook", label: "Playbook", Icon: BookText },
+  { href: "/app/inbox", label: "Inbox", Icon: Inbox },
+  { href: "/app/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/app/settings/playbook", label: "Playbook", Icon: BookText },
 ];
 
 export function SidebarNav() {

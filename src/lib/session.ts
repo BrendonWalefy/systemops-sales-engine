@@ -14,8 +14,10 @@ async function getKey(): Promise<CryptoKey> {
   );
 }
 
-export async function signToken(email: string): Promise<string> {
-  const payload = `${email}:${Date.now()}`;
+export type SessionRole = "owner" | "clinic_admin";
+
+export async function signToken(email: string, role: SessionRole): Promise<string> {
+  const payload = `${email}:${role}:${Date.now()}`;
   const key = await getKey();
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
   const sigHex = Array.from(new Uint8Array(sig))
@@ -27,7 +29,9 @@ export async function signToken(email: string): Promise<string> {
     .replace(/=+$/, "");
 }
 
-export async function verifyToken(token: string): Promise<boolean> {
+export type SessionPayload = { email: string; role: SessionRole };
+
+export async function verifyToken(token: string): Promise<SessionPayload | null> {
   try {
     const decoded = atob(token.replace(/-/g, "+").replace(/_/g, "/"));
     const lastColon = decoded.lastIndexOf(":");
@@ -37,9 +41,18 @@ export async function verifyToken(token: string): Promise<boolean> {
       (sigHex.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)),
     );
     const key = await getKey();
-    return crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(payload));
+    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(payload));
+    if (!valid) return null;
+
+    // payload format: email:role:timestamp
+    const parts = payload.split(":");
+    if (parts.length < 3) return null;
+    const email = parts[0];
+    const role = parts[1] as SessionRole;
+    if (role !== "owner" && role !== "clinic_admin") return null;
+    return { email, role };
   } catch {
-    return false;
+    return null;
   }
 }
 
