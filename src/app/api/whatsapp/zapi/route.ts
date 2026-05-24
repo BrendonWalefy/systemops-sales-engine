@@ -94,9 +94,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const incomingText = body.text.message.trim();
 
-    // --- Slot selection flow ---
-    // If lead has appointment_scheduled status and sends "1", "2", or "3"
-    if (lead.status === "appointment_scheduled" && /^[123]$/.test(incomingText)) {
+    // --- Pre-fetch history and check for pending slot offer ---
+    const history = await conversationRepo.listMessages(conversation.id);
+    // A slot offer is pending if the last system message is a slot offer (not a confirmation clear)
+    const lastSystemMsg = [...history].reverse().find((m) => m.author === "system");
+    const pendingSlotOffer =
+      lastSystemMsg?.body.startsWith(SLOT_OFFER_MARKER) ? lastSystemMsg : null;
+
+    // --- Slot selection: lead responds 1/2/3 to a pending offer ---
+    if (pendingSlotOffer && /^[123]$/.test(incomingText)) {
       const handled = await handleSlotSelection({
         phone: body.phone,
         choice: parseInt(incomingText, 10) as 1 | 2 | 3,
@@ -105,24 +111,43 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         clinicId,
         conversationRepo,
         appointmentRepo,
+        slotMessage: pendingSlotOffer,
         calendarId: clinicRow.googleCalendarId,
       });
       if (handled) return new NextResponse("OK", { status: 200 });
+    }
+
+    // --- If there's a pending offer and lead didn't pick a number, remind them ---
+    if (pendingSlotOffer && !/^[123]$/.test(incomingText)) {
+      const reminder =
+        "Para confirmar seu horário, responda apenas com o número da opção desejada: *1*, *2* ou *3*. Se quiser outras opções ou tiver dúvidas, é só me falar! 😊";
+      await sendTextMessage(body.phone, reminder);
+      const reminderMsg: Message = {
+        id: randomUUID(),
+        conversationId: conversation.id,
+        author: "agent",
+        body: reminder,
+        sentAt: new Date(),
+        externalId: null,
+      };
+      await conversationRepo.appendMessage(reminderMsg);
+      return new NextResponse("OK", { status: 200 });
     }
 
     // --- Pre-fetch calendar slots to give AI real data ---
     const calendar = new GoogleCalendarGateway(clinicRow.googleCalendarId);
     const now = new Date();
     const to = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-    let availableSlots: import("@/domain/entities/calendar-slot").CalendarSlot[] = [];
+    let availableSlots: CalendarSlot[] = [];
     try {
       availableSlots = await calendar.listAvailableSlots({ clinicId, from: now, to });
     } catch (err) {
       console.error("Failed to pre-fetch calendar slots:", err);
     }
 
+    const top3Slots = availableSlots.slice(0, 3);
+
     // --- Normal AI flow ---
-    const history = await conversationRepo.listMessages(conversation.id);
     const clinic = buildClinicFromRow(clinicRow);
     const decision = await new LlmSalesAgentGateway().analyze({
       clinic,
@@ -130,7 +155,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       conversation,
       messages: history,
       playbook: clinicRow.playbook ?? "",
-      availableSlots: availableSlots.map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt })),
+      availableSlots: top3Slots.map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt })),
     });
 
     const agentMessage: Message = {
@@ -155,28 +180,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    // --- Slot offer flow: send numbered options for confirmation ---
-    if (decision.stage === "ready_to_schedule" || decision.stage === "asked_availability") {
-      const top3 = availableSlots.slice(0, 3);
-      if (top3.length > 0) {
-        await sendTextMessage(body.phone, decision.suggestedReply);
-        const options = top3.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
-        const slotsMessage =
-          `Confirme seu horário respondendo com o número:\n\n${options}\n\n` +
-          `Responda com *1*, *2* ou *3* para confirmar. 😊`;
-        await sendTextMessage(body.phone, slotsMessage);
-        const systemMsg: Message = {
-          id: randomUUID(),
-          conversationId: conversation.id,
-          author: "system",
-          body: SLOT_OFFER_MARKER + JSON.stringify(top3.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() }))),
-          sentAt: new Date(),
-          externalId: null,
-        };
-        await conversationRepo.appendMessage(systemMsg);
-      } else {
-        await sendTextMessage(body.phone, decision.suggestedReply);
-      }
+    // --- Slot offer: only when lead is ready to book ---
+    if (decision.stage === "ready_to_schedule" && top3Slots.length > 0) {
+      await sendTextMessage(body.phone, decision.suggestedReply);
+
+      const options = top3Slots.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
+      const slotsMessage =
+        `Escolha o horário:\n\n${options}\n\n` +
+        `Responda com *1*, *2* ou *3* para confirmar. 😊`;
+      await sendTextMessage(body.phone, slotsMessage);
+
+      // Save slot offer in history so next interaction can recover it
+      const systemMsg: Message = {
+        id: randomUUID(),
+        conversationId: conversation.id,
+        author: "system",
+        body: SLOT_OFFER_MARKER + JSON.stringify(
+          top3Slots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() }))
+        ),
+        sentAt: new Date(),
+        externalId: null,
+      };
+      await conversationRepo.appendMessage(systemMsg);
+
+      // Save the slot options as agent message so AI sees it in history
+      const slotListMsg: Message = {
+        id: randomUUID(),
+        conversationId: conversation.id,
+        author: "agent",
+        body: slotsMessage,
+        sentAt: new Date(),
+        externalId: null,
+      };
+      await conversationRepo.appendMessage(slotListMsg);
     } else {
       await sendTextMessage(body.phone, decision.suggestedReply);
     }
@@ -202,18 +238,11 @@ async function handleSlotSelection(params: {
   clinicId: string;
   conversationRepo: DrizzleConversationRepository;
   appointmentRepo: DrizzleAppointmentRepository;
+  slotMessage: Message;
   calendarId: string | null;
 }): Promise<boolean> {
-  const { phone, choice, lead, conversationId, clinicId, conversationRepo, appointmentRepo, calendarId } =
+  const { phone, choice, lead, conversationId, clinicId, conversationRepo, appointmentRepo, slotMessage, calendarId } =
     params;
-
-  const history = await conversationRepo.listMessages(conversationId);
-  // Find the last system message containing slot data
-  const slotMessage = [...history]
-    .reverse()
-    .find((m) => m.author === "system" && m.body.startsWith(SLOT_OFFER_MARKER));
-
-  if (!slotMessage) return false;
 
   type SlotData = { startsAt: string; endsAt: string };
   let slotData: SlotData[];
@@ -257,6 +286,17 @@ async function handleSlotSelection(params: {
     `Qualquer dúvida, é só chamar! Até lá. 😊`;
 
   await sendTextMessage(phone, confirmation);
+
+  // Clear the pending slot offer so future messages don't re-trigger selection
+  const clearedMsg: Message = {
+    id: randomUUID(),
+    conversationId,
+    author: "system",
+    body: "__appointment_confirmed__",
+    sentAt: new Date(),
+    externalId: null,
+  };
+  await conversationRepo.appendMessage(clearedMsg);
 
   const agentConfirmMsg: Message = {
     id: randomUUID(),
@@ -331,7 +371,11 @@ function applyDecisionToLead(lead: Lead, decision: SalesAgentOutput): Lead {
   return {
     ...lead,
     temperature: decision.leadTemperature,
-    status: decision.stage === "ready_to_schedule" ? "appointment_scheduled" : "in_conversation",
+    // Only mark as appointment_scheduled when actually presenting numbered options to confirm
+    status:
+      decision.stage === "ready_to_schedule"
+        ? "appointment_scheduled"
+        : "in_conversation",
     updatedAt: new Date(),
   };
 }
