@@ -86,6 +86,7 @@ export const clinics = pgTable("clinics", {
   commercialPolicy: text("commercial_policy"),
   playbook: text("playbook"),
   businessHours: text("business_hours"),
+  googleCalendarId: text("google_calendar_id"),
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

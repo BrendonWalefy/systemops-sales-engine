@@ -160,6 +160,7 @@ function buildPilotClinic(id: string, name: string): Clinic {
     commercialPolicy: "Oferecer sempre a avaliação gratuita como primeiro passo. Nunca informar valores por mensagem.",
     playbook: null,
     businessHours: "Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.",
+    googleCalendarId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

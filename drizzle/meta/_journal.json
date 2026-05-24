@@ -22,6 +22,13 @@
       "when": 1779589302370,
       "tag": "0002_breezy_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779641472498,
+      "tag": "0003_add_google_calendar_id_to_clinics",
+      "breakpoints": true
     }
   ]
 }

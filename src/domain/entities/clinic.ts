@@ -7,6 +7,7 @@ export type Clinic = {
   commercialPolicy: string | null;
   playbook: string | null;
   businessHours: string | null;
+  googleCalendarId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

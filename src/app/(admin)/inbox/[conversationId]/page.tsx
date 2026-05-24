@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
-import { conversations, leads, messages } from "@/infrastructure/db/schema";
-import { eq, asc } from "drizzle-orm";
-import { ArrowLeft, Phone, Calendar } from "lucide-react";
+import { appointments, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { eq, asc, desc } from "drizzle-orm";
+import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { AssumeButton } from "./assume-button";
 
 function formatTime(date: Date): string {
@@ -73,6 +73,13 @@ export default async function ConversationPage({
     .from(messages)
     .where(eq(messages.conversationId, conversationId))
     .orderBy(asc(messages.sentAt));
+
+  const [appointment] = await db
+    .select()
+    .from(appointments)
+    .where(eq(appointments.leadId, lead.id))
+    .orderBy(desc(appointments.createdAt))
+    .limit(1);
 
   const displayName = lead.name ?? lead.phone ?? "Lead";
   const initial = displayName[0]?.toUpperCase() ?? "?";
@@ -219,6 +226,47 @@ export default async function ConversationPage({
               <strong>{msgs.length}</strong>
             </div>
           </div>
+
+          {/* Appointment */}
+          {appointment && (appointment.status === "scheduled" || appointment.status === "confirmed") ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              <p className="eyebrow" style={{ margin: 0 }}>Agendamento</p>
+              <div className="signal">
+                <span>Data</span>
+                <strong style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <Calendar size={12} />
+                  {formatDate(new Date(appointment.startsAt))}
+                </strong>
+              </div>
+              <div className="signal">
+                <span>Horário</span>
+                <strong>{formatTime(new Date(appointment.startsAt))} – {formatTime(new Date(appointment.endsAt))}</strong>
+              </div>
+              <div className="signal">
+                <span>Status</span>
+                <strong>{appointment.status === "confirmed" ? "Confirmado" : "Agendado"}</strong>
+              </div>
+              {appointment.calendarEventId && (
+                <a
+                  href={`https://calendar.google.com/calendar/r/eventedit/${appointment.calendarEventId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 12,
+                    color: "var(--accent)",
+                    textDecoration: "none",
+                    marginTop: 2,
+                  }}
+                >
+                  <ExternalLink size={12} />
+                  Ver no Google Calendar
+                </a>
+              )}
+            </div>
+          ) : null}
 
           {/* Assume button */}
           {lead.status !== "won" && lead.status !== "lost" && (

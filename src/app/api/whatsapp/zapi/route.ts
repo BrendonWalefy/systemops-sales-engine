@@ -6,6 +6,8 @@ import { LlmSalesAgentGateway } from "@/infrastructure/adapters/agents/llm-sales
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
+import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { db } from "@/infrastructure/db/client";
 import { clinics, messages } from "@/infrastructure/db/schema";
@@ -15,17 +17,19 @@ import type { Clinic } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { SalesAgentOutput } from "@/application/ports/sales-agent-gateway";
 import type { Message } from "@/domain/entities/conversation";
+import type { CalendarSlot } from "@/domain/entities/calendar-slot";
+
+// System message marker for pending slot offers
+const SLOT_OFFER_MARKER = "__calendar_slots__:";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const body = await request.json().catch(() => null) as ZApiInboundPayload | null;
+  const body = (await request.json().catch(() => null)) as ZApiInboundPayload | null;
   if (!body) return new NextResponse("Bad Request", { status: 400 });
 
-  // Ignore group messages, status replies, and messages sent by the bot itself
   if (body.isGroupMsg || body.isStatusReply || body.fromMe) {
     return new NextResponse("OK", { status: 200 });
   }
 
-  // Ignore non-text messages
   if (!body.text?.message) {
     return new NextResponse("OK", { status: 200 });
   }
@@ -57,13 +61,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const leadRepo = new DrizzleLeadRepository();
     const conversationRepo = new DrizzleConversationRepository();
     const usageCostRepo = new DrizzleUsageCostRepository();
+    const appointmentRepo = new DrizzleAppointmentRepository();
     const usageCostTracker = new DefaultUsageCostTracker({
       usageCostRepository: usageCostRepo,
       idGenerator: randomUUID,
       now: () => new Date(),
     });
 
-    // Always register the message so it appears in Inbox regardless of auto-reply state
     const { lead, conversation } = await new RegisterIncomingMessage({
       leadRepository: leadRepo,
       conversationRepository: conversationRepo,
@@ -86,11 +90,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    // Auto-reply toggle only controls whether the AI responds — not whether we record the message
     if (!clinicRow.autoReplyEnabled) {
       return new NextResponse("OK", { status: 200 });
     }
 
+    const incomingText = body.text.message.trim();
+
+    // --- Slot selection flow ---
+    // If lead has appointment_scheduled status and sends "1", "2", or "3"
+    if (lead.status === "appointment_scheduled" && /^[123]$/.test(incomingText)) {
+      const handled = await handleSlotSelection({
+        phone: body.phone,
+        choice: parseInt(incomingText, 10) as 1 | 2 | 3,
+        lead,
+        conversationId: conversation.id,
+        clinicId,
+        conversationRepo,
+        appointmentRepo,
+        calendarId: clinicRow.googleCalendarId,
+      });
+      if (handled) return new NextResponse("OK", { status: 200 });
+    }
+
+    // --- Normal AI flow ---
     const history = await conversationRepo.listMessages(conversation.id);
     const clinic = buildClinicFromRow(clinicRow);
     const decision = await new LlmSalesAgentGateway().analyze({
@@ -123,7 +145,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    await sendTextMessage(body.phone, decision.suggestedReply);
+    // --- Slot offer flow ---
+    if (decision.stage === "ready_to_schedule") {
+      await handleSlotOffer({
+        phone: body.phone,
+        lead,
+        conversationId: conversation.id,
+        clinicId,
+        agentReply: decision.suggestedReply,
+        conversationRepo,
+        calendarId: clinicRow.googleCalendarId,
+      });
+    } else {
+      await sendTextMessage(body.phone, decision.suggestedReply);
+    }
 
     if (decision.handoffRequired) {
       await notifyHandoff({ phone: body.phone, lead, decision, clinicName: clinicRow.name });
@@ -136,6 +171,162 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
+// Fetch slots and send options to lead
+async function handleSlotOffer(params: {
+  phone: string;
+  lead: Lead;
+  conversationId: string;
+  clinicId: string;
+  agentReply: string;
+  conversationRepo: DrizzleConversationRepository;
+  calendarId: string | null;
+}) {
+  const { phone, lead, conversationId, clinicId, agentReply, conversationRepo, calendarId } =
+    params;
+
+  const calendar = new GoogleCalendarGateway(calendarId);
+  const now = new Date();
+  const to = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000); // next 5 days
+
+  let slots: CalendarSlot[] = [];
+  try {
+    slots = await calendar.listAvailableSlots({ clinicId, from: now, to });
+  } catch (err) {
+    console.error("Failed to fetch calendar slots:", err);
+    // Fall back to just sending the IA reply without slot options
+    await sendTextMessage(phone, agentReply);
+    return;
+  }
+
+  const top3 = slots.slice(0, 3);
+  if (top3.length === 0) {
+    await sendTextMessage(phone, agentReply);
+    return;
+  }
+
+  // Send IA reply first, then slot options
+  await sendTextMessage(phone, agentReply);
+
+  const options = top3.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
+  const slotsMessage =
+    `Tenho os seguintes horários disponíveis para você:\n\n${options}\n\n` +
+    `Responda com *1*, *2* ou *3* para confirmar o horário de sua preferência. 😊`;
+
+  await sendTextMessage(phone, slotsMessage);
+
+  // Persist slot offer as a system message so we can recover it on the next interaction
+  const systemMsg: Message = {
+    id: randomUUID(),
+    conversationId,
+    author: "system",
+    body:
+      SLOT_OFFER_MARKER +
+      JSON.stringify(
+        top3.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() })),
+      ),
+    sentAt: new Date(),
+    externalId: null,
+  };
+  await conversationRepo.appendMessage(systemMsg);
+
+  const agentSlotsMsg: Message = {
+    id: randomUUID(),
+    conversationId,
+    author: "agent",
+    body: slotsMessage,
+    sentAt: new Date(),
+    externalId: null,
+  };
+  await conversationRepo.appendMessage(agentSlotsMsg);
+}
+
+// Confirm slot choice, create calendar event and appointment
+async function handleSlotSelection(params: {
+  phone: string;
+  choice: 1 | 2 | 3;
+  lead: Lead;
+  conversationId: string;
+  clinicId: string;
+  conversationRepo: DrizzleConversationRepository;
+  appointmentRepo: DrizzleAppointmentRepository;
+  calendarId: string | null;
+}): Promise<boolean> {
+  const { phone, choice, lead, conversationId, clinicId, conversationRepo, appointmentRepo, calendarId } =
+    params;
+
+  const history = await conversationRepo.listMessages(conversationId);
+  // Find the last system message containing slot data
+  const slotMessage = [...history]
+    .reverse()
+    .find((m) => m.author === "system" && m.body.startsWith(SLOT_OFFER_MARKER));
+
+  if (!slotMessage) return false;
+
+  type SlotData = { startsAt: string; endsAt: string };
+  let slotData: SlotData[];
+  try {
+    slotData = JSON.parse(slotMessage.body.slice(SLOT_OFFER_MARKER.length)) as SlotData[];
+  } catch {
+    return false;
+  }
+
+  const selected = slotData[choice - 1];
+  if (!selected) return false;
+
+  const startsAt = new Date(selected.startsAt);
+  const endsAt = new Date(selected.endsAt);
+  const title = `${lead.name ?? "Lead"} — Avaliação`;
+
+  const calendar = new GoogleCalendarGateway(calendarId);
+  let appointment;
+  try {
+    appointment = await calendar.createAppointment({
+      clinicId,
+      leadId: lead.id,
+      startsAt,
+      endsAt,
+      title,
+    });
+  } catch (err) {
+    console.error("Failed to create calendar event:", err);
+    await sendTextMessage(
+      phone,
+      "Desculpe, tive um problema ao confirmar o horário. Nossa equipe entrará em contato em breve. 🙏",
+    );
+    return true;
+  }
+
+  await appointmentRepo.save(appointment);
+
+  const confirmation =
+    `✅ Perfeito! Seu agendamento está confirmado:\n\n` +
+    `📅 ${formatSlot(startsAt)}\n\n` +
+    `Qualquer dúvida, é só chamar! Até lá. 😊`;
+
+  await sendTextMessage(phone, confirmation);
+
+  const agentConfirmMsg: Message = {
+    id: randomUUID(),
+    conversationId,
+    author: "agent",
+    body: confirmation,
+    sentAt: new Date(),
+    externalId: null,
+  };
+  await conversationRepo.appendMessage(agentConfirmMsg);
+
+  return true;
+}
+
+function formatSlot(date: Date): string {
+  const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const dow = weekdays[date.getDay()] ?? "";
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  return `${dow} ${day}/${month} às ${hour}h`;
+}
+
 function buildClinicFromRow(row: typeof clinics.$inferSelect): Clinic {
   return {
     id: row.id,
@@ -146,6 +337,7 @@ function buildClinicFromRow(row: typeof clinics.$inferSelect): Clinic {
     commercialPolicy: row.commercialPolicy,
     playbook: row.playbook,
     businessHours: row.businessHours,
+    googleCalendarId: row.googleCalendarId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
