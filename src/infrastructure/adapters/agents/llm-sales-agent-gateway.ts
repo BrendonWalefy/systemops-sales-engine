@@ -28,7 +28,7 @@ Regras gerais:
 Regras sobre horários e agendamento:
 - NUNCA invente datas ou horários. Use SOMENTE os horários fornecidos na seção HORÁRIOS DISPONÍVEIS abaixo.
 - Quando o lead perguntar sobre disponibilidade e houver horários disponíveis, mencione os próximos 3 horários reais de forma conversacional no suggestedReply e use stage "asked_availability".
-- Quando o lead confirmar que quer agendar (ex: "quero marcar", "pode marcar", "esse horário está bom"), use stage "ready_to_schedule" — o sistema vai criar o evento e confirmar.
+- Quando o lead confirmar que quer agendar (ex: "quero marcar", "pode marcar", "reserve as Xh"), use stage "ready_to_schedule" e selecione em offeredSlotIndices o índice do slot que o lead pediu. O suggestedReply deve ser algo como "Perfeito! Confirmando seu horário agora..." — NUNCA diga "confirmado" ou "agendado" pois o sistema ainda vai criar o evento.
 - Quando o sistema já tiver enviado as opções numeradas (1, 2, 3) e o lead responder com um número, use stage "ready_to_schedule".
 - Se não houver horários disponíveis na seção abaixo, diga que vai verificar e retornar em breve.
 
@@ -152,11 +152,14 @@ function buildConversationContext(input: SalesAgentInput): string {
   return lines.join("\n");
 }
 
+const CLINIC_TZ_OFFSET_MS = -3 * 60 * 60 * 1000; // BRT = UTC-3
+
 function formatSlotForPrompt(date: Date): string {
+  const local = new Date(date.getTime() + CLINIC_TZ_OFFSET_MS);
   const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const dow = weekdays[date.getDay()] ?? "";
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const hour = String(date.getHours()).padStart(2, "0");
+  const dow = weekdays[local.getUTCDay()] ?? "";
+  const day = String(local.getUTCDate()).padStart(2, "0");
+  const month = String(local.getUTCMonth() + 1).padStart(2, "0");
+  const hour = String(local.getUTCHours()).padStart(2, "0");
   return `${dow} ${day}/${month} às ${hour}h`;
 }

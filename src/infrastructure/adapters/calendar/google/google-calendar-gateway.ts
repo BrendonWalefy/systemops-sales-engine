@@ -94,7 +94,15 @@ function getCalendarId(clinicCalendarId?: string | null): string {
   return id;
 }
 
-// Returns up to 5 free 1-hour slots within business hours (08–18h, Mon–Fri)
+// Clinic timezone offset in milliseconds (BRT = UTC-3)
+// TODO: make this configurable per clinic
+const CLINIC_TZ_OFFSET_MS = -3 * 60 * 60 * 1000;
+
+function toClinicLocal(utcDate: Date): Date {
+  return new Date(utcDate.getTime() + CLINIC_TZ_OFFSET_MS);
+}
+
+// Returns free 1-hour slots within business hours (08–18h Mon–Fri) in clinic timezone
 export class GoogleCalendarGateway implements CalendarGateway {
   constructor(private readonly clinicCalendarId?: string | null) {}
 
@@ -112,7 +120,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       timeMax: input.to.toISOString(),
       singleEvents: "true",
       orderBy: "startTime",
-      maxResults: "100",
+      maxResults: "250",
     });
 
     const res = await fetch(
@@ -138,9 +146,11 @@ export class GoogleCalendarGateway implements CalendarGateway {
     const cursor = new Date(input.from);
     cursor.setMinutes(0, 0, 0);
 
-    while (cursor < input.to && slots.length < 5) {
-      const dow = cursor.getDay(); // 0=Sun 6=Sat
-      const hour = cursor.getHours();
+    while (cursor < input.to && slots.length < 20) {
+      // Check business hours in clinic local timezone (BRT)
+      const local = toClinicLocal(cursor);
+      const dow = local.getUTCDay(); // 0=Sun, 6=Sat in local time
+      const hour = local.getUTCHours();
 
       if (dow === 0 || dow === 6 || hour < 8 || hour >= 18) {
         cursor.setTime(cursor.getTime() + 60 * 60 * 1000);

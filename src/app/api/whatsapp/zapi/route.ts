@@ -182,9 +182,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await sendTextMessage(body.phone, decision.suggestedReply);
 
       const options = offeredSlots.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
-      const slotsMessage =
-        `Escolha o horário:\n\n${options}\n\n` +
-        `Responda com *1*, *2* ou *3* para confirmar. 😊`;
+      const confirmInstruction = offeredSlots.length === 1
+        ? "Responda com *1* para confirmar. 😊"
+        : `Responda com *1*${offeredSlots.length >= 2 ? ", *2*" : ""}${offeredSlots.length >= 3 ? " ou *3*" : ""} para confirmar. 😊`;
+      const slotsMessage = `Confirme o horário:\n\n${options}\n\n${confirmInstruction}`;
       await sendTextMessage(body.phone, slotsMessage);
 
       // Save slot offer in history so next interaction can recover it
@@ -308,12 +309,15 @@ async function handleSlotSelection(params: {
   return true;
 }
 
+const CLINIC_TZ_OFFSET_MS = -3 * 60 * 60 * 1000; // BRT = UTC-3
+
 function formatSlot(date: Date): string {
+  const local = new Date(date.getTime() + CLINIC_TZ_OFFSET_MS);
   const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const dow = weekdays[date.getDay()] ?? "";
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const hour = String(date.getHours()).padStart(2, "0");
+  const dow = weekdays[local.getUTCDay()] ?? "";
+  const day = String(local.getUTCDate()).padStart(2, "0");
+  const month = String(local.getUTCMonth() + 1).padStart(2, "0");
+  const hour = String(local.getUTCHours()).padStart(2, "0");
   return `${dow} ${day}/${month} às ${hour}h`;
 }
 
