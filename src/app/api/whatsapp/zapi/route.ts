@@ -8,7 +8,7 @@ import { DrizzleConversationRepository } from "@/infrastructure/repositories/dri
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { clinics, messages } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import type { Clinic } from "@/domain/entities/clinic";
@@ -34,6 +34,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!clinicId) {
     console.error("PILOT_CLINIC_ID is not set");
     return new NextResponse("Server misconfigured", { status: 500 });
+  }
+
+  // Idempotency: skip if this messageId was already processed
+  const alreadyProcessed = await db.query.messages.findFirst({
+    where: eq(messages.externalId, body.messageId),
+  });
+  if (alreadyProcessed) {
+    return new NextResponse("OK", { status: 200 });
   }
 
   try {
