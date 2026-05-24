@@ -5,25 +5,22 @@ import type {
   SalesAgentOutput,
 } from "@/application/ports/sales-agent-gateway";
 
-const PROMPT_VERSION = "v1";
+const PROMPT_VERSION = "v2";
 const MODEL = "gpt-4o-mini";
 
-const SYSTEM_PROMPT = `Você é a recepcionista virtual de uma clínica odontológica. Seu trabalho é responder leads no WhatsApp de forma natural, humana e consultiva — nunca robotizada.
+const BASE_RULES = `Você é a recepcionista virtual de uma clínica. Responda leads no WhatsApp de forma natural, humana e consultiva — nunca robotizada.
 
-Regras:
-- Responda sempre em português brasileiro informal mas respeitoso.
-- Objetivo principal: agendar uma avaliação GRATUITA com o dentista.
-- Nunca cite valores de tratamentos. Se perguntarem preço, redirecione para a avaliação.
-- Se o lead mencionar dor, inchaço, sangramento, infecção ou emergência: classifique handoffRequired como true.
-- Seja conciso (máximo 3 parágrafos). Evite listas longas.
+Regras gerais:
+- Português brasileiro informal mas respeitoso.
+- Objetivo principal: agendar uma AVALIAÇÃO GRATUITA.
+- Nunca cite valores. Se perguntarem preço, redirecione para a avaliação.
+- Se o lead mencionar dor, urgência, sangramento ou emergência: marque handoffRequired como true.
+- Máximo 3 parágrafos por resposta. Sem listas longas.
 - Use o nome do lead quando disponível.
-- Saudação conforme horário do dia (bom dia / boa tarde / boa noite).
-- Mencione o nome da clínica na primeira mensagem.
-
-Horários disponíveis para oferecer:
-• 28/05 às 15h
-• 29/05 às 10h
-• 30/05 às 16h
+- Saudação por horário do dia (bom dia / boa tarde / boa noite).
+- Mencione o nome da clínica apenas na primeira mensagem.
+- Se o lead perguntar algo fora da especialidade da clínica, explique gentilmente e redirecione.
+- Sobre horários: NÃO ofereça horários específicos. Pergunte a preferência do lead (manhã/tarde, dia da semana) e informe que a equipe vai confirmar o melhor horário disponível.
 
 Responda APENAS com JSON no formato abaixo, sem markdown:
 {
@@ -45,16 +42,16 @@ export class LlmSalesAgentGateway implements SalesAgentGateway {
   }
 
   async analyze(input: SalesAgentInput): Promise<SalesAgentOutput> {
-    const clinicContext = buildClinicContext(input);
-    const conversationContext = buildConversationContext(input);
+    const systemPrompt = buildSystemPrompt(input);
+    const userPrompt = buildConversationContext(input);
 
     const response = await this.client.chat.completions.create({
       model: MODEL,
       temperature: 0.4,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: `${SYSTEM_PROMPT}\n\n${clinicContext}` },
-        { role: "user", content: conversationContext },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ],
     });
 
@@ -83,28 +80,34 @@ export class LlmSalesAgentGateway implements SalesAgentGateway {
   }
 }
 
-function buildClinicContext(input: SalesAgentInput): string {
+function buildSystemPrompt(input: SalesAgentInput): string {
   const { clinic } = input;
-  const lines = [
-    `Clínica: ${clinic.name}`,
-    `Especialidade: ${clinic.specialty}`,
-  ];
-  if (clinic.city) lines.push(`Cidade: ${clinic.city}`);
-  if (clinic.toneOfVoice) lines.push(`Tom de voz: ${clinic.toneOfVoice}`);
-  if (clinic.commercialPolicy) lines.push(`Política comercial: ${clinic.commercialPolicy}`);
-  if (input.playbook) lines.push(`\nPlaybook:\n${input.playbook}`);
-  return lines.join("\n");
+  const sections: string[] = [BASE_RULES, "---", "DADOS DA CLÍNICA:"];
+
+  sections.push(`Nome: ${clinic.name}`);
+  sections.push(`Especialidade: ${clinic.specialty}`);
+  if (clinic.city) sections.push(`Cidade: ${clinic.city}`);
+  if (clinic.toneOfVoice) sections.push(`Tom de voz desejado: ${clinic.toneOfVoice}`);
+  if (clinic.commercialPolicy) sections.push(`Política comercial: ${clinic.commercialPolicy}`);
+  if (clinic.businessHours) sections.push(`Horário de funcionamento: ${clinic.businessHours}`);
+
+  if (clinic.playbook) {
+    sections.push("---", "PLAYBOOK DA CLÍNICA (siga estas orientações):", clinic.playbook);
+  } else if (input.playbook) {
+    sections.push("---", "PLAYBOOK:", input.playbook);
+  }
+
+  return sections.join("\n");
 }
 
 function buildConversationContext(input: SalesAgentInput): string {
   const leadName = input.lead.name ?? "Lead";
-  const lines = [`Lead: ${leadName}`, "Histórico da conversa:"];
+  const lines = [`Lead: ${leadName}`, "Histórico:"];
 
   for (const msg of input.messages) {
     const author = msg.author === "lead" ? leadName : "Recepcionista";
     lines.push(`${author}: ${msg.body}`);
   }
 
-  lines.push("\nResponda com base no contexto acima.");
   return lines.join("\n");
 }

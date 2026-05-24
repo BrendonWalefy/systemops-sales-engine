@@ -42,6 +42,22 @@ O objetivo nao e apenas economizar. E entender quanto custa gerar valor para a c
 - receita estimada recuperada;
 - margem estimada por plano.
 
+## Proximo Painel Interno
+
+Criar uma area interna, visivel somente para o dono do sistema, para acompanhar custos e precificacao por cliente.
+
+Esse painel deve responder rapidamente:
+
+- quanto cada clinica esta custando por mes;
+- quanto cada numero de WhatsApp esta consumindo;
+- quanto foi gasto com OpenAI;
+- quanto foi gasto com WhatsApp/Z-API;
+- qual preco esta sendo cobrado;
+- qual margem bruta esta sobrando;
+- qual preco minimo deveria ser cobrado para manter a margem desejada.
+
+O painel nao deve aparecer na demo comercial nem no admin da clinica. Ele serve para gestao operacional e decisao de preco.
+
 ## Politica de Uso Inicial
 
 O agente deve rodar quando:
@@ -54,4 +70,3 @@ O agente deve rodar quando:
 - recepcao pedir analise manual.
 
 O agente nao deve rodar automaticamente para mensagens triviais, agradecimentos ou duplicidades.
-

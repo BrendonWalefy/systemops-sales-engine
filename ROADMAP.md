@@ -162,6 +162,40 @@ Todos os dados vêm do banco via Drizzle, sem cache por enquanto.
 
 ---
 
+### 2.4 Painel interno de custos e margem
+
+**Objetivo:** criar um painel administrativo somente para o Brendon gerenciar o custo real de cada clínica e número conectado.
+
+**O que construir:**
+- Painel privado, visível somente para o dono/admin interno da SystemOps
+- Visão de custos por clínica e por número de WhatsApp
+- Métricas de consumo: mensagens recebidas/enviadas, respostas da IA, modelo usado, custo estimado de IA, custo de WhatsApp/Z-API e custo total por período
+- Cálculo de margem sugerida para cobrança por clínica, com markup configurável e margem de segurança
+- Comparativo entre custo real/estimado, valor cobrado, margem bruta em R$ e margem percentual
+- Alertas simples quando uma clínica estiver consumindo acima do esperado
+
+**Critério de sucesso:** conseguir ver em menos de 1 minuto quanto cada clínica custa por mês e qual valor mínimo cobrar para manter margem saudável.
+
+**Prompt para o agente:**
+```
+Criar um painel interno de custos em src/app/internal/costs/page.tsx.
+
+Esse painel e somente para o dono do sistema, nao para as clinicas.
+Mostrar custos agrupados por clinica e por numero conectado:
+- custo estimado de OpenAI
+- custo estimado de WhatsApp/Z-API
+- quantidade de conversas, mensagens e respostas da IA
+- custo variavel total
+- preco cobrado
+- margem bruta estimada em R$ e %
+
+Adicionar um simulador simples para calcular preco sugerido a partir de:
+custo mensal base, margem desejada e margem de seguranca.
+Usar dados do banco quando existirem e fallback mockado quando estiver vazio.
+```
+
+---
+
 ## Fase 3 — Piloto ativo
 
 **Objetivo:** 30 dias com a clínica do amigo conectada, dados reais, aprendizados documentados.

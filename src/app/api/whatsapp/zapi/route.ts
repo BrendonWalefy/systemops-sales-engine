@@ -84,7 +84,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       lead,
       conversation,
       messages: history,
-      playbook: buildPlaybook(clinicRow.name),
+      playbook: clinicRow.playbook ?? "",
     });
 
     const agentMessage: Message = {
@@ -130,6 +130,8 @@ function buildClinicFromRow(row: typeof clinics.$inferSelect): Clinic {
     city: row.city,
     toneOfVoice: row.toneOfVoice,
     commercialPolicy: row.commercialPolicy,
+    playbook: row.playbook,
+    businessHours: row.businessHours,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -168,21 +170,4 @@ async function notifyHandoff(params: {
   await sendTextMessage(receptionistPhone, text).catch((err) => {
     console.error("Failed to send handoff notification:", err);
   });
-}
-
-function buildPlaybook(clinicName: string): string {
-  return `
-Clínica: ${clinicName}
-Oferta principal: Avaliação gratuita com o dentista.
-Especialidades: implantes, próteses, alinhadores, clareamento, harmonização orofacial.
-Horário: segunda a sexta 8h–18h, sábado 8h–13h.
-
-1. Acolher pelo nome, mencionar a clínica na primeira mensagem.
-2. Entender o interesse ou dor do lead.
-3. Redirecionar para avaliação gratuita como primeiro passo.
-4. Oferecer até 3 horários disponíveis.
-5. Confirmar agendamento e informar que a equipe vai confirmar.
-
-Objeções: preço → avaliação gratuita primeiro. "Preciso pensar" → sem compromisso.
-`.trim();
 }

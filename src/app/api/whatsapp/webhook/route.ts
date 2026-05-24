@@ -158,6 +158,8 @@ function buildPilotClinic(id: string, name: string): Clinic {
     city: null,
     toneOfVoice: "Informal, acolhedor e consultivo. Nunca pressionar o lead.",
     commercialPolicy: "Oferecer sempre a avaliação gratuita como primeiro passo. Nunca informar valores por mensagem.",
+    playbook: null,
+    businessHours: "Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.",
     createdAt: new Date(),
     updatedAt: new Date(),
   };
