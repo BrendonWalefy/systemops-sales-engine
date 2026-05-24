@@ -28,6 +28,7 @@ export type SalesAgentOutput = {
     | "unresponsive";
   mainObjection: string | null;
   suggestedReply: string;
+  offeredSlotIndices: number[];
   nextAction: string;
   followUp: string | null;
   handoffRequired: boolean;

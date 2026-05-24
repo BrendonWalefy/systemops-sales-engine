@@ -38,6 +38,7 @@ Responda APENAS com JSON no formato abaixo, sem markdown:
   "stage": "new_lead" | "asked_price" | "asked_availability" | "objection" | "ready_to_schedule" | "clinical_sensitive" | "unresponsive",
   "mainObjection": string | null,
   "suggestedReply": string,
+  "offeredSlotIndices": number[],
   "nextAction": string,
   "followUp": string | null,
   "handoffRequired": boolean,
@@ -73,6 +74,7 @@ export class LlmSalesAgentGateway implements SalesAgentGateway {
       stage: parsed.stage ?? "new_lead",
       mainObjection: parsed.mainObjection ?? null,
       suggestedReply: parsed.suggestedReply ?? "Olá! Como posso ajudar?",
+      offeredSlotIndices: Array.isArray(parsed.offeredSlotIndices) ? parsed.offeredSlotIndices.slice(0, 3) : [],
       nextAction: parsed.nextAction ?? "Aguardar resposta do lead.",
       followUp: parsed.followUp ?? null,
       handoffRequired: parsed.handoffRequired ?? false,
@@ -108,10 +110,17 @@ function buildSystemPrompt(input: SalesAgentInput): string {
   }
 
   if (input.availableSlots && input.availableSlots.length > 0) {
-    sections.push("---", "HORÁRIOS DISPONÍVEIS (use APENAS estes, nunca invente outros):");
-    input.availableSlots.slice(0, 5).forEach((slot, i) => {
-      sections.push(`${i + 1}. ${formatSlotForPrompt(slot.startsAt)}`);
+    sections.push(
+      "---",
+      "HORÁRIOS DISPONÍVEIS (índice começa em 0 — use APENAS estes, nunca invente outros):",
+    );
+    input.availableSlots.forEach((slot, i) => {
+      sections.push(`[${i}] ${formatSlotForPrompt(slot.startsAt)}`);
     });
+    sections.push(
+      "Ao mencionar horários no suggestedReply, use SOMENTE os que estão nessa lista.",
+      "Em offeredSlotIndices, informe os índices dos slots que você mencionou/sugeriu ao lead (ex: [0,1] se mencionou os dois primeiros). Máximo 3.",
+    );
   } else {
     sections.push("---", "HORÁRIOS DISPONÍVEIS: nenhum encontrado no momento.");
   }

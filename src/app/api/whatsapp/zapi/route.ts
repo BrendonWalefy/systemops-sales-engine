@@ -148,6 +148,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const top3Slots = availableSlots.slice(0, 3);
 
     // --- Normal AI flow ---
+    // Pass up to 10 slots so AI has full week context; offeredSlotIndices tells us which it picked
     const clinic = buildClinicFromRow(clinicRow);
     const decision = await new LlmSalesAgentGateway().analyze({
       clinic,
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       conversation,
       messages: history,
       playbook: clinicRow.playbook ?? "",
-      availableSlots: top3Slots.map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt })),
+      availableSlots: availableSlots.slice(0, 10).map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt })),
     });
 
     const agentMessage: Message = {
@@ -181,10 +182,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // --- Slot offer: only when lead is ready to book ---
-    if (decision.stage === "ready_to_schedule" && top3Slots.length > 0) {
+    // Use the slots the AI actually mentioned (offeredSlotIndices), falling back to top3
+    const offeredSlots = decision.offeredSlotIndices.length > 0
+      ? decision.offeredSlotIndices.map((i) => availableSlots[i]).filter(Boolean) as CalendarSlot[]
+      : top3Slots;
+
+    if (decision.stage === "ready_to_schedule" && offeredSlots.length > 0) {
       await sendTextMessage(body.phone, decision.suggestedReply);
 
-      const options = top3Slots.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
+      const options = offeredSlots.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
       const slotsMessage =
         `Escolha o horário:\n\n${options}\n\n` +
         `Responda com *1*, *2* ou *3* para confirmar. 😊`;
@@ -196,7 +202,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         conversationId: conversation.id,
         author: "system",
         body: SLOT_OFFER_MARKER + JSON.stringify(
-          top3Slots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() }))
+          offeredSlots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() }))
         ),
         sentAt: new Date(),
         externalId: null,
