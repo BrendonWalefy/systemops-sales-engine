@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutDashboard, BookText, Zap } from "lucide-react";
+import { Inbox, LayoutDashboard, BookText, Zap, LogOut } from "lucide-react";
+import { logout } from "@/app/login/actions";
 
 const NAV = [
   { href: "/inbox", label: "Inbox", Icon: Inbox },
@@ -30,6 +31,17 @@ export function SidebarNav() {
           </Link>
         ))}
       </nav>
+
+      <form action={logout} style={{ marginTop: "auto" }}>
+        <button
+          type="submit"
+          className="side-nav-item"
+          style={{ width: "100%", border: "none", cursor: "pointer" }}
+        >
+          <LogOut size={15} strokeWidth={2} />
+          <span className="nav-label">Sair</span>
+        </button>
+      </form>
 
       <div className="sidebar-footer">
         <div className="live-dot" />
