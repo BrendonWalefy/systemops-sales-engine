@@ -116,23 +116,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
       if (handled) return new NextResponse("OK", { status: 200 });
     }
-
-    // --- If there's a pending offer and lead didn't pick a number, remind them ---
-    if (pendingSlotOffer && !/^[123]$/.test(incomingText)) {
-      const reminder =
-        "Para confirmar seu horário, responda apenas com o número da opção desejada: *1*, *2* ou *3*. Se quiser outras opções ou tiver dúvidas, é só me falar! 😊";
-      await sendTextMessage(body.phone, reminder);
-      const reminderMsg: Message = {
-        id: randomUUID(),
-        conversationId: conversation.id,
-        author: "agent",
-        body: reminder,
-        sentAt: new Date(),
-        externalId: null,
-      };
-      await conversationRepo.appendMessage(reminderMsg);
-      return new NextResponse("OK", { status: 200 });
-    }
+    // If lead sent anything other than 1/2/3, the pending offer is considered abandoned
+    // and the conversation continues normally (AI will re-offer if appropriate)
 
     // --- Pre-fetch calendar slots to give AI real data ---
     const calendar = new GoogleCalendarGateway(clinicRow.googleCalendarId);
