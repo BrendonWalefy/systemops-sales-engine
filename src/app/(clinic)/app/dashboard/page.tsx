@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { db } from "@/infrastructure/db/client";
 import {
   leads,

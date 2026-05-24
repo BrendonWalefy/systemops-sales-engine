@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { BookText, Clock, MessageSquare, Save } from "lucide-react";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
