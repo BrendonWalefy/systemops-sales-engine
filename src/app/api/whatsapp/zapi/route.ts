@@ -49,9 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const clinicRow = await db.query.clinics.findFirst({
-      where: eq(clinics.id, clinicId),
-    });
+    const clinicRow = await fetchClinicSafe(clinicId);
 
     if (!clinicRow) {
       console.error("Clinic not found for id:", clinicId);
@@ -327,7 +325,38 @@ function formatSlot(date: Date): string {
   return `${dow} ${day}/${month} às ${hour}h`;
 }
 
-function buildClinicFromRow(row: typeof clinics.$inferSelect): Clinic {
+type ClinicRow = Omit<typeof clinics.$inferSelect, "googleCalendarId"> & {
+  googleCalendarId: string | null;
+};
+
+async function fetchClinicSafe(clinicId: string): Promise<ClinicRow | undefined> {
+  try {
+    return await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
+  } catch {
+    // Fallback: explicit columns excluding google_calendar_id (migration 0003 may not be applied)
+    const [row] = await db
+      .select({
+        id: clinics.id,
+        name: clinics.name,
+        specialty: clinics.specialty,
+        city: clinics.city,
+        toneOfVoice: clinics.toneOfVoice,
+        commercialPolicy: clinics.commercialPolicy,
+        playbook: clinics.playbook,
+        businessHours: clinics.businessHours,
+        autoReplyEnabled: clinics.autoReplyEnabled,
+        createdAt: clinics.createdAt,
+        updatedAt: clinics.updatedAt,
+      })
+      .from(clinics)
+      .where(eq(clinics.id, clinicId))
+      .limit(1);
+    if (!row) return undefined;
+    return { ...row, googleCalendarId: null };
+  }
+}
+
+function buildClinicFromRow(row: ClinicRow): Clinic {
   return {
     id: row.id,
     name: row.name,
