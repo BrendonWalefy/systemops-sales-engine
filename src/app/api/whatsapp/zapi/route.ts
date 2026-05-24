@@ -45,13 +45,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    // Check auto-reply toggle
     const clinicRow = await db.query.clinics.findFirst({
       where: eq(clinics.id, clinicId),
     });
 
-    if (!clinicRow?.autoReplyEnabled) {
-      return new NextResponse("OK", { status: 200 });
+    if (!clinicRow) {
+      console.error("Clinic not found for id:", clinicId);
+      return new NextResponse("Server misconfigured", { status: 500 });
     }
 
     const leadRepo = new DrizzleLeadRepository();
@@ -63,6 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       now: () => new Date(),
     });
 
+    // Always register the message so it appears in Inbox regardless of auto-reply state
     const { lead, conversation } = await new RegisterIncomingMessage({
       leadRepository: leadRepo,
       conversationRepository: conversationRepo,
@@ -84,6 +85,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         campaignId: null,
       },
     });
+
+    // Auto-reply toggle only controls whether the AI responds — not whether we record the message
+    if (!clinicRow.autoReplyEnabled) {
+      return new NextResponse("OK", { status: 200 });
+    }
 
     const history = await conversationRepo.listMessages(conversation.id);
     const clinic = buildClinicFromRow(clinicRow);
