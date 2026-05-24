@@ -110,6 +110,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (handled) return new NextResponse("OK", { status: 200 });
     }
 
+    // --- Pre-fetch calendar slots to give AI real data ---
+    const calendar = new GoogleCalendarGateway(clinicRow.googleCalendarId);
+    const now = new Date();
+    const to = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    let availableSlots: import("@/domain/entities/calendar-slot").CalendarSlot[] = [];
+    try {
+      availableSlots = await calendar.listAvailableSlots({ clinicId, from: now, to });
+    } catch (err) {
+      console.error("Failed to pre-fetch calendar slots:", err);
+    }
+
     // --- Normal AI flow ---
     const history = await conversationRepo.listMessages(conversation.id);
     const clinic = buildClinicFromRow(clinicRow);
@@ -119,6 +130,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       conversation,
       messages: history,
       playbook: clinicRow.playbook ?? "",
+      availableSlots: availableSlots.map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt })),
     });
 
     const agentMessage: Message = {
@@ -143,17 +155,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    // --- Slot offer flow ---
+    // --- Slot offer flow: send numbered options for confirmation ---
     if (decision.stage === "ready_to_schedule" || decision.stage === "asked_availability") {
-      await handleSlotOffer({
-        phone: body.phone,
-        lead,
-        conversationId: conversation.id,
-        clinicId,
-        agentReply: decision.suggestedReply,
-        conversationRepo,
-        calendarId: clinicRow.googleCalendarId,
-      });
+      const top3 = availableSlots.slice(0, 3);
+      if (top3.length > 0) {
+        await sendTextMessage(body.phone, decision.suggestedReply);
+        const options = top3.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
+        const slotsMessage =
+          `Confirme seu horário respondendo com o número:\n\n${options}\n\n` +
+          `Responda com *1*, *2* ou *3* para confirmar. 😊`;
+        await sendTextMessage(body.phone, slotsMessage);
+        const systemMsg: Message = {
+          id: randomUUID(),
+          conversationId: conversation.id,
+          author: "system",
+          body: SLOT_OFFER_MARKER + JSON.stringify(top3.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() }))),
+          sentAt: new Date(),
+          externalId: null,
+        };
+        await conversationRepo.appendMessage(systemMsg);
+      } else {
+        await sendTextMessage(body.phone, decision.suggestedReply);
+      }
     } else {
       await sendTextMessage(body.phone, decision.suggestedReply);
     }
@@ -169,74 +192,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// Fetch slots and send options to lead
-async function handleSlotOffer(params: {
-  phone: string;
-  lead: Lead;
-  conversationId: string;
-  clinicId: string;
-  agentReply: string;
-  conversationRepo: DrizzleConversationRepository;
-  calendarId: string | null;
-}) {
-  const { phone, lead, conversationId, clinicId, agentReply, conversationRepo, calendarId } =
-    params;
-
-  const calendar = new GoogleCalendarGateway(calendarId);
-  const now = new Date();
-  const to = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // next 14 days
-
-  let slots: CalendarSlot[] = [];
-  try {
-    slots = await calendar.listAvailableSlots({ clinicId, from: now, to });
-  } catch (err) {
-    console.error("Failed to fetch calendar slots:", err);
-    // Fall back to just sending the IA reply without slot options
-    await sendTextMessage(phone, agentReply);
-    return;
-  }
-
-  const top3 = slots.slice(0, 3);
-  if (top3.length === 0) {
-    await sendTextMessage(phone, agentReply);
-    return;
-  }
-
-  // Send IA reply first, then slot options
-  await sendTextMessage(phone, agentReply);
-
-  const options = top3.map((s, i) => `${i + 1}. ${formatSlot(s.startsAt)}`).join("\n");
-  const slotsMessage =
-    `Tenho os seguintes horários disponíveis para você:\n\n${options}\n\n` +
-    `Responda com *1*, *2* ou *3* para confirmar o horário de sua preferência. 😊`;
-
-  await sendTextMessage(phone, slotsMessage);
-
-  // Persist slot offer as a system message so we can recover it on the next interaction
-  const systemMsg: Message = {
-    id: randomUUID(),
-    conversationId,
-    author: "system",
-    body:
-      SLOT_OFFER_MARKER +
-      JSON.stringify(
-        top3.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() })),
-      ),
-    sentAt: new Date(),
-    externalId: null,
-  };
-  await conversationRepo.appendMessage(systemMsg);
-
-  const agentSlotsMsg: Message = {
-    id: randomUUID(),
-    conversationId,
-    author: "agent",
-    body: slotsMessage,
-    sentAt: new Date(),
-    externalId: null,
-  };
-  await conversationRepo.appendMessage(agentSlotsMsg);
-}
 
 // Confirm slot choice, create calendar event and appointment
 async function handleSlotSelection(params: {

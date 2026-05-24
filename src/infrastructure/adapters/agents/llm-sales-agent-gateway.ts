@@ -5,7 +5,7 @@ import type {
   SalesAgentOutput,
 } from "@/application/ports/sales-agent-gateway";
 
-const PROMPT_VERSION = "v2";
+const PROMPT_VERSION = "v3";
 const MODEL = "gpt-4o-mini";
 
 const BASE_RULES = `Você é a recepcionista virtual de uma clínica. Responda leads no WhatsApp de forma natural, humana e consultiva — nunca robotizada.
@@ -23,11 +23,14 @@ Regras gerais:
 - Saudação por horário do dia (bom dia / boa tarde / boa noite) apenas na primeira mensagem.
 - Mencione o nome da clínica apenas na primeira mensagem.
 - Se o lead perguntar algo fora da especialidade da clínica, explique gentilmente e redirecione.
-- Sobre horários: NUNCA invente, mencione ou sugira datas ou horários específicos. Você não tem acesso à agenda real.
-- Quando o lead perguntar sobre disponibilidade (ex: "tem horário amanhã?", "qual a disponibilidade?", "essa semana tem?"), use stage "asked_availability" — o sistema buscará os slots reais e os enviará.
-- Quando o lead confirmar interesse em agendar ou pedir para marcar, use stage "ready_to_schedule" — o sistema buscará slots e enviará as opções numeradas.
-- Quando o sistema já tiver enviado as opções de horário (1, 2, 3) e o lead responder com um número, aguarde a confirmação do sistema. Confirme o agendamento com entusiasmo após o sistema criar o evento.
 - Se o lead pedir para ser lembrado em outro momento, diga que vai anotar e use stage "new_lead". Nunca confirme um horário que você não agendou de verdade.
+
+Regras sobre horários e agendamento:
+- NUNCA invente datas ou horários. Use SOMENTE os horários fornecidos na seção HORÁRIOS DISPONÍVEIS abaixo.
+- Quando o lead perguntar sobre disponibilidade e houver horários disponíveis, mencione os próximos 3 horários reais de forma conversacional no suggestedReply e use stage "asked_availability".
+- Quando o lead confirmar que quer agendar (ex: "quero marcar", "pode marcar", "esse horário está bom"), use stage "ready_to_schedule" — o sistema vai criar o evento e confirmar.
+- Quando o sistema já tiver enviado as opções numeradas (1, 2, 3) e o lead responder com um número, use stage "ready_to_schedule".
+- Se não houver horários disponíveis na seção abaixo, diga que vai verificar e retornar em breve.
 
 Responda APENAS com JSON no formato abaixo, sem markdown:
 {
@@ -104,6 +107,15 @@ function buildSystemPrompt(input: SalesAgentInput): string {
     sections.push("---", "PLAYBOOK:", input.playbook);
   }
 
+  if (input.availableSlots && input.availableSlots.length > 0) {
+    sections.push("---", "HORÁRIOS DISPONÍVEIS (use APENAS estes, nunca invente outros):");
+    input.availableSlots.slice(0, 5).forEach((slot, i) => {
+      sections.push(`${i + 1}. ${formatSlotForPrompt(slot.startsAt)}`);
+    });
+  } else {
+    sections.push("---", "HORÁRIOS DISPONÍVEIS: nenhum encontrado no momento.");
+  }
+
   return sections.join("\n");
 }
 
@@ -117,7 +129,11 @@ function buildConversationContext(input: SalesAgentInput): string {
     year: "numeric",
     timeZone: "America/Sao_Paulo",
   });
-  const lines = [`Data/hora atual: ${dateStr} (fuso: America/Sao_Paulo)`, `Lead: ${leadName}`, "Histórico:"];
+  const lines = [
+    `Data/hora atual: ${dateStr} (fuso: America/Sao_Paulo)`,
+    `Lead: ${leadName}`,
+    "Histórico:",
+  ];
 
   for (const msg of input.messages) {
     const author = msg.author === "lead" ? leadName : "Recepcionista";
@@ -125,4 +141,13 @@ function buildConversationContext(input: SalesAgentInput): string {
   }
 
   return lines.join("\n");
+}
+
+function formatSlotForPrompt(date: Date): string {
+  const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const dow = weekdays[date.getDay()] ?? "";
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  return `${dow} ${day}/${month} às ${hour}h`;
 }
