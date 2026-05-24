@@ -14,7 +14,7 @@ export async function login(formData: FormData) {
     redirect("/login?error=1");
   }
 
-  const token = signToken(email);
+  const token = await signToken(email);
   const jar = await cookies();
   jar.set(COOKIE_NAME, token, {
     httpOnly: true,
