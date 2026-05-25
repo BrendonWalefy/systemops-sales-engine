@@ -9,5 +9,5 @@ export async function assumeConversation(leadId: string, conversationId: string)
     .update(leads)
     .set({ status: "in_conversation", updatedAt: new Date() })
     .where(eq(leads.id, leadId));
-  redirect(`/app/inbox/${conversationId}`);
+  redirect("/app/inbox");
 }

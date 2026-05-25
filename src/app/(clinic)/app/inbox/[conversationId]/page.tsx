@@ -194,9 +194,9 @@ export default async function ConversationPage({
             {lead.phone && (
               <div className="signal">
                 <span>Telefone</span>
-                <strong style={{ display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <strong style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                   <Phone size={12} style={{ flexShrink: 0 }} />
-                  {lead.phone}
+                  <span style={{ fontSize: 12, letterSpacing: "0.01em" }}>{lead.phone}</span>
                 </strong>
               </div>
             )}
