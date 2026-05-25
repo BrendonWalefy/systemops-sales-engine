@@ -175,16 +175,16 @@ export default async function DashboardPage() {
             <span className="metric-label">Agendamentos pela IA</span>
           </div>
           <span className="metric-value">{data.scheduledCount}</span>
-          <span className="metric-context">status appointment_scheduled</span>
+          <span className="metric-context">consultas com horário marcado</span>
         </div>
 
         <div className="metric">
           <div className="metric-header">
             <span className="metric-icon"><AlertTriangle size={14} /></span>
-            <span className="metric-label">Handoffs</span>
+            <span className="metric-label">Atenção imediata</span>
           </div>
           <span className="metric-value">{data.handoffCount}</span>
-          <span className="metric-context">leads quentes em conversa</span>
+          <span className="metric-context">leads quentes em conversa ativa</span>
         </div>
 
         <div className="metric">
@@ -266,17 +266,17 @@ export default async function DashboardPage() {
             <div className="metric">
               <div className="metric-header"><span className="metric-icon"><Flame size={14} /></span><span className="metric-label">Quentes</span></div>
               <span className="metric-value temp-hot">{data.tempCounts.hot}</span>
-              <span className="metric-context"><span className="temp-badge temp-hot">hot</span></span>
+              <span className="metric-context"><span className="temp-badge temp-hot">Quente</span></span>
             </div>
             <div className="metric">
               <div className="metric-header"><span className="metric-icon"><Thermometer size={14} /></span><span className="metric-label">Mornos</span></div>
               <span className="metric-value temp-warm">{data.tempCounts.warm}</span>
-              <span className="metric-context"><span className="temp-badge temp-warm">warm</span></span>
+              <span className="metric-context"><span className="temp-badge temp-warm">Morno</span></span>
             </div>
             <div className="metric">
               <div className="metric-header"><span className="metric-icon"><Snowflake size={14} /></span><span className="metric-label">Frios</span></div>
               <span className="metric-value temp-cold">{data.tempCounts.cold}</span>
-              <span className="metric-context"><span className="temp-badge temp-cold">cold</span></span>
+              <span className="metric-context"><span className="temp-badge temp-cold">Frio</span></span>
             </div>
           </div>
         </div>
