@@ -25,6 +25,12 @@ const WEEKDAY_PT: Record<number, string> = {
   0: "Dom", 1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex", 6: "Sáb",
 };
 
+// Meses em pt-BR normalizados (sem acento) → índice 0-based
+const MONTH_NAME_PT: Record<string, number> = {
+  janeiro: 0, fevereiro: 1, marco: 2, abril: 3, maio: 4, junho: 5,
+  julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11,
+};
+
 const MONTH_PT: Record<number, string> = {
   1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
   7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez",
@@ -150,7 +156,9 @@ export class ClinicTimezone {
   // Converte preferência textual de data (ex: "sexta", "amanhã", "próxima semana")
   // para o início desse dia no fuso da clínica, em UTC.
   // Retorna null quando a string não mapeia para um dia específico.
-  resolvePreferredDate(raw: string, now: Date): Date | null {
+  // businessHours: quando fornecido, "sexta" no dia sexta retorna hoje se ainda há horário;
+  //               caso contrário retorna sempre a próxima semana.
+  resolvePreferredDate(raw: string, now: Date, businessHours?: ParsedBusinessHours | null): Date | null {
     const s = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
     const today = this.toLocalParts(now);
 
@@ -177,11 +185,55 @@ export class ClinicTimezone {
     for (const [pattern, weekday] of dayNames) {
       if (pattern.test(s)) {
         let daysAhead = weekday - today.weekday;
-        if (daysAhead <= 0) daysAhead += 7;
+        if (daysAhead === 0) {
+          // Lead pediu exatamente hoje — retorna hoje só se ainda há horário comercial
+          if (!businessHours || today.hour >= businessHours.endHour - 1) daysAhead = 7;
+        } else if (daysAhead < 0) {
+          daysAhead += 7;
+        }
         const target = new Date(now.getTime() + daysAhead * 24 * 60 * 60_000);
         const p = this.toLocalParts(target);
         return this.fromLocalParts(p.year, p.month, p.day, 0, 0);
       }
+    }
+
+    // "DD/MM" ou "DD/MM/YYYY"
+    const dmyMatch = s.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+    if (dmyMatch) {
+      const day = parseInt(dmyMatch[1], 10);
+      const month = parseInt(dmyMatch[2], 10) - 1; // 0-indexed
+      let year = dmyMatch[3] ? parseInt(dmyMatch[3], 10) : today.year;
+      const startOfToday = this.fromLocalParts(today.year, today.month, today.day, 0, 0);
+      const target = this.fromLocalParts(year, month, day, 0, 0);
+      if (target < startOfToday) return this.fromLocalParts(year + 1, month, day, 0, 0);
+      return target;
+    }
+
+    // "DD de <mês>"
+    const ddDeMonthMatch = s.match(/(\d{1,2})\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)/);
+    if (ddDeMonthMatch) {
+      const day = parseInt(ddDeMonthMatch[1], 10);
+      const month = MONTH_NAME_PT[ddDeMonthMatch[2]];
+      const startOfToday = this.fromLocalParts(today.year, today.month, today.day, 0, 0);
+      const target = this.fromLocalParts(today.year, month, day, 0, 0);
+      if (target < startOfToday) return this.fromLocalParts(today.year + 1, month, day, 0, 0);
+      return target;
+    }
+
+    // "dia DD" (sem mês — usa mês atual, avança se o dia já passou)
+    const diaDDMatch = s.match(/\bdia\s+(\d{1,2})\b/);
+    if (diaDDMatch) {
+      const day = parseInt(diaDDMatch[1], 10);
+      let month = today.month;
+      let year = today.year;
+      if (day < today.day) {
+        month += 1;
+        if (month > 11) { month = 0; year += 1; }
+      }
+      const startOfToday = this.fromLocalParts(today.year, today.month, today.day, 0, 0);
+      const target = this.fromLocalParts(year, month, day, 0, 0);
+      if (target < startOfToday) return this.fromLocalParts(year + 1, month, day, 0, 0);
+      return target;
     }
 
     return null;

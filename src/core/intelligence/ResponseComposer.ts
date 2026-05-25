@@ -32,7 +32,8 @@ export type ActionResult =
   | { type: "handoff_requested" }
   | { type: "price_inquiry" }
   | { type: "general_question"; clinicContext: string }
-  | { type: "greeting" };
+  | { type: "greeting" }
+  | { type: "slots_expired"; freshSlots: FormattedSlot[] };
 
 export type ComposerInput = {
   actionResult: ActionResult;
@@ -159,6 +160,15 @@ Responda de forma informativa e acolhedora.`;
     case "greeting":
       return `AÇÃO EXECUTADA: Lead enviou saudação.
 Responda com calor, pergunte como pode ajudar.`;
+
+    case "slots_expired": {
+      const slotList = result.freshSlots.map((s) => `  Opção ${s.index}: ${s.label}`).join("\n");
+      return `AÇÃO EXECUTADA: A oferta de horários expirou (lead demorou para responder).
+Informe gentilmente que o horário reservado não está mais disponível e apresente estes novos horários disponíveis.
+REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
+NOVOS HORÁRIOS:
+${slotList}`;
+    }
   }
 }
 

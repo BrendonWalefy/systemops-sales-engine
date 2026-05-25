@@ -204,7 +204,21 @@ export class ConversationOrchestrator {
           : null;
 
         if (!chosenSlot) {
-          replyText = await compose({ type: "clarification_needed", question: "Qual horário você prefere? Posso mostrar as opções disponíveis." });
+          // Lead tentou escolher um número mas a oferta expirou (15 min TTL)
+          if (slotPreference.slotChoice !== null) {
+            const { slots: freshSlots } = await this.fetchAndOfferSlots(
+              conversation.id,
+              clinic,
+              calendarGateway,
+              timezone,
+              businessHours,
+            );
+            replyText = freshSlots.length > 0
+              ? await compose({ type: "slots_expired", freshSlots })
+              : await compose({ type: "no_slots_available" });
+          } else {
+            replyText = await compose({ type: "clarification_needed", question: "Qual horário você prefere? Posso mostrar as opções disponíveis." });
+          }
           break;
         }
 
@@ -260,7 +274,7 @@ export class ConversationOrchestrator {
         // Se o lead rejeitou E expressou preferência (ex: "não quero quinta, só tenho sexta"),
         // busca imediatamente para aquele dia em vez de perguntar novamente.
         if (slotPreference.preferredDate || slotPreference.preferredPeriod) {
-          const { slots: preferredSlots, preferredDayEmpty: rejectDayEmpty } = await this.fetchAndOfferSlots(
+          const { slots: preferredSlots, preferredDayEmpty: rejectDayEmpty, outsideBookingWindow: rejectOutside, outsideBusinessHours: rejectNotOpen, preferredPeriodUnavailable: rejectPeriodUnavail } = await this.fetchAndOfferSlots(
             conversation.id,
             clinic,
             calendarGateway,
@@ -269,7 +283,22 @@ export class ConversationOrchestrator {
             slotPreference.preferredDate ?? undefined,
             slotPreference.preferredPeriod ?? undefined,
           );
-          if (preferredSlots.length > 0 && !rejectDayEmpty) {
+          if (rejectOutside) {
+            replyText = await compose({
+              type: "clarification_needed",
+              question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?",
+            });
+          } else if (rejectNotOpen) {
+            replyText = await compose({
+              type: "clarification_needed",
+              question: "O atendimento de hoje já encerrou. Posso verificar os horários de amanhã ou outro dia para você?",
+            });
+          } else if (rejectPeriodUnavail) {
+            replyText = await compose({
+              type: "clarification_needed",
+              question: `Não temos atendimento no período da noite — nosso horário vai até as ${businessHours.endHour}h. Posso verificar outro período?`,
+            });
+          } else if (preferredSlots.length > 0 && !rejectDayEmpty) {
             replyText = await compose({ type: "slots_found", slots: preferredSlots, askedForPreference: false });
           } else if (rejectDayEmpty) {
             replyText = await compose({
@@ -296,7 +325,7 @@ export class ConversationOrchestrator {
           await this.stateMachine.invalidate(conversation.id);
         }
 
-        const { slots: formattedSlots, preferredDayEmpty } = await this.fetchAndOfferSlots(
+        const { slots: formattedSlots, preferredDayEmpty, outsideBookingWindow, outsideBusinessHours, preferredPeriodUnavailable } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
           calendarGateway,
@@ -307,7 +336,22 @@ export class ConversationOrchestrator {
           slotPreference.preferredTime ?? undefined,
         );
 
-        if (formattedSlots.length > 0 && !preferredDayEmpty) {
+        if (outsideBookingWindow) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?",
+          });
+        } else if (outsideBusinessHours) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: "O atendimento de hoje já encerrou. Posso verificar os horários de amanhã ou outro dia para você?",
+          });
+        } else if (preferredPeriodUnavailable) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: `Não temos atendimento no período da noite — nosso horário vai até as ${businessHours.endHour}h. Posso verificar outro período?`,
+          });
+        } else if (formattedSlots.length > 0 && !preferredDayEmpty) {
           replyText = await compose({
             type: "slots_found",
             slots: formattedSlots,
@@ -363,7 +407,7 @@ export class ConversationOrchestrator {
           await bookingService.cancel({ lead, appointment: activeAppointment });
         }
 
-        const { slots: newSlots, preferredDayEmpty: rescheduleEmpty } = await this.fetchAndOfferSlots(
+        const { slots: newSlots, preferredDayEmpty: rescheduleEmpty, outsideBookingWindow: rescheduleOutside, outsideBusinessHours: rescheduleNotOpen, preferredPeriodUnavailable: reschedulePeriodUnavail } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
           calendarGateway,
@@ -374,7 +418,22 @@ export class ConversationOrchestrator {
           slotPreference.preferredTime ?? undefined,
         );
 
-        if (newSlots.length > 0 && !rescheduleEmpty) {
+        if (rescheduleOutside) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?",
+          });
+        } else if (rescheduleNotOpen) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: "O atendimento de hoje já encerrou. Posso verificar os horários de amanhã ou outro dia para você?",
+          });
+        } else if (reschedulePeriodUnavail) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: `Não temos atendimento no período da noite — nosso horário vai até as ${businessHours.endHour}h. Posso verificar outro período?`,
+          });
+        } else if (newSlots.length > 0 && !rescheduleEmpty) {
           replyText = await compose({ type: "appointment_rescheduled", newSlots });
         } else if (rescheduleEmpty) {
           replyText = await compose({
@@ -481,10 +540,13 @@ export class ConversationOrchestrator {
   }
 
   // ── Helper: busca slots e salva oferta na state machine ──
-  // Retorna { slots, preferredDayEmpty } onde:
-  //   - preferredDayEmpty=false → slots confirmáveis, salvos na state machine
-  //   - preferredDayEmpty=true  → slots são alternativas de outros dias, apenas para exibição,
-  //                               NÃO salvos na state machine (lead não escolheu nada ainda)
+  // Retorna { slots, preferredDayEmpty, outsideBookingWindow, outsideBusinessHours, preferredPeriodUnavailable } onde:
+  //   - outsideBookingWindow=true      → data pedida está além da janela de 14 dias
+  //   - outsideBusinessHours=true      → dia pedido é hoje mas o expediente já encerrou
+  //   - preferredPeriodUnavailable=true→ lead pediu noite mas a clínica fecha às 18h ou antes
+  //   - preferredDayEmpty=true         → dia está na janela mas sem horários; slots são alternativas
+  //                                      NÃO salvos na state machine (lead não escolheu nada ainda)
+  //   - preferredDayEmpty=false        → slots confirmáveis, salvos na state machine
   private async fetchAndOfferSlots(
     conversationId: string,
     clinic: Clinic,
@@ -494,7 +556,7 @@ export class ConversationOrchestrator {
     preferredDate?: string,
     preferredPeriod?: string,
     preferredTime?: string,
-  ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean }> {
+  ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean; outsideBookingWindow: boolean; outsideBusinessHours: boolean; preferredPeriodUnavailable: boolean }> {
     const from = this.slotWindowStart();
     const to = new Date(from.getTime() + SLOTS_LOOKAHEAD_DAYS * 24 * 60 * 60_000);
 
@@ -508,16 +570,24 @@ export class ConversationOrchestrator {
     let preferredDayEmpty = false;
 
     if (preferredDate) {
-      const targetDay = timezone.resolvePreferredDate(preferredDate, new Date());
+      const now = new Date();
+      const targetDay = timezone.resolvePreferredDate(preferredDate, now, businessHours);
       if (targetDay !== null) {
+        if (targetDay > to) {
+          return { slots: [], preferredDayEmpty: false, outsideBookingWindow: true, outsideBusinessHours: false, preferredPeriodUnavailable: false };
+        }
         const targetParts = timezone.toLocalParts(targetDay);
         const slotsOnDay = allSlots.filter((slot) => {
           const p = timezone.toLocalParts(slot.startsAt);
           return p.year === targetParts.year && p.month === targetParts.month && p.day === targetParts.day;
         });
+        const nowParts = timezone.toLocalParts(now);
+        const isToday = targetParts.year === nowParts.year && targetParts.month === nowParts.month && targetParts.day === nowParts.day;
         if (slotsOnDay.length > 0) {
           allSlots = slotsOnDay;
           filteredToDay = true;
+        } else if (isToday && nowParts.hour >= businessHours.endHour - 1) {
+          return { slots: [], preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: true, preferredPeriodUnavailable: false };
         } else {
           // Dia preferido sem disponibilidade — sinaliza e mantém pool completo como alternativas.
           // Alternativas NÃO serão salvas na state machine: lead ainda não escolheu nenhum dia.
@@ -535,7 +605,11 @@ export class ConversationOrchestrator {
         if (preferredPeriod === "evening") return parts.hour >= 17;
         return true;
       });
-      if (byPeriod.length > 0) allSlots = byPeriod;
+      if (byPeriod.length > 0) {
+        allSlots = byPeriod;
+      } else if (preferredPeriod === "evening" && businessHours.endHour <= 18) {
+        return { slots: [], preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: true };
+      }
     }
 
     // Ordena por proximidade à hora solicitada quando o lead especificou horário.
@@ -568,7 +642,7 @@ export class ConversationOrchestrator {
 
     const best = selectBestSlots(allSlots, count, timezone);
 
-    if (best.length === 0) return { slots: [], preferredDayEmpty };
+    if (best.length === 0) return { slots: [], preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
 
     if (preferredDayEmpty) {
       // Formata para exibição sem salvar na state machine
@@ -578,11 +652,11 @@ export class ConversationOrchestrator {
         endsAt: s.endsAt.toISOString(),
         label: timezone.formatForHuman(s.startsAt),
       }));
-      return { slots: formatted, preferredDayEmpty: true };
+      return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
     }
 
     const slots = await this.stateMachine.offerSlots(conversationId, best, timezone);
-    return { slots, preferredDayEmpty: false };
+    return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 
   private async notifyHandoff(clinic: Clinic, leadPhone: string): Promise<void> {
