@@ -40,6 +40,24 @@ describe("calendar conversation parsing", () => {
       "cancel_appointment",
     );
   });
+
+  it("understands day-only requests with an exact hour", () => {
+    const now = new Date("2026-05-24T21:37:00-03:00");
+
+    const request = parseCalendarRequest("quero dia 26 as 11h", now);
+
+    expect(request.intent).toBe("schedule_exact");
+    expect(request.requestedHour).toBe(11);
+    expect(formatSlotPt(request.requestedDate!)).toBe("Ter 26/05 às 00h");
+  });
+
+  it("asks for preference when scheduling intent has no date or period", () => {
+    const request = parseCalendarRequest("marque para ter");
+
+    expect(request.intent).toBe("ask_availability");
+    expect(request.requestedDate).toBeNull();
+    expect(request.requestedHour).toBeNull();
+  });
 });
 
 function slot(startsAtIso: string): CalendarSlot {

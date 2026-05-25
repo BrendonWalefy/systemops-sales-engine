@@ -146,7 +146,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
     const cursor = new Date(input.from);
     cursor.setMinutes(0, 0, 0);
 
-    while (cursor < input.to && slots.length < 20) {
+    while (cursor < input.to && slots.length < 100) {
       // Check business hours in clinic local timezone (BRT)
       const local = toClinicLocal(cursor);
       const dow = local.getUTCDay(); // 0=Sun, 6=Sat in local time

@@ -174,7 +174,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       conversation,
       messages: history,
       playbook: clinicRow.playbook ?? "",
-      availableSlots: availableSlots.slice(0, 10).map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt })),
+      availableSlots: availableSlots.slice(0, 30).map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt })),
     });
 
     const agentMessage: Message = {
@@ -369,11 +369,29 @@ async function handleDeterministicCalendarRequest(params: {
 
   if (request.intent === "list_appointments") {
     const appointment = await appointmentRepo.findActiveByLeadId(lead.id);
-    const reply = appointment
+    const matchesRequestedDate =
+      appointment &&
+      (!request.requestedDate ||
+        filterSlotsByRequest(
+          [
+            {
+              id: appointment.id,
+              clinicId: appointment.clinicId,
+              professionalId: null,
+              startsAt: appointment.startsAt,
+              endsAt: appointment.endsAt,
+              source: "google_calendar",
+            },
+          ],
+          { ...request, requestedHour: null, period: null },
+        ).length > 0);
+    const reply = matchesRequestedDate
       ? `Você tem um agendamento ativo: ${formatSlot(appointment.startsAt)}.`
-      : "Não encontrei nenhum agendamento ativo no seu nome por aqui.";
+      : request.requestedDate
+        ? `Não encontrei nenhum agendamento ativo para ${formatDatePt(request.requestedDate)} no seu nome.`
+        : "Não encontrei nenhum agendamento ativo no seu nome por aqui.";
     await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
-    return { leadStatus: appointment ? "appointment_scheduled" : "in_conversation" };
+    return { leadStatus: matchesRequestedDate ? "appointment_scheduled" : "in_conversation" };
   }
 
   if (request.intent === "cancel_appointment") {
@@ -407,6 +425,12 @@ async function handleDeterministicCalendarRequest(params: {
   }
 
   if (request.intent === "schedule_exact") {
+    if (!request.requestedDate && request.requestedHour === null && !request.period) {
+      const reply = buildAvailabilityPreferenceReply(availableSlots);
+      await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+      return { leadStatus: "in_conversation" };
+    }
+
     const matchingSlots = filterSlotsByRequest(availableSlots, request);
     if (request.requestedHour !== null && matchingSlots.length > 0) {
       const selected = matchingSlots[0]!;
@@ -428,17 +452,25 @@ async function handleDeterministicCalendarRequest(params: {
       return { leadStatus: "appointment_scheduled" };
     }
 
-    const alternatives = filterSlotsByRequest(availableSlots, {
-      ...request,
-      requestedHour: null,
-    }).slice(0, 3);
-    const reply = buildAvailabilityReply({
-      slots: alternatives.length > 0 ? alternatives : availableSlots.slice(0, 3),
-      requestedDate: request.requestedDate,
-      emptyPrefix: request.requestedDate
-        ? `Não encontrei esse horário disponível em ${formatDatePt(request.requestedDate)}.`
-        : "Não encontrei esse horário disponível.",
-    });
+    const sameDateAlternatives = request.requestedDate
+      ? filterSlotsByRequest(availableSlots, {
+          ...request,
+          requestedHour: null,
+        }).slice(0, 3)
+      : [];
+    const reply =
+      sameDateAlternatives.length > 0
+        ? buildAvailabilityReply({
+            slots: sameDateAlternatives,
+            requestedDate: request.requestedDate,
+            emptyPrefix: request.requestedDate
+              ? `Não encontrei esse horário disponível em ${formatDatePt(request.requestedDate)}.`
+              : "Não encontrei esse horário disponível.",
+          })
+        : `${request.requestedDate
+            ? `Não encontrei esse horário disponível em ${formatDatePt(request.requestedDate)}.`
+            : "Não encontrei esse horário disponível."
+          } ${buildAvailabilityPreferenceReply(availableSlots)}`;
     await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
     return { leadStatus: "in_conversation" };
   }
@@ -487,6 +519,12 @@ async function handleDeterministicCalendarRequest(params: {
   }
 
   if (request.intent === "ask_availability" || request.intent === "reschedule_appointment") {
+    if (!request.requestedDate && request.requestedHour === null && !request.period) {
+      const reply = buildAvailabilityPreferenceReply(availableSlots);
+      await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+      return { leadStatus: lead.status };
+    }
+
     const slots = filterSlotsByRequest(availableSlots, request).slice(0, 6);
     const reply = buildAvailabilityReply({
       slots,
@@ -542,6 +580,40 @@ function buildAvailabilityReply(params: {
     return `Para ${formatDatePt(requestedDate)}, encontrei estes horários: ${slotList}. Algum deles funciona para você?`;
   }
   return `Encontrei estes horários disponíveis: ${slotList}. Algum deles funciona para você?`;
+}
+
+function buildAvailabilityPreferenceReply(slots: CalendarSlot[]): string {
+  if (slots.length === 0) {
+    return "Consultei a agenda dos próximos 14 dias e não encontrei horários livres por enquanto. Quer que eu avise a equipe para tentar um encaixe?";
+  }
+
+  const summary = summarizeAvailability(slots);
+  return `Consultei a agenda dos próximos 14 dias e temos opções em ${summary}. Qual dia ou período fica melhor para você: manhã ou tarde?`;
+}
+
+function summarizeAvailability(slots: CalendarSlot[]): string {
+  const byDate = new Map<string, { date: Date; morning: boolean; afternoon: boolean }>();
+
+  for (const slot of slots) {
+    const dateKey = formatDatePt(slot.startsAt);
+    const hour = Number(formatSlot(slot.startsAt).match(/às (\d{2})h/)?.[1] ?? "0");
+    const current = byDate.get(dateKey) ?? {
+      date: slot.startsAt,
+      morning: false,
+      afternoon: false,
+    };
+    if (hour < 12) current.morning = true;
+    if (hour >= 12) current.afternoon = true;
+    byDate.set(dateKey, current);
+  }
+
+  return Array.from(byDate.values())
+    .slice(0, 6)
+    .map((day) => {
+      const periods = day.morning && day.afternoon ? "manhã/tarde" : day.morning ? "manhã" : "tarde";
+      return `${formatDatePt(day.date)} (${periods})`;
+    })
+    .join(", ");
 }
 
 async function sendAndRecordAgentReply(params: {

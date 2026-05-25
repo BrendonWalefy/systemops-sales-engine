@@ -47,13 +47,17 @@ export function parseCalendarRequest(text: string, now = new Date()): CalendarRe
   const asksAvailability =
     /\b(disponivel|disponiveis|disponibilidade|horario|horarios|agenda|vago|vagos)\b/.test(normalized);
   const asksScheduling =
-    /\b(agende|agenda|agendar|marque|marcar|reserve|reservar|confirme|confirmar)\b/.test(normalized);
+    /\b(agende|agenda|agendar|marque|marcar|reserve|reservar|confirme|confirmar|quero)\b/.test(normalized);
 
   if (asksScheduling && (requestedHour !== null || requestedDate || period)) {
     return { intent: "schedule_exact", requestedDate, requestedHour, period };
   }
 
-  if (asksAvailability || requestedDate || period) {
+  if (asksScheduling) {
+    return { intent: "ask_availability", requestedDate, requestedHour, period };
+  }
+
+  if (asksAvailability || requestedDate || requestedHour !== null || period) {
     return { intent: "ask_availability", requestedDate, requestedHour, period };
   }
 
@@ -101,7 +105,18 @@ function parseRequestedDate(normalizedText: string, now: Date): Date | null {
   }
 
   const explicit = normalizedText.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
-  if (!explicit) return null;
+  if (!explicit) {
+    const dayOnly = normalizedText.match(/\bdia\s+(\d{1,2})\b/);
+    if (!dayOnly) return null;
+
+    const day = Number(dayOnly[1]);
+    if (day < 1 || day > 31) return null;
+
+    const current = toClinicLocalParts(now);
+    const thisMonth = fromClinicLocalParts(current.year, current.month, day, 0);
+    if (thisMonth.getTime() >= today.getTime()) return thisMonth;
+    return fromClinicLocalParts(current.year, current.month + 1, day, 0);
+  }
 
   const day = Number(explicit[1]);
   const month = Number(explicit[2]) - 1;
