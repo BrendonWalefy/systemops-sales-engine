@@ -22,7 +22,7 @@ export type ActionResult =
       askedForPreference: boolean; // se true, LLM perguntou período antes
     }
   | { type: "appointment_confirmed"; slot: FormattedSlot; clinicName: string }
-  | { type: "appointment_cancelled" }
+  | { type: "appointment_cancelled"; count?: number }
   | { type: "appointment_rescheduled"; newSlots: FormattedSlot[] }
   | { type: "no_slots_available"; nextAvailableDate?: string }
   | { type: "clarification_needed"; question: string }
@@ -84,7 +84,8 @@ function buildActionContext(result: ActionResult): string {
   switch (result.type) {
     case "slots_found": {
       const slotList = result.slots.map((s) => `  Opção ${s.index}: ${s.label}`).join("\n");
-      return `AÇÃO EXECUTADA: Encontramos horários disponíveis. Apresente-os ao lead de forma conversacional, pedindo que escolha um (responda com o número).
+      return `AÇÃO EXECUTADA: Encontramos horários disponíveis. Apresente-os ao lead pedindo que escolha um (responda com o número).
+REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
 HORÁRIOS DISPONÍVEIS:
 ${slotList}`;
     }
@@ -95,13 +96,15 @@ HORÁRIO CONFIRMADO: ${result.slot.label}
 CLÍNICA: ${result.clinicName}
 Informe o lead de forma calorosa. Diga que a equipe estará esperando. Não peça confirmação novamente.`;
 
-    case "appointment_cancelled":
-      return `AÇÃO EXECUTADA: Agendamento cancelado com sucesso.
-Confirme o cancelamento de forma gentil. Deixe a porta aberta para um novo agendamento.`;
+    case "appointment_cancelled": {
+      const qty = result.count && result.count > 1 ? `${result.count} agendamentos` : "o agendamento";
+      return `AÇÃO EXECUTADA: ${qty} cancelado(s) com sucesso. NÃO mencione horários específicos — apenas confirme o cancelamento de forma gentil e deixe a porta aberta para um novo agendamento.`;
+    }
 
     case "appointment_rescheduled": {
       const slotList = result.newSlots.map((s) => `  Opção ${s.index}: ${s.label}`).join("\n");
       return `AÇÃO EXECUTADA: Agendamento anterior cancelado. Apresente os novos horários disponíveis.
+REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
@@ -162,8 +165,11 @@ export class ResponseComposer {
     const systemPrompt = buildSystemPrompt(input);
     const actionContext = buildActionContext(input.actionResult);
 
-    // Histórico recente para dar continuidade natural à conversa
-    const recentHistory = input.conversationHistory.slice(-6);
+    // Histórico recente — filtra mensagens de sistema (marcadores internos como __appointment_confirmed__)
+    // para evitar que o LLM use dados de agendamentos anteriores como referência de horários
+    const recentHistory = input.conversationHistory
+      .filter((m) => m.author !== "system" && !m.body.startsWith("__"))
+      .slice(-6);
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
       ...recentHistory.map((m): OpenAI.Chat.ChatCompletionMessageParam => ({
@@ -178,7 +184,7 @@ export class ResponseComposer {
 
     const response = await this.client.chat.completions.create({
       model: MODEL,
-      temperature: 0.7,
+      temperature: 0.3,
       max_tokens: 300,
       messages,
     });

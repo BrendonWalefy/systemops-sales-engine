@@ -290,17 +290,21 @@ export class ConversationOrchestrator {
 
       // ── Cancelamento ──
       case "cancel_appointment": {
-        const activeAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
+        const allActive = await this.appointmentRepo.findAllActiveByLeadId(lead.id);
 
-        if (!activeAppointment) {
+        if (allActive.length === 0) {
           replyText = await compose({ type: "no_appointments" });
           break;
         }
 
-        const cancelResult = await bookingService.cancel({ lead, appointment: activeAppointment });
+        // Cancela todos os appointments ativos em paralelo
+        const results = await Promise.all(
+          allActive.map((a) => bookingService.cancel({ lead, appointment: a })),
+        );
+        const anyFailed = results.some((r) => !r.success);
 
-        if (cancelResult.success) {
-          replyText = await compose({ type: "appointment_cancelled" });
+        if (!anyFailed) {
+          replyText = await compose({ type: "appointment_cancelled", count: allActive.length });
         } else {
           replyText = await compose({
             type: "clarification_needed",
