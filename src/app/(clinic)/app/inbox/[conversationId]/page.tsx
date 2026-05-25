@@ -7,6 +7,7 @@ import { appointments, conversations, leads, messages } from "@/infrastructure/d
 import { eq, asc, desc } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
+import { MessageInput } from "./MessageInput";
 
 const TZ = "America/Sao_Paulo";
 
@@ -127,36 +128,47 @@ export default async function ConversationPage({
           style={{
             display: "flex",
             flexDirection: "column",
-            padding: 24,
-            gap: 12,
             borderRight: "1px solid var(--line)",
-            overflowY: "auto",
+            minHeight: 0,
+            overflow: "hidden",
           }}
         >
-          <div className="chat-window" style={{ flex: 1, maxHeight: "none", minHeight: 0 }}>
-            {msgs.length === 0 && (
-              <div className="empty-conversation" style={{ margin: "auto" }}>
-                <strong>Sem mensagens</strong>
-                <span>As mensagens desta conversa aparecerão aqui.</span>
-              </div>
-            )}
-            {msgs.map((msg) => {
-              const isAgent = msg.author === "agent" || msg.author === "clinic_user";
-              return (
-                <div key={msg.id} className={`chat-message ${isAgent ? "agent" : "lead"}`}>
-                  <div className="message-meta">
-                    {isAgent ? (
-                      <span className="agent-badge">IA Recepcionista</span>
-                    ) : (
-                      <span className="lead-badge">{lead.name ?? lead.phone ?? "Lead"}</span>
-                    )}
-                    <span className="message-time">{formatTime(new Date(msg.sentAt))}</span>
-                  </div>
-                  <p>{msg.body}</p>
+          {/* Área de mensagens — scrollável */}
+          <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+            <div className="chat-window" style={{ flex: 1, maxHeight: "none", minHeight: 0 }}>
+              {msgs.length === 0 && (
+                <div className="empty-conversation" style={{ margin: "auto" }}>
+                  <strong>Sem mensagens</strong>
+                  <span>As mensagens desta conversa aparecerão aqui.</span>
                 </div>
-              );
-            })}
+              )}
+              {msgs.map((msg) => {
+                const isAgent = msg.author === "agent";
+                const isOperator = msg.author === "clinic_user";
+                const isRight = isAgent || isOperator;
+                return (
+                  <div key={msg.id} className={`chat-message ${isRight ? "agent" : "lead"}`}>
+                    <div className="message-meta">
+                      {isAgent && <span className="agent-badge">IA Recepcionista</span>}
+                      {isOperator && (
+                        <span className="agent-badge" style={{ color: "var(--cold)" }}>
+                          Operador
+                        </span>
+                      )}
+                      {!isRight && (
+                        <span className="lead-badge">{lead.name ?? lead.phone ?? "Lead"}</span>
+                      )}
+                      <span className="message-time">{formatTime(new Date(msg.sentAt))}</span>
+                    </div>
+                    <p>{msg.body}</p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Input fixo do operador */}
+          <MessageInput conversationId={conversationId} />
         </div>
 
         <div

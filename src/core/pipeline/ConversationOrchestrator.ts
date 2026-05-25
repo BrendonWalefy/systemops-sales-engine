@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, messages as messagesTable } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, count, gte } from "drizzle-orm";
 
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
@@ -29,6 +29,8 @@ import type { Clinic } from "@/domain/entities/clinic";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
 const MAX_SLOTS_TO_OFFER = 5;
+// Máx mensagens por hora do lead antes de silenciar a IA — protege custo e evita loop de spam
+const RATE_LIMIT_MESSAGES_PER_HOUR = 20;
 // Quando o lead já expressou preferência de dia+hora, menos opções = mais assertividade
 const SLOTS_WITH_DATE_AND_TIME = 2;
 const SLOTS_WITH_DATE_ONLY = 3;
@@ -137,14 +139,33 @@ export class ConversationOrchestrator {
       return { replied: false };
     }
 
-    // ── 5. Carrega histórico de mensagens ──
+    // ── 5. Rate limit — máx 20 msgs/hora do lead por conversa ──
+    // Protege custo OpenAI contra spam e loops. A mensagem já foi salva no passo 3.
+    const oneHourAgo = new Date(Date.now() - 60 * 60_000);
+    const rateRows = await db
+      .select({ total: count() })
+      .from(messagesTable)
+      .where(
+        and(
+          eq(messagesTable.conversationId, conversation.id),
+          eq(messagesTable.author, "lead"),
+          gte(messagesTable.sentAt, oneHourAgo),
+        ),
+      );
+    const msgCount = Number(rateRows[0]?.total ?? 0);
+    if (msgCount >= RATE_LIMIT_MESSAGES_PER_HOUR) {
+      console.warn(`[Orchestrator] Rate limit: ${phone} atingiu ${msgCount} msgs/h na conversa ${conversation.id}`);
+      return { replied: false };
+    }
+
+    // ── 7. Carrega histórico de mensagens ──
     const allMessages = await this.conversationRepo.listMessages(conversation.id);
 
-    // ── 6. Verifica oferta de slots pendente ──
+    // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
     const hasPendingOffer = pendingSlots !== null;
 
-    // ── 7. Classifica intenção com LLM estágio 1 ──
+    // ── 9. Classifica intenção com LLM estágio 1 ──
     const classification = await this.intentClassifier.classify(
       messageText,
       allMessages,
