@@ -504,6 +504,18 @@ export class ConversationOrchestrator {
         break;
       }
 
+      // ── Reconhecimento mid-conversa ──
+      case "acknowledgment": {
+        replyText = await compose({ type: "acknowledgment" });
+        break;
+      }
+
+      // ── Encerramento de conversa ──
+      case "farewell": {
+        replyText = await compose({ type: "farewell" });
+        break;
+      }
+
       // ── Unclear / General ──
       case "unclear":
       default: {

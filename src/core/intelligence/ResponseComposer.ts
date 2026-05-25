@@ -33,6 +33,8 @@ export type ActionResult =
   | { type: "price_inquiry" }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
+  | { type: "acknowledgment" }
+  | { type: "farewell" }
   | { type: "slots_expired"; freshSlots: FormattedSlot[] };
 
 export type ComposerInput = {
@@ -160,8 +162,16 @@ CONTEXTO DA CLÍNICA: ${result.clinicContext}
 Responda de forma informativa e acolhedora.`;
 
     case "greeting":
-      return `AÇÃO EXECUTADA: Lead enviou saudação.
-Responda com calor, pergunte como pode ajudar.`;
+      return `AÇÃO EXECUTADA: Lead enviou saudação — primeiro contato ou reinício de conversa.
+Responda com calor e pergunte como pode ajudar. Se há histórico de conversa, não reinicie do zero — apenas cumprimente brevemente.`;
+
+    case "acknowledgment":
+      return `AÇÃO EXECUTADA: Lead enviou reconhecimento mid-conversa ("ok", "blz", "entendi", "certo", "obrigado" após info).
+Responda com UMA frase curta e calorosa. NÃO faça perguntas. NÃO use "Como posso ajudar?". NÃO reinicie a conversa. Exemplos aceitáveis: "Fico à disposição! 😊", "Qualquer coisa é só chamar!", "Com certeza, estarei por aqui!"`;
+
+    case "farewell":
+      return `AÇÃO EXECUTADA: Lead está encerrando a conversa ("obrigado tchau", "até mais", "valeu", "certo obrigado").
+Responda com despedida calorosa em UMA frase. Deixe a porta aberta para contato futuro. NÃO ofereça serviços agora. NÃO pergunte "posso ajudar em algo mais?". Exemplos: "Foi um prazer! Se precisar de qualquer coisa, estarei por aqui 😊", "Até logo! Qualquer dúvida, é só chamar."`;
 
     case "slots_expired": {
       const slotList = result.freshSlots.map((s) => `  Opção ${s.index}: ${s.label}`).join("\n");

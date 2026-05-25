@@ -25,7 +25,9 @@ export type IntentType =
   | "price_inquiry"           // perguntou sobre preço/valor
   | "clinical_urgency"        // menciona dor, urgência, sangramento
   | "general_question"        // pergunta geral sobre a clínica
-  | "greeting"                // apenas cumprimentou
+  | "greeting"                // primeiro contato genuíno, sem histórico relevante
+  | "acknowledgment"          // reconhecimento mid-conversa: "ok", "blz", "entendi", "certo"
+  | "farewell"                // encerramento: "obrigado tchau", "valeu", "até mais"
   | "unclear";                // não foi possível entender
 
 export type IntentClassification = {
@@ -47,8 +49,20 @@ REGRAS GERAIS:
 - "nenhum desses", "outro horário", "não tenho disponibilidade" → intent = "reject_slots"
 - "quanto custa", "qual o valor", "tem plano" → intent = "price_inquiry"
 - "dor", "urgência", "sangramento", "emergência", "urgente" → intent = "clinical_urgency"
-- Se a mensagem é só "oi", "olá", "bom dia" sem contexto adicional → intent = "greeting"
-- Se genuinamente não entendeu → intent = "unclear" com clarificationQuestion preenchida
+
+REGRAS CRÍTICAS PARA ENCERRAMENTO E RECONHECIMENTO:
+- "opa blz", "blz", "ok", "entendi", "certo", "tá", "tá bom", "legal", "bacana", "perfeito", "combinado", "show" quando há histórico de conversa → intent = "acknowledgment"
+- "obrigado" isolado após receber informação (ex: após receber resposta sobre preço, formas de pagamento, procedimentos) → intent = "acknowledgment"
+- "obrigado" + sinal de encerramento ("tchau", "até mais", "até logo", "valeu", "certo obrigado", "ok obrigado", "tá obrigado") → intent = "farewell"
+- "tchau", "até mais", "até logo", "até breve", "foi um prazer", "a gente se fala" → intent = "farewell"
+- Mensagem vaga/ambígua que não tem conteúdo de negócio (ex: "esse é o normal", "né", "é") quando há contexto de conversa → intent = "acknowledgment" (não é unclear)
+
+REGRA PARA greeting:
+- intent = "greeting" SOMENTE quando é genuinamente o primeiro contato sem histórico OU quando o lead recomeça do zero com nova saudação após longa ausência
+- "oi", "olá", "bom dia", "boa tarde" COM histórico de conversa ativo → intent = "acknowledgment", NÃO "greeting"
+
+REGRA PARA unclear:
+- Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.
 
 DISTINÇÃO CRÍTICA — list_appointments vs check_availability:
 - "list_appointments": lead pergunta sobre OS PRÓPRIOS agendamentos já marcados.
@@ -88,6 +102,8 @@ const RESPONSE_SCHEMA = {
         "clinical_urgency",
         "general_question",
         "greeting",
+        "acknowledgment",
+        "farewell",
         "unclear",
       ],
     },
