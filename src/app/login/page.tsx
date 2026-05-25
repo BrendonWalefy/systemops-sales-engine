@@ -1,5 +1,5 @@
 import { Zap } from "lucide-react";
-import { login } from "./actions";
+import { LoginForm } from "./LoginForm";
 
 export default async function LoginPage({
   searchParams,
@@ -72,53 +72,7 @@ export default async function LoginPage({
             </p>
           </div>
 
-          {error && (
-            <div
-              style={{
-                border: "1px solid color-mix(in srgb, var(--danger) 36%, transparent)",
-                borderRadius: 8,
-                background: "rgba(239, 68, 68, 0.08)",
-                color: "var(--danger)",
-                fontSize: 13,
-                fontWeight: 600,
-                padding: "10px 14px",
-              }}
-            >
-              E-mail ou senha incorretos.
-            </div>
-          )}
-
-          <form action={login} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <label>
-              E-mail
-              <input
-                name="email"
-                type="email"
-                placeholder="seu@email.com"
-                required
-                autoComplete="email"
-              />
-            </label>
-
-            <label>
-              Senha
-              <input
-                name="password"
-                type="password"
-                placeholder="••••••••"
-                required
-                autoComplete="current-password"
-              />
-            </label>
-
-            <button
-              type="submit"
-              className="primary-button"
-              style={{ marginTop: 4, width: "100%", height: 42, fontSize: 14 }}
-            >
-              Entrar
-            </button>
-          </form>
+          <LoginForm error={error} />
         </div>
 
         <p style={{ textAlign: "center", fontSize: 12, color: "var(--muted)", margin: 0 }}>
