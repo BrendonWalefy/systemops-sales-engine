@@ -19,6 +19,9 @@ export type Conversation = {
   externalThreadId: string | null;
   summary: string | null;
   aiPaused: boolean;
+  needsAttention: boolean;
+  attentionReason: string | null;
+  consecutiveUnclearCount: number;
   lastMessageAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

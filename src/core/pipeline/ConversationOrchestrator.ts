@@ -5,7 +5,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, messages as messagesTable } from "@/infrastructure/db/schema";
+import { clinics, conversations as conversationsTable, messages as messagesTable } from "@/infrastructure/db/schema";
 import { eq, and, count, gte } from "drizzle-orm";
 
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
@@ -29,10 +29,10 @@ import type { Clinic } from "@/domain/entities/clinic";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
 const MAX_SLOTS_TO_OFFER = 5;
-// Máx mensagens por hora do lead antes de silenciar a IA — protege custo e evita loop de spam
 const RATE_LIMIT_MESSAGES_PER_HOUR = 20;
-// Quando o lead já expressou preferência de dia+hora, menos opções = mais assertividade
 const SLOTS_WITH_DATE_AND_TIME = 2;
+// Quantas classificações unclear consecutivas disparam notificação ao operador
+const UNCLEAR_THRESHOLD = 3;
 const SLOTS_WITH_DATE_ONLY = 3;
 
 type ClinicRow = typeof clinics.$inferSelect;
@@ -488,7 +488,11 @@ export class ConversationOrchestrator {
       // ── Urgência clínica ──
       case "clinical_urgency": {
         replyText = await compose({ type: "clinical_urgency" });
-        await this.notifyHandoff(clinic, phone);
+        await db
+          .update(conversationsTable)
+          .set({ needsAttention: true, attentionReason: "Urgência clínica relatada pelo lead", updatedAt: new Date() })
+          .where(eq(conversationsTable.id, conversation.id));
+        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, "Urgência clínica relatada");
         break;
       }
 
@@ -534,10 +538,39 @@ export class ConversationOrchestrator {
       }
     }
 
-    // ── 8. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
+    // ── 8. Atualiza contador de unclear e flag needsAttention ──
+    const isUnclear = intent === "unclear";
+    const resetsClarity = !isUnclear && intent !== "greeting" && intent !== "acknowledgment";
+
+    if (isUnclear) {
+      const newCount = (conversation.consecutiveUnclearCount ?? 0) + 1;
+      const hitThreshold = newCount === UNCLEAR_THRESHOLD;
+      await db
+        .update(conversationsTable)
+        .set({
+          consecutiveUnclearCount: newCount,
+          ...(hitThreshold && {
+            needsAttention: true,
+            attentionReason: "Lead enviou 3 mensagens sem que a IA conseguisse entender",
+          }),
+          updatedAt: new Date(),
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+
+      if (hitThreshold) {
+        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, "Não conseguiu entender o lead após 3 tentativas");
+      }
+    } else if (resetsClarity && (conversation.consecutiveUnclearCount ?? 0) > 0) {
+      await db
+        .update(conversationsTable)
+        .set({ consecutiveUnclearCount: 0, updatedAt: new Date() })
+        .where(eq(conversationsTable.id, conversation.id));
+    }
+
+    // ── 9. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
     const zapiMessageId = await sendTextMessage(phone, replyText);
 
-    // ── 9. Salva mensagem do agente no histórico ──
+    // ── 10. Salva mensagem do agente no histórico ──
     const agentMessageId = randomUUID();
     await this.conversationRepo.appendMessage({
       id: agentMessageId,
@@ -548,7 +581,7 @@ export class ConversationOrchestrator {
       externalId: zapiMessageId ?? null,
     });
 
-    // ── 10. Registra custo do LLM (classifier + composer) ──
+    // ── 11. Registra custo do LLM (classifier + composer) ──
     if (composerInputTokens > 0) {
       await usageCostTracker.trackAiUsage({
         clinicId,
@@ -690,6 +723,26 @@ export class ConversationOrchestrator {
 
     const slots = await this.stateMachine.offerSlots(conversationId, best, timezone);
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
+  }
+
+  private async notifyAttentionNeeded(
+    clinic: Clinic,
+    leadPhone: string,
+    leadName: string | null,
+    reason: string,
+  ): Promise<void> {
+    const receptPhone = process.env.RECEPTIONIST_PHONE_NUMBER;
+    if (!receptPhone) return;
+
+    const leadLabel = leadName ? `${leadName} (${leadPhone})` : leadPhone;
+    try {
+      await sendTextMessage(
+        receptPhone,
+        `⚠️ *Atenção necessária — ${clinic.name}*\n\nLead: ${leadLabel}\nMotivo: ${reason}\n\nAcesse o Inbox para retomar o atendimento manualmente.`,
+      );
+    } catch (err) {
+      console.error("[Orchestrator] Failed to send attention notification:", err);
+    }
   }
 
   private async notifyHandoff(clinic: Clinic, leadPhone: string): Promise<void> {

@@ -52,7 +52,7 @@ async function handleOperatorMessageFromPhone(
 
   await db
     .update(conversations)
-    .set({ aiPaused: true, lastMessageAt: now, updatedAt: now })
+    .set({ aiPaused: true, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
     .where(eq(conversations.id, conv.id));
 
   console.log(`[ZApi] Operador enviou mensagem direto pelo celular para ${leadPhone} — IA pausada`);

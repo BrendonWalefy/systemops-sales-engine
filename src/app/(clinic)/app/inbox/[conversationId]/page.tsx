@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
 import { appointments, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
-import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
+import { ArrowLeft, Phone, Calendar, ExternalLink, AlertTriangle } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
 import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
@@ -113,6 +113,14 @@ export default async function ConversationPage({
           {sLabel}
         </span>
       </div>
+
+      {conv.needsAttention && (
+        <div className="attention-banner-conv">
+          <AlertTriangle size={14} />
+          <span>{conv.attentionReason ?? "Esta conversa precisa de atenção"}</span>
+          <span style={{ opacity: 0.6, fontSize: 11 }}>— Será limpo automaticamente quando você enviar uma mensagem</span>
+        </div>
+      )}
 
       <div className="conv-body">
         <div

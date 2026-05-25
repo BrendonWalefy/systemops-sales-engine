@@ -57,6 +57,13 @@
       "when": 1779682141343,
       "tag": "0007_fair_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779752311346,
+      "tag": "0008_high_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { db } from "@/infrastructure/db/client";
 import { conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { MessageSquare, Inbox } from "lucide-react";
+import { MessageSquare, Inbox, AlertTriangle } from "lucide-react";
 import { InboxPoller } from "./InboxPoller";
 
 function relativeTime(date: Date): string {
@@ -44,6 +44,8 @@ export default async function InboxPage() {
     .select({
       convId: conversations.id,
       lastMessageAt: conversations.lastMessageAt,
+      needsAttention: conversations.needsAttention,
+      attentionReason: conversations.attentionReason,
       leadName: leads.name,
       leadPhone: leads.phone,
       leadStatus: leads.status,
@@ -68,6 +70,13 @@ export default async function InboxPage() {
 
   const lastMsgMap = Object.fromEntries(lastMessages.map((m) => [m.convId, m.body]));
   const activeCount = rows.filter((r) => r.leadStatus !== "lost" && r.leadStatus !== "won").length;
+
+  // Conversas que precisam de atenção aparecem primeiro
+  const sortedRows = [...rows].sort((a, b) => {
+    if (a.needsAttention && !b.needsAttention) return -1;
+    if (!a.needsAttention && b.needsAttention) return 1;
+    return 0;
+  });
 
   return (
     <div>
@@ -94,7 +103,7 @@ export default async function InboxPage() {
           </div>
         ) : (
           <div className="conversation-list">
-            {rows.map((row) => {
+            {sortedRows.map((row) => {
               const initial = row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0] ?? "?";
               const displayName = row.leadName ?? row.leadPhone ?? "Lead";
               const preview = (lastMsgMap[row.convId] ?? "").slice(0, 60);
@@ -107,7 +116,13 @@ export default async function InboxPage() {
                   href={`/app/inbox/${row.convId}`}
                   style={{ textDecoration: "none" }}
                 >
-                  <div className="conversation-card">
+                  <div className={`conversation-card${row.needsAttention ? " needs-attention" : ""}`}>
+                    {row.needsAttention && (
+                      <div className="attention-banner">
+                        <AlertTriangle size={12} />
+                        <span>{row.attentionReason ?? "Atenção necessária"}</span>
+                      </div>
+                    )}
                     <div className="conversation-row">
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div className="avatar" style={{ width: 40, height: 40, fontSize: 15 }}>
