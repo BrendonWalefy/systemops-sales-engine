@@ -197,6 +197,14 @@ export class ConversationOrchestrator {
           break;
         }
 
+        // Opção B: cancela appointment ativo existente antes de criar novo.
+        // Garante que o lead nunca acumule múltiplos agendamentos ativos —
+        // qualquer nova confirmação é tratada como remarcação implícita.
+        const existingAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
+        if (existingAppointment) {
+          await bookingService.cancel({ lead, appointment: existingAppointment });
+        }
+
         const result = await bookingService.book({
           clinic,
           lead,
