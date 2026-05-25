@@ -534,8 +534,8 @@ export class ConversationOrchestrator {
       }
     }
 
-    // ── 8. Envia resposta ──
-    await sendTextMessage(phone, replyText);
+    // ── 8. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
+    const zapiMessageId = await sendTextMessage(phone, replyText);
 
     // ── 9. Salva mensagem do agente no histórico ──
     const agentMessageId = randomUUID();
@@ -545,7 +545,7 @@ export class ConversationOrchestrator {
       author: "agent",
       body: replyText,
       sentAt: new Date(),
-      externalId: null,
+      externalId: zapiMessageId ?? null,
     });
 
     // ── 10. Registra custo do LLM (classifier + composer) ──

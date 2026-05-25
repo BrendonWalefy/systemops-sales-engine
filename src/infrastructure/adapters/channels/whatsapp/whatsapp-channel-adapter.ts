@@ -27,7 +27,7 @@ export class WhatsAppChannelAdapter implements ChannelAdapter {
   }
 }
 
-export async function sendWhatsAppTextMessage(to: string, text: string): Promise<void> {
+export async function sendWhatsAppTextMessage(to: string, text: string): Promise<string | null> {
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
@@ -56,4 +56,6 @@ export async function sendWhatsAppTextMessage(to: string, text: string): Promise
     const error = await response.text();
     throw new Error(`WhatsApp send failed (${response.status}): ${error}`);
   }
+
+  return null; // Meta Cloud API messageId not needed for fromMe deduplication
 }

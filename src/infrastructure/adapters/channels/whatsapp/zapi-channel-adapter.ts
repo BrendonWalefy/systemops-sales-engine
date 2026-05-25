@@ -47,7 +47,7 @@ export class ZApiChannelAdapter implements ChannelAdapter {
   }
 }
 
-export async function sendZApiTextMessage(phone: string, text: string): Promise<void> {
+export async function sendZApiTextMessage(phone: string, text: string): Promise<string | null> {
   const instanceId = process.env.ZAPI_INSTANCE_ID;
   const token = process.env.ZAPI_TOKEN;
   const clientToken = process.env.ZAPI_CLIENT_TOKEN;
@@ -73,5 +73,13 @@ export async function sendZApiTextMessage(phone: string, text: string): Promise<
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Z-API send failed (${response.status}): ${error}`);
+  }
+
+  // Z-API returns { zaapId, messageId } — messageId matches the webhook fromMe payload
+  try {
+    const data = await response.json() as { messageId?: string; zaapId?: string };
+    return data.messageId ?? data.zaapId ?? null;
+  } catch {
+    return null;
   }
 }

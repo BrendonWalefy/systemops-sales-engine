@@ -64,10 +64,11 @@ export async function POST(
   }
 
   const now = new Date();
+  const msgId = randomUUID();
 
-  // ── 5. Persiste mensagem do operador ──
+  // ── 5. Persiste mensagem do operador antes do envio (auditabilidade) ──
   await db.insert(messages).values({
-    id: randomUUID(),
+    id: msgId,
     conversationId,
     author: "clinic_user",
     body: messageText,
@@ -75,13 +76,16 @@ export async function POST(
     externalId: null,
   });
 
-  // ── 6. Envia via WhatsApp ──
+  // ── 6. Envia via WhatsApp e captura messageId para deduplicar echo fromMe ──
   try {
-    await sendTextMessage(phone, messageText);
+    const zapiMessageId = await sendTextMessage(phone, messageText);
+    // Salva o messageId retornado pelo Z-API para que o webhook fromMe identifique
+    // este envio como nosso e não crie uma mensagem duplicada na conversa.
+    if (zapiMessageId) {
+      await db.update(messages).set({ externalId: zapiMessageId }).where(eq(messages.id, msgId));
+    }
   } catch (err) {
     console.error("[Operator Send] WhatsApp send failed:", err);
-    // Mensagem já salva no banco — operador sabe que foi registrada.
-    // Retorna 502 para o cliente mostrar erro, mas sem reverter (auditabilidade).
     return NextResponse.json({ error: "WhatsApp send failed — mensagem salva mas não entregue" }, { status: 502 });
   }
 
