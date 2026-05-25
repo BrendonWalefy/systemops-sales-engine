@@ -5,6 +5,7 @@ import { db } from "@/infrastructure/db/client";
 import { conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { MessageSquare, Inbox } from "lucide-react";
+import { InboxPoller } from "./InboxPoller";
 
 function relativeTime(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -70,6 +71,7 @@ export default async function InboxPage() {
 
   return (
     <div>
+      <InboxPoller />
       <div className="product-topbar">
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
@@ -81,7 +83,7 @@ export default async function InboxPage() {
         </div>
       </div>
 
-      <div style={{ padding: "0 28px 28px" }}>
+      <div className="inbox-content">
         {rows.length === 0 ? (
           <div className="empty-state">
             <Inbox size={32} style={{ margin: "0 auto 12px", display: "block", opacity: 0.4 }} />

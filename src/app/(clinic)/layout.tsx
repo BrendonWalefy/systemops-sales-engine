@@ -9,7 +9,7 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
   const session = token ? await verifyToken(token) : null;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", minHeight: "100vh" }}>
+    <div className="clinic-layout">
       <SidebarNav email={session?.email} />
       <main style={{ minWidth: 0, overflowX: "hidden" }}>{children}</main>
     </div>

@@ -32,7 +32,7 @@ export function SidebarNav({ email }: { email?: string }) {
         ))}
       </nav>
 
-      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="sidebar-bottom" style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
         <form action={logout}>
           <button
             type="submit"

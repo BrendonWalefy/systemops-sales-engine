@@ -8,6 +8,7 @@ import { eq, asc, desc } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
 import { MessageInput } from "./MessageInput";
+import { ChatWindow } from "./ChatWindow";
 
 const TZ = "America/Sao_Paulo";
 
@@ -88,18 +89,8 @@ export default async function ConversationPage({
   const { label: sLabel, handoff } = statusLabel(lead.status);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-          padding: "16px 28px",
-          borderBottom: "1px solid var(--line)",
-          background: "var(--surface)",
-          flexShrink: 0,
-        }}
-      >
+    <div className="conv-root">
+      <div className="conv-header">
         <Link
           href="/app/inbox"
           style={{
@@ -123,7 +114,7 @@ export default async function ConversationPage({
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", flex: 1, minHeight: 0 }}>
+      <div className="conv-body">
         <div
           style={{
             display: "flex",
@@ -133,54 +124,19 @@ export default async function ConversationPage({
             overflow: "hidden",
           }}
         >
-          {/* Área de mensagens — scrollável */}
-          <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-            <div className="chat-window" style={{ flex: 1, maxHeight: "none", minHeight: 0 }}>
-              {msgs.length === 0 && (
-                <div className="empty-conversation" style={{ margin: "auto" }}>
-                  <strong>Sem mensagens</strong>
-                  <span>As mensagens desta conversa aparecerão aqui.</span>
-                </div>
-              )}
-              {msgs.map((msg) => {
-                const isAgent = msg.author === "agent";
-                const isOperator = msg.author === "clinic_user";
-                const isRight = isAgent || isOperator;
-                return (
-                  <div key={msg.id} className={`chat-message ${isRight ? "agent" : "lead"}`}>
-                    <div className="message-meta">
-                      {isAgent && <span className="agent-badge">IA Recepcionista</span>}
-                      {isOperator && (
-                        <span className="agent-badge" style={{ color: "var(--cold)" }}>
-                          Operador
-                        </span>
-                      )}
-                      {!isRight && (
-                        <span className="lead-badge">{lead.name ?? lead.phone ?? "Lead"}</span>
-                      )}
-                      <span className="message-time">{formatTime(new Date(msg.sentAt))}</span>
-                    </div>
-                    <p>{msg.body}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {/* Área de mensagens — scrollável, com polling e auto-scroll */}
+          <ChatWindow
+            initialMessages={msgs}
+            conversationId={conversationId}
+            leadName={lead.name ?? null}
+            leadPhone={lead.phone ?? null}
+          />
 
           {/* Input fixo do operador */}
           <MessageInput conversationId={conversationId} />
         </div>
 
-        <div
-          style={{
-            padding: 20,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            overflowY: "auto",
-            background: "color-mix(in srgb, var(--surface) 76%, transparent)",
-          }}
-        >
+        <div className="conv-lead-panel">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div className="avatar">{initial}</div>
             <div>
