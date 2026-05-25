@@ -40,7 +40,7 @@ const SYSTEM_PROMPT = `Você é um classificador de intenções para uma recepci
 
 Sua única função é analisar a última mensagem do lead e retornar um JSON estruturado com a intenção detectada.
 
-REGRAS:
+REGRAS GERAIS:
 - Analise SEMPRE no contexto da conversa anterior
 - Se o lead mandou "1", "2" ou "3" e há contexto de oferta de horários → intent = "confirm_slot" com slotChoice = número
 - Se o lead disse "pode ser", "esse", "quero esse", "tá bom" após oferta → intent = "confirm_slot"
@@ -49,6 +49,16 @@ REGRAS:
 - "dor", "urgência", "sangramento", "emergência", "urgente" → intent = "clinical_urgency"
 - Se a mensagem é só "oi", "olá", "bom dia" sem contexto adicional → intent = "greeting"
 - Se genuinamente não entendeu → intent = "unclear" com clarificationQuestion preenchida
+
+DISTINÇÃO CRÍTICA — list_appointments vs check_availability:
+- "list_appointments": lead pergunta sobre OS PRÓPRIOS agendamentos já marcados.
+  Exemplos: "tenho algum agendamento?", "o que tenho marcado?", "meus horários",
+  "tem algum agendamento para amanhã?", "tenho consulta essa semana?",
+  "quando é minha consulta?", "qual meu horário?", "tem algo marcado para mim?"
+- "check_availability": lead pergunta sobre horários DISPONÍVEIS para agendar.
+  Exemplos: "quais horários disponíveis?", "tem vaga amanhã?", "quando posso agendar?",
+  "quero ver os horários livres", "tem horário na sexta?"
+- Dúvida entre os dois → prefira "list_appointments" se o lead não indicou intenção de agendar
 
 Para preferências de horário:
 - Extraia "amanhã", "sexta", "próxima semana", datas explícitas → preferredDate (verbatim do texto)

@@ -338,19 +338,17 @@ export class ConversationOrchestrator {
 
       // ── Listar agendamentos ──
       case "list_appointments": {
-        const activeAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
+        const activeAppointments = await this.appointmentRepo.findAllActiveByLeadId(lead.id);
 
-        if (!activeAppointment) {
+        if (activeAppointments.length === 0) {
           replyText = await compose({ type: "no_appointments" });
         } else {
           replyText = await compose({
             type: "appointments_listed",
-            appointments: [
-              {
-                label: timezone.formatForConfirmation(activeAppointment.startsAt),
-                status: activeAppointment.status,
-              },
-            ],
+            appointments: activeAppointments.map((a) => ({
+              label: timezone.formatForConfirmation(a.startsAt),
+              status: a.status,
+            })),
           });
         }
         break;

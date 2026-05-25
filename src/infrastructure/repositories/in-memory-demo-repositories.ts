@@ -95,6 +95,14 @@ export class InMemoryDemoStore
     );
   }
 
+  async findAllActiveByLeadId(leadId: string): Promise<Appointment[]> {
+    return Array.from(this.appointments.values()).filter(
+      (appointment) =>
+        appointment.leadId === leadId &&
+        (appointment.status === "scheduled" || appointment.status === "confirmed"),
+    );
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     this.conversations.set(conversation.id, conversation);
   }

@@ -49,6 +49,17 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     });
     return row ? mapRow(row) : null;
   }
+
+  async findAllActiveByLeadId(leadId: string): Promise<Appointment[]> {
+    const rows = await db.query.appointments.findMany({
+      where: and(
+        eq(appointments.leadId, leadId),
+        inArray(appointments.status, ["scheduled", "confirmed"]),
+      ),
+      orderBy: [desc(appointments.startsAt)],
+    });
+    return rows.map(mapRow);
+  }
 }
 
 function mapRow(row: typeof appointments.$inferSelect): Appointment {
