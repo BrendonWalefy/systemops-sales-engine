@@ -13,6 +13,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         clinicId: appointment.clinicId,
         leadId: appointment.leadId,
         calendarEventId: appointment.calendarEventId,
+        calendarEventUrl: appointment.calendarEventUrl,
         startsAt: appointment.startsAt,
         endsAt: appointment.endsAt,
         status: appointment.status,
@@ -23,6 +24,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         target: appointments.id,
         set: {
           calendarEventId: appointment.calendarEventId,
+          calendarEventUrl: appointment.calendarEventUrl,
           startsAt: appointment.startsAt,
           endsAt: appointment.endsAt,
           status: appointment.status,
@@ -68,6 +70,7 @@ function mapRow(row: typeof appointments.$inferSelect): Appointment {
     clinicId: row.clinicId,
     leadId: row.leadId,
     calendarEventId: row.calendarEventId,
+    calendarEventUrl: row.calendarEventUrl,
     startsAt: row.startsAt,
     endsAt: row.endsAt,
     status: row.status,

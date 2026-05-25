@@ -32,20 +32,22 @@ export function SidebarNav() {
         ))}
       </nav>
 
-      <form action={logout} style={{ marginTop: "auto" }}>
-        <button
-          type="submit"
-          className="side-nav-item"
-          style={{ width: "100%", border: "none", cursor: "pointer" }}
-        >
-          <LogOut size={15} strokeWidth={2} />
-          <span className="nav-label">Sair</span>
-        </button>
-      </form>
+      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        <form action={logout}>
+          <button
+            type="submit"
+            className="side-nav-item"
+            style={{ width: "100%", border: "none", cursor: "pointer" }}
+          >
+            <LogOut size={15} strokeWidth={2} />
+            <span className="nav-label">Sair</span>
+          </button>
+        </form>
 
-      <div className="sidebar-footer">
-        <div className="live-dot" />
-        <span className="footer-label">SystemOps</span>
+        <div className="sidebar-footer">
+          <div className="live-dot" />
+          <span className="footer-label">SystemOps</span>
+        </div>
       </div>
     </aside>
   );

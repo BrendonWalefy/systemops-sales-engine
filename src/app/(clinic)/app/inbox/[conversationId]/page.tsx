@@ -8,12 +8,14 @@ import { eq, asc, desc } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { AssumeButton } from "./assume-button";
 
+const TZ = "America/Sao_Paulo";
+
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: TZ });
 }
 
 function tempLabel(temp: string | null) {
@@ -192,8 +194,8 @@ export default async function ConversationPage({
             {lead.phone && (
               <div className="signal">
                 <span>Telefone</span>
-                <strong style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <Phone size={12} />
+                <strong style={{ display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <Phone size={12} style={{ flexShrink: 0 }} />
                   {lead.phone}
                 </strong>
               </div>
@@ -229,9 +231,9 @@ export default async function ConversationPage({
                 <span>Status</span>
                 <strong>{appointment.status === "confirmed" ? "Confirmado" : "Agendado"}</strong>
               </div>
-              {appointment.calendarEventId && (
+              {appointment.calendarEventUrl && (
                 <a
-                  href={`https://calendar.google.com/calendar/r/eventedit/${appointment.calendarEventId}`}
+                  href={appointment.calendarEventUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--accent)", textDecoration: "none", marginTop: 2 }}

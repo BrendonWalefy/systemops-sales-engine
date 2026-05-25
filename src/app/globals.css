@@ -280,7 +280,6 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-soft);

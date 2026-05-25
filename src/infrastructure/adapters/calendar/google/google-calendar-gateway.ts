@@ -197,7 +197,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       throw new Error(`Google Calendar createEvent failed: ${err}`);
     }
 
-    const event = (await res.json()) as { id: string };
+    const event = (await res.json()) as { id: string; htmlLink?: string };
     const now = new Date();
 
     return {
@@ -205,6 +205,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       clinicId: input.clinicId,
       leadId: input.leadId,
       calendarEventId: event.id,
+      calendarEventUrl: event.htmlLink ?? null,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
       status: "scheduled",

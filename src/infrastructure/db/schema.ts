@@ -253,6 +253,7 @@ export const appointments = pgTable(
       .notNull()
       .references(() => leads.id),
     calendarEventId: text("calendar_event_id"),
+    calendarEventUrl: text("calendar_event_url"),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     status: appointmentStatusEnum("status").notNull().default("scheduled"),

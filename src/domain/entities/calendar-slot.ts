@@ -12,6 +12,7 @@ export type Appointment = {
   clinicId: string;
   leadId: string;
   calendarEventId: string | null;
+  calendarEventUrl: string | null;
   startsAt: Date;
   endsAt: Date;
   status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show";

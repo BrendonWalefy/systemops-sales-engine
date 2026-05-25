@@ -10,7 +10,7 @@ export default function DashboardLoading() {
 
       {/* KPI strip */}
       <div className="kpi-strip">
-        {Array.from({ length: 6 }).map((_, i) => (
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="metric">
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
               <div className="skeleton" style={{ width: 20, height: 20, borderRadius: 4 }} />

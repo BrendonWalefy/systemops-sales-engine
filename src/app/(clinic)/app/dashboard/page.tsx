@@ -5,15 +5,11 @@ import {
   leads,
   conversations,
   messages,
-  aiUsageCosts,
-  whatsappMessageCosts,
 } from "@/infrastructure/db/schema";
-import { eq, count, sum, and, desc, sql } from "drizzle-orm";
+import { eq, count, and, desc, sql } from "drizzle-orm";
 import {
   Users,
   Calendar,
-  MessageSquare,
-  Zap,
   AlertTriangle,
   Moon,
   Flame,
@@ -22,10 +18,6 @@ import {
 } from "lucide-react";
 
 const CLINIC_ID = process.env.PILOT_CLINIC_ID ?? "";
-
-function formatCurrency(micros: number): string {
-  return "$" + (micros / 1_000_000).toFixed(4);
-}
 
 function formatDate(date: Date): string {
   return date.toLocaleDateString("pt-BR", {
@@ -95,8 +87,6 @@ async function fetchDashboardData() {
       scheduledCount: 0,
       handoffCount: 0,
       afterHoursCount: 0,
-      aiCostMicros: 0,
-      waCostMicros: 0,
       recentLeads: [] as Array<{
         id: string;
         name: string | null;
@@ -114,8 +104,6 @@ async function fetchDashboardData() {
     totalLeadsResult,
     scheduledResult,
     handoffResult,
-    aiCostResult,
-    waCostResult,
     recentLeadsResult,
     tempHotResult,
     tempWarmResult,
@@ -124,8 +112,6 @@ async function fetchDashboardData() {
     db.select({ count: count() }).from(leads).where(eq(leads.clinicId, CLINIC_ID)),
     db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.status, "appointment_scheduled"))),
     db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.temperature, "hot"), eq(leads.status, "in_conversation"))),
-    db.select({ total: sum(aiUsageCosts.estimatedCostUsdMicros) }).from(aiUsageCosts).where(eq(aiUsageCosts.clinicId, CLINIC_ID)),
-    db.select({ total: sum(whatsappMessageCosts.estimatedCostUsdMicros) }).from(whatsappMessageCosts).where(eq(whatsappMessageCosts.clinicId, CLINIC_ID)),
     db.select({ id: leads.id, name: leads.name, phone: leads.phone, channel: leads.channel, status: leads.status, temperature: leads.temperature, createdAt: leads.createdAt }).from(leads).where(eq(leads.clinicId, CLINIC_ID)).orderBy(desc(leads.createdAt)).limit(15),
     db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.temperature, "hot"))),
     db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.temperature, "warm"))),
@@ -150,8 +136,6 @@ async function fetchDashboardData() {
     scheduledCount: scheduledResult[0]?.count ?? 0,
     handoffCount: handoffResult[0]?.count ?? 0,
     afterHoursCount: afterHoursResult[0]?.count ?? 0,
-    aiCostMicros: Number(aiCostResult[0]?.total ?? 0),
-    waCostMicros: Number(waCostResult[0]?.total ?? 0),
     recentLeads: recentLeadsResult,
     tempCounts: {
       hot: tempHotResult[0]?.count ?? 0,
@@ -212,23 +196,6 @@ export default async function DashboardPage() {
           <span className="metric-context">mensagens entre 18h–8h</span>
         </div>
 
-        <div className="metric">
-          <div className="metric-header">
-            <span className="metric-icon"><Zap size={14} /></span>
-            <span className="metric-label">Custo IA (est.)</span>
-          </div>
-          <span className="metric-value">{formatCurrency(data.aiCostMicros)}</span>
-          <span className="metric-context">OpenAI acumulado</span>
-        </div>
-
-        <div className="metric">
-          <div className="metric-header">
-            <span className="metric-icon"><MessageSquare size={14} /></span>
-            <span className="metric-label">Custo WhatsApp (est.)</span>
-          </div>
-          <span className="metric-value">{formatCurrency(data.waCostMicros)}</span>
-          <span className="metric-context">Z-API / Meta acumulado</span>
-        </div>
       </div>
 
       <div style={{ padding: "0 30px 24px", display: "grid", gap: 24 }}>
