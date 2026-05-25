@@ -359,5 +359,9 @@ export const slotReservations = pgTable(
       table.startsAt,
     ),
     clinicLeadIdx: index("slot_reservations_clinic_lead_idx").on(table.clinicId, table.leadId),
+    clinicStartsAtUnique: uniqueIndex("slot_reservations_clinic_starts_at_unique").on(
+      table.clinicId,
+      table.startsAt,
+    ),
   }),
 );

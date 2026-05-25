@@ -36,6 +36,13 @@
       "when": 1779671857325,
       "tag": "0004_striped_firedrake",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779673423331,
+      "tag": "0005_unique_slot_reservation",
+      "breakpoints": true
     }
   ]
 }
