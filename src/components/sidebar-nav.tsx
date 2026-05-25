@@ -10,7 +10,7 @@ const NAV = [
   { href: "/app/settings/playbook", label: "Playbook", Icon: BookText },
 ];
 
-export function SidebarNav() {
+export function SidebarNav({ email }: { email?: string }) {
   const pathname = usePathname();
 
   return (
@@ -46,7 +46,7 @@ export function SidebarNav() {
 
         <div className="sidebar-footer">
           <div className="live-dot" />
-          <span className="footer-label">SystemOps</span>
+          <span className="footer-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={email}>{email ?? "SystemOps"}</span>
         </div>
       </div>
     </aside>
