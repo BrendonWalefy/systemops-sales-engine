@@ -8,6 +8,12 @@ import { DrizzleConversationRepository } from "@/infrastructure/repositories/dri
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import {
+  filterSlotsByRequest,
+  formatDatePt,
+  formatSlotPt,
+  parseCalendarRequest,
+} from "@/application/services/calendar-conversation";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { db } from "@/infrastructure/db/client";
 import { clinics, messages } from "@/infrastructure/db/schema";
@@ -134,6 +140,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       availableSlots = await calendar.listAvailableSlots({ clinicId, from: now, to });
     } catch (err) {
       console.error("Failed to pre-fetch calendar slots:", err);
+    }
+
+    const deterministicCalendarReply = await handleDeterministicCalendarRequest({
+      incomingText,
+      phone: body.phone,
+      lead,
+      conversationId: conversation.id,
+      clinicId,
+      conversationRepo,
+      appointmentRepo,
+      calendar,
+      availableSlots,
+      now,
+    });
+    if (deterministicCalendarReply) {
+      await leadRepo.save({
+        ...lead,
+        status: deterministicCalendarReply.leadStatus,
+        updatedAt: new Date(),
+      });
+      return new NextResponse("OK", { status: 200 });
     }
 
     const top3Slots = availableSlots.slice(0, 3);
@@ -309,16 +336,229 @@ async function handleSlotSelection(params: {
   return true;
 }
 
-const CLINIC_TZ_OFFSET_MS = -3 * 60 * 60 * 1000; // BRT = UTC-3
-
 function formatSlot(date: Date): string {
-  const local = new Date(date.getTime() + CLINIC_TZ_OFFSET_MS);
-  const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const dow = weekdays[local.getUTCDay()] ?? "";
-  const day = String(local.getUTCDate()).padStart(2, "0");
-  const month = String(local.getUTCMonth() + 1).padStart(2, "0");
-  const hour = String(local.getUTCHours()).padStart(2, "0");
-  return `${dow} ${day}/${month} às ${hour}h`;
+  return formatSlotPt(date);
+}
+
+async function handleDeterministicCalendarRequest(params: {
+  incomingText: string;
+  phone: string;
+  lead: Lead;
+  conversationId: string;
+  clinicId: string;
+  conversationRepo: DrizzleConversationRepository;
+  appointmentRepo: DrizzleAppointmentRepository;
+  calendar: GoogleCalendarGateway;
+  availableSlots: CalendarSlot[];
+  now: Date;
+}): Promise<{ leadStatus: Lead["status"] } | null> {
+  const {
+    incomingText,
+    phone,
+    lead,
+    conversationId,
+    clinicId,
+    conversationRepo,
+    appointmentRepo,
+    calendar,
+    availableSlots,
+    now,
+  } = params;
+  const request = parseCalendarRequest(incomingText, now);
+  if (request.intent === "none") return null;
+
+  if (request.intent === "list_appointments") {
+    const appointment = await appointmentRepo.findActiveByLeadId(lead.id);
+    const reply = appointment
+      ? `Você tem um agendamento ativo: ${formatSlot(appointment.startsAt)}.`
+      : "Não encontrei nenhum agendamento ativo no seu nome por aqui.";
+    await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+    return { leadStatus: appointment ? "appointment_scheduled" : "in_conversation" };
+  }
+
+  if (request.intent === "cancel_appointment") {
+    const appointment = await appointmentRepo.findActiveByLeadId(lead.id);
+    if (!appointment) {
+      const reply = "Não encontrei nenhum agendamento ativo para cancelar por aqui.";
+      await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+      return { leadStatus: "in_conversation" };
+    }
+
+    if (appointment.calendarEventId) {
+      try {
+        await calendar.cancelAppointment({ calendarEventId: appointment.calendarEventId });
+      } catch (err) {
+        console.error("Failed to cancel calendar event:", err);
+        const reply =
+          "Tive um problema para cancelar direto na agenda. Vou avisar a equipe para resolver isso por aqui.";
+        await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+        return { leadStatus: "appointment_scheduled" };
+      }
+    }
+
+    await appointmentRepo.save({
+      ...appointment,
+      status: "cancelled",
+      updatedAt: new Date(),
+    });
+    const reply = `Pronto, cancelei seu agendamento de ${formatSlot(appointment.startsAt)}.`;
+    await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+    return { leadStatus: "in_conversation" };
+  }
+
+  if (request.intent === "schedule_exact") {
+    const matchingSlots = filterSlotsByRequest(availableSlots, request);
+    if (request.requestedHour !== null && matchingSlots.length > 0) {
+      const selected = matchingSlots[0]!;
+      const appointment = await createCalendarAppointmentSafe({
+        calendar,
+        clinicId,
+        lead,
+        selected,
+        phone,
+      });
+      if (!appointment) return { leadStatus: lead.status };
+
+      await appointmentRepo.save(appointment);
+      const reply =
+        `✅ Perfeito! Seu agendamento está confirmado:\n\n` +
+        `📅 ${formatSlot(selected.startsAt)}\n\n` +
+        "Qualquer dúvida, é só chamar! Até lá. 😊";
+      await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+      return { leadStatus: "appointment_scheduled" };
+    }
+
+    const alternatives = filterSlotsByRequest(availableSlots, {
+      ...request,
+      requestedHour: null,
+    }).slice(0, 3);
+    const reply = buildAvailabilityReply({
+      slots: alternatives.length > 0 ? alternatives : availableSlots.slice(0, 3),
+      requestedDate: request.requestedDate,
+      emptyPrefix: request.requestedDate
+        ? `Não encontrei esse horário disponível em ${formatDatePt(request.requestedDate)}.`
+        : "Não encontrei esse horário disponível.",
+    });
+    await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+    return { leadStatus: "in_conversation" };
+  }
+
+  if (request.intent === "reschedule_appointment" && request.requestedHour !== null) {
+    const appointment = await appointmentRepo.findActiveByLeadId(lead.id);
+    const matchingSlots = filterSlotsByRequest(availableSlots, request);
+    if (!appointment) {
+      const reply = "Não encontrei um agendamento ativo para remarcar. Posso te ajudar a marcar um novo horário.";
+      await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+      return { leadStatus: "in_conversation" };
+    }
+
+    if (matchingSlots.length > 0) {
+      const selected = matchingSlots[0]!;
+      if (appointment.calendarEventId) {
+        try {
+          await calendar.cancelAppointment({ calendarEventId: appointment.calendarEventId });
+        } catch (err) {
+          console.error("Failed to cancel old calendar event before reschedule:", err);
+          const reply =
+            "Tive um problema para alterar direto na agenda. Vou avisar a equipe para resolver a remarcação por aqui.";
+          await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+          return { leadStatus: "appointment_scheduled" };
+        }
+      }
+
+      const newAppointment = await createCalendarAppointmentSafe({
+        calendar,
+        clinicId,
+        lead,
+        selected,
+        phone,
+      });
+      if (!newAppointment) return { leadStatus: "appointment_scheduled" };
+
+      await appointmentRepo.save({ ...appointment, status: "cancelled", updatedAt: new Date() });
+      await appointmentRepo.save(newAppointment);
+      const reply =
+        `Pronto, remarquei seu agendamento:\n\n` +
+        `📅 ${formatSlot(selected.startsAt)}\n\n` +
+        "Qualquer dúvida, é só chamar. 😊";
+      await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+      return { leadStatus: "appointment_scheduled" };
+    }
+  }
+
+  if (request.intent === "ask_availability" || request.intent === "reschedule_appointment") {
+    const slots = filterSlotsByRequest(availableSlots, request).slice(0, 6);
+    const reply = buildAvailabilityReply({
+      slots,
+      requestedDate: request.requestedDate,
+      emptyPrefix: request.requestedDate
+        ? `Não encontrei horários disponíveis em ${formatDatePt(request.requestedDate)}.`
+        : "Não encontrei horários disponíveis com esse filtro.",
+    });
+    await sendAndRecordAgentReply({ phone, conversationId, conversationRepo, reply });
+    return { leadStatus: lead.status };
+  }
+
+  return null;
+}
+
+async function createCalendarAppointmentSafe(params: {
+  calendar: GoogleCalendarGateway;
+  clinicId: string;
+  lead: Lead;
+  selected: CalendarSlot;
+  phone: string;
+}) {
+  try {
+    return await params.calendar.createAppointment({
+      clinicId: params.clinicId,
+      leadId: params.lead.id,
+      startsAt: params.selected.startsAt,
+      endsAt: params.selected.endsAt,
+      title: `${params.lead.name ?? "Lead"} — Avaliação`,
+    });
+  } catch (err) {
+    console.error("Failed to create calendar event:", err);
+    await sendTextMessage(
+      params.phone,
+      "Desculpe, tive um problema ao confirmar o horário. Nossa equipe entrará em contato em breve. 🙏",
+    );
+    return null;
+  }
+}
+
+function buildAvailabilityReply(params: {
+  slots: CalendarSlot[];
+  requestedDate: Date | null;
+  emptyPrefix: string;
+}): string {
+  const { slots, requestedDate, emptyPrefix } = params;
+  if (slots.length === 0) {
+    return `${emptyPrefix} Posso verificar outras opções para você.`;
+  }
+
+  const slotList = slots.slice(0, 3).map((slot) => formatSlot(slot.startsAt)).join(", ");
+  if (requestedDate) {
+    return `Para ${formatDatePt(requestedDate)}, encontrei estes horários: ${slotList}. Algum deles funciona para você?`;
+  }
+  return `Encontrei estes horários disponíveis: ${slotList}. Algum deles funciona para você?`;
+}
+
+async function sendAndRecordAgentReply(params: {
+  phone: string;
+  conversationId: string;
+  conversationRepo: DrizzleConversationRepository;
+  reply: string;
+}): Promise<void> {
+  await sendTextMessage(params.phone, params.reply);
+  await params.conversationRepo.appendMessage({
+    id: randomUUID(),
+    conversationId: params.conversationId,
+    author: "agent",
+    body: params.reply,
+    sentAt: new Date(),
+    externalId: null,
+  });
 }
 
 type ClinicRow = Omit<typeof clinics.$inferSelect, "googleCalendarId"> & {

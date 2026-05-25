@@ -85,6 +85,16 @@ export class InMemoryDemoStore
     );
   }
 
+  async findActiveByLeadId(leadId: string): Promise<Appointment | null> {
+    return (
+      Array.from(this.appointments.values()).find(
+        (appointment) =>
+          appointment.leadId === leadId &&
+          (appointment.status === "scheduled" || appointment.status === "confirmed"),
+      ) ?? null
+    );
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     this.conversations.set(conversation.id, conversation);
   }
@@ -126,4 +136,3 @@ export class InMemoryDemoStore
     this.whatsappMessageCosts.push(cost);
   }
 }
-

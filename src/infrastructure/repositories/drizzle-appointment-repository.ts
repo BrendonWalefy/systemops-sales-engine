@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import { db } from "@/infrastructure/db/client";
@@ -23,6 +23,8 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         target: appointments.id,
         set: {
           calendarEventId: appointment.calendarEventId,
+          startsAt: appointment.startsAt,
+          endsAt: appointment.endsAt,
           status: appointment.status,
           updatedAt: appointment.updatedAt,
         },
@@ -33,6 +35,17 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const row = await db.query.appointments.findFirst({
       where: eq(appointments.leadId, leadId),
       orderBy: (a, { desc }) => [desc(a.createdAt)],
+    });
+    return row ? mapRow(row) : null;
+  }
+
+  async findActiveByLeadId(leadId: string): Promise<Appointment | null> {
+    const row = await db.query.appointments.findFirst({
+      where: and(
+        eq(appointments.leadId, leadId),
+        inArray(appointments.status, ["scheduled", "confirmed"]),
+      ),
+      orderBy: [desc(appointments.startsAt)],
     });
     return row ? mapRow(row) : null;
   }

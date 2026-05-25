@@ -14,5 +14,7 @@ export type CalendarGateway = {
     endsAt: Date;
     title: string;
   }): Promise<Appointment>;
+  cancelAppointment(input: {
+    calendarEventId: string;
+  }): Promise<void>;
 };
-

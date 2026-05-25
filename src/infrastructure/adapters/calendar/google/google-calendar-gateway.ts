@@ -226,4 +226,22 @@ export class GoogleCalendarGateway implements CalendarGateway {
       updatedAt: now,
     };
   }
+
+  async cancelAppointment(input: { calendarEventId: string }): Promise<void> {
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.calendarEventId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    if (!res.ok && res.status !== 404 && res.status !== 410) {
+      const err = await res.text();
+      throw new Error(`Google Calendar deleteEvent failed: ${err}`);
+    }
+  }
 }
