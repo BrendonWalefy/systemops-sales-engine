@@ -69,6 +69,7 @@ export default async function ConversationPage({
   if (!conv) notFound();
 
   const [lead] = await db.select().from(leads).where(eq(leads.id, conv.leadId)).limit(1);
+  if (!lead) notFound();
 
   const msgs = await db
     .select()

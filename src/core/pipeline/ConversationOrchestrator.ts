@@ -745,17 +745,4 @@ export class ConversationOrchestrator {
     }
   }
 
-  private async notifyHandoff(clinic: Clinic, leadPhone: string): Promise<void> {
-    const receptPhone = process.env.RECEPTIONIST_PHONE_NUMBER;
-    if (!receptPhone) return;
-
-    try {
-      await sendTextMessage(
-        receptPhone,
-        `🚨 *Urgência clínica detectada*\n\nClínica: ${clinic.name}\nLead: ${leadPhone}\n\nO lead relatou sintoma de urgência. Por favor, entre em contato imediatamente.`,
-      );
-    } catch (err) {
-      console.error("[Orchestrator] Failed to send handoff notification:", err);
-    }
-  }
 }

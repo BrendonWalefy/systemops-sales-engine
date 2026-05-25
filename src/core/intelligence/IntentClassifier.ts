@@ -181,10 +181,15 @@ export class IntentClassifier {
       const parsed = JSON.parse(raw) as IntentClassification;
       return parsed;
     } catch {
-      // Fallback seguro se o JSON vier malformado
       return {
         intent: "unclear",
-        slotPreference: {},
+        slotPreference: {
+          preferredDate: null,
+          preferredPeriod: null,
+          preferredTime: null,
+          slotChoice: null,
+          appointmentType: null,
+        },
         confidence: 0,
         shouldAskClarification: true,
         clarificationQuestion: "Pode me contar mais sobre o que você precisa?",
