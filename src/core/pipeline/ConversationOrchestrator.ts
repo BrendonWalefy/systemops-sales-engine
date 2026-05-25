@@ -27,7 +27,7 @@ import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import type { Clinic } from "@/domain/entities/clinic";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
-const MAX_SLOTS_TO_OFFER = 3;
+const MAX_SLOTS_TO_OFFER = 5;
 
 type ClinicRow = typeof clinics.$inferSelect;
 
@@ -275,6 +275,7 @@ export class ConversationOrchestrator {
           businessHours,
           slotPreference.preferredDate ?? undefined,
           slotPreference.preferredPeriod ?? undefined,
+          slotPreference.preferredTime ?? undefined,
         );
 
         if (formattedSlots.length > 0) {
@@ -337,6 +338,7 @@ export class ConversationOrchestrator {
           businessHours,
           slotPreference.preferredDate ?? undefined,
           slotPreference.preferredPeriod ?? undefined,
+          slotPreference.preferredTime ?? undefined,
         );
 
         if (newSlots.length > 0) {
@@ -449,6 +451,7 @@ export class ConversationOrchestrator {
     businessHours: ReturnType<typeof parseBusinessHours>,
     preferredDate?: string,
     preferredPeriod?: string,
+    preferredTime?: string,
   ) {
     const from = this.slotWindowStart();
     const to = new Date(from.getTime() + SLOTS_LOOKAHEAD_DAYS * 24 * 60 * 60_000);
@@ -468,6 +471,20 @@ export class ConversationOrchestrator {
         if (preferredPeriod === "evening") return parts.hour >= 17;
         return true;
       });
+    }
+
+    // Se o lead mencionou um horário específico (ex: "às 10h", "14:00"), prioriza
+    // slots próximos a esse horário ordenando por proximidade antes de selecionar
+    if (preferredTime) {
+      const hourMatch = preferredTime.match(/(\d{1,2})/);
+      const preferredHour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+      if (preferredHour !== null) {
+        allSlots.sort((a, b) => {
+          const aHour = timezone.toLocalParts(a.startsAt).hour;
+          const bHour = timezone.toLocalParts(b.startsAt).hour;
+          return Math.abs(aHour - preferredHour) - Math.abs(bHour - preferredHour);
+        });
+      }
     }
 
     const best = selectBestSlots(allSlots, MAX_SLOTS_TO_OFFER);

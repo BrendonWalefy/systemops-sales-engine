@@ -67,7 +67,8 @@ export class BookingService {
         title: `Avaliação — ${leadName} | ${clinic.name}`,
       });
     } catch (err) {
-      // Reserva expira por TTL automaticamente — não precisamos de rollback manual
+      // Libera a reserva imediatamente para o lead poder tentar de novo sem esperar o TTL
+      await this.reservationService.release(reservation.id);
       console.error("[BookingService] Google Calendar createAppointment failed:", err);
       return { success: false, reason: "calendar_error" };
     }

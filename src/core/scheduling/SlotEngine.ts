@@ -73,33 +73,39 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
   return slots;
 }
 
-// Seleciona os N melhores slots distribuídos por dias diferentes.
-// Pega o primeiro slot disponível de cada dia em ordem cronológica,
-// ciclando pelos dias até atingir o count.
+// Seleciona os N melhores slots distribuídos por dias e períodos diferentes.
+// Para cada dia, divide os slots em manhã (antes das 15h UTC = antes das 12h BRT)
+// e tarde (a partir das 15h UTC = a partir das 12h BRT), depois faz round-robin
+// entre esses buckets para garantir variedade de horário nas sugestões.
+const AFTERNOON_UTC_BOUNDARY = 15; // 15h UTC = 12h BRT
+
 export function selectBestSlots(slots: CalendarSlot[], count: number): CalendarSlot[] {
   if (slots.length <= count) return slots;
 
-  // Agrupa por dia UTC (funciona para BRT pois horário comercial 8-18h BRT = 11-21h UTC,
-  // sempre no mesmo dia do calendário)
-  const byDay = new Map<string, CalendarSlot[]>();
+  // Agrupa por (dia + período), produzindo buckets como "2026-05-25-morning"
+  const byDayPeriod = new Map<string, CalendarSlot[]>();
   for (const slot of slots) {
     const dayKey = slot.startsAt.toISOString().slice(0, 10);
-    if (!byDay.has(dayKey)) byDay.set(dayKey, []);
-    byDay.get(dayKey)!.push(slot);
+    const period = slot.startsAt.getUTCHours() < AFTERNOON_UTC_BOUNDARY ? "morning" : "afternoon";
+    const key = `${dayKey}-${period}`;
+    if (!byDayPeriod.has(key)) byDayPeriod.set(key, []);
+    byDayPeriod.get(key)!.push(slot);
   }
 
-  const days = [...byDay.values()];
+  // Ordena os buckets cronologicamente (manhã antes da tarde, dia mais próximo primeiro)
+  const buckets = [...byDayPeriod.keys()]
+    .sort()
+    .map((key) => byDayPeriod.get(key)!);
+
   const result: CalendarSlot[] = [];
   let i = 0;
 
-  while (result.length < count && days.length > 0) {
-    const idx = i % days.length;
-    const slot = days[idx].shift();
-    if (slot) {
-      result.push(slot);
-    }
-    if (days[idx].length === 0) {
-      days.splice(idx, 1);
+  while (result.length < count && buckets.length > 0) {
+    const idx = i % buckets.length;
+    const slot = buckets[idx].shift();
+    if (slot) result.push(slot);
+    if (buckets[idx].length === 0) {
+      buckets.splice(idx, 1);
     } else {
       i++;
     }
