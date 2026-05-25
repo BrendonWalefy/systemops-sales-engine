@@ -258,8 +258,8 @@ export class ConversationOrchestrator {
           calendarGateway,
           timezone,
           businessHours,
-          slotPreference.preferredDate,
-          slotPreference.preferredPeriod,
+          slotPreference.preferredDate ?? undefined,
+          slotPreference.preferredPeriod ?? undefined,
         );
 
         if (formattedSlots.length > 0) {
@@ -316,8 +316,8 @@ export class ConversationOrchestrator {
           calendarGateway,
           timezone,
           businessHours,
-          slotPreference.preferredDate,
-          slotPreference.preferredPeriod,
+          slotPreference.preferredDate ?? undefined,
+          slotPreference.preferredPeriod ?? undefined,
         );
 
         if (newSlots.length > 0) {

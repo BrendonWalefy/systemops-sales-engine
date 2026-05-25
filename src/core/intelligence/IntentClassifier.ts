@@ -7,11 +7,11 @@ import type { Message } from "@/domain/entities/conversation";
 const MODEL = "gpt-4o-mini";
 
 export type SlotPreference = {
-  preferredDate?: string;          // "amanhã", "quinta-feira", "26/06"
-  preferredPeriod?: "morning" | "afternoon" | "evening";
-  preferredTime?: string;          // "10h", "depois das 14h"
-  slotChoice?: number;             // 1, 2 ou 3 — quando confirma slot específico
-  appointmentType?: string;        // "avaliação", "retorno", "implante"
+  preferredDate?: string | null;
+  preferredPeriod?: "morning" | "afternoon" | "evening" | null;
+  preferredTime?: string | null;
+  slotChoice?: number | null;
+  appointmentType?: string | null;
 };
 
 export type IntentType =
@@ -31,9 +31,9 @@ export type IntentType =
 export type IntentClassification = {
   intent: IntentType;
   slotPreference: SlotPreference;
-  confidence: number;                 // 0-1
+  confidence: number;
   shouldAskClarification: boolean;
-  clarificationQuestion?: string;     // pergunta a fazer ao lead se incerto
+  clarificationQuestion?: string | null;
 };
 
 const SYSTEM_PROMPT = `Você é um classificador de intenções para uma recepcionista virtual de clínica odontológica.
@@ -59,6 +59,8 @@ Para preferências de horário:
 
 Retorne APENAS JSON válido, sem markdown, sem explicação.`;
 
+// strict: true exige que todo campo em properties conste em required.
+// Campos opcionais são declarados como anyOf [type, null].
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
@@ -82,19 +84,20 @@ const RESPONSE_SCHEMA = {
     slotPreference: {
       type: "object",
       properties: {
-        preferredDate: { type: "string" },
-        preferredPeriod: { type: "string", enum: ["morning", "afternoon", "evening"] },
-        preferredTime: { type: "string" },
-        slotChoice: { type: "number" },
-        appointmentType: { type: "string" },
+        preferredDate: { anyOf: [{ type: "string" }, { type: "null" }] },
+        preferredPeriod: { anyOf: [{ type: "string", enum: ["morning", "afternoon", "evening"] }, { type: "null" }] },
+        preferredTime: { anyOf: [{ type: "string" }, { type: "null" }] },
+        slotChoice: { anyOf: [{ type: "number" }, { type: "null" }] },
+        appointmentType: { anyOf: [{ type: "string" }, { type: "null" }] },
       },
+      required: ["preferredDate", "preferredPeriod", "preferredTime", "slotChoice", "appointmentType"],
       additionalProperties: false,
     },
     confidence: { type: "number" },
     shouldAskClarification: { type: "boolean" },
-    clarificationQuestion: { type: "string" },
+    clarificationQuestion: { anyOf: [{ type: "string" }, { type: "null" }] },
   },
-  required: ["intent", "slotPreference", "confidence", "shouldAskClarification"],
+  required: ["intent", "slotPreference", "confidence", "shouldAskClarification", "clarificationQuestion"],
   additionalProperties: false,
 };
 
