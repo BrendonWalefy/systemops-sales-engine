@@ -28,6 +28,9 @@ import type { Clinic } from "@/domain/entities/clinic";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
 const MAX_SLOTS_TO_OFFER = 5;
+// Quando o lead já expressou preferência de dia+hora, menos opções = mais assertividade
+const SLOTS_WITH_DATE_AND_TIME = 2;
+const SLOTS_WITH_DATE_ONLY = 3;
 
 type ClinicRow = typeof clinics.$inferSelect;
 
@@ -462,19 +465,38 @@ export class ConversationOrchestrator {
       to,
     });
 
-    // Filtra por período se informado
+    // Filtra por dia específico quando o lead expressou preferência de data.
+    // Se "sexta" não tiver slots livres, mantém o pool completo como fallback.
+    let filteredToDay = false;
+    if (preferredDate) {
+      const targetDay = timezone.resolvePreferredDate(preferredDate, new Date());
+      if (targetDay !== null) {
+        const targetParts = timezone.toLocalParts(targetDay);
+        const slotsOnDay = allSlots.filter((slot) => {
+          const p = timezone.toLocalParts(slot.startsAt);
+          return p.year === targetParts.year && p.month === targetParts.month && p.day === targetParts.day;
+        });
+        if (slotsOnDay.length > 0) {
+          allSlots = slotsOnDay;
+          filteredToDay = true;
+        }
+      }
+    }
+
+    // Filtra por período (manhã/tarde/noite) se informado
     if (preferredPeriod) {
-      allSlots = allSlots.filter((slot) => {
+      const bySameDay = allSlots.filter((slot) => {
         const parts = timezone.toLocalParts(slot.startsAt);
         if (preferredPeriod === "morning") return parts.hour >= 8 && parts.hour < 12;
         if (preferredPeriod === "afternoon") return parts.hour >= 12 && parts.hour < 18;
         if (preferredPeriod === "evening") return parts.hour >= 17;
         return true;
       });
+      // Só aplica filtro de período se sobrar slots; senão mantém o dia inteiro
+      if (bySameDay.length > 0) allSlots = bySameDay;
     }
 
-    // Se o lead mencionou um horário específico (ex: "às 10h", "14:00"), prioriza
-    // slots próximos a esse horário ordenando por proximidade antes de selecionar
+    // Ordena por proximidade à hora solicitada quando o lead especificou horário
     if (preferredTime) {
       const hourMatch = preferredTime.match(/(\d{1,2})/);
       const preferredHour = hourMatch ? parseInt(hourMatch[1], 10) : null;
@@ -487,7 +509,15 @@ export class ConversationOrchestrator {
       }
     }
 
-    const best = selectBestSlots(allSlots, MAX_SLOTS_TO_OFFER);
+    // Quanto mais específico foi o lead, menos opções oferecemos.
+    // Lead disse dia + hora → 2 slots; só dia → 3; sem preferência → 5.
+    const count = (filteredToDay && preferredTime)
+      ? SLOTS_WITH_DATE_AND_TIME
+      : filteredToDay
+      ? SLOTS_WITH_DATE_ONLY
+      : MAX_SLOTS_TO_OFFER;
+
+    const best = selectBestSlots(allSlots, count);
 
     if (best.length === 0) return [];
 

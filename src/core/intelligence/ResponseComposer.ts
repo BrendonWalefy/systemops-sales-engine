@@ -76,6 +76,7 @@ REGRAS ABSOLUTAS:
 4. Use o nome do lead com naturalidade, não em toda frase.
 5. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
 6. Não escreva "Olá" ou saudação se não for a primeira mensagem.
+7. NÃO repita informações já dadas ao lead nesta conversa (ex: valor da avaliação, endereço, formas de pagamento). Só repita se o lead perguntar novamente de forma explícita.
 ${clinic.commercialPolicy ? `\nPOLÍTICA COMERCIAL:\n${clinic.commercialPolicy}` : ""}
 ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}`;
 }

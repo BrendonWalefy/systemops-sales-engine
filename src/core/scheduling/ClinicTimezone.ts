@@ -147,6 +147,46 @@ export class ClinicTimezone {
     });
   }
 
+  // Converte preferência textual de data (ex: "sexta", "amanhã", "próxima semana")
+  // para o início desse dia no fuso da clínica, em UTC.
+  // Retorna null quando a string não mapeia para um dia específico.
+  resolvePreferredDate(raw: string, now: Date): Date | null {
+    const s = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+    const today = this.toLocalParts(now);
+
+    if (/\bhoje\b/.test(s)) {
+      return this.fromLocalParts(today.year, today.month, today.day, 0, 0);
+    }
+
+    if (/\bamanha\b/.test(s)) {
+      const t = new Date(now.getTime() + 24 * 60 * 60_000);
+      const p = this.toLocalParts(t);
+      return this.fromLocalParts(p.year, p.month, p.day, 0, 0);
+    }
+
+    const dayNames: [RegExp, number][] = [
+      [/\bdom(ingo)?\b/, 0],
+      [/\bseg(unda)?(-feira)?\b/, 1],
+      [/\bter(ca|ça)?(-feira)?\b/, 2],
+      [/\bqua(rta)?(-feira)?\b/, 3],
+      [/\bqui(nta)?(-feira)?\b/, 4],
+      [/\bsex(ta)?(-feira)?\b/, 5],
+      [/\bsab(ado)?\b/, 6],
+    ];
+
+    for (const [pattern, weekday] of dayNames) {
+      if (pattern.test(s)) {
+        let daysAhead = weekday - today.weekday;
+        if (daysAhead <= 0) daysAhead += 7;
+        const target = new Date(now.getTime() + daysAhead * 24 * 60 * 60_000);
+        const p = this.toLocalParts(target);
+        return this.fromLocalParts(p.year, p.month, p.day, 0, 0);
+      }
+    }
+
+    return null;
+  }
+
   get zone(): string {
     return this.ianaZone;
   }
