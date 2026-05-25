@@ -37,6 +37,13 @@ export class DrizzleConversationRepository implements ConversationRepository {
       });
   }
 
+  async setAiPaused(conversationId: string, paused: boolean): Promise<void> {
+    await db
+      .update(conversations)
+      .set({ aiPaused: paused, updatedAt: new Date() })
+      .where(eq(conversations.id, conversationId));
+  }
+
   async appendMessage(message: Message): Promise<void> {
     await db
       .insert(messages)
@@ -69,6 +76,7 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     channel: row.channel,
     externalThreadId: row.externalThreadId,
     summary: row.summary,
+    aiPaused: row.aiPaused,
     lastMessageAt: row.lastMessageAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

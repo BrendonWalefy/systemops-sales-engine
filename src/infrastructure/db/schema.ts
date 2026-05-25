@@ -151,6 +151,7 @@ export const conversations = pgTable(
     channel: channelEnum("channel").notNull(),
     externalThreadId: text("external_thread_id"),
     summary: text("summary"),
+    aiPaused: boolean("ai_paused").notNull().default(false),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -6,7 +6,7 @@ import { db } from "@/infrastructure/db/client";
 import { appointments, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
-import { AssumeButton } from "./assume-button";
+import { AiPauseButton } from "./AiPauseButton";
 
 const TZ = "America/Sao_Paulo";
 
@@ -245,9 +245,11 @@ export default async function ConversationPage({
             </div>
           ) : null}
 
-          {lead.status !== "won" && lead.status !== "lost" && (
-            <AssumeButton leadId={lead.id} conversationId={conversationId} />
-          )}
+          <AiPauseButton
+            conversationId={conversationId}
+            leadId={lead.id}
+            aiPaused={conv.aiPaused}
+          />
         </div>
       </div>
     </div>

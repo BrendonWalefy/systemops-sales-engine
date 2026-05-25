@@ -18,6 +18,7 @@ export type Conversation = {
   channel: Channel;
   externalThreadId: string | null;
   summary: string | null;
+  aiPaused: boolean;
   lastMessageAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

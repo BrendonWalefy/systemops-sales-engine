@@ -126,14 +126,21 @@ export class ConversationOrchestrator {
       },
     });
 
-    // ── 4. Carrega histórico de mensagens ──
+    // ── 4. Verifica se a IA está pausada para esta conversa ──
+    // Operador pode pausar via dashboard; mensagem é registrada mas IA não responde.
+    if (conversation.aiPaused) {
+      console.log(`[Orchestrator] AI paused for conversation ${conversation.id}, skipping response`);
+      return { replied: false };
+    }
+
+    // ── 5. Carrega histórico de mensagens ──
     const allMessages = await this.conversationRepo.listMessages(conversation.id);
 
-    // ── 5. Verifica oferta de slots pendente ──
+    // ── 6. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
     const hasPendingOffer = pendingSlots !== null;
 
-    // ── 6. Classifica intenção com LLM estágio 1 ──
+    // ── 7. Classifica intenção com LLM estágio 1 ──
     const classification = await this.intentClassifier.classify(
       messageText,
       allMessages,

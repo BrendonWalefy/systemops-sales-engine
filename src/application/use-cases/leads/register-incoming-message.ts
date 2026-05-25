@@ -54,6 +54,7 @@ export class RegisterIncomingMessage {
         channel: input.message.channel,
         externalThreadId: input.message.externalThreadId,
         summary: null,
+        aiPaused: false,
         lastMessageAt: input.message.receivedAt,
         createdAt: now,
         updatedAt: now,

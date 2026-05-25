@@ -107,6 +107,11 @@ export class InMemoryDemoStore
     this.conversations.set(conversation.id, conversation);
   }
 
+  async setAiPaused(conversationId: string, paused: boolean): Promise<void> {
+    const conv = this.conversations.get(conversationId);
+    if (conv) this.conversations.set(conversationId, { ...conv, aiPaused: paused });
+  }
+
   async appendMessage(message: Message): Promise<void> {
     const messages = this.messages.get(message.conversationId) ?? [];
     this.messages.set(message.conversationId, [...messages, message]);
