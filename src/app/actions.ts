@@ -1,12 +1,41 @@
 "use server";
 
 import type { Message } from "@/domain/entities/conversation";
-import {
-  decideAutonomousReceptionistReply,
-  estimateReceptionistUsage,
-  type ReceptionistDecision,
-} from "@/application/services/autonomous-receptionist";
+import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
+import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
+import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
+
+const DEMO_CLINIC = {
+  name: "Clínica Sorriso Premium",
+  specialty: "odontologia",
+  toneOfVoice: "Informal, acolhedor e consultivo.",
+  playbook: "Oferecer sempre a avaliação gratuita como primeiro passo.",
+  commercialPolicy: "Nunca informar valores por mensagem. Redirecionar para avaliação gratuita.",
+};
+
+// Slots simulados para o demo (próximos dias úteis)
+function generateDemoSlots() {
+  const now = new Date();
+  const slots = [];
+  let day = new Date(now);
+  day.setHours(10, 0, 0, 0);
+
+  while (slots.length < 3) {
+    day = new Date(day.getTime() + 24 * 60 * 60_000);
+    const dow = day.getDay();
+    if (dow === 0 || dow === 6) continue;
+
+    const tz = new ClinicTimezone("America/Sao_Paulo");
+    slots.push({
+      index: slots.length + 1,
+      startsAt: day.toISOString(),
+      endsAt: new Date(day.getTime() + 60 * 60_000).toISOString(),
+      label: tz.formatForHuman(day),
+    });
+  }
+  return slots;
+}
 
 export type DemoConversationInput = {
   leadName: string;
@@ -24,17 +53,23 @@ export type AutonomousDemoResult = {
     name: string;
     phone: string;
     channel: "whatsapp";
-    status:
-      | "waiting_response"
-      | "in_conversation"
-      | "appointment_scheduled"
-      | "handoff_required";
+    status: "waiting_response" | "in_conversation" | "appointment_scheduled" | "handoff_required";
   };
   messages: Array<{
     author: "lead" | "agent";
     body: string;
   }>;
-  decision: ReceptionistDecision;
+  decision: {
+    message: string;
+    intent: string;
+    action: string;
+    handoffRequired: boolean;
+    appointment: { status: string };
+    leadTemperature: "cold" | "warm" | "hot";
+    stage: string;
+    followUp: string | null;
+    reason: string | null;
+  };
   costs: {
     aiUsd: string;
     whatsappUsd: string;
@@ -47,54 +82,120 @@ export type AutonomousDemoResult = {
 export async function runAutonomousReceptionistTurn(
   input: DemoConversationInput,
 ): Promise<AutonomousDemoResult> {
-  const hour = input.simulatedHour ?? 10;
-  const now = new Date(`2026-05-22T${String(hour).padStart(2, "0")}:00:00`);
-  const domainMessages = input.messages.map<Message>((message, index) => ({
-    id: `message-${index + 1}`,
+  const classifier = new IntentClassifier();
+  const composer = new ResponseComposer();
+  const timezone = new ClinicTimezone("America/Sao_Paulo");
+
+  const domainMessages = input.messages.map<Message>((m, i) => ({
+    id: `demo-msg-${i}`,
     conversationId: "demo-conversation",
-    author: message.author === "lead" ? "lead" : "agent",
-    body: message.body,
-    sentAt: now,
+    author: m.author === "lead" ? "lead" : "agent",
+    body: m.body,
+    sentAt: new Date(),
     externalId: null,
   }));
 
-  const decision = decideAutonomousReceptionistReply(domainMessages, {
+  const latestLeadMsg = [...domainMessages].reverse().find((m) => m.author === "lead");
+  const latestText = latestLeadMsg?.body ?? input.messages[input.messages.length - 1]?.body ?? "";
+
+  const demoSlots = generateDemoSlots();
+  const hasPendingOffer = domainMessages.some(
+    (m) => m.author === "agent" && /opção 1|opção 2|opção 3/i.test(m.body),
+  );
+
+  const classification = await classifier.classify(latestText, domainMessages, hasPendingOffer);
+
+  let actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"];
+  let appointmentStatus = "none";
+  let handoffRequired = false;
+
+  switch (classification.intent) {
+    case "confirm_slot": {
+      const choice = classification.slotPreference.slotChoice ?? 1;
+      const slot = demoSlots.find((s) => s.index === choice) ?? demoSlots[0];
+      if (slot) {
+        actionResult = { type: "appointment_confirmed", slot, clinicName: input.clinicName ?? DEMO_CLINIC.name };
+        appointmentStatus = "scheduled";
+      } else {
+        actionResult = { type: "slots_found", slots: demoSlots, askedForPreference: false };
+      }
+      break;
+    }
+    case "check_availability":
+    case "book_appointment":
+      actionResult = { type: "slots_found", slots: demoSlots, askedForPreference: false };
+      break;
+    case "price_inquiry":
+      actionResult = { type: "price_inquiry" };
+      break;
+    case "clinical_urgency":
+      actionResult = { type: "clinical_urgency" };
+      handoffRequired = true;
+      break;
+    case "greeting":
+      actionResult = { type: "greeting" };
+      break;
+    case "unclear":
+      actionResult = {
+        type: "clarification_needed",
+        question: classification.clarificationQuestion ?? "Como posso te ajudar?",
+      };
+      break;
+    default:
+      actionResult = {
+        type: "general_question",
+        clinicContext: `${input.clinicName ?? DEMO_CLINIC.name} — ${DEMO_CLINIC.specialty}`,
+      };
+  }
+
+  const clinic = { ...DEMO_CLINIC, name: input.clinicName ?? DEMO_CLINIC.name };
+  const composed = await composer.compose({
+    actionResult,
+    conversationHistory: domainMessages,
+    clinic,
     leadName: input.leadName,
-    clinicName: input.clinicName,
-    now,
+    timezone,
+    isFirstMessage: domainMessages.filter((m) => m.author === "agent").length === 0,
   });
-  const usage = estimateReceptionistUsage(domainMessages, decision.message);
+
   const aiCost = estimateAiCostUsdMicros({
-    clinicId: "clinic-demo-sorriso",
+    clinicId: "demo",
     provider: "openai",
     model: "gpt-4o-mini",
     operation: "sales_conversation_analysis",
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
+    inputTokens: composed.inputTokens,
+    outputTokens: composed.outputTokens,
   });
-  const whatsappCost = decision.action === "send_message" || decision.action === "offer_slots"
-    ? 0
-    : 0;
 
   return {
     lead: {
       name: input.leadName,
       phone: input.phone,
       channel: "whatsapp",
-      status: decision.handoffRequired
+      status: handoffRequired
         ? "handoff_required"
-        : decision.appointment.status === "scheduled"
+        : appointmentStatus === "scheduled"
           ? "appointment_scheduled"
           : "in_conversation",
     },
-    messages: [...input.messages, { author: "agent", body: decision.message }],
-    decision,
+    messages: [...input.messages, { author: "agent", body: composed.text }],
+    decision: {
+      message: composed.text,
+      intent: classification.intent,
+      action: actionResult.type,
+      handoffRequired,
+      appointment: { status: appointmentStatus },
+      leadTemperature: handoffRequired ? "cold" : appointmentStatus === "scheduled" ? "hot" : "warm",
+      stage: classification.intent,
+      followUp: null,
+      reason: null,
+    },
     costs: {
       aiUsd: formatUsdMicros(aiCost),
-      whatsappUsd: formatUsdMicros(whatsappCost),
-      totalUsd: formatUsdMicros(aiCost + whatsappCost),
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
+      whatsappUsd: "$0.000000",
+      totalUsd: formatUsdMicros(aiCost),
+      inputTokens: composed.inputTokens,
+      outputTokens: composed.outputTokens,
     },
   };
 }

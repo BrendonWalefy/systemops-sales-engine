@@ -82,6 +82,7 @@ export const clinics = pgTable("clinics", {
   name: text("name").notNull(),
   specialty: text("specialty").notNull().default("odontology"),
   city: text("city"),
+  timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   toneOfVoice: text("tone_of_voice"),
   commercialPolicy: text("commercial_policy"),
   playbook: text("playbook"),
@@ -308,5 +309,55 @@ export const whatsappMessageCosts = pgTable(
       table.clinicId,
       table.createdAt,
     ),
+  }),
+);
+
+// Estado explícito de conversa — substitui marcadores de texto em mensagens
+export const conversationStates = pgTable(
+  "conversation_states",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    // idle | slots_offered | awaiting_confirmation | booking_pending
+    state: text("state").notNull(),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+  },
+  (table) => ({
+    conversationCreatedAtIdx: index("conversation_states_conversation_created_at_idx").on(
+      table.conversationId,
+      table.createdAt,
+    ),
+  }),
+);
+
+// Lock otimista de slots — previne double-booking
+export const slotReservations = pgTable(
+  "slot_reservations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    // pending | confirmed | released
+    status: text("status").notNull().default("pending"),
+    calendarEventId: text("calendar_event_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clinicStartsAtIdx: index("slot_reservations_clinic_starts_at_idx").on(
+      table.clinicId,
+      table.startsAt,
+    ),
+    clinicLeadIdx: index("slot_reservations_clinic_lead_idx").on(table.clinicId, table.leadId),
   }),
 );

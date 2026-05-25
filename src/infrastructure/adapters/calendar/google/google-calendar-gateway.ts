@@ -1,7 +1,10 @@
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
+import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
+import { computeAvailableSlots } from "@/core/scheduling/SlotEngine";
 
-// In-memory token cache — reused across requests in the same serverless instance
+// Token cache com Promise singleton para evitar dupla chamada concorrente à Google API
+let tokenPromise: Promise<string> | null = null;
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 function base64url(input: string | ArrayBuffer): string {
@@ -22,17 +25,12 @@ function pemToDer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
-    return cachedToken.token;
-  }
-
+async function fetchNewToken(): Promise<string> {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const rawKey = process.env.GOOGLE_PRIVATE_KEY;
   if (!email || !rawKey) {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY must be set");
   }
-  // Handle escaped newlines from Vercel env var storage
   const pemKey = rawKey.replace(/\\n/g, "\n");
 
   const now = Math.floor(Date.now() / 1000);
@@ -88,23 +86,31 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.token;
 }
 
+// Promise singleton: múltiplas requisições simultâneas compartilham o mesmo fetch
+async function getAccessToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
+    return cachedToken.token;
+  }
+  if (!tokenPromise) {
+    tokenPromise = fetchNewToken().finally(() => {
+      tokenPromise = null;
+    });
+  }
+  return tokenPromise;
+}
+
 function getCalendarId(clinicCalendarId?: string | null): string {
   const id = clinicCalendarId ?? process.env.GOOGLE_CALENDAR_ID;
   if (!id) throw new Error("No Google Calendar ID configured for this clinic");
   return id;
 }
 
-// Clinic timezone offset in milliseconds (BRT = UTC-3)
-// TODO: make this configurable per clinic
-const CLINIC_TZ_OFFSET_MS = -3 * 60 * 60 * 1000;
-
-function toClinicLocal(utcDate: Date): Date {
-  return new Date(utcDate.getTime() + CLINIC_TZ_OFFSET_MS);
-}
-
-// Returns free 1-hour slots within business hours (08–18h Mon–Fri) in clinic timezone
 export class GoogleCalendarGateway implements CalendarGateway {
-  constructor(private readonly clinicCalendarId?: string | null) {}
+  constructor(
+    private readonly clinicCalendarId?: string | null,
+    private readonly timezone?: ClinicTimezone,
+    private readonly clinicBusinessHours?: string | null,
+  ) {}
 
   async listAvailableSlots(input: {
     clinicId: string;
@@ -135,47 +141,27 @@ export class GoogleCalendarGateway implements CalendarGateway {
 
     type GCalEvent = { start: { dateTime?: string }; end: { dateTime?: string } };
     const data = (await res.json()) as { items: GCalEvent[] };
-    const busyRanges = data.items
+
+    const existingEvents = data.items
       .filter((e) => e.start.dateTime && e.end.dateTime)
       .map((e) => ({
-        start: new Date(e.start.dateTime!).getTime(),
-        end: new Date(e.end.dateTime!).getTime(),
+        startsAt: new Date(e.start.dateTime!),
+        endsAt: new Date(e.end.dateTime!),
       }));
 
-    const slots: CalendarSlot[] = [];
-    const cursor = new Date(input.from);
-    cursor.setMinutes(0, 0, 0);
+    // Delega cálculo ao SlotEngine (puro, sem I/O)
+    const tz = this.timezone ?? new ClinicTimezone("America/Sao_Paulo");
+    const bh = parseBusinessHours(this.clinicBusinessHours ?? null);
 
-    while (cursor < input.to && slots.length < 100) {
-      // Check business hours in clinic local timezone (BRT)
-      const local = toClinicLocal(cursor);
-      const dow = local.getUTCDay(); // 0=Sun, 6=Sat in local time
-      const hour = local.getUTCHours();
-
-      if (dow === 0 || dow === 6 || hour < 8 || hour >= 18) {
-        cursor.setTime(cursor.getTime() + 60 * 60 * 1000);
-        continue;
-      }
-
-      const slotStart = cursor.getTime();
-      const slotEnd = slotStart + 60 * 60 * 1000;
-
-      const isBusy = busyRanges.some((r) => r.start < slotEnd && r.end > slotStart);
-      if (!isBusy) {
-        slots.push({
-          id: `${input.clinicId}-${slotStart}`,
-          clinicId: input.clinicId,
-          professionalId: null,
-          startsAt: new Date(slotStart),
-          endsAt: new Date(slotEnd),
-          source: "google_calendar",
-        });
-      }
-
-      cursor.setTime(cursor.getTime() + 60 * 60 * 1000);
-    }
-
-    return slots;
+    return computeAvailableSlots({
+      timezone: tz,
+      businessHours: bh,
+      existingEvents,
+      from: input.from,
+      to: input.to,
+      slotDurationMinutes: 60,
+      clinicId: input.clinicId,
+    });
   }
 
   async createAppointment(input: {

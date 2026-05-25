@@ -3,6 +3,8 @@ import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 // GET — retorna o estado atual do toggle
 export async function GET(): Promise<NextResponse> {
   const clinicId = process.env.PILOT_CLINIC_ID;

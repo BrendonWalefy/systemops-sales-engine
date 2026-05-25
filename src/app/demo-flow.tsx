@@ -498,7 +498,7 @@ export function DemoFlow() {
                 <div className="cost-list">
                   <Signal label="Ação" value={translateAction(result.decision.action)} />
                   <Signal label="Status" value={translateStage(result.decision.stage)} />
-                  <Signal label="Motivo" value={result.decision.reason} />
+                  <Signal label="Motivo" value={result.decision.reason ?? "—"} />
                   <Signal label="Custo IA" value={result.costs.aiUsd} />
                   <Signal label="Tokens" value={`${result.costs.inputTokens} in / ${result.costs.outputTokens} out`} />
                 </div>
