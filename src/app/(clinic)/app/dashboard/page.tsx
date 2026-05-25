@@ -181,7 +181,7 @@ export default async function DashboardPage() {
         <div className="metric">
           <div className="metric-header">
             <span className="metric-icon"><AlertTriangle size={14} /></span>
-            <span className="metric-label">Atenção imediata</span>
+            <span className="metric-label">IA atendendo agora</span>
           </div>
           <span className="metric-value">{data.handoffCount}</span>
           <span className="metric-context">leads quentes em conversa ativa</span>
