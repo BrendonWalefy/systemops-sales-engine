@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ResetClinicDialog } from "./reset-clinic-dialog";
 import { db } from "@/infrastructure/db/client";
 import {
   clinics,
@@ -183,6 +184,7 @@ export default async function ClinicDetailPage({
               <span className="status-dot" /> IA Pausada
             </span>
           )}
+          <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
           <Link
             href="/app/inbox"
             style={{
