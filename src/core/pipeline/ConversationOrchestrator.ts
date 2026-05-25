@@ -414,6 +414,15 @@ export class ConversationOrchestrator {
     return { replied: true };
   }
 
+  // Snapa para a próxima hora cheia com antecedência mínima de 2h.
+  // Evita que o cursor do SlotEngine gere slots em :51 ou :37.
+  private slotWindowStart(): Date {
+    const minAdvanceMs = 2 * 60 * 60_000;
+    const earliest = new Date(Date.now() + minAdvanceMs);
+    const hourMs = 60 * 60_000;
+    return new Date(Math.ceil(earliest.getTime() / hourMs) * hourMs);
+  }
+
   // ── Helper: busca slots e salva oferta na state machine ──
   private async fetchAndOfferSlots(
     conversationId: string,
@@ -424,7 +433,7 @@ export class ConversationOrchestrator {
     preferredDate?: string,
     preferredPeriod?: string,
   ) {
-    const from = new Date();
+    const from = this.slotWindowStart();
     const to = new Date(from.getTime() + SLOTS_LOOKAHEAD_DAYS * 24 * 60 * 60_000);
 
     let allSlots = await calendarGateway.listAvailableSlots({

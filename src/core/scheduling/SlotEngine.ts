@@ -73,9 +73,37 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
   return slots;
 }
 
-// Seleciona os N melhores slots para oferecer ao lead.
-// Prefere horários mais próximos e variados (manhã/tarde distribuídos).
+// Seleciona os N melhores slots distribuídos por dias diferentes.
+// Pega o primeiro slot disponível de cada dia em ordem cronológica,
+// ciclando pelos dias até atingir o count.
 export function selectBestSlots(slots: CalendarSlot[], count: number): CalendarSlot[] {
   if (slots.length <= count) return slots;
-  return slots.slice(0, count);
+
+  // Agrupa por dia UTC (funciona para BRT pois horário comercial 8-18h BRT = 11-21h UTC,
+  // sempre no mesmo dia do calendário)
+  const byDay = new Map<string, CalendarSlot[]>();
+  for (const slot of slots) {
+    const dayKey = slot.startsAt.toISOString().slice(0, 10);
+    if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+    byDay.get(dayKey)!.push(slot);
+  }
+
+  const days = [...byDay.values()];
+  const result: CalendarSlot[] = [];
+  let i = 0;
+
+  while (result.length < count && days.length > 0) {
+    const idx = i % days.length;
+    const slot = days[idx].shift();
+    if (slot) {
+      result.push(slot);
+    }
+    if (days[idx].length === 0) {
+      days.splice(idx, 1);
+    } else {
+      i++;
+    }
+  }
+
+  return result;
 }
