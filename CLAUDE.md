@@ -92,6 +92,14 @@ Z-API webhook → zapi/route.ts (thin adapter)
 4. Implementar em `src/infrastructure/repositories/`
 5. Aplicar migration em produção antes do deploy
 
+### Follow-up de re-engajamento
+A infraestrutura já existe (`follow_ups` table, `CreateFollowUp` use case, `FollowUpRepository.listDue()`). Ao implementar:
+
+1. **FollowUpScheduler** — chamar via `BookingService` nos eventos: `completed` (+6 meses), `no_show` (+7 dias), lead `lost` (+30 dias). Localização: `src/application/use-cases/leads/schedule-follow-up.ts`
+2. **FollowUpDispatcher** — Vercel Cron diário em `src/app/api/cron/follow-up-dispatcher/route.ts`, protegido por `CRON_SECRET`. Fluxo: `listDue` → gera mensagem via `ResponseComposer` (novo ActionResult `reengagement`) → envia via Z-API → marca `done`
+3. **Não enviar mensagem diretamente na rota** — usar `ResponseComposer` para gerar o texto, garantindo tom de voz da clínica
+4. **Não criar agendamento automático** — o follow-up apenas inicia a conversa; o lead passa pelo fluxo normal do `ConversationOrchestrator`
+
 ---
 
 ## Stack de referência
