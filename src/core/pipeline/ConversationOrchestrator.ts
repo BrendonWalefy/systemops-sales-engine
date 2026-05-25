@@ -23,6 +23,7 @@ import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
+import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 
 import type { Clinic } from "@/domain/entities/clinic";
 
@@ -231,7 +232,7 @@ export class ConversationOrchestrator {
           });
         } else if (result.reason === "slot_taken") {
           // Slot foi tomado por outro lead — oferece novos horários
-          const newSlots = await this.fetchAndOfferSlots(
+          const { slots: newSlots } = await this.fetchAndOfferSlots(
             conversation.id,
             clinic,
             calendarGateway,
@@ -255,10 +256,35 @@ export class ConversationOrchestrator {
       // ── Rejeição dos slots oferecidos ──
       case "reject_slots": {
         await this.stateMachine.invalidate(conversation.id);
-        replyText = await compose({
-          type: "clarification_needed",
-          question: "Sem problemas! Qual período te atende melhor — manhã ou tarde? Ou tem algum dia específico em mente?",
-        });
+
+        // Se o lead rejeitou E expressou preferência (ex: "não quero quinta, só tenho sexta"),
+        // busca imediatamente para aquele dia em vez de perguntar novamente.
+        if (slotPreference.preferredDate || slotPreference.preferredPeriod) {
+          const { slots: preferredSlots, preferredDayEmpty: rejectDayEmpty } = await this.fetchAndOfferSlots(
+            conversation.id,
+            clinic,
+            calendarGateway,
+            timezone,
+            businessHours,
+            slotPreference.preferredDate ?? undefined,
+            slotPreference.preferredPeriod ?? undefined,
+          );
+          if (preferredSlots.length > 0 && !rejectDayEmpty) {
+            replyText = await compose({ type: "slots_found", slots: preferredSlots, askedForPreference: false });
+          } else if (rejectDayEmpty) {
+            replyText = await compose({
+              type: "no_slots_available",
+              alternativeSlots: preferredSlots.length > 0 ? preferredSlots : undefined,
+            });
+          } else {
+            replyText = await compose({ type: "no_slots_available" });
+          }
+        } else {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: "Sem problemas! Qual período te atende melhor — manhã ou tarde? Ou tem algum dia específico em mente?",
+          });
+        }
         break;
       }
 
@@ -270,7 +296,7 @@ export class ConversationOrchestrator {
           await this.stateMachine.invalidate(conversation.id);
         }
 
-        const formattedSlots = await this.fetchAndOfferSlots(
+        const { slots: formattedSlots, preferredDayEmpty } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
           calendarGateway,
@@ -281,14 +307,18 @@ export class ConversationOrchestrator {
           slotPreference.preferredTime ?? undefined,
         );
 
-        if (formattedSlots.length > 0) {
+        if (formattedSlots.length > 0 && !preferredDayEmpty) {
           replyText = await compose({
             type: "slots_found",
             slots: formattedSlots,
             askedForPreference: false,
           });
+        } else if (preferredDayEmpty) {
+          replyText = await compose({
+            type: "no_slots_available",
+            alternativeSlots: formattedSlots.length > 0 ? formattedSlots : undefined,
+          });
         } else if (!slotPreference.preferredDate && !slotPreference.preferredPeriod) {
-          // Sem preferência — pergunta antes de buscar
           replyText = await compose({
             type: "clarification_needed",
             question: "Qual período te atende melhor — manhã ou tarde? E tem algum dia específico em mente?",
@@ -333,7 +363,7 @@ export class ConversationOrchestrator {
           await bookingService.cancel({ lead, appointment: activeAppointment });
         }
 
-        const newSlots = await this.fetchAndOfferSlots(
+        const { slots: newSlots, preferredDayEmpty: rescheduleEmpty } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
           calendarGateway,
@@ -344,8 +374,13 @@ export class ConversationOrchestrator {
           slotPreference.preferredTime ?? undefined,
         );
 
-        if (newSlots.length > 0) {
+        if (newSlots.length > 0 && !rescheduleEmpty) {
           replyText = await compose({ type: "appointment_rescheduled", newSlots });
+        } else if (rescheduleEmpty) {
+          replyText = await compose({
+            type: "no_slots_available",
+            alternativeSlots: newSlots.length > 0 ? newSlots : undefined,
+          });
         } else {
           replyText = await compose({ type: "no_slots_available" });
         }
@@ -446,6 +481,10 @@ export class ConversationOrchestrator {
   }
 
   // ── Helper: busca slots e salva oferta na state machine ──
+  // Retorna { slots, preferredDayEmpty } onde:
+  //   - preferredDayEmpty=false → slots confirmáveis, salvos na state machine
+  //   - preferredDayEmpty=true  → slots são alternativas de outros dias, apenas para exibição,
+  //                               NÃO salvos na state machine (lead não escolheu nada ainda)
   private async fetchAndOfferSlots(
     conversationId: string,
     clinic: Clinic,
@@ -455,7 +494,7 @@ export class ConversationOrchestrator {
     preferredDate?: string,
     preferredPeriod?: string,
     preferredTime?: string,
-  ) {
+  ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean }> {
     const from = this.slotWindowStart();
     const to = new Date(from.getTime() + SLOTS_LOOKAHEAD_DAYS * 24 * 60 * 60_000);
 
@@ -465,9 +504,9 @@ export class ConversationOrchestrator {
       to,
     });
 
-    // Filtra por dia específico quando o lead expressou preferência de data.
-    // Se "sexta" não tiver slots livres, mantém o pool completo como fallback.
     let filteredToDay = false;
+    let preferredDayEmpty = false;
+
     if (preferredDate) {
       const targetDay = timezone.resolvePreferredDate(preferredDate, new Date());
       if (targetDay !== null) {
@@ -479,49 +518,71 @@ export class ConversationOrchestrator {
         if (slotsOnDay.length > 0) {
           allSlots = slotsOnDay;
           filteredToDay = true;
+        } else {
+          // Dia preferido sem disponibilidade — sinaliza e mantém pool completo como alternativas.
+          // Alternativas NÃO serão salvas na state machine: lead ainda não escolheu nenhum dia.
+          preferredDayEmpty = true;
         }
       }
     }
 
-    // Filtra por período (manhã/tarde/noite) se informado
-    if (preferredPeriod) {
-      const bySameDay = allSlots.filter((slot) => {
+    // Filtra por período apenas quando o dia preferido foi encontrado
+    if (!preferredDayEmpty && preferredPeriod) {
+      const byPeriod = allSlots.filter((slot) => {
         const parts = timezone.toLocalParts(slot.startsAt);
         if (preferredPeriod === "morning") return parts.hour >= 8 && parts.hour < 12;
         if (preferredPeriod === "afternoon") return parts.hour >= 12 && parts.hour < 18;
         if (preferredPeriod === "evening") return parts.hour >= 17;
         return true;
       });
-      // Só aplica filtro de período se sobrar slots; senão mantém o dia inteiro
-      if (bySameDay.length > 0) allSlots = bySameDay;
+      if (byPeriod.length > 0) allSlots = byPeriod;
     }
 
-    // Ordena por proximidade à hora solicitada quando o lead especificou horário
+    // Ordena por proximidade à hora solicitada quando o lead especificou horário.
+    // Normaliza hora ambígua para horário comercial: "3" com clínica 8-18 → 15h, não 3am.
     if (preferredTime) {
       const hourMatch = preferredTime.match(/(\d{1,2})/);
-      const preferredHour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+      let preferredHour = hourMatch ? parseInt(hourMatch[1], 10) : null;
       if (preferredHour !== null) {
+        const pmCandidate = preferredHour + 12;
+        if (
+          preferredHour < businessHours.startHour &&
+          pmCandidate >= businessHours.startHour &&
+          pmCandidate < businessHours.endHour
+        ) {
+          preferredHour = pmCandidate;
+        }
         allSlots.sort((a, b) => {
           const aHour = timezone.toLocalParts(a.startsAt).hour;
           const bHour = timezone.toLocalParts(b.startsAt).hour;
-          return Math.abs(aHour - preferredHour) - Math.abs(bHour - preferredHour);
+          return Math.abs(aHour - preferredHour!) - Math.abs(bHour - preferredHour!);
         });
       }
     }
 
-    // Quanto mais específico foi o lead, menos opções oferecemos.
-    // Lead disse dia + hora → 2 slots; só dia → 3; sem preferência → 5.
     const count = (filteredToDay && preferredTime)
       ? SLOTS_WITH_DATE_AND_TIME
       : filteredToDay
       ? SLOTS_WITH_DATE_ONLY
       : MAX_SLOTS_TO_OFFER;
 
-    const best = selectBestSlots(allSlots, count);
+    const best = selectBestSlots(allSlots, count, timezone);
 
-    if (best.length === 0) return [];
+    if (best.length === 0) return { slots: [], preferredDayEmpty };
 
-    return this.stateMachine.offerSlots(conversationId, best, timezone);
+    if (preferredDayEmpty) {
+      // Formata para exibição sem salvar na state machine
+      const formatted: FormattedSlot[] = best.map((s, i) => ({
+        index: i + 1,
+        startsAt: s.startsAt.toISOString(),
+        endsAt: s.endsAt.toISOString(),
+        label: timezone.formatForHuman(s.startsAt),
+      }));
+      return { slots: formatted, preferredDayEmpty: true };
+    }
+
+    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone);
+    return { slots, preferredDayEmpty: false };
   }
 
   private async notifyHandoff(clinic: Clinic, leadPhone: string): Promise<void> {

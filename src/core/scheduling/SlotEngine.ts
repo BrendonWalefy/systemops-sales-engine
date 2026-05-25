@@ -74,19 +74,17 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
 }
 
 // Seleciona os N melhores slots distribuídos por dias e períodos diferentes.
-// Para cada dia, divide os slots em manhã (antes das 15h UTC = antes das 12h BRT)
-// e tarde (a partir das 15h UTC = a partir das 12h BRT), depois faz round-robin
-// entre esses buckets para garantir variedade de horário nas sugestões.
-const AFTERNOON_UTC_BOUNDARY = 15; // 15h UTC = 12h BRT
-
-export function selectBestSlots(slots: CalendarSlot[], count: number): CalendarSlot[] {
+// Usa o fuso horário da clínica para classificar manhã/tarde e identificar o dia correto.
+// Faz round-robin entre os buckets para garantir variedade de horário nas sugestões.
+export function selectBestSlots(slots: CalendarSlot[], count: number, timezone: ClinicTimezone): CalendarSlot[] {
   if (slots.length <= count) return slots;
 
-  // Agrupa por (dia + período), produzindo buckets como "2026-05-25-morning"
+  // Agrupa por (dia local + período), produzindo buckets como "2026-05-25-morning"
   const byDayPeriod = new Map<string, CalendarSlot[]>();
   for (const slot of slots) {
-    const dayKey = slot.startsAt.toISOString().slice(0, 10);
-    const period = slot.startsAt.getUTCHours() < AFTERNOON_UTC_BOUNDARY ? "morning" : "afternoon";
+    const parts = timezone.toLocalParts(slot.startsAt);
+    const dayKey = `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+    const period = parts.hour < 12 ? "morning" : "afternoon";
     const key = `${dayKey}-${period}`;
     if (!byDayPeriod.has(key)) byDayPeriod.set(key, []);
     byDayPeriod.get(key)!.push(slot);

@@ -24,7 +24,7 @@ export type ActionResult =
   | { type: "appointment_confirmed"; slot: FormattedSlot; clinicName: string }
   | { type: "appointment_cancelled"; count?: number }
   | { type: "appointment_rescheduled"; newSlots: FormattedSlot[] }
-  | { type: "no_slots_available"; nextAvailableDate?: string }
+  | { type: "no_slots_available"; nextAvailableDate?: string; alternativeSlots?: FormattedSlot[] }
   | { type: "clarification_needed"; question: string }
   | { type: "appointments_listed"; appointments: FormattedAppointment[] }
   | { type: "no_appointments" }
@@ -69,6 +69,9 @@ IDENTIDADE:
 - Data/hora atual: ${nowStr}
 ${isFirstMessage ? `- É a primeira mensagem: mencione o nome da clínica uma vez` : "- Não mencione o nome da clínica novamente"}
 
+REGRA ANTI-REPETIÇÃO (OBRIGATÓRIA — leia antes de redigir):
+Verifique o histórico da conversa. Se alguma informação já foi comunicada ao lead (ex: valor da avaliação, condições de parcelamento, endereço, formas de pagamento), NÃO repita — mesmo que a ação abaixo sugira mencioná-la. Só repita se o lead perguntar novamente de forma explícita.
+
 REGRAS ABSOLUTAS:
 1. Máximo 2 parágrafos curtos. Sem bullet points. Sem listas numeradas. Escreva como pessoa real.
 2. NUNCA invente horários, datas ou informações que não estão no contexto fornecido.
@@ -76,7 +79,6 @@ REGRAS ABSOLUTAS:
 4. Use o nome do lead com naturalidade, não em toda frase.
 5. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
 6. Não escreva "Olá" ou saudação se não for a primeira mensagem.
-7. NÃO repita informações já dadas ao lead nesta conversa (ex: valor da avaliação, endereço, formas de pagamento). Só repita se o lead perguntar novamente de forma explícita.
 ${clinic.commercialPolicy ? `\nPOLÍTICA COMERCIAL:\n${clinic.commercialPolicy}` : ""}
 ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}`;
 }
@@ -110,10 +112,15 @@ NOVOS HORÁRIOS:
 ${slotList}`;
     }
 
-    case "no_slots_available":
-      return `AÇÃO EXECUTADA: Não há horários disponíveis no período solicitado.
+    case "no_slots_available": {
+      const altSection = result.alternativeSlots?.length
+        ? `\nALTERNATIVAS DE OUTROS DIAS:\n${result.alternativeSlots.map((s) => `  - ${s.label}`).join("\n")}\nApresente estas opções SOMENTE se o lead demonstrar abertura para outros dias. Se insistir no dia original, informe com empatia que não há disponibilidade e diga que a equipe entrará em contato.`
+        : "Ofereça alternativas ou peça para o lead sugerir outro período.";
+      return `AÇÃO EXECUTADA: O dia/horário solicitado não tem disponibilidade.
 ${result.nextAvailableDate ? `Próximo horário disponível: ${result.nextAvailableDate}` : ""}
-Informe gentilmente e ofereça alternativas ou peça para o lead sugerir outro período.`;
+Informe com clareza e empatia que o dia pedido não tem horários disponíveis.
+${altSection}`;
+    }
 
     case "clarification_needed":
       return `AÇÃO EXECUTADA: Precisamos de mais informações.
@@ -179,7 +186,7 @@ export class ResponseComposer {
       })),
       {
         role: "user",
-        content: `[INSTRUÇÃO INTERNA — NÃO VISÍVEL AO LEAD]\n${actionContext}\n\nEscreva a resposta agora:`,
+        content: `[INSTRUÇÃO INTERNA — NÃO VISÍVEL AO LEAD]\nANTES DE REDIGIR: releia as mensagens anteriores. Se uma informação já foi mencionada (valor, parcelas, condições, endereço), OMITA-a — a menos que a mensagem atual do lead seja uma pergunta explícita sobre esse mesmo assunto.\n\n${actionContext}\n\nEscreva a resposta agora:`,
       },
     ];
 
