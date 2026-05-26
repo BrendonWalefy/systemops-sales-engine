@@ -1,8 +1,8 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, notInArray, lt, sql } from "drizzle-orm";
 import type { Lead } from "@/domain/entities/lead";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import { db } from "@/infrastructure/db/client";
-import { leads } from "@/infrastructure/db/schema";
+import { leads, conversations } from "@/infrastructure/db/schema";
 
 export class DrizzleLeadRepository implements LeadRepository {
   async findById(id: string): Promise<Lead | null> {
@@ -15,6 +15,27 @@ export class DrizzleLeadRepository implements LeadRepository {
       where: and(eq(leads.clinicId, clinicId), eq(leads.phone, phone)),
     });
     return row ? mapRow(row) : null;
+  }
+
+  async findInactiveLeads(params: {
+    clinicId: string;
+    lastActivityBefore: Date;
+  }): Promise<Lead[]> {
+    const rows = await db
+      .select({ lead: leads })
+      .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(
+        and(
+          eq(leads.clinicId, params.clinicId),
+          notInArray(leads.status, ["lost", "won", "appointment_scheduled"]),
+          lt(
+            sql`COALESCE(${conversations.lastMessageAt}, ${conversations.updatedAt})`,
+            params.lastActivityBefore,
+          ),
+        ),
+      );
+    return rows.map((r) => mapRow(r.lead));
   }
 
   async save(lead: Lead): Promise<void> {
@@ -33,6 +54,7 @@ export class DrizzleLeadRepository implements LeadRepository {
         temperature: lead.temperature,
         assignedToUserId: lead.assignedToUserId,
         nextActionAt: lead.nextActionAt,
+        lostReason: lead.lostReason,
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
       })
@@ -47,6 +69,7 @@ export class DrizzleLeadRepository implements LeadRepository {
           treatmentInterest: lead.treatmentInterest,
           assignedToUserId: lead.assignedToUserId,
           nextActionAt: lead.nextActionAt,
+          lostReason: lead.lostReason,
           updatedAt: lead.updatedAt,
         },
       });
@@ -67,6 +90,7 @@ function mapRow(row: typeof leads.$inferSelect): Lead {
     temperature: row.temperature,
     assignedToUserId: row.assignedToUserId,
     nextActionAt: row.nextActionAt,
+    lostReason: row.lostReason,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

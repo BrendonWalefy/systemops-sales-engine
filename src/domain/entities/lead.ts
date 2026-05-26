@@ -14,6 +14,7 @@ export type Lead = {
   temperature: LeadTemperature | null;
   assignedToUserId: string | null;
   nextActionAt: Date | null;
+  lostReason: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -48,6 +48,13 @@ export class InMemoryDemoStore
     );
   }
 
+  async findInactiveLeads(params: {
+    clinicId: string;
+    lastActivityBefore: Date;
+  }): Promise<Lead[]> {
+    return [];
+  }
+
   async save(leadOrRecommendationOrFollowUpOrAppointment: Lead): Promise<void>;
   async save(leadOrRecommendationOrFollowUpOrAppointment: SalesAgentRecommendation): Promise<void>;
   async save(leadOrRecommendationOrFollowUpOrAppointment: FollowUp): Promise<void>;

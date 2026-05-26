@@ -40,6 +40,7 @@ export class RegisterIncomingMessage {
         temperature: null,
         assignedToUserId: null,
         nextActionAt: null,
+        lostReason: null,
         createdAt: now,
         updatedAt: now,
       };
