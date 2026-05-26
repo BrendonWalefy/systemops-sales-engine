@@ -55,6 +55,7 @@ export class RegisterIncomingMessage {
         externalThreadId: input.message.externalThreadId,
         summary: null,
         aiPaused: false,
+        takeoverExpiresAt: null,
         needsAttention: false,
         attentionReason: null,
         consecutiveUnclearCount: 0,

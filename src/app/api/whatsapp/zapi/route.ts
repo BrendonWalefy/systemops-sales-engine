@@ -17,8 +17,11 @@ function getOrchestrator() {
   return orchestrator;
 }
 
+const HUMAN_TAKEOVER_TTL_HOURS = 4;
+
 // Detecta e registra mensagem enviada pelo operador direto pelo celular (fromMe: true).
-// Pausa a IA automaticamente para que o operador assuma o atendimento.
+// Pausa a IA com TTL de HUMAN_TAKEOVER_TTL_HOURS — retoma automaticamente se o operador
+// não voltar ao lead dentro desse período.
 async function handleOperatorMessageFromPhone(
   body: ZApiInboundPayload,
   clinicId: string,
@@ -50,12 +53,14 @@ async function handleOperatorMessageFromPhone(
     externalId: body.messageId,
   });
 
+  const takeoverExpiresAt = new Date(now.getTime() + HUMAN_TAKEOVER_TTL_HOURS * 60 * 60_000);
+
   await db
     .update(conversations)
-    .set({ aiPaused: true, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
+    .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
     .where(eq(conversations.id, conv.id));
 
-  console.log(`[ZApi] Operador enviou mensagem direto pelo celular para ${leadPhone} — IA pausada`);
+  console.log(`[ZApi] Operador enviou mensagem pelo celular para ${leadPhone} — IA pausada até ${takeoverExpiresAt.toISOString()}`);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -86,9 +91,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       if (existing) return new NextResponse("OK", { status: 200 });
 
-      // 2ª verificação (race condition): mensagem da IA com mesmo corpo salva nos últimos 30s
-      // Cobre o caso onde o echo chega antes do Orchestrator terminar de salvar
-      const thirtySecondsAgo = new Date(Date.now() - 30_000);
+      // 2ª verificação (race condition): mensagem da IA com mesmo corpo salva nos últimos 10s
+      // Cobre o caso onde o echo chega antes do Orchestrator terminar de salvar.
+      // 10s é suficiente — echoes Z-API chegam em <3s e o Orchestrator salva em <5s.
+      // Janela maior causa falso positivo: operador enviando mesmo texto que a IA enviou
+      // nos últimos segundos seria classificado como echo e a pausa nunca aconteceria.
+      const tenSecondsAgo = new Date(Date.now() - 10_000);
       const [recentAgent] = await db
         .select({ id: messages.id })
         .from(messages)
@@ -96,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           and(
             eq(messages.author, "agent"),
             eq(messages.body, body.text.message),
-            gte(messages.sentAt, thirtySecondsAgo),
+            gte(messages.sentAt, tenSecondsAgo),
           ),
         )
         .limit(1);

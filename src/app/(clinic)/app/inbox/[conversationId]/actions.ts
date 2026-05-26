@@ -5,9 +5,10 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function pauseAi(conversationId: string, leadId: string) {
+  // Pause manual via dashboard — sem TTL (operador decide quando retomar)
   await db
     .update(conversations)
-    .set({ aiPaused: true, updatedAt: new Date() })
+    .set({ aiPaused: true, takeoverExpiresAt: null, updatedAt: new Date() })
     .where(eq(conversations.id, conversationId));
   await db
     .update(leads)
@@ -21,6 +22,7 @@ export async function resumeAi(conversationId: string) {
     .update(conversations)
     .set({
       aiPaused: false,
+      takeoverExpiresAt: null,
       needsAttention: false,
       attentionReason: null,
       consecutiveUnclearCount: 0,

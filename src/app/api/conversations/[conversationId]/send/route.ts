@@ -89,10 +89,11 @@ export async function POST(
     return NextResponse.json({ error: "WhatsApp send failed — mensagem salva mas não entregue" }, { status: 502 });
   }
 
-  // ── 7. Pausa IA + limpa flag de atenção (operador assumiu) ──
+  // ── 7. Pausa IA com TTL + limpa flag de atenção (operador assumiu) ──
+  const takeoverExpiresAt = new Date(now.getTime() + 4 * 60 * 60_000); // 4h TTL
   await db
     .update(conversations)
-    .set({ aiPaused: true, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
+    .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
     .where(eq(conversations.id, conversationId));
 
   return NextResponse.json({ ok: true });

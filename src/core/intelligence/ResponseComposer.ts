@@ -50,6 +50,7 @@ export type ComposerInput = {
   leadName?: string | null;
   timezone: ClinicTimezone;
   isFirstMessage: boolean;
+  resumedFromHumanTakeover?: boolean;
 };
 
 export type ComposedResponse = {
@@ -61,7 +62,7 @@ export type ComposedResponse = {
 };
 
 function buildSystemPrompt(input: ComposerInput): string {
-  const { clinic, leadName, timezone, isFirstMessage } = input;
+  const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover } = input;
   const nowStr = timezone.formatNowForPrompt();
 
   return `Você é a recepcionista virtual da ${clinic.name}, uma clínica de ${clinic.specialty}.
@@ -85,7 +86,10 @@ REGRAS ABSOLUTAS:
 
 ESCOPO ESTRITO: Você responde SOMENTE sobre assuntos da ${clinic.name} — agendamentos, especialidades, localização, preços e tratamentos. Para perguntas completamente fora do escopo da clínica (política, outros serviços, programação, etc.), responda gentilmente que você é a recepcionista virtual e pode ajudar apenas com assuntos da clínica.
 ${clinic.commercialPolicy ? `\nPOLÍTICA COMERCIAL:\n${clinic.commercialPolicy}` : ""}
-${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}`;
+${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}
+${resumedFromHumanTakeover ? `
+ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
+Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}`;
 }
 
 function buildActionContext(result: ActionResult): string {

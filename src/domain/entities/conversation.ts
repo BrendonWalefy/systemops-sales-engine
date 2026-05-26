@@ -19,6 +19,7 @@ export type Conversation = {
   externalThreadId: string | null;
   summary: string | null;
   aiPaused: boolean;
+  takeoverExpiresAt: Date | null;
   needsAttention: boolean;
   attentionReason: string | null;
   consecutiveUnclearCount: number;

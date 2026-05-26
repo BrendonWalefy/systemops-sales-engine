@@ -112,6 +112,11 @@ export class InMemoryDemoStore
     if (conv) this.conversations.set(conversationId, { ...conv, aiPaused: paused });
   }
 
+  async setTakeover(conversationId: string, expiresAt: Date | null): Promise<void> {
+    const conv = this.conversations.get(conversationId);
+    if (conv) this.conversations.set(conversationId, { ...conv, aiPaused: expiresAt !== null, takeoverExpiresAt: expiresAt });
+  }
+
   async appendMessage(message: Message): Promise<void> {
     const messages = this.messages.get(message.conversationId) ?? [];
     this.messages.set(message.conversationId, [...messages, message]);

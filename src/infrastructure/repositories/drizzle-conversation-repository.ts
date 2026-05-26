@@ -44,6 +44,13 @@ export class DrizzleConversationRepository implements ConversationRepository {
       .where(eq(conversations.id, conversationId));
   }
 
+  async setTakeover(conversationId: string, expiresAt: Date | null): Promise<void> {
+    await db
+      .update(conversations)
+      .set({ aiPaused: expiresAt !== null, takeoverExpiresAt: expiresAt, updatedAt: new Date() })
+      .where(eq(conversations.id, conversationId));
+  }
+
   async appendMessage(message: Message): Promise<void> {
     await db
       .insert(messages)
@@ -77,6 +84,7 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     externalThreadId: row.externalThreadId,
     summary: row.summary,
     aiPaused: row.aiPaused,
+    takeoverExpiresAt: row.takeoverExpiresAt,
     needsAttention: row.needsAttention,
     attentionReason: row.attentionReason,
     consecutiveUnclearCount: row.consecutiveUnclearCount,

@@ -86,8 +86,10 @@ export class ClinicTimezone {
   ): Date {
     // Estratégia: cria data em UTC e ajusta iterativamente.
     // Intl.DateTimeFormat é confiável para ler, não para escrever.
-    // Usamos bissecção: estimamos UTC, verificamos diferença local, corrigimos.
-    const estimated = new Date(Date.UTC(year, month, day, hour, minute));
+    // Partimos do meio-dia UTC (12h) para garantir que o toLocalParts do estimado
+    // retorne o MESMO dia calendário que o solicitado — evita o off-by-one em UTC-3
+    // onde meia-noite UTC (0h) é 21h do dia anterior no fuso local.
+    const estimated = new Date(Date.UTC(year, month, day, 12, 0));
     const localBack = this.toLocalParts(estimated);
 
     const diffMinutes =

@@ -152,6 +152,7 @@ export const conversations = pgTable(
     externalThreadId: text("external_thread_id"),
     summary: text("summary"),
     aiPaused: boolean("ai_paused").notNull().default(false),
+    takeoverExpiresAt: timestamp("takeover_expires_at", { withTimezone: true }),
     needsAttention: boolean("needs_attention").notNull().default(false),
     attentionReason: text("attention_reason"),
     consecutiveUnclearCount: integer("consecutive_unclear_count").notNull().default(0),

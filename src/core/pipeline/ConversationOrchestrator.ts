@@ -133,10 +133,22 @@ export class ConversationOrchestrator {
     });
 
     // ── 4. Verifica se a IA está pausada para esta conversa ──
-    // Operador pode pausar via dashboard; mensagem é registrada mas IA não responde.
+    // Se há TTL expirado → retoma automaticamente e sinaliza ao Composer para contextualizar.
+    // Se pausada sem TTL (pause manual) ou TTL ainda vigente → silêncio.
+    let resumedFromHumanTakeover = false;
     if (conversation.aiPaused) {
-      console.log(`[Orchestrator] AI paused for conversation ${conversation.id}, skipping response`);
-      return { replied: false };
+      const now = new Date();
+      if (conversation.takeoverExpiresAt && conversation.takeoverExpiresAt < now) {
+        await db
+          .update(conversationsTable)
+          .set({ aiPaused: false, takeoverExpiresAt: null, updatedAt: now })
+          .where(eq(conversationsTable.id, conversation.id));
+        resumedFromHumanTakeover = true;
+        console.log(`[Orchestrator] Takeover TTL expirado para ${conversation.id} — IA retomada`);
+      } else {
+        console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
+        return { replied: false };
+      }
     }
 
     // ── 5. Rate limit — máx 20 msgs/hora do lead por conversa ──
@@ -210,6 +222,7 @@ export class ConversationOrchestrator {
         leadName: lead.name,
         timezone,
         isFirstMessage,
+        resumedFromHumanTakeover,
       });
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
