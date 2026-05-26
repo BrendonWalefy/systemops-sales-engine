@@ -136,6 +136,44 @@ src/app/
 └── (owner)/owner/               # Owner panel (visão consolidada)
 ```
 
+## Instalação no Celular (PWA)
+
+O SystemOps é instalável como app na tela inicial — sem App Store ou Play Store.
+Abre em tela cheia, sem barra do navegador, com ícone próprio.
+
+### Android — Google Chrome
+
+1. Acesse o sistema pelo Chrome
+2. Toque nos **3 pontinhos** → **"Adicionar à tela inicial"**
+3. Confirme o nome e toque em **Adicionar**
+
+> Em alguns dispositivos o Chrome exibe um banner automático de instalação na parte inferior da tela.
+
+### iPhone — Safari
+
+> Obrigatório usar o Safari. Chrome e outros navegadores no iPhone não permitem instalação.
+
+1. Acesse o sistema pelo **Safari**
+2. Toque no ícone de **Compartilhar** (seta para cima na barra inferior)
+3. Role e toque em **"Adicionar à Tela de Início"**
+4. Confirme e toque em **Adicionar**
+
+### O que esperar após instalar
+
+- App abre em **tela cheia** (sem barra do navegador)
+- Ícone com fundo escuro e raio verde na tela inicial
+- Abre direto no Inbox de conversas
+
+### Arquivos relevantes
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `src/app/manifest.ts` | Manifest PWA (nome, cores, start_url, ícones) |
+| `src/app/layout.tsx` | Meta tags apple-web-app e viewport |
+| `public/icons/` | Ícones PNG: 192×192, 512×512, 180×180 (iOS) |
+
+---
+
 ## Webhooks (não alterar)
 
 - `POST /api/whatsapp/webhook` — Meta Cloud API
