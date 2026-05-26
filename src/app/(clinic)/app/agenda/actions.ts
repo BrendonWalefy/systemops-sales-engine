@@ -21,11 +21,13 @@ async function getGateway() {
 
   if (!clinic) throw new Error("Clinic not found");
 
+  const tz = new ClinicTimezone(clinic.timezone);
   return {
     clinicId,
+    tz,
     gateway: new GoogleCalendarGateway(
       clinic.googleCalendarId,
-      new ClinicTimezone(clinic.timezone),
+      tz,
       clinic.businessHours,
     ),
   };
@@ -48,13 +50,20 @@ export async function createBlock(formData: FormData) {
 
   if (!date || !startTime || !endTime) throw new Error("Campos obrigatórios ausentes");
 
-  const startsAt = new Date(`${date}T${startTime}:00`);
-  const endsAt = new Date(`${date}T${endTime}:00`);
+  const [year, month, day] = date.split("-").map(Number);
+  const [startH, startM] = startTime.split(":").map(Number);
+  const [endH, endM] = endTime.split(":").map(Number);
 
-  if (isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) throw new Error("Data ou horário inválido");
+  if (!year || !month || !day || isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
+    throw new Error("Data ou horário inválido");
+  }
+
+  const { clinicId, tz, gateway } = await getGateway();
+
+  const startsAt = tz.fromLocalParts(year, month - 1, day, startH, startM);
+  const endsAt = tz.fromLocalParts(year, month - 1, day, endH, endM);
+
   if (endsAt <= startsAt) throw new Error("Horário de fim deve ser após o início");
-
-  const { clinicId, gateway } = await getGateway();
   await gateway.createBlockEvent({ clinicId, startsAt, endsAt, reason });
 
   revalidatePath("/app/agenda");

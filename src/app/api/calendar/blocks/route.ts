@@ -21,11 +21,11 @@ async function getGateway() {
 
   if (!clinic) throw new Error("Clinic not found");
 
-  return new GoogleCalendarGateway(
-    clinic.googleCalendarId,
-    new ClinicTimezone(clinic.timezone),
-    clinic.businessHours,
-  );
+  const tz = new ClinicTimezone(clinic.timezone);
+  return {
+    tz,
+    gateway: new GoogleCalendarGateway(clinic.googleCalendarId, tz, clinic.businessHours),
+  };
 }
 
 async function requireAuth() {
@@ -39,7 +39,7 @@ export async function GET(): Promise<NextResponse> {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const gateway = await getGateway();
+    const { gateway } = await getGateway();
     const clinicId = process.env.PILOT_CLINIC_ID!;
     const from = new Date();
     const to = new Date(Date.now() + 60 * 24 * 60 * 60_000); // próximos 60 dias
@@ -69,15 +69,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const gateway = await getGateway();
+    const { tz, gateway } = await getGateway();
     const clinicId = process.env.PILOT_CLINIC_ID!;
 
-    const startsAt = new Date(`${date}T${startTime}:00`);
-    const endsAt = new Date(`${date}T${endTime}:00`);
+    const [year, month, day] = date.split("-").map(Number);
+    const [startH, startM] = startTime.split(":").map(Number);
+    const [endH, endM] = endTime.split(":").map(Number);
 
-    if (isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
+    if (!year || !month || !day || isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
       return NextResponse.json({ error: "Data ou horário inválido" }, { status: 422 });
     }
+
+    const startsAt = tz.fromLocalParts(year, month - 1, day, startH, startM);
+    const endsAt = tz.fromLocalParts(year, month - 1, day, endH, endM);
+
     if (endsAt <= startsAt) {
       return NextResponse.json({ error: "Horário de fim deve ser após o início" }, { status: 422 });
     }
