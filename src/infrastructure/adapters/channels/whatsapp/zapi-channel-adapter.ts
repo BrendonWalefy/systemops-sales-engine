@@ -18,6 +18,11 @@ export type ZApiInboundPayload = {
   senderName: string;
   senderPhoto?: string;
   text?: { message: string };
+  audio?: {
+    audioUrl: string;
+    mimeType: string;
+    seconds?: number;
+  };
   isGroupMsg: boolean;
   isStatusReply: boolean;
   isEdit: boolean;

@@ -8,6 +8,8 @@ import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { and, desc, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { sendZApiTextMessage } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,12 @@ let orchestrator: ConversationOrchestrator | null = null;
 function getOrchestrator() {
   if (!orchestrator) orchestrator = new ConversationOrchestrator();
   return orchestrator;
+}
+
+let whisperGateway: WhisperGateway | null = null;
+function getWhisperGateway() {
+  if (!whisperGateway) whisperGateway = new WhisperGateway();
+  return whisperGateway;
 }
 
 // Detecta e registra mensagem enviada pelo operador direto pelo celular (fromMe: true).
@@ -128,7 +136,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Mensagem inbound do lead
-  if (!body.text?.message) {
+  // Determina o texto da mensagem: texto digitado ou áudio transcrito
+  let messageText: string | null = null;
+
+  if (body.text?.message) {
+    messageText = body.text.message;
+  } else if (body.audio?.audioUrl) {
+    try {
+      const audioRes = await fetch(body.audio.audioUrl, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!audioRes.ok) throw new Error(`Audio download failed (${audioRes.status})`);
+      const audioBuffer = await audioRes.arrayBuffer();
+      const transcription = await getWhisperGateway().transcribe(audioBuffer, body.audio.mimeType);
+      messageText = `[áudio] ${transcription}`;
+    } catch (err) {
+      console.error("[ZApi] Falha ao transcrever áudio:", err);
+      await sendZApiTextMessage(body.phone, "Não consegui ouvir seu áudio. Pode me escrever? 😊").catch(
+        (e) => console.error("[ZApi] Erro ao enviar fallback de áudio:", e),
+      );
+      return new NextResponse("OK", { status: 200 });
+    }
+  } else {
+    // Mídia não suportada (imagem, sticker, vídeo, reação)
     return new NextResponse("OK", { status: 200 });
   }
 
@@ -153,7 +183,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await getOrchestrator().handle({
       clinicId,
       phone: body.phone,
-      messageText: body.text.message,
+      messageText,
       messageId: body.messageId,
       senderName: body.senderName || undefined,
       timestamp: body.momment ? new Date(body.momment) : new Date(),
