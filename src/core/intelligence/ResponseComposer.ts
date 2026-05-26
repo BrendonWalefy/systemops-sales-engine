@@ -95,9 +95,10 @@ Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um p
 function buildActionContext(result: ActionResult): string {
   switch (result.type) {
     case "slots_found": {
-      const slotList = result.slots.map((s) => `  Opção ${s.index}: ${s.label}`).join("\n");
-      return `AÇÃO EXECUTADA: Encontramos horários disponíveis. Apresente-os ao lead pedindo que escolha um (responda com o número).
+      const slotList = result.slots.map((s) => `${s.index}. ${s.label}`).join("\n");
+      return `AÇÃO EXECUTADA: Encontramos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
 HORÁRIOS DISPONÍVEIS:
 ${slotList}`;
     }
@@ -114,16 +115,17 @@ Informe o lead de forma calorosa. Diga que a equipe estará esperando. Não peç
     }
 
     case "appointment_rescheduled": {
-      const slotList = result.newSlots.map((s) => `  Opção ${s.index}: ${s.label}`).join("\n");
+      const slotList = result.newSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
       return `AÇÃO EXECUTADA: Agendamento anterior cancelado. Apresente os novos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
 
     case "no_slots_available": {
       const altSection = result.alternativeSlots?.length
-        ? `\nALTERNATIVAS DE OUTROS DIAS:\n${result.alternativeSlots.map((s) => `  - ${s.label}`).join("\n")}\nApresente estas opções SOMENTE se o lead demonstrar abertura para outros dias. Se insistir no dia original, informe com empatia que não há disponibilidade e diga que a equipe entrará em contato.`
+        ? `\nALTERNATIVAS DE OUTROS DIAS:\n${result.alternativeSlots.map((s) => `- ${s.label}`).join("\n")}\nApresente estas opções SOMENTE se o lead demonstrar abertura para outros dias, listando cada uma em linha separada (exceção permitida à regra geral). Se insistir no dia original, informe com empatia que não há disponibilidade e diga que a equipe entrará em contato.`
         : "Ofereça alternativas ou peça para o lead sugerir outro período.";
       return `AÇÃO EXECUTADA: O dia/horário solicitado não tem disponibilidade.
 ${result.nextAvailableDate ? `Próximo horário disponível: ${result.nextAvailableDate}` : ""}
@@ -178,10 +180,11 @@ Responda com UMA frase curta e calorosa. NÃO faça perguntas. NÃO use "Como po
 Responda com despedida calorosa em UMA frase. Deixe a porta aberta para contato futuro. NÃO ofereça serviços agora. NÃO pergunte "posso ajudar em algo mais?". Exemplos: "Foi um prazer! Se precisar de qualquer coisa, estarei por aqui 😊", "Até logo! Qualquer dúvida, é só chamar."`;
 
     case "slots_expired": {
-      const slotList = result.freshSlots.map((s) => `  Opção ${s.index}: ${s.label}`).join("\n");
+      const slotList = result.freshSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
       return `AÇÃO EXECUTADA: A oferta de horários expirou (lead demorou para responder).
 Informe gentilmente que o horário reservado não está mais disponível e apresente estes novos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
