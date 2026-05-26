@@ -9,6 +9,7 @@ export type Clinic = {
   playbook: string | null;
   businessHours: string | null;
   googleCalendarId: string | null;
+  takeoverTtlHours: number;
   createdAt: Date;
   updatedAt: Date;
 };

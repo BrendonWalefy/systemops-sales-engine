@@ -49,6 +49,7 @@ function buildClinic(row: ClinicRow): Clinic {
     playbook: row.playbook,
     businessHours: row.businessHours,
     googleCalendarId: row.googleCalendarId,
+    takeoverTtlHours: row.takeoverTtlHours,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

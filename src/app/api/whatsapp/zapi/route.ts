@@ -17,14 +17,13 @@ function getOrchestrator() {
   return orchestrator;
 }
 
-const HUMAN_TAKEOVER_TTL_HOURS = 4;
-
 // Detecta e registra mensagem enviada pelo operador direto pelo celular (fromMe: true).
-// Pausa a IA com TTL de HUMAN_TAKEOVER_TTL_HOURS — retoma automaticamente se o operador
+// Pausa a IA com TTL configurável por clínica — retoma automaticamente se o operador
 // não voltar ao lead dentro desse período.
 async function handleOperatorMessageFromPhone(
   body: ZApiInboundPayload,
   clinicId: string,
+  ttlHours: number,
 ): Promise<void> {
   // body.phone em mensagens fromMe é o destinatário (o lead)
   const leadPhone = body.phone;
@@ -53,14 +52,16 @@ async function handleOperatorMessageFromPhone(
     externalId: body.messageId,
   });
 
-  const takeoverExpiresAt = new Date(now.getTime() + HUMAN_TAKEOVER_TTL_HOURS * 60 * 60_000);
+  const takeoverExpiresAt = ttlHours > 0
+    ? new Date(now.getTime() + ttlHours * 60 * 60_000)
+    : null;
 
   await db
     .update(conversations)
     .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
     .where(eq(conversations.id, conv.id));
 
-  console.log(`[ZApi] Operador enviou mensagem pelo celular para ${leadPhone} — IA pausada até ${takeoverExpiresAt.toISOString()}`);
+  console.log(`[ZApi] Operador enviou mensagem pelo celular para ${leadPhone} — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -112,7 +113,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (recentAgent) return new NextResponse("OK", { status: 200 });
 
       // Nenhuma das verificações bateu → é o operador enviando do celular
-      await handleOperatorMessageFromPhone(body, clinicId);
+      const [clinicRow] = await db
+        .select({ takeoverTtlHours: clinics.takeoverTtlHours })
+        .from(clinics)
+        .where(eq(clinics.id, clinicId))
+        .limit(1);
+      const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
+      await handleOperatorMessageFromPhone(body, clinicId, ttlHours);
     } catch (err) {
       console.error("[ZApi] Erro ao processar mensagem fromMe:", err);
     }

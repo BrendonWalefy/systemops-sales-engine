@@ -1,0 +1,1 @@
+ALTER TABLE "clinics" ADD COLUMN "takeover_ttl_hours" integer DEFAULT 4 NOT NULL;

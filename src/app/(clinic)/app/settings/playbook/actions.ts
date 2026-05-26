@@ -20,6 +20,17 @@ export async function savePlaybook(formData: FormData) {
   revalidatePath("/app/settings/playbook");
 }
 
+export async function saveTakeoverTtl(formData: FormData) {
+  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const raw = parseInt(formData.get("takeoverTtlHours") as string, 10);
+  const ttlHours = isNaN(raw) || raw < 0 ? 4 : Math.min(raw, 72);
+  await db
+    .update(clinics)
+    .set({ takeoverTtlHours: ttlHours, updatedAt: new Date() })
+    .where(eq(clinics.id, clinicId));
+  revalidatePath("/app/settings/playbook");
+}
+
 export async function toggleAutoReply(currentValue: boolean) {
   const clinicId = process.env.PILOT_CLINIC_ID!;
   await db

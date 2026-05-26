@@ -167,7 +167,7 @@ Responda de forma informativa e acolhedora.`;
 
     case "greeting":
       return `AÇÃO EXECUTADA: Lead enviou saudação — primeiro contato ou reinício de conversa.
-Responda com calor e pergunte como pode ajudar. Se há histórico de conversa, não reinicie do zero — apenas cumprimente brevemente.`;
+Use a saudação temporal correta com base no HORÁRIO ATUAL indicado no sistema: antes das 12h → "Bom dia", entre 12h e 18h → "Boa tarde", após 18h → "Boa noite". Seja caloroso, se apresente brevemente se for o primeiro contato e pergunte como pode ajudar. Se há histórico de conversa, apenas cumprimente e continue — não reinicie do zero.`;
 
     case "acknowledgment":
       return `AÇÃO EXECUTADA: Lead enviou reconhecimento mid-conversa ("ok", "blz", "entendi", "certo", "obrigado" após info).
@@ -218,7 +218,7 @@ export class ResponseComposer {
 
     const response = await this.client.chat.completions.create({
       model: MODEL,
-      temperature: 0.3,
+      temperature: 0.5,
       max_tokens: 300,
       messages,
     });

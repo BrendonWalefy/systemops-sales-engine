@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { conversations, leads, messages } from "@/infrastructure/db/schema";
+import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -50,7 +50,15 @@ export async function POST(
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
 
-  // ── 4. Busca telefone do lead ──
+  // ── 4. Busca TTL configurado para a clínica ──
+  const [clinicRow] = await db
+    .select({ takeoverTtlHours: clinics.takeoverTtlHours })
+    .from(clinics)
+    .where(eq(clinics.id, conv.clinicId))
+    .limit(1);
+  const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
+
+  // ── 5. Busca telefone do lead ──
   const [lead] = await db
     .select({ phone: leads.phone })
     .from(leads)
@@ -66,7 +74,7 @@ export async function POST(
   const now = new Date();
   const msgId = randomUUID();
 
-  // ── 5. Persiste mensagem do operador antes do envio (auditabilidade) ──
+  // ── 6. Persiste mensagem do operador antes do envio (auditabilidade) ──
   await db.insert(messages).values({
     id: msgId,
     conversationId,
@@ -76,7 +84,7 @@ export async function POST(
     externalId: null,
   });
 
-  // ── 6. Envia via WhatsApp e captura messageId para deduplicar echo fromMe ──
+  // ── 7. Envia via WhatsApp e captura messageId para deduplicar echo fromMe ──
   try {
     const zapiMessageId = await sendTextMessage(phone, messageText);
     // Salva o messageId retornado pelo Z-API para que o webhook fromMe identifique
@@ -89,8 +97,10 @@ export async function POST(
     return NextResponse.json({ error: "WhatsApp send failed — mensagem salva mas não entregue" }, { status: 502 });
   }
 
-  // ── 7. Pausa IA com TTL + limpa flag de atenção (operador assumiu) ──
-  const takeoverExpiresAt = new Date(now.getTime() + 4 * 60 * 60_000); // 4h TTL
+  // ── 8. Pausa IA com TTL + limpa flag de atenção (operador assumiu) ──
+  const takeoverExpiresAt = ttlHours > 0
+    ? new Date(now.getTime() + ttlHours * 60 * 60_000)
+    : null;
   await db
     .update(conversations)
     .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })

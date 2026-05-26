@@ -1,0 +1,97 @@
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { db } from "@/infrastructure/db/client";
+import { clinics } from "@/infrastructure/db/schema";
+import { eq } from "drizzle-orm";
+import { verifyToken, COOKIE_NAME } from "@/lib/session";
+import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+
+export const dynamic = "force-dynamic";
+
+async function getGateway() {
+  const clinicId = process.env.PILOT_CLINIC_ID;
+  if (!clinicId) throw new Error("PILOT_CLINIC_ID not set");
+
+  const [clinic] = await db
+    .select({ googleCalendarId: clinics.googleCalendarId, timezone: clinics.timezone, businessHours: clinics.businessHours })
+    .from(clinics)
+    .where(eq(clinics.id, clinicId))
+    .limit(1);
+
+  if (!clinic) throw new Error("Clinic not found");
+
+  return new GoogleCalendarGateway(
+    clinic.googleCalendarId,
+    new ClinicTimezone(clinic.timezone),
+    clinic.businessHours,
+  );
+}
+
+async function requireAuth() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
+  return token ? verifyToken(token) : null;
+}
+
+export async function GET(): Promise<NextResponse> {
+  const session = await requireAuth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  try {
+    const gateway = await getGateway();
+    const clinicId = process.env.PILOT_CLINIC_ID!;
+    const from = new Date();
+    const to = new Date(Date.now() + 60 * 24 * 60 * 60_000); // próximos 60 dias
+
+    const blocks = await gateway.listBlockEvents({ clinicId, from, to });
+    return NextResponse.json({ blocks });
+  } catch (err) {
+    console.error("[CalendarBlocks GET]", err);
+    return NextResponse.json({ error: "Falha ao buscar bloqueios" }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const session = await requireAuth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  let body: { date?: string; startTime?: string; endTime?: string; reason?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+
+  const { date, startTime, endTime, reason } = body;
+  if (!date || !startTime || !endTime) {
+    return NextResponse.json({ error: "date, startTime e endTime são obrigatórios" }, { status: 422 });
+  }
+
+  try {
+    const gateway = await getGateway();
+    const clinicId = process.env.PILOT_CLINIC_ID!;
+
+    const startsAt = new Date(`${date}T${startTime}:00`);
+    const endsAt = new Date(`${date}T${endTime}:00`);
+
+    if (isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
+      return NextResponse.json({ error: "Data ou horário inválido" }, { status: 422 });
+    }
+    if (endsAt <= startsAt) {
+      return NextResponse.json({ error: "Horário de fim deve ser após o início" }, { status: 422 });
+    }
+
+    const block = await gateway.createBlockEvent({
+      clinicId,
+      startsAt,
+      endsAt,
+      reason: reason?.trim() ?? "",
+    });
+
+    return NextResponse.json({ block }, { status: 201 });
+  } catch (err) {
+    console.error("[CalendarBlocks POST]", err);
+    return NextResponse.json({ error: "Falha ao criar bloqueio" }, { status: 500 });
+  }
+}

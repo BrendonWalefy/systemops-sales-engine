@@ -15,6 +15,8 @@ export function MessageInput({ conversationId }: Props) {
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const prevPendingRef = useRef(false);
+
   // Ajusta altura do textarea automaticamente
   useEffect(() => {
     const el = textareaRef.current;
@@ -22,6 +24,14 @@ export function MessageInput({ conversationId }: Props) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [text]);
+
+  // Restaura foco após envio (textarea perde foco quando disabled durante o request)
+  useEffect(() => {
+    if (prevPendingRef.current && !isPending) {
+      textareaRef.current?.focus();
+    }
+    prevPendingRef.current = isPending;
+  }, [isPending]);
 
   const handleSubmit = () => {
     const trimmed = text.trim();

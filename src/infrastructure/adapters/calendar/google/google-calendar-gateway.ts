@@ -1,4 +1,4 @@
-import type { CalendarGateway } from "@/application/ports/calendar-gateway";
+import type { BlockEvent, CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
 import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { computeAvailableSlots } from "@/core/scheduling/SlotEngine";
@@ -215,11 +215,15 @@ export class GoogleCalendarGateway implements CalendarGateway {
   }
 
   async cancelAppointment(input: { calendarEventId: string }): Promise<void> {
+    return this.deleteCalendarEvent(input.calendarEventId);
+  }
+
+  private async deleteCalendarEvent(calendarEventId: string): Promise<void> {
     const calendarId = getCalendarId(this.clinicCalendarId);
     const token = await getAccessToken();
 
     const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.calendarEventId)}`,
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(calendarEventId)}`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -230,5 +234,98 @@ export class GoogleCalendarGateway implements CalendarGateway {
       const err = await res.text();
       throw new Error(`Google Calendar deleteEvent failed: ${err}`);
     }
+  }
+
+  private static readonly BLOCK_PREFIX = "🚫 Bloqueado";
+
+  async listBlockEvents(input: { clinicId: string; from: Date; to: Date }): Promise<BlockEvent[]> {
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+
+    const params = new URLSearchParams({
+      timeMin: input.from.toISOString(),
+      timeMax: input.to.toISOString(),
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: "100",
+      q: GoogleCalendarGateway.BLOCK_PREFIX,
+    });
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Calendar listBlockEvents failed: ${err}`);
+    }
+
+    type GCalEvent = {
+      id: string;
+      summary?: string;
+      start: { dateTime?: string };
+      end: { dateTime?: string };
+    };
+    const data = (await res.json()) as { items: GCalEvent[] };
+
+    return data.items
+      .filter((e) => e.summary?.startsWith(GoogleCalendarGateway.BLOCK_PREFIX) && e.start.dateTime && e.end.dateTime)
+      .map((e) => ({
+        calendarEventId: e.id,
+        startsAt: new Date(e.start.dateTime!),
+        endsAt: new Date(e.end.dateTime!),
+        reason: e.summary!
+          .replace(`${GoogleCalendarGateway.BLOCK_PREFIX} — `, "")
+          .replace(GoogleCalendarGateway.BLOCK_PREFIX, "")
+          .trim(),
+      }));
+  }
+
+  async createBlockEvent(input: {
+    clinicId: string;
+    startsAt: Date;
+    endsAt: Date;
+    reason: string;
+  }): Promise<BlockEvent> {
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+
+    const summary = input.reason
+      ? `${GoogleCalendarGateway.BLOCK_PREFIX} — ${input.reason}`
+      : GoogleCalendarGateway.BLOCK_PREFIX;
+
+    const body = {
+      summary,
+      start: { dateTime: input.startsAt.toISOString() },
+      end: { dateTime: input.endsAt.toISOString() },
+    };
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Calendar createBlockEvent failed: ${err}`);
+    }
+
+    const event = (await res.json()) as { id: string };
+
+    return {
+      calendarEventId: event.id,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      reason: input.reason,
+    };
+  }
+
+  async deleteBlockEvent(input: { calendarEventId: string }): Promise<void> {
+    return this.deleteCalendarEvent(input.calendarEventId);
   }
 }

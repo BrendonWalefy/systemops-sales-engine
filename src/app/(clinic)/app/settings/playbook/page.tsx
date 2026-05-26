@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic";
 
-import { BookText, Clock, MessageSquare, Save } from "lucide-react";
+import { BookText, Clock, MessageSquare, Save, Timer } from "lucide-react";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { ToggleAutoReply } from "./toggle-auto-reply";
-import { savePlaybook } from "./actions";
+import { savePlaybook, saveTakeoverTtl } from "./actions";
 
 async function getClinic() {
   const clinicId = process.env.PILOT_CLINIC_ID!;
@@ -18,6 +18,7 @@ async function getClinic() {
       commercialPolicy: clinics.commercialPolicy,
       playbook: clinics.playbook,
       autoReplyEnabled: clinics.autoReplyEnabled,
+      takeoverTtlHours: clinics.takeoverTtlHours,
     })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
@@ -92,6 +93,58 @@ export default async function PlaybookPage() {
             </div>
             <ToggleAutoReply enabled={clinic?.autoReplyEnabled ?? false} />
           </div>
+        </section>
+
+        <section
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: "14px",
+            background: "var(--surface-soft)",
+            padding: "20px 22px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "16px" }}>
+            <div
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: "40px",
+                height: "40px",
+                flexShrink: 0,
+                borderRadius: "10px",
+                border: "1px solid var(--line)",
+                background: "var(--surface-raised)",
+                color: "var(--accent-strong)",
+              }}
+            >
+              <Timer size={18} strokeWidth={1.8} />
+            </div>
+            <div>
+              <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
+                Pausa automática da IA
+              </strong>
+              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--muted)", lineHeight: 1.5 }}>
+                Após o operador responder, a IA retoma automaticamente depois deste período. Use 0 para desativar a retomada automática.
+              </p>
+            </div>
+          </div>
+          <form action={saveTakeoverTtl} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+              <input
+                type="number"
+                name="takeoverTtlHours"
+                defaultValue={clinic?.takeoverTtlHours ?? 4}
+                min={0}
+                max={72}
+                style={{ width: "80px", textAlign: "center" }}
+              />
+              <span style={{ fontSize: "13px", color: "var(--muted)" }}>horas</span>
+            </label>
+            <button type="submit" className="primary-button" style={{ gap: "8px" }}>
+              <Save size={14} strokeWidth={2} />
+              Salvar
+            </button>
+          </form>
         </section>
 
         <form action={savePlaybook}>
