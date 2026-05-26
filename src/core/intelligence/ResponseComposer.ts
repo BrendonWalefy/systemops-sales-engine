@@ -158,7 +158,7 @@ Informe o lead que um membro da equipe irá assumir o atendimento em breve. Seja
 
     case "price_inquiry":
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
-Não informe valores. Explique que a avaliação inicial é gratuita e é o melhor passo para entender as opções e investimento. Convide para agendar.`;
+Não informe valores de procedimentos. Siga a política comercial da clínica para explicar como funciona a avaliação e convide para agendar.`;
 
     case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
