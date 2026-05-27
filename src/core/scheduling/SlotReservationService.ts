@@ -4,7 +4,7 @@
 
 import { db } from "@/infrastructure/db/client";
 import { slotReservations } from "@/infrastructure/db/schema";
-import { and, eq, lt, or } from "drizzle-orm";
+import { and, eq, gt, lt, or } from "drizzle-orm";
 
 const RESERVATION_TTL_MINUTES = 10;
 
@@ -31,14 +31,17 @@ export class SlotReservationService {
     // Limpa expirados antes de tentar reservar
     await this.releaseExpired();
 
-    // Verifica se já há reserva ativa (pending ou confirmed) para este slot
+    // Verifica se já há reserva ativa (pending ou confirmed) que se sobreponha ao slot.
+    // Usa detecção de intervalo (overlap) em vez de match exato no startsAt para capturar
+    // conflitos com slots de durações diferentes (ex: consulta de 45 min vs slot de 60 min).
     const existing = await db
       .select()
       .from(slotReservations)
       .where(
         and(
           eq(slotReservations.clinicId, clinicId),
-          eq(slotReservations.startsAt, startsAt),
+          lt(slotReservations.startsAt, endsAt),
+          gt(slotReservations.endsAt, startsAt),
           or(
             eq(slotReservations.status, "pending"),
             eq(slotReservations.status, "confirmed"),
@@ -97,6 +100,21 @@ export class SlotReservationService {
         and(
           eq(slotReservations.id, reservationId),
           eq(slotReservations.status, "pending"),
+        ),
+      );
+  }
+
+  // Libera a reserva confirmada de um slot ao cancelar o agendamento.
+  // Necessário para que o slot volte a ser reservável após cancelamento.
+  async releaseBySlot(clinicId: string, startsAt: Date): Promise<void> {
+    await db
+      .update(slotReservations)
+      .set({ status: "released" })
+      .where(
+        and(
+          eq(slotReservations.clinicId, clinicId),
+          eq(slotReservations.startsAt, startsAt),
+          eq(slotReservations.status, "confirmed"),
         ),
       );
   }

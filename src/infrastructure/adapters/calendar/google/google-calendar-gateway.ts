@@ -139,19 +139,35 @@ export class GoogleCalendarGateway implements CalendarGateway {
       throw new Error(`Google Calendar listEvents failed: ${err}`);
     }
 
-    type GCalEvent = { start: { dateTime?: string }; end: { dateTime?: string } };
+    type GCalEvent = {
+      start: { dateTime?: string; date?: string };
+      end: { dateTime?: string; date?: string };
+    };
     const data = (await res.json()) as { items: GCalEvent[] };
-
-    const existingEvents = data.items
-      .filter((e) => e.start.dateTime && e.end.dateTime)
-      .map((e) => ({
-        startsAt: new Date(e.start.dateTime!),
-        endsAt: new Date(e.end.dateTime!),
-      }));
 
     // Delega cálculo ao SlotEngine (puro, sem I/O)
     const tz = this.timezone ?? new ClinicTimezone("America/Sao_Paulo");
     const bh = parseBusinessHours(this.clinicBusinessHours ?? null);
+
+    const existingEvents: { startsAt: Date; endsAt: Date }[] = [];
+    for (const e of data.items) {
+      if (e.start.dateTime && e.end.dateTime) {
+        // Evento com horário (consulta ou bloqueio com hora exata)
+        existingEvents.push({
+          startsAt: new Date(e.start.dateTime),
+          endsAt: new Date(e.end.dateTime),
+        });
+      } else if (e.start.date && e.end.date) {
+        // Evento de dia inteiro — bloqueia o dia completo no fuso da clínica.
+        // end.date da API do Google é exclusivo (dia seguinte ao último dia bloqueado).
+        const [sy, sm, sd] = e.start.date.split("-").map(Number);
+        const [ey, em, ed] = e.end.date.split("-").map(Number);
+        existingEvents.push({
+          startsAt: tz.fromLocalParts(sy, sm - 1, sd, 0, 0),
+          endsAt: tz.fromLocalParts(ey, em - 1, ed, 0, 0),
+        });
+      }
+    }
 
     return computeAvailableSlots({
       timezone: tz,

@@ -119,6 +119,9 @@ export class BookingService {
       }
     }
 
+    // Libera a reserva do slot para que ele possa ser reagendado por outro lead
+    await this.reservationService.releaseBySlot(appointment.clinicId, appointment.startsAt);
+
     // Persiste cancelamento no banco
     await this.appointmentRepo.save({
       ...appointment,
