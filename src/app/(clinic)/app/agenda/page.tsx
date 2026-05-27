@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 import { Trash2, Plus, Clock } from "lucide-react";
 import { BlockForm } from "./BlockForm";
