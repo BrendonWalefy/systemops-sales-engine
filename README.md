@@ -174,6 +174,51 @@ Abre em tela cheia, sem barra do navegador, com ícone próprio.
 
 ---
 
+## Gerenciar Bloqueios de Agenda
+
+Rota: `/app/agenda`
+
+Permite bloquear horários no Google Calendar para que a IA não ofereça esses períodos automaticamente.
+
+### Modos
+
+| Modo | Quando usar |
+|------|-------------|
+| **Dia único** | Bloquear uma data específica |
+| **Período** | Bloquear vários dias consecutivos (férias, congressos) |
+
+### Atalhos de horário
+
+| Botão | Horário |
+|-------|---------|
+| Manhã | 08:00 – 12:00 |
+| Tarde | 13:00 – 18:00 |
+| Noite | 18:00 – 22:00 |
+
+Os campos de início e fim ficam editáveis após o atalho para ajuste fino.
+
+### Comportamento durante o envio
+
+- Todos os campos e botões ficam desabilitados enquanto o bloqueio é salvo
+- Períodos com 7+ dias exibem o aviso: *"Criando X bloqueios no calendário, aguarde…"*
+- Mensagem de confirmação verde aparece ao concluir
+
+### Limite técnico
+
+- Períodos de até 90 dias
+- Timeout da função configurado em 30s (`maxDuration` em `actions.ts`)
+- Um evento é criado no Google Calendar por dia do período
+
+### Arquivos relevantes
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `src/app/(clinic)/app/agenda/page.tsx` | Página server-side (lista de bloqueios) |
+| `src/app/(clinic)/app/agenda/BlockForm.tsx` | Formulário client-side (presets + período) |
+| `src/app/(clinic)/app/agenda/actions.ts` | Server Actions: `createBlock`, `createBlockRange`, `deleteBlock` |
+
+---
+
 ## Webhooks (não alterar)
 
 - `POST /api/whatsapp/webhook` — Meta Cloud API
