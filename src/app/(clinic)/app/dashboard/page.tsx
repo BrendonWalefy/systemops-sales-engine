@@ -198,7 +198,7 @@ export default async function DashboardPage() {
 
       </div>
 
-      <div style={{ padding: "0 30px 24px", display: "grid", gap: 24 }}>
+      <div className="page-content" style={{ paddingBottom: "24px", display: "grid", gap: 24 }}>
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
             <p className="eyebrow" style={{ margin: 0 }}>Leads recentes</p>
@@ -209,6 +209,7 @@ export default async function DashboardPage() {
               Nenhum lead registrado ainda.
             </div>
           ) : (
+            <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "var(--surface-soft)", borderBottom: "1px solid var(--line)" }}>
@@ -257,6 +258,7 @@ export default async function DashboardPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 

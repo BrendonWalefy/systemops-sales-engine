@@ -83,6 +83,8 @@ export function ResetClinicDialog({
           padding: "6px 14px",
           cursor: "pointer",
           opacity: 0.85,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
         }}
       >
         <Trash2 size={13} />

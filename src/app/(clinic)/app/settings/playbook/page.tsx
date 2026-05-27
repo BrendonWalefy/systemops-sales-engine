@@ -43,7 +43,7 @@ export default async function PlaybookPage() {
         </div>
       </div>
 
-      <div style={{ padding: "0 30px 40px", display: "grid", gap: "24px", maxWidth: "760px" }}>
+      <div className="page-content" style={{ paddingBottom: "40px", display: "grid", gap: "24px", maxWidth: "760px" }}>
         <section
           style={{
             border: "1px solid var(--line)",
@@ -52,7 +52,7 @@ export default async function PlaybookPage() {
             padding: "20px 22px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
+          <div className="ia-section-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
               <div
                 style={{

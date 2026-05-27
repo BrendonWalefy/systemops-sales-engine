@@ -158,23 +158,23 @@ export default async function ClinicDetailPage({
     <div>
       {/* Header */}
       <div className="product-topbar">
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div className="clinic-header-left" style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Link
             href="/owner"
-            style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", textDecoration: "none", fontSize: 13, fontWeight: 600 }}
+            style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", textDecoration: "none", fontSize: 13, fontWeight: 600, flexShrink: 0 }}
           >
             <ArrowLeft size={14} />
             Visão geral
           </Link>
-          <span style={{ color: "var(--line-strong)" }}>·</span>
-          <div>
+          <span className="clinic-header-sep" style={{ color: "var(--line-strong)" }}>·</span>
+          <div className="clinic-header-title">
             <h1 style={{ margin: 0 }}>{clinic.name}</h1>
             <p style={{ margin: "3px 0 0", fontSize: 13, color: "var(--muted)" }}>
               Drill-down da clínica
             </p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {clinic.autoReplyEnabled ? (
             <span className="status-pill" style={{ fontSize: 11, padding: "3px 10px" }}>
               <span className="status-dot" /> IA Ativa
@@ -203,7 +203,7 @@ export default async function ClinicDetailPage({
         </div>
       </div>
 
-      <div style={{ padding: "0 30px 40px", display: "grid", gap: 32 }}>
+      <div className="page-content" style={{ paddingBottom: "40px", display: "grid", gap: 32 }}>
         {/* KPIs */}
         <div className="kpi-strip" style={{ marginLeft: 0 }}>
           <div className="metric metric-highlight">
@@ -243,6 +243,7 @@ export default async function ClinicDetailPage({
               Sem dados no período.
             </div>
           ) : (
+            <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "var(--surface-soft)", borderBottom: "1px solid var(--line)" }}>
@@ -263,6 +264,7 @@ export default async function ClinicDetailPage({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 

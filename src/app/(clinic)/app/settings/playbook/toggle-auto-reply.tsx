@@ -21,7 +21,7 @@ export function ToggleAutoReply({ enabled }: Props) {
     <button
       type="button"
       className="secondary-button"
-      style={{ gap: "8px", padding: "0 14px", minHeight: "38px" }}
+      style={{ gap: "8px", padding: "0 14px", minHeight: "38px", flexShrink: 0, whiteSpace: "nowrap" }}
       onClick={handleToggle}
       disabled={isPending}
     >

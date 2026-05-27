@@ -147,7 +147,7 @@ export default async function InboxPage() {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minWidth: 0 }}>
                       <span style={{ fontSize: 13, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                         <MessageSquare size={12} style={{ marginRight: 5, verticalAlign: "middle", opacity: 0.5 }} />
                         {preview || "Sem mensagens"}

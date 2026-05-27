@@ -188,7 +188,7 @@ export default async function OwnerPage() {
       </div>
 
       {/* Clinic table */}
-      <div style={{ padding: "0 30px 40px" }}>
+      <div className="page-content" style={{ paddingBottom: "40px" }}>
         {clinicRows.length === 0 ? (
           <div className="empty-state">
             <p style={{ margin: 0 }}>Nenhuma clínica cadastrada.</p>
@@ -205,6 +205,7 @@ export default async function OwnerPage() {
               <p className="eyebrow" style={{ margin: 0 }}>Clínicas</p>
             </div>
 
+            <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr
@@ -319,6 +320,7 @@ export default async function OwnerPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
