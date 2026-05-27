@@ -1,5 +1,7 @@
 "use server";
 
+export const maxDuration = 30;
+
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { db } from "@/infrastructure/db/client";
