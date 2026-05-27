@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CalendarDays, Sun, Sunset, Moon } from "lucide-react";
+import { CalendarDays, Sun, Sunset, Moon, Loader2 } from "lucide-react";
 import { createBlock, createBlockRange } from "./actions";
 
 const PRESETS = [
@@ -20,6 +20,13 @@ const MOTIVOS = [
 
 function todayISO() {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+}
+
+function diffDays(from: string, to: string): number {
+  if (!from || !to) return 0;
+  const a = new Date(from + "T00:00:00Z").getTime();
+  const b = new Date(to + "T00:00:00Z").getTime();
+  return Math.max(0, Math.round((b - a) / 86_400_000) + 1);
 }
 
 const labelStyle: React.CSSProperties = {
@@ -44,6 +51,8 @@ export function BlockForm() {
 
   const today = todayISO();
   const activePreset = PRESETS.find((p) => p.start === startTime && p.end === endTime)?.key;
+  const periodDays = isPeriod ? diffDays(dateFrom, dateTo) : 0;
+  const isLongPeriod = periodDays >= 7;
 
   function applyPreset(start: string, end: string) {
     setStartTime(start);
@@ -77,7 +86,7 @@ export function BlockForm() {
           await createBlockRange(fd);
           const d1 = dateFrom.split("-").reverse().slice(0, 2).join("/");
           const d2 = dateTo.split("-").reverse().slice(0, 2).join("/");
-          setSuccess(`Bloqueios de ${d1} a ${d2} salvos.`);
+          setSuccess(`${periodDays} bloqueios salvos (${d1} a ${d2}).`);
         } else {
           fd.set("date", date);
           await createBlock(fd);
@@ -86,7 +95,7 @@ export function BlockForm() {
         }
 
         reset();
-        setTimeout(() => setSuccess(null), 4000);
+        setTimeout(() => setSuccess(null), 5000);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erro ao salvar bloqueio.");
       }
@@ -101,6 +110,7 @@ export function BlockForm() {
           type="button"
           className={`preset-btn${!isPeriod ? " active" : ""}`}
           onClick={() => setIsPeriod(false)}
+          disabled={isPending}
         >
           Dia único
         </button>
@@ -108,6 +118,7 @@ export function BlockForm() {
           type="button"
           className={`preset-btn${isPeriod ? " active" : ""}`}
           onClick={() => setIsPeriod(true)}
+          disabled={isPending}
         >
           Período
         </button>
@@ -123,6 +134,7 @@ export function BlockForm() {
               required
               value={dateFrom}
               min={today}
+              disabled={isPending}
               onChange={(e) => setDateFrom(e.target.value)}
               style={{ width: "100%" }}
             />
@@ -134,6 +146,7 @@ export function BlockForm() {
               required
               value={dateTo}
               min={dateFrom || today}
+              disabled={isPending}
               onChange={(e) => setDateTo(e.target.value)}
               style={{ width: "100%" }}
             />
@@ -147,6 +160,7 @@ export function BlockForm() {
             required
             value={date}
             min={today}
+            disabled={isPending}
             onChange={(e) => setDate(e.target.value)}
             style={{ width: "100%" }}
           />
@@ -163,6 +177,7 @@ export function BlockForm() {
               type="button"
               className={`preset-btn${activePreset === key ? " active" : ""}`}
               onClick={() => applyPreset(start, end)}
+              disabled={isPending}
             >
               <Icon size={13} strokeWidth={2} />
               {label}
@@ -179,6 +194,7 @@ export function BlockForm() {
             type="time"
             required
             value={startTime}
+            disabled={isPending}
             onChange={(e) => setStartTime(e.target.value)}
             style={{ width: "100%" }}
           />
@@ -189,6 +205,7 @@ export function BlockForm() {
             type="time"
             required
             value={endTime}
+            disabled={isPending}
             onChange={(e) => setEndTime(e.target.value)}
             style={{ width: "100%" }}
           />
@@ -200,6 +217,7 @@ export function BlockForm() {
         <span style={labelStyle}>Motivo</span>
         <select
           value={reason}
+          disabled={isPending}
           onChange={(e) => setReason(e.target.value)}
           style={{ width: "100%" }}
         >
@@ -208,6 +226,13 @@ export function BlockForm() {
           ))}
         </select>
       </label>
+
+      {/* Aviso de período longo */}
+      {isPending && isLongPeriod && (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+          Criando {periodDays} bloqueios no calendário, aguarde…
+        </p>
+      )}
 
       {error && (
         <p style={{ margin: 0, fontSize: 13, color: "var(--danger)" }}>{error}</p>
@@ -223,7 +248,10 @@ export function BlockForm() {
           disabled={isPending}
           style={{ gap: "8px" }}
         >
-          <CalendarDays size={14} strokeWidth={2} />
+          {isPending
+            ? <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+            : <CalendarDays size={14} strokeWidth={2} />
+          }
           {isPending ? "Salvando…" : "Salvar bloqueio"}
         </button>
       </div>
