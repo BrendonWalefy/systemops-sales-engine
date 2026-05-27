@@ -69,6 +69,53 @@ export async function createBlock(formData: FormData) {
   revalidatePath("/app/agenda");
 }
 
+export async function createBlockRange(formData: FormData) {
+  const session = await requireAuth();
+  if (!session) throw new Error("Unauthorized");
+
+  const dateFrom = formData.get("dateFrom") as string;
+  const dateTo = formData.get("dateTo") as string;
+  const startTime = formData.get("startTime") as string;
+  const endTime = formData.get("endTime") as string;
+  const reason = (formData.get("reason") as string | null)?.trim() ?? "";
+
+  if (!dateFrom || !dateTo || !startTime || !endTime) throw new Error("Campos obrigatórios ausentes");
+
+  const [fy, fm, fd] = dateFrom.split("-").map(Number);
+  const [ty, tm, td] = dateTo.split("-").map(Number);
+  const [startH, startM] = startTime.split(":").map(Number);
+  const [endH, endM] = endTime.split(":").map(Number);
+
+  if ([fy, fm, fd, ty, tm, td, startH, startM, endH, endM].some(isNaN)) {
+    throw new Error("Data ou horário inválido");
+  }
+
+  const fromMs = Date.UTC(fy, fm - 1, fd);
+  const toMs = Date.UTC(ty, tm - 1, td);
+
+  if (toMs < fromMs) throw new Error("Data de fim deve ser após a data de início");
+
+  const diffDays = Math.round((toMs - fromMs) / 86_400_000) + 1;
+  if (diffDays > 90) throw new Error("Período máximo de 90 dias");
+
+  const { clinicId, tz, gateway } = await getGateway();
+
+  for (let i = 0; i < diffDays; i++) {
+    const d = new Date(fromMs + i * 86_400_000);
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth() + 1;
+    const day = d.getUTCDate();
+
+    const startsAt = tz.fromLocalParts(year, month - 1, day, startH, startM);
+    const endsAt = tz.fromLocalParts(year, month - 1, day, endH, endM);
+
+    if (endsAt <= startsAt) continue;
+    await gateway.createBlockEvent({ clinicId, startsAt, endsAt, reason });
+  }
+
+  revalidatePath("/app/agenda");
+}
+
 export async function deleteBlock(calendarEventId: string) {
   const session = await requireAuth();
   if (!session) throw new Error("Unauthorized");

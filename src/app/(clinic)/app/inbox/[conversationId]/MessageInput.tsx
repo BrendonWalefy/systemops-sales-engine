@@ -99,7 +99,7 @@ export function MessageInput({ conversationId }: Props) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Responder como operador… (Enter para enviar, Shift+Enter para nova linha)"
+          placeholder="Responder como operador…"
           rows={1}
           disabled={isPending}
           style={{

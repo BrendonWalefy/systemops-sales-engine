@@ -663,6 +663,52 @@ button:disabled {
   padding: 8px 12px;
 }
 
+/* ─── Agenda ──────────────────────────────────────────────── */
+
+.agenda-content {
+  padding: 0 30px 40px;
+  display: grid;
+  gap: 24px;
+  max-width: 760px;
+}
+
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.preset-btn:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.preset-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ─── Conversation list ───────────────────────────────────── */
+
 .conversation-list {
   display: grid;
   gap: 10px;
@@ -1581,15 +1627,15 @@ textarea:focus {
   }
 
   .product-topbar {
-    padding: 20px 18px 14px;
+    padding: 20px max(18px, env(safe-area-inset-right)) 14px max(18px, env(safe-area-inset-left));
   }
 
   .after-hours-banner {
-    margin-inline: 18px;
+    margin-inline: max(18px, env(safe-area-inset-left));
   }
 
   .kpi-strip {
-    padding-inline: 18px;
+    padding-inline: max(18px, env(safe-area-inset-left));
   }
 
   .lead-panel,
@@ -1757,9 +1803,9 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  /* Espaço para o bottom nav fixo em todas as páginas */
+  /* Espaço para o bottom nav fixo + home indicator do iPhone */
   .clinic-layout > main {
-    padding-bottom: 56px;
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
   }
 
   /* Sidebar → barra de navegação inferior */
@@ -1769,11 +1815,11 @@ textarea:focus {
     left: 0;
     right: 0;
     top: auto;
-    height: 56px;
+    height: calc(56px + env(safe-area-inset-bottom));
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-around;
-    padding: 0 8px;
+    padding: 0 8px env(safe-area-inset-bottom);
     gap: 0;
     border-right: 0;
     border-top: 1px solid var(--line);
@@ -1820,7 +1866,7 @@ textarea:focus {
   }
 
   .conv-header {
-    padding: 10px 14px;
+    padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
     gap: 10px;
   }
 
@@ -1839,6 +1885,11 @@ textarea:focus {
 
   /* Inbox */
   .inbox-content {
-    padding: 0 14px 16px;
+    padding: 0 max(14px, env(safe-area-inset-right)) 16px max(14px, env(safe-area-inset-left));
+  }
+
+  /* Agenda */
+  .agenda-content {
+    padding: 0 max(14px, env(safe-area-inset-right)) 40px max(14px, env(safe-area-inset-left));
   }
 }

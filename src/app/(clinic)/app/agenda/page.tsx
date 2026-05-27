@@ -1,21 +1,14 @@
 export const dynamic = "force-dynamic";
 
-import { CalendarDays, Trash2, Plus, Clock } from "lucide-react";
+import { Trash2, Plus, Clock } from "lucide-react";
+import { BlockForm } from "./BlockForm";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { BlockEvent } from "@/application/ports/calendar-gateway";
-import { createBlock, deleteBlock } from "./actions";
-
-const MOTIVOS = [
-  "Outro consultório",
-  "Clínica própria",
-  "Reunião",
-  "Folga / Férias",
-  "Outro",
-];
+import { deleteBlock } from "./actions";
 
 const TZ = "America/Sao_Paulo";
 
@@ -32,10 +25,6 @@ function formatBlock(block: BlockEvent): string {
   const start = block.startsAt.toLocaleString("pt-BR", opts);
   const endTime = block.endsAt.toLocaleString("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
   return `${start} – ${endTime}`;
-}
-
-function todayISO(): string {
-  return new Date().toLocaleDateString("sv-SE", { timeZone: TZ });
 }
 
 async function getBlocks(): Promise<BlockEvent[]> {
@@ -64,7 +53,6 @@ async function getBlocks(): Promise<BlockEvent[]> {
 
 export default async function AgendaPage() {
   const blocks = await getBlocks();
-  const today = todayISO();
 
   return (
     <div>
@@ -78,7 +66,7 @@ export default async function AgendaPage() {
         </div>
       </div>
 
-      <div style={{ padding: "0 30px 40px", display: "grid", gap: "24px", maxWidth: "760px" }}>
+      <div className="agenda-content">
 
         {/* Formulário de novo bloqueio */}
         <section
@@ -110,64 +98,7 @@ export default async function AgendaPage() {
             </strong>
           </div>
 
-          <form action={createBlock}>
-            <div style={{ display: "grid", gap: "12px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Data
-                  </span>
-                  <input
-                    type="date"
-                    name="date"
-                    required
-                    min={today}
-                    style={{ width: "100%" }}
-                  />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Início
-                  </span>
-                  <input
-                    type="time"
-                    name="startTime"
-                    required
-                    style={{ width: "100%" }}
-                  />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Fim
-                  </span>
-                  <input
-                    type="time"
-                    name="endTime"
-                    required
-                    style={{ width: "100%" }}
-                  />
-                </label>
-              </div>
-
-              <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                  Motivo
-                </span>
-                <select name="reason" style={{ width: "100%" }}>
-                  {MOTIVOS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </label>
-
-              <div>
-                <button type="submit" className="primary-button" style={{ gap: "8px" }}>
-                  <CalendarDays size={14} strokeWidth={2} />
-                  Salvar bloqueio
-                </button>
-              </div>
-            </div>
-          </form>
+          <BlockForm />
         </section>
 
         {/* Lista de bloqueios */}
