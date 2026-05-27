@@ -233,6 +233,38 @@ export class ConversationOrchestrator {
     switch (intent) {
       // ── Confirmação de slot ──
       case "confirm_slot": {
+        // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
+        // que não bate com nenhum slot pendente, trata como nova solicitação para essa data.
+        if (!slotPreference.slotChoice && slotPreference.preferredDate && pendingSlots) {
+          const targetDay = timezone.resolvePreferredDate(slotPreference.preferredDate, new Date(), businessHours);
+          if (targetDay) {
+            const dateMatchesPending = pendingSlots.some((s) => {
+              const p = timezone.toLocalParts(new Date(s.startsAt));
+              const t = timezone.toLocalParts(targetDay);
+              return p.year === t.year && p.month === t.month && p.day === t.day;
+            });
+            if (!dateMatchesPending) {
+              await this.stateMachine.invalidate(conversation.id);
+              const { slots: redirectSlots, preferredDayEmpty: rdEmpty, outsideBookingWindow: rdOutside, outsideBusinessHours: rdNotOpen, preferredPeriodUnavailable: rdPeriod } = await this.fetchAndOfferSlots(
+                conversation.id, clinic, calendarGateway, timezone, businessHours,
+                slotPreference.preferredDate, slotPreference.preferredPeriod ?? undefined,
+              );
+              if (rdOutside) {
+                replyText = await compose({ type: "clarification_needed", question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?" });
+              } else if (rdNotOpen) {
+                replyText = await compose({ type: "clarification_needed", question: "O atendimento de hoje já encerrou. Posso verificar os horários de amanhã ou outro dia para você?" });
+              } else if (redirectSlots.length > 0 && !rdEmpty) {
+                replyText = await compose({ type: "slots_found", slots: redirectSlots, askedForPreference: false });
+              } else if (rdEmpty) {
+                replyText = await compose({ type: "no_slots_available", alternativeSlots: redirectSlots.length > 0 ? redirectSlots : undefined });
+              } else {
+                replyText = await compose({ type: "no_slots_available" });
+              }
+              break;
+            }
+          }
+        }
+
         const choiceIndex = slotPreference.slotChoice ?? 1;
         const chosenSlot = pendingSlots
           ? pendingSlots.find((s) => s.index === choiceIndex) ?? pendingSlots[0]

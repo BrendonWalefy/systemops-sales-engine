@@ -172,8 +172,9 @@ Responda de forma informativa e acolhedora.`;
 Use a saudação temporal correta com base no HORÁRIO ATUAL indicado no sistema: antes das 12h → "Bom dia", entre 12h e 18h → "Boa tarde", após 18h → "Boa noite". Seja caloroso, se apresente brevemente se for o primeiro contato e pergunte como pode ajudar. Se há histórico de conversa, apenas cumprimente e continue — não reinicie do zero.`;
 
     case "acknowledgment":
-      return `AÇÃO EXECUTADA: Lead enviou reconhecimento mid-conversa ("ok", "blz", "entendi", "certo", "obrigado" após info).
-Responda com UMA frase curta e calorosa. NÃO faça perguntas. NÃO use "Como posso ajudar?". NÃO reinicie a conversa. Exemplos aceitáveis: "Fico à disposição! 😊", "Qualquer coisa é só chamar!", "Com certeza, estarei por aqui!"`;
+      return `AÇÃO EXECUTADA: Lead enviou reconhecimento mid-conversa ("ok", "blz", "entendi", "certo", "obrigado" após info) ou saudação isolada com histórico ativo.
+REGRA PRIORITÁRIA: se a última mensagem do lead for uma saudação temporal ("bom dia", "boa tarde", "boa noite"), OBRIGATORIAMENTE comece a resposta com a mesma saudação (ex: "Bom dia! Qualquer coisa é só chamar 😊", "Boa tarde! Estarei por aqui."). Não ignore a saudação.
+Nos demais casos, responda com UMA frase curta e calorosa. NÃO faça perguntas. NÃO use "Como posso ajudar?". NÃO reinicie a conversa.`;
 
     case "farewell":
       return `AÇÃO EXECUTADA: Lead está encerrando a conversa ("obrigado tchau", "até mais", "valeu", "certo obrigado").

@@ -61,6 +61,11 @@ REGRA PARA greeting:
 - intent = "greeting" SOMENTE quando é genuinamente o primeiro contato sem histórico OU quando o lead recomeça do zero com nova saudação após longa ausência
 - "oi", "olá", "bom dia", "boa tarde" COM histórico de conversa ativo → intent = "acknowledgment", NÃO "greeting"
 
+REGRA CRÍTICA — confirm_slot com data diferente dos slots oferecidos:
+- Se há oferta de horários pendente E o lead menciona um dia/data DIFERENTE dos slots que foram oferecidos no histórico → intent = "reject_slots" com preferredDate extraída, NÃO "confirm_slot"
+- Exemplo: slots oferecidos são "Seg 01/06" mas lead diz "segunda feira dia 08/06" → intent = "reject_slots", preferredDate = "08/06"
+- "confirm_slot" SOMENTE quando o lead escolhe pelo número (1, 2, 3) OU aceita claramente um dos dias já oferecidos sem mencionar outra data
+
 REGRA PARA unclear:
 - Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.
 
