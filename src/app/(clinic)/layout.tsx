@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { PushNotificationSetup } from "@/components/push-notification-setup";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 
 export default async function ClinicLayout({ children }: { children: ReactNode }) {
@@ -12,6 +13,7 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
     <div className="clinic-layout">
       <SidebarNav email={session?.email} />
       <main style={{ minWidth: 0, overflowX: "hidden" }}>{children}</main>
+      <PushNotificationSetup />
     </div>
   );
 }
