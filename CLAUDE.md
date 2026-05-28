@@ -12,6 +12,17 @@ SaaS de recepcionista autônoma para clínicas. MVP em produção com piloto rea
 
 Antes da refatoração, lógica de negócio estava espalhada nas rotas, estado de conversa era inferido a partir de texto de mensagens, e o fluxo de agendamento não tinha garantias de atomicidade. Isso foi corrigido. Não regredir.
 
+## Regra operacional obrigatória
+
+Antes de qualquer mudança, leia e siga `AGENTS.md` e `docs/development/change-control.md`.
+
+- Não trabalhar direto na `main` para features ou ajustes normais.
+- Criar branch focada por feature/fix.
+- Fazer commits pequenos e reversíveis.
+- Rodar `npm run verify` antes de push, PR, merge ou deploy.
+- Para agenda/calendário, rodar também `npm run verify:agenda`.
+- Não empilhar correções não relacionadas em cima de um deploy instável.
+
 ---
 
 ## Arquitetura atual
