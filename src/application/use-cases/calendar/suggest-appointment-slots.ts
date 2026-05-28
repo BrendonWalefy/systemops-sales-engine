@@ -11,6 +11,7 @@ export class SuggestAppointmentSlots {
     clinicId: string;
     from: Date;
     to: Date;
+    slotDurationMinutes: number;
     professionalId?: string;
   }) {
     return this.deps.calendarGateway.listAvailableSlots(input);

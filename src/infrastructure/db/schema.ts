@@ -91,6 +91,7 @@ export const clinics = pgTable("clinics", {
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
   takeoverTtlHours: integer("takeover_ttl_hours").notNull().default(4),
   postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes").notNull().default(60),
+  defaultAppointmentDurationMinutes: integer("default_appointment_duration_minutes").notNull().default(60),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -103,6 +104,7 @@ export const treatments = pgTable(
       .notNull()
       .references(() => clinics.id),
     name: text("name").notNull(),
+    durationMinutes: integer("duration_minutes").notNull().default(60),
     description: text("description"),
     commonObjections: jsonb("common_objections").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

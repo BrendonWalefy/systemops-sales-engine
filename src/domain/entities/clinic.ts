@@ -11,6 +11,7 @@ export type Clinic = {
   googleCalendarId: string | null;
   takeoverTtlHours: number;
   postAppointmentBufferMinutes: number;
+  defaultAppointmentDurationMinutes: number;
   createdAt: Date;
   updatedAt: Date;
 };

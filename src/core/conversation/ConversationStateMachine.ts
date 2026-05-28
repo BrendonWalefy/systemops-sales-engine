@@ -22,6 +22,8 @@ export type FormattedSlot = {
 export type SlotsOfferedPayload = {
   slots: FormattedSlot[];
   expiresAt: string; // ISO UTC
+  treatmentName?: string;
+  durationMinutes?: number;
 };
 
 type StatePayload = SlotsOfferedPayload | Record<string, unknown>;
@@ -110,6 +112,8 @@ export class ConversationStateMachine {
     conversationId: string,
     slots: Array<{ startsAt: Date; endsAt: Date }>,
     timezone: ClinicTimezone,
+    treatmentName?: string,
+    durationMinutes?: number,
   ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
@@ -119,15 +123,30 @@ export class ConversationStateMachine {
     }));
 
     const expiresAt = new Date(Date.now() + SLOT_OFFER_TTL_MINUTES * 60_000);
+    const payload: SlotsOfferedPayload = {
+      slots: formatted,
+      expiresAt: expiresAt.toISOString(),
+      ...(treatmentName && { treatmentName }),
+      ...(durationMinutes && { durationMinutes }),
+    };
 
     await db.insert(conversationStates).values({
       conversationId,
       state: "slots_offered",
-      payload: { slots: formatted, expiresAt: expiresAt.toISOString() } satisfies SlotsOfferedPayload,
+      payload,
       expiresAt,
     });
 
     return formatted;
+  }
+
+  // Retorna o nome do tratamento associado à oferta vigente, se houver
+  async getOfferedTreatment(conversationId: string): Promise<{ treatmentName?: string; durationMinutes?: number } | null> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "slots_offered") return null;
+
+    const payload = state.payload as SlotsOfferedPayload | null;
+    return payload ? { treatmentName: payload.treatmentName, durationMinutes: payload.durationMinutes } : null;
   }
 
   // Recupera um slot específico por índice (1-based) da oferta vigente

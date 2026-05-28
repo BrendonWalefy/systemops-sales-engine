@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutDashboard, BookText, CalendarDays, Zap, LogOut } from "lucide-react";
+import { Inbox, LayoutDashboard, BookText, CalendarDays, Zap, LogOut, Stethoscope } from "lucide-react";
 import { logout } from "@/app/login/actions";
 
 const NAV = [
@@ -9,6 +9,7 @@ const NAV = [
   { href: "/app/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
   { href: "/app/settings/playbook", label: "Playbook", Icon: BookText },
+  { href: "/app/settings/tratamentos", label: "Procedimentos", Icon: Stethoscope },
 ];
 
 export function SidebarNav({ email }: { email?: string }) {

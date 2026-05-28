@@ -117,6 +117,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
     clinicId: string;
     from: Date;
     to: Date;
+    slotDurationMinutes: number;
     professionalId?: string;
   }): Promise<CalendarSlot[]> {
     const calendarId = getCalendarId(this.clinicCalendarId);
@@ -179,7 +180,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       existingEvents,
       from: input.from,
       to: input.to,
-      slotDurationMinutes: 60,
+      slotDurationMinutes: input.slotDurationMinutes,
       clinicId: input.clinicId,
       postEventBufferMinutes: this.postAppointmentBufferMinutes,
     });
