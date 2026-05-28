@@ -344,6 +344,26 @@ export const conversationStates = pgTable(
   }),
 );
 
+// Subscriptions de push notification para operadores da clínica
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    userEmail: text("user_email").notNull(),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    endpointIdx: uniqueIndex("push_subscriptions_endpoint_idx").on(table.endpoint),
+    clinicIdx: index("push_subscriptions_clinic_idx").on(table.clinicId),
+  }),
+);
+
 // Lock otimista de slots — previne double-booking
 export const slotReservations = pgTable(
   "slot_reservations",
