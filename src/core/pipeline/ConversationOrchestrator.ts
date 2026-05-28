@@ -676,6 +676,16 @@ export class ConversationOrchestrator {
     // ── 9. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
     const zapiMessageId = await sendTextMessage(phone, replyText);
 
+    // ── 9.1 Push notification — avisa operadores que um lead enviou mensagem ──
+    const leadLabel = lead.name ? `${lead.name} (${phone})` : phone;
+    await this.notifier
+      .execute(clinicId, {
+        title: `💬 ${leadLabel}`,
+        body: messageText.slice(0, 100),
+        url: `/app/inbox/${conversation.id}`,
+      })
+      .catch((err) => console.error("[Orchestrator] Push falhou:", err));
+
     // ── 10. Salva mensagem do agente no histórico ──
     const agentMessageId = randomUUID();
     await this.conversationRepo.appendMessage({
