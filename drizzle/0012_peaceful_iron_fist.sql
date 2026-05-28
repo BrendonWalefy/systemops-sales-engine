@@ -1,0 +1,2 @@
+ALTER TABLE "clinics" ADD COLUMN "default_appointment_duration_minutes" integer DEFAULT 60 NOT NULL;--> statement-breakpoint
+ALTER TABLE "treatments" ADD COLUMN "duration_minutes" integer DEFAULT 60 NOT NULL;

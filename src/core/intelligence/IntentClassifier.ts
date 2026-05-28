@@ -11,7 +11,7 @@ export type SlotPreference = {
   preferredPeriod?: "morning" | "afternoon" | "evening" | null;
   preferredTime?: string | null;
   slotChoice?: number | null;
-  appointmentType?: string | null;
+  identifiedTreatment: string | null;
 };
 
 export type IntentType =
@@ -38,7 +38,7 @@ export type IntentClassification = {
   clarificationQuestion?: string | null;
 };
 
-const SYSTEM_PROMPT = `Você é um classificador de intenções para uma recepcionista virtual de clínica odontológica.
+const BASE_SYSTEM_PROMPT = `Você é um classificador de intenções para uma recepcionista virtual de clínica odontológica.
 
 Sua única função é analisar a última mensagem do lead e retornar um JSON estruturado com a intenção detectada.
 
@@ -86,7 +86,21 @@ Para preferências de horário:
 - "à noite", "noite" → period = "evening"
 - Horas específicas como "às 10h", "10:00", "dez horas" → preferredTime (verbatim)
 
+REGRA PARA identifiedTreatment:
+- Tente mapear o que o lead disse para um dos procedimentos da lista fornecida.
+- Use correspondência flexível: ignore acentos, maiúsculas, abreviações e erros de digitação comuns.
+- Se o lead mencionar algo que claramente corresponde a um procedimento da lista → retorne o nome exato da lista.
+- Se o lead mencionar algo que NÃO corresponde a nenhum procedimento da lista → retorne null e use shouldAskClarification: true.
+- Se o lead não mencionou nenhum procedimento (ex: "quero marcar uma consulta" sem especificar qual) → retorne null.
+- identifiedTreatment só é relevante quando intent = "book_appointment" ou "check_availability".
+
 Retorne APENAS JSON válido, sem markdown, sem explicação.`;
+
+function buildSystemPrompt(treatmentNames: string[]): string {
+  if (treatmentNames.length === 0) return BASE_SYSTEM_PROMPT;
+  const list = treatmentNames.map((n) => `  - ${n}`).join("\n");
+  return `${BASE_SYSTEM_PROMPT}\n\nPROCEDIMENTOS DISPONÍVEIS NESTA CLÍNICA:\n${list}`;
+}
 
 // strict: true exige que todo campo em properties conste em required.
 // Campos opcionais são declarados como anyOf [type, null].
@@ -119,9 +133,9 @@ const RESPONSE_SCHEMA = {
         preferredPeriod: { anyOf: [{ type: "string", enum: ["morning", "afternoon", "evening"] }, { type: "null" }] },
         preferredTime: { anyOf: [{ type: "string" }, { type: "null" }] },
         slotChoice: { anyOf: [{ type: "number" }, { type: "null" }] },
-        appointmentType: { anyOf: [{ type: "string" }, { type: "null" }] },
+        identifiedTreatment: { anyOf: [{ type: "string" }, { type: "null" }] },
       },
-      required: ["preferredDate", "preferredPeriod", "preferredTime", "slotChoice", "appointmentType"],
+      required: ["preferredDate", "preferredPeriod", "preferredTime", "slotChoice", "identifiedTreatment"],
       additionalProperties: false,
     },
     confidence: { type: "number" },
@@ -143,6 +157,7 @@ export class IntentClassifier {
     latestMessage: string,
     conversationHistory: Message[],
     hasPendingSlotOffer: boolean,
+    treatmentNames: string[] = [],
   ): Promise<IntentClassification> {
     // Contexto resumido da conversa (últimas 8 mensagens para economizar tokens)
     const recentHistory = conversationHistory.slice(-8);
@@ -175,7 +190,7 @@ export class IntentClassifier {
         },
       },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: buildSystemPrompt(treatmentNames) },
         { role: "user", content: userContent },
       ],
     });
@@ -193,7 +208,7 @@ export class IntentClassifier {
           preferredPeriod: null,
           preferredTime: null,
           slotChoice: null,
-          appointmentType: null,
+          identifiedTreatment: null,
         },
         confidence: 0,
         shouldAskClarification: true,

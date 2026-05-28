@@ -24,6 +24,7 @@ const clinic: Clinic = {
   googleCalendarId: null,
   takeoverTtlHours: 4,
   postAppointmentBufferMinutes: 60,
+  defaultAppointmentDurationMinutes: 60,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 };
@@ -77,6 +78,7 @@ class FakeCalendarGateway implements CalendarGateway {
   isSlotFreeError: Error | null = null;
   createAppointmentError: Error | null = null;
   createAppointmentCalls = 0;
+  lastCreatedTitle: string | null = null;
 
   constructor(private readonly order: string[]) {}
 
@@ -84,9 +86,10 @@ class FakeCalendarGateway implements CalendarGateway {
     return [];
   }
 
-  async createAppointment(): Promise<Appointment> {
+  async createAppointment(input: Parameters<CalendarGateway["createAppointment"]>[0]): Promise<Appointment> {
     this.order.push("createAppointment");
     this.createAppointmentCalls++;
+    this.lastCreatedTitle = input.title;
     if (this.createAppointmentError) throw this.createAppointmentError;
     return appointment();
   }
@@ -200,9 +203,30 @@ function setup() {
   return { appointmentRepo, calendar, leadRepo, order, reservations, service };
 }
 
-async function bookWith(service: BookingService) {
-  return service.book({ clinic, lead, startsAt, endsAt });
+async function bookWith(service: BookingService, treatmentName?: string) {
+  return service.book({ clinic, lead, startsAt, endsAt, treatmentName });
 }
+
+describe("BookingService — título do evento no Calendar", () => {
+  it("usa o nome do tratamento quando fornecido", async () => {
+    const { calendar, service } = setup();
+    await bookWith(service, "20 Lentes");
+    expect(calendar.lastCreatedTitle).toBe("20 Lentes — Maria | Clínica Teste");
+  });
+
+  it("usa 'Consulta' quando treatmentName não é fornecido", async () => {
+    const { calendar, service } = setup();
+    await bookWith(service);
+    expect(calendar.lastCreatedTitle).toBe("Consulta — Maria | Clínica Teste");
+  });
+
+  it("usa 'Paciente' quando o lead não tem nome cadastrado", async () => {
+    const { calendar, service } = setup();
+    const leadSemNome = { ...lead, name: null };
+    await service.book({ clinic, lead: leadSemNome, startsAt, endsAt, treatmentName: "Avaliação" });
+    expect(calendar.lastCreatedTitle).toBe("Avaliação — Paciente | Clínica Teste");
+  });
+});
 
 describe("BookingService — double-booking guards", () => {
   it("revalidates the Calendar after reserving and before creating the appointment", async () => {

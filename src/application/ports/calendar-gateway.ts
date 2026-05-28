@@ -12,6 +12,7 @@ export type CalendarGateway = {
     clinicId: string;
     from: Date;
     to: Date;
+    slotDurationMinutes: number;
     professionalId?: string;
   }): Promise<CalendarSlot[]>;
   createAppointment(input: {

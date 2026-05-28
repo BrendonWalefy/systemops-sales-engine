@@ -122,6 +122,64 @@ describe("SlotEngine", () => {
     expect(starts).toEqual(["10:00"]);
   });
 
+  // ── Cenários de tratamentos com duração variável + buffer (Ximendes Odontologia) ──
+
+  it("20 Lentes (4h) + 60min buffer: próximo slot de 60min só aparece às 13h", () => {
+    // Doutora agenda "20 Lentes" das 8h às 12h + 60min de intervalo
+    // Pacientes com consultas de 60min só podem ser atendidos a partir das 13h
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [
+        { startsAt: localDate(8), endsAt: localDate(12), appliesPostEventBuffer: true },
+      ],
+      from: localDate(8),
+      to: localDate(18),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-test",
+      postEventBufferMinutes: 60,
+    });
+
+    expect(starts).toEqual(["13:00", "14:00", "15:00", "16:00", "17:00"]);
+  });
+
+  it("20 Lentes (4h) + 60min buffer: segundo 20 Lentes não cabe no mesmo dia", () => {
+    // Após um 20 Lentes às 8h-12h + 60min buffer (ocupa até 13h),
+    // o próximo slot de 4h começaria às 12h (overlap com buffer) ou 16h (16+4=20h, fora do expediente)
+    // → nenhum slot de 4h disponível no mesmo dia
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [
+        { startsAt: localDate(8), endsAt: localDate(12), appliesPostEventBuffer: true },
+      ],
+      from: localDate(8),
+      to: localDate(18),
+      slotDurationMinutes: 240,
+      clinicId: "clinic-test",
+      postEventBufferMinutes: 60,
+    });
+
+    expect(starts).toEqual([]);
+  });
+
+  it("20 Lentes (4h) sem eventos: slots disponíveis às 8h e 12h dentro do expediente", () => {
+    // Verifica que o engine gera slots de 4h corretamente: 8h-12h e 12h-16h
+    // 16h+4h=20h ultrapassa o expediente (18h), então não aparece
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: localDate(8),
+      to: localDate(18),
+      slotDurationMinutes: 240,
+      clinicId: "clinic-test",
+      postEventBufferMinutes: 60,
+    });
+
+    expect(starts).toEqual(["08:00", "12:00"]);
+  });
+
   it("does not add post-event buffer to events marked as operational blocks", () => {
     const starts = slotStarts({
       timezone: tz,

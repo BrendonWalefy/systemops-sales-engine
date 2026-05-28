@@ -45,8 +45,9 @@ export class BookingService {
     lead: Lead;
     startsAt: Date;
     endsAt: Date;
+    treatmentName?: string;
   }): Promise<BookingResult> {
-    const { clinic, lead, startsAt, endsAt } = params;
+    const { clinic, lead, startsAt, endsAt, treatmentName } = params;
 
     // Passo 1: Limpa TTL expirados
     await this.reservationService.releaseExpired();
@@ -89,12 +90,13 @@ export class BookingService {
     let appointment: Appointment;
     try {
       const leadName = lead.name ?? "Paciente";
+      const procedureLabel = treatmentName ?? "Consulta";
       appointment = await this.calendarGateway.createAppointment({
         clinicId: clinic.id,
         leadId: lead.id,
         startsAt,
         endsAt,
-        title: `Avaliação — ${leadName} | ${clinic.name}`,
+        title: `${procedureLabel} — ${leadName} | ${clinic.name}`,
       });
     } catch (err) {
       // Libera a reserva imediatamente para o lead poder tentar de novo sem esperar o TTL

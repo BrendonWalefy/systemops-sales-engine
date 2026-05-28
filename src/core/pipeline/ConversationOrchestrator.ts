@@ -14,6 +14,7 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 
@@ -23,6 +24,7 @@ import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
+import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 
 import type { Clinic } from "@/domain/entities/clinic";
@@ -51,6 +53,7 @@ function buildClinic(row: ClinicRow): Clinic {
     googleCalendarId: row.googleCalendarId,
     takeoverTtlHours: row.takeoverTtlHours,
     postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
+    defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -65,6 +68,7 @@ export class ConversationOrchestrator {
   private conversationRepo = new DrizzleConversationRepository();
   private appointmentRepo = new DrizzleAppointmentRepository();
   private usageCostRepo = new DrizzleUsageCostRepository();
+  private treatmentRepo = new DrizzleTreatmentRepository();
 
   async handle(params: {
     clinicId: string;
@@ -180,10 +184,12 @@ export class ConversationOrchestrator {
     const hasPendingOffer = pendingSlots !== null;
 
     // ── 9. Classifica intenção com LLM estágio 1 ──
+    const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
     const classification = await this.intentClassifier.classify(
       messageText,
       allMessages,
       hasPendingOffer,
+      clinicTreatments.map((t) => t.name),
     );
 
     const { intent, slotPreference } = classification;
@@ -304,11 +310,13 @@ export class ConversationOrchestrator {
           await bookingService.cancel({ lead, appointment: existingAppointment });
         }
 
+        const offeredTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
         const result = await bookingService.book({
           clinic,
           lead,
           startsAt: new Date(chosenSlot.startsAt),
           endsAt: new Date(chosenSlot.endsAt),
+          treatmentName: offeredTreatment?.treatmentName,
         });
 
         if (result.success) {
@@ -343,6 +351,7 @@ export class ConversationOrchestrator {
 
       // ── Rejeição dos slots oferecidos ──
       case "reject_slots": {
+        const previousTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
         await this.stateMachine.invalidate(conversation.id);
 
         // Se o lead rejeitou E expressou preferência (ex: "não quero quinta, só tenho sexta"),
@@ -356,6 +365,9 @@ export class ConversationOrchestrator {
             businessHours,
             slotPreference.preferredDate ?? undefined,
             slotPreference.preferredPeriod ?? undefined,
+            undefined,
+            previousTreatment?.treatmentName,
+            previousTreatment?.durationMinutes,
           );
           if (rejectOutside) {
             replyText = await compose({
@@ -399,6 +411,25 @@ export class ConversationOrchestrator {
           await this.stateMachine.invalidate(conversation.id);
         }
 
+        // Resolve tratamento e duração do slot
+        const resolution = resolveTreatmentDuration(
+          slotPreference.identifiedTreatment ?? null,
+          clinicTreatments,
+          clinic.defaultAppointmentDurationMinutes,
+          classification.shouldAskClarification,
+        );
+
+        if (resolution.kind === "ask_clarification") {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: classification.clarificationQuestion ?? "Qual procedimento você gostaria de realizar?",
+          });
+          break;
+        }
+
+        const resolvedTreatmentName = resolution.kind === "matched" ? resolution.treatmentName : undefined;
+        const resolvedDurationMinutes = resolution.durationMinutes;
+
         const { slots: formattedSlots, preferredDayEmpty, outsideBookingWindow, outsideBusinessHours, preferredPeriodUnavailable } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
@@ -408,6 +439,8 @@ export class ConversationOrchestrator {
           slotPreference.preferredDate ?? undefined,
           slotPreference.preferredPeriod ?? undefined,
           slotPreference.preferredTime ?? undefined,
+          resolvedTreatmentName,
+          resolvedDurationMinutes,
         );
 
         if (outsideBookingWindow) {
@@ -475,6 +508,8 @@ export class ConversationOrchestrator {
 
       // ── Remarcação ──
       case "reschedule_appointment": {
+        // Preserva o treatment do agendamento anterior (se havia oferta ativa) para manter duração correta
+        const rescheduleOfferedTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
         const activeAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
 
         if (activeAppointment) {
@@ -490,6 +525,8 @@ export class ConversationOrchestrator {
           slotPreference.preferredDate ?? undefined,
           slotPreference.preferredPeriod ?? undefined,
           slotPreference.preferredTime ?? undefined,
+          rescheduleOfferedTreatment?.treatmentName,
+          rescheduleOfferedTreatment?.durationMinutes,
         );
 
         if (rescheduleOutside) {
@@ -675,14 +712,18 @@ export class ConversationOrchestrator {
     preferredDate?: string,
     preferredPeriod?: string,
     preferredTime?: string,
+    treatmentName?: string,
+    slotDurationMinutes?: number,
   ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean; outsideBookingWindow: boolean; outsideBusinessHours: boolean; preferredPeriodUnavailable: boolean }> {
     const from = this.slotWindowStart();
     const to = new Date(from.getTime() + SLOTS_LOOKAHEAD_DAYS * 24 * 60 * 60_000);
+    const duration = slotDurationMinutes ?? clinic.defaultAppointmentDurationMinutes;
 
     let allSlots = await calendarGateway.listAvailableSlots({
       clinicId: clinic.id,
       from,
       to,
+      slotDurationMinutes: duration,
     });
 
     let filteredToDay = false;
@@ -774,7 +815,7 @@ export class ConversationOrchestrator {
       return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
     }
 
-    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone);
+    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration);
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 

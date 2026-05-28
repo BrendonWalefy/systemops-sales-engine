@@ -85,6 +85,13 @@
       "when": 1779939214019,
       "tag": "0011_icy_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779943145223,
+      "tag": "0012_peaceful_iron_fist",
+      "breakpoints": true
     }
   ]
 }
