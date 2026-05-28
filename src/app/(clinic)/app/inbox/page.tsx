@@ -6,6 +6,7 @@ import { conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { MessageSquare, Inbox, AlertTriangle } from "lucide-react";
 import { InboxPoller } from "./InboxPoller";
+import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 
 function relativeTime(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -90,6 +91,7 @@ export default async function InboxPage() {
             {activeCount} conversa{activeCount !== 1 ? "s" : ""} ativa{activeCount !== 1 ? "s" : ""}
           </p>
         </div>
+        <EnableNotificationsButton />
       </div>
 
       <div className="inbox-content">
