@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Zap, LayoutGrid, LogOut } from "lucide-react";
+import { Zap, LayoutGrid, LogOut, TrendingUp } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 
@@ -36,6 +36,10 @@ export default async function OwnerLayout({ children }: { children: ReactNode })
           <Link href="/owner" className="side-nav-item">
             <LayoutGrid size={15} strokeWidth={2} />
             <span className="nav-label">Visão geral</span>
+          </Link>
+          <Link href="/owner/financeiro" className="side-nav-item">
+            <TrendingUp size={15} strokeWidth={2} />
+            <span className="nav-label">Financeiro</span>
           </Link>
         </nav>
 

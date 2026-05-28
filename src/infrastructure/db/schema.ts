@@ -77,6 +77,8 @@ export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
   "unknown",
 ]);
 
+export const clinicPlanEnum = pgEnum("clinic_plan", ["essencial", "clinica", "rede", "custom"]);
+
 export const clinics = pgTable("clinics", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -92,6 +94,9 @@ export const clinics = pgTable("clinics", {
   takeoverTtlHours: integer("takeover_ttl_hours").notNull().default(4),
   postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes").notNull().default(60),
   defaultAppointmentDurationMinutes: integer("default_appointment_duration_minutes").notNull().default(60),
+  plan: clinicPlanEnum("plan").notNull().default("essencial"),
+  monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
+  billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

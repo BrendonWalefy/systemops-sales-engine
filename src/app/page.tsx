@@ -1,11 +1,13 @@
 import { BarChart2, Clock, Zap } from "lucide-react";
 import { DemoFlow } from "./demo-flow";
+import { Pricing } from "./pricing";
 
 export default function HomePage() {
   return (
     <>
       <Hero />
       <DemoFlow />
+      <Pricing />
     </>
   );
 }
