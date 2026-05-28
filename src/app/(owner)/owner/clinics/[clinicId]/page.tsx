@@ -13,8 +13,8 @@ import {
   messages,
   agentRecommendations,
 } from "@/infrastructure/db/schema";
-import { eq, count, sum, and, gte, desc, sql } from "drizzle-orm";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
+import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake } from "lucide-react";
 
 function formatCurrency(micros: number): string {
   return "$" + (micros / 1_000_000).toFixed(4);
@@ -69,11 +69,17 @@ export default async function ClinicDetailPage({
     scheduledMonthResult,
     aiCostResult,
     waCostResult,
+    tempHotResult,
+    tempWarmResult,
+    tempColdResult,
   ] = await Promise.all([
     db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), gte(leads.createdAt, monthStart))),
     db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.status, "appointment_scheduled"), gte(leads.createdAt, monthStart))),
     db.select({ total: sum(aiUsageCosts.estimatedCostUsdMicros) }).from(aiUsageCosts).where(and(eq(aiUsageCosts.clinicId, clinicId), gte(aiUsageCosts.createdAt, monthStart))),
     db.select({ total: sum(whatsappMessageCosts.estimatedCostUsdMicros) }).from(whatsappMessageCosts).where(and(eq(whatsappMessageCosts.clinicId, clinicId), gte(whatsappMessageCosts.createdAt, monthStart))),
+    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "hot"))),
+    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "warm"))),
+    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "cold"))),
   ]);
 
   const leadsCount = leadsMonthResult[0]?.count ?? 0;
@@ -81,6 +87,11 @@ export default async function ClinicDetailPage({
   const aiCost = Number(aiCostResult[0]?.total ?? 0);
   const waCost = Number(waCostResult[0]?.total ?? 0);
   const conversion = leadsCount > 0 ? ((scheduledCount / leadsCount) * 100).toFixed(1) : "0.0";
+  const tempCounts = {
+    hot: tempHotResult[0]?.count ?? 0,
+    warm: tempWarmResult[0]?.count ?? 0,
+    cold: tempColdResult[0]?.count ?? 0,
+  };
 
   // Daily volume (last 30 days): leads created per day + messages sent per day
   const dailyLeadsResult = await db
@@ -111,14 +122,17 @@ export default async function ClinicDetailPage({
     new Set([...Object.keys(dailyLeadsMap), ...Object.keys(dailyMsgMap)]),
   ).sort((a, b) => b.localeCompare(a));
 
-  // Handoff conversations
+  // Handoff conversations (join with leads para mostrar nome)
   const handoffConvs = await db
     .select({
       convId: agentRecommendations.conversationId,
       leadId: agentRecommendations.leadId,
       createdAt: agentRecommendations.createdAt,
+      leadName: leads.name,
+      leadPhone: leads.phone,
     })
     .from(agentRecommendations)
+    .leftJoin(leads, eq(agentRecommendations.leadId, leads.id))
     .where(
       and(
         eq(agentRecommendations.clinicId, clinicId),
@@ -128,19 +142,22 @@ export default async function ClinicDetailPage({
     .orderBy(desc(agentRecommendations.createdAt))
     .limit(10);
 
-  // AI non-response proxy: conversations where last AI message was > 1h ago and no lead reply after it
-  // Simplified: just pull last 10 conversations where lastMessageAt is stale
+  // Conversas paradas: só leads ainda ativos (não finalizados), sem resposta há +1h
   const staleConvs = await db
     .select({
       id: conversations.id,
       lastMessageAt: conversations.lastMessageAt,
       leadId: conversations.leadId,
+      leadName: leads.name,
+      leadPhone: leads.phone,
     })
     .from(conversations)
+    .leftJoin(leads, eq(conversations.leadId, leads.id))
     .where(
       and(
         eq(conversations.clinicId, clinicId),
         sql`${conversations.lastMessageAt} < NOW() - INTERVAL '1 hour'`,
+        notInArray(leads.status, ["won", "lost", "appointment_scheduled"]),
       ),
     )
     .orderBy(desc(conversations.lastMessageAt))
@@ -176,7 +193,6 @@ export default async function ClinicDetailPage({
               <span className="status-dot" /> IA Pausada
             </span>
           )}
-          <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
           <Link
             href="/app/inbox"
             style={{
@@ -190,7 +206,7 @@ export default async function ClinicDetailPage({
             }}
           >
             <ExternalLink size={13} />
-            Acessar inbox
+            Inbox
           </Link>
         </div>
       </div>
@@ -260,6 +276,28 @@ export default async function ClinicDetailPage({
           )}
         </div>
 
+        {/* Distribuição de temperatura */}
+        <div>
+          <p className="eyebrow">Distribuição de temperatura</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+            <div className="metric">
+              <div className="metric-header"><span className="metric-icon"><Flame size={14} /></span><span className="metric-label">Quentes</span></div>
+              <span className="metric-value temp-hot">{tempCounts.hot}</span>
+              <span className="metric-context"><span className="temp-badge temp-hot">Quente</span></span>
+            </div>
+            <div className="metric">
+              <div className="metric-header"><span className="metric-icon"><Thermometer size={14} /></span><span className="metric-label">Mornos</span></div>
+              <span className="metric-value temp-warm">{tempCounts.warm}</span>
+              <span className="metric-context"><span className="temp-badge temp-warm">Morno</span></span>
+            </div>
+            <div className="metric">
+              <div className="metric-header"><span className="metric-icon"><Snowflake size={14} /></span><span className="metric-label">Frios</span></div>
+              <span className="metric-value temp-cold">{tempCounts.cold}</span>
+              <span className="metric-context"><span className="temp-badge temp-cold">Frio</span></span>
+            </div>
+          </div>
+        </div>
+
         {/* Handoff conversations */}
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
@@ -284,9 +322,12 @@ export default async function ClinicDetailPage({
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
-                      conv: {h.convId.slice(0, 8)}…
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                      {h.leadName ?? h.leadPhone ?? "Lead desconhecido"}
                     </span>
+                    {h.leadPhone && h.leadName && (
+                      <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>{h.leadPhone}</span>
+                    )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
@@ -309,7 +350,7 @@ export default async function ClinicDetailPage({
         <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
             <p className="eyebrow" style={{ margin: 0 }}>
-              Possíveis falhas da IA — conversas sem resposta há +1h
+              Possíveis falhas da IA — leads ativos sem resposta há +1h
             </p>
           </div>
           {staleConvs.length === 0 ? (
@@ -331,12 +372,15 @@ export default async function ClinicDetailPage({
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
-                      conv: {c.id.slice(0, 8)}…
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                      {c.leadName ?? c.leadPhone ?? "Lead desconhecido"}
                     </span>
+                    {c.leadPhone && c.leadName && (
+                      <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>{c.leadPhone}</span>
+                    )}
                     <span
                       style={{
-                        marginLeft: 12,
+                        marginLeft: 10,
                         fontSize: 11,
                         color: "var(--danger)",
                         fontWeight: 600,
@@ -355,6 +399,17 @@ export default async function ClinicDetailPage({
               ))}
             </div>
           )}
+        </div>
+
+        {/* Danger zone */}
+        <div style={{ border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "18px 20px", background: "rgba(239,68,68,0.03)" }}>
+          <p className="eyebrow" style={{ margin: "0 0 6px", color: "var(--danger)", opacity: 0.7 }}>Zona de risco</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+              Apaga todos os leads, conversas e agendamentos de teste. As configurações da clínica são preservadas.
+            </p>
+            <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
+          </div>
         </div>
       </div>
     </div>

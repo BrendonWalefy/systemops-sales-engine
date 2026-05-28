@@ -20,7 +20,7 @@ import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/wha
 
 import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
-import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
+import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
@@ -39,6 +39,27 @@ const SLOTS_WITH_DATE_AND_TIME = 2;
 // Quantas classificações unclear consecutivas disparam notificação ao operador
 const UNCLEAR_THRESHOLD = 3;
 const SLOTS_WITH_DATE_ONLY = 3;
+
+const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
+
+export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "cold" {
+  switch (intent) {
+    case "book_appointment":
+    case "check_availability":
+    case "confirm_slot":
+    case "reject_slots":
+    case "reschedule_appointment":
+    case "cancel_appointment":
+    case "list_appointments":
+      return "hot";
+    case "price_inquiry":
+    case "general_question":
+    case "clinical_urgency":
+      return "warm";
+    default:
+      return "cold";
+  }
+}
 
 type ClinicRow = typeof clinics.$inferSelect;
 
@@ -671,6 +692,13 @@ export class ConversationOrchestrator {
         .update(conversationsTable)
         .set({ consecutiveUnclearCount: 0, updatedAt: new Date() })
         .where(eq(conversationsTable.id, conversation.id));
+    }
+
+    // ── 8.5. Atualiza temperatura do lead (nunca rebaixa) ──
+    const inferredTemp = temperatureFromIntent(intent);
+    const currentTempRank = TEMP_RANK[lead.temperature ?? "cold"];
+    if (TEMP_RANK[inferredTemp] > currentTempRank) {
+      await this.leadRepo.save({ ...lead, temperature: inferredTemp, updatedAt: new Date() });
     }
 
     // ── 9. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──

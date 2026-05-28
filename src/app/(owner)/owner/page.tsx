@@ -10,6 +10,7 @@ import {
   conversations,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, max } from "drizzle-orm";
+import { Users, Calendar, TrendingUp, Cpu, MessageCircle, ChevronRight, AlertCircle } from "lucide-react";
 
 function formatCurrency(micros: number): string {
   return "$" + (micros / 1_000_000).toFixed(4);
@@ -151,6 +152,7 @@ export default async function OwnerPage() {
       <div className="kpi-strip">
         <div className="metric metric-highlight">
           <div className="metric-header">
+            <span className="metric-icon"><Users size={14} /></span>
             <span className="metric-label">Leads no mês</span>
           </div>
           <span className="metric-value">{totalLeads}</span>
@@ -158,6 +160,7 @@ export default async function OwnerPage() {
         </div>
         <div className="metric">
           <div className="metric-header">
+            <span className="metric-icon"><Calendar size={14} /></span>
             <span className="metric-label">Agendamentos</span>
           </div>
           <span className="metric-value">{totalScheduled}</span>
@@ -165,6 +168,7 @@ export default async function OwnerPage() {
         </div>
         <div className="metric">
           <div className="metric-header">
+            <span className="metric-icon"><TrendingUp size={14} /></span>
             <span className="metric-label">Conversão global</span>
           </div>
           <span className="metric-value">{globalConversion}%</span>
@@ -172,16 +176,18 @@ export default async function OwnerPage() {
         </div>
         <div className="metric">
           <div className="metric-header">
+            <span className="metric-icon"><Cpu size={14} /></span>
             <span className="metric-label">Custo IA total</span>
           </div>
-          <span className="metric-value">{formatCurrency(totalAiCost)}</span>
+          <span className="metric-value" style={{ fontFamily: "monospace", fontSize: 18 }}>{formatCurrency(totalAiCost)}</span>
           <span className="metric-context">OpenAI no mês</span>
         </div>
         <div className="metric">
           <div className="metric-header">
+            <span className="metric-icon"><MessageCircle size={14} /></span>
             <span className="metric-label">Custo WhatsApp total</span>
           </div>
-          <span className="metric-value">{formatCurrency(totalWaCost)}</span>
+          <span className="metric-value" style={{ fontFamily: "monospace", fontSize: 18 }}>{formatCurrency(totalWaCost)}</span>
           <span className="metric-context">Z-API / Meta no mês</span>
         </div>
       </div>
@@ -242,11 +248,12 @@ export default async function OwnerPage() {
                     clinic.leadsThisMonth > 0 &&
                     clinic.scheduledThisMonth / clinic.leadsThisMonth < 0.05;
 
-                  const alerts: string[] = [];
-                  if (!clinic.autoReplyEnabled) alerts.push("🔴 IA pausada");
+                  type Alert = { text: string; critical: boolean };
+                  const alerts: Alert[] = [];
+                  if (!clinic.autoReplyEnabled) alerts.push({ text: "IA pausada", critical: true });
                   if (!clinic.hasActivityIn24h && clinic.lastActivity)
-                    alerts.push("🟡 Sem atend. +24h");
-                  if (lowConversion) alerts.push("🟡 Conversão < 5%");
+                    alerts.push({ text: "Sem atend. +24h", critical: false });
+                  if (lowConversion) alerts.push({ text: "Conversão < 5%", critical: false });
 
                   return (
                     <tr
@@ -261,12 +268,16 @@ export default async function OwnerPage() {
                         <Link
                           href={`/owner/clinics/${clinic.id}`}
                           style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
                             fontWeight: 700,
                             color: "var(--text)",
                             textDecoration: "none",
                           }}
                         >
                           {clinic.name}
+                          <ChevronRight size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
                         </Link>
                       </td>
                       <td style={{ padding: "12px 16px", color: "var(--text-soft)" }}>
@@ -305,10 +316,11 @@ export default async function OwnerPage() {
                         {alerts.length === 0 ? (
                           <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
                         ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             {alerts.map((alert) => (
-                              <span key={alert} style={{ fontSize: 11, color: "var(--text-soft)" }}>
-                                {alert}
+                              <span key={alert.text} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: alert.critical ? "var(--danger)" : "var(--text-soft)", fontWeight: alert.critical ? 600 : 400 }}>
+                                <AlertCircle size={11} style={{ flexShrink: 0 }} />
+                                {alert.text}
                               </span>
                             ))}
                           </div>
