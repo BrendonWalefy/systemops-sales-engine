@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ResetClinicDialog } from "./reset-clinic-dialog";
 import { db } from "@/infrastructure/db/client";
 import {
@@ -14,7 +14,16 @@ import {
   agentRecommendations,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
-import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake, FlaskConical, Building2 } from "lucide-react";
+
+async function toggleIsTest(clinicId: string, currentValue: boolean) {
+  "use server";
+  await db
+    .update(clinics)
+    .set({ isTest: !currentValue })
+    .where(eq(clinics.id, clinicId));
+  redirect(`/owner/clinics/${clinicId}`);
+}
 
 function formatCurrency(micros: number): string {
   return "$" + (micros / 1_000_000).toFixed(4);
@@ -55,11 +64,14 @@ export default async function ClinicDetailPage({
       id: clinics.id,
       name: clinics.name,
       autoReplyEnabled: clinics.autoReplyEnabled,
+      isTest: clinics.isTest,
     })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
     .limit(1);
   if (!clinic) notFound();
+
+  const toggleTestAction = toggleIsTest.bind(null, clinic.id, clinic.isTest);
 
   const monthStart = startOfMonth();
   const thirtyDays = thirtyDaysAgo();
@@ -184,6 +196,24 @@ export default async function ClinicDetailPage({
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {clinic.isTest && (
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                border: "1px solid rgba(99,102,241,0.35)",
+                borderRadius: 999,
+                background: "rgba(99,102,241,0.1)",
+                color: "#818cf8",
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "3px 10px",
+              }}
+            >
+              <FlaskConical size={11} /> Teste
+            </span>
+          )}
           {clinic.autoReplyEnabled ? (
             <span className="status-pill" style={{ fontSize: 11, padding: "3px 10px" }}>
               <span className="status-dot" /> IA Ativa
@@ -399,6 +429,57 @@ export default async function ClinicDetailPage({
               ))}
             </div>
           )}
+        </div>
+
+        {/* Toggle produção / teste */}
+        <div
+          style={{
+            border: clinic.isTest
+              ? "1px solid rgba(99,102,241,0.3)"
+              : "1px solid var(--line)",
+            borderRadius: 12,
+            padding: "18px 20px",
+            background: clinic.isTest ? "rgba(99,102,241,0.05)" : "transparent",
+          }}
+        >
+          <p
+            className="eyebrow"
+            style={{ margin: "0 0 6px", color: clinic.isTest ? "#818cf8" : "var(--muted)", opacity: 0.9 }}
+          >
+            {clinic.isTest ? "Ambiente de testes" : "Clínica em produção"}
+          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+              {clinic.isTest
+                ? "Esta clínica está marcada como ambiente de testes. Custos e leads são excluídos dos KPIs de produção."
+                : "Esta clínica está em produção. Leads e receita entram nos KPIs do painel financeiro."}
+            </p>
+            <form action={toggleTestAction}>
+              <button
+                type="submit"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "8px 16px",
+                  border: "1px solid var(--line)",
+                  borderRadius: 8,
+                  background: "var(--surface-soft)",
+                  color: "var(--text-soft)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {clinic.isTest ? (
+                  <><Building2 size={13} /> Mover para produção</>
+                ) : (
+                  <><FlaskConical size={13} /> Marcar como teste</>
+                )}
+              </button>
+            </form>
+          </div>
         </div>
 
         {/* Danger zone */}

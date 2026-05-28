@@ -10,7 +10,7 @@ import {
   conversations,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, max } from "drizzle-orm";
-import { Users, Calendar, TrendingUp, Cpu, MessageCircle, ChevronRight, AlertCircle } from "lucide-react";
+import { Users, Calendar, TrendingUp, Cpu, MessageCircle, ChevronRight, AlertCircle, FlaskConical } from "lucide-react";
 
 function formatCurrency(micros: number): string {
   return "$" + (micros / 1_000_000).toFixed(4);
@@ -43,6 +43,7 @@ type ClinicRow = {
   waCostMicros: number;
   lastActivity: Date | null;
   hasActivityIn24h: boolean;
+  isTest: boolean;
 };
 
 async function fetchAllClinics(): Promise<ClinicRow[]> {
@@ -51,6 +52,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
       id: clinics.id,
       name: clinics.name,
       autoReplyEnabled: clinics.autoReplyEnabled,
+      isTest: clinics.isTest,
     })
     .from(clinics)
     .orderBy(clinics.name);
@@ -120,6 +122,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
         waCostMicros,
         lastActivity,
         hasActivityIn24h,
+        isTest: clinic.isTest,
       };
     }),
   );
@@ -130,10 +133,13 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
 export default async function OwnerPage() {
   const clinicRows = await fetchAllClinics();
 
-  const totalLeads = clinicRows.reduce((s, r) => s + r.leadsThisMonth, 0);
-  const totalScheduled = clinicRows.reduce((s, r) => s + r.scheduledThisMonth, 0);
-  const totalAiCost = clinicRows.reduce((s, r) => s + r.aiCostMicros, 0);
-  const totalWaCost = clinicRows.reduce((s, r) => s + r.waCostMicros, 0);
+  const prodRows = clinicRows.filter((r) => !r.isTest);
+  const testRows = clinicRows.filter((r) => r.isTest);
+
+  const totalLeads = prodRows.reduce((s, r) => s + r.leadsThisMonth, 0);
+  const totalScheduled = prodRows.reduce((s, r) => s + r.scheduledThisMonth, 0);
+  const totalAiCost = prodRows.reduce((s, r) => s + r.aiCostMicros, 0);
+  const totalWaCost = prodRows.reduce((s, r) => s + r.waCostMicros, 0);
   const globalConversion = totalLeads > 0 ? ((totalScheduled / totalLeads) * 100).toFixed(1) : "0.0";
 
   return (
@@ -143,12 +149,13 @@ export default async function OwnerPage() {
           <p className="eyebrow">Owner Panel</p>
           <h1>Visão geral das clínicas</h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
-            Mês atual · {clinicRows.length} clínica{clinicRows.length !== 1 ? "s" : ""}
+            Mês atual · {prodRows.length} clínica{prodRows.length !== 1 ? "s" : ""} em produção
+            {testRows.length > 0 && ` · ${testRows.length} em testes`}
           </p>
         </div>
       </div>
 
-      {/* Global KPIs */}
+      {/* KPIs — apenas produção */}
       <div className="kpi-strip">
         <div className="metric metric-highlight">
           <div className="metric-header">
@@ -156,7 +163,7 @@ export default async function OwnerPage() {
             <span className="metric-label">Leads no mês</span>
           </div>
           <span className="metric-value">{totalLeads}</span>
-          <span className="metric-context">todas as clínicas</span>
+          <span className="metric-context">produção</span>
         </div>
         <div className="metric">
           <div className="metric-header">
@@ -185,7 +192,7 @@ export default async function OwnerPage() {
         <div className="metric">
           <div className="metric-header">
             <span className="metric-icon"><MessageCircle size={14} /></span>
-            <span className="metric-label">Custo WhatsApp total</span>
+            <span className="metric-label">Custo WhatsApp</span>
           </div>
           <span className="metric-value" style={{ fontFamily: "monospace", fontSize: 18 }}>{formatCurrency(totalWaCost)}</span>
           <span className="metric-context">Z-API / Meta no mês</span>
@@ -193,10 +200,11 @@ export default async function OwnerPage() {
       </div>
 
       {/* Clinic list */}
-      <div className="page-content" style={{ paddingBottom: "60px" }}>
-        {clinicRows.length === 0 ? (
+      <div className="page-content" style={{ paddingBottom: "60px", display: "grid", gap: 20 }}>
+        {/* Produção */}
+        {prodRows.length === 0 ? (
           <div className="empty-state">
-            <p style={{ margin: 0 }}>Nenhuma clínica cadastrada.</p>
+            <p style={{ margin: 0 }}>Nenhuma clínica em produção.</p>
           </div>
         ) : (
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
@@ -207,12 +215,12 @@ export default async function OwnerPage() {
                 background: "var(--surface-soft)",
               }}
             >
-              <p className="eyebrow" style={{ margin: 0 }}>Clínicas</p>
+              <p className="eyebrow" style={{ margin: 0 }}>Clínicas em produção</p>
             </div>
 
             {/* Mobile: cards por clínica */}
             <div className="mobile-clinic-cards">
-              {clinicRows.map((clinic) => {
+              {prodRows.map((clinic) => {
                 const conversion =
                   clinic.leadsThisMonth > 0
                     ? ((clinic.scheduledThisMonth / clinic.leadsThisMonth) * 100).toFixed(1)
@@ -297,7 +305,7 @@ export default async function OwnerPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {clinicRows.map((clinic, i) => {
+                  {prodRows.map((clinic, i) => {
                     const conversion =
                       clinic.leadsThisMonth > 0
                         ? ((clinic.scheduledThisMonth / clinic.leadsThisMonth) * 100).toFixed(1)
@@ -320,7 +328,7 @@ export default async function OwnerPage() {
                         style={{
                           background: i % 2 === 1 ? "var(--surface-soft)" : "transparent",
                           borderBottom:
-                            i < clinicRows.length - 1 ? "1px solid var(--line)" : "none",
+                            i < prodRows.length - 1 ? "1px solid var(--line)" : "none",
                         }}
                       >
                         <td style={{ padding: "12px 16px" }}>
@@ -390,6 +398,77 @@ export default async function OwnerPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Testes */}
+        {testRows.length > 0 && (
+          <div
+            style={{
+              border: "1px solid rgba(99,102,241,0.25)",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "rgba(99,102,241,0.03)",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px 18px 12px",
+                borderBottom: "1px solid rgba(99,102,241,0.2)",
+                background: "rgba(99,102,241,0.06)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <FlaskConical size={13} style={{ color: "#818cf8" }} />
+              <p className="eyebrow" style={{ margin: 0, color: "#818cf8" }}>Ambiente de testes</p>
+            </div>
+            <div className="mobile-clinic-cards">
+              {testRows.map((clinic) => (
+                <Link
+                  key={clinic.id}
+                  href={`/owner/clinics/${clinic.id}`}
+                  className="mobile-clinic-card"
+                >
+                  <div className="mobile-clinic-card-row">
+                    <span className="mobile-clinic-card-name" style={{ color: "#818cf8" }}>
+                      {clinic.name}
+                    </span>
+                    <ChevronRight size={15} style={{ color: "var(--muted)", flexShrink: 0 }} />
+                  </div>
+                  <div className="mobile-clinic-card-meta">
+                    <span><strong>{clinic.leadsThisMonth}</strong> leads</span>
+                    <span>{relativeTime(clinic.lastActivity)}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            <div className="desktop-clinic-table">
+              {testRows.map((clinic, i) => (
+                <div
+                  key={clinic.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 18px",
+                    borderBottom: i < testRows.length - 1 ? "1px solid rgba(99,102,241,0.15)" : "none",
+                  }}
+                >
+                  <Link
+                    href={`/owner/clinics/${clinic.id}`}
+                    style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#818cf8", textDecoration: "none", fontSize: 13 }}
+                  >
+                    {clinic.name}
+                    <ChevronRight size={13} style={{ color: "#818cf8" }} />
+                  </Link>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                    {clinic.leadsThisMonth} leads · {relativeTime(clinic.lastActivity)}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}

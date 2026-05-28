@@ -97,6 +97,7 @@ export const clinics = pgTable("clinics", {
   plan: clinicPlanEnum("plan").notNull().default("essencial"),
   monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
   billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
+  isTest: boolean("is_test").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
