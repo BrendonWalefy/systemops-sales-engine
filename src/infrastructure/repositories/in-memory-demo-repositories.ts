@@ -48,10 +48,7 @@ export class InMemoryDemoStore
     );
   }
 
-  async findInactiveLeads(params: {
-    clinicId: string;
-    lastActivityBefore: Date;
-  }): Promise<Lead[]> {
+  async findInactiveLeads(): Promise<Lead[]> {
     return [];
   }
 

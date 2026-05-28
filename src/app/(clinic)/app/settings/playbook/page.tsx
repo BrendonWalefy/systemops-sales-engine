@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic";
 
-import { BookText, Clock, MessageSquare, Save, Timer } from "lucide-react";
+import { BookText, CalendarClock, Clock, MessageSquare, Save, Timer } from "lucide-react";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { ToggleAutoReply } from "./toggle-auto-reply";
-import { savePlaybook, saveTakeoverTtl } from "./actions";
+import { savePlaybook, saveSchedulingPolicy, saveTakeoverTtl } from "./actions";
 
 async function getClinic() {
   const clinicId = process.env.PILOT_CLINIC_ID!;
@@ -19,6 +19,7 @@ async function getClinic() {
       playbook: clinics.playbook,
       autoReplyEnabled: clinics.autoReplyEnabled,
       takeoverTtlHours: clinics.takeoverTtlHours,
+      postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
     })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
@@ -139,6 +140,59 @@ export default async function PlaybookPage() {
                 style={{ width: "80px", textAlign: "center" }}
               />
               <span style={{ fontSize: "13px", color: "var(--muted)" }}>horas</span>
+            </label>
+            <button type="submit" className="primary-button" style={{ gap: "8px" }}>
+              <Save size={14} strokeWidth={2} />
+              Salvar
+            </button>
+          </form>
+        </section>
+
+        <section
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: "14px",
+            background: "var(--surface-soft)",
+            padding: "20px 22px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "16px" }}>
+            <div
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: "40px",
+                height: "40px",
+                flexShrink: 0,
+                borderRadius: "10px",
+                border: "1px solid var(--line)",
+                background: "var(--surface-raised)",
+                color: "var(--accent-strong)",
+              }}
+            >
+              <CalendarClock size={18} strokeWidth={1.8} />
+            </div>
+            <div>
+              <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
+                Intervalo entre atendimentos
+              </strong>
+              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--muted)", lineHeight: 1.5 }}>
+                Tempo reservado após cada agendamento antes de oferecer o próximo horário no chat.
+              </p>
+            </div>
+          </div>
+          <form action={saveSchedulingPolicy} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+              <input
+                type="number"
+                name="postAppointmentBufferMinutes"
+                defaultValue={clinic?.postAppointmentBufferMinutes ?? 60}
+                min={0}
+                max={240}
+                step={5}
+                style={{ width: "88px", textAlign: "center" }}
+              />
+              <span style={{ fontSize: "13px", color: "var(--muted)" }}>minutos após procedimento</span>
             </label>
             <button type="submit" className="primary-button" style={{ gap: "8px" }}>
               <Save size={14} strokeWidth={2} />

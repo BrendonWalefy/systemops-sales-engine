@@ -38,4 +38,9 @@ export type CalendarGateway = {
   deleteBlockEvent(input: {
     calendarEventId: string;
   }): Promise<void>;
+  isSlotFree(input: {
+    clinicId: string;
+    startsAt: Date;
+    endsAt: Date;
+  }): Promise<boolean>;
 };

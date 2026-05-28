@@ -31,6 +31,17 @@ export async function saveTakeoverTtl(formData: FormData) {
   revalidatePath("/app/settings/playbook");
 }
 
+export async function saveSchedulingPolicy(formData: FormData) {
+  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const raw = parseInt(formData.get("postAppointmentBufferMinutes") as string, 10);
+  const bufferMinutes = isNaN(raw) || raw < 0 ? 60 : Math.min(raw, 240);
+  await db
+    .update(clinics)
+    .set({ postAppointmentBufferMinutes: bufferMinutes, updatedAt: new Date() })
+    .where(eq(clinics.id, clinicId));
+  revalidatePath("/app/settings/playbook");
+}
+
 export async function toggleAutoReply(currentValue: boolean) {
   const clinicId = process.env.PILOT_CLINIC_ID!;
   await db

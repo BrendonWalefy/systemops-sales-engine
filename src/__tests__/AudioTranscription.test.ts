@@ -150,24 +150,22 @@ describe("ZApi audio — fluxo completo (simulado)", () => {
       },
     };
 
-    const mockSendFallback = async (_phone: string, _msg: string) => {
+    const mockSendFallback = async () => {
       fallbackSent = true;
     };
 
     let messageText: string | null = null;
-    let httpStatus = 200;
+    const httpStatus = 200;
 
     try {
       if (!params.downloadSucceeds) throw new Error("Network error");
-
-      const fakeBuffer = new ArrayBuffer(8);
 
       if (params.transcription === null) throw new Error("Whisper failed");
       if (params.transcription.trim() === "") throw new Error("Whisper returned empty transcription");
 
       messageText = `[áudio] ${params.transcription}`;
-    } catch (err) {
-      await mockSendFallback(params.phone, "Não consegui ouvir seu áudio. Pode me escrever? 😊");
+    } catch {
+      await mockSendFallback();
       return { orchestratorCalledWith: null, fallbackSent: true, httpStatus: 200 };
     }
 

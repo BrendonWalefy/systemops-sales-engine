@@ -7,11 +7,12 @@ import { type ParsedBusinessHours, type ClinicTimezone } from "./ClinicTimezone"
 export type SlotEngineParams = {
   timezone: ClinicTimezone;
   businessHours: ParsedBusinessHours;
-  existingEvents: { startsAt: Date; endsAt: Date }[];
+  existingEvents: { startsAt: Date; endsAt: Date; appliesPostEventBuffer?: boolean }[];
   from: Date;
   to: Date;
   slotDurationMinutes: number;
   clinicId: string;
+  postEventBufferMinutes?: number;
   maxSlots?: number;
 };
 
@@ -24,16 +25,18 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
     to,
     slotDurationMinutes,
     clinicId,
+    postEventBufferMinutes = 0,
     maxSlots = 100,
   } = params;
 
   const slotMs = slotDurationMinutes * 60_000;
+  const bufferMs = Math.max(0, postEventBufferMinutes) * 60_000;
   const slots: CalendarSlot[] = [];
 
   // Converte eventos em ranges de timestamp para lookup O(n) por slot
   const busyRanges = existingEvents.map((e) => ({
     start: e.startsAt.getTime(),
-    end: e.endsAt.getTime(),
+    end: e.endsAt.getTime() + (e.appliesPostEventBuffer === false ? 0 : bufferMs),
   }));
 
   let cursor = new Date(from.getTime());

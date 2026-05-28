@@ -53,6 +53,7 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
 
   // Sync when server re-renders with more messages (e.g. after router.refresh())
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages((prev) =>
       initialMessages.length > prev.length ? initialMessages : prev,
     );

@@ -204,7 +204,7 @@ export class ClinicTimezone {
     if (dmyMatch) {
       const day = parseInt(dmyMatch[1], 10);
       const month = parseInt(dmyMatch[2], 10) - 1; // 0-indexed
-      let year = dmyMatch[3] ? parseInt(dmyMatch[3], 10) : today.year;
+      const year = dmyMatch[3] ? parseInt(dmyMatch[3], 10) : today.year;
       const startOfToday = this.fromLocalParts(today.year, today.month, today.day, 0, 0);
       const target = this.fromLocalParts(year, month, day, 0, 0);
       if (target < startOfToday) return this.fromLocalParts(year + 1, month, day, 0, 0);

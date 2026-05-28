@@ -20,10 +20,6 @@ function formatCurrency(micros: number): string {
   return "$" + (micros / 1_000_000).toFixed(4);
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
-}
-
 function relativeTime(date: Date | null): string {
   if (!date) return "—";
   const diff = Date.now() - date.getTime();
@@ -45,10 +41,6 @@ function thirtyDaysAgo(): Date {
   const d = new Date();
   d.setDate(d.getDate() - 30);
   return d;
-}
-
-function dateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 export default async function ClinicDetailPage({

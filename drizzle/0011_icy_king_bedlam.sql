@@ -1,0 +1,1 @@
+ALTER TABLE "clinics" ADD COLUMN "post_appointment_buffer_minutes" integer DEFAULT 60 NOT NULL;

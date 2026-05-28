@@ -10,7 +10,7 @@ export type Clinic = {
   businessHours: string | null;
   googleCalendarId: string | null;
   takeoverTtlHours: number;
+  postAppointmentBufferMinutes: number;
   createdAt: Date;
   updatedAt: Date;
 };
-

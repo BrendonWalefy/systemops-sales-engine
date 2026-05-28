@@ -9,7 +9,7 @@
 //
 // We model this decision tree as a pure function for testability.
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ─── Pure decision function extracted from route.ts logic ──────────────────
 // This mirrors the exact conditional structure in the POST handler's fromMe block.
@@ -151,7 +151,7 @@ describe("ZApi Webhook — handleOperatorMessageFromPhone (mocked DB)", () => {
     aiPaused: boolean | null;
     conversationId: string | null;
   }> {
-    const { conversationFound, messageText, messageId } = params;
+    const { conversationFound } = params;
 
     // Simulate DB query: find active conversation for this lead
     const conv = conversationFound;
@@ -164,14 +164,6 @@ describe("ZApi Webhook — handleOperatorMessageFromPhone (mocked DB)", () => {
         conversationId: null,
       };
     }
-
-    // Simulate DB inserts/updates
-    const insertedMessage = {
-      conversationId: conv.id,
-      author: "clinic_user",
-      body: messageText,
-      externalId: messageId,
-    };
 
     const updatedConversation = {
       id: conv.id,

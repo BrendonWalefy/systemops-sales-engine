@@ -1,6 +1,6 @@
 "use server";
 import { db } from "@/infrastructure/db/client";
-import { leads, conversations } from "@/infrastructure/db/schema";
+import { leads } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 

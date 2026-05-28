@@ -8,9 +8,8 @@ import {
   aiUsageCosts,
   whatsappMessageCosts,
   conversations,
-  messages,
 } from "@/infrastructure/db/schema";
-import { eq, count, sum, and, gte, desc, max } from "drizzle-orm";
+import { eq, count, sum, and, gte, max } from "drizzle-orm";
 
 function formatCurrency(micros: number): string {
   return "$" + (micros / 1_000_000).toFixed(4);

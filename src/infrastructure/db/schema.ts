@@ -90,6 +90,7 @@ export const clinics = pgTable("clinics", {
   googleCalendarId: text("google_calendar_id"),
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
   takeoverTtlHours: integer("takeover_ttl_hours").notNull().default(4),
+  postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes").notNull().default(60),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

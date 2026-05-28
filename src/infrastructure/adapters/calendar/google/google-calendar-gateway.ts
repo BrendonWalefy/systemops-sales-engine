@@ -110,6 +110,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
     private readonly clinicCalendarId?: string | null,
     private readonly timezone?: ClinicTimezone,
     private readonly clinicBusinessHours?: string | null,
+    private readonly postAppointmentBufferMinutes = 0,
   ) {}
 
   async listAvailableSlots(input: {
@@ -140,6 +141,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
     }
 
     type GCalEvent = {
+      summary?: string;
       start: { dateTime?: string; date?: string };
       end: { dateTime?: string; date?: string };
     };
@@ -149,13 +151,14 @@ export class GoogleCalendarGateway implements CalendarGateway {
     const tz = this.timezone ?? new ClinicTimezone("America/Sao_Paulo");
     const bh = parseBusinessHours(this.clinicBusinessHours ?? null);
 
-    const existingEvents: { startsAt: Date; endsAt: Date }[] = [];
+    const existingEvents: { startsAt: Date; endsAt: Date; appliesPostEventBuffer?: boolean }[] = [];
     for (const e of data.items) {
       if (e.start.dateTime && e.end.dateTime) {
         // Evento com horário (consulta ou bloqueio com hora exata)
         existingEvents.push({
           startsAt: new Date(e.start.dateTime),
           endsAt: new Date(e.end.dateTime),
+          appliesPostEventBuffer: !e.summary?.startsWith(GoogleCalendarGateway.BLOCK_PREFIX),
         });
       } else if (e.start.date && e.end.date) {
         // Evento de dia inteiro — bloqueia o dia completo no fuso da clínica.
@@ -165,6 +168,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
         existingEvents.push({
           startsAt: tz.fromLocalParts(sy, sm - 1, sd, 0, 0),
           endsAt: tz.fromLocalParts(ey, em - 1, ed, 0, 0),
+          appliesPostEventBuffer: false,
         });
       }
     }
@@ -177,6 +181,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       to: input.to,
       slotDurationMinutes: 60,
       clinicId: input.clinicId,
+      postEventBufferMinutes: this.postAppointmentBufferMinutes,
     });
   }
 
@@ -343,5 +348,85 @@ export class GoogleCalendarGateway implements CalendarGateway {
 
   async deleteBlockEvent(input: { calendarEventId: string }): Promise<void> {
     return this.deleteCalendarEvent(input.calendarEventId);
+  }
+
+  // Verifica em tempo real se o slot está livre no Google Calendar.
+  // Usado pelo BookingService antes de criar o evento para detectar conflitos com
+  // agendamentos manuais feitos pelo operador após a oferta ao lead.
+  async isSlotFree(input: {
+    clinicId: string;
+    startsAt: Date;
+    endsAt: Date;
+  }): Promise<boolean> {
+    const durationMinutes = (input.endsAt.getTime() - input.startsAt.getTime()) / 60_000;
+    if (durationMinutes <= 0) return false;
+
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+    const bufferLookbackMs = Math.max(0, this.postAppointmentBufferMinutes) * 60_000;
+    const from = new Date(input.startsAt.getTime() - bufferLookbackMs);
+
+    const params = new URLSearchParams({
+      timeMin: from.toISOString(),
+      timeMax: input.endsAt.toISOString(),
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: "250",
+    });
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Calendar isSlotFree check failed: ${err}`);
+    }
+
+    type GCalEvent = {
+      summary?: string;
+      start: { dateTime?: string; date?: string };
+      end: { dateTime?: string; date?: string };
+    };
+    const data = (await res.json()) as { items: GCalEvent[] };
+
+    const tz = this.timezone ?? new ClinicTimezone("America/Sao_Paulo");
+    const bh = parseBusinessHours(this.clinicBusinessHours ?? null);
+    const existingEvents: { startsAt: Date; endsAt: Date; appliesPostEventBuffer?: boolean }[] = [];
+
+    for (const e of data.items) {
+      if (e.start.dateTime && e.end.dateTime) {
+        existingEvents.push({
+          startsAt: new Date(e.start.dateTime),
+          endsAt: new Date(e.end.dateTime),
+          appliesPostEventBuffer: !e.summary?.startsWith(GoogleCalendarGateway.BLOCK_PREFIX),
+        });
+      } else if (e.start.date && e.end.date) {
+        const [sy, sm, sd] = e.start.date.split("-").map(Number);
+        const [ey, em, ed] = e.end.date.split("-").map(Number);
+        existingEvents.push({
+          startsAt: tz.fromLocalParts(sy, sm - 1, sd, 0, 0),
+          endsAt: tz.fromLocalParts(ey, em - 1, ed, 0, 0),
+          appliesPostEventBuffer: false,
+        });
+      }
+    }
+
+    return computeAvailableSlots({
+      timezone: tz,
+      businessHours: bh,
+      existingEvents,
+      from: input.startsAt,
+      to: input.endsAt,
+      slotDurationMinutes: durationMinutes,
+      clinicId: input.clinicId,
+      postEventBufferMinutes: this.postAppointmentBufferMinutes,
+      maxSlots: 1,
+    }).some(
+      (slot) =>
+        slot.startsAt.getTime() === input.startsAt.getTime() &&
+        slot.endsAt.getTime() === input.endsAt.getTime(),
+    );
   }
 }

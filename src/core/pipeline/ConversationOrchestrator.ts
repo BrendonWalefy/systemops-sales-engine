@@ -50,6 +50,7 @@ function buildClinic(row: ClinicRow): Clinic {
     businessHours: row.businessHours,
     googleCalendarId: row.googleCalendarId,
     takeoverTtlHours: row.takeoverTtlHours,
+    postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -196,6 +197,7 @@ export class ConversationOrchestrator {
       clinic.googleCalendarId,
       timezone,
       clinic.businessHours,
+      clinic.postAppointmentBufferMinutes,
     );
 
     const bookingService = new BookingService(
@@ -253,6 +255,11 @@ export class ConversationOrchestrator {
                 replyText = await compose({ type: "clarification_needed", question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?" });
               } else if (rdNotOpen) {
                 replyText = await compose({ type: "clarification_needed", question: "O atendimento de hoje já encerrou. Posso verificar os horários de amanhã ou outro dia para você?" });
+              } else if (rdPeriod) {
+                replyText = await compose({
+                  type: "clarification_needed",
+                  question: `Não temos atendimento no período da noite — nosso horário vai até as ${businessHours.endHour}h. Posso verificar outro período?`,
+                });
               } else if (redirectSlots.length > 0 && !rdEmpty) {
                 replyText = await compose({ type: "slots_found", slots: redirectSlots, askedForPreference: false });
               } else if (rdEmpty) {
