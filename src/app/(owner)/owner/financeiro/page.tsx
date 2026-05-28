@@ -139,7 +139,7 @@ export default async function FinanceiroPage() {
   return (
     <div>
       <div className="product-topbar">
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div className="owner-page-header" style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Link
             href="/owner"
             style={{
@@ -156,8 +156,8 @@ export default async function FinanceiroPage() {
             <ArrowLeft size={14} />
             Visão geral
           </Link>
-          <span style={{ color: "var(--line-strong)" }}>·</span>
-          <div>
+          <span className="owner-page-header-sep" style={{ color: "var(--line-strong)" }}>·</span>
+          <div className="owner-page-header-title">
             <h1 style={{ margin: 0 }}>Financeiro</h1>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
               Mês atual · Receita, custos e margens
@@ -166,7 +166,7 @@ export default async function FinanceiroPage() {
         </div>
       </div>
 
-      <div className="page-content" style={{ paddingBottom: 40, display: "grid", gap: 32 }}>
+      <div className="page-content" style={{ paddingBottom: 60, display: "grid", gap: 32 }}>
 
         {/* Alerta de clínicas sem valor configurado */}
         {unconfiguredClinics.length > 0 && (

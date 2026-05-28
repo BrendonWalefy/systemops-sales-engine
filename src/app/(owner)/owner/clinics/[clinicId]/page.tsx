@@ -211,7 +211,7 @@ export default async function ClinicDetailPage({
         </div>
       </div>
 
-      <div className="page-content" style={{ paddingBottom: "40px", display: "grid", gap: 32 }}>
+      <div className="page-content" style={{ paddingBottom: "60px", display: "grid", gap: 32 }}>
         {/* KPIs */}
         <div className="kpi-strip" style={{ marginLeft: 0 }}>
           <div className="metric metric-highlight">

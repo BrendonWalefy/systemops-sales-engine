@@ -192,8 +192,8 @@ export default async function OwnerPage() {
         </div>
       </div>
 
-      {/* Clinic table */}
-      <div className="page-content" style={{ paddingBottom: "40px" }}>
+      {/* Clinic list */}
+      <div className="page-content" style={{ paddingBottom: "60px" }}>
         {clinicRows.length === 0 ? (
           <div className="empty-state">
             <p style={{ margin: 0 }}>Nenhuma clínica cadastrada.</p>
@@ -210,127 +210,186 @@ export default async function OwnerPage() {
               <p className="eyebrow" style={{ margin: 0 }}>Clínicas</p>
             </div>
 
-            <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr
-                  style={{
-                    background: "var(--surface-soft)",
-                    borderBottom: "1px solid var(--line)",
-                  }}
-                >
-                  {["Clínica", "Leads/mês", "Conversão", "Custo IA+WA", "Último atend.", "Status IA", "Alertas"].map((col) => (
-                    <th
-                      key={col}
-                      style={{
-                        padding: "10px 16px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        letterSpacing: "0.06em",
-                        textTransform: "uppercase",
-                        color: "var(--muted)",
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {clinicRows.map((clinic, i) => {
-                  const conversion =
-                    clinic.leadsThisMonth > 0
-                      ? ((clinic.scheduledThisMonth / clinic.leadsThisMonth) * 100).toFixed(1)
-                      : "0.0";
-                  const totalCost = clinic.aiCostMicros + clinic.waCostMicros;
-                  const lowConversion =
-                    clinic.leadsThisMonth > 0 &&
-                    clinic.scheduledThisMonth / clinic.leadsThisMonth < 0.05;
+            {/* Mobile: cards por clínica */}
+            <div className="mobile-clinic-cards">
+              {clinicRows.map((clinic) => {
+                const conversion =
+                  clinic.leadsThisMonth > 0
+                    ? ((clinic.scheduledThisMonth / clinic.leadsThisMonth) * 100).toFixed(1)
+                    : "0.0";
+                const totalCost = clinic.aiCostMicros + clinic.waCostMicros;
+                const lowConversion =
+                  clinic.leadsThisMonth > 0 &&
+                  clinic.scheduledThisMonth / clinic.leadsThisMonth < 0.05;
 
-                  type Alert = { text: string; critical: boolean };
-                  const alerts: Alert[] = [];
-                  if (!clinic.autoReplyEnabled) alerts.push({ text: "IA pausada", critical: true });
-                  if (!clinic.hasActivityIn24h && clinic.lastActivity)
-                    alerts.push({ text: "Sem atend. +24h", critical: false });
-                  if (lowConversion) alerts.push({ text: "Conversão < 5%", critical: false });
-
-                  return (
-                    <tr
-                      key={clinic.id}
-                      style={{
-                        background: i % 2 === 1 ? "var(--surface-soft)" : "transparent",
-                        borderBottom:
-                          i < clinicRows.length - 1 ? "1px solid var(--line)" : "none",
-                      }}
-                    >
-                      <td style={{ padding: "12px 16px" }}>
-                        <Link
-                          href={`/owner/clinics/${clinic.id}`}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            fontWeight: 700,
-                            color: "var(--text)",
-                            textDecoration: "none",
-                          }}
-                        >
-                          {clinic.name}
-                          <ChevronRight size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
-                        </Link>
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "var(--text-soft)" }}>
-                        {clinic.leadsThisMonth}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span
-                          style={{
-                            color: lowConversion ? "var(--danger)" : "var(--text-soft)",
-                            fontWeight: lowConversion ? 700 : 400,
-                          }}
-                        >
-                          {conversion}%
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "var(--text-soft)", fontFamily: "monospace", fontSize: 12 }}>
-                        {formatCurrency(totalCost)}
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "var(--muted)", fontSize: 12 }}>
-                        {relativeTime(clinic.lastActivity)}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
+                return (
+                  <Link
+                    key={clinic.id}
+                    href={`/owner/clinics/${clinic.id}`}
+                    className="mobile-clinic-card"
+                  >
+                    <div className="mobile-clinic-card-row">
+                      <span className="mobile-clinic-card-name">{clinic.name}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         {clinic.autoReplyEnabled ? (
-                          <span className="status-pill" style={{ fontSize: 11, padding: "3px 10px" }}>
+                          <span className="status-pill" style={{ fontSize: 10, padding: "2px 9px" }}>
                             <span className="status-dot" />
-                            Ativa
+                            IA Ativa
                           </span>
                         ) : (
-                          <span className="status-pill status-handoff" style={{ fontSize: 11, padding: "3px 10px" }}>
+                          <span className="status-pill status-handoff" style={{ fontSize: 10, padding: "2px 9px" }}>
                             <span className="status-dot" />
                             Pausada
                           </span>
                         )}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        {alerts.length === 0 ? (
-                          <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {alerts.map((alert) => (
-                              <span key={alert.text} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: alert.critical ? "var(--danger)" : "var(--text-soft)", fontWeight: alert.critical ? 600 : 400 }}>
-                                <AlertCircle size={11} style={{ flexShrink: 0 }} />
-                                {alert.text}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <ChevronRight size={15} style={{ color: "var(--muted)", flexShrink: 0 }} />
+                      </div>
+                    </div>
+                    <div className="mobile-clinic-card-meta">
+                      <span>
+                        <strong>{clinic.leadsThisMonth}</strong> leads
+                      </span>
+                      <span style={{ color: lowConversion ? "var(--danger)" : "var(--muted)" }}>
+                        <strong style={{ color: lowConversion ? "var(--danger)" : "var(--text-soft)", fontWeight: lowConversion ? 700 : 600 }}>
+                          {conversion}%
+                        </strong>{" "}
+                        conv.
+                      </span>
+                      <span>
+                        <strong style={{ fontFamily: "monospace", fontSize: 11 }}>
+                          {formatCurrency(totalCost)}
+                        </strong>{" "}
+                        IA+WA
+                      </span>
+                      <span>{relativeTime(clinic.lastActivity)}</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Desktop: tabela completa */}
+            <div className="desktop-clinic-table" style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr
+                    style={{
+                      background: "var(--surface-soft)",
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  >
+                    {["Clínica", "Leads/mês", "Conversão", "Custo IA+WA", "Último atend.", "Status IA", "Alertas"].map((col) => (
+                      <th
+                        key={col}
+                        style={{
+                          padding: "10px 16px",
+                          textAlign: "left",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {clinicRows.map((clinic, i) => {
+                    const conversion =
+                      clinic.leadsThisMonth > 0
+                        ? ((clinic.scheduledThisMonth / clinic.leadsThisMonth) * 100).toFixed(1)
+                        : "0.0";
+                    const totalCost = clinic.aiCostMicros + clinic.waCostMicros;
+                    const lowConversion =
+                      clinic.leadsThisMonth > 0 &&
+                      clinic.scheduledThisMonth / clinic.leadsThisMonth < 0.05;
+
+                    type Alert = { text: string; critical: boolean };
+                    const alerts: Alert[] = [];
+                    if (!clinic.autoReplyEnabled) alerts.push({ text: "IA pausada", critical: true });
+                    if (!clinic.hasActivityIn24h && clinic.lastActivity)
+                      alerts.push({ text: "Sem atend. +24h", critical: false });
+                    if (lowConversion) alerts.push({ text: "Conversão < 5%", critical: false });
+
+                    return (
+                      <tr
+                        key={clinic.id}
+                        style={{
+                          background: i % 2 === 1 ? "var(--surface-soft)" : "transparent",
+                          borderBottom:
+                            i < clinicRows.length - 1 ? "1px solid var(--line)" : "none",
+                        }}
+                      >
+                        <td style={{ padding: "12px 16px" }}>
+                          <Link
+                            href={`/owner/clinics/${clinic.id}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              fontWeight: 700,
+                              color: "var(--text)",
+                              textDecoration: "none",
+                            }}
+                          >
+                            {clinic.name}
+                            <ChevronRight size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
+                          </Link>
+                        </td>
+                        <td style={{ padding: "12px 16px", color: "var(--text-soft)" }}>
+                          {clinic.leadsThisMonth}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span
+                            style={{
+                              color: lowConversion ? "var(--danger)" : "var(--text-soft)",
+                              fontWeight: lowConversion ? 700 : 400,
+                            }}
+                          >
+                            {conversion}%
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 16px", color: "var(--text-soft)", fontFamily: "monospace", fontSize: 12 }}>
+                          {formatCurrency(totalCost)}
+                        </td>
+                        <td style={{ padding: "12px 16px", color: "var(--muted)", fontSize: 12 }}>
+                          {relativeTime(clinic.lastActivity)}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {clinic.autoReplyEnabled ? (
+                            <span className="status-pill" style={{ fontSize: 11, padding: "3px 10px" }}>
+                              <span className="status-dot" />
+                              Ativa
+                            </span>
+                          ) : (
+                            <span className="status-pill status-handoff" style={{ fontSize: 11, padding: "3px 10px" }}>
+                              <span className="status-dot" />
+                              Pausada
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {alerts.length === 0 ? (
+                            <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {alerts.map((alert) => (
+                                <span key={alert.text} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: alert.critical ? "var(--danger)" : "var(--text-soft)", fontWeight: alert.critical ? 600 : 400 }}>
+                                  <AlertCircle size={11} style={{ flexShrink: 0 }} />
+                                  {alert.text}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

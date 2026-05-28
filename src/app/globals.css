@@ -1683,10 +1683,6 @@ textarea:focus {
     padding: 12px;
   }
 
-  .kpi-strip {
-    grid-template-columns: 1fr;
-  }
-
   .panel {
     padding: 14px;
   }
@@ -1701,7 +1697,7 @@ textarea:focus {
   }
 
   .product-topbar h1 {
-    font-size: 24px;
+    font-size: 22px;
   }
 }
 
@@ -2131,4 +2127,120 @@ textarea:focus {
   margin: 0;
   font-size: 13px;
   color: var(--muted);
+}
+
+/* ─── Owner Panel ────────────────────────────────────────────── */
+
+/* Desktop: logout fora do side-nav (rodapé), mobile-logout escondido */
+.owner-mobile-logout {
+  display: none;
+}
+
+.owner-desktop-logout {
+  display: block;
+}
+
+/* Mobile: label "Owner" some; logout aparece no bottom nav via display:contents */
+@media (max-width: 640px) {
+  .owner-sidebar-label {
+    display: none;
+  }
+
+  .owner-mobile-logout {
+    display: contents;
+  }
+
+  .owner-desktop-logout {
+    display: none;
+  }
+
+  /* Cabeçalho do financeiro e clinic detail: quebra em mobile */
+  .owner-page-header {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .owner-page-header-sep {
+    display: none;
+  }
+
+  .owner-page-header-title {
+    flex: 1 1 100%;
+  }
+
+  .owner-page-header-title h1 {
+    font-size: 20px;
+  }
+
+  .owner-page-header-title p {
+    font-size: 12px;
+    white-space: normal;
+    overflow: visible;
+  }
+}
+
+/* ─── Mobile Clinic Cards (Owner Overview) ───────────────────── */
+
+.mobile-clinic-cards {
+  display: none;
+}
+
+.desktop-clinic-table {
+  display: block;
+}
+
+.mobile-clinic-card {
+  display: block;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--text);
+  background: transparent;
+  transition: background 120ms;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-clinic-card:last-child {
+  border-bottom: none;
+}
+
+.mobile-clinic-card:active {
+  background: var(--surface-soft);
+}
+
+.mobile-clinic-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.mobile-clinic-card-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.mobile-clinic-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mobile-clinic-card-meta strong {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .mobile-clinic-cards {
+    display: block;
+  }
+
+  .desktop-clinic-table {
+    display: none;
+  }
 }

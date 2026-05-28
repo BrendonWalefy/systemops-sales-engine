@@ -11,13 +11,13 @@ export default async function OwnerLayout({ children }: { children: ReactNode })
   const session = token ? await verifyToken(token) : null;
   const email = session?.email ?? "owner";
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", minHeight: "100vh" }}>
+    <div className="clinic-layout">
       <aside className="sidebar">
         <div className="brand-mark">
           <Zap size={18} strokeWidth={2.5} />
         </div>
 
-        <div style={{ padding: "0 12px 8px", marginBottom: 4 }}>
+        <div className="owner-sidebar-label">
           <span
             style={{
               fontSize: 10,
@@ -41,9 +41,21 @@ export default async function OwnerLayout({ children }: { children: ReactNode })
             <TrendingUp size={15} strokeWidth={2} />
             <span className="nav-label">Financeiro</span>
           </Link>
+          {/* Logout visível no bottom nav mobile */}
+          <form action={logout} className="owner-mobile-logout">
+            <button
+              type="submit"
+              className="side-nav-item"
+              style={{ width: "100%", border: "none", cursor: "pointer" }}
+            >
+              <LogOut size={15} strokeWidth={2} />
+              <span className="nav-label">Sair</span>
+            </button>
+          </form>
         </nav>
 
-        <form action={logout} style={{ marginTop: "auto" }}>
+        {/* Logout no rodapé da sidebar no desktop */}
+        <form action={logout} className="owner-desktop-logout" style={{ marginTop: "auto" }}>
           <button
             type="submit"
             className="side-nav-item"
@@ -56,7 +68,13 @@ export default async function OwnerLayout({ children }: { children: ReactNode })
 
         <div className="sidebar-footer">
           <div className="live-dot" />
-          <span className="footer-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={email}>{email}</span>
+          <span
+            className="footer-label"
+            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            title={email}
+          >
+            {email}
+          </span>
         </div>
       </aside>
 
