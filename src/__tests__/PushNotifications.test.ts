@@ -2,15 +2,49 @@
 // Cobre: NotifyClinicOperators (dispatch, falhas, limpeza de subs expiradas),
 // validação da rota API e formato do payload do service worker.
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import webpush from "web-push";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
+import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 import type { PushSubscriptionRepository } from "@/domain/repositories/push-subscription-repository";
 import type { PushGateway, PushPayload } from "@/application/ports/push-gateway";
 import type { PushSubscription } from "@/domain/entities/push-subscription";
 
+vi.mock("web-push", () => ({
+  default: {
+    setVapidDetails: vi.fn(),
+    sendNotification: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const NOW = new Date("2025-06-01T10:00:00Z");
+const VAPID_ENV_KEYS = ["VAPID_SUBJECT", "NEXT_PUBLIC_VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"] as const;
+const ORIGINAL_VAPID_ENV = Object.fromEntries(
+  VAPID_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof VAPID_ENV_KEYS)[number], string | undefined>;
+
+function clearVapidEnv(): void {
+  for (const key of VAPID_ENV_KEYS) delete process.env[key];
+}
+
+function restoreVapidEnv(): void {
+  for (const key of VAPID_ENV_KEYS) {
+    const original = ORIGINAL_VAPID_ENV[key];
+    if (original === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = original;
+    }
+  }
+}
+
+function configureVapidEnv(): void {
+  process.env.VAPID_SUBJECT = "mailto:ops@example.com";
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = "public-key";
+  process.env.VAPID_PRIVATE_KEY = "private-key";
+}
 
 function makeSub(overrides: Partial<PushSubscription> = {}): PushSubscription {
   return {
@@ -49,6 +83,53 @@ function makeGateway(impl?: (sub: { endpoint: string; p256dh: string; auth: stri
     send: vi.fn(impl ?? (() => Promise.resolve())),
   };
 }
+
+// ─── 1. WebPushGateway — inicialização lazy ─────────────────────────────────
+
+describe("WebPushGateway — inicialização lazy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearVapidEnv();
+  });
+
+  afterEach(() => {
+    restoreVapidEnv();
+  });
+
+  it("não configura web-push no import e não lança sem VAPID keys", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const gateway = new WebPushGateway();
+
+    await expect(gateway.send(makeSub(), makePayload())).resolves.toBeUndefined();
+
+    expect(webpush.setVapidDetails).not.toHaveBeenCalled();
+    expect(webpush.sendNotification).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("[WebPushGateway] VAPID keys not configured - push notifications disabled");
+
+    warn.mockRestore();
+  });
+
+  it("configura VAPID uma única vez quando envia notificação", async () => {
+    configureVapidEnv();
+    const gateway = new WebPushGateway();
+    const subscription = makeSub();
+    const payload = makePayload();
+
+    await gateway.send(subscription, payload);
+    await gateway.send(subscription, payload);
+
+    expect(webpush.setVapidDetails).toHaveBeenCalledTimes(1);
+    expect(webpush.setVapidDetails).toHaveBeenCalledWith("mailto:ops@example.com", "public-key", "private-key");
+    expect(webpush.sendNotification).toHaveBeenCalledTimes(2);
+    expect(webpush.sendNotification).toHaveBeenCalledWith(
+      {
+        endpoint: subscription.endpoint,
+        keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+      },
+      JSON.stringify(payload),
+    );
+  });
+});
 
 // ─── 1. NotifyClinicOperators — dispatch ─────────────────────────────────────
 
