@@ -26,6 +26,9 @@ import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
+import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
+import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
+import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 
 import type { Clinic } from "@/domain/entities/clinic";
 
@@ -69,6 +72,10 @@ export class ConversationOrchestrator {
   private appointmentRepo = new DrizzleAppointmentRepository();
   private usageCostRepo = new DrizzleUsageCostRepository();
   private treatmentRepo = new DrizzleTreatmentRepository();
+  private notifier = new NotifyClinicOperators(
+    new DrizzlePushSubscriptionRepository(),
+    new WebPushGateway(),
+  );
 
   async handle(params: {
     clinicId: string;
@@ -153,6 +160,15 @@ export class ConversationOrchestrator {
         console.log(`[Orchestrator] Takeover TTL expirado para ${conversation.id} — IA retomada`);
       } else {
         console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
+        // Notifica operador que lead respondeu enquanto atendimento estava em pausa manual
+        const leadLabel = lead.name ? `${lead.name} (${phone})` : phone;
+        await this.notifier
+          .execute(clinicId, {
+            title: "Resposta do lead",
+            body: `${leadLabel}: ${messageText.slice(0, 80)}`,
+            url: `/app/inbox/${conversation.id}`,
+          })
+          .catch((err) => console.error("[Orchestrator] Push falhou:", err));
         return { replied: false };
       }
     }
@@ -825,18 +841,29 @@ export class ConversationOrchestrator {
     leadName: string | null,
     reason: string,
   ): Promise<void> {
-    const receptPhone = process.env.RECEPTIONIST_PHONE_NUMBER;
-    if (!receptPhone) return;
-
     const leadLabel = leadName ? `${leadName} (${leadPhone})` : leadPhone;
-    try {
-      await sendTextMessage(
-        receptPhone,
-        `⚠️ *Atenção necessária — ${clinic.name}*\n\nLead: ${leadLabel}\nMotivo: ${reason}\n\nAcesse o Inbox para retomar o atendimento manualmente.`,
-      );
-    } catch (err) {
-      console.error("[Orchestrator] Failed to send attention notification:", err);
+
+    // WhatsApp para o número da recepção (se configurado)
+    const receptPhone = process.env.RECEPTIONIST_PHONE_NUMBER;
+    if (receptPhone) {
+      try {
+        await sendTextMessage(
+          receptPhone,
+          `⚠️ *Atenção necessária — ${clinic.name}*\n\nLead: ${leadLabel}\nMotivo: ${reason}\n\nAcesse o Inbox para retomar o atendimento manualmente.`,
+        );
+      } catch (err) {
+        console.error("[Orchestrator] Failed to send attention WhatsApp notification:", err);
+      }
     }
+
+    // Push notification para todos os operadores com app instalado
+    await this.notifier
+      .execute(clinic.id, {
+        title: `⚠️ Atenção — ${clinic.name}`,
+        body: `${leadLabel}: ${reason}`,
+        url: "/app/inbox",
+      })
+      .catch((err) => console.error("[Orchestrator] Push falhou:", err));
   }
 
 }
