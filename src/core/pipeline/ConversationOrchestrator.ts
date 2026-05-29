@@ -183,11 +183,11 @@ export class ConversationOrchestrator {
       } else {
         console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
         // Notifica operador que lead respondeu enquanto atendimento estava em pausa manual
-        const leadLabel = lead.name ? `${lead.name} (${phone})` : phone;
+        const displayName = lead.name ?? phone;
         await this.notifier
           .execute(clinicId, {
-            title: "Resposta do lead",
-            body: `${leadLabel}: ${messageText.slice(0, 80)}`,
+            title: `${displayName} respondeu`,
+            body: messageText.slice(0, 100),
             url: `/app/inbox/${conversation.id}`,
           })
           .catch((err) => console.error("[Orchestrator] Push falhou:", err));
@@ -724,10 +724,10 @@ export class ConversationOrchestrator {
     const zapiMessageId = await sendTextMessage(phone, replyText);
 
     // ── 9.1 Push notification — avisa operadores que um lead enviou mensagem ──
-    const leadLabel = lead.name ? `${lead.name} (${phone})` : phone;
+    const leadDisplayName = lead.name ?? phone;
     await this.notifier
       .execute(clinicId, {
-        title: `💬 ${leadLabel}`,
+        title: leadDisplayName,
         body: messageText.slice(0, 100),
         url: `/app/inbox/${conversation.id}`,
       })
@@ -898,7 +898,7 @@ export class ConversationOrchestrator {
     leadName: string | null,
     reason: string,
   ): Promise<void> {
-    const leadLabel = leadName ? `${leadName} (${leadPhone})` : leadPhone;
+    const displayName = leadName ?? leadPhone;
 
     // WhatsApp para o número da recepção (se configurado)
     const receptPhone = process.env.RECEPTIONIST_PHONE_NUMBER;
@@ -906,7 +906,7 @@ export class ConversationOrchestrator {
       try {
         await sendTextMessage(
           receptPhone,
-          `⚠️ *Atenção necessária — ${clinic.name}*\n\nLead: ${leadLabel}\nMotivo: ${reason}\n\nAcesse o Inbox para retomar o atendimento manualmente.`,
+          `⚠️ *${displayName} precisa de você*\n\n${reason}\n\nAcesse o Inbox para responder.`,
         );
       } catch (err) {
         console.error("[Orchestrator] Failed to send attention WhatsApp notification:", err);
@@ -916,8 +916,8 @@ export class ConversationOrchestrator {
     // Push notification para todos os operadores com app instalado
     await this.notifier
       .execute(clinic.id, {
-        title: `⚠️ Atenção — ${clinic.name}`,
-        body: `${leadLabel}: ${reason}`,
+        title: `${displayName} precisa de você`,
+        body: reason,
         url: "/app/inbox",
       })
       .catch((err) => console.error("[Orchestrator] Push falhou:", err));
