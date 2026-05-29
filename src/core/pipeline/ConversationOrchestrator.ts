@@ -186,7 +186,7 @@ export class ConversationOrchestrator {
         const displayName = lead.name ?? phone;
         await this.notifier
           .execute(clinicId, {
-            title: `${displayName} respondeu`,
+            title: displayName,
             body: messageText.slice(0, 100),
             url: `/app/inbox/${conversation.id}`,
           })
