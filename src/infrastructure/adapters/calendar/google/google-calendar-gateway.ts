@@ -231,6 +231,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       startsAt: input.startsAt,
       endsAt: input.endsAt,
       status: "scheduled",
+      reminderSentAt: null,
       createdAt: now,
       updatedAt: now,
     };

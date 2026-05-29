@@ -4,6 +4,14 @@
     {
       "path": "/api/cron/stale-conversations",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/follow-up-dispatcher",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/appointment-reminder",
+      "schedule": "0 13 * * *"
     }
   ]
 }

@@ -68,6 +68,7 @@ function appointment(): Appointment {
     startsAt,
     endsAt,
     status: "scheduled",
+    reminderSentAt: null,
     createdAt: new Date("2026-01-05T12:00:00.000Z"),
     updatedAt: new Date("2026-01-05T12:00:00.000Z"),
   };
@@ -165,6 +166,10 @@ class FakeAppointmentRepository implements AppointmentRepository {
   }
 
   async findAllActiveByLeadId(): Promise<Appointment[]> {
+    return [];
+  }
+
+  async findDueReminders(): Promise<Appointment[]> {
     return [];
   }
 }

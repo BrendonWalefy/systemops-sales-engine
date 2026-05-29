@@ -14,6 +14,7 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -248,6 +249,8 @@ export class ConversationOrchestrator {
       calendarGateway,
       this.appointmentRepo,
       this.leadRepo,
+      undefined,
+      new DrizzleFollowUpRepository(),
     );
 
     const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;

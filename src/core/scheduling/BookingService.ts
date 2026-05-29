@@ -15,10 +15,12 @@
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
+import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import type { Clinic } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import { SlotReservationService, type SlotReservation } from "./SlotReservationService";
+import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 
 export type BookingResult =
   | { success: true; appointment: Appointment }
@@ -38,6 +40,7 @@ export class BookingService {
     private readonly appointmentRepo: AppointmentRepository,
     private readonly leadRepo: LeadRepository,
     private readonly reservationService: BookingReservationService = new SlotReservationService(),
+    private readonly followUpRepository: FollowUpRepository | null = null,
   ) {}
 
   async book(params: {
@@ -128,6 +131,22 @@ export class BookingService {
     } catch (err) {
       // Não-crítico — appointment existe, lead só fica com status desatualizado
       console.error("[BookingService] Failed to update lead status:", err);
+    }
+
+    // Passo 7: Agenda follow-up de retorno 6 meses após a consulta
+    if (this.followUpRepository) {
+      try {
+        await scheduleFollowUp({
+          clinicId: clinic.id,
+          leadId: lead.id,
+          trigger: "appointment_completed",
+          referenceDate: startsAt,
+          followUpRepository: this.followUpRepository,
+        });
+      } catch (err) {
+        // Não-crítico — booking confirmado independentemente
+        console.error("[BookingService] Failed to schedule follow-up:", err);
+      }
     }
 
     return { success: true, appointment };

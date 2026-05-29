@@ -35,7 +35,9 @@ export type ActionResult =
   | { type: "greeting" }
   | { type: "acknowledgment" }
   | { type: "farewell" }
-  | { type: "slots_expired"; freshSlots: FormattedSlot[] };
+  | { type: "slots_expired"; freshSlots: FormattedSlot[] }
+  | { type: "reengagement"; lastAppointmentLabel: string }
+  | { type: "appointment_reminder"; appointmentLabel: string };
 
 export type ComposerInput = {
   actionResult: ActionResult;
@@ -194,6 +196,22 @@ FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numer
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
+
+    case "reengagement":
+      return `AÇÃO EXECUTADA: Mensagem de re-engajamento para paciente com histórico na clínica.
+ÚLTIMA CONSULTA: ${result.lastAppointmentLabel}
+Envie uma mensagem calorosa e breve lembrando que pode estar na hora de agendar um retorno ou verificar se pode ajudar. Não mencione que a mensagem é automática. Máximo 2 frases.`;
+
+    case "appointment_reminder":
+      return `AÇÃO EXECUTADA: Lembrete de consulta agendada para amanhã.
+CONSULTA: ${result.appointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Mencione o horário EXATAMENTE como fornecido em CONSULTA — não reformule.
+2. Seja caloroso, breve e direto. Máximo 2 frases curtas.
+3. Não peça confirmação (a consulta já está confirmada). Apenas lembre.
+4. Não mencione que a mensagem é automática.
+5. Inclua um toque humano — transmita que a equipe estará esperando.
+Exemplo de tom: "Olá [nome]! Lembrando que sua consulta é amanhã, [horário]. A equipe estará esperando por você 😊"`;
   }
 }
 

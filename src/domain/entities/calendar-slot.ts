@@ -16,6 +16,7 @@ export type Appointment = {
   startsAt: Date;
   endsAt: Date;
   status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show";
+  reminderSentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };

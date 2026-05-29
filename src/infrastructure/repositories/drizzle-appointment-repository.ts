@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, gte, lte } from "drizzle-orm";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import { db } from "@/infrastructure/db/client";
@@ -28,6 +28,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
           startsAt: appointment.startsAt,
           endsAt: appointment.endsAt,
           status: appointment.status,
+          reminderSentAt: appointment.reminderSentAt,
           updatedAt: appointment.updatedAt,
         },
       });
@@ -62,6 +63,23 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     });
     return rows.map(mapRow);
   }
+
+  async findDueReminders(params: {
+    clinicId: string;
+    windowStart: Date;
+    windowEnd: Date;
+  }): Promise<Appointment[]> {
+    const rows = await db.query.appointments.findMany({
+      where: and(
+        eq(appointments.clinicId, params.clinicId),
+        inArray(appointments.status, ["scheduled", "confirmed"]),
+        isNull(appointments.reminderSentAt),
+        gte(appointments.startsAt, params.windowStart),
+        lte(appointments.startsAt, params.windowEnd),
+      ),
+    });
+    return rows.map(mapRow);
+  }
 }
 
 function mapRow(row: typeof appointments.$inferSelect): Appointment {
@@ -74,6 +92,7 @@ function mapRow(row: typeof appointments.$inferSelect): Appointment {
     startsAt: row.startsAt,
     endsAt: row.endsAt,
     status: row.status,
+    reminderSentAt: row.reminderSentAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

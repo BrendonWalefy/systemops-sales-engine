@@ -107,6 +107,21 @@ export class InMemoryDemoStore
     );
   }
 
+  async findDueReminders(params: {
+    clinicId: string;
+    windowStart: Date;
+    windowEnd: Date;
+  }): Promise<Appointment[]> {
+    return Array.from(this.appointments.values()).filter(
+      (a) =>
+        a.clinicId === params.clinicId &&
+        (a.status === "scheduled" || a.status === "confirmed") &&
+        a.reminderSentAt === null &&
+        a.startsAt >= params.windowStart &&
+        a.startsAt <= params.windowEnd,
+    );
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     this.conversations.set(conversation.id, conversation);
   }
