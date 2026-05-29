@@ -55,6 +55,7 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
     case "price_inquiry":
     case "general_question":
     case "clinical_urgency":
+    case "needs_human":
       return "warm";
     default:
       return "cold";
@@ -609,6 +610,24 @@ export class ConversationOrchestrator {
             })),
           });
         }
+        break;
+      }
+
+      // ── Precisa de humano (mídia, negociação, falar com dentista, situação especial) ──
+      case "needs_human": {
+        const reason = classification.handoffReason ?? "Lead solicitou atendimento humano";
+        replyText = await compose({ type: "handoff_requested", handoffReason: reason });
+        await db
+          .update(conversationsTable)
+          .set({
+            aiPaused: true,
+            takeoverExpiresAt: null, // pausa permanente — operador decide quando retomar
+            needsAttention: true,
+            attentionReason: reason,
+            updatedAt: new Date(),
+          })
+          .where(eq(conversationsTable.id, conversation.id));
+        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, reason);
         break;
       }
 

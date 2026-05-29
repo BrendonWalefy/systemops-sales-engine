@@ -4,7 +4,7 @@ import Link from "next/link";
 import { db } from "@/infrastructure/db/client";
 import { conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { MessageSquare, Inbox, AlertTriangle } from "lucide-react";
+import { MessageSquare, Inbox, AlertTriangle, Bot, Calendar } from "lucide-react";
 import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 
@@ -19,23 +19,121 @@ function relativeTime(date: Date): string {
   return `há ${d}d`;
 }
 
-function statusLabel(status: string): { label: string; handoff: boolean } {
-  const map: Record<string, { label: string; handoff: boolean }> = {
-    new: { label: "Novo", handoff: false },
-    waiting_response: { label: "Aguardando", handoff: false },
-    in_conversation: { label: "Em conversa", handoff: false },
-    follow_up_due: { label: "Follow-up", handoff: true },
-    appointment_scheduled: { label: "Agendado", handoff: false },
-    lost: { label: "Perdido", handoff: true },
-    won: { label: "Ganho", handoff: false },
-  };
-  return map[status] ?? { label: status, handoff: false };
-}
-
 function tempLabel(temp: string | null): string {
   if (temp === "hot") return "Quente";
   if (temp === "warm") return "Morno";
   return "Frio";
+}
+
+type ConvRow = {
+  convId: string;
+  lastMessageAt: Date | null;
+  needsAttention: boolean;
+  attentionReason: string | null;
+  aiPaused: boolean;
+  leadName: string | null;
+  leadPhone: string | null;
+  leadStatus: string;
+  leadTemperature: string | null;
+};
+
+function ConversationCard({ row, lastMsg }: { row: ConvRow; lastMsg: string }) {
+  const initial = row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0] ?? "?";
+  const displayName = row.leadName ?? row.leadPhone ?? "Lead";
+  const preview = lastMsg.slice(0, 65);
+  const temp = row.leadTemperature ?? "cold";
+  const isHandoff = row.needsAttention && row.aiPaused;
+
+  return (
+    <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
+      <div className={`conversation-card${isHandoff ? " needs-attention" : ""}`}>
+        <div className="conversation-row">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div className="avatar" style={{ width: 40, height: 40, fontSize: 15 }}>
+              {initial}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)" }}>
+                {displayName}
+              </div>
+              {row.leadPhone && row.leadName && (
+                <div className="lead-phone">{row.leadPhone}</div>
+              )}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+            <span className={`temp-badge temp-${temp}`} style={{ fontSize: 11 }}>
+              {tempLabel(temp)}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
+            </span>
+          </div>
+        </div>
+
+        {isHandoff && row.attentionReason && (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            color: "var(--amber, #f59e0b)",
+            fontWeight: 500,
+            marginBottom: 4,
+          }}>
+            <AlertTriangle size={12} />
+            <span>{row.attentionReason}</span>
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <MessageSquare size={12} style={{ opacity: 0.4, flexShrink: 0 }} />
+          <span style={{
+            fontSize: 13,
+            color: "var(--muted)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: 1,
+          }}>
+            {preview || "Sem mensagens"}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function SectionHeader({ label, count, icon }: { label: string; count: number; icon: React.ReactNode }) {
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "12px 0 8px",
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      color: "var(--muted)",
+      borderBottom: "1px solid var(--border)",
+      marginBottom: 8,
+    }}>
+      {icon}
+      <span>{label}</span>
+      <span style={{
+        marginLeft: "auto",
+        background: "var(--surface-2, rgba(255,255,255,0.06))",
+        borderRadius: 10,
+        padding: "1px 8px",
+        fontSize: 11,
+        fontWeight: 600,
+        color: "var(--muted)",
+      }}>
+        {count}
+      </span>
+    </div>
+  );
 }
 
 export default async function InboxPage() {
@@ -47,6 +145,7 @@ export default async function InboxPage() {
       lastMessageAt: conversations.lastMessageAt,
       needsAttention: conversations.needsAttention,
       attentionReason: conversations.attentionReason,
+      aiPaused: conversations.aiPaused,
       leadName: leads.name,
       leadPhone: leads.phone,
       leadStatus: leads.status,
@@ -70,14 +169,22 @@ export default async function InboxPage() {
   );
 
   const lastMsgMap = Object.fromEntries(lastMessages.map((m) => [m.convId, m.body]));
-  const activeCount = rows.filter((r) => r.leadStatus !== "lost" && r.leadStatus !== "won").length;
 
-  // Conversas que precisam de atenção aparecem primeiro
-  const sortedRows = [...rows].sort((a, b) => {
-    if (a.needsAttention && !b.needsAttention) return -1;
-    if (!a.needsAttention && b.needsAttention) return 1;
-    return 0;
-  });
+  // Seção 1: precisa de resposta humana (aiPaused + needsAttention)
+  const handoffRows = rows.filter((r) => r.aiPaused && r.needsAttention);
+
+  // Seção 2: IA em conversa (não pausada, não encerrado)
+  const activeRows = rows.filter(
+    (r) => !r.aiPaused && r.leadStatus !== "appointment_scheduled" && r.leadStatus !== "lost" && r.leadStatus !== "won",
+  );
+
+  // Seção 3: agendados + pausados sem needsAttention (operador assumiu manualmente)
+  const scheduledRows = rows.filter(
+    (r) =>
+      r.leadStatus === "appointment_scheduled" ||
+      r.leadStatus === "won" ||
+      (r.aiPaused && !r.needsAttention),
+  );
 
   return (
     <div>
@@ -88,7 +195,9 @@ export default async function InboxPage() {
             Inbox
           </h1>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 13 }}>
-            {activeCount} conversa{activeCount !== 1 ? "s" : ""} ativa{activeCount !== 1 ? "s" : ""}
+            {handoffRows.length > 0
+              ? `${handoffRows.length} aguardando você · ${activeRows.length} em conversa`
+              : `${activeRows.length} conversa${activeRows.length !== 1 ? "s" : ""} ativa${activeRows.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <EnableNotificationsButton />
@@ -105,64 +214,49 @@ export default async function InboxPage() {
           </div>
         ) : (
           <div className="conversation-list">
-            {sortedRows.map((row) => {
-              const initial = row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0] ?? "?";
-              const displayName = row.leadName ?? row.leadPhone ?? "Lead";
-              const preview = (lastMsgMap[row.convId] ?? "").slice(0, 60);
-              const { label, handoff } = statusLabel(row.leadStatus);
-              const temp = row.leadTemperature ?? "cold";
 
-              return (
-                <Link
-                  key={row.convId}
-                  href={`/app/inbox/${row.convId}`}
-                  style={{ textDecoration: "none" }}
-                >
-                  <div className={`conversation-card${row.needsAttention ? " needs-attention" : ""}`}>
-                    {row.needsAttention && (
-                      <div className="attention-banner">
-                        <AlertTriangle size={12} />
-                        <span>{row.attentionReason ?? "Atenção necessária"}</span>
-                      </div>
-                    )}
-                    <div className="conversation-row">
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div className="avatar" style={{ width: 40, height: 40, fontSize: 15 }}>
-                          {initial}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)" }}>
-                            {displayName}
-                          </div>
-                          {row.leadPhone && row.leadName && (
-                            <div className="lead-phone">{row.leadPhone}</div>
-                          )}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                        <span className={`temp-badge temp-${temp}`} style={{ fontSize: 11 }}>
-                          {tempLabel(temp)}
-                        </span>
-                        <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                          {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
-                        </span>
-                      </div>
-                    </div>
+            {/* ── Seção: Precisa de você ── */}
+            {handoffRows.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <SectionHeader
+                  label="Precisa de você"
+                  count={handoffRows.length}
+                  icon={<AlertTriangle size={13} style={{ color: "var(--amber, #f59e0b)" }} />}
+                />
+                {handoffRows.map((row) => (
+                  <ConversationCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId] ?? ""} />
+                ))}
+              </div>
+            )}
 
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minWidth: 0 }}>
-                      <span style={{ fontSize: 13, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                        <MessageSquare size={12} style={{ marginRight: 5, verticalAlign: "middle", opacity: 0.5 }} />
-                        {preview || "Sem mensagens"}
-                      </span>
-                      <span className={`status-pill${handoff ? " status-handoff" : ""}`} style={{ fontSize: 11, padding: "4px 10px" }}>
-                        <span className="status-dot" />
-                        {label}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
+            {/* ── Seção: IA em conversa ── */}
+            {activeRows.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <SectionHeader
+                  label="Em conversa"
+                  count={activeRows.length}
+                  icon={<Bot size={13} />}
+                />
+                {activeRows.map((row) => (
+                  <ConversationCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId] ?? ""} />
+                ))}
+              </div>
+            )}
+
+            {/* ── Seção: Agendados / Encerrados ── */}
+            {scheduledRows.length > 0 && (
+              <div>
+                <SectionHeader
+                  label="Agendados & encerrados"
+                  count={scheduledRows.length}
+                  icon={<Calendar size={13} />}
+                />
+                {scheduledRows.map((row) => (
+                  <ConversationCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId] ?? ""} />
+                ))}
+              </div>
+            )}
+
           </div>
         )}
       </div>

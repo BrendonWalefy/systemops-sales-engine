@@ -24,6 +24,7 @@ export type IntentType =
   | "list_appointments"       // quer ver seus agendamentos
   | "price_inquiry"           // perguntou sobre preço/valor
   | "clinical_urgency"        // menciona dor, urgência, sangramento
+  | "needs_human"             // requer ação humana: pede mídia, negociação, falar com dentista, situação especial
   | "general_question"        // pergunta geral sobre a clínica
   | "greeting"                // primeiro contato genuíno, sem histórico relevante
   | "acknowledgment"          // reconhecimento mid-conversa: "ok", "blz", "entendi", "certo"
@@ -36,6 +37,7 @@ export type IntentClassification = {
   confidence: number;
   shouldAskClarification: boolean;
   clarificationQuestion?: string | null;
+  handoffReason?: string | null;
 };
 
 const BASE_SYSTEM_PROMPT = `Você é um classificador de intenções para uma recepcionista virtual de clínica odontológica.
@@ -65,6 +67,13 @@ REGRA CRÍTICA — confirm_slot com data diferente dos slots oferecidos:
 - Se há oferta de horários pendente E o lead menciona um dia/data DIFERENTE dos slots que foram oferecidos no histórico → intent = "reject_slots" com preferredDate extraída, NÃO "confirm_slot"
 - Exemplo: slots oferecidos são "Seg 01/06" mas lead diz "segunda feira dia 08/06" → intent = "reject_slots", preferredDate = "08/06"
 - "confirm_slot" SOMENTE quando o lead escolhe pelo número (1, 2, 3) OU aceita claramente um dos dias já oferecidos sem mencionar outra data
+
+REGRA PARA needs_human (PRIORIDADE ALTA — avalie antes de unclear):
+Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou decidir. Exemplos:
+- Mídia/arquivos: "me manda as fotos", "pode enviar o orçamento por escrito", "me manda o comprovante", "quero ver o antes e depois", "me envia o resultado do exame"
+- Falar com humano: "quero falar com o dentista", "preciso falar com alguém", "pode me ligar?", "me passa o número do doutor"
+- Negociação/exceção: "preciso de um desconto", "tem como parcelar diferente?", "tenho uma situação especial", "consigo condição especial?"
+- Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do procedimento realizado", "Lead quer falar com o dentista", "Lead pediu condição especial de pagamento"). Máximo 60 caracteres.
 
 REGRA PARA unclear:
 - Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.
@@ -119,6 +128,7 @@ const RESPONSE_SCHEMA = {
         "list_appointments",
         "price_inquiry",
         "clinical_urgency",
+        "needs_human",
         "general_question",
         "greeting",
         "acknowledgment",
@@ -141,8 +151,9 @@ const RESPONSE_SCHEMA = {
     confidence: { type: "number" },
     shouldAskClarification: { type: "boolean" },
     clarificationQuestion: { anyOf: [{ type: "string" }, { type: "null" }] },
+    handoffReason: { anyOf: [{ type: "string" }, { type: "null" }] },
   },
-  required: ["intent", "slotPreference", "confidence", "shouldAskClarification", "clarificationQuestion"],
+  required: ["intent", "slotPreference", "confidence", "shouldAskClarification", "clarificationQuestion", "handoffReason"],
   additionalProperties: false,
 };
 

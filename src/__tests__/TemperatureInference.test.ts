@@ -26,6 +26,7 @@ describe("temperatureFromIntent", () => {
       "price_inquiry",
       "general_question",
       "clinical_urgency",
+      "needs_human",
     ] as const;
 
     it.each(warmIntents)('"%s" → warm', (intent) => {

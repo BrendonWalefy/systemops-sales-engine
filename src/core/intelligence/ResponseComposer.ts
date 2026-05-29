@@ -29,7 +29,7 @@ export type ActionResult =
   | { type: "appointments_listed"; appointments: FormattedAppointment[] }
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
-  | { type: "handoff_requested" }
+  | { type: "handoff_requested"; handoffReason?: string | null }
   | { type: "price_inquiry" }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
@@ -154,9 +154,14 @@ Informe gentilmente e ofereça agendar uma avaliação.`;
       return `AÇÃO EXECUTADA: Detectada urgência clínica.
 Demonstre empatia, informe que irá acionar a equipe imediatamente e diga que alguém entrará em contato. Não minimize a situação.`;
 
-    case "handoff_requested":
-      return `AÇÃO EXECUTADA: Necessário atendimento humano.
-Informe o lead que um membro da equipe irá assumir o atendimento em breve. Seja acolhedor.`;
+    case "handoff_requested": {
+      const context = result.handoffReason
+        ? `O lead pediu: "${result.handoffReason}". Reconheça o pedido especificamente — não seja genérico.`
+        : "Informe que um membro da equipe irá assumir o atendimento em breve.";
+      return `AÇÃO EXECUTADA: Este pedido requer atendimento humano — a IA não pode cumprir.
+${context}
+REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá responder em breve. Máximo 2 frases. NÃO diga que vai "verificar" — diga que já avisou a equipe.`;
+    }
 
     case "price_inquiry":
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
