@@ -56,6 +56,24 @@ function isMenuRerequest(message: string): boolean {
   );
 }
 
+// Saudação isolada sem conteúdo de negócio — indica recomeço de conversa.
+function isIsolatedGreeting(message: string): boolean {
+  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  const patterns = [
+    "oi", "ola", "bom dia", "boa tarde", "boa noite",
+    "hey", "e ai", "e la", "oi tudo bem", "ola tudo bem",
+    "tudo bem", "tudo bom", "como vai", "oi boa tarde",
+    "oi bom dia", "oi boa noite",
+  ];
+  return patterns.some((p) => n === p || n === p + "!" || n === p + "." || n === p + "?");
+}
+
+// Comando de reset — uso exclusivo para testes, zera estado e reinicia saudação.
+function isResetCommand(message: string): boolean {
+  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return n === "/reset" || n === "reset" || n === "resetar" || n === "/resetar";
+}
+
 function resolveMenuSelection(message: string): MenuResolution | null {
   const n = message
     .toLowerCase()
@@ -89,6 +107,8 @@ const SLOTS_WITH_DATE_AND_TIME = 2;
 // Quantas classificações unclear consecutivas disparam notificação ao operador
 const UNCLEAR_THRESHOLD = 3;
 const SLOTS_WITH_DATE_ONLY = 3;
+// Gap de inatividade (horas) que sinaliza recomeço de conversa
+const CONVERSATION_RESTART_HOURS = 4;
 
 const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
 
@@ -284,22 +304,46 @@ export class ConversationOrchestrator {
       await this.stateMachine.invalidate(conversation.id);
     }
 
+    // Comando de reset (testes): zera estado e reinicia conversa com saudação completa
+    const resetRequested = !isFirstMessage && isResetCommand(messageText);
+
     // Lead pediu explicitamente para ver o menu fora do fluxo inicial
-    const menuReRequested = !isMenuActive && !isFirstMessage && isMenuRerequest(messageText);
+    const menuReRequested = !isMenuActive && !isFirstMessage && !resetRequested && isMenuRerequest(messageText);
+
+    // Gap de inatividade: se o lead sumiu por ≥ CONVERSATION_RESTART_HOURS, recomeça
+    let isStaleConversation = false;
+    if (!isFirstMessage && !isMenuActive && !resetRequested && !menuReRequested) {
+      const prevLeadMsgs = allMessages.filter((m) => m.author === "lead");
+      if (prevLeadMsgs.length >= 2) {
+        const prev = prevLeadMsgs[prevLeadMsgs.length - 2];
+        const gapHours = (timestamp.getTime() - new Date(prev.sentAt).getTime()) / (1000 * 60 * 60);
+        isStaleConversation = gapHours >= CONVERSATION_RESTART_HOURS;
+      }
+    }
+
+    // Saudação isolada mid-conversa (sem menu ativo, sem oferta pendente)
+    const isolatedGreeting =
+      !isFirstMessage && !isMenuActive && !hasPendingOffer &&
+      !resetRequested && !menuReRequested && !isStaleConversation &&
+      isIsolatedGreeting(messageText);
+
+    const skipLlm = menuReRequested || isStaleConversation || isolatedGreeting || resetRequested;
+
+    const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
     const classification = menuResolution
       ? {
           intent: menuResolution.intent as IntentType,
-          slotPreference: { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null },
+          slotPreference: nullSlotPref,
           confidence: 1,
           shouldAskClarification: false,
           clarificationQuestion: null as null,
           handoffReason: menuResolution.intent === "needs_human" ? "Lead solicitou falar com um especialista" : null as null,
         }
-      : menuReRequested
+      : skipLlm
       ? {
           intent: "acknowledgment" as IntentType,
-          slotPreference: { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null },
+          slotPreference: nullSlotPref,
           confidence: 1,
           shouldAskClarification: false,
           clarificationQuestion: null as null,
@@ -364,10 +408,19 @@ export class ConversationOrchestrator {
         ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
       replyText = `${salutation}! ${base}`;
       await this.stateMachine.offerMenu(conversation.id);
-    } else if (menuReRequested) {
+    } else if (resetRequested) {
+      // Zera estado e reinicia como se fosse primeiro contato
+      await this.stateMachine.invalidate(conversation.id);
+      const salutation = getDayGreeting(timezone);
+      const base = clinic.greetingMessage
+        ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
+      replyText = `${salutation}! ${base}`;
+      await this.stateMachine.offerMenu(conversation.id);
+    } else if (menuReRequested || isStaleConversation || isolatedGreeting) {
+      const salutation = getDayGreeting(timezone);
       const base = clinic.greetingMessage
         ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-      replyText = base;
+      replyText = `${salutation}! ${base}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else switch (intent) {
       // ── Confirmação de slot ──
