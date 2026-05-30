@@ -43,6 +43,19 @@ type MenuResolution =
   | { intent: "needs_human" }
   | { intent: "general_question"; subtype: "procedures" | "location" };
 
+function isMenuRerequest(message: string): boolean {
+  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return (
+    n === "menu" ||
+    n.includes("tem menu") ||
+    n.includes("ver menu") ||
+    n.includes("mostrar menu") ||
+    n.includes("qual o menu") ||
+    n.includes("quero ver o menu") ||
+    n.includes("me manda o menu")
+  );
+}
+
 function resolveMenuSelection(message: string): MenuResolution | null {
   const n = message
     .toLowerCase()
@@ -255,6 +268,8 @@ export class ConversationOrchestrator {
     // ── 7. Carrega histórico de mensagens ──
     const allMessages = await this.conversationRepo.listMessages(conversation.id);
 
+    const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
+
     // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
     const hasPendingOffer = pendingSlots !== null;
@@ -269,6 +284,9 @@ export class ConversationOrchestrator {
       await this.stateMachine.invalidate(conversation.id);
     }
 
+    // Lead pediu explicitamente para ver o menu fora do fluxo inicial
+    const menuReRequested = !isMenuActive && !isFirstMessage && isMenuRerequest(messageText);
+
     const classification = menuResolution
       ? {
           intent: menuResolution.intent as IntentType,
@@ -277,6 +295,15 @@ export class ConversationOrchestrator {
           shouldAskClarification: false,
           clarificationQuestion: null as null,
           handoffReason: menuResolution.intent === "needs_human" ? "Lead solicitou falar com um especialista" : null as null,
+        }
+      : menuReRequested
+      ? {
+          intent: "acknowledgment" as IntentType,
+          slotPreference: { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null },
+          confidence: 1,
+          shouldAskClarification: false,
+          clarificationQuestion: null as null,
+          handoffReason: null as null,
         }
       : await this.intentClassifier.classify(
           messageText,
@@ -307,8 +334,6 @@ export class ConversationOrchestrator {
       new DrizzleFollowUpRepository(),
     );
 
-    const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
-
     // Helper para compor resposta
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
@@ -338,6 +363,11 @@ export class ConversationOrchestrator {
       const base = clinic.greetingMessage
         ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
       replyText = `${salutation}! ${base}`;
+      await this.stateMachine.offerMenu(conversation.id);
+    } else if (menuReRequested) {
+      const base = clinic.greetingMessage
+        ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
+      replyText = base;
       await this.stateMachine.offerMenu(conversation.id);
     } else switch (intent) {
       // ── Confirmação de slot ──
