@@ -37,7 +37,8 @@ export type ActionResult =
   | { type: "farewell" }
   | { type: "slots_expired"; freshSlots: FormattedSlot[] }
   | { type: "reengagement"; lastAppointmentLabel: string }
-  | { type: "appointment_reminder"; appointmentLabel: string };
+  | { type: "appointment_reminder"; appointmentLabel: string }
+  | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] };
 
 export type ComposerInput = {
   actionResult: ActionResult;
@@ -79,7 +80,7 @@ REGRA ANTI-REPETIÇÃO (OBRIGATÓRIA — leia antes de redigir):
 Verifique o histórico da conversa. Se alguma informação já foi comunicada ao lead (ex: valor da avaliação, condições de parcelamento, endereço, formas de pagamento), NÃO repita — mesmo que a ação abaixo sugira mencioná-la. Só repita se o lead perguntar novamente de forma explícita.
 
 REGRAS ABSOLUTAS:
-1. Máximo 2 parágrafos curtos. Sem bullet points. Sem listas numeradas. Escreva como pessoa real.
+1. Máximo 2 parágrafos curtos. Sem bullet points exceto quando a instrução da ação indicar FORMATO: tópicos. Escreva como pessoa real.
 2. NUNCA invente horários, datas ou informações que não estão no contexto fornecido.
 3. Se houver horários disponíveis na ação, os mencione EXATAMENTE como fornecidos — não reformule datas.
 4. Use o nome do lead com naturalidade, não em toda frase.
@@ -167,7 +168,7 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
 
     case "price_inquiry":
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
-Não informe valores de procedimentos. Siga a política comercial da clínica para explicar como funciona a avaliação e convide para agendar.`;
+Não informe valores de procedimentos. Siga a política comercial da clínica para explicar como funciona a avaliação e o abatimento dos R$100. Não convide para agendar — o lead decide o próximo passo.`;
 
     case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
@@ -201,6 +202,15 @@ ${slotList}`;
       return `AÇÃO EXECUTADA: Mensagem de re-engajamento para paciente com histórico na clínica.
 ÚLTIMA CONSULTA: ${result.lastAppointmentLabel}
 Envie uma mensagem calorosa e breve lembrando que pode estar na hora de agendar um retorno ou verificar se pode ajudar. Não mencione que a mensagem é automática. Máximo 2 frases.`;
+
+    case "evaluation_redirect": {
+      const slotList = result.evaluationSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
+      return `AÇÃO EXECUTADA: O procedimento solicitado (${result.treatmentName}) requer uma avaliação presencial antes do agendamento completo.
+REGRA CRÍTICA: Use EXATAMENTE os labels dos horários abaixo. NÃO altere datas, horas ou dias.
+FORMATO OBRIGATÓRIO: uma frase curta explicando que a avaliação é o primeiro passo para ${result.treatmentName}, depois a lista numerada de horários disponíveis, depois peça que o lead responda com o número.
+HORÁRIOS PARA AVALIAÇÃO:
+${slotList}`;
+    }
 
     case "appointment_reminder":
       return `AÇÃO EXECUTADA: Lembrete de consulta agendada para amanhã.

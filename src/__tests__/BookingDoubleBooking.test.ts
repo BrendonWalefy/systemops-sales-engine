@@ -20,6 +20,7 @@ const clinic: Clinic = {
   toneOfVoice: null,
   commercialPolicy: null,
   playbook: null,
+  greetingMessage: null,
   businessHours: null,
   googleCalendarId: null,
   takeoverTtlHours: 4,

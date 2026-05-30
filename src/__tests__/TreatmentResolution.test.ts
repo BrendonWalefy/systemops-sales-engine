@@ -12,6 +12,7 @@ function makeTreatment(name: string, durationMinutes: number): Treatment {
     durationMinutes,
     description: null,
     commonObjections: [],
+    requiresEvaluationFirst: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

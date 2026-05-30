@@ -10,7 +10,8 @@ export type ConversationStateType =
   | "idle"
   | "slots_offered"
   | "awaiting_confirmation"
-  | "booking_pending";
+  | "booking_pending"
+  | "menu_offered";
 
 export type FormattedSlot = {
   index: number;       // 1, 2, 3 — o número que o lead vê
@@ -138,6 +139,22 @@ export class ConversationStateMachine {
     });
 
     return formatted;
+  }
+
+  // Registra que o menu de opções foi apresentado ao lead (TTL: 30 min)
+  async offerMenu(conversationId: string): Promise<void> {
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "menu_offered",
+      payload: null,
+      expiresAt: new Date(Date.now() + 30 * 60_000),
+    });
+  }
+
+  // Retorna true se o lead ainda está dentro do TTL de escolha do menu
+  async isMenuOffered(conversationId: string): Promise<boolean> {
+    const state = await this.getCurrentState(conversationId);
+    return state?.state === "menu_offered";
   }
 
   // Retorna o nome do tratamento associado à oferta vigente, se houver

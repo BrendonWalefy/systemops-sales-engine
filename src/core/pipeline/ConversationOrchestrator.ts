@@ -34,6 +34,42 @@ import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway"
 import type { Clinic } from "@/domain/entities/clinic";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
+
+// ── Menu resolution ──────────────────────────────────────────────────────────
+
+type MenuResolution =
+  | { intent: "book_appointment" }
+  | { intent: "price_inquiry" }
+  | { intent: "needs_human" }
+  | { intent: "general_question"; subtype: "procedures" | "location" };
+
+function resolveMenuSelection(message: string): MenuResolution | null {
+  const n = message
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+
+  if (n === "1" || n.includes("procedimento") || n.includes("tratamento") || n.includes("servico"))
+    return { intent: "general_question", subtype: "procedures" };
+  if (n === "2" || n.includes("agendar") || n.includes("agenda") || n.includes("horario") || n.includes("marcar") || n.includes("consulta") || n.includes("avaliacao"))
+    return { intent: "book_appointment" };
+  if (n === "3" || n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
+    return { intent: "price_inquiry" };
+  if (n === "4" || n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
+    return { intent: "general_question", subtype: "location" };
+  if (n === "5" || n.includes("especialista") || n.includes("dentista") || n.includes("falar") || n.includes("doutor") || n === "dr")
+    return { intent: "needs_human" };
+
+  return null;
+}
+
+function getDayGreeting(timezone: ClinicTimezone): string {
+  const { hour } = timezone.toLocalParts(new Date());
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
 const MAX_SLOTS_TO_OFFER = 5;
 const RATE_LIMIT_MESSAGES_PER_HOUR = 20;
 const SLOTS_WITH_DATE_AND_TIME = 2;
@@ -75,6 +111,7 @@ function buildClinic(row: ClinicRow): Clinic {
     toneOfVoice: row.toneOfVoice,
     commercialPolicy: row.commercialPolicy,
     playbook: row.playbook,
+    greetingMessage: row.greetingMessage ?? null,
     businessHours: row.businessHours,
     googleCalendarId: row.googleCalendarId,
     takeoverTtlHours: row.takeoverTtlHours,
@@ -222,14 +259,31 @@ export class ConversationOrchestrator {
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
     const hasPendingOffer = pendingSlots !== null;
 
-    // ── 9. Classifica intenção com LLM estágio 1 ──
+    // ── 9. Resolve intenção: menu pré-classificado ou LLM estágio 1 ──
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
-    const classification = await this.intentClassifier.classify(
-      messageText,
-      allMessages,
-      hasPendingOffer,
-      clinicTreatments.map((t) => t.name),
-    );
+
+    const isMenuActive = await this.stateMachine.isMenuOffered(conversation.id);
+    let menuResolution: MenuResolution | null = null;
+    if (isMenuActive) {
+      menuResolution = resolveMenuSelection(messageText);
+      await this.stateMachine.invalidate(conversation.id);
+    }
+
+    const classification = menuResolution
+      ? {
+          intent: menuResolution.intent as IntentType,
+          slotPreference: { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null },
+          confidence: 1,
+          shouldAskClarification: false,
+          clarificationQuestion: null as null,
+          handoffReason: menuResolution.intent === "needs_human" ? "Lead solicitou falar com um especialista" : null as null,
+        }
+      : await this.intentClassifier.classify(
+          messageText,
+          allMessages,
+          hasPendingOffer,
+          clinicTreatments.map((t) => t.name),
+        );
 
     const { intent, slotPreference } = classification;
 
@@ -468,6 +522,30 @@ export class ConversationOrchestrator {
           break;
         }
 
+        // Fase 3: tratamento exige avaliação prévia → redireciona para avaliação
+        if (resolution.kind === "matched") {
+          const matchedTreatment = clinicTreatments.find(
+            (t) => t.name.toLowerCase() === resolution.treatmentName.toLowerCase(),
+          );
+          if (matchedTreatment?.requiresEvaluationFirst) {
+            const evalTreatment = clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name));
+            const evalDuration = evalTreatment?.durationMinutes ?? 60;
+            const evalName = evalTreatment?.name ?? "Avaliação";
+            const { slots: evalSlots } = await this.fetchAndOfferSlots(
+              conversation.id, clinic, calendarGateway, timezone, businessHours,
+              slotPreference.preferredDate ?? undefined,
+              slotPreference.preferredPeriod ?? undefined,
+              slotPreference.preferredTime ?? undefined,
+              evalName,
+              evalDuration,
+            );
+            replyText = evalSlots.length > 0
+              ? await compose({ type: "evaluation_redirect", treatmentName: resolution.treatmentName, evaluationSlots: evalSlots })
+              : await compose({ type: "no_slots_available" });
+            break;
+          }
+        }
+
         const resolvedTreatmentName = resolution.kind === "matched" ? resolution.treatmentName : undefined;
         const resolvedDurationMinutes = resolution.durationMinutes;
 
@@ -653,7 +731,15 @@ export class ConversationOrchestrator {
 
       // ── Saudação ──
       case "greeting": {
-        replyText = await compose({ type: "greeting" });
+        if (isFirstMessage) {
+          const salutation = getDayGreeting(timezone);
+          const base = clinic.greetingMessage
+            ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
+          replyText = `${salutation}! ${base}`;
+          await this.stateMachine.offerMenu(conversation.id);
+        } else {
+          replyText = await compose({ type: "greeting" });
+        }
         break;
       }
 
@@ -669,7 +755,26 @@ export class ConversationOrchestrator {
         break;
       }
 
-      // ── Unclear / General ──
+      // ── Pergunta geral (inclui seleções de menu: procedimentos e localização) ──
+      case "general_question": {
+        let clinicContext: string;
+        if (menuResolution?.intent === "general_question") {
+          if (menuResolution.subtype === "procedures") {
+            const items = clinicTreatments.length > 0
+              ? clinicTreatments.map((t) => `• ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n")
+              : "";
+            clinicContext = `FORMATO: tópicos\nLead selecionou "Procedimentos" no menu. Liste os procedimentos disponíveis em bullet points (•), um por linha, com breve descrição. Sem convite para agendar ao final.\n${items}`;
+          } else {
+            clinicContext = "Lead selecionou \"Localização\" no menu. Informe o endereço e os horários de atendimento a partir das orientações da clínica. Sem convite para agendar ao final.";
+          }
+        } else {
+          clinicContext = `${clinic.name} — ${clinic.specialty}. ${clinic.commercialPolicy ?? ""}`;
+        }
+        replyText = await compose({ type: "general_question", clinicContext });
+        break;
+      }
+
+      // ── Unclear / Default ──
       case "unclear":
       default: {
         if (classification.shouldAskClarification && classification.clarificationQuestion) {
