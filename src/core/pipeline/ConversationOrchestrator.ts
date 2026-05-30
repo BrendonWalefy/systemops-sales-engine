@@ -425,11 +425,15 @@ export class ConversationOrchestrator {
       replyText = `${salutation}${nameGreeting}! ${base}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (menuReRequested || isStaleConversation || isolatedGreeting) {
-      const salutation = getDayGreeting(timezone);
-      const nameGreeting = lead.name ? `, ${lead.name}` : "";
       const base = clinic.greetingMessage
         ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-      replyText = `${salutation}${nameGreeting}! ${base}`;
+      if (menuReRequested) {
+        replyText = base;
+      } else {
+        const salutation = getDayGreeting(timezone);
+        const nameGreeting = lead.name ? `, ${lead.name}` : "";
+        replyText = `${salutation}${nameGreeting}! ${base}`;
+      }
       await this.stateMachine.offerMenu(conversation.id);
     } else switch (intent) {
       // ── Confirmação de slot ──
