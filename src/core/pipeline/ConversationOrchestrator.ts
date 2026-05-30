@@ -766,8 +766,13 @@ export class ConversationOrchestrator {
       }
 
       // ── Saudação ──
+      // Lead reiniciou a conversa: re-oferece o menu com saudação, igual ao primeiro contato.
       case "greeting": {
-        replyText = await compose({ type: "greeting" });
+        const salutation = getDayGreeting(timezone);
+        const base = clinic.greetingMessage
+          ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
+        replyText = `${salutation}! ${base}`;
+        await this.stateMachine.offerMenu(conversation.id);
         break;
       }
 
