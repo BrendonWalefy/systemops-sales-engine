@@ -7,6 +7,7 @@ export type Clinic = {
   toneOfVoice: string | null;
   commercialPolicy: string | null;
   playbook: string | null;
+  greetingMessage: string | null;
   businessHours: string | null;
   googleCalendarId: string | null;
   takeoverTtlHours: number;

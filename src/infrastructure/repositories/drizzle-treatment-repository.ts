@@ -29,6 +29,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         durationMinutes: data.durationMinutes,
         description: data.description,
         commonObjections: data.commonObjections,
+        requiresEvaluationFirst: data.requiresEvaluationFirst,
       })
       .returning();
     return mapRow(row);
@@ -36,7 +37,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "commonObjections">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "commonObjections" | "requiresEvaluationFirst">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -59,6 +60,7 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     durationMinutes: row.durationMinutes,
     description: row.description,
     commonObjections: row.commonObjections as string[],
+    requiresEvaluationFirst: row.requiresEvaluationFirst,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

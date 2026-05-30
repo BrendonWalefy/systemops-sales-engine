@@ -5,6 +5,7 @@ export type Treatment = {
   durationMinutes: number;
   description: string | null;
   commonObjections: string[];
+  requiresEvaluationFirst: boolean;
   createdAt: Date;
   updatedAt: Date;
 };

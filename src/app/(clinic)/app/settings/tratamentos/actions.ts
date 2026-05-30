@@ -15,7 +15,7 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     return { success: false, error: "Preencha todos os campos corretamente." };
   }
 
-  await repo.create({ clinicId, name, durationMinutes, description: null, commonObjections: [] });
+  await repo.create({ clinicId, name, durationMinutes, description: null, commonObjections: [], requiresEvaluationFirst: false });
   revalidatePath("/app/settings/tratamentos");
   return { success: true };
 }
