@@ -410,23 +410,26 @@ export class ConversationOrchestrator {
 
     if (isFirstMessage) {
       const salutation = getDayGreeting(timezone);
+      const nameGreeting = lead.name ? `, ${lead.name}` : "";
       const base = clinic.greetingMessage
         ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-      replyText = `${salutation}! ${base}`;
+      replyText = `${salutation}${nameGreeting}! ${base}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (resetRequested) {
       // Zera estado e reinicia como se fosse primeiro contato
       await this.stateMachine.invalidate(conversation.id);
       const salutation = getDayGreeting(timezone);
+      const nameGreeting = lead.name ? `, ${lead.name}` : "";
       const base = clinic.greetingMessage
         ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-      replyText = `${salutation}! ${base}`;
+      replyText = `${salutation}${nameGreeting}! ${base}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (menuReRequested || isStaleConversation || isolatedGreeting) {
       const salutation = getDayGreeting(timezone);
+      const nameGreeting = lead.name ? `, ${lead.name}` : "";
       const base = clinic.greetingMessage
         ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-      replyText = `${salutation}! ${base}`;
+      replyText = `${salutation}${nameGreeting}! ${base}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else switch (intent) {
       // ── Confirmação de slot ──
@@ -828,9 +831,10 @@ export class ConversationOrchestrator {
       // Lead reiniciou a conversa: re-oferece o menu com saudação, igual ao primeiro contato.
       case "greeting": {
         const salutation = getDayGreeting(timezone);
+        const nameGreeting = lead.name ? `, ${lead.name}` : "";
         const base = clinic.greetingMessage
           ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-        replyText = `${salutation}! ${base}`;
+        replyText = `${salutation}${nameGreeting}! ${base}`;
         await this.stateMachine.offerMenu(conversation.id);
         break;
       }
