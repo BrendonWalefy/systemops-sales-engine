@@ -113,6 +113,14 @@ export default async function ConversationPage({
           <span className="status-dot" />
           {sLabel}
         </span>
+        <div className="ai-mobile-toggle">
+          <AiPauseButton
+            conversationId={conversationId}
+            leadId={lead.id}
+            aiPaused={conv.aiPaused}
+            compact
+          />
+        </div>
       </div>
 
       {conv.needsAttention && (

@@ -7,9 +7,10 @@ interface Props {
   conversationId: string;
   leadId: string;
   aiPaused: boolean;
+  compact?: boolean;
 }
 
-export function AiPauseButton({ conversationId, leadId, aiPaused }: Props) {
+export function AiPauseButton({ conversationId, leadId, aiPaused, compact }: Props) {
   const [pending, startTransition] = useTransition();
 
   const handleToggle = () => {
@@ -21,6 +22,40 @@ export function AiPauseButton({ conversationId, leadId, aiPaused }: Props) {
       }
     });
   };
+
+  if (compact) {
+    return (
+      <button
+        className={aiPaused ? "primary-button" : "secondary-button"}
+        style={{ gap: 6, padding: "5px 10px", fontSize: 12 }}
+        disabled={pending}
+        onClick={handleToggle}
+        title={aiPaused ? "IA pausada — clique para retomar" : "IA ativa — clique para pausar"}
+      >
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            flexShrink: 0,
+            background: aiPaused ? "var(--warning)" : "var(--accent)",
+            boxShadow: aiPaused ? "0 0 5px var(--warning)" : "0 0 5px var(--accent)",
+          }}
+        />
+        {aiPaused ? (
+          <>
+            <PlayCircle size={13} />
+            {pending ? "Retomando…" : "Ativar IA"}
+          </>
+        ) : (
+          <>
+            <PauseCircle size={13} />
+            {pending ? "Pausando…" : "Pausar IA"}
+          </>
+        )}
+      </button>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
