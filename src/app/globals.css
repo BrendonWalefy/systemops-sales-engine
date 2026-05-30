@@ -1727,6 +1727,12 @@ textarea:focus {
   flex-shrink: 0;
 }
 
+/* Botão IA compacto — visível só no mobile (desktop usa o painel lateral) */
+.ai-mobile-toggle {
+  display: none;
+  margin-left: auto;
+}
+
 .conv-body {
   display: grid;
   grid-template-columns: 1fr 280px;
@@ -1873,6 +1879,10 @@ textarea:focus {
 
   .conv-lead-panel {
     display: none;
+  }
+
+  .ai-mobile-toggle {
+    display: flex;
   }
 
   .conv-messages {
