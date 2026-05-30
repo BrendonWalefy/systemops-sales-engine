@@ -333,7 +333,13 @@ export class ConversationOrchestrator {
       return composed.text;
     };
 
-    switch (intent) {
+    if (isFirstMessage) {
+      const salutation = getDayGreeting(timezone);
+      const base = clinic.greetingMessage
+        ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
+      replyText = `${salutation}! ${base}`;
+      await this.stateMachine.offerMenu(conversation.id);
+    } else switch (intent) {
       // ── Confirmação de slot ──
       case "confirm_slot": {
         // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
@@ -731,15 +737,7 @@ export class ConversationOrchestrator {
 
       // ── Saudação ──
       case "greeting": {
-        if (isFirstMessage) {
-          const salutation = getDayGreeting(timezone);
-          const base = clinic.greetingMessage
-            ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-          replyText = `${salutation}! ${base}`;
-          await this.stateMachine.offerMenu(conversation.id);
-        } else {
-          replyText = await compose({ type: "greeting" });
-        }
+        replyText = await compose({ type: "greeting" });
         break;
       }
 
