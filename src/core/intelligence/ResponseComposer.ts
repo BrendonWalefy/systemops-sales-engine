@@ -168,12 +168,14 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
 
     case "price_inquiry":
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
-Não informe valores de procedimentos. Siga a política comercial da clínica para explicar como funciona a avaliação e o abatimento dos R$100. Não convide para agendar — o lead decide o próximo passo.`;
+Não informe valores de procedimentos. Siga a política comercial da clínica para explicar como funciona a avaliação e o abatimento dos R$100. Não convide para agendar — o lead decide o próximo passo. Ao final, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
+
 
     case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
-Responda de forma informativa e acolhedora.`;
+Responda de forma informativa e acolhedora. Ao final da resposta, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
+
 
     case "greeting":
       return `AÇÃO EXECUTADA: Lead enviou saudação — primeiro contato ou reinício de conversa.

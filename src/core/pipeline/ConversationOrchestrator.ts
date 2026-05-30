@@ -52,7 +52,13 @@ function isMenuRerequest(message: string): boolean {
     n.includes("mostrar menu") ||
     n.includes("qual o menu") ||
     n.includes("quero ver o menu") ||
-    n.includes("me manda o menu")
+    n.includes("me manda o menu") ||
+    n.includes("voltar ao menu") ||
+    n.includes("volta ao menu") ||
+    n.includes("voltar pro menu") ||
+    n.includes("volta pro menu") ||
+    n.includes("menu anterior") ||
+    n.includes("menu principal")
   );
 }
 
@@ -847,9 +853,9 @@ export class ConversationOrchestrator {
         if (menuResolution?.intent === "general_question") {
           if (menuResolution.subtype === "procedures") {
             const items = clinicTreatments.length > 0
-              ? clinicTreatments.map((t) => `• ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n")
+              ? clinicTreatments.map((t) => `• ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n\n")
               : "";
-            clinicContext = `FORMATO: tópicos\nLead selecionou "Procedimentos" no menu. Liste os procedimentos disponíveis em bullet points (•), um por linha, com breve descrição. Sem convite para agendar ao final.\n${items}`;
+            clinicContext = `FORMATO: tópicos\nLead selecionou "Procedimentos" no menu. Liste os procedimentos disponíveis em bullet points (•), um por linha, com breve descrição. Separe cada procedimento com uma linha em branco. Sem convite para agendar ao final.\n${items}`;
           } else {
             clinicContext = "Lead selecionou \"Localização\" no menu. Informe o endereço e os horários de atendimento a partir das orientações da clínica. Sem convite para agendar ao final.";
           }
