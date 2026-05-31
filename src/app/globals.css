@@ -1903,15 +1903,19 @@ textarea:focus {
     gap: 10px;
   }
 
-  /* Barra IA fica visível no topo — toggle do header some (substituído pela barra) */
+  /* Barra IA separada some no mobile — o botão fica no header */
   .conv-ai-bar {
-    display: flex;
-    padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
-    min-height: 48px; /* área de toque mínima confortável */
+    display: none;
   }
 
+  /* Botão IA aparece no header do mobile */
   .ai-mobile-toggle {
-    display: none !important;
+    display: flex;
+  }
+
+  /* Status pill some no mobile — o dot do botão IA já indica o estado */
+  .conv-header .status-pill {
+    display: none;
   }
 
   /* Painel de info do lead some — chat ocupa tela toda */
@@ -1921,10 +1925,6 @@ textarea:focus {
 
   .conv-lead-panel {
     display: none;
-  }
-
-  .ai-mobile-toggle {
-    display: flex;
   }
 
   .conv-messages {
