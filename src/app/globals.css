@@ -1891,7 +1891,7 @@ textarea:focus {
     font-size: 10px;
   }
 
-  /* Quando em conversa: main sem padding e sem constraints de altura */
+  /* Quando em conversa: main sem padding (conv-root é fixed, sai do fluxo) */
   .clinic-layout:has(.conv-root) > main {
     padding-bottom: 0;
   }
@@ -1901,8 +1901,19 @@ textarea:focus {
     display: none;
   }
 
-  /* conv-root é o container fechado do chat: altura via --vh + overflow aqui */
+  /*
+   * conv-root fixed ao viewport: elimina o gap de timing do iOS Safari.
+   * position:fixed é relativo ao viewport — não depende de JS para ajustar
+   * quando o teclado abre. --keyboard-height empurra o bottom para cima
+   * do teclado como fallback explícito para iOS mais antigo.
+   */
   .conv-root {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: var(--keyboard-height, 0px);
+    height: auto;
     overflow: hidden;
   }
 

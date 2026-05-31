@@ -1,14 +1,16 @@
 "use client";
 import { useEffect } from "react";
 
-// iOS Safari não redimensiona o viewport quando o teclado abre.
-// Este componente usa a Visual Viewport API para medir a altura real
-// disponível e expõe como --vh, que o CSS usa no lugar de dvh/vh.
+// Expõe --vh (altura do visual viewport) e --keyboard-height (altura do teclado)
+// como CSS vars em :root. Usado em todo o app para alturas corretas no iOS Safari.
 export function ViewportHeightFix() {
   useEffect(() => {
     function update() {
-      const h = window.visualViewport?.height ?? window.innerHeight;
-      document.documentElement.style.setProperty("--vh", `${h}px`);
+      const vp = window.visualViewport;
+      const vh = vp?.height ?? window.innerHeight;
+      const kh = vp ? Math.max(0, window.innerHeight - vp.offsetTop - vp.height) : 0;
+      document.documentElement.style.setProperty("--vh", `${vh}px`);
+      document.documentElement.style.setProperty("--keyboard-height", `${kh}px`);
     }
 
     update();
