@@ -16,6 +16,7 @@ const clinic: Clinic = {
   name: "Clínica Teste",
   specialty: "odontologia",
   city: null,
+  address: null,
   timezone: "America/Sao_Paulo",
   toneOfVoice: null,
   commercialPolicy: null,

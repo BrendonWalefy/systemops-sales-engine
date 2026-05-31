@@ -90,6 +90,7 @@ export const clinics = pgTable("clinics", {
   name: text("name").notNull(),
   specialty: text("specialty").notNull().default("odontology"),
   city: text("city"),
+  address: text("address"),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   toneOfVoice: text("tone_of_voice"),
   commercialPolicy: text("commercial_policy"),

@@ -138,6 +138,11 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
   }
 }
 
+export function buildLocationClinicContext(address: string | null): string {
+  const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
+  return address ? `${base}\nEndereço: ${address}.` : base;
+}
+
 type ClinicRow = typeof clinics.$inferSelect;
 
 function buildClinic(row: ClinicRow): Clinic {
@@ -146,6 +151,7 @@ function buildClinic(row: ClinicRow): Clinic {
     name: row.name,
     specialty: row.specialty,
     city: row.city,
+    address: row.address ?? null,
     timezone: row.timezone,
     toneOfVoice: row.toneOfVoice,
     commercialPolicy: row.commercialPolicy,
@@ -865,7 +871,7 @@ export class ConversationOrchestrator {
               : "";
             clinicContext = `FORMATO: tópicos\nLead selecionou "Procedimentos" no menu. Liste os procedimentos disponíveis em bullet points (•), um por linha, com breve descrição. Separe cada procedimento com uma linha em branco. Sem convite para agendar ao final.\n${items}`;
           } else {
-            clinicContext = "Lead selecionou \"Localização\" no menu. Informe o endereço e os horários de atendimento a partir das orientações da clínica. Sem convite para agendar ao final.";
+            clinicContext = buildLocationClinicContext(clinic.address);
           }
         } else {
           clinicContext = `${clinic.name} — ${clinic.specialty}. ${clinic.commercialPolicy ?? ""}`;
