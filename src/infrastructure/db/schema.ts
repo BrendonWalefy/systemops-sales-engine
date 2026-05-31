@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { MenuItem } from "@/domain/entities/clinic";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -96,6 +97,7 @@ export const clinics = pgTable("clinics", {
   commercialPolicy: text("commercial_policy"),
   playbook: text("playbook"),
   greetingMessage: text("greeting_message"),
+  menuItems: jsonb("menu_items").$type<MenuItem[]>(),
   businessHours: text("business_hours"),
   googleCalendarId: text("google_calendar_id"),
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
