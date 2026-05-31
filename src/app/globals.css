@@ -1735,6 +1735,34 @@ textarea:focus {
   margin-left: auto;
 }
 
+/* Barra de status da IA — sticky no topo do chat, mobile only */
+.conv-ai-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.conv-ai-bar-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.conv-ai-bar-status.paused {
+  color: var(--warning);
+}
+
+.conv-ai-bar-status.active {
+  color: var(--accent-strong);
+}
+
 .conv-body {
   display: grid;
   grid-template-columns: 1fr 280px;
@@ -1872,6 +1900,15 @@ textarea:focus {
   .conv-header {
     padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
     gap: 10px;
+  }
+
+  /* Barra IA fica visível no topo — toggle do header some (substituído pela barra) */
+  .conv-ai-bar {
+    display: flex;
+  }
+
+  .ai-mobile-toggle {
+    display: none !important;
   }
 
   /* Painel de info do lead some — chat ocupa tela toda */
@@ -2212,6 +2249,11 @@ textarea:focus {
   gap: 10px;
 }
 
+/* Garante que células do grid não ultrapassem a coluna */
+.conversation-grid > * {
+  min-width: 0;
+}
+
 /* Card ativo (em conversa) */
 .inbox-active-card {
   display: flex;
@@ -2226,6 +2268,8 @@ textarea:focus {
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
   cursor: pointer;
   border-left-width: 4px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .inbox-active-card:hover {
