@@ -69,6 +69,7 @@ export function MessageInput({ conversationId }: Props) {
 
   return (
     <div
+      className="conv-message-input"
       style={{
         borderTop: "1px solid var(--line)",
         background: "var(--surface)",
