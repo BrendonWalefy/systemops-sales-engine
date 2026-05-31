@@ -146,6 +146,18 @@ export async function duplicatePlaybookVersion(id: string) {
   revalidatePath("/app/settings/playbook");
 }
 
+export async function updateClinicOperationalSettings(data: {
+  businessHours?: string | null;
+  takeoverTtlHours?: number;
+  postAppointmentBufferMinutes?: number;
+}) {
+  await db
+    .update(clinics)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(clinics.id, CLINIC_ID));
+  revalidatePath("/app/settings/playbook");
+}
+
 export async function deletePlaybookVersion(id: string) {
   const [version] = await db
     .select({ status: playbookVersions.status })

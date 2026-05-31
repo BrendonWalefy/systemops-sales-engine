@@ -1,19 +1,36 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
-import { playbookVersions } from "@/infrastructure/db/schema";
+import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PlaybookEditorClient } from "./editor-client";
 
-export default async function PlaybookEditorPage({ params }: { params: { id: string } }) {
+export default async function PlaybookEditorPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   const clinicId = process.env.PILOT_CLINIC_ID!;
 
-  const [version] = await db
-    .select()
-    .from(playbookVersions)
-    .where(and(eq(playbookVersions.id, params.id), eq(playbookVersions.clinicId, clinicId)))
-    .limit(1);
+  const [[version], clinicRow] = await Promise.all([
+    db
+      .select()
+      .from(playbookVersions)
+      .where(and(eq(playbookVersions.id, id), eq(playbookVersions.clinicId, clinicId)))
+      .limit(1),
+    db
+      .select({
+        businessHours: clinics.businessHours,
+        takeoverTtlHours: clinics.takeoverTtlHours,
+        postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
+      })
+      .from(clinics)
+      .where(eq(clinics.id, clinicId))
+      .limit(1)
+      .then((r) => r[0] ?? null),
+  ]);
 
   if (!version) notFound();
 
@@ -27,8 +44,10 @@ export default async function PlaybookEditorPage({ params }: { params: { id: str
         toneOfVoice: version.toneOfVoice,
         differentials: version.differentials.length > 0 ? version.differentials : [""],
         commercialPolicy: version.commercialPolicy ?? "",
-        objections:
-          version.objections.length > 0 ? version.objections : [],
+        objections: version.objections.length > 0 ? version.objections : [],
+        businessHours: clinicRow?.businessHours ?? "",
+        takeoverTtlHours: clinicRow?.takeoverTtlHours ?? 4,
+        postAppointmentBufferMinutes: clinicRow?.postAppointmentBufferMinutes ?? 60,
       }}
     />
   );

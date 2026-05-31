@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, ChevronLeft } from "lucide-react";
-import { updatePlaybookVersion } from "../playbook-version-actions";
+import { Plus, X, ChevronLeft, RefreshCw } from "lucide-react";
+import { updatePlaybookVersion, updateClinicOperationalSettings, createPlaybookVersion } from "../playbook-version-actions";
 
 type Objection = { objection: string; response: string };
 
@@ -14,6 +14,9 @@ type EditorData = {
   differentials: string[];
   commercialPolicy: string;
   objections: Objection[];
+  businessHours: string;
+  takeoverTtlHours: number;
+  postAppointmentBufferMinutes: number;
 };
 
 type Props = {
@@ -33,26 +36,34 @@ function completude(data: EditorData): number {
   let filled = 0;
   if (data.specialty.trim()) filled++;
   if (data.procedureDescription.trim()) filled++;
-  filled++;
+  filled++; // toneOfVoice always has value
   if (data.differentials.filter((d) => d.trim()).length > 0) filled++;
   if (data.commercialPolicy.trim()) filled++;
   if (data.objections.filter((o) => o.objection.trim()).length > 0) filled++;
   return Math.round((filled / 6) * 100);
 }
 
-function AIPreview({ data, businessHours }: { data: EditorData; businessHours?: string }) {
-  const tone = data.toneOfVoice || "acolhedor";
-  const specialty = data.specialty || "sua especialidade";
-  const hours = businessHours || "horário comercial";
+function AIPreview({ data, regenerateKey }: { data: EditorData; regenerateKey: number }) {
+  const specialty = data.specialty.trim() || "sua especialidade";
+  const hours = data.businessHours.trim() || "horário comercial";
+  const toneLabels: Record<string, string> = {
+    acolhedor: "acolhedor",
+    tecnico: "técnico e objetivo",
+    persuasivo: "persuasivo",
+    luxo: "exclusivo",
+  };
+  const tone = toneLabels[data.toneOfVoice] ?? data.toneOfVoice;
 
   return (
     <div
+      key={regenerateKey}
       style={{
         fontFamily: "monospace",
         fontSize: "12px",
         lineHeight: 1.8,
         color: "#71717a",
         whiteSpace: "pre-wrap",
+        animation: "fadeIn 300ms ease",
       }}
     >
       {"Olá! Sou o assistente da clínica.\nSobre "}
@@ -71,13 +82,16 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
   const [data, setData] = useState<EditorData>(initialData);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [regenerateKey, setRegenerateKey] = useState(0);
+  const [creatingNew, setCreatingNew] = useState(false);
+  const versionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clinicSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const triggerAutoSave = useCallback(
+  const triggerVersionSave = useCallback(
     (newData: EditorData) => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (versionSaveTimer.current) clearTimeout(versionSaveTimer.current);
       setSaved(false);
-      saveTimerRef.current = setTimeout(async () => {
+      versionSaveTimer.current = setTimeout(async () => {
         setSaving(true);
         await updatePlaybookVersion(id, {
           specialty: newData.specialty || null,
@@ -94,10 +108,29 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
     [id],
   );
 
-  function update(patch: Partial<EditorData>) {
+  const triggerClinicSave = useCallback((newData: EditorData) => {
+    if (clinicSaveTimer.current) clearTimeout(clinicSaveTimer.current);
+    clinicSaveTimer.current = setTimeout(async () => {
+      await updateClinicOperationalSettings({
+        businessHours: newData.businessHours || null,
+        takeoverTtlHours: newData.takeoverTtlHours,
+        postAppointmentBufferMinutes: newData.postAppointmentBufferMinutes,
+      });
+    }, 1200);
+  }, []);
+
+  function updateVersion(patch: Partial<EditorData>) {
     setData((prev) => {
       const next = { ...prev, ...patch };
-      triggerAutoSave(next);
+      triggerVersionSave(next);
+      return next;
+    });
+  }
+
+  function updateClinic(patch: Partial<EditorData>) {
+    setData((prev) => {
+      const next = { ...prev, ...patch };
+      triggerClinicSave(next);
       return next;
     });
   }
@@ -105,35 +138,44 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
   function updateDifferential(index: number, value: string) {
     const next = [...data.differentials];
     next[index] = value;
-    update({ differentials: next });
+    updateVersion({ differentials: next });
   }
 
   function addDifferential() {
-    update({ differentials: [...data.differentials, ""] });
+    updateVersion({ differentials: [...data.differentials, ""] });
   }
 
   function removeDifferential(index: number) {
-    update({ differentials: data.differentials.filter((_, i) => i !== index) });
+    updateVersion({ differentials: data.differentials.filter((_, i) => i !== index) });
   }
 
   function updateObjection(index: number, field: keyof Objection, value: string) {
     const next = [...data.objections];
     next[index] = { ...next[index], [field]: value };
-    update({ objections: next });
+    updateVersion({ objections: next });
   }
 
   function addObjection() {
-    update({ objections: [...data.objections, { objection: "", response: "" }] });
+    updateVersion({ objections: [...data.objections, { objection: "", response: "" }] });
   }
 
   function removeObjection(index: number) {
-    update({ objections: data.objections.filter((_, i) => i !== index) });
+    updateVersion({ objections: data.objections.filter((_, i) => i !== index) });
+  }
+
+  async function handleNewPlaybook() {
+    setCreatingNew(true);
+    const nome = prompt("Nome do novo playbook:");
+    if (!nome?.trim()) { setCreatingNew(false); return; }
+    await createPlaybookVersion(nome.trim());
   }
 
   const pct = completude(data);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)" }}>
+      <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
+
       {/* Header */}
       <div
         style={{
@@ -166,11 +208,29 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
             <ChevronLeft size={16} />
             Voltar
           </button>
-          <div
-            style={{ width: "1px", height: "18px", background: "rgba(255,255,255,0.08)" }}
-          />
+          <div style={{ width: "1px", height: "18px", background: "rgba(255,255,255,0.08)" }} />
           <span style={{ fontSize: "15px", fontWeight: 600, color: "#fafafa" }}>{name}</span>
         </div>
+        <button
+          onClick={handleNewPlaybook}
+          disabled={creatingNew}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "9px 18px",
+            background: "#10b981",
+            border: "none",
+            borderRadius: "9px",
+            color: "#fff",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          <Plus size={14} strokeWidth={2.5} />
+          Novo Playbook
+        </button>
       </div>
 
       {/* Breadcrumb */}
@@ -201,7 +261,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
             <input
               type="text"
               value={data.specialty}
-              onChange={(e) => update({ specialty: e.target.value })}
+              onChange={(e) => updateVersion({ specialty: e.target.value })}
               placeholder="Ex: Odontologia Estética e Reabilitação Oral"
               style={inputStyle}
             />
@@ -210,7 +270,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
           <Section number="02" title="Sobre o procedimento">
             <textarea
               value={data.procedureDescription}
-              onChange={(e) => update({ procedureDescription: e.target.value })}
+              onChange={(e) => updateVersion({ procedureDescription: e.target.value })}
               placeholder="Descreva o procedimento principal oferecido por esta versão do playbook..."
               rows={4}
               style={{ ...inputStyle, resize: "vertical" }}
@@ -222,7 +282,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
               {TONES.map((t) => (
                 <button
                   key={t.value}
-                  onClick={() => update({ toneOfVoice: t.value })}
+                  onClick={() => updateVersion({ toneOfVoice: t.value })}
                   style={{
                     padding: "8px 18px",
                     borderRadius: "999px",
@@ -233,16 +293,8 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
                     cursor: "pointer",
                     transition: "all 150ms",
                     ...(data.toneOfVoice === t.value
-                      ? {
-                          background: "#10b981",
-                          borderColor: "#10b981",
-                          color: "#fff",
-                        }
-                      : {
-                          background: "transparent",
-                          borderColor: "rgba(255,255,255,0.12)",
-                          color: "#71717a",
-                        }),
+                      ? { background: "#10b981", borderColor: "#10b981", color: "#fff" }
+                      : { background: "transparent", borderColor: "rgba(255,255,255,0.12)", color: "#71717a" }),
                   }}
                 >
                   {t.label}
@@ -255,11 +307,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {data.differentials.map((diff, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span
-                    style={{ color: "#10b981", fontSize: "18px", lineHeight: 1, marginTop: "1px" }}
-                  >
-                    •
-                  </span>
+                  <span style={{ color: "#10b981", fontSize: "18px", lineHeight: 1 }}>•</span>
                   <input
                     type="text"
                     value={diff}
@@ -267,36 +315,12 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
                     placeholder="Diferencial..."
                     style={{ ...inputStyle, flex: 1 }}
                   />
-                  <button
-                    onClick={() => removeDifferential(i)}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "#52525b",
-                      cursor: "pointer",
-                      padding: "4px",
-                      borderRadius: "4px",
-                    }}
-                  >
+                  <button onClick={() => removeDifferential(i)} style={iconBtnStyle}>
                     <X size={14} />
                   </button>
                 </div>
               ))}
-              <button
-                onClick={addDifferential}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "transparent",
-                  border: "none",
-                  color: "#10b981",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  padding: "4px 0",
-                  width: "fit-content",
-                }}
-              >
+              <button onClick={addDifferential} style={addBtnStyle}>
                 <Plus size={14} /> Adicionar item
               </button>
             </div>
@@ -305,7 +329,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
           <Section number="05" title="Política comercial">
             <textarea
               value={data.commercialPolicy}
-              onChange={(e) => update({ commercialPolicy: e.target.value })}
+              onChange={(e) => updateVersion({ commercialPolicy: e.target.value })}
               placeholder="Ex: Avaliação inicial gratuita. Valor da avaliação descontado do tratamento. Parcelamento em até 12x."
               rows={4}
               style={{ ...inputStyle, resize: "vertical" }}
@@ -318,26 +342,14 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
                 <div
                   key={i}
                   style={{
-                    background: "#0d0d0f",
+                    background: "#0a0a0c",
                     border: "1px solid rgba(255,255,255,0.07)",
                     borderRadius: "10px",
                     padding: "16px",
                     position: "relative",
                   }}
                 >
-                  <button
-                    onClick={() => removeObjection(i)}
-                    style={{
-                      position: "absolute",
-                      top: "12px",
-                      right: "12px",
-                      background: "transparent",
-                      border: "none",
-                      color: "#52525b",
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                  >
+                  <button onClick={() => removeObjection(i)} style={{ ...iconBtnStyle, position: "absolute", top: "12px", right: "12px" }}>
                     <X size={14} />
                   </button>
                   <label style={labelStyle}>OBJEÇÃO</label>
@@ -352,7 +364,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
                   <textarea
                     value={obj.response}
                     onChange={(e) => updateObjection(i, "response", e.target.value)}
-                    placeholder="Como a IA deve responder a essa objeção..."
+                    placeholder="Como a IA deve responder..."
                     rows={2}
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
@@ -378,18 +390,59 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
               </button>
             </div>
           </Section>
+
+          {/* Seções de configuração da clínica */}
+          <Section number="07" title="Horário de funcionamento">
+            <input
+              type="text"
+              value={data.businessHours}
+              onChange={(e) => updateClinic({ businessHours: e.target.value })}
+              placeholder="Ex: Segunda a sexta das 8h às 18h. Sábado das 8h às 13h."
+              style={inputStyle}
+            />
+            <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#52525b" }}>
+              Usado pela IA para informar leads e para a lógica de agendamento.
+            </p>
+          </Section>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            <Section number="08" title="Pausa automática (horas)">
+              <input
+                type="number"
+                value={data.takeoverTtlHours}
+                min={0}
+                max={72}
+                onChange={(e) =>
+                  updateClinic({ takeoverTtlHours: parseInt(e.target.value) || 0 })
+                }
+                style={{ ...inputStyle, width: "100px" }}
+              />
+              <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#52525b" }}>
+                Tempo até a IA retomar após atendimento humano.
+              </p>
+            </Section>
+
+            <Section number="09" title="Intervalo entre atendimentos (min)">
+              <input
+                type="number"
+                value={data.postAppointmentBufferMinutes}
+                min={0}
+                max={240}
+                step={5}
+                onChange={(e) =>
+                  updateClinic({ postAppointmentBufferMinutes: parseInt(e.target.value) || 0 })
+                }
+                style={{ ...inputStyle, width: "100px" }}
+              />
+              <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#52525b" }}>
+                Buffer de tempo após cada agendamento.
+              </p>
+            </Section>
+          </div>
         </div>
 
         {/* Right panel */}
-        <div
-          style={{
-            position: "sticky",
-            top: "72px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "16px",
-          }}
-        >
+        <div style={{ position: "sticky", top: "72px", display: "flex", flexDirection: "column", gap: "16px" }}>
           <div
             style={{
               background: "#0d0d0f",
@@ -398,18 +451,31 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
               padding: "20px",
             }}
           >
-            <p
-              style={{
-                margin: "0 0 14px",
-                fontSize: "13px",
-                fontWeight: 600,
-                color: "#71717a",
-                letterSpacing: "0.04em",
-              }}
-            >
-              Visualização da IA
-            </p>
-            <AIPreview data={data} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+              <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#71717a", letterSpacing: "0.04em" }}>
+                Visualização da IA
+              </p>
+              <button
+                onClick={() => setRegenerateKey((k) => k + 1)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  background: "transparent",
+                  border: "none",
+                  color: "#10b981",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  cursor: "pointer",
+                  padding: "4px 0",
+                }}
+              >
+                <RefreshCw size={11} strokeWidth={2.5} />
+                REGENERAR
+              </button>
+            </div>
+            <AIPreview data={data} regenerateKey={regenerateKey} />
 
             <div style={{ marginTop: "20px" }}>
               <div
@@ -449,24 +515,12 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
 
           <button
             onClick={() => router.push("/app/settings/playbook")}
-            style={{
-              ...outlineBtnStyle,
-              width: "100%",
-              justifyContent: "center",
-            }}
+            style={{ ...outlineBtnStyle, width: "100%", justifyContent: "center" }}
           >
             Voltar para versões
           </button>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              fontSize: "12px",
-              color: "#52525b",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#52525b" }}>
             <span
               style={{
                 width: "6px",
@@ -476,7 +530,11 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
                 flexShrink: 0,
               }}
             />
-            {saving ? "Salvando..." : saved ? "Alterações salvas automaticamente" : "Aguardando alterações"}
+            {saving
+              ? "Salvando..."
+              : saved
+                ? "Alterações salvas automaticamente"
+                : "Aguardando alterações"}
           </div>
         </div>
       </div>
@@ -484,15 +542,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
   );
 }
 
-function Section({
-  number,
-  title,
-  children,
-}: {
-  number: string;
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ number, title, children }: { number: string; title: string; children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -531,6 +581,30 @@ const labelStyle: React.CSSProperties = {
   color: "#52525b",
   letterSpacing: "0.08em",
   marginBottom: "8px",
+};
+
+const iconBtnStyle: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "#52525b",
+  cursor: "pointer",
+  padding: "4px",
+  borderRadius: "4px",
+  display: "flex",
+  alignItems: "center",
+};
+
+const addBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  background: "transparent",
+  border: "none",
+  color: "#10b981",
+  cursor: "pointer",
+  fontSize: "13px",
+  padding: "4px 0",
+  width: "fit-content",
 };
 
 const outlineBtnStyle: React.CSSProperties = {
