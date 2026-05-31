@@ -1891,11 +1891,9 @@ textarea:focus {
     font-size: 10px;
   }
 
-  /* Quando em conversa: main ocupa viewport inteiro sem padding do nav */
+  /* Quando em conversa: main sem padding e sem constraints de altura */
   .clinic-layout:has(.conv-root) > main {
     padding-bottom: 0;
-    height: var(--vh, 100dvh);
-    overflow: hidden;
   }
 
   /* Nav inferior some na tela de conversa — há o ← Inbox no header */
@@ -1903,9 +1901,9 @@ textarea:focus {
     display: none;
   }
 
-  /* conv-root preenche exatamente o espaço que sobrou no main */
+  /* conv-root é o container fechado do chat: altura via --vh + overflow aqui */
   .conv-root {
-    height: 100%;
+    overflow: hidden;
   }
 
   .conv-header {

@@ -128,9 +128,6 @@ export function MessageInput({ conversationId }: Props) {
           <Send size={14} />
         </button>
       </div>
-      <p style={{ margin: 0, fontSize: 11, color: "var(--muted)", opacity: 0.7 }}>
-        Mensagem enviada como operador — IA pausada automaticamente nesta conversa.
-      </p>
     </div>
   );
 }
