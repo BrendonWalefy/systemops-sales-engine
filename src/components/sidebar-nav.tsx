@@ -5,8 +5,8 @@ import { Inbox, LayoutDashboard, Bot, CalendarDays, Zap, LogOut, Stethoscope } f
 import { logout } from "@/app/login/actions";
 
 const NAV = [
-  { href: "/app/inbox", label: "Inbox", Icon: Inbox },
   { href: "/app/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/app/inbox", label: "Inbox", Icon: Inbox },
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
   { href: "/app/settings/playbook", label: "IA", Icon: Bot },
   { href: "/app/settings/tratamentos", label: "Procedimentos", Icon: Stethoscope },

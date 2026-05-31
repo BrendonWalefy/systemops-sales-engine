@@ -1,70 +1,110 @@
 export default function DashboardLoading() {
   return (
-    <div>
-      <div className="product-topbar">
-        <div>
-          <div className="skeleton" style={{ width: 110, height: 28, marginBottom: 8 }} />
-          <div className="skeleton" style={{ width: 200, height: 16 }} />
+    <div className="dashboard-shell">
+      <header className="dashboard-topbar">
+        <div className="dashboard-title">
+          <div className="skeleton" style={{ width: 118, height: 12, marginBottom: 8 }} />
+          <div className="skeleton" style={{ width: 170, height: 36, marginBottom: 10 }} />
+          <div className="skeleton" style={{ width: 230, height: 14 }} />
         </div>
-      </div>
 
-      {/* KPI strip */}
-      <div className="kpi-strip">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="metric">
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-              <div className="skeleton" style={{ width: 20, height: 20, borderRadius: 4 }} />
-              <div className="skeleton" style={{ width: 100, height: 13 }} />
+        <div className="dashboard-topbar-actions">
+          <div className="skeleton" style={{ width: 154, height: 31, borderRadius: 999 }} />
+          <div className="skeleton" style={{ width: 122, height: 31, borderRadius: 999 }} />
+        </div>
+      </header>
+
+      <section className="dashboard-kpis" aria-label="Carregando indicadores">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <article key={index} className={`dashboard-kpi-card${index === 1 ? " featured" : ""}`}>
+            <div className="dashboard-kpi-header">
+              <div className="skeleton" style={{ width: 24, height: 24, borderRadius: 7 }} />
+              <div className="skeleton" style={{ width: 112, height: 13 }} />
+              <div className="skeleton" style={{ width: 46, height: 20, borderRadius: 999, marginLeft: "auto" }} />
             </div>
-            <div className="skeleton" style={{ width: 56, height: 32, marginBottom: 6 }} />
-            <div className="skeleton" style={{ width: 90, height: 12 }} />
-          </div>
+            <div className="skeleton" style={{ width: 66, height: 38, marginBottom: 8 }} />
+            <div className="skeleton" style={{ width: 134, height: 12 }} />
+          </article>
         ))}
-      </div>
+      </section>
 
-      <div style={{ padding: "0 30px 24px", display: "grid", gap: 24 }}>
-        {/* Table skeleton */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
-            <div className="skeleton" style={{ width: 110, height: 13 }} />
+      <main className="dashboard-grid">
+        <section className="dashboard-panel dashboard-flow-panel">
+          <div className="dashboard-panel-header">
+            <div>
+              <div className="skeleton" style={{ width: 92, height: 11, marginBottom: 8 }} />
+              <div className="skeleton" style={{ width: 160, height: 18 }} />
+            </div>
+            <div className="skeleton" style={{ width: 72, height: 26, borderRadius: 999 }} />
           </div>
-          <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div className="skeleton" style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0 }} />
-                <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 5 }}>
-                  <div className="skeleton" style={{ width: "60%", height: 13 }} />
-                  <div className="skeleton" style={{ width: "40%", height: 12 }} />
-                </div>
-                <div className="skeleton" style={{ flex: 1, height: 13 }} />
-                <div className="skeleton" style={{ width: 60, height: 22, borderRadius: 999 }} />
-                <div className="skeleton" style={{ width: 72, height: 22, borderRadius: 999 }} />
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end" }}>
-                  <div className="skeleton" style={{ width: 80, height: 13 }} />
-                  <div className="skeleton" style={{ width: 50, height: 11 }} />
-                </div>
+          <div className="dashboard-chart-wrap">
+            <div className="skeleton" style={{ width: "100%", minHeight: 300, borderRadius: 8 }} />
+            <div className="dashboard-chart-labels">
+              {Array.from({ length: 7 }).map((_, index) => (
+                <span key={index}>
+                  <div className="skeleton" style={{ width: "60%", height: 12, margin: "0 auto" }} />
+                  <div className="skeleton" style={{ width: "76%", height: 10, margin: "0 auto" }} />
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="dashboard-insights">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index}>
+                <div className="skeleton" style={{ width: 15, height: 15, borderRadius: 4 }} />
+                <span>
+                  <div className="skeleton" style={{ width: 58, height: 13 }} />
+                  <div className="skeleton" style={{ width: 96, height: 11 }} />
+                </span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* Temperature cards */}
-        <div>
-          <div className="skeleton" style={{ width: 160, height: 12, marginBottom: 12 }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="metric">
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                  <div className="skeleton" style={{ width: 20, height: 20, borderRadius: 4 }} />
-                  <div className="skeleton" style={{ width: 60, height: 13 }} />
+        <section className="dashboard-panel dashboard-leads-panel">
+          <div className="dashboard-panel-header compact">
+            <div>
+              <div className="skeleton" style={{ width: 106, height: 11, marginBottom: 8 }} />
+              <div className="skeleton" style={{ width: 130, height: 18 }} />
+            </div>
+            <div className="skeleton" style={{ width: 38, height: 26, borderRadius: 999 }} />
+          </div>
+          <div style={{ padding: 14, display: "grid", gap: 12 }}>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div className="skeleton" style={{ width: 30, height: 30, borderRadius: 8, flex: "0 0 auto" }} />
+                <div style={{ flex: 1, display: "grid", gap: 5, minWidth: 0 }}>
+                  <div className="skeleton" style={{ width: "58%", height: 12 }} />
+                  <div className="skeleton" style={{ width: "44%", height: 11 }} />
                 </div>
-                <div className="skeleton" style={{ width: 40, height: 32, marginBottom: 6 }} />
-                <div className="skeleton" style={{ width: 50, height: 20, borderRadius: 999 }} />
+                <div className="skeleton" style={{ width: 70, height: 22, borderRadius: 999 }} />
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </section>
+
+        <section className="dashboard-panel dashboard-temp-panel">
+          <div className="dashboard-panel-header compact">
+            <div>
+              <div className="skeleton" style={{ width: 98, height: 11, marginBottom: 8 }} />
+              <div className="skeleton" style={{ width: 216, height: 18 }} />
+            </div>
+            <div className="skeleton" style={{ width: 48, height: 26, borderRadius: 999 }} />
+          </div>
+          <div className="dashboard-temp-content">
+            <div className="skeleton" style={{ width: 132, aspectRatio: "1", borderRadius: 999 }} />
+            <div className="dashboard-temp-list">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="dashboard-temp-row">
+                  <div className="skeleton" style={{ width: 90, height: 13 }} />
+                  <div className="skeleton" style={{ width: 42, height: 13 }} />
+                  <div className="skeleton" style={{ width: 30, height: 20, borderRadius: 999 }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
