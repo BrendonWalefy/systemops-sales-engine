@@ -27,6 +27,7 @@ type SimulateBody = {
     toneOfVoice: string;
     differentials: string[];
     commercialPolicy: string;
+    objections?: { objection: string; response: string }[];
     greetingMessage: string;
   };
 };
@@ -37,6 +38,13 @@ function buildPlaybookText(p: SimulateBody["playbook"]): string | null {
   if (p.procedureDescription) parts.push(`\nSOBRE O PROCEDIMENTO:\n${p.procedureDescription}`);
   const diffs = p.differentials.filter((d) => d.trim());
   if (diffs.length > 0) parts.push(`\nDIFERENCIAIS DA CLÍNICA:\n${diffs.map((d) => `- ${d}`).join("\n")}`);
+  const objections = p.objections?.filter((o) => o.objection.trim() || o.response.trim()) ?? [];
+  if (objections.length > 0) {
+    const objectionText = objections
+      .map((o) => [`Objeção: ${o.objection}`, o.response.trim() ? `Resposta: ${o.response}` : null].filter(Boolean).join("\n"))
+      .join("\n\n");
+    parts.push(`\nOBJEÇÕES E RESPOSTAS:\n${objectionText}`);
+  }
   return parts.length > 0 ? parts.join("\n") : null;
 }
 

@@ -31,7 +31,8 @@ import { NotifyClinicOperators } from "@/application/use-cases/notifications/not
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 
-import type { Clinic } from "@/domain/entities/clinic";
+import type { Clinic, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
+import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
 
@@ -42,6 +43,38 @@ type MenuResolution =
   | { intent: "price_inquiry" }
   | { intent: "needs_human" }
   | { intent: "general_question"; subtype: "procedures" | "location" };
+
+function intentToMenuResolution(intent: MenuItemIntent): MenuResolution {
+  switch (intent) {
+    case "procedures": return { intent: "general_question", subtype: "procedures" };
+    case "location": return { intent: "general_question", subtype: "location" };
+    case "book_appointment": return { intent: "book_appointment" };
+    case "price_inquiry": return { intent: "price_inquiry" };
+    case "needs_human": return { intent: "needs_human" };
+  }
+}
+
+function buildMenuText(items: MenuItem[]): string {
+  return items.filter(i => i.enabled).map(i => `${i.number}. ${i.label}`).join("\n");
+}
+
+function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer"): string {
+  const items = clinic.menuItems ?? DEFAULT_MENU_ITEMS;
+  const menuText = buildMenuText(items);
+
+  if (clinic.menuItems !== null) {
+    // Structured mode: greetingMessage é somente o texto intro antes do menu
+    const intro = clinic.greetingMessage
+      ?? (variant === "first" ? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?` : "Como posso ajudá-lo?");
+    return `${intro}\n\n${menuText}`;
+  }
+
+  // Modo legado: greetingMessage substitui tudo (intro + menu)
+  return clinic.greetingMessage
+    ?? (variant === "first"
+      ? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n${menuText}`
+      : `Como posso ajudá-lo?\n\n${menuText}`);
+}
 
 function isMenuRerequest(message: string): boolean {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
@@ -80,22 +113,23 @@ function isResetCommand(message: string): boolean {
   return n === "/reset" || n === "reset" || n === "resetar" || n === "/resetar";
 }
 
-function resolveMenuSelection(message: string): MenuResolution | null {
-  const n = message
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim();
+function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolution | null {
+  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
-  if (n === "1" || n.includes("procedimento") || n.includes("tratamento") || n.includes("servico"))
+  // Número digitado → mapeia pelo item correspondente na configuração da clínica
+  const byNumber = items.find(i => i.enabled && n === String(i.number));
+  if (byNumber) return intentToMenuResolution(byNumber.intent);
+
+  // Palavras-chave universais (funcionam independente da ordem do menu)
+  if (n.includes("procedimento") || n.includes("tratamento") || n.includes("servico"))
     return { intent: "general_question", subtype: "procedures" };
-  if (n === "2" || n.includes("agendar") || n.includes("agenda") || n.includes("horario") || n.includes("marcar") || n.includes("consulta") || n.includes("avaliacao"))
+  if (n.includes("agendar") || n.includes("agenda") || n.includes("horario") || n.includes("marcar") || n.includes("consulta") || n.includes("avaliacao"))
     return { intent: "book_appointment" };
-  if (n === "3" || n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
+  if (n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
     return { intent: "price_inquiry" };
-  if (n === "4" || n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
+  if (n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
     return { intent: "general_question", subtype: "location" };
-  if (n === "5" || n.includes("especialista") || n.includes("dentista") || n.includes("falar") || n.includes("doutor") || n === "dr")
+  if (n.includes("especialista") || n.includes("dentista") || n.includes("falar") || n.includes("doutor") || n === "dr")
     return { intent: "needs_human" };
 
   return null;
@@ -157,6 +191,7 @@ function buildClinic(row: ClinicRow): Clinic {
     commercialPolicy: row.commercialPolicy,
     playbook: row.playbook,
     greetingMessage: row.greetingMessage ?? null,
+    menuItems: (row.menuItems as MenuItem[] | null) ?? null,
     businessHours: row.businessHours,
     googleCalendarId: row.googleCalendarId,
     takeoverTtlHours: row.takeoverTtlHours,
@@ -310,9 +345,10 @@ export class ConversationOrchestrator {
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
 
     const isMenuActive = await this.stateMachine.isMenuOffered(conversation.id);
+    const clinicMenuItems = clinic.menuItems ?? DEFAULT_MENU_ITEMS;
     let menuResolution: MenuResolution | null = null;
     if (isMenuActive) {
-      menuResolution = resolveMenuSelection(messageText);
+      menuResolution = resolveMenuSelection(messageText, clinicMenuItems);
       await this.stateMachine.invalidate(conversation.id);
     }
 
@@ -417,28 +453,22 @@ export class ConversationOrchestrator {
     if (isFirstMessage) {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = lead.name ? `, ${lead.name}` : "";
-      const base = clinic.greetingMessage
-        ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-      replyText = `${salutation}${nameGreeting}! ${base}`;
+      replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (resetRequested) {
       // Zera estado e reinicia como se fosse primeiro contato
       await this.stateMachine.invalidate(conversation.id);
       const salutation = getDayGreeting(timezone);
       const nameGreeting = lead.name ? `, ${lead.name}` : "";
-      const base = clinic.greetingMessage
-        ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-      replyText = `${salutation}${nameGreeting}! ${base}`;
+      replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (menuReRequested || isStaleConversation || isolatedGreeting) {
-      const base = clinic.greetingMessage
-        ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
       if (menuReRequested) {
-        replyText = base;
+        replyText = buildMenuBody(clinic, "reoffer");
       } else {
         const salutation = getDayGreeting(timezone);
         const nameGreeting = lead.name ? `, ${lead.name}` : "";
-        replyText = `${salutation}${nameGreeting}! ${base}`;
+        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer")}`;
       }
       await this.stateMachine.offerMenu(conversation.id);
     } else switch (intent) {
@@ -842,9 +872,7 @@ export class ConversationOrchestrator {
       case "greeting": {
         const salutation = getDayGreeting(timezone);
         const nameGreeting = lead.name ? `, ${lead.name}` : "";
-        const base = clinic.greetingMessage
-          ?? `Como posso ajudá-lo?\n\n1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
-        replyText = `${salutation}${nameGreeting}! ${base}`;
+        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer")}`;
         await this.stateMachine.offerMenu(conversation.id);
         break;
       }

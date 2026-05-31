@@ -5,6 +5,7 @@ import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { MenuItem } from "@/domain/entities/clinic";
 
 const CLINIC_ID = process.env.PILOT_CLINIC_ID!;
 
@@ -151,6 +152,7 @@ export async function updateClinicOperationalSettings(data: {
   takeoverTtlHours?: number;
   postAppointmentBufferMinutes?: number;
   greetingMessage?: string | null;
+  menuItems?: MenuItem[] | null;
 }) {
   await db
     .update(clinics)

@@ -39,6 +39,44 @@ async function requireAuth() {
   return token ? verifyToken(token) : null;
 }
 
+function isAllDay(formData: FormData): boolean {
+  return formData.get("allDay") === "true";
+}
+
+function parseDateParts(date: string): [number, number, number] {
+  const [year, month, day] = date.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    throw new Error("Data inválida");
+  }
+
+  return [year, month, day];
+}
+
+function parseTimeParts(time: string): [number, number] {
+  const [hour, minute] = time.split(":").map(Number);
+
+  if (isNaN(hour) || isNaN(minute)) {
+    throw new Error("Horário inválido");
+  }
+
+  return [hour, minute];
+}
+
+function nextDateParts(year: number, month: number, day: number): [number, number, number] {
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return [next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate()];
+}
+
+function getFullDayWindow(tz: ClinicTimezone, year: number, month: number, day: number) {
+  const [nextYear, nextMonth, nextDay] = nextDateParts(year, month, day);
+
+  return {
+    startsAt: tz.fromLocalParts(year, month - 1, day, 0, 0),
+    endsAt: tz.fromLocalParts(nextYear, nextMonth - 1, nextDay, 0, 0),
+  };
+}
+
 export async function createBlock(formData: FormData) {
   const session = await requireAuth();
   if (!session) throw new Error("Unauthorized");
@@ -47,21 +85,19 @@ export async function createBlock(formData: FormData) {
   const startTime = formData.get("startTime") as string;
   const endTime = formData.get("endTime") as string;
   const reason = (formData.get("reason") as string | null)?.trim() ?? "";
+  const allDay = isAllDay(formData);
 
-  if (!date || !startTime || !endTime) throw new Error("Campos obrigatórios ausentes");
+  if (!date || (!allDay && (!startTime || !endTime))) throw new Error("Campos obrigatórios ausentes");
 
-  const [year, month, day] = date.split("-").map(Number);
-  const [startH, startM] = startTime.split(":").map(Number);
-  const [endH, endM] = endTime.split(":").map(Number);
-
-  if (!year || !month || !day || isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) {
-    throw new Error("Data ou horário inválido");
-  }
+  const [year, month, day] = parseDateParts(date);
 
   const { clinicId, tz, gateway } = await getGateway();
-
-  const startsAt = tz.fromLocalParts(year, month - 1, day, startH, startM);
-  const endsAt = tz.fromLocalParts(year, month - 1, day, endH, endM);
+  const { startsAt, endsAt } = allDay
+    ? getFullDayWindow(tz, year, month, day)
+    : {
+      startsAt: tz.fromLocalParts(year, month - 1, day, ...parseTimeParts(startTime)),
+      endsAt: tz.fromLocalParts(year, month - 1, day, ...parseTimeParts(endTime)),
+    };
 
   if (endsAt <= startsAt) throw new Error("Horário de fim deve ser após o início");
   await gateway.createBlockEvent({ clinicId, startsAt, endsAt, reason });
@@ -78,17 +114,16 @@ export async function createBlockRange(formData: FormData) {
   const startTime = formData.get("startTime") as string;
   const endTime = formData.get("endTime") as string;
   const reason = (formData.get("reason") as string | null)?.trim() ?? "";
+  const allDay = isAllDay(formData);
 
-  if (!dateFrom || !dateTo || !startTime || !endTime) throw new Error("Campos obrigatórios ausentes");
-
-  const [fy, fm, fd] = dateFrom.split("-").map(Number);
-  const [ty, tm, td] = dateTo.split("-").map(Number);
-  const [startH, startM] = startTime.split(":").map(Number);
-  const [endH, endM] = endTime.split(":").map(Number);
-
-  if ([fy, fm, fd, ty, tm, td, startH, startM, endH, endM].some(isNaN)) {
-    throw new Error("Data ou horário inválido");
+  if (!dateFrom || !dateTo || (!allDay && (!startTime || !endTime))) {
+    throw new Error("Campos obrigatórios ausentes");
   }
+
+  const [fy, fm, fd] = parseDateParts(dateFrom);
+  const [ty, tm, td] = parseDateParts(dateTo);
+  const [startH, startM] = allDay ? [0, 0] : parseTimeParts(startTime);
+  const [endH, endM] = allDay ? [0, 0] : parseTimeParts(endTime);
 
   const fromMs = Date.UTC(fy, fm - 1, fd);
   const toMs = Date.UTC(ty, tm - 1, td);
@@ -106,10 +141,14 @@ export async function createBlockRange(formData: FormData) {
     const month = d.getUTCMonth() + 1;
     const day = d.getUTCDate();
 
-    const startsAt = tz.fromLocalParts(year, month - 1, day, startH, startM);
-    const endsAt = tz.fromLocalParts(year, month - 1, day, endH, endM);
+    const { startsAt, endsAt } = allDay
+      ? getFullDayWindow(tz, year, month, day)
+      : {
+        startsAt: tz.fromLocalParts(year, month - 1, day, startH, startM),
+        endsAt: tz.fromLocalParts(year, month - 1, day, endH, endM),
+      };
 
-    if (endsAt <= startsAt) continue;
+    if (endsAt <= startsAt) throw new Error("Horário de fim deve ser após o início");
     await gateway.createBlockEvent({ clinicId, startsAt, endsAt, reason });
   }
 

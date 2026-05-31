@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Timer, CalendarClock, Clock, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare } from "lucide-react";
+import { Timer, CalendarClock, Clock, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
@@ -12,6 +12,8 @@ import {
   updateClinicOperationalSettings,
 } from "./playbook-version-actions";
 import { toggleAutoReply } from "./actions";
+import type { MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
+import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
 
 type Version = {
   id: string;
@@ -27,6 +29,15 @@ type ClinicData = {
   postAppointmentBufferMinutes: number | null;
   businessHours: string | null;
   greetingMessage: string | null;
+  menuItems: MenuItem[] | null;
+};
+
+const INTENT_LABELS: Record<MenuItemIntent, string> = {
+  procedures: "Procedimentos",
+  book_appointment: "Agendamento",
+  price_inquiry: "Preços / Pagamento",
+  location: "Localização",
+  needs_human: "Falar com especialista",
 };
 
 type Tab = "geral" | "playbooks" | "procedimentos";
@@ -290,13 +301,121 @@ function NewVersionCard() {
   );
 }
 
-const DEFAULT_MENU = `1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
+function MenuEditor({
+  items,
+  onChange,
+}: {
+  items: MenuItem[];
+  onChange: (items: MenuItem[]) => void;
+}) {
+  function updateLabel(index: number, label: string) {
+    const next = items.map((item, i) => (i === index ? { ...item, label } : item));
+    onChange(next);
+  }
+
+  function toggleEnabled(index: number) {
+    const next = items.map((item, i) => (i === index ? { ...item, enabled: !item.enabled } : item));
+    onChange(next);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      {items.map((item, i) => (
+        <div
+          key={item.intent}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            background: item.enabled ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.01)",
+            border: `1px solid ${item.enabled ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.04)"}`,
+            borderRadius: "8px",
+            padding: "10px 12px",
+            transition: "all 150ms",
+          }}
+        >
+          <GripVertical size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />
+          <span style={{
+            width: "22px",
+            height: "22px",
+            borderRadius: "6px",
+            background: item.enabled ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.04)",
+            border: `1px solid ${item.enabled ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.06)"}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "11px",
+            fontWeight: 700,
+            color: item.enabled ? "#34d399" : "#3f3f46",
+            flexShrink: 0,
+          }}>
+            {item.number}
+          </span>
+          <input
+            value={item.label}
+            onChange={(e) => updateLabel(i, e.target.value)}
+            disabled={!item.enabled}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: item.enabled ? "#e4e4e7" : "#52525b",
+              fontSize: "13px",
+              fontFamily: "inherit",
+            }}
+          />
+          <span className="menu-intent-label" style={{ fontSize: "10px", color: "#3f3f46", flexShrink: 0, minWidth: "100px", textAlign: "right" }}>
+            {INTENT_LABELS[item.intent]}
+          </span>
+          <button
+            onClick={() => toggleEnabled(i)}
+            title={item.enabled ? "Desativar item" : "Ativar item"}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: item.enabled ? "#34d399" : "#3f3f46",
+              display: "flex",
+              alignItems: "center",
+              padding: "2px",
+              flexShrink: 0,
+            }}
+          >
+            <div style={{
+              width: "28px",
+              height: "16px",
+              borderRadius: "8px",
+              background: item.enabled ? "#10b981" : "rgba(255,255,255,0.08)",
+              position: "relative",
+              transition: "background 200ms",
+              flexShrink: 0,
+            }}>
+              <span style={{
+                position: "absolute",
+                top: "2px",
+                left: item.enabled ? "14px" : "2px",
+                width: "12px",
+                height: "12px",
+                borderRadius: "50%",
+                background: "#fff",
+                transition: "left 200ms",
+              }} />
+            </div>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function GeralTab({ clinic }: { clinic: ClinicData }) {
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
 
   const [greetingMessage, setGreetingMessage] = useState(clinic.greetingMessage ?? "");
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(clinic.menuItems ?? DEFAULT_MENU_ITEMS);
   const [businessHours, setBusinessHours] = useState(clinic.businessHours ?? "");
   const [takeoverTtlHours, setTakeoverTtlHours] = useState(clinic.takeoverTtlHours ?? 4);
   const [postAppointmentBufferMinutes, setPostAppointmentBufferMinutes] = useState(clinic.postAppointmentBufferMinutes ?? 60);
@@ -306,6 +425,7 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
 
   const triggerSave = useCallback((patch: {
     greetingMessage?: string;
+    menuItems?: MenuItem[];
     businessHours?: string;
     takeoverTtlHours?: number;
     postAppointmentBufferMinutes?: number;
@@ -316,6 +436,7 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
       setSaving(true);
       await updateClinicOperationalSettings({
         greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
+        menuItems: patch.menuItems ?? menuItems,
         businessHours: (patch.businessHours ?? businessHours) || null,
         takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
         postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
@@ -323,13 +444,23 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
       setSaving(false);
       setSaved(true);
     }, 1200);
-  }, [greetingMessage, businessHours, takeoverTtlHours, postAppointmentBufferMinutes]);
+  }, [greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes]);
 
   function handleToggle() {
     const next = !enabled;
     setEnabled(next);
     startToggleTransition(async () => { await toggleAutoReply(!next); });
   }
+
+  function handleMenuChange(next: MenuItem[]) {
+    setMenuItems(next);
+    triggerSave({ menuItems: next });
+  }
+
+  const menuPreview = menuItems
+    .filter(i => i.enabled)
+    .map(i => `${i.number}. ${i.label}`)
+    .join("\n");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px", maxWidth: "680px" }}>
@@ -365,15 +496,15 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
         </div>
       </div>
 
-      {/* Saudação e Menu */}
+      {/* Texto de boas-vindas */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <MessageSquare size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
           <div>
-            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Saudação inicial</p>
-            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Mensagem enviada quando o lead inicia contato pela primeira vez</p>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Texto de boas-vindas</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Aparece antes do menu quando o lead inicia o contato</p>
           </div>
         </div>
         <textarea
@@ -382,19 +513,39 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
             setGreetingMessage(e.target.value);
             triggerSave({ greetingMessage: e.target.value });
           }}
-          placeholder={`Olá! Sou a assistente virtual da clínica. Como posso ajudá-lo?\n\n${DEFAULT_MENU}`}
-          rows={5}
+          placeholder={`Olá! Sou a assistente virtual da ${clinic.name ?? "clínica"}. Como posso ajudá-lo?`}
+          rows={3}
           style={{ ...geralInputStyle, resize: "vertical" }}
         />
-        {!greetingMessage.trim() && (
-          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "8px", padding: "10px 14px" }}>
-            <p style={{ margin: "0 0 6px", fontSize: "10px", fontWeight: 700, color: "#3f3f46", letterSpacing: "0.08em" }}>MENU PADRÃO ATIVO</p>
-            <p style={{ margin: 0, fontSize: "12px", color: "#3f3f46", whiteSpace: "pre-line", lineHeight: 1.7 }}>{DEFAULT_MENU}</p>
-          </div>
-        )}
         <p style={{ margin: 0, fontSize: "11px", color: "#3f3f46" }}>
-          Se vazio, a IA usa o menu padrão de 5 opções. Preenchendo aqui, substitui o menu inteiro por texto livre.
+          Se vazio, usa o texto padrão da IA. O menu de opções é exibido logo abaixo deste texto.
         </p>
+      </div>
+
+      {/* Menu de opções */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={iconBoxStyle}>
+            <Plus size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Menu de opções</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>
+              Itens exibidos ao lead. Edite os rótulos ou desative itens que não se aplicam à sua clínica.
+            </p>
+          </div>
+        </div>
+
+        <MenuEditor items={menuItems} onChange={handleMenuChange} />
+
+        {/* Preview */}
+        <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "14px 16px" }}>
+          <p style={{ margin: "0 0 8px", fontSize: "10px", fontWeight: 700, color: "#3f3f46", letterSpacing: "0.08em" }}>PRÉVIA NO WHATSAPP</p>
+          <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#52525b", fontStyle: "italic" }}>
+            {greetingMessage || `Seja bem-vindo à ${clinic.name ?? "clínica"}. Como posso ajudá-lo?`}
+          </p>
+          <p style={{ margin: 0, fontSize: "13px", color: "#a1a1aa", whiteSpace: "pre-line", lineHeight: 1.8 }}>{menuPreview}</p>
+        </div>
       </div>
 
       {/* Horário de funcionamento */}
@@ -533,6 +684,7 @@ export function IASettingsClient({ clinic, versions }: { clinic: ClinicData; ver
           .ia-content { padding: 20px 16px; }
           .ia-versions-grid { grid-template-columns: 1fr; }
           .ia-geral-grid { grid-template-columns: 1fr; }
+          .menu-intent-label { display: none; }
         }
       `}</style>
 

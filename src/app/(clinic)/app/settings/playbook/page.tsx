@@ -4,6 +4,7 @@ import { db } from "@/infrastructure/db/client";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
+import type { MenuItem } from "@/domain/entities/clinic";
 
 async function getData() {
   const clinicId = process.env.PILOT_CLINIC_ID!;
@@ -16,6 +17,7 @@ async function getData() {
         postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
         businessHours: clinics.businessHours,
         greetingMessage: clinics.greetingMessage,
+        menuItems: clinics.menuItems,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
@@ -47,6 +49,7 @@ export default async function PlaybookPage() {
         postAppointmentBufferMinutes: clinic?.postAppointmentBufferMinutes ?? 60,
         businessHours: clinic?.businessHours ?? null,
         greetingMessage: clinic?.greetingMessage ?? null,
+        menuItems: (clinic?.menuItems as MenuItem[] | null) ?? null,
       }}
       versions={versions.map((v) => ({
         id: v.id,
