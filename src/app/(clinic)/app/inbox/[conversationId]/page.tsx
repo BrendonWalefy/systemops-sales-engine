@@ -123,6 +123,30 @@ export default async function ConversationPage({
         </div>
       </div>
 
+      {/* ── Barra de status da IA — sticky, mobile only ── */}
+      <div className="conv-ai-bar">
+        <div className={`conv-ai-bar-status ${conv.aiPaused ? "paused" : "active"}`}>
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              flexShrink: 0,
+              background: conv.aiPaused ? "var(--warning)" : "var(--accent)",
+              boxShadow: conv.aiPaused ? "0 0 5px var(--warning)" : "0 0 5px var(--accent)",
+              display: "inline-block",
+            }}
+          />
+          {conv.aiPaused ? "IA pausada" : "IA respondendo"}
+        </div>
+        <AiPauseButton
+          conversationId={conversationId}
+          leadId={lead.id}
+          aiPaused={conv.aiPaused}
+          compact
+        />
+      </div>
+
       {conv.needsAttention && (
         <div className="attention-banner-conv">
           <AlertTriangle size={14} />
