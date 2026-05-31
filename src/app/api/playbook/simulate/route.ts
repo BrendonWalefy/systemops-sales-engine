@@ -9,6 +9,7 @@ import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google
 import type { ActionResult, ComposedResponse } from "@/core/intelligence/ResponseComposer";
 import type { Message } from "@/domain/entities/conversation";
 import type { IntentClassification, IntentType } from "@/core/intelligence/IntentClassifier";
+import { verifyToken, COOKIE_NAME } from "@/lib/session";
 
 const CLINIC_ID = process.env.PILOT_CLINIC_ID!;
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
@@ -301,15 +302,15 @@ function mockCompose(actionResult: ActionResult): ComposedResponse {
 // ── Handler principal ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // ── Autenticação — rejeita sem chave a não ser que SIMULATE_ALLOW_UNAUTHENTICATED=true ──
+  // ── Autenticação ──────────────────────────────────────────────────────────────
+  // Aceita: (1) session cookie válido (sandbox interno), (2) x-simulate-key (omniQA / externo)
+  const sessionToken = req.cookies.get(COOKIE_NAME)?.value;
+  const hasValidSession = sessionToken ? !!(await verifyToken(sessionToken)) : false;
+  const hasValidApiKey = !!SIMULATE_API_KEY && req.headers.get("x-simulate-key") === SIMULATE_API_KEY;
   const allowUnauthenticated = process.env.SIMULATE_ALLOW_UNAUTHENTICATED === "true";
-  if (!allowUnauthenticated) {
-    if (!SIMULATE_API_KEY) {
-      return NextResponse.json({ error: "SIMULATE_API_KEY not configured" }, { status: 500 });
-    }
-    if (req.headers.get("x-simulate-key") !== SIMULATE_API_KEY) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+
+  if (!allowUnauthenticated && !hasValidSession && !hasValidApiKey) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const isE2EMode = process.env.DISABLE_REAL_OPENAI === "true" || process.env.E2E_MODE === "true";
