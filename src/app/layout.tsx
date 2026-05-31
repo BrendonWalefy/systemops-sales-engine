@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ViewportHeightFix } from "@/components/viewport-height-fix";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -27,7 +28,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        <ViewportHeightFix />
+        {children}
+      </body>
     </html>
   );
 }
