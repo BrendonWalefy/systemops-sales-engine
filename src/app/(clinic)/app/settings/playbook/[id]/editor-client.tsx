@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, ChevronLeft, RefreshCw } from "lucide-react";
+import { Plus, X, ChevronLeft, Send, Trash2 } from "lucide-react";
 import { updatePlaybookVersion, updateClinicOperationalSettings, createPlaybookVersion } from "../playbook-version-actions";
 
 type Objection = { objection: string; response: string };
@@ -17,6 +17,7 @@ type EditorData = {
   businessHours: string;
   takeoverTtlHours: number;
   postAppointmentBufferMinutes: number;
+  greetingMessage: string;
 };
 
 type Props = {
@@ -43,36 +44,253 @@ function completude(data: EditorData): number {
   return Math.round((filled / 6) * 100);
 }
 
-function AIPreview({ data, regenerateKey }: { data: EditorData; regenerateKey: number }) {
-  const specialty = data.specialty.trim() || "sua especialidade";
-  const hours = data.businessHours.trim() || "horário comercial";
-  const toneLabels: Record<string, string> = {
-    acolhedor: "acolhedor",
-    tecnico: "técnico e objetivo",
-    persuasivo: "persuasivo",
-    luxo: "exclusivo",
-  };
-  const tone = toneLabels[data.toneOfVoice] ?? data.toneOfVoice;
+type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
+
+function PlaybookSandbox({ data }: { data: EditorData }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  async function send() {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const next: ChatMessage[] = [...messages, { role: "user", text }];
+    setMessages(next);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/playbook/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: messages,
+          playbook: {
+            specialty: data.specialty,
+            procedureDescription: data.procedureDescription,
+            toneOfVoice: data.toneOfVoice,
+            differentials: data.differentials,
+            commercialPolicy: data.commercialPolicy,
+            greetingMessage: data.greetingMessage,
+          },
+        }),
+      });
+      const json = await res.json();
+      setMessages((prev) => [...prev, { role: "assistant", text: json.text ?? "Erro ao obter resposta.", intent: json.intent }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", text: "Erro de conexão." }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  }
+
+  const isEmpty = messages.length === 0;
 
   return (
     <div
-      key={regenerateKey}
       style={{
-        fontFamily: "monospace",
-        fontSize: "12px",
-        lineHeight: 1.8,
-        color: "#71717a",
-        whiteSpace: "pre-wrap",
-        animation: "fadeIn 300ms ease",
+        background: "#0d0d0f",
+        border: "1px solid rgba(255,255,255,0.07)",
+        borderRadius: "14px",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      {"Olá! Sou o assistente da clínica.\nSobre "}
-      <span style={{ color: "#34d399" }}>{specialty}</span>
-      {" — atendemos no\nhorário "}
-      <span style={{ color: "#34d399" }}>{hours}</span>
-      {" com tom\n"}
-      <span style={{ color: "#34d399" }}>{tone}</span>
-      {". Posso te ajudar a agendar\numa avaliação?"}
+      {/* Header */}
+      <div
+        style={{
+          padding: "14px 16px 10px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid rgba(255,255,255,0.05)",
+        }}
+      >
+        <div>
+          <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#71717a", letterSpacing: "0.04em" }}>
+            Testar Playbook
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#3f3f46" }}>
+            Simula respostas com a config atual
+          </p>
+        </div>
+        {!isEmpty && (
+          <button
+            onClick={() => setMessages([])}
+            title="Limpar conversa"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#52525b",
+              cursor: "pointer",
+              padding: "4px",
+              borderRadius: "4px",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div
+        style={{
+          padding: "12px",
+          minHeight: "160px",
+          maxHeight: "280px",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+        }}
+      >
+        {isEmpty ? (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#3f3f46",
+              fontSize: "12px",
+              textAlign: "center",
+              padding: "20px 0",
+            }}
+          >
+            Digite uma mensagem para ver como a IA responderia com este playbook
+          </div>
+        ) : (
+          messages.map((m, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: m.role === "user" ? "flex-end" : "flex-start",
+                gap: "3px",
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: "85%",
+                  padding: "8px 11px",
+                  borderRadius: m.role === "user" ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
+                  background: m.role === "user" ? "#10b981" : "rgba(255,255,255,0.06)",
+                  color: m.role === "user" ? "#fff" : "#d4d4d8",
+                  fontSize: "12px",
+                  lineHeight: 1.6,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {m.text}
+              </div>
+              {m.role === "assistant" && m.intent && (
+                <span
+                  style={{
+                    fontSize: "9px",
+                    fontWeight: 600,
+                    letterSpacing: "0.07em",
+                    color: "#3f3f46",
+                    padding: "1px 6px",
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: "4px",
+                    border: "1px solid rgba(255,255,255,0.05)",
+                  }}
+                >
+                  {m.intent}
+                </span>
+              )}
+            </div>
+          ))
+        )}
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <div
+              style={{
+                padding: "8px 12px",
+                borderRadius: "12px 12px 12px 2px",
+                background: "rgba(255,255,255,0.06)",
+                color: "#52525b",
+                fontSize: "12px",
+                letterSpacing: "0.1em",
+              }}
+            >
+              •••
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div
+        style={{
+          padding: "10px 12px",
+          borderTop: "1px solid rgba(255,255,255,0.05)",
+          display: "flex",
+          gap: "8px",
+          alignItems: "flex-end",
+        }}
+      >
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="Simular mensagem do lead..."
+          rows={1}
+          disabled={loading}
+          style={{
+            flex: 1,
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "8px",
+            color: "#e4e4e7",
+            fontSize: "12px",
+            padding: "8px 10px",
+            outline: "none",
+            fontFamily: "inherit",
+            resize: "none",
+            lineHeight: 1.5,
+            opacity: loading ? 0.5 : 1,
+          }}
+        />
+        <button
+          onClick={send}
+          disabled={loading || !input.trim()}
+          style={{
+            background: input.trim() && !loading ? "#10b981" : "rgba(255,255,255,0.05)",
+            border: "none",
+            borderRadius: "8px",
+            color: input.trim() && !loading ? "#fff" : "#52525b",
+            cursor: input.trim() && !loading ? "pointer" : "default",
+            padding: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            transition: "all 150ms",
+          }}
+        >
+          <Send size={13} strokeWidth={2} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -82,7 +300,6 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
   const [data, setData] = useState<EditorData>(initialData);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [regenerateKey, setRegenerateKey] = useState(0);
   const [creatingNew, setCreatingNew] = useState(false);
   const versionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clinicSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,6 +332,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
         businessHours: newData.businessHours || null,
         takeoverTtlHours: newData.takeoverTtlHours,
         postAppointmentBufferMinutes: newData.postAppointmentBufferMinutes,
+        greetingMessage: newData.greetingMessage || null,
       });
     }, 1200);
   }, []);
@@ -392,7 +610,20 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
           </Section>
 
           {/* Seções de configuração da clínica */}
-          <Section number="07" title="Horário de funcionamento">
+          <Section number="07" title="Saudação inicial">
+            <textarea
+              value={data.greetingMessage}
+              onChange={(e) => updateClinic({ greetingMessage: e.target.value })}
+              placeholder={"Ex: Olá! Sou a assistente virtual da Ximendes Odontologia. Como posso te ajudar hoje?"}
+              rows={3}
+              style={{ ...inputStyle, resize: "vertical" }}
+            />
+            <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#52525b" }}>
+              Mensagem enviada quando o lead inicia o contato. Se vazia, a IA gera automaticamente.
+            </p>
+          </Section>
+
+          <Section number="08" title="Horário de funcionamento">
             <input
               type="text"
               value={data.businessHours}
@@ -406,7 +637,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
           </Section>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-            <Section number="08" title="Pausa automática (horas)">
+            <Section number="09" title="Pausa automática (horas)">
               <input
                 type="number"
                 value={data.takeoverTtlHours}
@@ -422,7 +653,7 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
               </p>
             </Section>
 
-            <Section number="09" title="Intervalo entre atendimentos (min)">
+            <Section number="10" title="Intervalo entre atendimentos (min)">
               <input
                 type="number"
                 value={data.postAppointmentBufferMinutes}
@@ -443,73 +674,49 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
 
         {/* Right panel */}
         <div style={{ position: "sticky", top: "72px", display: "flex", flexDirection: "column", gap: "16px" }}>
+          {/* Sandbox */}
+          <PlaybookSandbox data={data} />
+
+          {/* Completude */}
           <div
             style={{
               background: "#0d0d0f",
               border: "1px solid rgba(255,255,255,0.07)",
               borderRadius: "14px",
-              padding: "20px",
+              padding: "16px 20px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
-              <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#71717a", letterSpacing: "0.04em" }}>
-                Visualização da IA
-              </p>
-              <button
-                onClick={() => setRegenerateKey((k) => k + 1)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  background: "transparent",
-                  border: "none",
-                  color: "#10b981",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  letterSpacing: "0.04em",
-                  cursor: "pointer",
-                  padding: "4px 0",
-                }}
-              >
-                <RefreshCw size={11} strokeWidth={2.5} />
-                REGENERAR
-              </button>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "12px",
+                color: "#52525b",
+                marginBottom: "8px",
+              }}
+            >
+              <span>Completude do playbook</span>
+              <span style={{ color: pct === 100 ? "#34d399" : "#71717a", fontWeight: 600 }}>
+                {pct}%
+              </span>
             </div>
-            <AIPreview data={data} regenerateKey={regenerateKey} />
-
-            <div style={{ marginTop: "20px" }}>
+            <div
+              style={{
+                height: "4px",
+                background: "rgba(255,255,255,0.06)",
+                borderRadius: "2px",
+                overflow: "hidden",
+              }}
+            >
               <div
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: "12px",
-                  color: "#52525b",
-                  marginBottom: "8px",
-                }}
-              >
-                <span>Completude</span>
-                <span style={{ color: pct === 100 ? "#34d399" : "#71717a", fontWeight: 600 }}>
-                  {pct}%
-                </span>
-              </div>
-              <div
-                style={{
-                  height: "4px",
-                  background: "rgba(255,255,255,0.06)",
+                  height: "100%",
+                  width: `${pct}%`,
+                  background: "#10b981",
                   borderRadius: "2px",
-                  overflow: "hidden",
+                  transition: "width 300ms ease",
                 }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${pct}%`,
-                    background: "#10b981",
-                    borderRadius: "2px",
-                    transition: "width 300ms ease",
-                  }}
-                />
-              </div>
+              />
             </div>
           </div>
 

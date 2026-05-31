@@ -25,6 +25,7 @@ export default async function PlaybookEditorPage({
         businessHours: clinics.businessHours,
         takeoverTtlHours: clinics.takeoverTtlHours,
         postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
+        greetingMessage: clinics.greetingMessage,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
@@ -48,6 +49,7 @@ export default async function PlaybookEditorPage({
         businessHours: clinicRow?.businessHours ?? "",
         takeoverTtlHours: clinicRow?.takeoverTtlHours ?? 4,
         postAppointmentBufferMinutes: clinicRow?.postAppointmentBufferMinutes ?? 60,
+        greetingMessage: clinicRow?.greetingMessage ?? "",
       }}
     />
   );

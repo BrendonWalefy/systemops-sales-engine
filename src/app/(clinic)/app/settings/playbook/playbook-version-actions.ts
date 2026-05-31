@@ -150,6 +150,7 @@ export async function updateClinicOperationalSettings(data: {
   businessHours?: string | null;
   takeoverTtlHours?: number;
   postAppointmentBufferMinutes?: number;
+  greetingMessage?: string | null;
 }) {
   await db
     .update(clinics)
