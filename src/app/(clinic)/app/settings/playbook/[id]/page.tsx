@@ -21,12 +21,7 @@ export default async function PlaybookEditorPage({
       .where(and(eq(playbookVersions.id, id), eq(playbookVersions.clinicId, clinicId)))
       .limit(1),
     db
-      .select({
-        businessHours: clinics.businessHours,
-        takeoverTtlHours: clinics.takeoverTtlHours,
-        postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
-        greetingMessage: clinics.greetingMessage,
-      })
+      .select({ greetingMessage: clinics.greetingMessage })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
       .limit(1)
@@ -39,6 +34,7 @@ export default async function PlaybookEditorPage({
     <PlaybookEditorClient
       id={version.id}
       name={version.name}
+      greetingMessage={clinicRow?.greetingMessage ?? ""}
       initialData={{
         specialty: version.specialty ?? "",
         procedureDescription: version.procedureDescription ?? "",
@@ -46,10 +42,6 @@ export default async function PlaybookEditorPage({
         differentials: version.differentials.length > 0 ? version.differentials : [""],
         commercialPolicy: version.commercialPolicy ?? "",
         objections: version.objections.length > 0 ? version.objections : [],
-        businessHours: clinicRow?.businessHours ?? "",
-        takeoverTtlHours: clinicRow?.takeoverTtlHours ?? 4,
-        postAppointmentBufferMinutes: clinicRow?.postAppointmentBufferMinutes ?? 60,
-        greetingMessage: clinicRow?.greetingMessage ?? "",
       }}
     />
   );

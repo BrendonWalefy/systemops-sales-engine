@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Send, Trash2, ChevronRight, GripVertical } from "lucide-react";
-import { updatePlaybookVersion, updateClinicOperationalSettings } from "../playbook-version-actions";
+import { updatePlaybookVersion } from "../playbook-version-actions";
 
 type Objection = { objection: string; response: string };
 
@@ -14,16 +14,13 @@ type EditorData = {
   differentials: string[];
   commercialPolicy: string;
   objections: Objection[];
-  businessHours: string;
-  takeoverTtlHours: number;
-  postAppointmentBufferMinutes: number;
-  greetingMessage: string;
 };
 
 type Props = {
   id: string;
   name: string;
   initialData: EditorData;
+  greetingMessage: string;
 };
 
 const TONES = [
@@ -46,7 +43,7 @@ function completude(data: EditorData): number {
 
 type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
 
-function PlaybookSandbox({ data }: { data: EditorData }) {
+function PlaybookSandbox({ data, greetingMessage }: { data: EditorData; greetingMessage: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -76,7 +73,7 @@ function PlaybookSandbox({ data }: { data: EditorData }) {
             toneOfVoice: data.toneOfVoice,
             differentials: data.differentials,
             commercialPolicy: data.commercialPolicy,
-            greetingMessage: data.greetingMessage,
+            greetingMessage,
           },
         }),
       });
@@ -158,13 +155,12 @@ function PlaybookSandbox({ data }: { data: EditorData }) {
   );
 }
 
-export function PlaybookEditorClient({ id, name, initialData }: Props) {
+export function PlaybookEditorClient({ id, name, initialData, greetingMessage }: Props) {
   const router = useRouter();
   const [data, setData] = useState<EditorData>(initialData);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const versionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clinicSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerVersionSave = useCallback(
     (newData: EditorData) => {
@@ -187,24 +183,8 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
     [id],
   );
 
-  const triggerClinicSave = useCallback((newData: EditorData) => {
-    if (clinicSaveTimer.current) clearTimeout(clinicSaveTimer.current);
-    clinicSaveTimer.current = setTimeout(async () => {
-      await updateClinicOperationalSettings({
-        businessHours: newData.businessHours || null,
-        takeoverTtlHours: newData.takeoverTtlHours,
-        postAppointmentBufferMinutes: newData.postAppointmentBufferMinutes,
-        greetingMessage: newData.greetingMessage || null,
-      });
-    }, 1200);
-  }, []);
-
   function updateVersion(patch: Partial<EditorData>) {
     setData((prev) => { const next = { ...prev, ...patch }; triggerVersionSave(next); return next; });
-  }
-
-  function updateClinic(patch: Partial<EditorData>) {
-    setData((prev) => { const next = { ...prev, ...patch }; triggerClinicSave(next); return next; });
   }
 
   function updateDifferential(index: number, value: string) {
@@ -372,62 +352,12 @@ export function PlaybookEditorClient({ id, name, initialData }: Props) {
               </div>
             </FieldGroup>
 
-            {/* Configs da clínica (separadas visualmente) */}
-            <div style={{ height: "1px", background: "rgba(255,255,255,0.05)" }} />
-
-            <FieldGroup label="Saudação inicial" hint="Mensagem enviada quando o lead inicia o contato. Se vazia, a IA gera automaticamente.">
-              <textarea
-                value={data.greetingMessage}
-                onChange={(e) => updateClinic({ greetingMessage: e.target.value })}
-                placeholder="Ex: Olá! Sou a assistente virtual da Ximendes Odontologia. Como posso te ajudar hoje?"
-                rows={3}
-                style={{ ...inputStyle, resize: "vertical" }}
-              />
-            </FieldGroup>
-
-            <FieldGroup label="Horário de funcionamento" hint="Usado pela IA para informar leads e para a lógica de agendamento.">
-              <input
-                type="text"
-                value={data.businessHours}
-                onChange={(e) => updateClinic({ businessHours: e.target.value })}
-                placeholder="Ex: Segunda a sexta das 8h às 18h. Sábado das 8h às 13h."
-                style={inputStyle}
-              />
-            </FieldGroup>
-
-            <div className="editor-config-grid" style={{ display: "grid" }}>
-              <FieldGroup label="Pausa automática" hint="Horas até a IA retomar após atendimento humano.">
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <input
-                    type="number"
-                    value={data.takeoverTtlHours}
-                    min={0} max={72}
-                    onChange={(e) => updateClinic({ takeoverTtlHours: parseInt(e.target.value) || 0 })}
-                    style={{ ...inputStyle, width: "80px" }}
-                  />
-                  <span style={{ fontSize: "13px", color: "#52525b" }}>horas</span>
-                </div>
-              </FieldGroup>
-
-              <FieldGroup label="Intervalo entre atendimentos" hint="Buffer de tempo após cada agendamento.">
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <input
-                    type="number"
-                    value={data.postAppointmentBufferMinutes}
-                    min={0} max={240} step={5}
-                    onChange={(e) => updateClinic({ postAppointmentBufferMinutes: parseInt(e.target.value) || 0 })}
-                    style={{ ...inputStyle, width: "80px" }}
-                  />
-                  <span style={{ fontSize: "13px", color: "#52525b" }}>min</span>
-                </div>
-              </FieldGroup>
-            </div>
           </div>
         </div>
 
         {/* Right panel — sticky on desktop, inline on mobile */}
         <div className="editor-right">
-          <PlaybookSandbox data={data} />
+          <PlaybookSandbox data={data} greetingMessage={greetingMessage} />
         </div>
       </div>
 

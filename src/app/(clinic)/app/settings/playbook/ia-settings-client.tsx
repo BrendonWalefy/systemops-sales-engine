@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useTransition, useRef, useEffect } from "react";
+import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Timer, CalendarClock, Clock, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap } from "lucide-react";
+import { Timer, CalendarClock, Clock, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
   duplicatePlaybookVersion,
   deletePlaybookVersion,
   createPlaybookVersion,
+  updateClinicOperationalSettings,
 } from "./playbook-version-actions";
 import { toggleAutoReply } from "./actions";
 
@@ -25,6 +26,7 @@ type ClinicData = {
   takeoverTtlHours: number | null;
   postAppointmentBufferMinutes: number | null;
   businessHours: string | null;
+  greetingMessage: string | null;
 };
 
 type Tab = "geral" | "playbooks" | "procedimentos";
@@ -288,21 +290,53 @@ function NewVersionCard() {
   );
 }
 
-function GeralTab({ clinic, iaVersionsGridClass }: { clinic: ClinicData; iaVersionsGridClass?: string }) {
+const DEFAULT_MENU = `1. Procedimentos\n2. Agendar horário\n3. Formas de pagamento\n4. Localização\n5. Falar com um especialista`;
+
+function GeralTab({ clinic }: { clinic: ClinicData }) {
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
-  const [isPending, startTransition] = useTransition();
+  const [togglePending, startToggleTransition] = useTransition();
+
+  const [greetingMessage, setGreetingMessage] = useState(clinic.greetingMessage ?? "");
+  const [businessHours, setBusinessHours] = useState(clinic.businessHours ?? "");
+  const [takeoverTtlHours, setTakeoverTtlHours] = useState(clinic.takeoverTtlHours ?? 4);
+  const [postAppointmentBufferMinutes, setPostAppointmentBufferMinutes] = useState(clinic.postAppointmentBufferMinutes ?? 60);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerSave = useCallback((patch: {
+    greetingMessage?: string;
+    businessHours?: string;
+    takeoverTtlHours?: number;
+    postAppointmentBufferMinutes?: number;
+  }) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSaved(false);
+    saveTimer.current = setTimeout(async () => {
+      setSaving(true);
+      await updateClinicOperationalSettings({
+        greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
+        businessHours: (patch.businessHours ?? businessHours) || null,
+        takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
+        postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
+      });
+      setSaving(false);
+      setSaved(true);
+    }, 1200);
+  }, [greetingMessage, businessHours, takeoverTtlHours, postAppointmentBufferMinutes]);
 
   function handleToggle() {
     const next = !enabled;
     setEnabled(next);
-    startTransition(async () => { await toggleAutoReply(!next); });
+    startToggleTransition(async () => { await toggleAutoReply(!next); });
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "640px" }}>
-      {/* Status IA */}
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px", maxWidth: "680px" }}>
+
+      {/* Status da IA */}
       <div style={cardStyle}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
             <div style={iconBoxStyle}>
               <Zap size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
@@ -310,18 +344,8 @@ function GeralTab({ clinic, iaVersionsGridClass }: { clinic: ClinicData; iaVersi
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Status da IA</strong>
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: "5px",
-                    ...(enabled
-                      ? { background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }
-                      : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }),
-                  }}
-                >
-                  {enabled ? "Active" : "Pausada"}
+                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(enabled ? { background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
+                  {enabled ? "Ativa" : "Pausada"}
                 </span>
               </div>
               <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>Recepcionista responde automaticamente via WhatsApp</p>
@@ -334,61 +358,124 @@ function GeralTab({ clinic, iaVersionsGridClass }: { clinic: ClinicData; iaVersi
                 <span style={{ fontSize: "12px", color: "#34d399", fontWeight: 500 }}>IA Online</span>
               </div>
             )}
-            <button
-              onClick={handleToggle}
-              disabled={isPending}
-              style={{
-                width: "44px",
-                height: "24px",
-                borderRadius: "12px",
-                border: "none",
-                background: enabled ? "#10b981" : "rgba(255,255,255,0.1)",
-                cursor: isPending ? "default" : "pointer",
-                position: "relative",
-                transition: "background 200ms",
-                flexShrink: 0,
-                opacity: isPending ? 0.7 : 1,
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  top: "3px",
-                  left: enabled ? "23px" : "3px",
-                  width: "18px",
-                  height: "18px",
-                  borderRadius: "50%",
-                  background: "#fff",
-                  transition: "left 200ms",
-                }}
-              />
+            <button onClick={handleToggle} disabled={togglePending} style={{ width: "44px", height: "24px", borderRadius: "12px", border: "none", background: enabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: togglePending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: togglePending ? 0.7 : 1 }}>
+              <span style={{ position: "absolute", top: "3px", left: enabled ? "23px" : "3px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Quick settings read-only info */}
-      <div className={iaVersionsGridClass ?? "ia-geral-grid"} style={{ display: "grid", gap: "10px" }}>
-        <InfoCard icon={<Timer size={14} strokeWidth={1.8} style={{ color: "#34d399" }} />} label="Pausa Automática" value={`${clinic.takeoverTtlHours ?? 4}h`} />
-        <InfoCard icon={<CalendarClock size={14} strokeWidth={1.8} style={{ color: "#34d399" }} />} label="Intervalo" value={`${clinic.postAppointmentBufferMinutes ?? 60}min`} />
-        <InfoCard icon={<Clock size={14} strokeWidth={1.8} style={{ color: "#34d399" }} />} label="Horário" value={clinic.businessHours ? clinic.businessHours.slice(0, 18) : "—"} />
+      {/* Saudação e Menu */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={iconBoxStyle}>
+            <MessageSquare size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+          </div>
+          <div>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Saudação inicial</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Mensagem enviada quando o lead inicia contato pela primeira vez</p>
+          </div>
+        </div>
+        <textarea
+          value={greetingMessage}
+          onChange={(e) => {
+            setGreetingMessage(e.target.value);
+            triggerSave({ greetingMessage: e.target.value });
+          }}
+          placeholder={`Olá! Sou a assistente virtual da clínica. Como posso ajudá-lo?\n\n${DEFAULT_MENU}`}
+          rows={5}
+          style={{ ...geralInputStyle, resize: "vertical" }}
+        />
+        {!greetingMessage.trim() && (
+          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "8px", padding: "10px 14px" }}>
+            <p style={{ margin: "0 0 6px", fontSize: "10px", fontWeight: 700, color: "#3f3f46", letterSpacing: "0.08em" }}>MENU PADRÃO ATIVO</p>
+            <p style={{ margin: 0, fontSize: "12px", color: "#3f3f46", whiteSpace: "pre-line", lineHeight: 1.7 }}>{DEFAULT_MENU}</p>
+          </div>
+        )}
+        <p style={{ margin: 0, fontSize: "11px", color: "#3f3f46" }}>
+          Se vazio, a IA usa o menu padrão de 5 opções. Preenchendo aqui, substitui o menu inteiro por texto livre.
+        </p>
       </div>
 
-      <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#3f3f46" }}>
-        Para editar horários e comportamento da IA, acesse o editor de cada playbook.
-      </p>
-    </div>
-  );
-}
-
-function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div style={{ ...cardStyle, flexDirection: "column", gap: "8px", padding: "14px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        {icon}
-        <span style={{ fontSize: "11px", color: "#52525b" }}>{label}</span>
+      {/* Horário de funcionamento */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={iconBoxStyle}>
+            <Clock size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+          </div>
+          <div>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Horário de funcionamento</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Usado pela IA ao informar leads e na lógica de agendamento</p>
+          </div>
+        </div>
+        <input
+          type="text"
+          value={businessHours}
+          onChange={(e) => {
+            setBusinessHours(e.target.value);
+            triggerSave({ businessHours: e.target.value });
+          }}
+          placeholder="Ex: Segunda a sexta das 8h às 18h. Sábado das 8h às 13h."
+          style={geralInputStyle}
+        />
       </div>
-      <span style={{ fontSize: "14px", fontWeight: 600, color: "#e4e4e7" }}>{value}</span>
+
+      {/* Comportamento automático */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={iconBoxStyle}>
+            <Timer size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+          </div>
+          <div>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Comportamento automático</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Controla quando a IA retoma e quanto tempo reserva entre atendimentos</p>
+          </div>
+        </div>
+        <div className="ia-geral-grid" style={{ display: "grid", gap: "12px" }}>
+          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+            <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Pausa automática</p>
+            <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Horas até a IA retomar após atendimento humano</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="number"
+                value={takeoverTtlHours}
+                min={0} max={72}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value) || 0;
+                  setTakeoverTtlHours(v);
+                  triggerSave({ takeoverTtlHours: v });
+                }}
+                style={{ ...geralInputStyle, width: "80px" }}
+              />
+              <span style={{ fontSize: "13px", color: "#52525b" }}>horas</span>
+            </div>
+          </div>
+          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+            <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Intervalo entre atendimentos</p>
+            <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Buffer de tempo reservado após cada agendamento</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="number"
+                value={postAppointmentBufferMinutes}
+                min={0} max={240} step={5}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value) || 0;
+                  setPostAppointmentBufferMinutes(v);
+                  triggerSave({ postAppointmentBufferMinutes: v });
+                }}
+                style={{ ...geralInputStyle, width: "80px" }}
+              />
+              <span style={{ fontSize: "13px", color: "#52525b" }}>min</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Status de save */}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#52525b" }}>
+        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: saving ? "#fbbf24" : saved ? "#10b981" : "#3f3f46", flexShrink: 0, display: "inline-block" }} />
+        {saving ? "Salvando..." : saved ? "Configurações salvas" : "Alterações salvas automaticamente"}
+      </div>
     </div>
   );
 }
@@ -511,7 +598,7 @@ export function IASettingsClient({ clinic, versions }: { clinic: ClinicData; ver
 
       {/* Tab content */}
       <div className="ia-content">
-        {tab === "geral" && <GeralTab clinic={clinic} iaVersionsGridClass="ia-geral-grid" />}
+        {tab === "geral" && <GeralTab clinic={clinic} />}
 
         {tab === "playbooks" && (
           <div>
@@ -609,4 +696,17 @@ const menuItemStyle: React.CSSProperties = {
   fontSize: "13px",
   cursor: "pointer",
   textAlign: "left",
+};
+
+const geralInputStyle: React.CSSProperties = {
+  width: "100%",
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(255,255,255,0.09)",
+  borderRadius: "8px",
+  color: "#e4e4e7",
+  fontSize: "14px",
+  padding: "10px 14px",
+  outline: "none",
+  fontFamily: "inherit",
+  boxSizing: "border-box",
 };

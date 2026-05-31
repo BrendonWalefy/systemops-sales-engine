@@ -15,6 +15,7 @@ async function getData() {
         takeoverTtlHours: clinics.takeoverTtlHours,
         postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
         businessHours: clinics.businessHours,
+        greetingMessage: clinics.greetingMessage,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
@@ -45,6 +46,7 @@ export default async function PlaybookPage() {
         takeoverTtlHours: clinic?.takeoverTtlHours ?? 4,
         postAppointmentBufferMinutes: clinic?.postAppointmentBufferMinutes ?? 60,
         businessHours: clinic?.businessHours ?? null,
+        greetingMessage: clinic?.greetingMessage ?? null,
       }}
       versions={versions.map((v) => ({
         id: v.id,
