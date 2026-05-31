@@ -370,7 +370,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "clinicId or playbook required" }, { status: 400 });
     }
 
-    // ── Dados da clínica (timezone, nome, businessHours, menuItems) ──────
+    // ── Dados da clínica (timezone, nome, businessHours, menuItems, address) ──
     const clinicLookupId = body.clinicId ?? CLINIC_ID;
     const clinic = await db
       .select({
@@ -379,6 +379,7 @@ export async function POST(req: NextRequest) {
         businessHours: clinics.businessHours,
         defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
         menuItems: clinics.menuItems,
+        address: clinics.address,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicLookupId))
@@ -389,12 +390,35 @@ export async function POST(req: NextRequest) {
     const clinicName = clinic?.name ?? "Clínica";
     const businessHours = clinic?.businessHours ?? null;
     const durationMinutes = clinic?.defaultAppointmentDurationMinutes ?? 60;
+    const clinicAddress = clinic?.address ?? null;
     const menuItems: MenuItem[] = (clinic?.menuItems as MenuItem[] | null) ?? DEFAULT_MENU_ITEMS;
     const menuText = menuItems.filter((i) => i.enabled).map((i) => `${i.number}. ${i.label}`).join("\n");
     const isFirst = history.length === 0;
 
     function buildGreeting(intro: string): string {
       return intro ? `${intro}\n\n${menuText}` : menuText;
+    }
+
+    // Espelho de resolveMenuSelection do ConversationOrchestrator
+    function resolveMenuSelection(msg: string): { intent: string; subtype?: "procedures" | "location" } | null {
+      const n = msg.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+      const byNumber = menuItems.find((i) => i.enabled && n === String(i.number));
+      if (byNumber) {
+        if (byNumber.intent === "procedures") return { intent: "general_question", subtype: "procedures" };
+        if (byNumber.intent === "location")   return { intent: "general_question", subtype: "location" };
+        return { intent: byNumber.intent };
+      }
+      if (n.includes("procedimento") || n.includes("tratamento") || n.includes("servico"))
+        return { intent: "general_question", subtype: "procedures" };
+      if (n.includes("agendar") || n.includes("horario") || n.includes("marcar") || n.includes("consulta") || n.includes("avaliacao"))
+        return { intent: "book_appointment" };
+      if (n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
+        return { intent: "price_inquiry" };
+      if (n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
+        return { intent: "general_question", subtype: "location" };
+      if (n.includes("especialista") || n.includes("falar") || n.includes("humano") || n.includes("atendente"))
+        return { intent: "needs_human" };
+      return null;
     }
 
     // ── Pré-verificações sem LLM — espelho do ConversationOrchestrator ─────
@@ -416,6 +440,10 @@ export async function POST(req: NextRequest) {
       (h) => h.role === "assistant" && h.intent === "slots_found",
     );
 
+    // isMenuActive: última mensagem da IA foi um greeting (menu foi exibido)
+    const lastAssistant = [...history].reverse().find((h) => h.role === "assistant");
+    const isMenuActive = !hasPendingSlotOffer && lastAssistant?.intent === "greeting";
+
     if (!isFirst && isMenuRerequest(message)) {
       const intro = playbook.greetingMessage.trim() || "Como posso ajudá-lo?";
       return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
@@ -429,7 +457,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
     }
 
-    // ── Estágio 1: classificação de intent via LLM ────────────────────────
+    // ── Resolução de menu (sem LLM) — espelho do Orchestrator ────────────
+    const menuResolution = isMenuActive ? resolveMenuSelection(message) : null;
+
+    // ── Estágio 1: classificação de intent via LLM (bypass se menu resolvido) ──
 
     const conversationHistory: Message[] = history.map((h, i) => ({
       id: `sim-${i}`,
@@ -440,11 +471,22 @@ export async function POST(req: NextRequest) {
       externalId: null,
     }));
 
-    const classification = isE2EMode
+    const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
+
+    const classification = menuResolution
+      ? {
+          intent: menuResolution.intent as IntentType,
+          slotPreference: nullSlotPref,
+          confidence: 1,
+          shouldAskClarification: false,
+          clarificationQuestion: null as null,
+          handoffReason: menuResolution.intent === "needs_human" ? "Lead solicitou falar com um atendente" : null as null,
+        }
+      : isE2EMode
       ? mockClassify(message, hasPendingSlotOffer)
       : await new IntentClassifier().classify(message, conversationHistory, hasPendingSlotOffer);
 
-    // greeting via LLM → retorna menu (igual ao case "greeting" do Orchestrator)
+    // greeting via LLM → retorna menu
     if (classification.intent === "greeting") {
       const salutation = getDayGreeting(timezone);
       const intro = playbook.greetingMessage.trim()
@@ -457,9 +499,16 @@ export async function POST(req: NextRequest) {
 
     const slots = await fetchSlots(timezone, businessHours, durationMinutes);
 
-    // ── Estágio 2: composição de resposta via LLM ─────────────────────────
+    // ── Contexto clínico — resolve subtype de menu (procedimentos/localização) ──
+    let clinicContext = buildClinicContext(playbook);
+    if (menuResolution?.subtype === "procedures") {
+      const desc = playbook.procedureDescription?.trim();
+      clinicContext = `FORMATO: tópicos\nLead selecionou "Procedimentos" no menu. Liste os procedimentos disponíveis em bullet points (•), um por linha, com breve descrição. Separe cada procedimento com uma linha em branco. Sem convite para agendar ao final.\n${desc ?? ""}`;
+    } else if (menuResolution?.subtype === "location") {
+      const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
+      clinicContext = clinicAddress ? `${base}\nEndereço: ${clinicAddress}.` : base;
+    }
 
-    const clinicContext = buildClinicContext(playbook);
     const actionResult = intentToActionResult(classification, clinicContext, clinicName, slots);
 
     const result = isE2EMode
