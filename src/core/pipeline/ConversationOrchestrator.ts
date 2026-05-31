@@ -984,6 +984,7 @@ export class ConversationOrchestrator {
       body: replyText,
       sentAt: new Date(),
       externalId: zapiMessageId ?? null,
+      intent: intent ?? null,
     });
 
     // ── 11. Registra custo do LLM (classifier + composer) ──

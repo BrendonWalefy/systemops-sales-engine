@@ -198,6 +198,7 @@ export const messages = pgTable(
     body: text("body").notNull(),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
     externalId: text("external_id"),
+    intent: text("intent"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -409,6 +410,15 @@ export const playbookVersions = pgTable(
 );
 
 // Lock otimista de slots — previne double-booking
+export const clinicMetrics = pgTable("clinic_metrics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  clinicId: uuid("clinic_id").notNull().references(() => clinics.id),
+  periodFrom: timestamp("period_from", { withTimezone: true }).notNull(),
+  periodTo: timestamp("period_to", { withTimezone: true }).notNull(),
+  data: jsonb("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const slotReservations = pgTable(
   "slot_reservations",
   {

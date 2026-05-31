@@ -1,0 +1,4 @@
+interface:
+  display_name: "SaaS UX Strategy"
+  short_description: "UX premium para SaaS de saúde com IA"
+  default_prompt: "Use $saas-ux-strategy to redesign this SaaS health AI screen with premium UX, clear AI monitoring, and scalable settings."

@@ -130,7 +130,11 @@ export function BlockForm() {
           );
         } else {
           fd.set("date", date);
-          await createBlock(fd);
+          const result = await createBlock(fd);
+          if (result?.error) {
+            setError(result.error);
+            return;
+          }
 
           const dayLabel = formatShortDate(date);
           setSuccess(isFullDay ? `Dia inteiro de ${dayLabel} bloqueado.` : `Bloqueio de ${dayLabel} salvo.`);

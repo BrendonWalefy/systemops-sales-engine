@@ -1,0 +1,83 @@
+export const dynamic = "force-dynamic";
+
+import { db } from "@/infrastructure/db/client";
+import { clinicMetrics, clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { eq, desc } from "drizzle-orm";
+import { SuggestionsClient } from "./suggestions-client";
+
+async function getData() {
+  const clinicId = process.env.PILOT_CLINIC_ID!;
+
+  const [latestMetrics, activeVersion, clinic] = await Promise.all([
+    db
+      .select()
+      .from(clinicMetrics)
+      .where(eq(clinicMetrics.clinicId, clinicId))
+      .orderBy(desc(clinicMetrics.createdAt))
+      .limit(1)
+      .then((r) => r[0] ?? null),
+
+    db
+      .select()
+      .from(playbookVersions)
+      .where(eq(playbookVersions.clinicId, clinicId) && eq(playbookVersions.status, "active") as never)
+      .orderBy(desc(playbookVersions.createdAt))
+      .limit(1)
+      .then((r) => r[0] ?? null),
+
+    db
+      .select({ greetingMessage: clinics.greetingMessage, name: clinics.name })
+      .from(clinics)
+      .where(eq(clinics.id, clinicId))
+      .limit(1)
+      .then((r) => r[0] ?? null),
+  ]);
+
+  return { clinicId, latestMetrics, activeVersion, clinic };
+}
+
+export default async function SuggestionsPage() {
+  const { clinicId, latestMetrics, activeVersion, clinic } = await getData();
+
+  if (!latestMetrics) {
+    return (
+      <div className="p-8">
+        <h1 className="text-xl font-semibold text-white mb-2">Sugestões de Playbook</h1>
+        <p className="text-zinc-400 text-sm">
+          Nenhuma métrica disponível ainda. O sistema coleta dados diariamente para gerar sugestões.
+        </p>
+      </div>
+    );
+  }
+
+  if (!activeVersion) {
+    return (
+      <div className="p-8">
+        <h1 className="text-xl font-semibold text-white mb-2">Sugestões de Playbook</h1>
+        <p className="text-zinc-400 text-sm">
+          Nenhum playbook ativo encontrado. Publique um playbook antes de gerar sugestões.
+        </p>
+      </div>
+    );
+  }
+
+  const currentPlaybook = {
+    specialty: activeVersion.specialty ?? "",
+    procedureDescription: activeVersion.procedureDescription ?? "",
+    toneOfVoice: activeVersion.toneOfVoice ?? "acolhedor",
+    differentials: (activeVersion.differentials as string[] | null) ?? [],
+    commercialPolicy: activeVersion.commercialPolicy ?? "",
+    objections: (activeVersion.objections as Array<{ objection: string; response: string }> | null) ?? [],
+    greetingMessage: clinic?.greetingMessage ?? "",
+  };
+
+  return (
+    <SuggestionsClient
+      clinicId={clinicId}
+      metricsData={latestMetrics.data as Record<string, unknown>}
+      metricsDate={latestMetrics.createdAt.toISOString()}
+      currentPlaybook={currentPlaybook}
+      clinicName={clinic?.name ?? "Clínica"}
+    />
+  );
+}

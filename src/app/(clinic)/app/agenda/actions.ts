@@ -99,7 +99,7 @@ export async function createBlock(formData: FormData) {
       endsAt: tz.fromLocalParts(year, month - 1, day, ...parseTimeParts(endTime)),
     };
 
-  if (endsAt <= startsAt) throw new Error("Horário de fim deve ser após o início");
+  if (endsAt <= startsAt) return { error: "Horário de fim deve ser após o início" };
   await gateway.createBlockEvent({ clinicId, startsAt, endsAt, reason });
 
   revalidatePath("/app/agenda");

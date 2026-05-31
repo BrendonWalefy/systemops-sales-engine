@@ -1,0 +1,1 @@
+ALTER TABLE "clinics" ADD COLUMN "greeting_message" text;

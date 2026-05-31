@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import { clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { eq, desc, and } from "drizzle-orm";
 import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
-import type { ActionResult } from "@/core/intelligence/ResponseComposer";
+import type { ActionResult, ComposedResponse } from "@/core/intelligence/ResponseComposer";
 import type { Message } from "@/domain/entities/conversation";
-import type { IntentClassification } from "@/core/intelligence/IntentClassifier";
+import type { IntentClassification, IntentType } from "@/core/intelligence/IntentClassifier";
 
 const CLINIC_ID = process.env.PILOT_CLINIC_ID!;
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
@@ -23,18 +23,23 @@ const TONE_MAP: Record<string, string> = {
 
 type FormattedSlot = { index: number; label: string; startsAt: string; endsAt: string };
 
+type PlaybookInput = {
+  specialty: string;
+  procedureDescription: string;
+  toneOfVoice: string;
+  differentials: string[];
+  commercialPolicy: string;
+  objections?: { objection: string; response: string }[];
+  greetingMessage: string;
+};
+
 type SimulateBody = {
   message: string;
   history: { role: "user" | "assistant"; text: string; intent?: string }[];
-  playbook: {
-    specialty: string;
-    procedureDescription: string;
-    toneOfVoice: string;
-    differentials: string[];
-    commercialPolicy: string;
-    objections?: { objection: string; response: string }[];
-    greetingMessage: string;
-  };
+  // Modo 1: clinicId → busca playbook ativo do banco (greetingMessage vem de clinics)
+  clinicId?: string;
+  // Modo 2: playbook inline (comportamento original)
+  playbook?: PlaybookInput;
 };
 
 // ── Helpers espelhando ConversationOrchestrator ──────────────────────────────
@@ -140,7 +145,7 @@ async function fetchSlots(
 
 // ── Helpers de conteúdo ──────────────────────────────────────────────────────
 
-function buildPlaybookText(p: SimulateBody["playbook"]): string | null {
+function buildPlaybookText(p: PlaybookInput): string | null {
   const parts: string[] = [];
   if (p.specialty) parts.push(`ESPECIALIDADE: ${p.specialty}`);
   if (p.procedureDescription) parts.push(`\nSOBRE O PROCEDIMENTO:\n${p.procedureDescription}`);
@@ -156,7 +161,7 @@ function buildPlaybookText(p: SimulateBody["playbook"]): string | null {
   return parts.length > 0 ? parts.join("\n") : null;
 }
 
-function buildClinicContext(p: SimulateBody["playbook"]): string {
+function buildClinicContext(p: PlaybookInput): string {
   return [
     p.specialty && `Especialidade: ${p.specialty}`,
     p.procedureDescription && `Sobre: ${p.procedureDescription}`,
@@ -225,25 +230,145 @@ function intentToActionResult(
   }
 }
 
+// ── Mock mode (E2E_MODE=true ou DISABLE_REAL_OPENAI=true) ───────────────────
+
+function makeIntent(
+  intent: IntentType,
+  extra: Partial<IntentClassification> = {},
+): IntentClassification {
+  return {
+    intent,
+    slotPreference: {
+      preferredDate: null,
+      preferredPeriod: null,
+      preferredTime: null,
+      slotChoice: extra.slotPreference?.slotChoice ?? null,
+      identifiedTreatment: null,
+    },
+    confidence: 1,
+    shouldAskClarification: false,
+    clarificationQuestion: null,
+    handoffReason: null,
+    ...extra,
+  };
+}
+
+function mockClassify(message: string, hasPendingSlotOffer: boolean): IntentClassification {
+  const m = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+  if (hasPendingSlotOffer && /^[123]$/.test(m)) {
+    return makeIntent("confirm_slot", { slotPreference: { preferredDate: null, preferredPeriod: null, preferredTime: null, slotChoice: Number(m), identifiedTreatment: null } });
+  }
+  if (/agendar|marcar|quero horario|quero.*(consulta|agenda)/.test(m)) return makeIntent("book_appointment");
+  if (/quanto|preco|valor|custo|caro|plano|parcel/.test(m)) return makeIntent("price_inquiry");
+  if (/dor|urgente|urgencia|sangrament|emergencia/.test(m)) return makeIntent("clinical_urgency");
+  if (/falar com|dentista|humano|especialista|ligar/.test(m)) return makeIntent("needs_human");
+  if (/tchau|ate mais|ate logo|obrigado tchau/.test(m)) return makeIntent("farewell");
+  if (/^(ok|blz|entendi|certo|combinado)[!.]?$/.test(m)) return makeIntent("acknowledgment");
+  if (/horario|disponib|vaga/.test(m)) return makeIntent("check_availability");
+  if (/cancelar|desmarcar/.test(m)) return makeIntent("cancel_appointment");
+  if (/remarcar|reagendar|mudar horario/.test(m)) return makeIntent("reschedule_appointment");
+  if (/meus agendamentos|minhas consultas|quando e minha/.test(m)) return makeIntent("list_appointments");
+
+  return makeIntent("general_question");
+}
+
+const MOCK_TEXTS: Partial<Record<ActionResult["type"], string>> = {
+  slots_found: "[MOCK] Tenho estes horários disponíveis:\n1. Seg 02/Jun às 09h00\n2. Ter 03/Jun às 10h30\n3. Qua 04/Jun às 14h00\n\nQual prefere? Responda com o número.",
+  appointment_confirmed: "[MOCK] Agendamento confirmado! Nossa equipe estará esperando por você.",
+  appointment_cancelled: "[MOCK] Agendamento cancelado com sucesso.",
+  appointment_rescheduled: "[MOCK] Vou verificar novos horários:\n1. Qui 05/Jun às 09h00\n2. Sex 06/Jun às 14h00\n3. Seg 09/Jun às 10h30\n\nQual prefere?",
+  appointments_listed: "[MOCK] Você tem consulta agendada para Seg 02/Jun às 09h00.",
+  price_inquiry: "[MOCK] A avaliação inicial é gratuita. Os valores variam conforme o caso e podem ser parcelados em até 12x.",
+  clinical_urgency: "[MOCK] Entendo que é urgente. Vou acionar a equipe imediatamente — alguém entrará em contato.",
+  handoff_requested: "[MOCK] Claro! Já avisei a equipe e alguém irá responder em breve.",
+  farewell: "[MOCK] Foi um prazer! Qualquer dúvida, é só chamar.",
+  acknowledgment: "[MOCK] Certo! Posso ajudar com mais alguma coisa?",
+  clarification_needed: "[MOCK] Pode me contar um pouco mais sobre o que você precisa?",
+  general_question: "[MOCK] Vou te ajudar com essa dúvida sobre nossa clínica.",
+};
+
+function mockCompose(actionResult: ActionResult): ComposedResponse {
+  return {
+    text: MOCK_TEXTS[actionResult.type] ?? "[MOCK] Estou aqui para ajudar.",
+    model: "mock",
+    promptVersion: "mock-v1",
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+}
+
 // ── Handler principal ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // Autenticação: aceita chave de API (para omniQA) ou sessão de browser (para o admin)
-  if (SIMULATE_API_KEY) {
-    const key = req.headers.get("x-simulate-key");
-    if (key !== SIMULATE_API_KEY) {
+  // ── Autenticação — rejeita sem chave a não ser que SIMULATE_ALLOW_UNAUTHENTICATED=true ──
+  const allowUnauthenticated = process.env.SIMULATE_ALLOW_UNAUTHENTICATED === "true";
+  if (!allowUnauthenticated) {
+    if (!SIMULATE_API_KEY) {
+      return NextResponse.json({ error: "SIMULATE_API_KEY not configured" }, { status: 500 });
+    }
+    if (req.headers.get("x-simulate-key") !== SIMULATE_API_KEY) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
   }
 
+  const isE2EMode = process.env.DISABLE_REAL_OPENAI === "true" || process.env.E2E_MODE === "true";
+
   try {
     const body: SimulateBody = await req.json();
-    const { message, history, playbook } = body;
+    const { message, history } = body;
 
     if (!message?.trim()) {
       return NextResponse.json({ error: "message required" }, { status: 400 });
     }
 
+    // ── Contrato: intent obrigatório em mensagens de assistant ────────────
+    const missingIntent = history.filter((h) => h.role === "assistant" && !h.intent);
+    if (missingIntent.length > 0) {
+      return NextResponse.json({ error: "intent required in assistant history messages" }, { status: 400 });
+    }
+
+    // ── Resolução do playbook: Modo 1 (clinicId) ou Modo 2 (inline) ──────
+    let playbook: PlaybookInput;
+
+    if (body.clinicId) {
+      const [activeVersion, clinicRow] = await Promise.all([
+        db
+          .select()
+          .from(playbookVersions)
+          .where(and(eq(playbookVersions.clinicId, body.clinicId), eq(playbookVersions.status, "active")))
+          .orderBy(desc(playbookVersions.createdAt))
+          .limit(1)
+          .then((r) => r[0] ?? null),
+        db
+          .select({ greetingMessage: clinics.greetingMessage })
+          .from(clinics)
+          .where(eq(clinics.id, body.clinicId))
+          .limit(1)
+          .then((r) => r[0] ?? null),
+      ]);
+
+      if (!activeVersion) {
+        return NextResponse.json({ error: "no active playbook found for this clinic" }, { status: 404 });
+      }
+
+      playbook = {
+        specialty: activeVersion.specialty ?? "",
+        procedureDescription: activeVersion.procedureDescription ?? "",
+        toneOfVoice: activeVersion.toneOfVoice ?? "acolhedor",
+        differentials: (activeVersion.differentials as string[] | null) ?? [],
+        commercialPolicy: activeVersion.commercialPolicy ?? "",
+        objections: (activeVersion.objections as { objection: string; response: string }[] | null) ?? [],
+        greetingMessage: clinicRow?.greetingMessage ?? "",
+      };
+    } else if (body.playbook) {
+      playbook = body.playbook;
+    } else {
+      return NextResponse.json({ error: "clinicId or playbook required" }, { status: 400 });
+    }
+
+    // ── Dados da clínica (timezone, nome, businessHours) ─────────────────
+    const clinicLookupId = body.clinicId ?? CLINIC_ID;
     const clinic = await db
       .select({
         name: clinics.name,
@@ -252,7 +377,7 @@ export async function POST(req: NextRequest) {
         defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
       })
       .from(clinics)
-      .where(eq(clinics.id, CLINIC_ID))
+      .where(eq(clinics.id, clinicLookupId))
       .limit(1)
       .then((r) => r[0]);
 
@@ -305,12 +430,9 @@ export async function POST(req: NextRequest) {
       externalId: null,
     }));
 
-    const classifier = new IntentClassifier();
-    const classification = await classifier.classify(
-      message,
-      conversationHistory,
-      hasPendingSlotOffer,
-    );
+    const classification = isE2EMode
+      ? mockClassify(message, hasPendingSlotOffer)
+      : await new IntentClassifier().classify(message, conversationHistory, hasPendingSlotOffer);
 
     // greeting via LLM → retorna menu (igual ao case "greeting" do Orchestrator)
     if (classification.intent === "greeting") {
@@ -330,23 +452,43 @@ export async function POST(req: NextRequest) {
     const clinicContext = buildClinicContext(playbook);
     const actionResult = intentToActionResult(classification, clinicContext, clinicName, slots);
 
-    const composer = new ResponseComposer();
-    const result = await composer.compose({
-      actionResult,
-      conversationHistory,
-      clinic: {
-        name: clinicName,
-        specialty: playbook.specialty || "Odontologia",
-        toneOfVoice: TONE_MAP[playbook.toneOfVoice] ?? playbook.toneOfVoice,
-        playbook: buildPlaybookText(playbook),
-        commercialPolicy: playbook.commercialPolicy || null,
-      },
-      leadName: null,
-      timezone,
-      isFirstMessage: isFirst,
-    });
+    const result = isE2EMode
+      ? mockCompose(actionResult)
+      : await new ResponseComposer().compose({
+          actionResult,
+          conversationHistory,
+          clinic: {
+            name: clinicName,
+            specialty: playbook.specialty || "Odontologia",
+            toneOfVoice: TONE_MAP[playbook.toneOfVoice] ?? playbook.toneOfVoice,
+            playbook: buildPlaybookText(playbook),
+            commercialPolicy: playbook.commercialPolicy || null,
+          },
+          leadName: null,
+          timezone,
+          isFirstMessage: isFirst,
+        });
 
-    return NextResponse.json({ text: result.text, intent: classification.intent });
+    const debugInfo = process.env.E2E_MODE === "true"
+      ? {
+          playbookBlocksUsed: [
+            playbook.specialty ? "specialty" : null,
+            playbook.procedureDescription ? "procedureDescription" : null,
+            (playbook.differentials?.length ?? 0) > 0 ? "differentials" : null,
+            (playbook.objections?.length ?? 0) > 0 ? "objections" : null,
+            playbook.commercialPolicy ? "commercialPolicy" : null,
+          ].filter(Boolean),
+        }
+      : undefined;
+
+    const INTENTS_WITH_SLOTS = ["book_appointment", "check_availability", "reject_slots", "confirm_slot", "reschedule_appointment"];
+
+    return NextResponse.json({
+      text: result.text,
+      intent: classification.intent,
+      ...(INTENTS_WITH_SLOTS.includes(classification.intent) ? { slots } : {}),
+      ...(debugInfo ? { debug: debugInfo } : {}),
+    });
   } catch (err) {
     console.error("[playbook/simulate]", err);
     return NextResponse.json({ error: "internal error" }, { status: 500 });

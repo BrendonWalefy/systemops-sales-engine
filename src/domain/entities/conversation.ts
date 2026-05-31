@@ -9,6 +9,7 @@ export type Message = {
   body: string;
   sentAt: Date;
   externalId: string | null;
+  intent?: string | null;
 };
 
 export type Conversation = {

@@ -148,6 +148,13 @@
       "when": 1780207275132,
       "tag": "0020_late_mister_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780218063406,
+      "tag": "0021_superb_silvermane",
+      "breakpoints": true
     }
   ]
 }
