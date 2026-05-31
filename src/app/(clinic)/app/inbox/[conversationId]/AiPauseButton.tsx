@@ -27,7 +27,7 @@ export function AiPauseButton({ conversationId, leadId, aiPaused, compact }: Pro
     return (
       <button
         className={aiPaused ? "primary-button" : "secondary-button"}
-        style={{ gap: 6, padding: "5px 10px", fontSize: 12 }}
+        style={{ gap: 6, padding: "8px 14px", fontSize: 13, minHeight: 36 }}
         disabled={pending}
         onClick={handleToggle}
         title={aiPaused ? "IA pausada — clique para retomar" : "IA ativa — clique para pausar"}
