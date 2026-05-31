@@ -127,6 +127,13 @@
       "when": 1780145106344,
       "tag": "0017_powerful_cable",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780190967541,
+      "tag": "0018_daffy_praxagora",
+      "breakpoints": true
     }
   ]
 }

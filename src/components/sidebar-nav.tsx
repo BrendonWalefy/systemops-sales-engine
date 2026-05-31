@@ -1,14 +1,14 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutDashboard, BookText, CalendarDays, Zap, LogOut, Stethoscope } from "lucide-react";
+import { Inbox, LayoutDashboard, Bot, CalendarDays, Zap, LogOut, Stethoscope } from "lucide-react";
 import { logout } from "@/app/login/actions";
 
 const NAV = [
   { href: "/app/inbox", label: "Inbox", Icon: Inbox },
   { href: "/app/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
-  { href: "/app/settings/playbook", label: "Playbook", Icon: BookText },
+  { href: "/app/settings/playbook", label: "IA", Icon: Bot },
   { href: "/app/settings/tratamentos", label: "Procedimentos", Icon: Stethoscope },
 ];
 

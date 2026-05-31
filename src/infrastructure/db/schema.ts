@@ -79,6 +79,12 @@ export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
 
 export const clinicPlanEnum = pgEnum("clinic_plan", ["essencial", "clinica", "rede", "custom"]);
 
+export const playbookVersionStatusEnum = pgEnum("playbook_version_status", [
+  "active",
+  "draft",
+  "historical",
+]);
+
 export const clinics = pgTable("clinics", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -370,6 +376,32 @@ export const pushSubscriptions = pgTable(
   (table) => ({
     endpointIdx: uniqueIndex("push_subscriptions_endpoint_idx").on(table.endpoint),
     clinicIdx: index("push_subscriptions_clinic_idx").on(table.clinicId),
+  }),
+);
+
+export const playbookVersions = pgTable(
+  "playbook_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    name: text("name").notNull(),
+    status: playbookVersionStatusEnum("status").notNull().default("draft"),
+    specialty: text("specialty"),
+    procedureDescription: text("procedure_description"),
+    toneOfVoice: text("tone_of_voice").notNull().default("acolhedor"),
+    differentials: jsonb("differentials").$type<string[]>().notNull().default([]),
+    commercialPolicy: text("commercial_policy"),
+    objections: jsonb("objections")
+      .$type<{ objection: string; response: string }[]>()
+      .notNull()
+      .default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clinicStatusIdx: index("playbook_versions_clinic_status_idx").on(table.clinicId, table.status),
   }),
 );
 

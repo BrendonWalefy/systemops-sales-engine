@@ -42,6 +42,18 @@ export async function saveSchedulingPolicy(formData: FormData) {
   revalidatePath("/app/settings/playbook");
 }
 
+export async function saveBusinessHours(formData: FormData) {
+  const clinicId = process.env.PILOT_CLINIC_ID!;
+  await db
+    .update(clinics)
+    .set({
+      businessHours: (formData.get("businessHours") as string) || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(clinics.id, clinicId));
+  revalidatePath("/app/settings/playbook");
+}
+
 export async function toggleAutoReply(currentValue: boolean) {
   const clinicId = process.env.PILOT_CLINIC_ID!;
   await db

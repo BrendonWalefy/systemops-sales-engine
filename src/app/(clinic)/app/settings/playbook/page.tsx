@@ -1,285 +1,278 @@
 export const dynamic = "force-dynamic";
 
-import { BookText, CalendarClock, Clock, MessageSquare, Save, Timer } from "lucide-react";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import { clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { eq, desc } from "drizzle-orm";
+import { PlaybookVersionGrid } from "./playbook-version-grid";
 import { ToggleAutoReply } from "./toggle-auto-reply";
-import { savePlaybook, saveSchedulingPolicy, saveTakeoverTtl } from "./actions";
+import { saveTakeoverTtl, saveSchedulingPolicy, saveBusinessHours } from "./actions";
+import { Save, MessageSquare, Timer, CalendarClock, Clock } from "lucide-react";
 
-async function getClinic() {
+async function getData() {
   const clinicId = process.env.PILOT_CLINIC_ID!;
-  const result = await db
-    .select({
-      id: clinics.id,
-      name: clinics.name,
-      toneOfVoice: clinics.toneOfVoice,
-      businessHours: clinics.businessHours,
-      commercialPolicy: clinics.commercialPolicy,
-      playbook: clinics.playbook,
-      autoReplyEnabled: clinics.autoReplyEnabled,
-      takeoverTtlHours: clinics.takeoverTtlHours,
-      postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
-    })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
-    .limit(1);
-  return result[0] ?? null;
+  const [clinic, versions] = await Promise.all([
+    db
+      .select({
+        name: clinics.name,
+        autoReplyEnabled: clinics.autoReplyEnabled,
+        takeoverTtlHours: clinics.takeoverTtlHours,
+        postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
+        businessHours: clinics.businessHours,
+      })
+      .from(clinics)
+      .where(eq(clinics.id, clinicId))
+      .limit(1)
+      .then((r) => r[0] ?? null),
+    db
+      .select()
+      .from(playbookVersions)
+      .where(eq(playbookVersions.clinicId, clinicId))
+      .orderBy(desc(playbookVersions.updatedAt)),
+  ]);
+  return { clinic, versions };
 }
 
 export default async function PlaybookPage() {
-  const clinic = await getClinic();
+  const { clinic, versions } = await getData();
+  const activeVersion = versions.find((v) => v.status === "active");
 
   return (
-    <div>
-      <div className="product-topbar">
+    <div style={{ minHeight: "100vh", background: "var(--background)" }}>
+      {/* Header */}
+      <div
+        style={{
+          padding: "28px 32px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
         <div>
-          <p className="eyebrow">Configurações</p>
-          <h1>Configurações da IA</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "4px" }}>
+            <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "#fafafa" }}>
+              Gerenciador de Playbooks
+            </h1>
+            {activeVersion && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  padding: "3px 10px",
+                  background: "rgba(16,185,129,0.1)",
+                  color: "#34d399",
+                  border: "1px solid rgba(16,185,129,0.25)",
+                  borderRadius: "6px",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                ATIVO: {activeVersion.name.toUpperCase()}
+              </span>
+            )}
+          </div>
           {clinic && (
-            <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: "14px" }}>
-              {clinic.name}
-            </p>
+            <p style={{ margin: 0, fontSize: "13px", color: "#52525b" }}>{clinic.name}</p>
           )}
         </div>
       </div>
 
-      <div className="page-content" style={{ paddingBottom: "40px", display: "grid", gap: "24px", maxWidth: "760px" }}>
-        <section
-          style={{
-            border: "1px solid var(--line)",
-            borderRadius: "14px",
-            background: "var(--surface-soft)",
-            padding: "20px 22px",
-          }}
-        >
-          <div className="ia-section-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
-              <div
-                style={{
-                  display: "grid",
-                  placeItems: "center",
-                  width: "40px",
-                  height: "40px",
-                  flexShrink: 0,
-                  borderRadius: "10px",
-                  border: "1px solid var(--line)",
-                  background: "var(--surface-raised)",
-                  color: "var(--accent-strong)",
-                }}
-              >
-                <MessageSquare size={18} strokeWidth={1.8} />
-              </div>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                  <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
-                    Recepcionista IA
-                  </strong>
-                  {clinic?.autoReplyEnabled ? (
-                    <span className="status-pill" style={{ fontSize: "11px", padding: "3px 10px" }}>
-                      <span className="status-dot" />
-                      Ativo
-                    </span>
-                  ) : (
-                    <span className="status-pill status-handoff" style={{ fontSize: "11px", padding: "3px 10px" }}>
-                      <span className="status-dot" />
-                      Pausado
-                    </span>
-                  )}
+      <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: "32px" }}>
+        {/* Configurações operacionais */}
+        <div>
+          <p style={{ margin: "0 0 16px", fontSize: "11px", fontWeight: 700, color: "#52525b", letterSpacing: "0.08em" }}>
+            CONFIGURAÇÕES DA IA
+          </p>
+          <div style={{ display: "grid", gap: "12px" }}>
+            {/* Toggle auto reply */}
+            <div style={settingsCardStyle}>
+              <div style={{ display: "flex", alignItems: "center", gap: "14px", flex: 1 }}>
+                <div style={iconBoxStyle}>
+                  <MessageSquare size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
                 </div>
-                <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)", lineHeight: 1.5 }}>
-                  Quando ativado, a IA responde automaticamente leads no WhatsApp
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>
+                      Recepcionista IA
+                    </strong>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: "5px",
+                        ...(clinic?.autoReplyEnabled
+                          ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" }
+                          : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }),
+                      }}
+                    >
+                      {clinic?.autoReplyEnabled ? "ATIVO" : "PAUSADO"}
+                    </span>
+                  </div>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>
+                    Responde automaticamente leads no WhatsApp
+                  </p>
+                </div>
+              </div>
+              <ToggleAutoReply enabled={clinic?.autoReplyEnabled ?? false} />
+            </div>
+
+            {/* Takeover TTL + Buffer em linha */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={settingsCardStyle}>
+                <div style={iconBoxStyle}>
+                  <Timer size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa", display: "block", marginBottom: "2px" }}>
+                    Pausa automática
+                  </strong>
+                  <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#52525b" }}>
+                    IA retoma após operador responder
+                  </p>
+                  <form action={saveTakeoverTtl} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <input
+                      type="number"
+                      name="takeoverTtlHours"
+                      defaultValue={clinic?.takeoverTtlHours ?? 4}
+                      min={0}
+                      max={72}
+                      style={compactInputStyle}
+                    />
+                    <span style={{ fontSize: "12px", color: "#52525b" }}>h</span>
+                    <button type="submit" style={saveIconBtnStyle}>
+                      <Save size={13} />
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <div style={settingsCardStyle}>
+                <div style={iconBoxStyle}>
+                  <CalendarClock size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa", display: "block", marginBottom: "2px" }}>
+                    Intervalo entre atendimentos
+                  </strong>
+                  <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#52525b" }}>
+                    Tempo após cada agendamento
+                  </p>
+                  <form action={saveSchedulingPolicy} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <input
+                      type="number"
+                      name="postAppointmentBufferMinutes"
+                      defaultValue={clinic?.postAppointmentBufferMinutes ?? 60}
+                      min={0}
+                      max={240}
+                      step={5}
+                      style={compactInputStyle}
+                    />
+                    <span style={{ fontSize: "12px", color: "#52525b" }}>min</span>
+                    <button type="submit" style={saveIconBtnStyle}>
+                      <Save size={13} />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            {/* Business hours */}
+            <div style={settingsCardStyle}>
+              <div style={iconBoxStyle}>
+                <Clock size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa", display: "block", marginBottom: "2px" }}>
+                  Horário de funcionamento
+                </strong>
+                <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#52525b" }}>
+                  Informado pela IA ao responder leads
                 </p>
+                <form action={saveBusinessHours} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    name="businessHours"
+                    defaultValue={clinic?.businessHours ?? ""}
+                    placeholder="Ex: Seg a Sex das 8h às 18h, Sáb das 8h às 13h"
+                    style={{ ...compactInputStyle, width: "100%", flex: 1 }}
+                  />
+                  <button type="submit" style={saveIconBtnStyle}>
+                    <Save size={13} />
+                  </button>
+                </form>
               </div>
             </div>
-            <ToggleAutoReply enabled={clinic?.autoReplyEnabled ?? false} />
           </div>
-        </section>
+        </div>
 
-        <section
-          style={{
-            border: "1px solid var(--line)",
-            borderRadius: "14px",
-            background: "var(--surface-soft)",
-            padding: "20px 22px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "16px" }}>
-            <div
-              style={{
-                display: "grid",
-                placeItems: "center",
-                width: "40px",
-                height: "40px",
-                flexShrink: 0,
-                borderRadius: "10px",
-                border: "1px solid var(--line)",
-                background: "var(--surface-raised)",
-                color: "var(--accent-strong)",
-              }}
-            >
-              <Timer size={18} strokeWidth={1.8} />
-            </div>
-            <div>
-              <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
-                Pausa automática da IA
-              </strong>
-              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--muted)", lineHeight: 1.5 }}>
-                Após o operador responder, a IA retoma automaticamente depois deste período. Use 0 para desativar a retomada automática.
-              </p>
-            </div>
-          </div>
-          <form action={saveTakeoverTtl} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-              <input
-                type="number"
-                name="takeoverTtlHours"
-                defaultValue={clinic?.takeoverTtlHours ?? 4}
-                min={0}
-                max={72}
-                style={{ width: "80px", textAlign: "center" }}
-              />
-              <span style={{ fontSize: "13px", color: "var(--muted)" }}>horas</span>
-            </label>
-            <button type="submit" className="primary-button" style={{ gap: "8px" }}>
-              <Save size={14} strokeWidth={2} />
-              Salvar
-            </button>
-          </form>
-        </section>
+        {/* Divisor */}
+        <div style={{ height: "1px", background: "rgba(255,255,255,0.05)" }} />
 
-        <section
-          style={{
-            border: "1px solid var(--line)",
-            borderRadius: "14px",
-            background: "var(--surface-soft)",
-            padding: "20px 22px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "16px" }}>
-            <div
-              style={{
-                display: "grid",
-                placeItems: "center",
-                width: "40px",
-                height: "40px",
-                flexShrink: 0,
-                borderRadius: "10px",
-                border: "1px solid var(--line)",
-                background: "var(--surface-raised)",
-                color: "var(--accent-strong)",
-              }}
-            >
-              <CalendarClock size={18} strokeWidth={1.8} />
-            </div>
-            <div>
-              <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
-                Intervalo entre atendimentos
-              </strong>
-              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--muted)", lineHeight: 1.5 }}>
-                Tempo reservado após cada agendamento antes de oferecer o próximo horário no chat.
-              </p>
-            </div>
-          </div>
-          <form action={saveSchedulingPolicy} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-              <input
-                type="number"
-                name="postAppointmentBufferMinutes"
-                defaultValue={clinic?.postAppointmentBufferMinutes ?? 60}
-                min={0}
-                max={240}
-                step={5}
-                style={{ width: "88px", textAlign: "center" }}
-              />
-              <span style={{ fontSize: "13px", color: "var(--muted)" }}>minutos após procedimento</span>
-            </label>
-            <button type="submit" className="primary-button" style={{ gap: "8px" }}>
-              <Save size={14} strokeWidth={2} />
-              Salvar
-            </button>
-          </form>
-        </section>
-
-        <form action={savePlaybook}>
-          <div className="form-stack">
-            <p className="small-label" style={{ marginBottom: "4px" }}>Comportamento da IA</p>
-
-            <label>
-              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Clock size={13} strokeWidth={2} style={{ color: "var(--muted)" }} />
-                Tom de voz
-              </span>
-              <input
-                type="text"
-                name="toneOfVoice"
-                defaultValue={clinic?.toneOfVoice ?? ""}
-                placeholder="Ex: Acolhedor, profissional e direto"
-              />
-            </label>
-
-            <label>
-              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Clock size={13} strokeWidth={2} style={{ color: "var(--muted)" }} />
-                Horário de funcionamento
-              </span>
-              <input
-                type="text"
-                name="businessHours"
-                defaultValue={clinic?.businessHours ?? ""}
-                placeholder="Ex: Seg a Sex das 8h às 18h, Sáb das 8h às 12h"
-              />
-            </label>
-
-            <label>
-              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <MessageSquare size={13} strokeWidth={2} style={{ color: "var(--muted)" }} />
-                Política comercial
-              </span>
-              <textarea
-                name="commercialPolicy"
-                rows={4}
-                defaultValue={clinic?.commercialPolicy ?? ""}
-                placeholder="Ex: Sempre oferecer avaliação gratuita. Não informar preços por mensagem."
-              />
-            </label>
-
-            <label>
-              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <BookText size={13} strokeWidth={2} style={{ color: "var(--muted)" }} />
-                Playbook da IA
-              </span>
-              <textarea
-                name="playbook"
-                rows={10}
-                defaultValue={clinic?.playbook ?? ""}
-                placeholder="Instruções detalhadas para a IA seguir durante as conversas..."
-              />
-            </label>
-
-            <div className="automation-note">
-              <div className="automation-header">
-                <BookText size={14} strokeWidth={2} />
-                <strong style={{ fontSize: "12.5px", fontWeight: 700 }}>Como usar o Playbook</strong>
-              </div>
-              <p>
-                O playbook define como a IA se comporta em cada situação. Seja específico: mencione
-                procedimentos oferecidos, objeções comuns, tom esperado e o que fazer em cada etapa
-                da conversa.
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              className="primary-button"
-              style={{ gap: "8px", marginTop: "4px" }}
-            >
-              <Save size={15} strokeWidth={2} />
-              Salvar configurações
-            </button>
-          </div>
-        </form>
+        {/* Versões de playbook */}
+        <div>
+          <p style={{ margin: "0 0 8px", fontSize: "11px", fontWeight: 700, color: "#52525b", letterSpacing: "0.08em" }}>
+            SUAS VERSÕES
+          </p>
+          <p style={{ margin: "0 0 20px", fontSize: "13px", color: "#52525b", lineHeight: 1.6 }}>
+            Cada versão é um conjunto independente de regras para a IA. A versão ativa é a que está em produção.
+          </p>
+          <PlaybookVersionGrid
+            versions={versions.map((v) => ({
+              id: v.id,
+              name: v.name,
+              status: v.status,
+              updatedAt: v.updatedAt,
+            }))}
+          />
+        </div>
       </div>
     </div>
   );
 }
+
+const settingsCardStyle: React.CSSProperties = {
+  background: "#0d0d0f",
+  border: "1px solid rgba(255,255,255,0.07)",
+  borderRadius: "12px",
+  padding: "16px 18px",
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "14px",
+};
+
+const iconBoxStyle: React.CSSProperties = {
+  width: "34px",
+  height: "34px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,255,255,0.07)",
+  background: "rgba(16,185,129,0.07)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+const compactInputStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.09)",
+  borderRadius: "7px",
+  color: "#e4e4e7",
+  fontSize: "13px",
+  padding: "6px 10px",
+  width: "80px",
+  outline: "none",
+  fontFamily: "inherit",
+};
+
+const saveIconBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 10px",
+  background: "rgba(16,185,129,0.12)",
+  border: "1px solid rgba(16,185,129,0.2)",
+  borderRadius: "7px",
+  color: "#34d399",
+  cursor: "pointer",
+  flexShrink: 0,
+};
