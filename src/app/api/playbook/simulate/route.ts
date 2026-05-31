@@ -10,6 +10,8 @@ import type { ActionResult, ComposedResponse } from "@/core/intelligence/Respons
 import type { Message } from "@/domain/entities/conversation";
 import type { IntentClassification, IntentType } from "@/core/intelligence/IntentClassifier";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
+import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
+import type { MenuItem } from "@/domain/entities/clinic";
 
 const CLINIC_ID = process.env.PILOT_CLINIC_ID!;
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
@@ -368,7 +370,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "clinicId or playbook required" }, { status: 400 });
     }
 
-    // ── Dados da clínica (timezone, nome, businessHours) ─────────────────
+    // ── Dados da clínica (timezone, nome, businessHours, menuItems) ──────
     const clinicLookupId = body.clinicId ?? CLINIC_ID;
     const clinic = await db
       .select({
@@ -376,6 +378,7 @@ export async function POST(req: NextRequest) {
         timezone: clinics.timezone,
         businessHours: clinics.businessHours,
         defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
+        menuItems: clinics.menuItems,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicLookupId))
@@ -386,20 +389,26 @@ export async function POST(req: NextRequest) {
     const clinicName = clinic?.name ?? "Clínica";
     const businessHours = clinic?.businessHours ?? null;
     const durationMinutes = clinic?.defaultAppointmentDurationMinutes ?? 60;
+    const menuItems: MenuItem[] = (clinic?.menuItems as MenuItem[] | null) ?? DEFAULT_MENU_ITEMS;
+    const menuText = menuItems.filter((i) => i.enabled).map((i) => `${i.number}. ${i.label}`).join("\n");
     const isFirst = history.length === 0;
+
+    function buildGreeting(intro: string): string {
+      return intro ? `${intro}\n\n${menuText}` : menuText;
+    }
 
     // ── Pré-verificações sem LLM — espelho do ConversationOrchestrator ─────
 
     if (isFirst && playbook.greetingMessage.trim()) {
-      return NextResponse.json({ text: playbook.greetingMessage.trim(), intent: "greeting" });
+      return NextResponse.json({ text: buildGreeting(playbook.greetingMessage.trim()), intent: "greeting" });
     }
 
     if (!isFirst && isResetCommand(message)) {
       const salutation = getDayGreeting(timezone);
-      const text = playbook.greetingMessage.trim()
+      const intro = playbook.greetingMessage.trim()
         ? `${salutation}! ${playbook.greetingMessage.trim()}`
         : `${salutation}! Como posso ajudá-lo?`;
-      return NextResponse.json({ text, intent: "greeting" });
+      return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
     }
 
     // Detecção de oferta de slots pendente via intent do histórico (espelho da state machine)
@@ -408,16 +417,16 @@ export async function POST(req: NextRequest) {
     );
 
     if (!isFirst && isMenuRerequest(message)) {
-      const text = playbook.greetingMessage.trim() || "Como posso ajudá-lo?";
-      return NextResponse.json({ text, intent: "greeting" });
+      const intro = playbook.greetingMessage.trim() || "Como posso ajudá-lo?";
+      return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
     }
 
     if (!isFirst && !hasPendingSlotOffer && isIsolatedGreeting(message)) {
       const salutation = getDayGreeting(timezone);
-      const text = playbook.greetingMessage.trim()
+      const intro = playbook.greetingMessage.trim()
         ? `${salutation}! ${playbook.greetingMessage.trim()}`
         : `${salutation}! Como posso ajudá-lo?`;
-      return NextResponse.json({ text, intent: "greeting" });
+      return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
     }
 
     // ── Estágio 1: classificação de intent via LLM ────────────────────────
@@ -438,10 +447,10 @@ export async function POST(req: NextRequest) {
     // greeting via LLM → retorna menu (igual ao case "greeting" do Orchestrator)
     if (classification.intent === "greeting") {
       const salutation = getDayGreeting(timezone);
-      const text = playbook.greetingMessage.trim()
+      const intro = playbook.greetingMessage.trim()
         ? `${salutation}! ${playbook.greetingMessage.trim()}`
         : `${salutation}! Como posso ajudá-lo?`;
-      return NextResponse.json({ text, intent: "greeting" });
+      return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
     }
 
     // ── Slots: busca real (QA Calendar) ou simulada ───────────────────────
