@@ -3696,6 +3696,11 @@ textarea:focus {
   border-color: var(--line-strong);
 }
 
+.inbox-scheduled-card.has-unread {
+  background: color-mix(in srgb, var(--surface-raised) 85%, var(--warm) 6%);
+  border-color: color-mix(in srgb, var(--line) 60%, var(--warm) 30%);
+}
+
 /* ─── Responsive: Inbox Mobile (≤640px) ──────────────── */
 
 @media (max-width: 640px) {

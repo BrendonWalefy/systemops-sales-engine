@@ -173,10 +173,11 @@ function ScheduledCard({ row, lastMsg }: { row: ConvRow; lastMsg?: { body: strin
   const apptDate = row.appointmentStartsAt ? new Date(row.appointmentStartsAt) : null;
   const isPast = apptDate !== null && apptDate < new Date();
   const hasUnread = lastMsg?.author === "lead";
+  const preview = lastMsg ? (authorPreviewPrefix(lastMsg.author) + lastMsg.body).slice(0, 42) : "";
 
   return (
     <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
-      <div className={`inbox-scheduled-card conv-temp-${tk}`}>
+      <div className={`inbox-scheduled-card conv-temp-${tk}${hasUnread ? " has-unread" : ""}`}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 8 }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
             <div
@@ -216,9 +217,17 @@ function ScheduledCard({ row, lastMsg }: { row: ConvRow; lastMsg?: { body: strin
             </span>
           </div>
         )}
-        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginBottom: preview ? 4 : 6 }}>
           {isManualPause ? "Pausado manualmente" : statusLabel(row.leadStatus)}
         </div>
+        {preview && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6, minWidth: 0 }}>
+            <MessageSquare size={9} style={{ opacity: 0.35, flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: hasUnread ? "var(--warm)" : "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {preview}
+            </span>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
           {tk !== "cold" ? (
             <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 6px" }}>
