@@ -120,6 +120,10 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
   const byNumber = items.find(i => i.enabled && n === String(i.number));
   if (byNumber) return intentToMenuResolution(byNumber.intent);
 
+  // "remarcar" e "desmarcar" contêm "marcar" como substring — retornam null para o
+  // LLM classificar como reschedule_appointment / cancel_appointment corretamente.
+  if (n.includes("remarcar") || n.includes("desmarcar")) return null;
+
   // Palavras-chave universais (funcionam independente da ordem do menu)
   if (n.includes("procedimento") || n.includes("tratamento") || n.includes("servico"))
     return { intent: "general_question", subtype: "procedures" };
