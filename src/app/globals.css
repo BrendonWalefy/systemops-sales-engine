@@ -3583,16 +3583,11 @@ textarea:focus {
   color: var(--muted);
 }
 
-/* Grid 2 colunas para "Em Conversa" */
+/* Lista single-column para "Em Conversa" */
 .conversation-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-/* Garante que células do grid não ultrapassem a coluna */
-.conversation-grid > * {
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Card ativo (em conversa) */
@@ -3614,8 +3609,7 @@ textarea:focus {
 }
 
 .inbox-active-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  background: color-mix(in srgb, var(--surface-raised) 90%, var(--accent) 4%);
   border-color: var(--line-strong);
 }
 
@@ -3709,11 +3703,6 @@ textarea:focus {
     text-align: center;
     padding: 5px 6px;
     font-size: 11.5px;
-  }
-
-  /* Uma coluna em mobile */
-  .conversation-grid {
-    grid-template-columns: 1fr;
   }
 
   /* Cards agendados: 2 colunas em mobile */

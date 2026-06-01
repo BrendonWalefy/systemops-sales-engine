@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Bot, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox, PauseCircle } from "lucide-react";
+import { Search, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox, PauseCircle } from "lucide-react";
 import { filterBySearch, resolveEmConversa, resolveAgendados, type InboxFilter } from "./inbox-filter";
 
 export type ConvRow = {
@@ -117,16 +117,13 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; a
           </div>
         )}
 
-        {/* Footer: preview + bot icon */}
+        {/* Footer: preview */}
         <div className="inbox-card-footer">
           <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
             <MessageSquare size={10} style={{ opacity: 0.35, flexShrink: 0 }} />
             <span style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {preview || "Sem mensagens"}
             </span>
-          </div>
-          <div className="bot-indicator">
-            <Bot size={11} />
           </div>
         </div>
       </div>
@@ -171,7 +168,7 @@ function ScheduledCard({ row }: { row: ConvRow }) {
           </div>
           {isManualPause ? (
             <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--warm-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <AlertTriangle size={10} style={{ color: "var(--warm)" }} />
+              <PauseCircle size={11} style={{ color: "var(--warm)" }} />
             </div>
           ) : (
             <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
