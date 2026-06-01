@@ -120,6 +120,11 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
   const byNumber = items.find(i => i.enabled && n === String(i.number));
   if (byNumber) return intentToMenuResolution(byNumber.intent);
 
+  // Rótulo textual de item ativo → determinístico, sem depender do LLM
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  const byLabel = items.find(i => i.enabled && n === norm(i.label));
+  if (byLabel) return intentToMenuResolution(byLabel.intent);
+
   // "remarcar" e "desmarcar" contêm "marcar" como substring — retornam null para o
   // LLM classificar como reschedule_appointment / cancel_appointment corretamente.
   if (n.includes("remarcar") || n.includes("desmarcar")) return null;
