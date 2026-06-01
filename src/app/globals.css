@@ -3594,18 +3594,41 @@ textarea:focus {
 .inbox-active-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
-  padding: 14px;
+  padding: 10px 14px;
   text-decoration: none;
   color: var(--text);
-  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
   cursor: pointer;
   border-left-width: 4px;
   overflow: hidden;
   min-width: 0;
+}
+
+/* Highlight sutil quando lead enviou a última mensagem */
+.inbox-active-card.has-unread {
+  background: color-mix(in srgb, var(--surface-raised) 85%, var(--warm) 6%);
+  border-color: color-mix(in srgb, var(--line) 60%, var(--warm) 30%);
+}
+
+/* Dot âmbar de mensagem não lida */
+.unread-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--warm);
+  border: 2px solid var(--surface);
+}
+
+.unread-dot-sm {
+  width: 7px;
+  height: 7px;
 }
 
 .inbox-active-card:hover {

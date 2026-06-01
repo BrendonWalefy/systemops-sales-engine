@@ -22,12 +22,17 @@ export type ConvRow = {
 type Filter = InboxFilter;
 
 function relativeTime(date: Date): string {
-  const diff = Date.now() - date.getTime();
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
   const min = Math.floor(diff / 60_000);
   if (min < 1) return "agora";
   if (min < 60) return `há ${min}min`;
   const h = Math.floor(min / 60);
-  if (h < 24) return `há ${h}h`;
+  if (h < 24) {
+    const sameDay = date.toDateString() === now.toDateString();
+    if (sameDay) return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+    return `há ${h}h`;
+  }
   const d = Math.floor(h / 24);
   return `há ${d}d`;
 }
@@ -71,38 +76,43 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; a
   const preview = (authorPrefix + lastMsg.body).slice(0, 65);
   const tk = tempKey(row.leadTemperature);
   const isHandoff = row.needsAttention && row.aiPaused;
+  const hasUnread = lastMsg.author === "lead";
 
   return (
     <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
-      <div className={`inbox-active-card conv-temp-${tk}${isHandoff ? " needs-attention" : ""}`}>
+      <div className={`inbox-active-card conv-temp-${tk}${isHandoff ? " needs-attention" : ""}${hasUnread ? " has-unread" : ""}`}>
         {/* Header: avatar + name + badge + time */}
         <div className="inbox-card-header">
-          <div
-            className="avatar"
-            style={{
-              width: 36,
-              height: 36,
-              fontSize: 13,
-              borderColor: avatarColor(row.leadTemperature),
-              background: `linear-gradient(145deg, color-mix(in srgb, ${avatarColor(row.leadTemperature)} 20%, transparent), var(--surface-raised))`,
-              color: avatarColor(row.leadTemperature),
-              flexShrink: 0,
-            }}
-          >
-            {initial}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <div
+              className="avatar"
+              style={{
+                width: 36,
+                height: 36,
+                fontSize: 13,
+                borderColor: avatarColor(row.leadTemperature),
+                background: `linear-gradient(145deg, color-mix(in srgb, ${avatarColor(row.leadTemperature)} 20%, transparent), var(--surface-raised))`,
+                color: avatarColor(row.leadTemperature),
+              }}
+            >
+              {initial}
+            </div>
+            {hasUnread && <span className="unread-dot" />}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {displayName}
             </div>
-            {row.leadPhone && row.leadName && (
+            {!row.leadName && row.leadPhone && (
               <div className="lead-phone" style={{ fontSize: 11 }}>{row.leadPhone}</div>
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-            <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 7px" }}>
-              {tempLabel(row.leadTemperature)}
-            </span>
+            {tk !== "cold" && (
+              <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 7px" }}>
+                {tempLabel(row.leadTemperature)}
+              </span>
+            )}
             <span style={{ fontSize: 10, color: "var(--muted)" }}>
               {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
             </span>
@@ -141,30 +151,34 @@ function formatAppointmentDate(date: Date): string {
   }).replace(".", "");
 }
 
-function ScheduledCard({ row }: { row: ConvRow }) {
+function ScheduledCard({ row, lastMsg }: { row: ConvRow; lastMsg?: { body: string; author: string } }) {
   const initial = row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0] ?? "?";
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
   const tk = tempKey(row.leadTemperature);
   const isManualPause = row.aiPaused && !row.needsAttention;
   const apptDate = row.appointmentStartsAt ? new Date(row.appointmentStartsAt) : null;
+  const isPast = apptDate !== null && apptDate < new Date();
+  const hasUnread = lastMsg?.author === "lead";
 
   return (
     <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
       <div className={`inbox-scheduled-card conv-temp-${tk}`}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 8 }}>
-          <div
-            className="avatar"
-            style={{
-              width: 32,
-              height: 32,
-              fontSize: 12,
-              borderColor: avatarColor(row.leadTemperature),
-              background: `linear-gradient(145deg, color-mix(in srgb, ${avatarColor(row.leadTemperature)} 20%, transparent), var(--surface-raised))`,
-              color: avatarColor(row.leadTemperature),
-              flexShrink: 0,
-            }}
-          >
-            {initial}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <div
+              className="avatar"
+              style={{
+                width: 32,
+                height: 32,
+                fontSize: 12,
+                borderColor: avatarColor(row.leadTemperature),
+                background: `linear-gradient(145deg, color-mix(in srgb, ${avatarColor(row.leadTemperature)} 20%, transparent), var(--surface-raised))`,
+                color: avatarColor(row.leadTemperature),
+              }}
+            >
+              {initial}
+            </div>
+            {hasUnread && <span className="unread-dot unread-dot-sm" />}
           </div>
           {isManualPause ? (
             <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--warm-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -181,9 +195,10 @@ function ScheduledCard({ row }: { row: ConvRow }) {
         </div>
         {apptDate && (
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
-            <Calendar size={10} style={{ color: "var(--accent-strong)", flexShrink: 0 }} />
-            <span style={{ fontSize: 10, color: "var(--accent-strong)", fontWeight: 600 }}>
+            <Calendar size={10} style={{ color: isPast ? "var(--warm)" : "var(--accent-strong)", flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: isPast ? "var(--warm)" : "var(--accent-strong)", fontWeight: 600 }}>
               {formatAppointmentDate(apptDate)}
+              {isPast && " · passou"}
             </span>
           </div>
         )}
@@ -191,9 +206,11 @@ function ScheduledCard({ row }: { row: ConvRow }) {
           {isManualPause ? "Pausado manualmente" : statusLabel(row.leadStatus)}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-          <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 6px" }}>
-            {tempLabel(row.leadTemperature)}
-          </span>
+          {tk !== "cold" ? (
+            <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 6px" }}>
+              {tempLabel(row.leadTemperature)}
+            </span>
+          ) : <span />}
           <span style={{ fontSize: 10, color: "var(--muted)" }}>
             {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
           </span>
@@ -357,7 +374,7 @@ export function InboxClient({
                 />
                 <div className="scheduled-grid">
                   {agendadosRows.map((row) => (
-                    <ScheduledCard key={row.convId} row={row} />
+                    <ScheduledCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId]} />
                   ))}
                 </div>
               </div>
@@ -373,7 +390,7 @@ export function InboxClient({
                 />
                 <div className="scheduled-grid">
                   {pausedVisibleRows.map((row) => (
-                    <ScheduledCard key={row.convId} row={row} />
+                    <ScheduledCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId]} />
                   ))}
                 </div>
               </div>
@@ -389,7 +406,7 @@ export function InboxClient({
                 />
                 <div className="scheduled-grid">
                   {closedVisibleRows.map((row) => (
-                    <ScheduledCard key={row.convId} row={row} />
+                    <ScheduledCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId]} />
                   ))}
                 </div>
               </div>
