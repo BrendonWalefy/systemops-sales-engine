@@ -99,7 +99,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Sem texto → mídia, sticker, reação — ignora
     if (!body.text?.message) return new NextResponse("OK", { status: 200 });
 
-    const clinicId = process.env.PILOT_CLINIC_ID;
+    const clinicId = clinicIdOverride ?? process.env.PILOT_CLINIC_ID;
     if (!clinicId) return new NextResponse("OK", { status: 200 });
 
     try {
