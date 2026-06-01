@@ -4,8 +4,8 @@ export const maxDuration = 30;
 import { Bot, CalendarCheck2, Clock3, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { BlockForm } from "./BlockForm";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import { appointments, clinics, leads } from "@/infrastructure/db/schema";
+import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { BlockEvent } from "@/application/ports/calendar-gateway";
@@ -28,6 +28,15 @@ type BlockDisplay = {
   isFullDay: boolean;
 };
 
+type UpcomingAppointment = {
+  id: string;
+  leadName: string | null;
+  leadPhone: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  status: string;
+};
+
 const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
   timeZone: TZ,
   weekday: "short",
@@ -40,6 +49,13 @@ const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
+});
+
+const appointmentDateFormatter = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: TZ,
+  weekday: "short",
+  day: "2-digit",
+  month: "short",
 });
 
 function getLocalParts(date: Date): LocalDateParts {
@@ -109,6 +125,15 @@ function getNextBlockLabel(blocks: BlockEvent[]): string {
   return `${display.dateLabel} - ${display.timeLabel}`;
 }
 
+function appointmentStatusLabel(status: string): string {
+  if (status === "confirmed") return "Confirmado";
+  return "Agendado";
+}
+
+function appointmentDateLabel(date: Date): string {
+  return appointmentDateFormatter.format(date).replace(".", "");
+}
+
 async function getBlocks(): Promise<BlockEvent[]> {
   const clinicId = process.env.PILOT_CLINIC_ID;
   if (!clinicId) return [];
@@ -133,8 +158,37 @@ async function getBlocks(): Promise<BlockEvent[]> {
   return gateway.listBlockEvents({ clinicId, from, to });
 }
 
+async function getUpcomingAppointments(): Promise<UpcomingAppointment[]> {
+  const clinicId = process.env.PILOT_CLINIC_ID;
+  if (!clinicId) return [];
+
+  return db
+    .select({
+      id: appointments.id,
+      leadName: leads.name,
+      leadPhone: leads.phone,
+      startsAt: appointments.startsAt,
+      endsAt: appointments.endsAt,
+      status: appointments.status,
+    })
+    .from(appointments)
+    .innerJoin(leads, eq(appointments.leadId, leads.id))
+    .where(
+      and(
+        eq(appointments.clinicId, clinicId),
+        inArray(appointments.status, ["scheduled", "confirmed"]),
+        gte(appointments.startsAt, new Date()),
+      ),
+    )
+    .orderBy(asc(appointments.startsAt))
+    .limit(8);
+}
+
 export default async function AgendaPage() {
-  const blocks = await getBlocks();
+  const [blocks, upcomingAppointments] = await Promise.all([
+    getBlocks(),
+    getUpcomingAppointments(),
+  ]);
   const fullDayBlocks = blocks.filter(isFullDayBlock).length;
   const nextBlockLabel = getNextBlockLabel(blocks);
 
@@ -143,9 +197,9 @@ export default async function AgendaPage() {
       <div className="product-topbar agenda-topbar">
         <div className="agenda-title">
           <p className="eyebrow">Agenda</p>
-          <h1>Gerenciar bloqueios</h1>
+          <h1>Agenda da clínica</h1>
           <p className="agenda-subtitle">
-            Defina indisponibilidades para a IA oferecer apenas horários realmente livres.
+            Acompanhe consultas futuras e indisponibilidades usadas pela IA.
           </p>
         </div>
 
@@ -156,6 +210,51 @@ export default async function AgendaPage() {
       </div>
 
       <div className="agenda-content">
+        <section className="agenda-panel agenda-appointments-panel" aria-label="Próximas consultas">
+          <div className="agenda-panel-header agenda-appointments-header">
+            <span className="agenda-panel-icon">
+              <CalendarCheck2 size={18} strokeWidth={1.9} />
+            </span>
+            <div>
+              <h2>Próximas consultas</h2>
+              <p>
+                {upcomingAppointments.length === 0
+                  ? "Nenhuma consulta futura registrada."
+                  : `Mostrando ${upcomingAppointments.length === 1 ? "a próxima consulta" : `as próximas ${upcomingAppointments.length} consultas`} na agenda.`}
+              </p>
+            </div>
+          </div>
+
+          {upcomingAppointments.length === 0 ? (
+            <div className="agenda-empty-state agenda-empty-compact">
+              <CalendarCheck2 size={24} strokeWidth={1.8} />
+              <strong>Nenhuma consulta futura</strong>
+              <p>Quando a IA ou a equipe agendar um paciente, ele aparece aqui.</p>
+            </div>
+          ) : (
+            <div className="agenda-appointment-list">
+              {upcomingAppointments.map((appointment) => {
+                const displayName = appointment.leadName ?? appointment.leadPhone ?? "Paciente";
+                return (
+                  <article key={appointment.id} className="agenda-appointment-card">
+                    <div className="agenda-appointment-time">
+                      <strong>{appointmentDateLabel(appointment.startsAt)}</strong>
+                      <span>{timeFormatter.format(appointment.startsAt)} - {timeFormatter.format(appointment.endsAt)}</span>
+                    </div>
+                    <div className="agenda-appointment-main">
+                      <strong>{displayName}</strong>
+                      <span>{appointment.leadPhone ?? "Telefone não informado"}</span>
+                    </div>
+                    <span className="agenda-appointment-status">
+                      {appointmentStatusLabel(appointment.status)}
+                    </span>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         <section className="agenda-summary" aria-label="Resumo de bloqueios">
           <div className="agenda-summary-item">
             <span className="agenda-summary-icon accent">
@@ -182,8 +281,8 @@ export default async function AgendaPage() {
               <Clock3 size={17} strokeWidth={2} />
             </span>
             <div>
-              <strong>{nextBlockLabel}</strong>
-              <span>próximo bloqueio</span>
+              <strong>{blocks.length === 0 ? "Agenda livre" : nextBlockLabel}</strong>
+              <span>{blocks.length === 0 ? "nenhum bloqueio nos próximos 60 dias" : "próximo bloqueio"}</span>
             </div>
           </div>
         </section>

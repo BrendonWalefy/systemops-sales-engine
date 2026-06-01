@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Bot, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox } from "lucide-react";
-import { resolveEmConversa, resolveAgendados, type InboxFilter } from "./inbox-filter";
+import { Search, Bot, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox, PauseCircle } from "lucide-react";
+import { filterBySearch, resolveEmConversa, resolveAgendados, type InboxFilter } from "./inbox-filter";
 
 export type ConvRow = {
   convId: string;
+  leadId: string;
   lastMessageAt: Date | null;
   needsAttention: boolean;
   attentionReason: string | null;
@@ -15,6 +16,7 @@ export type ConvRow = {
   leadPhone: string | null;
   leadStatus: string;
   leadTemperature: string | null;
+  appointmentStartsAt?: Date | null;
 };
 
 type Filter = InboxFilter;
@@ -42,16 +44,31 @@ function tempKey(temp: string | null): "hot" | "warm" | "cold" {
   return "cold";
 }
 
+function statusLabel(status: string): string {
+  if (status === "appointment_scheduled") return "Agendado";
+  if (status === "won") return "Ganho";
+  if (status === "lost") return "Perdido";
+  return "Pausado";
+}
+
 function avatarColor(temp: string | null): string {
   if (temp === "hot") return "var(--hot)";
   if (temp === "warm") return "var(--warm)";
   return "var(--cold)";
 }
 
-function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: string }) {
+function authorPreviewPrefix(author: string): string {
+  if (author === "agent") return "IA: ";
+  if (author === "clinic_user") return "Operador: ";
+  if (author === "lead") return "Lead: ";
+  return "";
+}
+
+function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; author: string } }) {
   const initial = row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0] ?? "?";
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
-  const preview = lastMsg.slice(0, 60);
+  const authorPrefix = authorPreviewPrefix(lastMsg.author);
+  const preview = (authorPrefix + lastMsg.body).slice(0, 65);
   const tk = tempKey(row.leadTemperature);
   const isHandoff = row.needsAttention && row.aiPaused;
 
@@ -117,11 +134,22 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: string }) {
   );
 }
 
+function formatAppointmentDate(date: Date): string {
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  }).replace(".", "");
+}
+
 function ScheduledCard({ row }: { row: ConvRow }) {
   const initial = row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0] ?? "?";
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
   const tk = tempKey(row.leadTemperature);
   const isManualPause = row.aiPaused && !row.needsAttention;
+  const apptDate = row.appointmentStartsAt ? new Date(row.appointmentStartsAt) : null;
 
   return (
     <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
@@ -154,6 +182,17 @@ function ScheduledCard({ row }: { row: ConvRow }) {
         <div style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 4 }}>
           {displayName}
         </div>
+        {apptDate && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+            <Calendar size={10} style={{ color: "var(--accent-strong)", flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: "var(--accent-strong)", fontWeight: 600 }}>
+              {formatAppointmentDate(apptDate)}
+            </span>
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+          {isManualPause ? "Pausado manualmente" : statusLabel(row.leadStatus)}
+        </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
           <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 6px" }}>
             {tempLabel(row.leadTemperature)}
@@ -181,25 +220,31 @@ export function InboxClient({
   activeRows,
   handoffRows,
   scheduledRows,
+  pausedRows,
+  closedRows,
   lastMsgMap,
   autoReplyEnabled,
 }: {
   activeRows: ConvRow[];
   handoffRows: ConvRow[];
   scheduledRows: ConvRow[];
-  lastMsgMap: Record<string, string>;
+  pausedRows: ConvRow[];
+  closedRows: ConvRow[];
+  lastMsgMap: Record<string, { body: string; author: string }>;
   autoReplyEnabled: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
   const totalActive = activeRows.length + handoffRows.length;
-  const totalAll = totalActive + scheduledRows.length;
+  const totalAll = totalActive + scheduledRows.length + pausedRows.length + closedRows.length;
 
   const emConversaRows = resolveEmConversa(handoffRows, activeRows, filter, search);
   const agendadosRows = resolveAgendados(scheduledRows, filter, search);
+  const pausedVisibleRows = filter === "all" ? filterBySearch(pausedRows, search) : [];
+  const closedVisibleRows = filter === "all" ? filterBySearch(closedRows, search) : [];
 
-  const totalVisible = emConversaRows.length + agendadosRows.length;
+  const totalVisible = emConversaRows.length + agendadosRows.length + pausedVisibleRows.length + closedVisibleRows.length;
 
   if (totalAll === 0) {
     return (
@@ -299,22 +344,54 @@ export function InboxClient({
                 />
                 <div className="conversation-grid">
                   {emConversaRows.map((row) => (
-                    <ActiveCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId] ?? ""} />
+                    <ActiveCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "" }} />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* ── Agendados & Encerrados ── */}
+            {/* ── Agendados ── */}
             {agendadosRows.length > 0 && (
-              <div>
+              <div style={{ marginBottom: 28 }}>
                 <SectionLabel
-                  label="Agendados & Encerrados"
+                  label="Agendados"
                   count={agendadosRows.length}
                   icon={<Calendar size={13} />}
                 />
                 <div className="scheduled-grid">
                   {agendadosRows.map((row) => (
+                    <ScheduledCard key={row.convId} row={row} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Pausados manualmente ── */}
+            {pausedVisibleRows.length > 0 && (
+              <div style={{ marginBottom: 28 }}>
+                <SectionLabel
+                  label="Pausados manualmente"
+                  count={pausedVisibleRows.length}
+                  icon={<PauseCircle size={13} />}
+                />
+                <div className="scheduled-grid">
+                  {pausedVisibleRows.map((row) => (
+                    <ScheduledCard key={row.convId} row={row} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Encerrados ── */}
+            {closedVisibleRows.length > 0 && (
+              <div>
+                <SectionLabel
+                  label="Encerrados"
+                  count={closedVisibleRows.length}
+                  icon={<CheckCircle2 size={13} />}
+                />
+                <div className="scheduled-grid">
+                  {closedVisibleRows.map((row) => (
                     <ScheduledCard key={row.convId} row={row} />
                   ))}
                 </div>

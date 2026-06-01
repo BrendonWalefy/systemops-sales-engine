@@ -400,10 +400,10 @@ export default async function DashboardPage() {
             Sincronizado com IA
           </span>
           {data.needsAttentionCount > 0 ? (
-            <a href="/app/inbox?filter=attention" className="dashboard-alert-pill" style={{ textDecoration: "none" }}>
+            <Link href="/app/inbox?filter=attention" className="dashboard-alert-pill" style={{ textDecoration: "none" }}>
               <AlertTriangle size={15} />
               {data.needsAttentionCount} intervenção{data.needsAttentionCount !== 1 ? "es" : ""}
-            </a>
+            </Link>
           ) : (
             <span className="dashboard-quiet-pill">
               <CheckCircle2 size={15} />
@@ -444,10 +444,10 @@ export default async function DashboardPage() {
               <Clock size={16} />
             </span>
             <span>Economia de Tempo</span>
-            <span className="dashboard-trend positive">{data.agentMessageCount}</span>
+            <span className="dashboard-trend positive">{data.agentMessageCount} msgs</span>
           </div>
           <strong>{formatTimeSaved(estimatedTimeSavedMinutes)}</strong>
-          <small>estimado por respostas da IA</small>
+          <small>~2min economizados por resposta da IA</small>
         </article>
 
         <article className="dashboard-kpi-card">
@@ -456,10 +456,10 @@ export default async function DashboardPage() {
               <Flame size={16} />
             </span>
             <span>Leads Quentes</span>
-            <span className="dashboard-trend neutral">{data.activeHotCount} ativos</span>
+            <span className="dashboard-trend neutral">{data.activeHotCount} em conversa</span>
           </div>
           <strong>{data.tempCounts.hot}</strong>
-          <small>requerem follow-up qualificado</small>
+          <small>total · {data.activeHotCount} ativos agora</small>
         </article>
       </section>
 
@@ -533,7 +533,7 @@ export default async function DashboardPage() {
               <Clock size={15} />
               <span>
                 <strong>{data.afterHoursCount}</strong>
-                fora do horário
+                msgs fora do horário atendidas pela IA
               </span>
             </div>
             <div>

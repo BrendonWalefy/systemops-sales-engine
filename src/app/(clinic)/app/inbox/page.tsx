@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
@@ -18,6 +18,7 @@ export default async function InboxPage() {
     db
       .select({
         convId: conversations.id,
+        leadId: leads.id,
         lastMessageAt: conversations.lastMessageAt,
         needsAttention: conversations.needsAttention,
         attentionReason: conversations.attentionReason,
@@ -35,34 +36,72 @@ export default async function InboxPage() {
 
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
 
-  const lastMessages = await Promise.all(
-    rows.map(async (r) => {
-      const [msg] = await db
-        .select({ body: messages.body })
-        .from(messages)
-        .where(eq(messages.conversationId, r.convId))
-        .orderBy(desc(messages.sentAt))
-        .limit(1);
-      return { convId: r.convId, body: msg?.body ?? "" };
-    }),
-  );
+  const scheduledLeadIds = rows
+    .filter((r) => r.leadStatus === "appointment_scheduled")
+    .map((r) => r.leadId);
 
-  const lastMsgMap = Object.fromEntries(lastMessages.map((m) => [m.convId, m.body]));
+  const [lastMessages, appointmentRows] = await Promise.all([
+    Promise.all(
+      rows.map(async (r) => {
+        const [msg] = await db
+          .select({ body: messages.body, author: messages.author })
+          .from(messages)
+          .where(eq(messages.conversationId, r.convId))
+          .orderBy(desc(messages.sentAt))
+          .limit(1);
+        return { convId: r.convId, body: msg?.body ?? "", author: msg?.author ?? "" };
+      }),
+    ),
+    scheduledLeadIds.length > 0
+      ? db
+          .select({ leadId: appointments.leadId, startsAt: appointments.startsAt })
+          .from(appointments)
+          .where(
+            and(
+              inArray(appointments.leadId, scheduledLeadIds),
+              inArray(appointments.status, ["scheduled", "confirmed"]),
+            ),
+          )
+          .orderBy(desc(appointments.startsAt))
+      : Promise.resolve([]),
+  ]);
 
-  const handoffRows: ConvRow[] = rows.filter((r) => r.aiPaused && r.needsAttention);
+  const lastMsgMap = Object.fromEntries(lastMessages.map((m) => [m.convId, { body: m.body, author: m.author }]));
+
+  const appointmentMap: Record<string, Date> = {};
+  for (const appt of appointmentRows) {
+    if (appt.leadId && !appointmentMap[appt.leadId]) {
+      appointmentMap[appt.leadId] = appt.startsAt;
+    }
+  }
+
+  const withAppointment = (r: typeof rows[number]): ConvRow => ({
+    ...r,
+    appointmentStartsAt: appointmentMap[r.leadId] ?? null,
+  });
+
+  const handoffRows: ConvRow[] = rows.filter((r) => r.aiPaused && r.needsAttention).map(withAppointment);
   const activeRows: ConvRow[] = rows.filter(
     (r) =>
       !r.aiPaused &&
       r.leadStatus !== "appointment_scheduled" &&
       r.leadStatus !== "lost" &&
       r.leadStatus !== "won",
-  );
+  ).map(withAppointment);
   const scheduledRows: ConvRow[] = rows.filter(
+    (r) => r.leadStatus === "appointment_scheduled",
+  ).map(withAppointment);
+  const pausedRows: ConvRow[] = rows.filter(
     (r) =>
-      r.leadStatus === "appointment_scheduled" ||
-      r.leadStatus === "won" ||
-      (r.aiPaused && !r.needsAttention),
-  );
+      r.aiPaused &&
+      !r.needsAttention &&
+      r.leadStatus !== "appointment_scheduled" &&
+      r.leadStatus !== "lost" &&
+      r.leadStatus !== "won",
+  ).map(withAppointment);
+  const closedRows: ConvRow[] = rows.filter(
+    (r) => r.leadStatus === "won" || r.leadStatus === "lost",
+  ).map(withAppointment);
 
   return (
     <div>
@@ -74,6 +113,8 @@ export default async function InboxPage() {
         activeRows={activeRows}
         handoffRows={handoffRows}
         scheduledRows={scheduledRows}
+        pausedRows={pausedRows}
+        closedRows={closedRows}
         lastMsgMap={lastMsgMap}
         autoReplyEnabled={autoReplyEnabled}
       />
