@@ -105,7 +105,8 @@ export async function GET(req: NextRequest) {
       attentionReason: c.attentionReason,
     })),
     messages: clinicMessages.map((m) => ({
-      role: m.author === "lead" ? "user" : "agent",
+      // clinic_user = mensagem do operador humano — não conta como resposta da IA
+      role: m.author === "lead" ? "user" : m.author === "agent" ? "agent" : "operator",
       text: m.body,
       sentAt: m.sentAt,
     })),
