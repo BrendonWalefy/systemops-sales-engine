@@ -5,8 +5,8 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations as conversationsTable, messages as messagesTable } from "@/infrastructure/db/schema";
-import { eq, and, count, gte } from "drizzle-orm";
+import { clinics, conversations as conversationsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
+import { eq, and, count, gte, lt } from "drizzle-orm";
 
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
@@ -166,6 +166,7 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
     case "general_question":
     case "clinical_urgency":
     case "needs_human":
+    case "patient_arrived":
       return "warm";
     default:
       return "cold";
@@ -457,7 +458,7 @@ export class ConversationOrchestrator {
       return composed.text;
     };
 
-    if (isFirstMessage && intent !== "clinical_urgency" && intent !== "needs_human") {
+    if (isFirstMessage && intent !== "clinical_urgency" && intent !== "needs_human" && intent !== "patient_arrived") {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = lead.name ? `, ${lead.name}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;
@@ -839,6 +840,27 @@ export class ConversationOrchestrator {
         break;
       }
 
+      // ── Paciente avisa chegada ou atraso para consulta agendada ──
+      case "patient_arrived": {
+        const todayAppointment = await this.findTodayAppointment(lead.id, timezone);
+        const arrivalReason = todayAppointment
+          ? `Paciente chegou/avisou presença para consulta das ${timezone.formatForHuman(todayAppointment.startsAt)}`
+          : "Paciente avisou chegada à clínica";
+
+        await db
+          .update(conversationsTable)
+          .set({
+            needsAttention: true,
+            attentionReason: arrivalReason,
+            updatedAt: new Date(),
+          })
+          .where(eq(conversationsTable.id, conversation.id));
+
+        replyText = await compose({ type: "patient_arrived", appointmentTime: todayAppointment?.startsAt ?? null });
+        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, arrivalReason);
+        break;
+      }
+
       // ── Precisa de humano (mídia, negociação, falar com dentista, situação especial) ──
       case "needs_human": {
         const reason = classification.handoffReason ?? "Lead solicitou atendimento humano";
@@ -1140,6 +1162,32 @@ export class ConversationOrchestrator {
 
     const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration);
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
+  }
+
+  // Retorna o appointment ativo de hoje para o lead (dentro de um raio de 4h antes/depois de agora).
+  private async findTodayAppointment(
+    leadId: string,
+    timezone: ClinicTimezone,
+  ): Promise<{ startsAt: Date } | null> {
+    const now = new Date();
+    const { year, month, day } = timezone.toLocalParts(now);
+    const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59));
+
+    const rows = await db
+      .select({ startsAt: appointmentsTable.startsAt })
+      .from(appointmentsTable)
+      .where(
+        and(
+          eq(appointmentsTable.leadId, leadId),
+          eq(appointmentsTable.status, "scheduled"),
+          gte(appointmentsTable.startsAt, startOfDay),
+          lt(appointmentsTable.startsAt, endOfDay),
+        ),
+      )
+      .limit(1);
+
+    return rows.length > 0 ? { startsAt: rows[0].startsAt } : null;
   }
 
   private async notifyAttentionNeeded(

@@ -38,7 +38,8 @@ export type ActionResult =
   | { type: "slots_expired"; freshSlots: FormattedSlot[] }
   | { type: "reengagement"; lastAppointmentLabel: string }
   | { type: "appointment_reminder"; appointmentLabel: string }
-  | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] };
+  | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] }
+  | { type: "patient_arrived"; appointmentTime: Date | null };
 
 export type ComposerInput = {
   actionResult: ActionResult;
@@ -212,6 +213,20 @@ REGRA CRÍTICA: Use EXATAMENTE os labels dos horários abaixo. NÃO altere datas
 FORMATO OBRIGATÓRIO: uma frase curta explicando que a avaliação é o primeiro passo para ${result.treatmentName}, depois a lista numerada de horários disponíveis, depois peça que o lead responda com o número.
 HORÁRIOS PARA AVALIAÇÃO:
 ${slotList}`;
+    }
+
+    case "patient_arrived": {
+      const apptContext = result.appointmentTime
+        ? `Há uma consulta agendada para hoje às ${result.appointmentTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}.`
+        : "Não há registro de consulta hoje para este paciente.";
+      return `AÇÃO EXECUTADA: Paciente avisou chegada ou presença para consulta.
+${apptContext}
+REGRAS OBRIGATÓRIAS:
+1. Seja extremamente acolhedor e tranquilizador — o paciente está fisicamente presente.
+2. Confirme que a equipe já foi avisada e que será atendido em breve.
+3. NÃO ofereça menu, NÃO ofereça agendamento, NÃO faça perguntas.
+4. Máximo 2 frases curtas e calorosas.
+Exemplo de tom: "Olá! Já avisamos a equipe sobre sua chegada — em instantes você será atendido 😊"`;
     }
 
     case "appointment_reminder":

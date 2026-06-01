@@ -25,6 +25,7 @@ export type IntentType =
   | "price_inquiry"           // perguntou sobre preço/valor
   | "clinical_urgency"        // menciona dor, urgência, sangramento
   | "needs_human"             // requer ação humana: pede mídia, negociação, falar com dentista, situação especial
+  | "patient_arrived"         // paciente avisa que chegou à clínica ou que vai se atrasar para consulta agendada
   | "general_question"        // pergunta geral sobre a clínica
   | "greeting"                // primeiro contato genuíno, sem histórico relevante
   | "acknowledgment"          // reconhecimento mid-conversa: "ok", "blz", "entendi", "certo"
@@ -67,6 +68,13 @@ REGRA CRÍTICA — confirm_slot com data diferente dos slots oferecidos:
 - Se há oferta de horários pendente E o lead menciona um dia/data DIFERENTE dos slots que foram oferecidos no histórico → intent = "reject_slots" com preferredDate extraída, NÃO "confirm_slot"
 - Exemplo: slots oferecidos são "Seg 01/06" mas lead diz "segunda feira dia 08/06" → intent = "reject_slots", preferredDate = "08/06"
 - "confirm_slot" SOMENTE quando o lead escolhe pelo número (1, 2, 3) OU aceita claramente um dos dias já oferecidos sem mencionar outra data
+
+REGRA PARA patient_arrived (PRIORIDADE ALTA — avalie antes de unclear e antes de acknowledgment):
+Use "patient_arrived" quando o paciente indica presença física na clínica ou avisa sobre chegada/atraso para uma consulta. Exemplos:
+- Chegada: "cheguei", "já estou aí", "estou na recepção", "estou esperando", "cheguei antes do horário", "já estou no consultório", "estou na porta", "estou aqui"
+- Atraso: "vou me atrasar", "chego uns 10 minutos atrasado", "estou no caminho", "chego em X minutos", "ainda não saí mas já saio"
+- Confirmação de presença: "só confirmando que estarei aí", "estarei no horário", "confirmo minha presença"
+- Não use quando o paciente está pedindo para agendar, cancelar ou remarcar — nesses casos use o intent específico.
 
 REGRA PARA needs_human (PRIORIDADE ALTA — avalie antes de unclear):
 Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou decidir. Exemplos:
@@ -129,6 +137,7 @@ const RESPONSE_SCHEMA = {
         "price_inquiry",
         "clinical_urgency",
         "needs_human",
+        "patient_arrived",
         "general_question",
         "greeting",
         "acknowledgment",
