@@ -457,7 +457,7 @@ export class ConversationOrchestrator {
       return composed.text;
     };
 
-    if (isFirstMessage) {
+    if (isFirstMessage && intent !== "clinical_urgency" && intent !== "needs_human") {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = lead.name ? `, ${lead.name}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;

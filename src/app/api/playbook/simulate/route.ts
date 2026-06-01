@@ -461,7 +461,11 @@ export async function POST(req: NextRequest) {
 
     // ── Pré-verificações sem LLM — espelho do ConversationOrchestrator ─────
 
-    if (isFirst && playbook.greetingMessage.trim()) {
+    // Urgência e handoff explícito no primeiro contato bypassam o menu (espelho do Orchestrator)
+    const firstContactBypassIntents = /dor|urgente|urgencia|sangrament|emergencia|falar com|dentista|humano|especialista|atendente/;
+    const isFirstContactBypass = isFirst && firstContactBypassIntents.test(norm(message));
+
+    if (isFirst && !isFirstContactBypass && playbook.greetingMessage.trim()) {
       return NextResponse.json({ text: buildGreeting(playbook.greetingMessage.trim()), intent: "greeting" });
     }
 
