@@ -369,13 +369,20 @@ export class ConversationOrchestrator {
       }
     }
 
-    // Saudação isolada mid-conversa (sem menu ativo, sem oferta pendente)
+    // Saudação isolada mid-conversa (sem oferta pendente, sem seleção válida de menu)
     const isolatedGreeting =
-      !isFirstMessage && !isMenuActive && !hasPendingOffer &&
+      !isFirstMessage && !hasPendingOffer &&
       !resetRequested && !menuReRequested && !isStaleConversation &&
+      menuResolution === null &&
       isIsolatedGreeting(messageText);
 
-    const skipLlm = menuReRequested || isStaleConversation || isolatedGreeting || resetRequested;
+    // Lead enviou o número de um item desabilitado — não rotear via LLM
+    const nMsg = messageText.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+    const isDisabledItemSelection =
+      isMenuActive && menuResolution === null && !isolatedGreeting &&
+      clinicMenuItems.some(i => !i.enabled && nMsg === String(i.number));
+
+    const skipLlm = menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
@@ -462,8 +469,8 @@ export class ConversationOrchestrator {
       const nameGreeting = lead.name ? `, ${lead.name}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;
       await this.stateMachine.offerMenu(conversation.id);
-    } else if (menuReRequested || isStaleConversation || isolatedGreeting) {
-      if (menuReRequested) {
+    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection) {
+      if (menuReRequested || isDisabledItemSelection) {
         replyText = buildMenuBody(clinic, "reoffer");
       } else {
         const salutation = getDayGreeting(timezone);
