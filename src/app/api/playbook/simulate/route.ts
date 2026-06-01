@@ -271,9 +271,9 @@ function mockClassify(message: string, hasPendingSlotOffer: boolean): IntentClas
   if (/quanto|preco|valor|custo|caro|plano|parcel/.test(m)) return makeIntent("price_inquiry");
   if (/tchau|ate mais|ate logo|obrigado tchau/.test(m)) return makeIntent("farewell");
   if (/^(ok|blz|entendi|certo|combinado)[!.]?$/.test(m)) return makeIntent("acknowledgment");
-  if (/horario|disponib|vaga/.test(m)) return makeIntent("check_availability");
   if (/cancelar|desmarcar/.test(m)) return makeIntent("cancel_appointment");
-  if (/remarcar|reagendar|mudar horario/.test(m)) return makeIntent("reschedule_appointment");
+  if (/remarcar|reagendar|mudar.{0,5}horario|trocar.{0,5}horario/.test(m)) return makeIntent("reschedule_appointment");
+  if (/horario|disponib|vaga/.test(m)) return makeIntent("check_availability");
   if (/meus agendamentos|minhas consultas|quando e minha/.test(m)) return makeIntent("list_appointments");
 
   return makeIntent("general_question");
@@ -283,7 +283,7 @@ const MOCK_TEXTS: Partial<Record<ActionResult["type"], string>> = {
   slots_found: "[MOCK] Tenho estes horários disponíveis:\n1. Seg 02/Jun às 09h00\n2. Ter 03/Jun às 10h30\n3. Qua 04/Jun às 14h00\n\nQual prefere? Responda com o número.",
   appointment_confirmed: "[MOCK] Agendamento confirmado! Nossa equipe estará esperando por você.",
   appointment_cancelled: "[MOCK] Agendamento cancelado com sucesso.",
-  appointment_rescheduled: "[MOCK] Vou verificar novos horários:\n1. Qui 05/Jun às 09h00\n2. Sex 06/Jun às 14h00\n3. Seg 09/Jun às 10h30\n\nQual prefere?",
+  appointment_rescheduled: "[MOCK] Claro! Vou remarcar. Aqui estão novos horários disponíveis:\n1. Qui 05/Jun às 09h00\n2. Sex 06/Jun às 14h00\n3. Seg 09/Jun às 10h30\n\nQual prefere? Responda com o número.",
   appointments_listed: "[MOCK] Você tem consulta agendada para Seg 02/Jun às 09h00.",
   price_inquiry: "[MOCK] A avaliação inicial é gratuita. Os valores variam conforme o caso e podem ser parcelados em até 12x.",
   clinical_urgency: "[MOCK] Entendo que é urgente. Vou acionar a equipe imediatamente — alguém entrará em contato.",
@@ -295,13 +295,18 @@ const MOCK_TEXTS: Partial<Record<ActionResult["type"], string>> = {
 };
 
 function mockCompose(actionResult: ActionResult): ComposedResponse {
-  return {
-    text: MOCK_TEXTS[actionResult.type] ?? "[MOCK] Estou aqui para ajudar.",
-    model: "mock",
-    promptVersion: "mock-v1",
-    inputTokens: 0,
-    outputTokens: 0,
-  };
+  let text = MOCK_TEXTS[actionResult.type] ?? "[MOCK] Estou aqui para ajudar.";
+
+  if (actionResult.type === "general_question" && "clinicContext" in actionResult) {
+    const ctx = (actionResult as { type: "general_question"; clinicContext: string }).clinicContext;
+    if (/procedimentos|lista|bullet|selecionou.*procediment/i.test(ctx)) {
+      text = "[MOCK] Realizamos os seguintes procedimentos:\n• Avaliação gratuita\n• Lentes de contato dental\n• Clareamento dental\n• Implantes dentários\n• Ortodontia\n\nCada caso é avaliado individualmente na consulta inicial.";
+    } else if (/localiz|endere[çc]o|selecionou.*localiz/i.test(ctx)) {
+      text = "[MOCK] Para informações sobre nossa localização e horários de atendimento, nossa equipe entrará em contato em breve.";
+    }
+  }
+
+  return { text, model: "mock", promptVersion: "mock-v1", inputTokens: 0, outputTokens: 0 };
 }
 
 // ── Handler principal ────────────────────────────────────────────────────────
@@ -584,9 +589,13 @@ export async function POST(req: NextRequest) {
 
     const INTENTS_WITH_SLOTS = ["book_appointment", "check_availability", "reject_slots", "confirm_slot", "reschedule_appointment"];
 
+    // Quando o pipeline produziu uma oferta de slots, retornar "slots_found" como intent
+    // para que conversas multi-turno detectem hasPendingSlotOffer corretamente via histórico.
+    const responseIntent = actionResult.type === "slots_found" ? "slots_found" : classification.intent;
+
     return NextResponse.json({
       text: result.text,
-      intent: classification.intent,
+      intent: responseIntent,
       ...(INTENTS_WITH_SLOTS.includes(classification.intent) ? { slots } : {}),
       ...(debugInfo ? { debug: debugInfo } : {}),
     });
