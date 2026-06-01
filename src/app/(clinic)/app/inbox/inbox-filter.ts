@@ -1,6 +1,6 @@
 import type { ConvRow } from "./InboxClient";
 
-export type InboxFilter = "all" | "attention" | "scheduled";
+export type InboxFilter = "all" | "attention";
 
 export function filterBySearch(rows: ConvRow[], search: string): ConvRow[] {
   if (!search.trim()) return rows;
@@ -18,16 +18,6 @@ export function resolveEmConversa(
   filter: InboxFilter,
   search: string,
 ): ConvRow[] {
-  if (filter === "scheduled") return [];
   const source = filter === "attention" ? handoffRows : [...handoffRows, ...activeRows];
   return filterBySearch(source, search);
-}
-
-export function resolveAgendados(
-  scheduledRows: ConvRow[],
-  filter: InboxFilter,
-  search: string,
-): ConvRow[] {
-  if (filter === "attention") return [];
-  return filterBySearch(scheduledRows, search);
 }

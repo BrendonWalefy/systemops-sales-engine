@@ -36,6 +36,7 @@ export default async function InboxPage() {
 
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
 
+  // Busca appointments para todos os leads agendados (badge dentro do card)
   const scheduledLeadIds = rows
     .filter((r) => r.leadStatus === "appointment_scheduled")
     .map((r) => r.leadId);
@@ -80,28 +81,23 @@ export default async function InboxPage() {
     appointmentStartsAt: appointmentMap[r.leadId] ?? null,
   });
 
-  const handoffRows: ConvRow[] = rows.filter((r) => r.aiPaused && r.needsAttention).map(withAppointment);
-  const activeRows: ConvRow[] = rows.filter(
-    (r) =>
-      !r.aiPaused &&
-      r.leadStatus !== "appointment_scheduled" &&
-      r.leadStatus !== "lost" &&
-      r.leadStatus !== "won",
-  ).map(withAppointment);
-  const scheduledRows: ConvRow[] = rows.filter(
-    (r) => r.leadStatus === "appointment_scheduled",
-  ).map(withAppointment);
-  const pausedRows: ConvRow[] = rows.filter(
-    (r) =>
-      r.aiPaused &&
-      !r.needsAttention &&
-      r.leadStatus !== "appointment_scheduled" &&
-      r.leadStatus !== "lost" &&
-      r.leadStatus !== "won",
-  ).map(withAppointment);
-  const closedRows: ConvRow[] = rows.filter(
-    (r) => r.leadStatus === "won" || r.leadStatus === "lost",
-  ).map(withAppointment);
+  // Em Conversa: todos os leads ativos (inclui agendados) — scheduled leads aparecem
+  // aqui com o badge de data dentro do próprio card
+  const handoffRows: ConvRow[] = rows
+    .filter((r) => r.aiPaused && r.needsAttention)
+    .map(withAppointment);
+
+  const activeRows: ConvRow[] = rows
+    .filter((r) => !r.aiPaused && r.leadStatus !== "lost" && r.leadStatus !== "won")
+    .map(withAppointment);
+
+  const pausedRows: ConvRow[] = rows
+    .filter((r) => r.aiPaused && !r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won")
+    .map(withAppointment);
+
+  const closedRows: ConvRow[] = rows
+    .filter((r) => r.leadStatus === "won" || r.leadStatus === "lost")
+    .map(withAppointment);
 
   return (
     <div>
@@ -112,7 +108,6 @@ export default async function InboxPage() {
       <InboxClient
         activeRows={activeRows}
         handoffRows={handoffRows}
-        scheduledRows={scheduledRows}
         pausedRows={pausedRows}
         closedRows={closedRows}
         lastMsgMap={lastMsgMap}

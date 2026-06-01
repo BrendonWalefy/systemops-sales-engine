@@ -1,7 +1,7 @@
 // Tests for inbox filter logic — pure functions, no DOM needed.
 
 import { describe, it, expect } from "vitest";
-import { filterBySearch, resolveEmConversa, resolveAgendados } from "@/app/(clinic)/app/inbox/inbox-filter";
+import { filterBySearch, resolveEmConversa } from "@/app/(clinic)/app/inbox/inbox-filter";
 import type { ConvRow } from "@/app/(clinic)/app/inbox/InboxClient";
 
 function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
@@ -55,14 +55,16 @@ describe("resolveEmConversa", () => {
     expect(result[1].convId).toBe("a1");
   });
 
+  it("filter=all → inclui leads agendados passados como ativos", () => {
+    const result = resolveEmConversa([handoff], [active, scheduled], "all", "");
+    expect(result).toHaveLength(3);
+    expect(result.some((r) => r.convId === "s1")).toBe(true);
+  });
+
   it("filter=attention → somente handoff", () => {
     const result = resolveEmConversa([handoff], [active], "attention", "");
     expect(result).toHaveLength(1);
     expect(result[0].convId).toBe("h1");
-  });
-
-  it("filter=scheduled → retorna vazio", () => {
-    expect(resolveEmConversa([handoff], [active], "scheduled", "")).toHaveLength(0);
   });
 
   it("aplica busca por nome dentro do filtro", () => {
@@ -70,23 +72,10 @@ describe("resolveEmConversa", () => {
     expect(result).toHaveLength(1);
     expect(result[0].convId).toBe("a1");
   });
-});
 
-describe("resolveAgendados", () => {
-  it("filter=all → retorna agendados", () => {
-    expect(resolveAgendados([scheduled], "all", "")).toHaveLength(1);
-  });
-
-  it("filter=scheduled → retorna agendados", () => {
-    expect(resolveAgendados([scheduled], "scheduled", "")).toHaveLength(1);
-  });
-
-  it("filter=attention → retorna vazio", () => {
-    expect(resolveAgendados([scheduled], "attention", "")).toHaveLength(0);
-  });
-
-  it("aplica busca dentro dos agendados", () => {
-    const result = resolveAgendados([scheduled], "all", "xyz");
-    expect(result).toHaveLength(0);
+  it("busca encontra lead agendado pelo nome", () => {
+    const result = resolveEmConversa([], [active, scheduled], "all", "agendado");
+    expect(result).toHaveLength(1);
+    expect(result[0].convId).toBe("s1");
   });
 });

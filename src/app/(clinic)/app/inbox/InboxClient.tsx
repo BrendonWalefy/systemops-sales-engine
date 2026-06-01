@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Search, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox, PauseCircle } from "lucide-react";
-import { filterBySearch, resolveEmConversa, resolveAgendados, type InboxFilter } from "./inbox-filter";
+import { filterBySearch, resolveEmConversa, type InboxFilter } from "./inbox-filter";
 
 export type ConvRow = {
   convId: string;
@@ -35,6 +35,16 @@ function relativeTime(date: Date): string {
   }
   const d = Math.floor(h / 24);
   return `há ${d}d`;
+}
+
+function formatAppointmentDate(date: Date): string {
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  }).replace(".", "");
 }
 
 function tempLabel(temp: string | null): string {
@@ -78,10 +88,14 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; a
   const isHandoff = row.needsAttention && row.aiPaused;
   const hasUnread = lastMsg.author === "lead";
 
+  const apptDate = row.appointmentStartsAt ? new Date(row.appointmentStartsAt) : null;
+  const apptIsPast = apptDate !== null && apptDate < new Date();
+
   return (
     <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
       <div className={`inbox-active-card conv-temp-${tk}${isHandoff ? " needs-attention" : ""}${hasUnread ? " has-unread" : ""}`}>
-        {/* Header: avatar + name + badge + time */}
+
+        {/* Header: avatar + nome + badge temperatura + timestamp */}
         <div className="inbox-card-header">
           <div style={{ position: "relative", flexShrink: 0 }}>
             <div
@@ -119,7 +133,17 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; a
           </div>
         </div>
 
-        {/* Attention reason */}
+        {/* Badge de agendamento — visível quando lead tem consulta marcada */}
+        {apptDate && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <Calendar size={10} style={{ color: apptIsPast ? "var(--warm)" : "var(--accent-strong)", flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: apptIsPast ? "var(--warm)" : "var(--accent-strong)" }}>
+              {formatAppointmentDate(apptDate)}{apptIsPast ? " · passou" : ""}
+            </span>
+          </div>
+        )}
+
+        {/* Motivo de atenção humana */}
         {isHandoff && row.attentionReason && (
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--warm)", fontWeight: 600 }}>
             <AlertTriangle size={10} />
@@ -127,11 +151,11 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; a
           </div>
         )}
 
-        {/* Footer: preview */}
+        {/* Preview da última mensagem */}
         <div className="inbox-card-footer">
           <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
             <MessageSquare size={10} style={{ opacity: 0.35, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 12, color: hasUnread ? "var(--warm)" : "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {preview || "Sem mensagens"}
             </span>
           </div>
@@ -139,16 +163,6 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; a
       </div>
     </Link>
   );
-}
-
-function formatAppointmentDate(date: Date): string {
-  return date.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
-  }).replace(".", "");
 }
 
 function ScheduledCard({ row, lastMsg }: { row: ConvRow; lastMsg?: { body: string; author: string } }) {
@@ -233,7 +247,6 @@ function SectionLabel({ label, count, icon }: { label: string; count: number; ic
 export function InboxClient({
   activeRows,
   handoffRows,
-  scheduledRows,
   pausedRows,
   closedRows,
   lastMsgMap,
@@ -241,7 +254,6 @@ export function InboxClient({
 }: {
   activeRows: ConvRow[];
   handoffRows: ConvRow[];
-  scheduledRows: ConvRow[];
   pausedRows: ConvRow[];
   closedRows: ConvRow[];
   lastMsgMap: Record<string, { body: string; author: string }>;
@@ -251,14 +263,13 @@ export function InboxClient({
   const [filter, setFilter] = useState<Filter>("all");
 
   const totalActive = activeRows.length + handoffRows.length;
-  const totalAll = totalActive + scheduledRows.length + pausedRows.length + closedRows.length;
+  const totalAll = totalActive + pausedRows.length + closedRows.length;
 
   const emConversaRows = resolveEmConversa(handoffRows, activeRows, filter, search);
-  const agendadosRows = resolveAgendados(scheduledRows, filter, search);
   const pausedVisibleRows = filter === "all" ? filterBySearch(pausedRows, search) : [];
   const closedVisibleRows = filter === "all" ? filterBySearch(closedRows, search) : [];
 
-  const totalVisible = emConversaRows.length + agendadosRows.length + pausedVisibleRows.length + closedVisibleRows.length;
+  const totalVisible = emConversaRows.length + pausedVisibleRows.length + closedVisibleRows.length;
 
   if (totalAll === 0) {
     return (
@@ -296,7 +307,7 @@ export function InboxClient({
         </div>
       </div>
 
-      {/* ── Search + Filter tabs ── */}
+      {/* ── Busca + Filtros ── */}
       <div className="inbox-filter-bar">
         <div className="inbox-search-wrap">
           <Search size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
@@ -309,7 +320,7 @@ export function InboxClient({
           />
         </div>
         <div className="inbox-filter-tabs" role="tablist">
-          {(["all", "attention", "scheduled"] as Filter[]).map((f) => (
+          {(["all", "attention"] as Filter[]).map((f) => (
             <button
               key={f}
               role="tab"
@@ -317,7 +328,7 @@ export function InboxClient({
               className={`inbox-filter-tab${filter === f ? " active" : ""}`}
               onClick={() => setFilter(f)}
             >
-              {f === "all" ? "Todos" : f === "attention" ? (
+              {f === "all" ? "Todos" : (
                 <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   Requer Atenção
                   {handoffRows.length > 0 && (
@@ -334,7 +345,7 @@ export function InboxClient({
                     </span>
                   )}
                 </span>
-              ) : "Agendados"}
+              )}
             </button>
           ))}
         </div>
@@ -348,7 +359,7 @@ export function InboxClient({
           </div>
         ) : (
           <>
-            {/* ── Em Conversa ── */}
+            {/* ── Em Conversa — inclui leads agendados com badge de data ── */}
             {emConversaRows.length > 0 && (
               <div style={{ marginBottom: 28 }}>
                 <SectionLabel
@@ -359,22 +370,6 @@ export function InboxClient({
                 <div className="conversation-grid">
                   {emConversaRows.map((row) => (
                     <ActiveCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "" }} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Agendados ── */}
-            {agendadosRows.length > 0 && (
-              <div style={{ marginBottom: 28 }}>
-                <SectionLabel
-                  label="Agendados"
-                  count={agendadosRows.length}
-                  icon={<Calendar size={13} />}
-                />
-                <div className="scheduled-grid">
-                  {agendadosRows.map((row) => (
-                    <ScheduledCard key={row.convId} row={row} lastMsg={lastMsgMap[row.convId]} />
                   ))}
                 </div>
               </div>
