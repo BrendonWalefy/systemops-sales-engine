@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, Plus, Search, Send, Sparkles, Trash2, UserRound, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, FlaskConical, Plus, Search, X } from "lucide-react";
 import { updatePlaybookVersion } from "../playbook-version-actions";
 
 type Objection = { objection: string; response: string };
@@ -20,7 +20,7 @@ type Props = {
   id: string;
   name: string;
   initialData: EditorData;
-  greetingMessage: string;
+  greetingMessage: string; // kept for server component compat — not rendered in editor
 };
 
 const TONES = [
@@ -41,181 +41,7 @@ function completude(data: EditorData): number {
   return Math.round((filled / 6) * 100);
 }
 
-type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
 type ObjectionFilter = "all" | "pending";
-
-function PlaybookSandbox({ data, greetingMessage }: { data: EditorData; greetingMessage: string }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const messageListRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const list = messageListRef.current;
-    if (!list) return;
-    list.scrollTo({
-      top: list.scrollHeight,
-      behavior: messages.length > 2 || loading ? "smooth" : "auto",
-    });
-  }, [messages, loading]);
-
-  async function send() {
-    const text = input.trim();
-    if (!text || loading) return;
-    const next: ChatMessage[] = [...messages, { role: "user", text }];
-    setMessages(next);
-    setInput("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/playbook/simulate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: messages,
-          playbook: {
-            specialty: data.specialty,
-            procedureDescription: data.procedureDescription,
-            toneOfVoice: data.toneOfVoice,
-            differentials: data.differentials,
-            commercialPolicy: data.commercialPolicy,
-            objections: data.objections,
-            greetingMessage,
-          },
-        }),
-      });
-      const json = await res.json();
-      setMessages((prev) => [...prev, { role: "assistant", text: json.text ?? "Erro ao obter resposta.", intent: json.intent }]);
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", text: "Erro de conexão." }]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleKey(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-  }
-
-  const isEmpty = messages.length === 0;
-  const quickPrompts = data.objections
-    .map((objection) => objection.objection.trim())
-    .filter(Boolean)
-    .slice(0, 3);
-  const promptSuggestions = quickPrompts.length > 0
-    ? quickPrompts
-    : ["Quanto custa a avaliação?", "Tenho medo do procedimento", "Quero agendar um horário"];
-
-  return (
-    <section className="sandbox-shell">
-      <div style={{ padding: "14px 16px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <div>
-          <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#f4f4f5" }}>Testar Playbook</p>
-          <p style={{ margin: "3px 0 0", fontSize: "11px", color: "#71717a" }}>Simulação usando a versão atual</p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", border: "1px solid rgba(0,212,170,0.22)", background: "rgba(0,212,170,0.08)", color: "#00d4aa", borderRadius: "999px", padding: "5px 8px", fontSize: "10px", fontWeight: 700 }}>
-            <Sparkles size={11} />
-            IA sincronizada
-          </span>
-          {!isEmpty && (
-            <button type="button" onClick={() => setMessages([])} title="Limpar conversa" style={chatIconButtonStyle}>
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div ref={messageListRef} className="sandbox-messages">
-        {isEmpty ? (
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", color: "#71717a", fontSize: "12px", textAlign: "center", padding: "22px 10px" }}>
-            <span style={{ width: "34px", height: "34px", borderRadius: "999px", display: "grid", placeItems: "center", background: "rgba(0,212,170,0.12)", color: "#00d4aa", border: "1px solid rgba(0,212,170,0.24)" }}>
-              <Bot size={17} />
-            </span>
-            <span>Digite uma mensagem para testar a resposta da IA.</span>
-            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "6px", marginTop: "2px" }}>
-              {promptSuggestions.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => setInput(suggestion)}
-                  style={quickPromptButtonStyle}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          messages.map((message, index) => <SandboxMessage key={index} message={message} />)
-        )}
-        {loading && (
-          <SandboxMessage message={{ role: "assistant", text: "Digitando..." }} />
-        )}
-      </div>
-
-      <div style={{ padding: "12px", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", gap: "8px", alignItems: "flex-end", background: "rgba(9,9,11,0.82)" }}>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
-          {!isEmpty && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-              {promptSuggestions.slice(0, 2).map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => setInput(suggestion)}
-                  style={quickPromptButtonStyle}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          )}
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Digite uma mensagem de teste..."
-            rows={2}
-            disabled={loading}
-            style={{ width: "100%", minHeight: "46px", maxHeight: "110px", background: "rgba(15,17,23,0.76)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", color: "#e4e4e7", fontSize: "12px", padding: "10px 11px", outline: "none", fontFamily: "inherit", resize: "vertical", lineHeight: 1.45, opacity: loading ? 0.5 : 1 }}
-          />
-        </div>
-        <button
-          type="button"
-          onClick={send}
-          disabled={loading || !input.trim()}
-          style={{ background: input.trim() && !loading ? "#00d4aa" : "rgba(255,255,255,0.05)", border: "none", borderRadius: "10px", color: input.trim() && !loading ? "#031f1a" : "#52525b", cursor: input.trim() && !loading ? "pointer" : "default", height: "46px", minWidth: "46px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 150ms", boxShadow: input.trim() && !loading ? "0 10px 24px rgba(0,212,170,0.18)" : "none" }}
-        >
-          <Send size={15} strokeWidth={2.2} />
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function SandboxMessage({ message }: { message: ChatMessage }) {
-  const isAssistant = message.role === "assistant";
-  return (
-    <div style={{ display: "flex", flexDirection: isAssistant ? "row-reverse" : "row", gap: "8px", alignItems: "flex-start" }}>
-      <span style={{ width: "24px", height: "24px", borderRadius: "999px", display: "grid", placeItems: "center", flexShrink: 0, background: isAssistant ? "rgba(0,212,170,0.16)" : "rgba(255,255,255,0.06)", color: isAssistant ? "#00d4aa" : "#a1a1aa", border: `1px solid ${isAssistant ? "rgba(0,212,170,0.26)" : "rgba(255,255,255,0.08)"}` }}>
-        {isAssistant ? <Bot size={13} /> : <UserRound size={13} />}
-      </span>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: isAssistant ? "flex-end" : "flex-start", gap: "4px", minWidth: 0, flex: 1 }}>
-        <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.02em", color: isAssistant ? "#00d4aa" : "#a1a1aa" }}>
-          {isAssistant ? "IA" : "Lead"}
-        </span>
-        <div style={{ maxWidth: "88%", padding: "9px 11px", borderRadius: isAssistant ? "12px 3px 12px 12px" : "3px 12px 12px 12px", background: isAssistant ? "linear-gradient(135deg, rgba(0,212,170,0.88), rgba(20,184,166,0.62))" : "rgba(255,255,255,0.08)", border: `1px solid ${isAssistant ? "rgba(0,212,170,0.22)" : "rgba(255,255,255,0.07)"}`, color: isAssistant ? "#ecfdf5" : "#d4d4d8", fontSize: "12px", lineHeight: 1.55, whiteSpace: "pre-wrap", overflowWrap: "anywhere", boxShadow: isAssistant ? "0 10px 28px rgba(0,212,170,0.12)" : "none" }}>
-          {message.text}
-        </div>
-        {isAssistant && message.intent && (
-          <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: "0.06em", color: "#00d4aa", padding: "2px 6px", background: "rgba(0,212,170,0.1)", borderRadius: "999px", border: "1px solid rgba(0,212,170,0.18)" }}>
-            {message.intent}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function PlaybookEditorClient({ id, name, initialData, greetingMessage }: Props) {
   const router = useRouter();
@@ -297,23 +123,19 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column" }}>
       <style>{`
-        .editor-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 360px); gap: 24px; width: 100%; max-width: 1180px; margin: 0 auto; padding: 24px 28px 112px; align-items: start; }
-        .editor-right { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 14px; }
+        .editor-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; width: 100%; max-width: 820px; margin: 0 auto; padding: 24px 28px 112px; align-items: start; }
         .editor-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .editor-breadcrumb { padding: 16px 28px 14px; }
         .editor-bottom-bar { padding: 12px 28px; gap: 20px; }
         .editor-bottom-voltar { display: flex; }
         .editor-sections { display: flex; flex-direction: column; gap: 22px; }
-        .sandbox-shell { height: min(640px, calc(var(--vh, 100dvh) - 112px)); min-height: 280px; background: linear-gradient(145deg, rgba(22,27,39,0.94), rgba(15,17,23,0.9)); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08); backdrop-filter: blur(18px); }
-        .sandbox-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; background: radial-gradient(circle at 78% 22%, rgba(0,212,170,0.14), transparent 170px), rgba(255,255,255,0.015); }
         .objection-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, 280px); gap: 10px; align-items: center; }
         .objection-summary { display: flex; flex-wrap: wrap; gap: 8px; }
         .objection-search { position: relative; min-width: 0; }
         .objection-segment { display: flex; width: fit-content; gap: 4px; padding: 4px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07); background: rgba(15,17,23,0.62); }
         .objection-status { display: inline-flex; align-items: center; flex-shrink: 0; border-radius: 999px; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.035); color: #71717a; font-size: 10px; font-weight: 700; padding: 4px 8px; }
         @media (max-width: 640px) {
-          .editor-body { grid-template-columns: 1fr; padding: 16px 16px 110px; gap: 16px; }
-          .editor-right { position: static; }
+          .editor-body { padding: 16px 16px 110px; gap: 16px; }
           .editor-config-grid { grid-template-columns: 1fr; }
           .objection-toolbar { grid-template-columns: 1fr; }
           .objection-segment { width: 100%; }
@@ -321,7 +143,6 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           .editor-breadcrumb { padding: 12px 16px 10px; }
           .editor-bottom-bar { padding: 10px 16px; gap: 10px; }
           .editor-bottom-voltar { display: none; }
-          .sandbox-shell { height: 520px; min-height: 420px; }
           .objection-status { display: none; }
         }
       `}</style>
@@ -344,9 +165,8 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
         <span style={{ fontSize: "12px", color: "#a1a1aa", fontWeight: 500 }}>Editor: {name}</span>
       </div>
 
-      {/* Body: 2 columns */}
+      {/* Body */}
       <div className="editor-body" style={{ flex: 1 }}>
-        {/* Left — fields */}
         <div>
           <div style={{ marginBottom: "20px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
             <div>
@@ -546,11 +366,6 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
             </EditorSection>
           </div>
         </div>
-
-        {/* Right panel — sticky on desktop, inline on mobile */}
-        <div className="editor-right">
-          <PlaybookSandbox data={data} greetingMessage={greetingMessage} />
-        </div>
       </div>
 
       {/* Bottom bar — fixed */}
@@ -569,13 +384,20 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           alignItems: "center",
         }}
       >
-        <button
-          onClick={() => router.push("/app/settings/playbook")}
-          className="editor-bottom-voltar"
-          style={{ alignItems: "center", gap: "6px", background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#a1a1aa", fontSize: "13px", fontWeight: 500, cursor: "pointer", padding: "9px 16px", flexShrink: 0 }}
-        >
-          Voltar para Versões
-        </button>
+        <div className="editor-bottom-voltar" style={{ alignItems: "center", gap: "8px" }}>
+          <button
+            onClick={() => router.push("/app/settings/playbook")}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#a1a1aa", fontSize: "13px", fontWeight: 500, cursor: "pointer", padding: "9px 16px", flexShrink: 0 }}
+          >
+            Voltar
+          </button>
+          <button
+            onClick={() => router.push("/app/settings/playbook/simulate")}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(0,212,170,0.08)", border: "1px solid rgba(0,212,170,0.2)", borderRadius: "8px", color: "#00d4aa", fontSize: "13px", fontWeight: 600, cursor: "pointer", padding: "9px 16px", flexShrink: 0 }}
+          >
+            <FlaskConical size={14} /> Testar IA
+          </button>
+        </div>
 
         {/* Completude bar */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -679,31 +501,6 @@ function segmentButtonStyle(active: boolean): React.CSSProperties {
   };
 }
 
-const chatIconButtonStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  color: "#a1a1aa",
-  cursor: "pointer",
-  padding: "7px",
-  borderRadius: "8px",
-  display: "flex",
-  alignItems: "center",
-};
-
-const quickPromptButtonStyle: React.CSSProperties = {
-  maxWidth: "100%",
-  border: "1px solid rgba(0,212,170,0.16)",
-  borderRadius: "999px",
-  background: "rgba(0,212,170,0.07)",
-  color: "#9ffce5",
-  cursor: "pointer",
-  fontSize: "10px",
-  fontWeight: 700,
-  padding: "6px 9px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
 
 const inputStyle: React.CSSProperties = {
   width: "100%",

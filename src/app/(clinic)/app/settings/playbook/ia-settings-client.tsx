@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Timer, CalendarClock, Clock, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical } from "lucide-react";
+import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
@@ -654,6 +654,7 @@ function ProcedimentosTab() {
 }
 
 export function IASettingsClient({ clinic, versions }: { clinic: ClinicData; versions: Version[] }) {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("playbooks");
 
   const pills = [
@@ -754,9 +755,17 @@ export function IASettingsClient({ clinic, versions }: { clinic: ClinicData; ver
 
         {tab === "playbooks" && (
           <div>
-            <p style={{ margin: "0 0 20px", fontSize: "13px", color: "#52525b", lineHeight: 1.6 }}>
-              Cada versão é um conjunto independente de regras para a IA. A versão em produção é a que está ativa.
-            </p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", gap: "12px", flexWrap: "wrap" }}>
+              <p style={{ margin: 0, fontSize: "13px", color: "#52525b", lineHeight: 1.6 }}>
+                Cada versão é um conjunto independente de regras para a IA. A versão em produção é a que está ativa.
+              </p>
+              <button
+                onClick={() => router.push("/app/settings/playbook/simulate")}
+                style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "rgba(0,212,170,0.08)", border: "1px solid rgba(0,212,170,0.2)", borderRadius: "8px", color: "#00d4aa", fontSize: "13px", fontWeight: 600, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                <FlaskConical size={14} /> Testar IA
+              </button>
+            </div>
             <div className="ia-versions-grid">
               {versions.map((v, i) => (
                 <VersionCard key={v.id} version={v} index={i} />
