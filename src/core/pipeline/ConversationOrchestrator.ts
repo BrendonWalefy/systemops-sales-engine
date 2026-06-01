@@ -383,11 +383,15 @@ export class ConversationOrchestrator {
       menuResolution === null &&
       isIsolatedGreeting(messageText);
 
-    // Lead enviou o número de um item desabilitado — não rotear via LLM
+    // Lead enviou número ou rótulo de item desabilitado — não rotear via LLM
     const nMsg = messageText.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
     const isDisabledItemSelection =
       isMenuActive && menuResolution === null && !isolatedGreeting &&
-      clinicMenuItems.some(i => !i.enabled && nMsg === String(i.number));
+      clinicMenuItems.some(i => {
+        if (i.enabled) return false;
+        const normalizedLabel = i.label.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+        return nMsg === String(i.number) || nMsg === normalizedLabel;
+      });
 
     // Lead enviou número que não existe no menu (válido nem desabilitado) — reapresenta sem LLM
     const isInvalidMenuNumber =
