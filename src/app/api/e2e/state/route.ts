@@ -5,6 +5,7 @@ import {
   appointments,
   conversations,
   conversationStates,
+  followUps,
   leads,
   messages,
   slotReservations,
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   const conversationIds = clinicConversations.map((c) => c.id);
 
-  const [clinicLeads, clinicMessages, latestState, clinicAppointments, clinicSlotReservations] =
+  const [clinicLeads, clinicMessages, latestState, clinicAppointments, clinicSlotReservations, clinicFollowUps] =
     await Promise.all([
       db
         .select({ id: leads.id, name: leads.name, phone: leads.phone, status: leads.status })
@@ -80,6 +81,18 @@ export async function GET(req: NextRequest) {
         })
         .from(slotReservations)
         .where(eq(slotReservations.clinicId, E2E_CLINIC_ID)),
+
+      db
+        .select({
+          id: followUps.id,
+          leadId: followUps.leadId,
+          dueAt: followUps.dueAt,
+          status: followUps.status,
+          reason: followUps.reason,
+        })
+        .from(followUps)
+        .where(eq(followUps.clinicId, E2E_CLINIC_ID))
+        .orderBy(desc(followUps.dueAt)),
     ]);
 
   const payload = latestState?.payload as Record<string, unknown> | null;
@@ -125,6 +138,13 @@ export async function GET(req: NextRequest) {
       startsAt: r.startsAt.toISOString(),
       endsAt: r.endsAt.toISOString(),
       status: r.status,
+    })),
+    followUps: clinicFollowUps.map((f) => ({
+      id: f.id,
+      leadId: f.leadId,
+      dueAt: f.dueAt.toISOString(),
+      status: f.status,
+      reason: f.reason,
     })),
   });
 }

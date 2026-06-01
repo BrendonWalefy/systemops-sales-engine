@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, leads } from "@/infrastructure/db/schema";
+import { appointments, followUps, leads } from "@/infrastructure/db/schema";
+import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
+import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { e2eGuard, E2E_CLINIC_ID } from "../_guard";
 
 // POST /api/e2e/appointments
@@ -73,4 +75,50 @@ export async function POST(req: NextRequest) {
       status: appointment.status,
     },
   });
+}
+
+// PATCH /api/e2e/appointments
+// Body: { appointmentId, status }
+// Atualiza o status de um appointment E2E. Para status "no_show" agenda follow-up automaticamente.
+export async function PATCH(req: NextRequest) {
+  const guard = e2eGuard(req);
+  if (guard) return guard;
+
+  if (!E2E_CLINIC_ID) {
+    return NextResponse.json({ error: "E2E_CLINIC_ID not configured" }, { status: 500 });
+  }
+
+  const body = await req.json();
+  const { appointmentId, status } = body as { appointmentId: string; status: string };
+
+  if (!appointmentId || !status) {
+    return NextResponse.json({ error: "appointmentId e status são obrigatórios" }, { status: 400 });
+  }
+
+  const validStatuses = ["scheduled", "confirmed", "cancelled", "completed", "no_show"];
+  if (!validStatuses.includes(status)) {
+    return NextResponse.json({ error: `status inválido: ${status}` }, { status: 400 });
+  }
+
+  const [updated] = await db
+    .update(appointments)
+    .set({ status: status as typeof appointments.$inferSelect.status, updatedAt: new Date() })
+    .where(and(eq(appointments.id, appointmentId), eq(appointments.clinicId, E2E_CLINIC_ID)))
+    .returning();
+
+  if (!updated) {
+    return NextResponse.json({ error: "Appointment não encontrado" }, { status: 404 });
+  }
+
+  if (status === "no_show") {
+    await scheduleFollowUp({
+      clinicId: E2E_CLINIC_ID,
+      leadId: updated.leadId,
+      trigger: "no_show",
+      referenceDate: updated.startsAt,
+      followUpRepository: new DrizzleFollowUpRepository(db),
+    });
+  }
+
+  return NextResponse.json({ appointment: { id: updated.id, status: updated.status } });
 }
