@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Bot, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox } from "lucide-react";
-import { resolveEmConversa, resolveAgendados, type InboxFilter } from "./inbox-filter";
+import { Search, Bot, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox, PauseCircle } from "lucide-react";
+import { filterBySearch, resolveEmConversa, resolveAgendados, type InboxFilter } from "./inbox-filter";
 
 export type ConvRow = {
   convId: string;
@@ -42,6 +42,13 @@ function tempKey(temp: string | null): "hot" | "warm" | "cold" {
   if (temp === "hot") return "hot";
   if (temp === "warm") return "warm";
   return "cold";
+}
+
+function statusLabel(status: string): string {
+  if (status === "appointment_scheduled") return "Agendado";
+  if (status === "won") return "Ganho";
+  if (status === "lost") return "Perdido";
+  return "Pausado";
 }
 
 function avatarColor(temp: string | null): string {
@@ -183,6 +190,9 @@ function ScheduledCard({ row }: { row: ConvRow }) {
             </span>
           </div>
         )}
+        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+          {isManualPause ? "Pausado manualmente" : statusLabel(row.leadStatus)}
+        </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
           <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 6px" }}>
             {tempLabel(row.leadTemperature)}
@@ -210,12 +220,16 @@ export function InboxClient({
   activeRows,
   handoffRows,
   scheduledRows,
+  pausedRows,
+  closedRows,
   lastMsgMap,
   autoReplyEnabled,
 }: {
   activeRows: ConvRow[];
   handoffRows: ConvRow[];
   scheduledRows: ConvRow[];
+  pausedRows: ConvRow[];
+  closedRows: ConvRow[];
   lastMsgMap: Record<string, { body: string; author: string }>;
   autoReplyEnabled: boolean;
 }) {
@@ -223,12 +237,14 @@ export function InboxClient({
   const [filter, setFilter] = useState<Filter>("all");
 
   const totalActive = activeRows.length + handoffRows.length;
-  const totalAll = totalActive + scheduledRows.length;
+  const totalAll = totalActive + scheduledRows.length + pausedRows.length + closedRows.length;
 
   const emConversaRows = resolveEmConversa(handoffRows, activeRows, filter, search);
   const agendadosRows = resolveAgendados(scheduledRows, filter, search);
+  const pausedVisibleRows = filter === "all" ? filterBySearch(pausedRows, search) : [];
+  const closedVisibleRows = filter === "all" ? filterBySearch(closedRows, search) : [];
 
-  const totalVisible = emConversaRows.length + agendadosRows.length;
+  const totalVisible = emConversaRows.length + agendadosRows.length + pausedVisibleRows.length + closedVisibleRows.length;
 
   if (totalAll === 0) {
     return (
@@ -334,16 +350,48 @@ export function InboxClient({
               </div>
             )}
 
-            {/* ── Agendados & Encerrados ── */}
+            {/* ── Agendados ── */}
             {agendadosRows.length > 0 && (
-              <div>
+              <div style={{ marginBottom: 28 }}>
                 <SectionLabel
-                  label="Agendados & Encerrados"
+                  label="Agendados"
                   count={agendadosRows.length}
                   icon={<Calendar size={13} />}
                 />
                 <div className="scheduled-grid">
                   {agendadosRows.map((row) => (
+                    <ScheduledCard key={row.convId} row={row} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Pausados manualmente ── */}
+            {pausedVisibleRows.length > 0 && (
+              <div style={{ marginBottom: 28 }}>
+                <SectionLabel
+                  label="Pausados manualmente"
+                  count={pausedVisibleRows.length}
+                  icon={<PauseCircle size={13} />}
+                />
+                <div className="scheduled-grid">
+                  {pausedVisibleRows.map((row) => (
+                    <ScheduledCard key={row.convId} row={row} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Encerrados ── */}
+            {closedVisibleRows.length > 0 && (
+              <div>
+                <SectionLabel
+                  label="Encerrados"
+                  count={closedVisibleRows.length}
+                  icon={<CheckCircle2 size={13} />}
+                />
+                <div className="scheduled-grid">
+                  {closedVisibleRows.map((row) => (
                     <ScheduledCard key={row.convId} row={row} />
                   ))}
                 </div>

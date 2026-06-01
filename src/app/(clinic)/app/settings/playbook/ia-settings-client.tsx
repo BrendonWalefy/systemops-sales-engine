@@ -44,6 +44,7 @@ const INTENT_LABELS: Record<MenuItemIntent, string> = {
 };
 
 type Tab = "geral" | "playbooks" | "procedimentos";
+type SettingsFocusTarget = "takeover" | "buffer" | "hours";
 
 function timeAgo(date: Date): string {
   const now = new Date();
@@ -413,7 +414,15 @@ function MenuEditor({
   );
 }
 
-function GeralTab({ clinic }: { clinic: ClinicData }) {
+function GeralTab({
+  clinic,
+  focusTarget,
+  onFocusHandled,
+}: {
+  clinic: ClinicData;
+  focusTarget: SettingsFocusTarget | null;
+  onFocusHandled: () => void;
+}) {
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
 
@@ -425,6 +434,12 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const businessHoursSectionRef = useRef<HTMLDivElement>(null);
+  const takeoverSectionRef = useRef<HTMLDivElement>(null);
+  const bufferSectionRef = useRef<HTMLDivElement>(null);
+  const businessHoursInputRef = useRef<HTMLInputElement>(null);
+  const takeoverInputRef = useRef<HTMLInputElement>(null);
+  const bufferInputRef = useRef<HTMLInputElement>(null);
 
   const triggerSave = useCallback((patch: {
     greetingMessage?: string;
@@ -459,6 +474,25 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
     setMenuItems(next);
     triggerSave({ menuItems: next });
   }
+
+  useEffect(() => {
+    if (!focusTarget) return;
+
+    const target = {
+      hours: { section: businessHoursSectionRef.current, input: businessHoursInputRef.current },
+      takeover: { section: takeoverSectionRef.current, input: takeoverInputRef.current },
+      buffer: { section: bufferSectionRef.current, input: bufferInputRef.current },
+    }[focusTarget];
+
+    target.section?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => {
+      target.input?.focus();
+      if (target.input && target.input.type !== "number") target.input.select();
+      onFocusHandled();
+    }, 220);
+
+    return () => clearTimeout(timer);
+  }, [focusTarget, onFocusHandled]);
 
   const menuPreview = menuItems
     .filter(i => i.enabled)
@@ -552,7 +586,7 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
       </div>
 
       {/* Horário de funcionamento */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <div ref={businessHoursSectionRef} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <Clock size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
@@ -563,6 +597,7 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
           </div>
         </div>
         <input
+          ref={businessHoursInputRef}
           type="text"
           value={businessHours}
           onChange={(e) => {
@@ -586,11 +621,12 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
           </div>
         </div>
         <div className="ia-geral-grid" style={{ display: "grid", gap: "12px" }}>
-          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+          <div ref={takeoverSectionRef} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
             <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Pausa automática</p>
             <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Horas até a IA retomar após atendimento humano</p>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <input
+                ref={takeoverInputRef}
                 type="number"
                 value={takeoverTtlHours}
                 min={0} max={72}
@@ -604,11 +640,12 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
               <span style={{ fontSize: "13px", color: "#52525b" }}>horas</span>
             </div>
           </div>
-          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+          <div ref={bufferSectionRef} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
             <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Intervalo entre atendimentos</p>
             <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Buffer de tempo reservado após cada agendamento</p>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <input
+                ref={bufferInputRef}
                 type="number"
                 value={postAppointmentBufferMinutes}
                 min={0} max={240} step={5}
@@ -715,11 +752,13 @@ function ProcedimentosTab({ treatments }: { treatments: Treatment[] }) {
 export function IASettingsClient({ clinic, versions, treatments }: { clinic: ClinicData; versions: Version[]; treatments: Treatment[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("geral");
+  const [focusTarget, setFocusTarget] = useState<SettingsFocusTarget | null>(null);
+  const handleFocusHandled = useCallback(() => setFocusTarget(null), []);
 
   const pills = [
-    { icon: <Timer size={12} strokeWidth={1.8} />, label: `Pausa Automática (${clinic.takeoverTtlHours ?? 4}h)` },
-    { icon: <CalendarClock size={12} strokeWidth={1.8} />, label: `Intervalo (${clinic.postAppointmentBufferMinutes ?? 60}min)` },
-    { icon: <Clock size={12} strokeWidth={1.8} />, label: `Horário (${clinic.businessHours?.replace(/seg(unda)?/i, "").replace(/a\s+sex(ta)?/i, "").trim().slice(0, 12) ?? "—"})` },
+    { icon: <Timer size={12} strokeWidth={1.8} />, label: `Pausa Automática (${clinic.takeoverTtlHours ?? 4}h)`, target: "takeover" as const },
+    { icon: <CalendarClock size={12} strokeWidth={1.8} />, label: `Intervalo (${clinic.postAppointmentBufferMinutes ?? 60}min)`, target: "buffer" as const },
+    { icon: <Clock size={12} strokeWidth={1.8} />, label: `Horário (${clinic.businessHours?.replace(/seg(unda)?/i, "").replace(/a\s+sex(ta)?/i, "").trim().slice(0, 12) ?? "—"})`, target: "hours" as const },
   ];
 
   const tabs: { id: Tab; label: string }[] = [
@@ -762,7 +801,10 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
               <button
                 key={i}
                 type="button"
-                onClick={() => setTab("geral")}
+                onClick={() => {
+                  setTab("geral");
+                  setFocusTarget(p.target);
+                }}
                 title="Editar em Comportamento"
                 style={{
                   display: "flex",
@@ -817,7 +859,13 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
 
       {/* Tab content */}
       <div className="ia-content">
-        {tab === "geral" && <GeralTab clinic={clinic} />}
+        {tab === "geral" && (
+          <GeralTab
+            clinic={clinic}
+            focusTarget={focusTarget}
+            onFocusHandled={handleFocusHandled}
+          />
+        )}
 
         {tab === "playbooks" && (
           <div>

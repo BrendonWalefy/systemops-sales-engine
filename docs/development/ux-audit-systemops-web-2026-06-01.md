@@ -19,6 +19,7 @@ Arquivos alterados localmente nesta branch:
 - `src/app/(clinic)/app/settings/playbook/ia-settings-client.tsx`
 - `src/app/(clinic)/app/settings/playbook/simulate/page.tsx`
 - `src/app/(clinic)/app/settings/playbook/simulate/simulate-client.tsx`
+- `src/app/globals.css`
 - `docs/development/ux-audit-systemops-web-2026-06-01.md`
 
 ## Resumo Dos Ajustes Implementados
@@ -72,21 +73,27 @@ O preview da conversa agora inclui prefixo por autor:
 - `Lead:`
 
 9. "Agendados & Encerrados" agrupa intencoes distintas
-Status: pendente.
+Status: implementado.
 
-O agrupamento ainda existe. Recomenda-se separar em secoes distintas, por exemplo `Agendados`, `Pausados manualmente`, `Ganhas` e `Perdidas`, ou ao menos separar consultas futuras de conversas encerradas.
+O bucket unico foi separado em secoes operacionais:
+
+- `Agendados`: somente leads com `appointment_scheduled`.
+- `Pausados manualmente`: conversas com IA pausada sem handoff.
+- `Encerrados`: leads `won` ou `lost`.
+
+A aba `Agendados` agora mostra apenas consultas agendadas, sem misturar pausas ou encerramentos.
 
 ### Agenda
 
 10. Pagina "Agenda" mostra apenas bloqueios
-Status: pendente.
+Status: implementado.
 
-A tela continua focada em bloqueios de indisponibilidade. A oportunidade maior segue aberta: adicionar uma secao `Proximas consultas` com eventos/appointments reais.
+A tela agora abre com `Próximas consultas`, usando `appointments` locais com status `scheduled` ou `confirmed`, ordenados por `startsAt` futuro. Os bloqueios continuam abaixo como indisponibilidades usadas pela IA.
 
 11. Formulario antes da lista no mobile
-Status: pendente.
+Status: verificado/resolvido.
 
-O DOM ainda coloca o formulario de novo bloqueio antes da lista. Para mobile, a lista deveria aparecer antes do formulario.
+O DOM ainda mantém o formulario antes da lista, mas o CSS responsivo aplica `order` nos paineis: em telas menores, `Bloqueios ativos` aparece antes de `Novo bloqueio`. Nao foi necessario alterar markup.
 
 12. "Proximo bloqueio" quando nao ha bloqueios
 Status: implementado.
@@ -104,9 +111,13 @@ Status: ja resolvido em `main`.
 A tela atual ja inicia em `Comportamento`.
 
 14. Pills de status no header sao read-only
-Status: implementado parcialmente.
+Status: implementado.
 
-Os pills foram convertidos em botoes e levam para a aba `Comportamento`. Ainda nao ha scroll automatico ate o campo especifico de cada pill.
+Os pills foram convertidos em botoes e agora levam para a aba `Comportamento`, fazem scroll ate o bloco correto e focam o input relacionado:
+
+- `Pausa Automática` -> `takeoverTtlHours`
+- `Intervalo` -> `postAppointmentBufferMinutes`
+- `Horário` -> `businessHours`
 
 ### Simulador
 
@@ -138,8 +149,11 @@ Antes de abrir PR ou aprovar merge, verificar no navegador:
 - Inbox: cards ativos mostram prefixo `IA:`, `Operador:` ou `Lead:` no preview.
 - Inbox: cards agendados mostram data/hora da consulta.
 - Inbox: appointments cancelados/completados nao aparecem como data de consulta ativa no card.
+- Inbox: `Agendados`, `Pausados manualmente` e `Encerrados` aparecem como secoes separadas.
+- Agenda: `Próximas consultas` aparece acima dos bloqueios quando houver appointments futuros.
 - Agenda: sem bloqueios, resumo mostra `Agenda livre`.
-- Configuracoes da IA: pills do header sao clicaveis e mudam para a aba `Comportamento`.
+- Agenda mobile/tablet: lista de bloqueios aparece antes do formulario.
+- Configuracoes da IA: pills do header sao clicaveis, mudam para a aba `Comportamento`, rolam ate o campo certo e focam o input.
 - Simulador: prompts rapidos refletem `menuItems` configurados da clinica.
 - Simulador: clinica sem `menuItems` usa os prompts padrao de fallback.
 

@@ -37,7 +37,7 @@ export default async function InboxPage() {
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
 
   const scheduledLeadIds = rows
-    .filter((r) => r.leadStatus === "appointment_scheduled" || r.leadStatus === "won")
+    .filter((r) => r.leadStatus === "appointment_scheduled")
     .map((r) => r.leadId);
 
   const [lastMessages, appointmentRows] = await Promise.all([
@@ -89,10 +89,18 @@ export default async function InboxPage() {
       r.leadStatus !== "won",
   ).map(withAppointment);
   const scheduledRows: ConvRow[] = rows.filter(
+    (r) => r.leadStatus === "appointment_scheduled",
+  ).map(withAppointment);
+  const pausedRows: ConvRow[] = rows.filter(
     (r) =>
-      r.leadStatus === "appointment_scheduled" ||
-      r.leadStatus === "won" ||
-      (r.aiPaused && !r.needsAttention),
+      r.aiPaused &&
+      !r.needsAttention &&
+      r.leadStatus !== "appointment_scheduled" &&
+      r.leadStatus !== "lost" &&
+      r.leadStatus !== "won",
+  ).map(withAppointment);
+  const closedRows: ConvRow[] = rows.filter(
+    (r) => r.leadStatus === "won" || r.leadStatus === "lost",
   ).map(withAppointment);
 
   return (
@@ -105,6 +113,8 @@ export default async function InboxPage() {
         activeRows={activeRows}
         handoffRows={handoffRows}
         scheduledRows={scheduledRows}
+        pausedRows={pausedRows}
+        closedRows={closedRows}
         lastMsgMap={lastMsgMap}
         autoReplyEnabled={autoReplyEnabled}
       />
