@@ -389,7 +389,13 @@ export class ConversationOrchestrator {
       isMenuActive && menuResolution === null && !isolatedGreeting &&
       clinicMenuItems.some(i => !i.enabled && nMsg === String(i.number));
 
-    const skipLlm = menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection;
+    // Lead enviou número que não existe no menu (válido nem desabilitado) — reapresenta sem LLM
+    const isInvalidMenuNumber =
+      isMenuActive && menuResolution === null && !isolatedGreeting && !isDisabledItemSelection &&
+      /^\d+$/.test(nMsg) &&
+      !clinicMenuItems.some(i => nMsg === String(i.number));
+
+    const skipLlm = menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
@@ -476,8 +482,8 @@ export class ConversationOrchestrator {
       const nameGreeting = lead.name ? `, ${lead.name}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;
       await this.stateMachine.offerMenu(conversation.id);
-    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection) {
-      if (menuReRequested || isDisabledItemSelection) {
+    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber) {
+      if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber) {
         replyText = buildMenuBody(clinic, "reoffer");
       } else {
         const salutation = getDayGreeting(timezone);
@@ -914,7 +920,13 @@ export class ConversationOrchestrator {
 
       // ── Reconhecimento mid-conversa ──
       case "acknowledgment": {
-        replyText = await compose({ type: "acknowledgment" });
+        // Paciente respondeu ao menu com algo ambíguo (ex: "não sei") — reapresenta o menu
+        if (isMenuActive && !menuResolution) {
+          replyText = buildMenuBody(clinic, "reoffer");
+          await this.stateMachine.offerMenu(conversation.id);
+        } else {
+          replyText = await compose({ type: "acknowledgment" });
+        }
         break;
       }
 
@@ -946,7 +958,11 @@ export class ConversationOrchestrator {
       // ── Unclear / Default ──
       case "unclear":
       default: {
-        if (classification.shouldAskClarification && classification.clarificationQuestion) {
+        // Paciente respondeu ao menu com input inválido ou confuso — reapresenta o menu
+        if (isMenuActive && !menuResolution) {
+          replyText = buildMenuBody(clinic, "reoffer");
+          await this.stateMachine.offerMenu(conversation.id);
+        } else if (classification.shouldAskClarification && classification.clarificationQuestion) {
           replyText = await compose({
             type: "clarification_needed",
             question: classification.clarificationQuestion,
