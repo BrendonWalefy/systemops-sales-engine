@@ -3678,6 +3678,11 @@ textarea:focus {
   gap: 10px;
 }
 
+/* Garante que Links filhos do grid não extravasem a célula */
+.scheduled-grid > * {
+  min-width: 0;
+}
+
 /* Card agendado/encerrado */
 .inbox-scheduled-card {
   border: 1px solid var(--line);
@@ -3686,6 +3691,7 @@ textarea:focus {
   padding: 12px;
   text-decoration: none;
   color: var(--text);
+  overflow: hidden;
   transition: transform 120ms ease, border-color 120ms ease;
   cursor: pointer;
   border-left-width: 3px;
