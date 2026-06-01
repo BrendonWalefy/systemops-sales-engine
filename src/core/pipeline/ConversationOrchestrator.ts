@@ -127,7 +127,9 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
   // Palavras-chave universais (funcionam independente da ordem do menu)
   if (n.includes("procedimento") || n.includes("tratamento") || n.includes("servico"))
     return { intent: "general_question", subtype: "procedures" };
-  if (n.includes("agendar") || n.includes("agenda") || n.includes("horario") || n.includes("marcar") || n.includes("consulta") || n.includes("avaliacao"))
+  // "consulta" removida: palavra ambígua que aparece em urgências, cancelamentos e
+  // remarcações — o LLM classifica com mais precisão nesses casos.
+  if (n.includes("agendar") || n.includes("agenda") || n.includes("horario") || n.includes("marcar") || n.includes("avaliacao"))
     return { intent: "book_appointment" };
   if (n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
     return { intent: "price_inquiry" };
