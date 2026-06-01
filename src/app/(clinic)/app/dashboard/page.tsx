@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { db } from "@/infrastructure/db/client";
 import { leads, conversations, messages } from "@/infrastructure/db/schema";
 import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
+import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
@@ -399,10 +400,10 @@ export default async function DashboardPage() {
             Sincronizado com IA
           </span>
           {data.needsAttentionCount > 0 ? (
-            <span className="dashboard-alert-pill">
+            <a href="/app/inbox?filter=attention" className="dashboard-alert-pill" style={{ textDecoration: "none" }}>
               <AlertTriangle size={15} />
               {data.needsAttentionCount} intervenção{data.needsAttentionCount !== 1 ? "es" : ""}
-            </span>
+            </a>
           ) : (
             <span className="dashboard-quiet-pill">
               <CheckCircle2 size={15} />
@@ -551,7 +552,12 @@ export default async function DashboardPage() {
               <p className="dashboard-panel-kicker">Atividade recente</p>
               <h2>Leads Recentes</h2>
             </div>
-            <span className="dashboard-panel-badge">{data.recentLeads.length}</span>
+            <Link
+              href="/app/inbox"
+              style={{ fontSize: "12px", color: "var(--accent-strong, #34d399)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}
+            >
+              Ver todos →
+            </Link>
           </div>
 
           {data.recentLeads.length === 0 ? (

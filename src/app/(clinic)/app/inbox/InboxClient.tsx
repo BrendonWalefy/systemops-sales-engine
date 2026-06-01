@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Bot, AlertTriangle, Calendar, Bell, CheckCircle2, MessageSquare, Inbox } from "lucide-react";
+import { Search, Bot, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox } from "lucide-react";
 import { resolveEmConversa, resolveAgendados, type InboxFilter } from "./inbox-filter";
 
 export type ConvRow = {
@@ -235,15 +235,6 @@ export function InboxClient({
             )}
           </div>
         </div>
-        {handoffRows.length > 0 && (
-          <button
-            className="intervention-alert"
-            onClick={() => setFilter("attention")}
-          >
-            <Bell size={13} />
-            {handoffRows.length} alerta{handoffRows.length !== 1 ? "s" : ""} de intervenção humana
-          </button>
-        )}
       </div>
 
       {/* ── Search + Filter tabs ── */}
@@ -267,7 +258,24 @@ export function InboxClient({
               className={`inbox-filter-tab${filter === f ? " active" : ""}`}
               onClick={() => setFilter(f)}
             >
-              {f === "all" ? "Todos" : f === "attention" ? "Requer Atenção" : "Agendados"}
+              {f === "all" ? "Todos" : f === "attention" ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  Requer Atenção
+                  {handoffRows.length > 0 && (
+                    <span style={{
+                      background: filter === "attention" ? "rgba(239,68,68,0.25)" : "rgba(239,68,68,0.18)",
+                      color: "#ef4444",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      lineHeight: 1.5,
+                    }}>
+                      {handoffRows.length}
+                    </span>
+                  )}
+                </span>
+              ) : "Agendados"}
             </button>
           ))}
         </div>

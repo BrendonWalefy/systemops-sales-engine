@@ -90,7 +90,7 @@ export function SimulateClient({ clinicId, clinicName }: { clinicId: string; cli
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <button onClick={() => router.push("/app/settings/playbook")} style={crumbBtn}>IA</button>
+          <button onClick={() => router.push("/app/settings/playbook")} style={crumbBtn}>Configurações</button>
           <ChevronRight size={12} style={{ color: "#3f3f46" }} />
           <button onClick={() => router.push("/app/settings/playbook")} style={crumbBtn}>Playbooks</button>
           <ChevronRight size={12} style={{ color: "#3f3f46" }} />

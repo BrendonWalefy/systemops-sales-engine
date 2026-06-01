@@ -3670,6 +3670,9 @@ textarea:focus {
   .agenda-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .agenda-list-panel { order: 1; }
+  .agenda-form-panel { order: 2; }
 }
 
 @media (max-width: 640px) {

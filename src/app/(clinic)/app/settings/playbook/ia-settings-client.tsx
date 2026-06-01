@@ -714,7 +714,7 @@ function ProcedimentosTab({ treatments }: { treatments: Treatment[] }) {
 
 export function IASettingsClient({ clinic, versions, treatments }: { clinic: ClinicData; versions: Version[]; treatments: Treatment[] }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("playbooks");
+  const [tab, setTab] = useState<Tab>("geral");
 
   const pills = [
     { icon: <Timer size={12} strokeWidth={1.8} />, label: `Pausa Automática (${clinic.takeoverTtlHours ?? 4}h)` },

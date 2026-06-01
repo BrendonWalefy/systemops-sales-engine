@@ -189,7 +189,7 @@ export default async function AgendaPage() {
         </section>
 
         <div className="agenda-grid">
-          <section className="agenda-panel">
+          <section className="agenda-panel agenda-form-panel">
             <div className="agenda-panel-header">
               <span className="agenda-panel-icon">
                 <Plus size={18} strokeWidth={1.9} />
