@@ -759,8 +759,11 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
           </div>
           <div className="ia-pills">
             {pills.map((p, i) => (
-              <div
+              <button
                 key={i}
+                type="button"
+                onClick={() => setTab("geral")}
+                title="Editar em Comportamento"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -772,11 +775,15 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
                   color: "#71717a",
                   fontSize: "12px",
                   fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "border-color 120ms, color 120ms",
                 }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(16,185,129,0.35)"; (e.currentTarget as HTMLButtonElement).style.color = "#a1a1aa"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.08)"; (e.currentTarget as HTMLButtonElement).style.color = "#71717a"; }}
               >
                 <span style={{ color: "#34d399" }}>{p.icon}</span>
                 {p.label}
-              </div>
+              </button>
             ))}
           </div>
         </div>

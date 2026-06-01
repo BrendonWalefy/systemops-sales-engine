@@ -3,17 +3,51 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, ChevronRight, Send, Sparkles, Trash2, UserRound } from "lucide-react";
+import type { MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 
 type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
 type Source = "production" | "draft";
 
-const QUICK_PROMPTS = [
+const INTENT_PROMPTS: Record<MenuItemIntent, string> = {
+  procedures: "Quais procedimentos vocês fazem?",
+  book_appointment: "Quero marcar uma consulta",
+  price_inquiry: "Quanto custa a avaliação?",
+  location: "Onde fica a clínica?",
+  needs_human: "Preciso falar com alguém da equipe",
+};
+
+const FALLBACK_PROMPTS = [
   "Quero marcar uma consulta",
   "Quanto custa a avaliação?",
   "Quais procedimentos vocês fazem?",
 ];
 
-export function SimulateClient({ clinicId, clinicName }: { clinicId: string; clinicName: string }) {
+function buildQuickPrompts(menuItems: MenuItem[]): string[] {
+  const enabled = menuItems.filter((m) => m.enabled !== false);
+  if (enabled.length === 0) return FALLBACK_PROMPTS;
+  return enabled.slice(0, 4).map(promptForMenuItem);
+}
+
+function promptForMenuItem(item: MenuItem): string {
+  const label = item.label.trim();
+  if (!label) return INTENT_PROMPTS[item.intent];
+
+  const normalizedLabel = label.toLocaleLowerCase("pt-BR");
+  if (item.intent === "procedures") return `Quais opções de ${normalizedLabel} vocês fazem?`;
+  if (item.intent === "book_appointment") {
+    const action = /agend|marc/i.test(label) ? normalizedLabel : `agendar ${normalizedLabel}`;
+    return `Quero ${action}`;
+  }
+  if (item.intent === "price_inquiry") return `Quero saber sobre ${normalizedLabel}`;
+  if (item.intent === "location") return `Quero informações sobre ${normalizedLabel}`;
+  if (item.intent === "needs_human") {
+    const request = /^falar/i.test(label) ? normalizedLabel : `de ajuda com ${normalizedLabel}`;
+    return `Preciso ${request}`;
+  }
+  return label;
+}
+
+export function SimulateClient({ clinicId, clinicName, menuItems }: { clinicId: string; clinicName: string; menuItems: MenuItem[] }) {
   const router = useRouter();
   const [source, setSource] = useState<Source>("production");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -63,6 +97,7 @@ export function SimulateClient({ clinicId, clinicName }: { clinicId: string; cli
 
   const isEmpty = messages.length === 0;
   const isProduction = source === "production";
+  const quickPrompts = buildQuickPrompts(menuItems);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column" }}>
@@ -188,7 +223,7 @@ export function SimulateClient({ clinicId, clinicName }: { clinicId: string; cli
                 Simule uma conversa como se fosse um paciente entrando em contato.
               </span>
               <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px" }}>
-                {QUICK_PROMPTS.map((p) => (
+                {quickPrompts.map((p) => (
                   <button key={p} type="button" onClick={() => setInput(p)} style={quickPromptStyle}>
                     {p}
                   </button>
@@ -206,7 +241,7 @@ export function SimulateClient({ clinicId, clinicName }: { clinicId: string; cli
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
             {!isEmpty && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {QUICK_PROMPTS.slice(0, 2).map((p) => (
+                {quickPrompts.slice(0, 2).map((p) => (
                   <button key={p} type="button" onClick={() => setInput(p)} style={quickPromptStyle}>{p}</button>
                 ))}
               </div>

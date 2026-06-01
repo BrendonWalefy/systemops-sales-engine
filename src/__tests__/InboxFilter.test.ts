@@ -6,6 +6,7 @@ import type { ConvRow } from "@/app/(clinic)/app/inbox/InboxClient";
 
 function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
   return {
+    leadId: "lead-1",
     lastMessageAt: new Date(),
     needsAttention: false,
     attentionReason: null,

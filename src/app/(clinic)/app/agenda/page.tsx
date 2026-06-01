@@ -182,8 +182,8 @@ export default async function AgendaPage() {
               <Clock3 size={17} strokeWidth={2} />
             </span>
             <div>
-              <strong>{nextBlockLabel}</strong>
-              <span>próximo bloqueio</span>
+              <strong>{blocks.length === 0 ? "Agenda livre" : nextBlockLabel}</strong>
+              <span>{blocks.length === 0 ? "nenhum bloqueio nos próximos 60 dias" : "próximo bloqueio"}</span>
             </div>
           </div>
         </section>
