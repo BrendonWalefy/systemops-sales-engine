@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, followUps, leads } from "@/infrastructure/db/schema";
+import { appointments, leads } from "@/infrastructure/db/schema";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { e2eGuard, E2E_CLINIC_ID } from "../_guard";
@@ -116,7 +116,7 @@ export async function PATCH(req: NextRequest) {
       leadId: updated.leadId,
       trigger: "no_show",
       referenceDate: updated.startsAt,
-      followUpRepository: new DrizzleFollowUpRepository(db),
+      followUpRepository: new DrizzleFollowUpRepository(),
     });
   }
 
