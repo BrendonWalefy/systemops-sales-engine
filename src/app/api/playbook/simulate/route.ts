@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/infrastructure/db/client";
-import { clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { clinics, playbookVersions, treatments } from "@/infrastructure/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
@@ -30,6 +30,7 @@ type PlaybookInput = {
   specialty: string;
   procedureDescription: string;
   toneOfVoice: string;
+  toneOfVoiceRaw?: string; // bypassa TONE_MAP — usado no modo produção
   differentials: string[];
   commercialPolicy: string;
   objections?: { objection: string; response: string }[];
@@ -39,9 +40,11 @@ type PlaybookInput = {
 type SimulateBody = {
   message: string;
   history: { role: "user" | "assistant"; text: string; intent?: string }[];
-  // Modo 1: clinicId → busca playbook ativo do banco (greetingMessage vem de clinics)
+  // Modo 1a: clinicId + source:"draft"  → playbook_versions ativo (padrão)
+  // Modo 1b: clinicId + source:"production" → clinics.* + treatments
   clinicId?: string;
-  // Modo 2: playbook inline (comportamento original)
+  source?: "production" | "draft";
+  // Modo 2: playbook inline (editor de rascunho)
   playbook?: PlaybookInput;
 };
 
@@ -331,10 +334,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "intent required in assistant history messages" }, { status: 400 });
     }
 
-    // ── Resolução do playbook: Modo 1 (clinicId) ou Modo 2 (inline) ──────
+    // ── Resolução do playbook: Modo 1a (draft), 1b (production) ou 2 (inline) ──
     let playbook: PlaybookInput;
 
-    if (body.clinicId) {
+    if (body.clinicId && body.source === "production") {
+      // Modo 1b — lê de clinics.* + treatments (espelho exato da produção)
+      const [clinicRow, clinicTreatments] = await Promise.all([
+        db
+          .select({
+            specialty: clinics.specialty,
+            toneOfVoice: clinics.toneOfVoice,
+            commercialPolicy: clinics.commercialPolicy,
+            greetingMessage: clinics.greetingMessage,
+          })
+          .from(clinics)
+          .where(eq(clinics.id, body.clinicId))
+          .limit(1)
+          .then((r) => r[0] ?? null),
+        db
+          .select({ name: treatments.name, description: treatments.description })
+          .from(treatments)
+          .where(eq(treatments.clinicId, body.clinicId)),
+      ]);
+
+      const procedureDescription = clinicTreatments.length > 0
+        ? clinicTreatments.map((t) => `• ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n\n")
+        : "";
+
+      playbook = {
+        specialty: clinicRow?.specialty ?? "Odontologia",
+        procedureDescription,
+        toneOfVoice: "acolhedor", // ignorado — toneOfVoiceRaw tem prioridade
+        toneOfVoiceRaw: clinicRow?.toneOfVoice ?? undefined,
+        differentials: [],
+        commercialPolicy: clinicRow?.commercialPolicy ?? "",
+        objections: [],
+        greetingMessage: clinicRow?.greetingMessage ?? "",
+      };
+    } else if (body.clinicId) {
+      // Modo 1a — lê do playbook_versions ativo (rascunho publicado)
       const [activeVersion, clinicRow] = await Promise.all([
         db
           .select()
@@ -519,7 +557,7 @@ export async function POST(req: NextRequest) {
           clinic: {
             name: clinicName,
             specialty: playbook.specialty || "Odontologia",
-            toneOfVoice: TONE_MAP[playbook.toneOfVoice] ?? playbook.toneOfVoice,
+            toneOfVoice: playbook.toneOfVoiceRaw ?? TONE_MAP[playbook.toneOfVoice] ?? playbook.toneOfVoice,
             playbook: buildPlaybookText(playbook),
             commercialPolicy: playbook.commercialPolicy || null,
           },
