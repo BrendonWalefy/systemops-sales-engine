@@ -14,6 +14,9 @@ import {
 import { toggleAutoReply } from "./actions";
 import type { MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
+import type { Treatment } from "@/domain/entities/treatment";
+import { TreatmentRow } from "../tratamentos/TreatmentRow";
+import { AddTreatmentForm } from "../tratamentos/AddTreatmentForm";
 
 type Version = {
   id: string;
@@ -631,29 +634,85 @@ function GeralTab({ clinic }: { clinic: ClinicData }) {
   );
 }
 
-function ProcedimentosTab() {
-  const router = useRouter();
+function ProcedimentosTab({ treatments }: { treatments: Treatment[] }) {
   return (
-    <div style={{ maxWidth: "520px" }}>
-      <div style={cardStyle}>
-        <div>
-          <h3 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Gestão de Procedimentos</h3>
-          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#52525b" }}>
-            Cadastre os procedimentos oferecidos pela clínica com duração e descrição. A IA usa essas informações para agendamento e respostas.
-          </p>
-          <button
-            onClick={() => router.push("/app/settings/tratamentos")}
-            style={{ ...primaryBtnStyle, width: "fit-content" }}
+    <div style={{ maxWidth: "760px", display: "grid", gap: "24px" }}>
+      <section
+        style={{
+          border: "1px solid var(--line, rgba(255,255,255,0.07))",
+          borderRadius: "14px",
+          background: "var(--surface-soft, #0d0d0f)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "14px",
+            padding: "18px 22px",
+            borderBottom: "1px solid var(--line, rgba(255,255,255,0.07))",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: "40px",
+              height: "40px",
+              flexShrink: 0,
+              borderRadius: "10px",
+              border: "1px solid var(--line, rgba(255,255,255,0.07))",
+              background: "rgba(16,185,129,0.07)",
+              color: "#34d399",
+            }}
           >
-            Gerenciar Procedimentos
-          </button>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2c0 1.1.9 2 2 2h5v5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2h-2z"/>
+            </svg>
+          </div>
+          <div>
+            <strong style={{ fontSize: "15px", fontWeight: 700, color: "#fafafa" }}>
+              Procedimentos cadastrados
+            </strong>
+            <p style={{ margin: "3px 0 0", fontSize: "13px", color: "#52525b" }}>
+              {treatments.length === 0
+                ? "Nenhum procedimento cadastrado ainda"
+                : `${treatments.length} procedimento${treatments.length !== 1 ? "s" : ""} · edite e salve inline`}
+            </p>
+          </div>
         </div>
+
+        {treatments.length === 0 ? (
+          <div style={{ padding: "32px 22px", textAlign: "center", color: "#52525b", fontSize: "14px" }}>
+            Adicione o primeiro procedimento abaixo
+          </div>
+        ) : (
+          <div style={{ display: "grid" }}>
+            {treatments.map((t, idx) => (
+              <TreatmentRow key={t.id} treatment={t} isLast={idx === treatments.length - 1} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <AddTreatmentForm />
+
+      <div className="automation-note">
+        <div className="automation-header">
+          <Clock size={14} strokeWidth={2} />
+          <strong style={{ fontSize: "12.5px", fontWeight: 700 }}>Duração padrão</strong>
+        </div>
+        <p>
+          Quando o lead não especificar um procedimento ou for o primeiro contato, a IA usará a duração
+          padrão configurada em Agendamento. Procedimentos cadastrados aqui têm prioridade sobre o padrão.
+        </p>
       </div>
     </div>
   );
 }
 
-export function IASettingsClient({ clinic, versions }: { clinic: ClinicData; versions: Version[] }) {
+export function IASettingsClient({ clinic, versions, treatments }: { clinic: ClinicData; versions: Version[]; treatments: Treatment[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("playbooks");
 
@@ -664,7 +723,7 @@ export function IASettingsClient({ clinic, versions }: { clinic: ClinicData; ver
   ];
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "geral", label: "Geral" },
+    { id: "geral", label: "Comportamento" },
     { id: "playbooks", label: "Playbooks" },
     { id: "procedimentos", label: "Procedimentos" },
   ];
@@ -775,7 +834,7 @@ export function IASettingsClient({ clinic, versions }: { clinic: ClinicData; ver
           </div>
         )}
 
-        {tab === "procedimentos" && <ProcedimentosTab />}
+        {tab === "procedimentos" && <ProcedimentosTab treatments={treatments} />}
       </div>
     </div>
   );

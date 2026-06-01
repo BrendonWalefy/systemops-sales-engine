@@ -4,11 +4,12 @@ import { db } from "@/infrastructure/db/client";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
+import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import type { MenuItem } from "@/domain/entities/clinic";
 
 async function getData() {
   const clinicId = process.env.PILOT_CLINIC_ID!;
-  const [clinic, versions] = await Promise.all([
+  const [clinic, versions, treatments] = await Promise.all([
     db
       .select({
         name: clinics.name,
@@ -33,12 +34,13 @@ async function getData() {
       .from(playbookVersions)
       .where(eq(playbookVersions.clinicId, clinicId))
       .orderBy(desc(playbookVersions.updatedAt)),
+    new DrizzleTreatmentRepository().listByClinic(clinicId),
   ]);
-  return { clinic, versions };
+  return { clinic, versions, treatments };
 }
 
 export default async function PlaybookPage() {
-  const { clinic, versions } = await getData();
+  const { clinic, versions, treatments } = await getData();
 
   return (
     <IASettingsClient
@@ -57,6 +59,7 @@ export default async function PlaybookPage() {
         status: v.status as "active" | "draft" | "historical",
         updatedAt: v.updatedAt,
       }))}
+      treatments={treatments}
     />
   );
 }

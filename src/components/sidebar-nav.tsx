@@ -1,15 +1,17 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutDashboard, Bot, CalendarDays, Zap, LogOut, Stethoscope } from "lucide-react";
+import { Inbox, LayoutDashboard, Settings2, CalendarDays, Zap, LogOut } from "lucide-react";
 import { logout } from "@/app/login/actions";
 
-const NAV = [
+const NAV_PRIMARY = [
   { href: "/app/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { href: "/app/inbox", label: "Inbox", Icon: Inbox },
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
-  { href: "/app/settings/playbook", label: "IA", Icon: Bot },
-  { href: "/app/settings/tratamentos", label: "Procedimentos", Icon: Stethoscope },
+];
+
+const NAV_CONFIG = [
+  { href: "/app/settings/playbook", label: "Configurações", Icon: Settings2 },
 ];
 
 export function SidebarNav({ email }: { email?: string }) {
@@ -22,7 +24,18 @@ export function SidebarNav({ email }: { email?: string }) {
       </div>
 
       <nav className="side-nav">
-        {NAV.map(({ href, label, Icon }) => (
+        {NAV_PRIMARY.map(({ href, label, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}`}
+          >
+            <Icon size={15} strokeWidth={2} />
+            <span className="nav-label">{label}</span>
+          </Link>
+        ))}
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", margin: "6px 0" }} />
+        {NAV_CONFIG.map(({ href, label, Icon }) => (
           <Link
             key={href}
             href={href}

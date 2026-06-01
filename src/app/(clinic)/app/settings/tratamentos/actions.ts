@@ -16,7 +16,7 @@ export async function createTreatment(prevState: ActionState, formData: FormData
   }
 
   await repo.create({ clinicId, name, durationMinutes, description: null, commonObjections: [], requiresEvaluationFirst: false });
-  revalidatePath("/app/settings/tratamentos");
+  revalidatePath("/app/settings/playbook");
   return { success: true };
 }
 
@@ -30,7 +30,7 @@ export async function updateTreatment(prevState: ActionState, formData: FormData
   }
 
   await repo.update(id, { name, durationMinutes });
-  revalidatePath("/app/settings/tratamentos");
+  revalidatePath("/app/settings/playbook");
   return { success: true };
 }
 
@@ -39,5 +39,5 @@ export async function deleteTreatment(formData: FormData): Promise<void> {
   if (!id) return;
 
   await repo.delete(id);
-  revalidatePath("/app/settings/tratamentos");
+  revalidatePath("/app/settings/playbook");
 }
