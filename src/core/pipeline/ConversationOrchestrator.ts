@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations as conversationsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
-import { eq, and, count, gte, lt } from "drizzle-orm";
+import { eq, and, count, gte, lt, asc } from "drizzle-orm";
 
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
@@ -1189,6 +1189,7 @@ export class ConversationOrchestrator {
           lt(appointmentsTable.startsAt, endOfDay),
         ),
       )
+      .orderBy(asc(appointmentsTable.startsAt))
       .limit(1);
 
     return rows.length > 0 ? { startsAt: rows[0].startsAt } : null;
