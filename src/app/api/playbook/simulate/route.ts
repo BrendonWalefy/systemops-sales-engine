@@ -265,10 +265,10 @@ function mockClassify(message: string, hasPendingSlotOffer: boolean): IntentClas
   if (hasPendingSlotOffer && /^[123]$/.test(m)) {
     return makeIntent("confirm_slot", { slotPreference: { preferredDate: null, preferredPeriod: null, preferredTime: null, slotChoice: Number(m), identifiedTreatment: null } });
   }
-  if (/agendar|marcar|quero horario|quero.*(consulta|agenda)/.test(m)) return makeIntent("book_appointment");
-  if (/quanto|preco|valor|custo|caro|plano|parcel/.test(m)) return makeIntent("price_inquiry");
   if (/dor|urgente|urgencia|sangrament|emergencia/.test(m)) return makeIntent("clinical_urgency");
   if (/falar com|dentista|humano|especialista|ligar/.test(m)) return makeIntent("needs_human");
+  if (/agendar|marcar|quero horario|quero.*(consulta|agenda)/.test(m)) return makeIntent("book_appointment");
+  if (/quanto|preco|valor|custo|caro|plano|parcel/.test(m)) return makeIntent("price_inquiry");
   if (/tchau|ate mais|ate logo|obrigado tchau/.test(m)) return makeIntent("farewell");
   if (/^(ok|blz|entendi|certo|combinado)[!.]?$/.test(m)) return makeIntent("acknowledgment");
   if (/horario|disponib|vaga/.test(m)) return makeIntent("check_availability");
