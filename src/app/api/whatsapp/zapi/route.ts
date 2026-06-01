@@ -76,6 +76,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = (await request.json().catch(() => null)) as ZApiInboundPayload | null;
   if (!body) return new NextResponse("Bad Request", { status: 400 });
 
+  // Roteamento E2E via query param ?clinicId=<id>
+  const url = new URL(request.url);
+  const clinicIdOverride = url.searchParams.get("clinicId");
+  if (clinicIdOverride) {
+    if (process.env.E2E_MODE !== "true") {
+      return NextResponse.json({ error: "not available" }, { status: 404 });
+    }
+    if (clinicIdOverride !== process.env.E2E_CLINIC_ID) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+  }
+
   // Ignora grupos e status
   if (body.isGroupMsg || body.isStatusReply) {
     return new NextResponse("OK", { status: 200 });
@@ -162,7 +174,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
+  const clinicId = clinicIdOverride ?? process.env.PILOT_CLINIC_ID;
   if (!clinicId) {
     console.error("[ZApi] PILOT_CLINIC_ID is not set");
     return new NextResponse("Server misconfigured", { status: 500 });
