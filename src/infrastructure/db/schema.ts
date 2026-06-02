@@ -447,6 +447,9 @@ export const playbookVersions = pgTable(
     toneOfVoice: text("tone_of_voice").notNull().default("acolhedor"),
     differentials: jsonb("differentials").$type<string[]>().notNull().default([]),
     commercialPolicy: text("commercial_policy"),
+    // Orientação livre editada pela tela de settings. Vive aqui (e não em
+    // clinics) para que settings e advisor alimentem a MESMA versão ativa.
+    notes: text("notes"),
     objections: jsonb("objections")
       .$type<{ objection: string; response: string }[]>()
       .notNull()

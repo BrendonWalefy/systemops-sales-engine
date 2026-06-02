@@ -23,6 +23,7 @@ import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTime
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
+import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
@@ -267,6 +268,11 @@ export class ConversationOrchestrator {
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
 
+    // FONTE ÚNICA EDITORIAL: lê a versão ativa do playbook. A produção NÃO usa
+    // mais clinics.commercialPolicy / clinics.playbook. O `?? clinic.*` é apenas
+    // rede de transição até a migration de backfill rodar; some depois.
+    const editorial = await resolveActiveEditorialConfig(clinicId);
+
     // ── 3. Registra lead, conversa e mensagem ──
     const usageCostTracker = new DefaultUsageCostTracker({
       usageCostRepository: this.usageCostRepo,
@@ -465,10 +471,10 @@ export class ConversationOrchestrator {
         conversationHistory: allMessages,
         clinic: {
           name: clinic.name,
-          specialty: clinic.specialty,
-          toneOfVoice: clinic.toneOfVoice,
-          playbook: clinic.playbook,
-          commercialPolicy: clinic.commercialPolicy,
+          specialty: editorial?.specialty ?? clinic.specialty,
+          toneOfVoice: editorial?.toneOfVoice ?? clinic.toneOfVoice,
+          playbook: editorial?.playbookText ?? clinic.playbook,
+          commercialPolicy: editorial?.commercialPolicy ?? clinic.commercialPolicy,
         },
         leadName: lead.name,
         timezone,

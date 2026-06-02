@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/infrastructure/db/client";
-import { clinics, playbookVersions, treatments } from "@/infrastructure/db/schema";
+import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
@@ -12,6 +12,7 @@ import type { IntentClassification, IntentType } from "@/core/intelligence/Inten
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
 import type { MenuItem } from "@/domain/entities/clinic";
+import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 
 const CLINIC_ID = process.env.PILOT_CLINIC_ID!;
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
@@ -41,7 +42,7 @@ type SimulateBody = {
   message: string;
   history: { role: "user" | "assistant"; text: string; intent?: string }[];
   // Modo 1a: clinicId + source:"draft"  → playbook_versions ativo (padrão)
-  // Modo 1b: clinicId + source:"production" → clinics.* + treatments
+  // Modo 1b: clinicId + source:"production" → versão ativa (espelho da produção)
   clinicId?: string;
   source?: "production" | "draft";
   // Modo 2: playbook inline (editor de rascunho)
@@ -343,37 +344,26 @@ export async function POST(req: NextRequest) {
     let playbook: PlaybookInput;
 
     if (body.clinicId && body.source === "production") {
-      // Modo 1b — lê de clinics.* + treatments (espelho exato da produção)
-      const [clinicRow, clinicTreatments] = await Promise.all([
+      // Modo 1b — espelho REAL da produção: lê a versão ativa via o mesmo
+      // resolver que o runtime usa. Antes lia clinics.* e divergia da produção.
+      const [editorial, clinicRow] = await Promise.all([
+        resolveActiveEditorialConfig(body.clinicId),
         db
-          .select({
-            specialty: clinics.specialty,
-            toneOfVoice: clinics.toneOfVoice,
-            commercialPolicy: clinics.commercialPolicy,
-            greetingMessage: clinics.greetingMessage,
-          })
+          .select({ specialty: clinics.specialty, greetingMessage: clinics.greetingMessage })
           .from(clinics)
           .where(eq(clinics.id, body.clinicId))
           .limit(1)
           .then((r) => r[0] ?? null),
-        db
-          .select({ name: treatments.name, description: treatments.description })
-          .from(treatments)
-          .where(eq(treatments.clinicId, body.clinicId)),
       ]);
 
-      const procedureDescription = clinicTreatments.length > 0
-        ? clinicTreatments.map((t) => `• ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n\n")
-        : "";
-
       playbook = {
-        specialty: clinicRow?.specialty ?? "Odontologia",
-        procedureDescription,
+        specialty: editorial?.specialty ?? clinicRow?.specialty ?? "Odontologia",
+        procedureDescription: editorial?.playbookText ?? "",
         toneOfVoice: "acolhedor", // ignorado — toneOfVoiceRaw tem prioridade
-        toneOfVoiceRaw: clinicRow?.toneOfVoice ?? undefined,
-        differentials: [],
-        commercialPolicy: clinicRow?.commercialPolicy ?? "",
-        objections: [],
+        toneOfVoiceRaw: editorial?.toneOfVoice ?? undefined,
+        differentials: editorial?.differentials ?? [],
+        commercialPolicy: editorial?.commercialPolicy ?? "",
+        objections: editorial?.objections ?? [],
         greetingMessage: clinicRow?.greetingMessage ?? "",
       };
     } else if (body.clinicId) {
