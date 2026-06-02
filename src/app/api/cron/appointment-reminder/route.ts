@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
+import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { clinics } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -26,6 +27,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
   if (!clinic) return NextResponse.json({ error: "Clinic not found" }, { status: 500 });
+
+  // Fonte única editorial (mesma versão ativa que a produção lê).
+  const editorial = await resolveActiveEditorialConfig(clinicId);
 
   const appointmentRepository = new DrizzleAppointmentRepository();
   const leadRepository = new DrizzleLeadRepository();
@@ -64,10 +68,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         conversationHistory: [],
         clinic: {
           name: clinic.name,
-          specialty: clinic.specialty,
-          toneOfVoice: clinic.toneOfVoice,
-          playbook: clinic.playbook,
-          commercialPolicy: clinic.commercialPolicy,
+          specialty: editorial?.specialty ?? clinic.specialty,
+          toneOfVoice: editorial?.toneOfVoice ?? clinic.toneOfVoice,
+          playbook: editorial?.playbookText ?? clinic.playbook,
+          commercialPolicy: editorial?.commercialPolicy ?? clinic.commercialPolicy,
         },
         leadName: lead.name,
         timezone,
