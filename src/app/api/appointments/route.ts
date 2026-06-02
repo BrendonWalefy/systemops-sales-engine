@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { and, between, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
@@ -22,8 +23,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) return NextResponse.json({ error: "Sem clínica resolvida para a sessão" }, { status: 500 });
 
   const { searchParams } = new URL(request.url);
   const from = searchParams.get("from");
@@ -111,8 +112,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const clinicId = process.env.PILOT_CLINIC_ID;
-    if (!clinicId) throw new Error("PILOT_CLINIC_ID not set");
+    const clinicId = await getSessionClinicId();
+    if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
     const [clinicRow] = await db
       .select()

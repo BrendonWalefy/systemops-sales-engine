@@ -1,4 +1,5 @@
 // Thin adapter: normaliza payload Meta Cloud API e delega ao ConversationOrchestrator.
+import { resolveClinicByMetaPhoneNumberId } from "@/application/tenancy/resolve-clinic";
 // GET: verificação do webhook Meta. POST: mensagens recebidas.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -38,10 +39,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
+  const phoneNumberId: string | undefined =
+    body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+  const clinicId = await resolveClinicByMetaPhoneNumberId(phoneNumberId);
   if (!clinicId) {
-    console.error("[Meta] PILOT_CLINIC_ID is not set");
-    return new NextResponse("Server misconfigured", { status: 500 });
+    console.error("[Meta] nenhuma clínica para phone_number_id", phoneNumberId);
+    return new NextResponse("OK", { status: 200 });
   }
 
   const from: string = messageObj.from;

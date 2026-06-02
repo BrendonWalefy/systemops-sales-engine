@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
@@ -17,8 +18,8 @@ export async function GET(): Promise<NextResponse> {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) return NextResponse.json({ error: "Sem clínica resolvida para a sessão" }, { status: 500 });
 
   try {
     const list = await repo.listByClinic(clinicId);
@@ -33,8 +34,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) return NextResponse.json({ error: "Sem clínica resolvida para a sessão" }, { status: 500 });
 
   let body: { name: string; specialty?: string; color?: string };
   try {

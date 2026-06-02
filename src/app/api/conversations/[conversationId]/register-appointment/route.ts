@@ -52,7 +52,7 @@ export async function POST(
     const [clinic] = await db
       .select()
       .from(clinics)
-      .where(eq(clinics.id, conv.clinicId ?? (process.env.PILOT_CLINIC_ID ?? "")))
+      .where(eq(clinics.id, conv.clinicId ?? ""))
       .limit(1);
 
     if (!clinic) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });

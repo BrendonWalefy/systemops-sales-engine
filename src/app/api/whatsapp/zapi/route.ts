@@ -8,6 +8,7 @@ import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { and, desc, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
 import { sendZApiTextMessage } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Sem texto → mídia, sticker, reação — ignora
     if (!body.text?.message) return new NextResponse("OK", { status: 200 });
 
-    const clinicId = clinicIdOverride ?? process.env.PILOT_CLINIC_ID;
+    const clinicId = clinicIdOverride ?? (await resolveClinicByZapiInstance(body.instanceId));
     if (!clinicId) return new NextResponse("OK", { status: 200 });
 
     try {
@@ -174,9 +175,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const clinicId = clinicIdOverride ?? process.env.PILOT_CLINIC_ID;
+  const clinicId = clinicIdOverride ?? (await resolveClinicByZapiInstance(body.instanceId));
   if (!clinicId) {
-    console.error("[ZApi] PILOT_CLINIC_ID is not set");
+    console.error("[ZApi] Nenhuma clínica resolvida para a instância");
     return new NextResponse("Server misconfigured", { status: 500 });
   }
 

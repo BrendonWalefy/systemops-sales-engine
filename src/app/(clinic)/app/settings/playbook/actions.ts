@@ -1,12 +1,13 @@
 "use server";
 
 import { db } from "@/infrastructure/db/client";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function savePlaybook(formData: FormData) {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   const toneOfVoice = (formData.get("toneOfVoice") as string) || null;
   const commercialPolicy = (formData.get("commercialPolicy") as string) || null;
   const notes = (formData.get("playbook") as string) || null;
@@ -50,7 +51,7 @@ export async function savePlaybook(formData: FormData) {
 }
 
 export async function saveTakeoverTtl(formData: FormData) {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   const raw = parseInt(formData.get("takeoverTtlHours") as string, 10);
   const ttlHours = isNaN(raw) || raw < 0 ? 4 : Math.min(raw, 72);
   await db
@@ -61,7 +62,7 @@ export async function saveTakeoverTtl(formData: FormData) {
 }
 
 export async function saveSchedulingPolicy(formData: FormData) {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   const raw = parseInt(formData.get("postAppointmentBufferMinutes") as string, 10);
   const bufferMinutes = isNaN(raw) || raw < 0 ? 60 : Math.min(raw, 240);
   await db
@@ -72,7 +73,7 @@ export async function saveSchedulingPolicy(formData: FormData) {
 }
 
 export async function saveBusinessHours(formData: FormData) {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   await db
     .update(clinics)
     .set({
@@ -84,7 +85,7 @@ export async function saveBusinessHours(formData: FormData) {
 }
 
 export async function toggleAutoReply(currentValue: boolean) {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   await db
     .update(clinics)
     .set({

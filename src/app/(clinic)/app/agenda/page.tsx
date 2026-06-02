@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import "./agenda-calendar.css";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { AgendaClient } from "./AgendaClient";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 
 export default async function AgendaPage() {
-  const clinicId = process.env.PILOT_CLINIC_ID ?? "";
+  const clinicId = (await getSessionClinicId()) ?? "";
   const professionals = clinicId
     ? await new DrizzleProfessionalRepository().listByClinic(clinicId)
     : [];

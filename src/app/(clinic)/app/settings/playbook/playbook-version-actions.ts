@@ -1,13 +1,13 @@
 "use server";
 
 import { db } from "@/infrastructure/db/client";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { MenuItem } from "@/domain/entities/clinic";
 
-const CLINIC_ID = process.env.PILOT_CLINIC_ID!;
 
 type PlaybookVersionData = {
   specialty?: string | null;
@@ -54,6 +54,7 @@ function compileToClinicFields(data: PlaybookVersionData) {
 }
 
 export async function createPlaybookVersion(name: string) {
+  const CLINIC_ID = await requireSessionClinicId();
   const [version] = await db
     .insert(playbookVersions)
     .values({ clinicId: CLINIC_ID, name, status: "draft" })
@@ -64,6 +65,7 @@ export async function createPlaybookVersion(name: string) {
 }
 
 export async function updatePlaybookVersion(id: string, data: PlaybookVersionData) {
+  const CLINIC_ID = await requireSessionClinicId();
   await db
     .update(playbookVersions)
     .set({ ...data, updatedAt: new Date() })
@@ -73,6 +75,7 @@ export async function updatePlaybookVersion(id: string, data: PlaybookVersionDat
 }
 
 export async function activatePlaybookVersion(id: string) {
+  const CLINIC_ID = await requireSessionClinicId();
   const [version] = await db
     .select()
     .from(playbookVersions)
@@ -115,6 +118,7 @@ export async function activatePlaybookVersion(id: string) {
 }
 
 export async function renamePlaybookVersion(id: string, name: string) {
+  const CLINIC_ID = await requireSessionClinicId();
   await db
     .update(playbookVersions)
     .set({ name, updatedAt: new Date() })
@@ -124,6 +128,7 @@ export async function renamePlaybookVersion(id: string, name: string) {
 }
 
 export async function duplicatePlaybookVersion(id: string) {
+  const CLINIC_ID = await requireSessionClinicId();
   const [original] = await db
     .select()
     .from(playbookVersions)
@@ -154,6 +159,7 @@ export async function updateClinicOperationalSettings(data: {
   greetingMessage?: string | null;
   menuItems?: MenuItem[] | null;
 }) {
+  const CLINIC_ID = await requireSessionClinicId();
   await db
     .update(clinics)
     .set({ ...data, updatedAt: new Date() })
@@ -162,6 +168,7 @@ export async function updateClinicOperationalSettings(data: {
 }
 
 export async function deletePlaybookVersion(id: string) {
+  const CLINIC_ID = await requireSessionClinicId();
   const [version] = await db
     .select({ status: playbookVersions.status })
     .from(playbookVersions)

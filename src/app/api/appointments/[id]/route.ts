@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
@@ -44,8 +45,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   }
 
   try {
-    const clinicId = process.env.PILOT_CLINIC_ID;
-    if (!clinicId) throw new Error("PILOT_CLINIC_ID not set");
+    const clinicId = await getSessionClinicId();
+    if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
     const [clinicRow] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
     if (!clinicRow) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });
@@ -127,8 +128,8 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams): Pr
   const { id } = await params;
 
   try {
-    const clinicId = process.env.PILOT_CLINIC_ID;
-    if (!clinicId) throw new Error("PILOT_CLINIC_ID not set");
+    const clinicId = await getSessionClinicId();
+    if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
     const [clinicRow] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
     if (!clinicRow) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });

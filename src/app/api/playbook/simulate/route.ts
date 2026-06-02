@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { db } from "@/infrastructure/db/client";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -14,7 +15,6 @@ import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
 import type { MenuItem } from "@/domain/entities/clinic";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 
-const CLINIC_ID = process.env.PILOT_CLINIC_ID!;
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
 const SIMULATE_API_KEY = process.env.SIMULATE_API_KEY;
 
@@ -404,7 +404,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Dados da clínica (timezone, nome, businessHours, menuItems, address) ──
-    const clinicLookupId = body.clinicId ?? CLINIC_ID;
+    const clinicLookupId = body.clinicId ?? (await getSessionClinicId()) ?? "";
     const clinic = await db
       .select({
         name: clinics.name,

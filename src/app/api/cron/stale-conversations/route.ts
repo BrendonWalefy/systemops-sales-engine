@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { markStaleLeads } from "@/application/use-cases/leads/mark-stale-leads";
+import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +10,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
+  const clinicIds = await listAllClinicIds();
+  let marked = 0;
+  const perClinic: { clinicId: string; marked: number }[] = [];
+  for (const clinicId of clinicIds) {
+    const result = await markStaleLeads({ clinicId });
+    marked += result.marked;
+    perClinic.push({ clinicId, marked: result.marked });
+  }
 
-  const result = await markStaleLeads({ clinicId });
-  console.log(`[StaleConversations] Marcados ${result.marked} leads como lost`);
-  return NextResponse.json(result);
+  console.log(`[StaleConversations] clinics=${clinicIds.length} marked=${marked}`);
+  return NextResponse.json({ clinics: clinicIds.length, marked, perClinic });
 }

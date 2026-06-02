@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { clinics } from "@/infrastructure/db/schema";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -12,20 +14,14 @@ import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/wha
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+type ClinicResult = { clinicId: string; dispatched: number; failed: number; total: number };
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
-
+async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
-  if (!clinic) return NextResponse.json({ error: "Clinic not found" }, { status: 500 });
+  if (!clinic) return null;
 
-  // Fonte única editorial (mesma versão ativa que a produção lê).
   const editorial = await resolveActiveEditorialConfig(clinicId);
+  const channelConfig = resolveChannelConfig(clinic);
 
   const followUpRepository = new DrizzleFollowUpRepository();
   const leadRepository = new DrizzleLeadRepository();
@@ -72,29 +68,37 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         isFirstMessage: true,
       });
 
-      await sendTextMessage(lead.phone, composed.text);
+      await sendTextMessage(lead.phone, composed.text, channelConfig);
 
-      await followUpRepository.save({
-        ...followUp,
-        status: "done",
-        completedAt: now,
-        updatedAt: now,
-      });
-
-      await leadRepository.save({
-        ...lead,
-        status: "in_conversation",
-        updatedAt: now,
-      });
+      await followUpRepository.save({ ...followUp, status: "done", completedAt: now, updatedAt: now });
+      await leadRepository.save({ ...lead, status: "in_conversation", updatedAt: now });
 
       dispatched++;
-      console.log(`[FollowUpDispatcher] Dispatched follow-up ${followUp.id} for lead ${lead.id}`);
     } catch (err) {
       console.error("[FollowUpDispatcher] Failed for follow-up:", followUp.id, err);
       failed++;
     }
   }
 
-  console.log(`[FollowUpDispatcher] dispatched=${dispatched} failed=${failed} total=${dueFollowUps.length}`);
-  return NextResponse.json({ dispatched, failed, total: dueFollowUps.length });
+  return { clinicId, dispatched, failed, total: dueFollowUps.length };
+}
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Roda para TODAS as clínicas, não só a piloto.
+  const clinicIds = await listAllClinicIds();
+  const results: ClinicResult[] = [];
+  for (const id of clinicIds) {
+    const r = await processClinic(id);
+    if (r) results.push(r);
+  }
+
+  const dispatched = results.reduce((a, r) => a + r.dispatched, 0);
+  const failed = results.reduce((a, r) => a + r.failed, 0);
+  console.log(`[FollowUpDispatcher] clinics=${results.length} dispatched=${dispatched} failed=${failed}`);
+  return NextResponse.json({ clinics: results.length, dispatched, failed, perClinic: results });
 }

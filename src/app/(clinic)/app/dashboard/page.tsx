@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import type { CSSProperties } from "react";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { db } from "@/infrastructure/db/client";
 import { leads, conversations, messages } from "@/infrastructure/db/schema";
 import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
@@ -20,7 +21,6 @@ import {
   Users,
 } from "lucide-react";
 
-const CLINIC_ID = process.env.PILOT_CLINIC_ID ?? "";
 const DASHBOARD_TZ = "America/Sao_Paulo";
 const MINUTES_SAVED_PER_AGENT_REPLY = 2;
 
@@ -220,6 +220,7 @@ function chartGeometry(series: FlowPoint[]) {
 }
 
 async function fetchDashboardData() {
+  const CLINIC_ID = (await getSessionClinicId()) ?? "";
   const todayStart = startOfDay(new Date());
   const flowStart = addDays(todayStart, -6);
   const previousStart = addDays(flowStart, -7);

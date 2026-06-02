@@ -1,13 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { SimulateClient } from "./simulate-client";
 import { DEFAULT_MENU_ITEMS, type MenuItem } from "@/domain/entities/clinic";
 
 export default async function SimulatePage() {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   const clinic = await db
     .select({ name: clinics.name, menuItems: clinics.menuItems })
     .from(clinics)

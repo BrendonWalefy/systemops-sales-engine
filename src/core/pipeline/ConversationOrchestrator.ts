@@ -18,6 +18,7 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 
 import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -272,6 +273,8 @@ export class ConversationOrchestrator {
     // mais clinics.commercialPolicy / clinics.playbook. O `?? clinic.*` é apenas
     // rede de transição até a migration de backfill rodar; some depois.
     const editorial = await resolveActiveEditorialConfig(clinicId);
+    // Credenciais de canal DESTA clínica (isola o envio entre tenants).
+    const channelConfig = resolveChannelConfig(clinicRows[0]);
 
     // ── 3. Registra lead, conversa e mensagem ──
     const usageCostTracker = new DefaultUsageCostTracker({
@@ -1031,7 +1034,7 @@ export class ConversationOrchestrator {
     }
 
     // ── 9. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
-    const zapiMessageId = await sendTextMessage(phone, replyText);
+    const zapiMessageId = await sendTextMessage(phone, replyText, channelConfig);
 
     // ── 9.1 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;

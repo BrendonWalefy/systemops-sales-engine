@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -12,7 +13,7 @@ export default async function PlaybookEditorPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
 
   const [[version], clinicRow] = await Promise.all([
     db

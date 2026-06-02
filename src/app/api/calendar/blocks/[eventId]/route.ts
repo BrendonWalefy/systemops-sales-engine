@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
@@ -21,8 +22,8 @@ export async function DELETE(
   const { eventId } = await params;
 
   try {
-    const clinicId = process.env.PILOT_CLINIC_ID;
-    if (!clinicId) throw new Error("PILOT_CLINIC_ID not set");
+    const clinicId = await getSessionClinicId();
+    if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
     const [clinic] = await db
       .select({ googleCalendarId: clinics.googleCalendarId, timezone: clinics.timezone, businessHours: clinics.businessHours })
