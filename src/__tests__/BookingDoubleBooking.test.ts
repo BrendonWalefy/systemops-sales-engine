@@ -66,11 +66,14 @@ function appointment(): Appointment {
     id: "appointment-1",
     clinicId: clinic.id,
     leadId: lead.id,
+    professionalId: null,
+    roomId: null,
     calendarEventId: "event-1",
     calendarEventUrl: null,
     startsAt,
     endsAt,
     status: "scheduled",
+    source: "app",
     reminderSentAt: null,
     createdAt: new Date("2026-01-05T12:00:00.000Z"),
     updatedAt: new Date("2026-01-05T12:00:00.000Z"),
@@ -160,6 +163,10 @@ class FakeAppointmentRepository implements AppointmentRepository {
     this.saved.push(input);
   }
 
+  async findById(): Promise<Appointment | null> {
+    return null;
+  }
+
   async findByLeadId(): Promise<Appointment | null> {
     return null;
   }
@@ -169,6 +176,10 @@ class FakeAppointmentRepository implements AppointmentRepository {
   }
 
   async findAllActiveByLeadId(): Promise<Appointment[]> {
+    return [];
+  }
+
+  async findByPeriod(): Promise<Appointment[]> {
     return [];
   }
 

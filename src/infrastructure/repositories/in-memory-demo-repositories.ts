@@ -36,8 +36,10 @@ export class InMemoryDemoStore
     { decision: HumanDecision; finalReply: string | null }
   >();
 
-  async findById(id: string): Promise<Lead | null> {
-    return this.leads.get(id) ?? null;
+  findById(id: string): Promise<Lead | null>;
+  findById(id: string): Promise<Appointment | null>;
+  async findById(id: string): Promise<Lead | Appointment | null> {
+    return this.leads.get(id) ?? this.appointments.get(id) ?? null;
   }
 
   async findByPhone(clinicId: string, phone: string): Promise<Lead | null> {
@@ -104,6 +106,12 @@ export class InMemoryDemoStore
       (appointment) =>
         appointment.leadId === leadId &&
         (appointment.status === "scheduled" || appointment.status === "confirmed"),
+    );
+  }
+
+  async findByPeriod(clinicId: string, from: Date, to: Date): Promise<Appointment[]> {
+    return Array.from(this.appointments.values()).filter(
+      (a) => a.clinicId === clinicId && a.startsAt >= from && a.startsAt <= to,
     );
   }
 

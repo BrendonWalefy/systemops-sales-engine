@@ -86,6 +86,8 @@ export const playbookVersionStatusEnum = pgEnum("playbook_version_status", [
   "historical",
 ]);
 
+export const appointmentSourceEnum = pgEnum("appointment_source", ["app", "gcal_import"]);
+
 export const clinics = pgTable("clinics", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -271,6 +273,45 @@ export const followUps = pgTable(
   }),
 );
 
+export const professionals = pgTable(
+  "professionals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    name: text("name").notNull(),
+    specialty: text("specialty"),
+    color: text("color").notNull().default("#10B981"),
+    workSchedule: jsonb("work_schedule"),
+    googleCalendarId: text("google_calendar_id"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clinicIdx: index("professionals_clinic_idx").on(table.clinicId),
+  }),
+);
+
+export const rooms = pgTable(
+  "rooms",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    name: text("name").notNull(),
+    capacity: integer("capacity").notNull().default(1),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clinicIdx: index("rooms_clinic_idx").on(table.clinicId),
+  }),
+);
+
 export const appointments = pgTable(
   "appointments",
   {
@@ -281,11 +322,14 @@ export const appointments = pgTable(
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id),
+    professionalId: uuid("professional_id").references(() => professionals.id),
+    roomId: uuid("room_id").references(() => rooms.id),
     calendarEventId: text("calendar_event_id"),
     calendarEventUrl: text("calendar_event_url"),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     status: appointmentStatusEnum("status").notNull().default("scheduled"),
+    source: appointmentSourceEnum("source").notNull().default("app"),
     reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -294,6 +338,10 @@ export const appointments = pgTable(
     clinicStartsAtIdx: index("appointments_clinic_starts_at_idx").on(
       table.clinicId,
       table.startsAt,
+    ),
+    clinicProfessionalIdx: index("appointments_clinic_professional_idx").on(
+      table.clinicId,
+      table.professionalId,
     ),
   }),
 );

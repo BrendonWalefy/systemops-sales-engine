@@ -12,17 +12,22 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         id: appointment.id,
         clinicId: appointment.clinicId,
         leadId: appointment.leadId,
+        professionalId: appointment.professionalId,
+        roomId: appointment.roomId,
         calendarEventId: appointment.calendarEventId,
         calendarEventUrl: appointment.calendarEventUrl,
         startsAt: appointment.startsAt,
         endsAt: appointment.endsAt,
         status: appointment.status,
+        source: appointment.source,
         createdAt: appointment.createdAt,
         updatedAt: appointment.updatedAt,
       })
       .onConflictDoUpdate({
         target: appointments.id,
         set: {
+          professionalId: appointment.professionalId,
+          roomId: appointment.roomId,
           calendarEventId: appointment.calendarEventId,
           calendarEventUrl: appointment.calendarEventUrl,
           startsAt: appointment.startsAt,
@@ -32,6 +37,13 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
           updatedAt: appointment.updatedAt,
         },
       });
+  }
+
+  async findById(id: string): Promise<Appointment | null> {
+    const row = await db.query.appointments.findFirst({
+      where: eq(appointments.id, id),
+    });
+    return row ? mapRow(row) : null;
   }
 
   async findByLeadId(leadId: string): Promise<Appointment | null> {
@@ -74,6 +86,18 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     return row ? mapRow(row) : null;
   }
 
+  async findByPeriod(clinicId: string, from: Date, to: Date): Promise<Appointment[]> {
+    const rows = await db.query.appointments.findMany({
+      where: and(
+        eq(appointments.clinicId, clinicId),
+        gte(appointments.startsAt, from),
+        lte(appointments.startsAt, to),
+      ),
+      orderBy: [appointments.startsAt],
+    });
+    return rows.map(mapRow);
+  }
+
   async findDueReminders(params: {
     clinicId: string;
     windowStart: Date;
@@ -97,11 +121,14 @@ function mapRow(row: typeof appointments.$inferSelect): Appointment {
     id: row.id,
     clinicId: row.clinicId,
     leadId: row.leadId,
+    professionalId: row.professionalId ?? null,
+    roomId: row.roomId ?? null,
     calendarEventId: row.calendarEventId,
     calendarEventUrl: row.calendarEventUrl,
     startsAt: row.startsAt,
     endsAt: row.endsAt,
     status: row.status,
+    source: row.source,
     reminderSentAt: row.reminderSentAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
