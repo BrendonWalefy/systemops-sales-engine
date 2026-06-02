@@ -33,6 +33,7 @@ import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway"
 
 import type { Clinic, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
+import type { Treatment } from "@/domain/entities/treatment";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
 
@@ -187,7 +188,43 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
 
 export function buildLocationClinicContext(address: string | null): string {
   const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
-  return address ? `${base}\nEndereço: ${address}.` : base;
+  return address
+    ? `${base}\nEndereço: ${address}.`
+    : `${base}\nEndereço não cadastrado no sistema. NÃO invente endereço. Informe que a equipe vai confirmar a localização pelo atendimento humano.`;
+}
+
+export function extractProcedureNamesFromPlaybook(playbook: string | null): string[] {
+  if (!playbook) return [];
+
+  const servicesSection = playbook.match(
+    /(?:SERVI[ÇC]OS OFERECIDOS|SOBRE O PROCEDIMENTO):\s*([\s\S]*?)(?:\n\s*(?:DIFERENCIAIS(?: DA CL[IÍ]NICA)?|OBJE[ÇC][ÕO]ES(?: E RESPOSTAS)?|REGRAS ABSOLUTAS):|$)/i,
+  )?.[1];
+  if (!servicesSection) return [];
+
+  return servicesSection
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line || line.length < 3 || line.length > 80) return false;
+      if (/[.!?]$/.test(line)) return false;
+      const letters = line.match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g) ?? [];
+      const uppercaseLetters = line.match(/[A-ZÀ-ÖØ-Þ]/g) ?? [];
+      return letters.length > 0 && uppercaseLetters.length / letters.length >= 0.6;
+    })
+    .map((line) => line.replace(/\s+/g, " "))
+    .filter((line, index, all) => all.indexOf(line) === index);
+}
+
+export function buildProceduresClinicContext(treatments: Treatment[], playbook: string | null): string {
+  const procedureNames = extractProcedureNamesFromPlaybook(playbook);
+  const names = procedureNames.length > 0 ? procedureNames : treatments.map((t) => t.name);
+  const items = names.map((name, i) => `${i + 1}. ${name}`).join("\n");
+
+  return `Lead selecionou "Procedimentos" no menu.
+FORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições.
+Ao final, acrescente uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."
+Sem convite para agendar.
+${items}`;
 }
 
 type ClinicRow = typeof clinics.$inferSelect;
@@ -952,10 +989,7 @@ export class ConversationOrchestrator {
         let clinicContext: string;
         if (menuResolution?.intent === "general_question") {
           if (menuResolution.subtype === "procedures") {
-            const items = clinicTreatments.length > 0
-              ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
-              : "";
-            clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar.\n${items}`;
+            clinicContext = buildProceduresClinicContext(clinicTreatments, clinic.playbook);
           } else {
             clinicContext = buildLocationClinicContext(clinic.address);
           }

@@ -9,6 +9,7 @@ import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 
 const MODEL = "gpt-4o-mini";
 const PROMPT_VERSION = "composer-v1";
+const MENU_HINT = `Se quiser voltar ao menu, digite *menu*.`;
 
 export type FormattedAppointment = {
   label: string;   // "Seg 26/05 às 14h"
@@ -103,6 +104,7 @@ function buildActionContext(result: ActionResult): string {
       return `AÇÃO EXECUTADA: Encontramos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
 FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
+Ao final, adicione uma linha em branco seguida de: "${MENU_HINT}"
 HORÁRIOS DISPONÍVEIS:
 ${slotList}`;
     }
@@ -123,6 +125,7 @@ Informe o lead de forma calorosa. Mencione o horário confirmado e, se houver en
       return `AÇÃO EXECUTADA: Agendamento anterior cancelado. Apresente os novos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
 FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
+Ao final, adicione uma linha em branco seguida de: "${MENU_HINT}"
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
@@ -169,7 +172,7 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
 
     case "price_inquiry":
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
-Siga EXATAMENTE a política comercial descrita no sistema — condições de avaliação, valores e formas de pagamento. Se a política não mencionar um dado, não invente. Não convide para agendar — o lead decide o próximo passo. Ao final, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
+Siga EXATAMENTE a política comercial descrita no sistema — condições de avaliação, valores e formas de pagamento. Se a política mencionar PIX, débito, crédito ou parcelamento, cite TODAS essas formas explicitamente. Se a política não mencionar um dado, não invente. Não convide para agendar — o lead decide o próximo passo. Ao final, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
 
 
     case "general_question":
@@ -197,6 +200,7 @@ Responda com despedida calorosa em UMA frase. Deixe a porta aberta para contato 
 Informe gentilmente que o horário reservado não está mais disponível e apresente estes novos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
 FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
+Ao final, adicione uma linha em branco seguida de: "${MENU_HINT}"
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
@@ -211,6 +215,7 @@ Envie uma mensagem calorosa e breve lembrando que pode estar na hora de agendar 
       return `AÇÃO EXECUTADA: O procedimento solicitado (${result.treatmentName}) requer uma avaliação presencial antes do agendamento completo.
 REGRA CRÍTICA: Use EXATAMENTE os labels dos horários abaixo. NÃO altere datas, horas ou dias.
 FORMATO OBRIGATÓRIO: uma frase curta explicando que a avaliação é o primeiro passo para ${result.treatmentName}, depois a lista numerada de horários disponíveis, depois peça que o lead responda com o número.
+Ao final, adicione uma linha em branco seguida de: "${MENU_HINT}"
 HORÁRIOS PARA AVALIAÇÃO:
 ${slotList}`;
     }
@@ -277,7 +282,10 @@ export class ResponseComposer {
       messages,
     });
 
-    const text = response.choices[0]?.message?.content?.trim() ?? "";
+    const text = postProcessResponseText(
+      response.choices[0]?.message?.content?.trim() ?? "",
+      input.actionResult,
+    );
 
     return {
       text,
@@ -287,4 +295,17 @@ export class ResponseComposer {
       outputTokens: response.usage?.completion_tokens ?? 0,
     };
   }
+}
+
+export function postProcessResponseText(text: string, actionResult: ActionResult): string {
+  if (!["slots_found", "appointment_rescheduled", "slots_expired", "evaluation_redirect"].includes(actionResult.type)) {
+    return text;
+  }
+
+  const normalized = text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (normalized.includes("digite *menu*") || normalized.includes("digitar *menu*")) {
+    return text;
+  }
+
+  return `${text}\n\n${MENU_HINT}`;
 }
