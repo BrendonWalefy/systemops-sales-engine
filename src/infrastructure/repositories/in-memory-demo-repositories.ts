@@ -122,6 +122,12 @@ export class InMemoryDemoStore
     );
   }
 
+  async findByCalendarEventId(clinicId: string, calendarEventId: string): Promise<Appointment | null> {
+    return Array.from(this.appointments.values()).find(
+      (a) => a.clinicId === clinicId && a.calendarEventId === calendarEventId,
+    ) ?? null;
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     this.conversations.set(conversation.id, conversation);
   }

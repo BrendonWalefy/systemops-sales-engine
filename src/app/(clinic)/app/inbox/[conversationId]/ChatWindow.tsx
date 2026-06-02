@@ -81,6 +81,17 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
     scrollToBottom(false);
   }, [messages.length, scrollToBottom]);
 
+  // Scroll to bottom when keyboard opens/closes (visual viewport resize)
+  useEffect(() => {
+    const vp = window.visualViewport;
+    if (!vp) return;
+    const onResize = () => {
+      if (isNearBottomRef.current) scrollToBottom(true);
+    };
+    vp.addEventListener("resize", onResize);
+    return () => vp.removeEventListener("resize", onResize);
+  }, [scrollToBottom]);
+
   const displayName = leadName ?? leadPhone ?? "Lead";
 
   return (

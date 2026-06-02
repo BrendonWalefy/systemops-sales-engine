@@ -3,12 +3,13 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
-import { appointments, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { appointments, clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink, AlertTriangle } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
 import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
+import { ManualAppointmentForm } from "./ManualAppointmentForm";
 
 const TZ = "America/Sao_Paulo";
 
@@ -82,6 +83,15 @@ export default async function ConversationPage({
     .from(appointments)
     .where(eq(appointments.leadId, lead.id))
     .orderBy(desc(appointments.createdAt))
+    .limit(1);
+
+  const [clinic] = await db
+    .select({
+      timezone: clinics.timezone,
+      defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
+    })
+    .from(clinics)
+    .where(eq(clinics.id, conv.clinicId))
     .limit(1);
 
   const displayName = lead.name ?? lead.phone ?? "Lead";
@@ -173,6 +183,15 @@ export default async function ConversationPage({
             leadPhone={lead.phone ?? null}
           />
 
+          {/* Ações rápidas — visível só no mobile (painel lateral oculto em telas pequenas) */}
+          <div className="conv-mobile-actions">
+            <ManualAppointmentForm
+              conversationId={conversationId}
+              defaultDurationMinutes={clinic?.defaultAppointmentDurationMinutes ?? 60}
+              timezone={clinic?.timezone ?? "America/Sao_Paulo"}
+            />
+          </div>
+
           {/* Input fixo do operador */}
           <MessageInput conversationId={conversationId} />
         </div>
@@ -253,6 +272,12 @@ export default async function ConversationPage({
               )}
             </div>
           ) : null}
+
+          <ManualAppointmentForm
+            conversationId={conversationId}
+            defaultDurationMinutes={clinic?.defaultAppointmentDurationMinutes ?? 60}
+            timezone={clinic?.timezone ?? "America/Sao_Paulo"}
+          />
 
           <AiPauseButton
             conversationId={conversationId}

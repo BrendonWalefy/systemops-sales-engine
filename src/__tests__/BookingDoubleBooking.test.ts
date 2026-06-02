@@ -175,6 +175,10 @@ class FakeAppointmentRepository implements AppointmentRepository {
   async findDueReminders(): Promise<Appointment[]> {
     return [];
   }
+
+  async findByCalendarEventId(): Promise<Appointment | null> {
+    return null;
+  }
 }
 
 class FakeLeadRepository implements LeadRepository {

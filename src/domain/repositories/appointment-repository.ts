@@ -6,4 +6,5 @@ export type AppointmentRepository = {
   findActiveByLeadId(leadId: string): Promise<Appointment | null>;
   findAllActiveByLeadId(leadId: string): Promise<Appointment[]>;
   findDueReminders(params: { clinicId: string; windowStart: Date; windowEnd: Date }): Promise<Appointment[]>;
+  findByCalendarEventId(clinicId: string, calendarEventId: string): Promise<Appointment | null>;
 };

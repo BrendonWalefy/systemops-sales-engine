@@ -21,7 +21,7 @@ export type ActionResult =
       slots: FormattedSlot[];
       askedForPreference: boolean; // se true, LLM perguntou período antes
     }
-  | { type: "appointment_confirmed"; slot: FormattedSlot; clinicName: string }
+  | { type: "appointment_confirmed"; slot: FormattedSlot; clinicName: string; clinicAddress?: string | null }
   | { type: "appointment_cancelled"; count?: number }
   | { type: "appointment_rescheduled"; newSlots: FormattedSlot[] }
   | { type: "no_slots_available"; nextAvailableDate?: string; alternativeSlots?: FormattedSlot[] }
@@ -110,8 +110,8 @@ ${slotList}`;
     case "appointment_confirmed":
       return `AÇÃO EXECUTADA: Agendamento confirmado com sucesso.
 HORÁRIO CONFIRMADO: ${result.slot.label}
-CLÍNICA: ${result.clinicName}
-Informe o lead de forma calorosa. Diga que a equipe estará esperando. Não peça confirmação novamente.`;
+CLÍNICA: ${result.clinicName}${result.clinicAddress ? `\nENDEREÇO: ${result.clinicAddress}` : ""}
+Informe o lead de forma calorosa. Mencione o horário confirmado e, se houver endereço acima, inclua-o na mensagem. Diga que a equipe estará esperando. Não peça confirmação novamente.`;
 
     case "appointment_cancelled": {
       const qty = result.count && result.count > 1 ? `${result.count} agendamentos` : "o agendamento";

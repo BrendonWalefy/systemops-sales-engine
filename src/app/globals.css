@@ -3088,6 +3088,11 @@ textarea:focus {
   padding: 24px;
 }
 
+/* Ações rápidas da conversa — ocultas no desktop, visíveis no mobile via media query */
+.conv-mobile-actions {
+  display: none;
+}
+
 .conv-lead-panel {
   display: flex;
   flex-direction: column;
@@ -3258,6 +3263,15 @@ textarea:focus {
 
   .conv-lead-panel {
     display: none;
+  }
+
+  /* Ações rápidas do operador — apenas no mobile */
+  .conv-mobile-actions {
+    display: block;
+    flex-shrink: 0;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
   }
 
   /* Input do operador respeita home indicator do iPhone */
@@ -3678,13 +3692,18 @@ textarea:focus {
   gap: 10px;
 }
 
-/* Garante que Links filhos do grid não extravasem a célula */
+/* Garante que Links filhos do grid não extravasem a célula e preencham a altura */
 .scheduled-grid > * {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Card agendado/encerrado */
 .inbox-scheduled-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface-raised) 60%, transparent);
@@ -3695,6 +3714,7 @@ textarea:focus {
   transition: transform 120ms ease, border-color 120ms ease;
   cursor: pointer;
   border-left-width: 3px;
+  box-sizing: border-box;
 }
 
 .inbox-scheduled-card:hover {

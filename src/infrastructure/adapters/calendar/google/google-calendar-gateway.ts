@@ -352,6 +352,77 @@ export class GoogleCalendarGateway implements CalendarGateway {
     return this.deleteCalendarEvent(input.calendarEventId);
   }
 
+  async setupWatch(input: {
+    channelId: string;
+    webhookUrl: string;
+    token: string;
+  }): Promise<{ resourceId: string; expiration: Date }> {
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/watch`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: input.channelId,
+          type: "web_hook",
+          address: input.webhookUrl,
+          token: input.token,
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Calendar setupWatch failed: ${err}`);
+    }
+
+    const data = (await res.json()) as { resourceId: string; expiration: string };
+    return { resourceId: data.resourceId, expiration: new Date(Number(data.expiration)) };
+  }
+
+  // Retorna IDs de eventos cancelados desde o último sync e o novo syncToken.
+  // Se syncToken for null, faz sync inicial (retorna todos os eventos deletados).
+  async syncCancelledEventIds(syncToken: string | null): Promise<{
+    cancelledIds: string[];
+    nextSyncToken: string;
+  }> {
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+
+    const params = new URLSearchParams({ showDeleted: "true", maxResults: "250" });
+    if (syncToken) {
+      params.set("syncToken", syncToken);
+    } else {
+      // Sync inicial: apenas eventos recentes (180 dias) para evitar payloads enormes
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
+      params.set("timeMin", sixMonthsAgo.toISOString());
+    }
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Calendar syncCancelledEventIds failed: ${err}`);
+    }
+
+    type GCalEvent = { id: string; status: string };
+    const data = (await res.json()) as { items?: GCalEvent[]; nextSyncToken?: string };
+    const cancelledIds = (data.items ?? [])
+      .filter((e) => e.status === "cancelled")
+      .map((e) => e.id);
+
+    if (!data.nextSyncToken) throw new Error("Google Calendar sync returned no nextSyncToken");
+
+    return { cancelledIds, nextSyncToken: data.nextSyncToken };
+  }
+
   // Verifica em tempo real se o slot está livre no Google Calendar.
   // Usado pelo BookingService antes de criar o evento para detectar conflitos com
   // agendamentos manuais feitos pelo operador após a oferta ao lead.

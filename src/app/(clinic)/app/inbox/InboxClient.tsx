@@ -228,7 +228,7 @@ function ScheduledCard({ row, lastMsg }: { row: ConvRow; lastMsg?: { body: strin
             </span>
           </div>
         )}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginTop: "auto" }}>
           {tk !== "cold" ? (
             <span className={`temp-badge temp-${tk}`} style={{ fontSize: 10, padding: "2px 6px" }}>
               {tempLabel(row.leadTemperature)}

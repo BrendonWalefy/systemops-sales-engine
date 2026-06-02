@@ -64,6 +64,16 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     return rows.map(mapRow);
   }
 
+  async findByCalendarEventId(clinicId: string, calendarEventId: string): Promise<Appointment | null> {
+    const row = await db.query.appointments.findFirst({
+      where: and(
+        eq(appointments.clinicId, clinicId),
+        eq(appointments.calendarEventId, calendarEventId),
+      ),
+    });
+    return row ? mapRow(row) : null;
+  }
+
   async findDueReminders(params: {
     clinicId: string;
     windowStart: Date;

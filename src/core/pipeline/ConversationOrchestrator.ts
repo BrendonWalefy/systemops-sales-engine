@@ -80,6 +80,7 @@ function isMenuRerequest(message: string): boolean {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   return (
     n === "menu" ||
+    n === "voltar" ||
     n.includes("tem menu") ||
     n.includes("ver menu") ||
     n.includes("mostrar menu") ||
@@ -587,6 +588,7 @@ export class ConversationOrchestrator {
             type: "appointment_confirmed",
             slot: chosenSlot,
             clinicName: clinic.name,
+            clinicAddress: clinic.address,
           });
         } else if (result.reason === "slot_taken") {
           // Slot foi tomado por outro lead — oferece novos horários
@@ -951,9 +953,9 @@ export class ConversationOrchestrator {
         if (menuResolution?.intent === "general_question") {
           if (menuResolution.subtype === "procedures") {
             const items = clinicTreatments.length > 0
-              ? clinicTreatments.map((t) => `• ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n\n")
+              ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
               : "";
-            clinicContext = `FORMATO: tópicos\nLead selecionou "Procedimentos" no menu. Liste os procedimentos disponíveis em bullet points (•), um por linha, com breve descrição. Separe cada procedimento com uma linha em branco. Sem convite para agendar ao final.\n${items}`;
+            clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar.\n${items}`;
           } else {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
