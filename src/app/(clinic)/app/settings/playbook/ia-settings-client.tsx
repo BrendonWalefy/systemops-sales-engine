@@ -768,7 +768,10 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--background)" }}>
+    <div style={{
+      minHeight: "100vh",
+      background: `linear-gradient(120deg, rgba(0, 212, 170, 0.08), transparent 36%), linear-gradient(180deg, rgba(22, 27, 39, 0.35), transparent 38%), #0f1117)`
+    }}>
       <style>{`
         .ia-header { padding: 28px 32px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .ia-header-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }

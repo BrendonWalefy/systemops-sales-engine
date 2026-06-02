@@ -100,7 +100,7 @@ export default async function InboxPage() {
     .map(withAppointment);
 
   return (
-    <div>
+    <div className="inbox-shell">
       <InboxPoller />
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 28px 0" }}>
         <EnableNotificationsButton />
