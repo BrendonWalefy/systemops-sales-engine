@@ -3137,17 +3137,70 @@ textarea:focus {
 /* ─── Inbox Page ─────────────────────────────────────────── */
 
 .inbox-shell {
+  --background: #0f1117;
+  --surface: rgba(22, 27, 39, 0.92);
+  --surface-muted: #161b27;
+  --surface-raised: #1c2230;
+  --surface-soft: rgba(255, 255, 255, 0.045);
+  --text: #f7fbff;
+  --text-soft: #d9e4ef;
+  --muted: #94a3b8;
+  --line: rgba(148, 163, 184, 0.18);
+  --line-strong: rgba(148, 163, 184, 0.3);
+  --accent: #00d4aa;
+  --accent-strong: #29f2ce;
+  --accent-soft: rgba(0, 212, 170, 0.12);
+  --hot: #ff6b5f;
+  --hot-soft: rgba(255, 107, 95, 0.13);
+  --warm: #ff9f2e;
+  --warm-soft: rgba(255, 159, 46, 0.13);
+  --cold: #7da2c8;
+  --cold-soft: rgba(125, 162, 200, 0.13);
+
   min-height: var(--vh, 100dvh);
   overflow-x: hidden;
   background:
-    linear-gradient(120deg, rgba(0, 212, 170, 0.08), transparent 36%),
+    linear-gradient(120deg, rgba(0, 212, 170, 0.1), transparent 36%),
     linear-gradient(180deg, rgba(22, 27, 39, 0.35), transparent 38%),
-    #0f1117;
+    var(--background);
   color: var(--text);
+  padding: 26px 30px 40px;
 }
 
 .inbox-content {
-  padding: 0 28px 28px;
+  padding: 0;
+}
+
+/* ─── IA Settings Page ───────────────────────────────────── */
+
+.ia-settings-shell {
+  --background: #0f1117;
+  --surface: rgba(22, 27, 39, 0.92);
+  --surface-muted: #161b27;
+  --surface-raised: #1c2230;
+  --surface-soft: rgba(255, 255, 255, 0.045);
+  --text: #f7fbff;
+  --text-soft: #d9e4ef;
+  --muted: #94a3b8;
+  --line: rgba(148, 163, 184, 0.18);
+  --line-strong: rgba(148, 163, 184, 0.3);
+  --accent: #00d4aa;
+  --accent-strong: #29f2ce;
+  --accent-soft: rgba(0, 212, 170, 0.12);
+  --hot: #ff6b5f;
+  --hot-soft: rgba(255, 107, 95, 0.13);
+  --warm: #ff9f2e;
+  --warm-soft: rgba(255, 159, 46, 0.13);
+  --cold: #7da2c8;
+  --cold-soft: rgba(125, 162, 200, 0.13);
+
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    linear-gradient(120deg, rgba(0, 212, 170, 0.1), transparent 36%),
+    linear-gradient(180deg, rgba(22, 27, 39, 0.35), transparent 38%),
+    var(--background);
+  color: var(--text);
 }
 
 /* ─── Responsive: Mobile (≤640px) ───────────────────────── */
@@ -3738,6 +3791,10 @@ textarea:focus {
 @media (max-width: 640px) {
   .inbox-shell {
     padding: 0;
+  }
+
+  .ia-settings-shell {
+    padding: 20px 16px;
   }
 
   .inbox-topbar {
