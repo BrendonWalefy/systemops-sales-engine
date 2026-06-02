@@ -1,5 +1,8 @@
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
+import type { LeadRepository } from "@/domain/repositories/lead-repository";
+import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
+import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 
 export type UpdateAppointmentInput = {
   appointmentId: string;
@@ -16,6 +19,8 @@ export async function updateAppointment(
   deps: {
     appointmentRepository: AppointmentRepository;
     calendarGateway: CalendarGateway;
+    leadRepository?: LeadRepository;
+    followUpRepository?: FollowUpRepository;
   },
 ): Promise<{ success: boolean; reason?: string }> {
   const existing = await deps.appointmentRepository.findById(input.appointmentId);
@@ -24,6 +29,7 @@ export async function updateAppointment(
     return { success: false, reason: "not_found" };
   }
 
+  // Verificar disponibilidade antes de mover o evento
   if (input.startsAt && input.endsAt) {
     const slotFree = await deps.calendarGateway.isSlotFree({
       clinicId: input.clinicId,
@@ -32,6 +38,20 @@ export async function updateAppointment(
     });
     if (!slotFree) {
       return { success: false, reason: "slot_taken" };
+    }
+  }
+
+  // Sincronizar novo horário no Google Calendar (drag-and-drop)
+  if (input.startsAt && input.endsAt && existing.calendarEventId) {
+    try {
+      await deps.calendarGateway.updateCalendarEvent({
+        calendarEventId: existing.calendarEventId,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+      });
+    } catch (err) {
+      console.error("[updateAppointment] GCal update failed:", err);
+      // Não bloquear o operador: salva no DB mesmo se GCal falhar
     }
   }
 
@@ -44,6 +64,41 @@ export async function updateAppointment(
     ...(input.roomId !== undefined && { roomId: input.roomId }),
     updatedAt: new Date(),
   });
+
+  // Efeitos de status: atualizar lead + agendar follow-up
+  if (input.status && deps.leadRepository) {
+    try {
+      const lead = await deps.leadRepository.findById(existing.leadId);
+      if (lead) {
+        if (input.status === "completed") {
+          await deps.leadRepository.save({ ...lead, status: "won", updatedAt: new Date() });
+          if (deps.followUpRepository) {
+            await scheduleFollowUp({
+              clinicId: existing.clinicId,
+              leadId: existing.leadId,
+              trigger: "appointment_completed",
+              referenceDate: existing.startsAt,
+              followUpRepository: deps.followUpRepository,
+            });
+          }
+        } else if (input.status === "no_show") {
+          await deps.leadRepository.save({ ...lead, status: "in_conversation", updatedAt: new Date() });
+          if (deps.followUpRepository) {
+            await scheduleFollowUp({
+              clinicId: existing.clinicId,
+              leadId: existing.leadId,
+              trigger: "no_show",
+              referenceDate: new Date(),
+              followUpRepository: deps.followUpRepository,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      // Não-crítico: o status do appointment já foi salvo
+      console.error("[updateAppointment] Side-effect failed:", err);
+    }
+  }
 
   return { success: true };
 }

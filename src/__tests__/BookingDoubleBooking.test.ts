@@ -118,6 +118,8 @@ class FakeCalendarGateway implements CalendarGateway {
     if (this.isSlotFreeError) throw this.isSlotFreeError;
     return this.isSlotFreeResult;
   }
+
+  async updateCalendarEvent(): Promise<void> {}
 }
 
 class FakeReservationService implements BookingReservationService {

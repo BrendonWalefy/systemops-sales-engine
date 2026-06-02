@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect } from "react";
 import { useCalendarApp, ScheduleXCalendar } from "@schedule-x/react";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 import { createEventsServicePlugin } from "@schedule-x/events-service";
@@ -15,16 +15,6 @@ type Props = {
   onEventClick?: (event: AppointmentEvent) => void;
   onEventUpdate?: (id: string, startsAt: string, endsAt: string) => void;
 };
-
-function statusColor(status: string): string {
-  switch (status) {
-    case "confirmed": return "#10b981";
-    case "completed": return "#34d399";
-    case "cancelled": return "#71717a";
-    case "no_show": return "#ef4444";
-    default: return "#3b82f6"; // scheduled
-  }
-}
 
 function toCalendarEvent(e: AppointmentEvent) {
   return {

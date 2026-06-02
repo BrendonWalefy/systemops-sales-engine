@@ -8,6 +8,7 @@ export type AppointmentEvent = {
   professionalColor: string | null;
   calendarEventId: string | null;
   calendarEventUrl: string | null;
+  conversationId: string | null;
   startsAt: string; // ISO string
   endsAt: string;   // ISO string
   status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show";
@@ -26,4 +27,5 @@ export type Professional = {
   name: string;
   color: string;
   specialty: string | null;
+  isActive?: boolean;
 };

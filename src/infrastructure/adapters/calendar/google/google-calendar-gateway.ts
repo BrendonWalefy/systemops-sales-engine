@@ -355,6 +355,32 @@ export class GoogleCalendarGateway implements CalendarGateway {
     return this.deleteCalendarEvent(input.calendarEventId);
   }
 
+  async updateCalendarEvent(input: {
+    calendarEventId: string;
+    startsAt: Date;
+    endsAt: Date;
+  }): Promise<void> {
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.calendarEventId)}`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: { dateTime: input.startsAt.toISOString() },
+          end: { dateTime: input.endsAt.toISOString() },
+        }),
+      },
+    );
+
+    if (!res.ok && res.status !== 404 && res.status !== 410) {
+      const err = await res.text();
+      throw new Error(`Google Calendar updateEvent failed: ${err}`);
+    }
+  }
+
   async setupWatch(input: {
     channelId: string;
     webhookUrl: string;

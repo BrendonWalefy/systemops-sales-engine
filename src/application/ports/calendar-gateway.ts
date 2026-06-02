@@ -44,4 +44,9 @@ export type CalendarGateway = {
     startsAt: Date;
     endsAt: Date;
   }): Promise<boolean>;
+  updateCalendarEvent(input: {
+    calendarEventId: string;
+    startsAt: Date;
+    endsAt: Date;
+  }): Promise<void>;
 };

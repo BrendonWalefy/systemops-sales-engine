@@ -6,6 +6,7 @@ import { clinics } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
+import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -19,10 +20,9 @@ async function requireAuth() {
   return token ? verifyToken(token) : null;
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+type RouteParams = { params: Promise<{ id: string }> };
+
+export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -52,12 +52,31 @@ export async function PATCH(
 
     const timezone = new ClinicTimezone(clinicRow.timezone);
     const apptRepo = new DrizzleAppointmentRepository();
+    const leadRepo = new DrizzleLeadRepository();
+    const followUpRepo = new DrizzleFollowUpRepository();
     const gateway = new GoogleCalendarGateway(
       clinicRow.googleCalendarId,
       timezone,
       clinicRow.businessHours,
       clinicRow.postAppointmentBufferMinutes,
     );
+
+    // Cancelamento usa a saga completa do BookingService (GCal + reserva + lead status)
+    if (body.status === "cancelled") {
+      const appt = await apptRepo.findById(id);
+      if (!appt || appt.clinicId !== clinicId) {
+        return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 });
+      }
+      const lead = await leadRepo.findById(appt.leadId);
+      if (!lead) return NextResponse.json({ error: "Lead não encontrado" }, { status: 404 });
+
+      const bookingService = new BookingService(gateway, apptRepo, leadRepo);
+      const result = await bookingService.cancel({ lead, appointment: appt });
+      if (!result.success) {
+        return NextResponse.json({ error: result.reason }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true });
+    }
 
     let startsAt: Date | undefined;
     let endsAt: Date | undefined;
@@ -80,7 +99,12 @@ export async function PATCH(
         professionalId: body.professionalId,
         roomId: body.roomId,
       },
-      { appointmentRepository: apptRepo, calendarGateway: gateway },
+      {
+        appointmentRepository: apptRepo,
+        calendarGateway: gateway,
+        leadRepository: leadRepo,
+        followUpRepository: followUpRepo,
+      },
     );
 
     if (!result.success) {
@@ -96,10 +120,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+export async function DELETE(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

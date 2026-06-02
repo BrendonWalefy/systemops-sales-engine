@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { and, between, eq } from "drizzle-orm";
+import { and, between, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics, leads, professionals } from "@/infrastructure/db/schema";
+import { appointments, clinics, conversations, leads, professionals } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -65,7 +65,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       )
       .orderBy(appointments.startsAt);
 
-    return NextResponse.json({ appointments: rows });
+    // Resolve conversationId por leadId evitando duplicatas (um lead pode ter N conversas)
+    const leadIds = [...new Set(rows.map((r) => r.leadId))];
+    const convMap = new Map<string, string>();
+    if (leadIds.length > 0) {
+      const convRows = await db
+        .select({ leadId: conversations.leadId, id: conversations.id })
+        .from(conversations)
+        .where(inArray(conversations.leadId, leadIds))
+        .orderBy(desc(conversations.createdAt));
+      for (const c of convRows) {
+        if (!convMap.has(c.leadId)) convMap.set(c.leadId, c.id);
+      }
+    }
+
+    const result = rows.map((r) => ({ ...r, conversationId: convMap.get(r.leadId) ?? null }));
+    return NextResponse.json({ appointments: result });
   } catch (err) {
     console.error("[appointments GET]", err);
     return NextResponse.json({ error: "Falha ao buscar agendamentos" }, { status: 500 });

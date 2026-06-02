@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutDashboard, Settings2, CalendarDays, Zap, LogOut } from "lucide-react";
+import { Inbox, LayoutDashboard, Settings2, CalendarDays, Zap, LogOut, Users } from "lucide-react";
 import { logout } from "@/app/login/actions";
 
 const NAV_PRIMARY = [
@@ -12,6 +12,7 @@ const NAV_PRIMARY = [
 
 const NAV_CONFIG = [
   { href: "/app/settings/playbook", label: "Configurações", Icon: Settings2 },
+  { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users },
 ];
 
 export function SidebarNav({ email }: { email?: string }) {

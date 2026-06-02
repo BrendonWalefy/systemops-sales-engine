@@ -9,16 +9,17 @@ type LeadResult = { id: string; name: string | null; phone: string | null };
 type Props = {
   defaultDate?: string;
   defaultTime?: string;
+  defaultProfessionalId?: string;
   professionals: Professional[];
   onClose: () => void;
   onCreated: () => void;
 };
 
-export function AppointmentModal({ defaultDate, defaultTime, professionals, onClose, onCreated }: Props) {
+export function AppointmentModal({ defaultDate, defaultTime, defaultProfessionalId, professionals, onClose, onCreated }: Props) {
   const [date, setDate] = useState(defaultDate ?? new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState(defaultTime ?? "09:00");
   const [durationMinutes, setDurationMinutes] = useState(60);
-  const [professionalId, setProfessionalId] = useState(professionals[0]?.id ?? "");
+  const [professionalId, setProfessionalId] = useState(defaultProfessionalId ?? professionals[0]?.id ?? "");
   const [treatmentName, setTreatmentName] = useState("");
   const [leadQuery, setLeadQuery] = useState("");
   const [leadResults, setLeadResults] = useState<LeadResult[]>([]);
