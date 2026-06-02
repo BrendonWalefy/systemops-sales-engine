@@ -169,7 +169,7 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
 
     case "price_inquiry":
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
-Não informe valores de procedimentos. Siga a política comercial da clínica para explicar como funciona a avaliação e o abatimento dos R$100. Não convide para agendar — o lead decide o próximo passo. Ao final, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
+Siga EXATAMENTE a política comercial descrita no sistema — condições de avaliação, valores e formas de pagamento. Se a política não mencionar um dado, não invente. Não convide para agendar — o lead decide o próximo passo. Ao final, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
 
 
     case "general_question":
