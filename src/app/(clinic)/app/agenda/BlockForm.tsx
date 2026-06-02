@@ -221,7 +221,7 @@ export function BlockForm() {
         <div className="agenda-preset-grid" role="group" aria-label="Escopo do bloqueio">
           <button
             type="button"
-            className={`agenda-quick-btn agenda-quick-full${activePreset === "dia-inteiro" ? " active" : ""}`}
+            className={`agenda-quick-btn${activePreset === "dia-inteiro" ? " active" : ""}`}
             onClick={applyFullDay}
             aria-pressed={isFullDay}
             disabled={isPending}

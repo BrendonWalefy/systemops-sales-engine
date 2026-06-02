@@ -1750,12 +1750,12 @@ button:disabled {
   column-gap: 10px;
   row-gap: 2px;
   min-width: 0;
-  min-height: 66px;
+  min-height: 60px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
   color: var(--text-soft);
-  padding: 11px 12px;
+  padding: 10px 11px;
   text-align: left;
   transition:
     transform 120ms ease,
@@ -1795,10 +1795,6 @@ button:disabled {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.agenda-quick-full {
-  grid-column: 1 / -1;
 }
 
 .agenda-full-day-note {
@@ -3848,10 +3844,6 @@ textarea:focus {
   .agenda-time-grid,
   .agenda-preset-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .agenda-quick-full {
-    grid-column: auto;
   }
 
   .agenda-block-card {
