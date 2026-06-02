@@ -10,11 +10,11 @@ const COL_MIN = 220;
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
 const STATUS_BG: Record<string, string> = {
-  scheduled: "rgba(59,130,246,0.14)",
-  confirmed: "rgba(16,185,129,0.14)",
-  completed: "rgba(52,211,153,0.10)",
-  cancelled: "rgba(82,82,91,0.12)",
-  no_show: "rgba(239,68,68,0.10)",
+  scheduled: "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(96,165,250,0.1))",
+  confirmed: "linear-gradient(135deg, rgba(0,212,170,0.22), rgba(0,212,170,0.1))",
+  completed: "linear-gradient(135deg, rgba(34,197,94,0.16), rgba(34,197,94,0.08))",
+  cancelled: "linear-gradient(135deg, rgba(148,163,184,0.14), rgba(148,163,184,0.07))",
+  no_show: "linear-gradient(135deg, rgba(251,113,133,0.16), rgba(251,113,133,0.08))",
 };
 
 const STATUS_LABELS: Record<string, string> = {

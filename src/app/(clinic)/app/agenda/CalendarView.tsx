@@ -12,6 +12,39 @@ import type { AppointmentEvent } from "./types";
 
 const CALENDAR_TIMEZONE = "America/Sao_Paulo";
 
+const CALENDAR_STATUS_COLORS = {
+  scheduled: {
+    colorName: "scheduled",
+    lightColors: { main: "#60a5fa", container: "rgba(96,165,250,0.16)", onContainer: "#1d4ed8" },
+    darkColors: { main: "#60a5fa", container: "rgba(96,165,250,0.18)", onContainer: "#dbeafe" },
+  },
+  confirmed: {
+    colorName: "confirmed",
+    lightColors: { main: "#00d4aa", container: "rgba(20,108,95,0.12)", onContainer: "#0f5148" },
+    darkColors: { main: "#00d4aa", container: "rgba(0,212,170,0.18)", onContainer: "#bdfcf0" },
+  },
+  completed: {
+    colorName: "completed",
+    lightColors: { main: "#22c55e", container: "rgba(34,197,94,0.12)", onContainer: "#166534" },
+    darkColors: { main: "#22c55e", container: "rgba(34,197,94,0.14)", onContainer: "#bbf7d0" },
+  },
+  cancelled: {
+    colorName: "cancelled",
+    lightColors: { main: "#64748b", container: "rgba(100,116,139,0.12)", onContainer: "#475569" },
+    darkColors: { main: "#64748b", container: "rgba(148,163,184,0.1)", onContainer: "#cbd5e1" },
+  },
+  no_show: {
+    colorName: "no_show",
+    lightColors: { main: "#fb7185", container: "rgba(251,113,133,0.12)", onContainer: "#9f1239" },
+    darkColors: { main: "#fb7185", container: "rgba(251,113,133,0.14)", onContainer: "#fecdd3" },
+  },
+  block: {
+    colorName: "block",
+    lightColors: { main: "#f5b451", container: "rgba(245,180,81,0.12)", onContainer: "#92400e" },
+    darkColors: { main: "#f5b451", container: "rgba(245,180,81,0.14)", onContainer: "#fde68a" },
+  },
+} as const;
+
 type Props = {
   initialEvents: AppointmentEvent[];
   onSlotClick?: (date: string, time: string) => void;
@@ -89,14 +122,7 @@ export function CalendarView({ initialEvents, onSlotClick, onEventClick, onEvent
       createDragAndDropPlugin(15),
       scrollController,
     ],
-    calendars: {
-      scheduled: { colorName: "scheduled", lightColors: { main: "#3b82f6", container: "rgba(59,130,246,0.15)", onContainer: "#93c5fd" }, darkColors: { main: "#3b82f6", container: "rgba(59,130,246,0.15)", onContainer: "#93c5fd" } },
-      confirmed: { colorName: "confirmed", lightColors: { main: "#10b981", container: "rgba(16,185,129,0.15)", onContainer: "#6ee7b7" }, darkColors: { main: "#10b981", container: "rgba(16,185,129,0.15)", onContainer: "#6ee7b7" } },
-      completed: { colorName: "completed", lightColors: { main: "#34d399", container: "rgba(52,211,153,0.12)", onContainer: "#a7f3d0" }, darkColors: { main: "#34d399", container: "rgba(52,211,153,0.12)", onContainer: "#a7f3d0" } },
-      cancelled: { colorName: "cancelled", lightColors: { main: "#52525b", container: "rgba(82,82,91,0.12)", onContainer: "#a1a1aa" }, darkColors: { main: "#52525b", container: "rgba(82,82,91,0.12)", onContainer: "#a1a1aa" } },
-      no_show: { colorName: "no_show", lightColors: { main: "#ef4444", container: "rgba(239,68,68,0.12)", onContainer: "#fca5a5" }, darkColors: { main: "#ef4444", container: "rgba(239,68,68,0.12)", onContainer: "#fca5a5" } },
-      block: { colorName: "block", lightColors: { main: "#3f3f46", container: "rgba(63,63,70,0.4)", onContainer: "#71717a" }, darkColors: { main: "#3f3f46", container: "rgba(63,63,70,0.4)", onContainer: "#71717a" } },
-    },
+    calendars: CALENDAR_STATUS_COLORS,
     events: initialEvents.map(toCalendarEvent),
     callbacks: {
       onEventClick(event) {
