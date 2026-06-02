@@ -2,12 +2,15 @@
 
 import { useState, useRef } from "react";
 import {
+  CalendarDays,
   CheckCircle2,
   ChevronRight,
   Loader2,
+  Palette,
   Plus,
   Trash2,
   UserRound,
+  UserCheck,
   Users,
 } from "lucide-react";
 
@@ -160,6 +163,7 @@ function ProfessionalRow({
 
   return (
     <div
+      className="professional-row-card"
       style={{
         borderBottom: "1px solid var(--line)",
         transition: "background 0.15s",
@@ -239,7 +243,7 @@ function ProfessionalRow({
           }}
         >
           {/* Name + Specialty */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <div className="professional-field-grid">
             <label style={{ margin: 0 }}>
               <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 500, display: "block", marginBottom: "5px" }}>
                 Nome
@@ -274,7 +278,7 @@ function ProfessionalRow({
           </div>
 
           {/* Actions row */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
+          <div className="professional-actions-row" style={{ marginTop: "2px" }}>
             {/* Active toggle */}
             <button
               type="button"
@@ -429,6 +433,7 @@ function AddProfessionalForm({ onCreated }: { onCreated: (p: Professional) => vo
 
   return (
     <section
+      className="professionals-form-card"
       style={{
         border: "1px solid var(--line)",
         borderRadius: "14px",
@@ -463,7 +468,7 @@ function AddProfessionalForm({ onCreated }: { onCreated: (p: Professional) => vo
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div className="professional-field-grid">
           <label style={{ margin: 0 }}>
             <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 500, display: "block", marginBottom: "5px" }}>
               Nome *
@@ -497,7 +502,7 @@ function AddProfessionalForm({ onCreated }: { onCreated: (p: Professional) => vo
           <ColorSwatch selected={color} onChange={setColor} />
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="professional-preview-row">
           <div
             style={{
               width: "28px",
@@ -559,12 +564,15 @@ export function ProfissionaisClient({ initialProfessionals }: Props) {
   const inactive = professionals.filter((p) => !p.isActive);
 
   return (
-    <div style={{ maxWidth: "740px", margin: "0 auto", padding: "40px 24px 80px" }}>
+    <div className="professionals-page">
+      <div className="professionals-shell">
       {/* Header */}
-      <div style={{ marginBottom: "32px" }}>
+      <div className="professionals-hero">
+        <div>
         <p className="eyebrow" style={{ marginBottom: "6px" }}>Configurações</p>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div
+            className="professionals-hero-icon"
             style={{
               display: "grid",
               placeItems: "center",
@@ -589,10 +597,30 @@ export function ProfissionaisClient({ initialProfessionals }: Props) {
           </div>
         </div>
       </div>
+      </div>
+
+      <div className="professionals-status-grid">
+        <div className="professionals-status-card">
+          <UserCheck size={16} strokeWidth={1.8} />
+          <span>Equipe ativa</span>
+          <strong>{active.length}</strong>
+        </div>
+        <div className="professionals-status-card cold">
+          <CalendarDays size={16} strokeWidth={1.8} />
+          <span>No calendário</span>
+          <strong>{professionals.length}</strong>
+        </div>
+        <div className="professionals-status-card warm">
+          <Palette size={16} strokeWidth={1.8} />
+          <span>Cores em uso</span>
+          <strong>{new Set(professionals.map((p) => p.color)).size || 0}</strong>
+        </div>
+      </div>
 
       {/* List */}
       {professionals.length > 0 ? (
         <div
+          className="professionals-list-card"
           style={{
             border: "1px solid var(--line)",
             borderRadius: "14px",
@@ -661,6 +689,7 @@ export function ProfissionaisClient({ initialProfessionals }: Props) {
         </div>
       ) : (
         <div
+          className="professionals-empty"
           style={{
             border: "1px dashed var(--line)",
             borderRadius: "14px",
@@ -681,6 +710,7 @@ export function ProfissionaisClient({ initialProfessionals }: Props) {
 
       {/* Add form */}
       <AddProfessionalForm onCreated={handleCreated} />
+      </div>
     </div>
   );
 }

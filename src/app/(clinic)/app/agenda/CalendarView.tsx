@@ -15,33 +15,33 @@ const CALENDAR_TIMEZONE = "America/Sao_Paulo";
 const CALENDAR_STATUS_COLORS = {
   scheduled: {
     colorName: "scheduled",
-    lightColors: { main: "#60a5fa", container: "rgba(96,165,250,0.16)", onContainer: "#1d4ed8" },
-    darkColors: { main: "#60a5fa", container: "rgba(96,165,250,0.18)", onContainer: "#dbeafe" },
+    lightColors: { main: "#60a5fa", container: "rgba(37,99,235,0.42)", onContainer: "#eff6ff" },
+    darkColors: { main: "#60a5fa", container: "rgba(37,99,235,0.42)", onContainer: "#eff6ff" },
   },
   confirmed: {
     colorName: "confirmed",
-    lightColors: { main: "#00d4aa", container: "rgba(20,108,95,0.12)", onContainer: "#0f5148" },
-    darkColors: { main: "#00d4aa", container: "rgba(0,212,170,0.18)", onContainer: "#bdfcf0" },
+    lightColors: { main: "#00d4aa", container: "rgba(0,212,170,0.28)", onContainer: "#ecfffb" },
+    darkColors: { main: "#00d4aa", container: "rgba(0,212,170,0.28)", onContainer: "#ecfffb" },
   },
   completed: {
     colorName: "completed",
-    lightColors: { main: "#22c55e", container: "rgba(34,197,94,0.12)", onContainer: "#166534" },
-    darkColors: { main: "#22c55e", container: "rgba(34,197,94,0.14)", onContainer: "#bbf7d0" },
+    lightColors: { main: "#22c55e", container: "rgba(34,197,94,0.24)", onContainer: "#f0fdf4" },
+    darkColors: { main: "#22c55e", container: "rgba(34,197,94,0.24)", onContainer: "#f0fdf4" },
   },
   cancelled: {
     colorName: "cancelled",
-    lightColors: { main: "#64748b", container: "rgba(100,116,139,0.12)", onContainer: "#475569" },
-    darkColors: { main: "#64748b", container: "rgba(148,163,184,0.1)", onContainer: "#cbd5e1" },
+    lightColors: { main: "#64748b", container: "rgba(100,116,139,0.24)", onContainer: "#f8fafc" },
+    darkColors: { main: "#64748b", container: "rgba(100,116,139,0.24)", onContainer: "#f8fafc" },
   },
   no_show: {
     colorName: "no_show",
-    lightColors: { main: "#fb7185", container: "rgba(251,113,133,0.12)", onContainer: "#9f1239" },
-    darkColors: { main: "#fb7185", container: "rgba(251,113,133,0.14)", onContainer: "#fecdd3" },
+    lightColors: { main: "#fb7185", container: "rgba(251,113,133,0.24)", onContainer: "#fff1f2" },
+    darkColors: { main: "#fb7185", container: "rgba(251,113,133,0.24)", onContainer: "#fff1f2" },
   },
   block: {
     colorName: "block",
-    lightColors: { main: "#f5b451", container: "rgba(245,180,81,0.12)", onContainer: "#92400e" },
-    darkColors: { main: "#f5b451", container: "rgba(245,180,81,0.14)", onContainer: "#fde68a" },
+    lightColors: { main: "#f5b451", container: "rgba(245,180,81,0.24)", onContainer: "#fffbeb" },
+    darkColors: { main: "#f5b451", container: "rgba(245,180,81,0.24)", onContainer: "#fffbeb" },
   },
 } as const;
 
@@ -115,6 +115,7 @@ export function CalendarView({ initialEvents, onSlotClick, onEventClick, onEvent
 
   const calendar = useCalendarApp({
     locale: "pt-BR",
+    isDark: true,
     views: [createViewWeek(), createViewDay(), createViewMonthGrid()],
     defaultView: createViewWeek().name,
     plugins: [

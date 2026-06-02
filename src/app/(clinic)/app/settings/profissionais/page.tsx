@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import "./profissionais.css";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 import { ProfissionaisClient } from "./ProfissionaisClient";
 
