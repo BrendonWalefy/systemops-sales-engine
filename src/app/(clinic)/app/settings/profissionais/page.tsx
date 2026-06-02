@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import "./profissionais.css";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 import { ProfissionaisClient } from "./ProfissionaisClient";
 
 export default async function ProfissionaisPage() {
-  const clinicId = process.env.PILOT_CLINIC_ID ?? "";
+  const clinicId = (await getSessionClinicId()) ?? "";
   const professionals = clinicId
     ? await new DrizzleProfessionalRepository().listByClinic(clinicId)
     : [];

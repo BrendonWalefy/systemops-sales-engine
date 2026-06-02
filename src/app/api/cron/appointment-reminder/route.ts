@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { clinics } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -12,24 +14,17 @@ import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/wha
 export const dynamic = "force-dynamic";
 
 // Janela: consultas que começam entre 20h e 32h a partir de agora.
-// Com cron às 13h UTC (10h BRT), captura consultas do dia seguinte entre ~9h e 21h BRT.
 const WINDOW_START_HOURS = 20;
 const WINDOW_END_HOURS = 32;
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+type ClinicResult = { clinicId: string; sent: number; failed: number; total: number };
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
-
+async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
-  if (!clinic) return NextResponse.json({ error: "Clinic not found" }, { status: 500 });
+  if (!clinic) return null;
 
-  // Fonte única editorial (mesma versão ativa que a produção lê).
   const editorial = await resolveActiveEditorialConfig(clinicId);
+  const channelConfig = resolveChannelConfig(clinic);
 
   const appointmentRepository = new DrizzleAppointmentRepository();
   const leadRepository = new DrizzleLeadRepository();
@@ -40,11 +35,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const windowStart = new Date(now.getTime() + WINDOW_START_HOURS * 60 * 60 * 1000);
   const windowEnd = new Date(now.getTime() + WINDOW_END_HOURS * 60 * 60 * 1000);
 
-  const dueAppointments = await appointmentRepository.findDueReminders({
-    clinicId,
-    windowStart,
-    windowEnd,
-  });
+  const dueAppointments = await appointmentRepository.findDueReminders({ clinicId, windowStart, windowEnd });
 
   let sent = 0;
   let failed = 0;
@@ -78,22 +69,33 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         isFirstMessage: false,
       });
 
-      await sendTextMessage(lead.phone, composed.text);
-
-      await appointmentRepository.save({
-        ...appointment,
-        reminderSentAt: now,
-        updatedAt: now,
-      });
-
+      await sendTextMessage(lead.phone, composed.text, channelConfig);
+      await appointmentRepository.save({ ...appointment, reminderSentAt: now, updatedAt: now });
       sent++;
-      console.log(`[AppointmentReminder] Sent reminder for appointment ${appointment.id} → lead ${lead.id}`);
     } catch (err) {
       console.error("[AppointmentReminder] Failed for appointment:", appointment.id, err);
       failed++;
     }
   }
 
-  console.log(`[AppointmentReminder] sent=${sent} failed=${failed} total=${dueAppointments.length}`);
-  return NextResponse.json({ sent, failed, total: dueAppointments.length });
+  return { clinicId, sent, failed, total: dueAppointments.length };
+}
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const clinicIds = await listAllClinicIds();
+  const results: ClinicResult[] = [];
+  for (const id of clinicIds) {
+    const r = await processClinic(id);
+    if (r) results.push(r);
+  }
+
+  const sent = results.reduce((a, r) => a + r.sent, 0);
+  const failed = results.reduce((a, r) => a + r.failed, 0);
+  console.log(`[AppointmentReminder] clinics=${results.length} sent=${sent} failed=${failed}`);
+  return NextResponse.json({ clinics: results.length, sent, failed, perClinic: results });
 }

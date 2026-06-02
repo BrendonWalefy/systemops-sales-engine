@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
@@ -7,8 +8,8 @@ export const dynamic = "force-dynamic";
 
 // GET — retorna o estado atual do toggle
 export async function GET(): Promise<NextResponse> {
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) return NextResponse.json({ error: "Sem clínica resolvida para a sessão" }, { status: 500 });
 
   const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
   if (!clinic) return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
@@ -18,8 +19,8 @@ export async function GET(): Promise<NextResponse> {
 
 // POST — alterna o toggle (body: { enabled: boolean })
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) return NextResponse.json({ error: "PILOT_CLINIC_ID not set" }, { status: 500 });
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) return NextResponse.json({ error: "Sem clínica resolvida para a sessão" }, { status: 500 });
 
   // Simple secret check — use TOGGLE_SECRET env var to protect this endpoint
   const secret = request.headers.get("x-toggle-secret");

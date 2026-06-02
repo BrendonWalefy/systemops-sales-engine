@@ -1,12 +1,13 @@
 "use server";
 
 import { db } from "@/infrastructure/db/client";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function savePlaybook(formData: FormData) {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   const toneOfVoice = (formData.get("toneOfVoice") as string) || null;
   const commercialPolicy = (formData.get("commercialPolicy") as string) || null;
   const notes = (formData.get("playbook") as string) || null;
@@ -50,7 +51,7 @@ export async function savePlaybook(formData: FormData) {
 }
 
 export async function toggleAutoReply(currentValue: boolean) {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   await db
     .update(clinics)
     .set({

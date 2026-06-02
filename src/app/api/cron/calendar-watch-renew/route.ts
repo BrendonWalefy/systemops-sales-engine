@@ -4,42 +4,20 @@ import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 
 export const dynamic = "force-dynamic";
 
-// Registra ou renova o canal de push notifications do Google Calendar.
-// Executado semanalmente via Vercel Cron — canais expiram em ≤7 dias.
-// Também usado no primeiro deploy para criar o canal inicial.
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
-
-  if (!appUrl) {
-    console.error("[calendar-watch-renew] NEXT_PUBLIC_APP_URL não definido");
-    return NextResponse.json({ error: "NEXT_PUBLIC_APP_URL não definido" }, { status: 500 });
-  }
-
-  const webhookSecret = process.env.CRON_SECRET!;
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) {
-    return NextResponse.json({ error: "PILOT_CLINIC_ID não definido" }, { status: 500 });
-  }
-
+// Registra ou renova o canal de push do Google Calendar para TODAS as clínicas.
+async function renewForClinic(
+  clinicId: string,
+  appUrl: string,
+  webhookSecret: string,
+): Promise<{ clinicId: string; ok: boolean; skipped?: boolean; expiration?: string; error?: string }> {
   try {
-    const [clinic] = await db
-      .select()
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
-      .limit(1);
-
+    const [clinic] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
     if (!clinic?.googleCalendarId) {
-      console.warn("[calendar-watch-renew] Clínica sem googleCalendarId — pulando");
-      return NextResponse.json({ ok: true, skipped: true });
+      return { clinicId, ok: true, skipped: true };
     }
 
     const gateway = new GoogleCalendarGateway(
@@ -51,29 +29,40 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const channelId = `gcal-${clinicId}`;
     const webhookUrl = `${appUrl}/api/webhooks/google-calendar`;
 
-    const { expiration } = await gateway.setupWatch({
-      channelId,
-      webhookUrl,
-      token: webhookSecret,
-    });
-
-    // Obtém syncToken atualizado (ou inicial na primeira execução)
-    const { nextSyncToken } = await gateway.syncCancelledEventIds(
-      clinic.calendarSyncToken ?? null,
-    );
+    const { expiration } = await gateway.setupWatch({ channelId, webhookUrl, token: webhookSecret });
+    const { nextSyncToken } = await gateway.syncCancelledEventIds(clinic.calendarSyncToken ?? null);
 
     await db
       .update(clinics)
       .set({ calendarChannelId: channelId, calendarSyncToken: nextSyncToken })
       .where(eq(clinics.id, clinicId));
 
-    console.info(
-      `[calendar-watch-renew] Canal renovado — expira em ${expiration.toISOString()}`,
-    );
-
-    return NextResponse.json({ ok: true, channelId, expiration: expiration.toISOString() });
+    return { clinicId, ok: true, expiration: expiration.toISOString() };
   } catch (err) {
-    console.error("[calendar-watch-renew]", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("[calendar-watch-renew]", clinicId, err);
+    return { clinicId, ok: false, error: String(err) };
   }
+}
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  if (!appUrl) {
+    return NextResponse.json({ error: "NEXT_PUBLIC_APP_URL não definido" }, { status: 500 });
+  }
+
+  const webhookSecret = process.env.CRON_SECRET!;
+  const clinicIds = await listAllClinicIds();
+  const results = [];
+  for (const clinicId of clinicIds) {
+    results.push(await renewForClinic(clinicId, appUrl, webhookSecret));
+  }
+
+  return NextResponse.json({ clinics: results.length, results });
 }

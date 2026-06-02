@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 
 const repo = new DrizzleTreatmentRepository();
@@ -7,7 +8,7 @@ const repo = new DrizzleTreatmentRepository();
 export type ActionState = { success: boolean; error?: string } | null;
 
 export async function createTreatment(prevState: ActionState, formData: FormData): Promise<ActionState> {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
   const name = (formData.get("name") as string)?.trim();
   const durationMinutes = parseInt(formData.get("durationMinutes") as string, 10);
 

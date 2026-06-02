@@ -91,6 +91,8 @@ export const appointmentSourceEnum = pgEnum("appointment_source", ["app", "gcal_
 export const clinics = pgTable("clinics", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  // Identificador legível e único — usado em URLs e no onboarding.
+  slug: text("slug"),
   specialty: text("specialty").notNull().default("odontology"),
   city: text("city"),
   address: text("address"),
@@ -112,6 +114,16 @@ export const clinics = pgTable("clinics", {
   isTest: boolean("is_test").notNull().default(false),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
+  // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──
+  // Roteiam tanto a entrada (qual clínica recebeu a mensagem) quanto a saída
+  // (por qual número a resposta sai). Nulo = cai no fallback das envs globais
+  // durante a transição da clínica piloto.
+  channelProvider: whatsappProviderEnum("channel_provider"),
+  zapiInstanceId: text("zapi_instance_id"),
+  zapiToken: text("zapi_token"),
+  zapiClientToken: text("zapi_client_token"),
+  metaPhoneNumberId: text("meta_phone_number_id"),
+  metaAccessToken: text("meta_access_token"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -500,5 +512,26 @@ export const slotReservations = pgTable(
       table.clinicId,
       table.startsAt,
     ),
+  }),
+);
+
+// ── Membros: liga um usuário (por email) a uma clínica ──
+// owner enxerga todas; clinic_admin é resolvido para a clínica do seu vínculo.
+export const memberRoleEnum = pgEnum("member_role", ["owner", "clinic_admin"]);
+
+export const clinicMembers = pgTable(
+  "clinic_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    email: text("email").notNull(),
+    role: memberRoleEnum("role").notNull().default("clinic_admin"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    emailClinicIdx: uniqueIndex("clinic_members_email_clinic_idx").on(table.email, table.clinicId),
+    emailIdx: index("clinic_members_email_idx").on(table.email),
   }),
 );

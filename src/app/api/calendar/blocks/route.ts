@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId, requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
@@ -10,8 +11,8 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 export const dynamic = "force-dynamic";
 
 async function getGateway() {
-  const clinicId = process.env.PILOT_CLINIC_ID;
-  if (!clinicId) throw new Error("PILOT_CLINIC_ID not set");
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
   const [clinic] = await db
     .select({ googleCalendarId: clinics.googleCalendarId, timezone: clinics.timezone, businessHours: clinics.businessHours })
@@ -40,7 +41,7 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const { gateway } = await getGateway();
-    const clinicId = process.env.PILOT_CLINIC_ID!;
+    const clinicId = await requireSessionClinicId();
     const from = new Date();
     const to = new Date(Date.now() + 60 * 24 * 60 * 60_000); // próximos 60 dias
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { tz, gateway } = await getGateway();
-    const clinicId = process.env.PILOT_CLINIC_ID!;
+    const clinicId = await requireSessionClinicId();
 
     const [year, month, day] = date.split("-").map(Number);
     const [startH, startM] = startTime.split(":").map(Number);

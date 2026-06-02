@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Missing subscription fields" }, { status: 400 });
   }
 
-  const clinicId = process.env.PILOT_CLINIC_ID;
+  const clinicId = await getSessionClinicId();
   if (!clinicId) {
     return NextResponse.json({ error: "Clinic not configured" }, { status: 500 });
   }

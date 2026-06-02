@@ -27,9 +27,13 @@ export class WhatsAppChannelAdapter implements ChannelAdapter {
   }
 }
 
-export async function sendWhatsAppTextMessage(to: string, text: string): Promise<string | null> {
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+export async function sendWhatsAppTextMessage(
+  to: string,
+  text: string,
+  creds?: { phoneNumberId: string; accessToken: string },
+): Promise<string | null> {
+  const accessToken = creds?.accessToken ?? process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = creds?.phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
 
   if (!accessToken || !phoneNumberId) {
     throw new Error("WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID must be set");

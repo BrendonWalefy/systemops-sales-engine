@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinicMetrics, clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { SuggestionsClient } from "./suggestions-client";
 
 async function getData() {
-  const clinicId = process.env.PILOT_CLINIC_ID!;
+  const clinicId = await requireSessionClinicId();
 
   const [latestMetrics, activeVersion, clinic] = await Promise.all([
     db
