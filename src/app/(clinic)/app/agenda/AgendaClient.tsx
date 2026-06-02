@@ -56,6 +56,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEvents(range.from, range.to);
   }, [range, fetchEvents]);
 

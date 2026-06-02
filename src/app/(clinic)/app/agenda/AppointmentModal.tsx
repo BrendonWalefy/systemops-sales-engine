@@ -30,6 +30,7 @@ export function AppointmentModal({ defaultDate, defaultTime, professionals, onCl
 
   useEffect(() => {
     if (leadQuery.length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLeadResults([]);
       return;
     }
