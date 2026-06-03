@@ -2,7 +2,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { signToken, COOKIE_NAME, MAX_AGE, type SessionRole } from "@/lib/session";
-import { verifyPassword } from "@/lib/password";
+import { verifyPassword, dummyVerify } from "@/lib/password";
 import { db } from "@/infrastructure/db/client";
 import { clinicMembers } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
@@ -34,9 +34,16 @@ export async function login(formData: FormData) {
     if (member.passwordHash) {
       authenticated = await verifyPassword(password, member.passwordHash);
     } else {
-      // Fallback enquanto senha ainda não foi definida via owner panel
+      // Fallback APENAS para os emails-piloto configurados em ADMIN_EMAIL
+      // (ex: a Ximendes enquanto a senha não foi definida). Contas novas sem
+      // hash NÃO logam pela senha global — precisam de senha própria.
+      const pilotEmails = (process.env.ADMIN_EMAIL ?? "")
+        .split(",")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
       const fallbackPwd = process.env.ADMIN_PASSWORD;
-      authenticated = !!fallbackPwd && password === fallbackPwd;
+      authenticated =
+        pilotEmails.includes(email.toLowerCase()) && !!fallbackPwd && password === fallbackPwd;
     }
 
     if (authenticated) {
@@ -48,6 +55,9 @@ export async function login(formData: FormData) {
     }
   }
 
+  // Email não cadastrado: roda um verify descartável para igualar o tempo de
+  // resposta (impede enumerar usuários pela latência) e cai no erro genérico.
+  await dummyVerify(password);
   redirect("/login?error=1");
 }
 
