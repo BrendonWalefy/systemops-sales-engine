@@ -25,6 +25,14 @@ export type FieldRewriteResult = {
   missingFacts: string[];
 };
 
+export type FieldComposerInput = {
+  field: FieldTarget;
+  userInput: string;
+  currentValue: string;
+  clinicContext: ClinicContext;
+  llm?: (systemPrompt: string, userPrompt: string) => Promise<string>;
+};
+
 type ClinicContext = {
   specialty: string;
   toneOfVoice: string;
@@ -51,6 +59,23 @@ const FIELD_INSTRUCTIONS: Record<FieldTarget, string> = {
 
 const ADVISOR_MODEL = process.env.ADVISOR_MODEL ?? "gpt-4o-mini";
 
+const FIELD_REWRITE_SCHEMA = {
+  type: "object",
+  properties: {
+    proposedText: { type: "string" },
+    factsUsed: {
+      type: "array",
+      items: { type: "string" },
+    },
+    missingFacts: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: ["proposedText", "factsUsed", "missingFacts"],
+  additionalProperties: false,
+};
+
 async function callLLM(systemPrompt: string, userPrompt: string): Promise<string> {
   if (ADVISOR_MODEL.startsWith("claude-")) {
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
@@ -71,7 +96,14 @@ async function callLLM(systemPrompt: string, userPrompt: string): Promise<string
     model: ADVISOR_MODEL,
     max_tokens: 1000,
     temperature: 0.2,
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "field_rewrite",
+        strict: true,
+        schema: FIELD_REWRITE_SCHEMA,
+      },
+    },
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -112,13 +144,14 @@ export async function composeField(input: {
   userInput: string;
   currentValue: string;
   clinicContext: ClinicContext;
+  llm?: (systemPrompt: string, userPrompt: string) => Promise<string>;
 }): Promise<FieldRewriteResult> {
   const { field, userInput, currentValue, clinicContext } = input;
 
   const systemPrompt = buildSystemPrompt(field, clinicContext);
   const userPrompt = `VALOR ATUAL DO CAMPO:\n${currentValue || "(vazio)"}\n\nO QUE O DONO ESCREVEU:\n${userInput}`;
 
-  const raw = await callLLM(systemPrompt, userPrompt);
+  const raw = await (input.llm ?? callLLM)(systemPrompt, userPrompt);
 
   let parsed: FieldRewriteResult;
   try {

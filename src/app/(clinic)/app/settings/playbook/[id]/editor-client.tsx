@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { updatePlaybookVersion } from "../playbook-version-actions";
+import type { FieldTarget } from "@/core/intelligence/FieldComposer";
 
 type Objection = { objection: string; response: string };
 type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
@@ -58,6 +59,22 @@ function completude(data: EditorData): number {
 }
 
 type ObjectionFilter = "all" | "pending";
+
+function parseBulletList(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^\s*[-•]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function parseObjectionRewrite(text: string, fallback: Objection): Objection {
+  const objectionMatch = text.match(/obje[cç][aã]o:\s*([^\n]+)/i);
+  const responseMatch = text.match(/resposta:\s*([\s\S]+)/i);
+  return {
+    objection: objectionMatch?.[1]?.trim() || fallback.objection,
+    response: responseMatch?.[1]?.trim() || text.trim() || fallback.response,
+  };
+}
 
 // ── Simulator Panel ───────────────────────────────────────────────────────────
 
@@ -305,10 +322,21 @@ const quickPromptStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const OBJECTION_EXAMPLES: Objection[] = [
+  {
+    objection: "Está muito caro",
+    response: "Entendo. O ideal é avaliar seu caso primeiro, porque o valor depende do procedimento indicado. A avaliação é abatida se você iniciar o tratamento.",
+  },
+  {
+    objection: "Quero saber o preço por mensagem",
+    response: "Consigo te explicar como funciona, mas valores de procedimento variam conforme o caso. O caminho mais seguro é uma avaliação para indicar o tratamento correto.",
+  },
+];
+
 // ── Co-writer box ─────────────────────────────────────────────────────────────
 
 type CowriterBoxProps = {
-  field: string;
+  field: FieldTarget;
   currentValue: string;
   clinicContext: { specialty: string; toneOfVoice: string };
   onApply: (text: string) => void;
@@ -321,7 +349,7 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
   const [userInput, setUserInput] = useState("");
   const [answers, setAnswers] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ proposedText: string; missingFacts: string[] } | null>(null);
+  const [result, setResult] = useState<{ proposedText: string; factsUsed: string[]; missingFacts: string[] } | null>(null);
 
   if (!open) {
     return (
@@ -362,9 +390,21 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
         body: JSON.stringify({ field, userInput: input, currentValue, clinicContext }),
       });
       const json = await res.json();
-      setResult({ proposedText: json.proposedText ?? "", missingFacts: json.missingFacts ?? [] });
+      if (!res.ok) {
+        setResult({
+          proposedText: "",
+          factsUsed: [],
+          missingFacts: [json.error ?? "Não foi possível gerar a proposta."],
+        });
+        return;
+      }
+      setResult({
+        proposedText: json.proposedText ?? "",
+        factsUsed: Array.isArray(json.factsUsed) ? json.factsUsed : [],
+        missingFacts: Array.isArray(json.missingFacts) ? json.missingFacts : [],
+      });
     } catch {
-      setResult({ proposedText: "", missingFacts: ["Erro de conexão. Tente novamente."] });
+      setResult({ proposedText: "", factsUsed: [], missingFacts: ["Erro de conexão. Tente novamente."] });
     } finally {
       setLoading(false);
     }
@@ -438,10 +478,34 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
         </div>
       )}
 
-      {result && result.proposedText && (
-        <div style={{ marginBottom: "10px", padding: "12px", background: "rgba(0,0,0,0.3)", borderRadius: "8px", border: "1px solid rgba(139,92,246,0.15)" }}>
-          <div style={{ fontSize: "10px", fontWeight: 700, color: "#6d28d9", marginBottom: "6px", letterSpacing: "0.06em" }}>PROPOSTA DA IA</div>
-          <p style={{ margin: 0, fontSize: "12px", color: "#e4e4e7", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{result.proposedText}</p>
+      {result && (result.proposedText || currentValue) && (
+        <div className="cowriter-compare" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "10px", marginBottom: "10px" }}>
+          <div style={{ padding: "12px", background: "rgba(0,0,0,0.22)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.07)", minWidth: 0 }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#71717a", marginBottom: "6px", letterSpacing: "0.06em" }}>VALOR ATUAL</div>
+            <p style={{ margin: 0, fontSize: "12px", color: "#a1a1aa", lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              {currentValue.trim() || "Campo vazio."}
+            </p>
+          </div>
+          <div style={{ padding: "12px", background: "rgba(0,0,0,0.3)", borderRadius: "8px", border: "1px solid rgba(139,92,246,0.15)", minWidth: 0 }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#a78bfa", marginBottom: "6px", letterSpacing: "0.06em" }}>PROPOSTA EDITÁVEL</div>
+            <textarea
+              value={result.proposedText}
+              onChange={(e) => setResult({ ...result, proposedText: e.target.value })}
+              rows={Math.max(4, Math.min(10, result.proposedText.split("\n").length + 1))}
+              style={{ ...inputStyle, resize: "vertical", fontSize: "12px", lineHeight: 1.55, background: "rgba(9,9,11,0.5)" }}
+            />
+          </div>
+        </div>
+      )}
+
+      {result && result.factsUsed.length > 0 && (
+        <div style={{ marginBottom: "10px", padding: "10px 12px", background: "rgba(0,212,170,0.06)", borderRadius: "8px", border: "1px solid rgba(0,212,170,0.14)" }}>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#00d4aa", marginBottom: "6px", letterSpacing: "0.06em" }}>FATOS USADOS</div>
+          <ul style={{ margin: 0, padding: "0 0 0 14px" }}>
+            {result.factsUsed.map((f, i) => (
+              <li key={i} style={{ fontSize: "12px", color: "#9ffce5", lineHeight: 1.7 }}>{f}</li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -564,6 +628,16 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
       return current;
     });
   }
+  function addObjectionExample(example: Objection) {
+    const nextIndex = data.objections.length;
+    updateVersion({ objections: [...data.objections, example] });
+    setExpandedObjectionIndex(nextIndex);
+  }
+  function applyObjectionRewrite(index: number, text: string) {
+    const next = [...data.objections];
+    next[index] = parseObjectionRewrite(text, next[index]);
+    updateVersion({ objections: next });
+  }
 
   const pct = completude(data);
   const completedObjections = data.objections.filter((o) => o.objection.trim() && o.response.trim()).length;
@@ -606,6 +680,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           .mobile-tab-bar { display: flex; }
           .editor-cols.tab-edit .editor-sim-col { display: none; }
           .editor-cols.tab-test .editor-form-col { display: none; }
+          .cowriter-compare { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -668,12 +743,12 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
               <EditorSection step="0" title="Como a IA deve conduzir a conversa" description="Regras de comportamento que valem em toda resposta — o campo mais importante do playbook.">
                 <FieldGroup
                   label="Orientação comportamental"
-                  hint="Ex: nunca pressionar; só oferecer horário com interesse claro; sempre mencionar que os R$100 da avaliação são abatidos; nunca informar preço por mensagem."
+                  hint="Por que importa: é este campo que chega ao topo do prompt da IA. Sem ele, a IA improvisa as regras de abordagem. Com ele preenchido, você define o tom e os limites de cada resposta."
                 >
                   <textarea
                     value={data.notes}
                     onChange={(e) => updateVersion({ notes: e.target.value })}
-                    placeholder={"COMO CONDUZIR A CONVERSA:\n- Acolha, esclareça e conduza com calma. Nunca pressione.\n- Só ofereça agendamento quando o lead demonstrar interesse claro.\n- Sempre mencione o abatimento da avaliação ao falar de valor.\n- NUNCA informe valores de procedimentos por mensagem."}
+                    placeholder={"COMO CONDUZIR A CONVERSA:\n- Acolha, esclareça e conduza com calma. Nunca pressione.\n- Só ofereça agendamento quando o lead demonstrar interesse claro — não em toda mensagem.\n- Toda jornada começa pela Avaliação. Sempre mencione o abatimento ao falar de valor.\n- NUNCA informe valores de procedimentos por mensagem.\n- Frases curtas. Uma ideia por mensagem. Caloroso, mas direto."}
                     rows={7}
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
@@ -694,7 +769,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
 
               <EditorSection step="1" title="Contexto base" description="Informações que a IA usa para entender a clínica e o atendimento.">
                 <div className="editor-config-grid">
-                  <FieldGroup label="Especialidade">
+                  <FieldGroup label="Especialidade" hint="Aparece no prompt para que a IA responda com vocabulário adequado à área.">
                     <input
                       type="text"
                       value={data.specialty}
@@ -704,7 +779,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                     />
                   </FieldGroup>
 
-                  <FieldGroup label="Tom de voz">
+                  <FieldGroup label="Tom de voz" hint="Define a personalidade da IA. Acolhedor é o padrão para clínicas; Luxo para um posicionamento premium.">
                     <select
                       value={data.toneOfVoice}
                       onChange={(e) => updateVersion({ toneOfVoice: e.target.value })}
@@ -717,19 +792,36 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                   </FieldGroup>
                 </div>
 
-                <FieldGroup label="Sobre o procedimento">
+                <FieldGroup
+                  label="Sobre os procedimentos"
+                  hint="Fallback usado quando os tratamentos cadastrados não têm descrição. Descreva em 3–4 linhas o que a clínica oferece e o diferencial técnico. Ex: scanner 3D, laboratório próprio, anestesia digital."
+                >
                   <textarea
                     value={data.procedureDescription}
                     onChange={(e) => updateVersion({ procedureDescription: e.target.value })}
-                    placeholder="Descrição do procedimento principal oferecido por esta versão do playbook..."
-                    rows={4}
+                    placeholder={"Clínica especializada em estética e reabilitação oral.\n• Clareamento a laser — resultado na mesma sessão, até 8 tons\n• Implantes em titânio com osseointegração de alta durabilidade\n• Lentes de resina ultrafinas sem desgaste do dente\n• Próteses com laboratório próprio — entrega em 48h"}
+                    rows={5}
                     style={{ ...inputStyle, resize: "vertical" }}
+                  />
+                  <CowriterBox
+                    field="procedureDescription"
+                    currentValue={data.procedureDescription}
+                    clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
+                    onApply={(text) => updateVersion({ procedureDescription: text })}
+                    guidedQuestions={[
+                      "Quais procedimentos principais a clínica oferece?",
+                      "Quais tecnologias ou diferenciais técnicos o paciente pode saber?",
+                      "O que deve ser explicado com cuidado para não prometer resultado?",
+                    ]}
                   />
                 </FieldGroup>
               </EditorSection>
 
               <EditorSection step="2" title="Argumentos da clínica" description="Pontos de diferenciação e regras comerciais que ajudam a conduzir o lead.">
-                <FieldGroup label="Diferenciais da clínica">
+                <FieldGroup
+                  label="Diferenciais da clínica"
+                  hint="Por que importa: diferenciais viram argumentos curtos quando o lead está comparando clínicas. Use fatos verificáveis, não promessa de resultado."
+                >
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {data.differentials.map((diff, i) => (
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -738,7 +830,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                           type="text"
                           value={diff}
                           onChange={(e) => updateDifferential(i, e.target.value)}
-                          placeholder="Diferencial..."
+                          placeholder="Ex: atendimento com especialista, scanner 3D, laboratório próprio"
                           style={{ ...inputStyle, flex: 1 }}
                         />
                         <button type="button" onClick={() => removeDifferential(i)} style={iconBtnStyle}>
@@ -750,13 +842,27 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                       <Plus size={13} /> Adicionar item
                     </button>
                   </div>
+                  <CowriterBox
+                    field="differentials"
+                    currentValue={data.differentials.filter((d) => d.trim()).map((d) => `- ${d}`).join("\n")}
+                    clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
+                    onApply={(text) => updateVersion({ differentials: parseBulletList(text) })}
+                    guidedQuestions={[
+                      "O que torna a clínica diferente das outras?",
+                      "Há tecnologia, estrutura ou especialista que deve aparecer?",
+                      "Há algum diferencial que você não quer prometer como resultado garantido?",
+                    ]}
+                  />
                 </FieldGroup>
 
-                <FieldGroup label="Política comercial">
+                <FieldGroup
+                  label="Política comercial"
+                  hint="Por que importa: este campo impede a IA de inventar preço, desconto ou parcelamento. Escreva só condições reais e quando a IA deve encaminhar para avaliação."
+                >
                   <textarea
                     value={data.commercialPolicy}
                     onChange={(e) => updateVersion({ commercialPolicy: e.target.value })}
-                    placeholder="Ex: Avaliação R$100, descontada do tratamento. Parcelamento em até 12x. Nunca informar preços por mensagem."
+                    placeholder={"Avaliação R$100, descontada do tratamento.\nParcelamento em até 12x no cartão.\nNão informar preço de procedimentos por mensagem; explicar que o valor depende da avaliação."}
                     rows={4}
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
@@ -798,6 +904,34 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                         style={{ ...inputStyle, paddingLeft: "34px", background: "rgba(15,17,23,0.62)" }}
                       />
                     </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", color: "#52525b", lineHeight: 1.5 }}>
+                      Por que importa: respostas preparadas mantêm consistência quando o lead pede preço, desconto ou compara opções.
+                    </span>
+                    {OBJECTION_EXAMPLES.map((example) => (
+                      <button
+                        key={example.objection}
+                        type="button"
+                        onClick={() => addObjectionExample(example)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          border: "1px solid rgba(0,212,170,0.18)",
+                          borderRadius: "8px",
+                          background: "rgba(0,212,170,0.06)",
+                          color: "#9ffce5",
+                          cursor: "pointer",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "6px 9px",
+                        }}
+                      >
+                        <Plus size={11} /> {example.objection}
+                      </button>
+                    ))}
                   </div>
 
                   {data.objections.length === 0 && (
@@ -849,9 +983,20 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                             <textarea
                               value={obj.response}
                               onChange={(e) => updateObjection(i, "response", e.target.value)}
-                              placeholder="Como a IA deve responder quando o paciente trouxer essa objeção..."
+                              placeholder={"Ex: Entendo. O valor depende da avaliação e do plano indicado para seu caso. Posso te ajudar a marcar uma avaliação para confirmar o melhor caminho."}
                               rows={4}
                               style={{ ...inputStyle, resize: "vertical", background: "rgba(9,9,11,0.5)" }}
+                            />
+                            <CowriterBox
+                              field="objections"
+                              currentValue={`Objeção: ${obj.objection}\nResposta: ${obj.response}`}
+                              clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
+                              onApply={(text) => applyObjectionRewrite(i, text)}
+                              guidedQuestions={[
+                                "Qual é a objeção do lead, com as palavras dele?",
+                                "O que a IA pode afirmar com segurança?",
+                                "Quando a IA deve encaminhar para avaliação ou humano?",
+                              ]}
                             />
                           </div>
                         )}
