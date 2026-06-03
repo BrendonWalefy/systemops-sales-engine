@@ -16,6 +16,7 @@ type PlaybookVersionData = {
   differentials?: string[];
   commercialPolicy?: string | null;
   objections?: { objection: string; response: string }[];
+  notes?: string | null;
 };
 
 function compileToClinicFields(data: PlaybookVersionData) {
@@ -147,6 +148,7 @@ export async function duplicatePlaybookVersion(id: string) {
     differentials: original.differentials,
     commercialPolicy: original.commercialPolicy,
     objections: original.objections,
+    notes: original.notes,
   });
 
   revalidatePath("/app/settings/playbook");

@@ -14,6 +14,7 @@ type EditorData = {
   differentials: string[];
   commercialPolicy: string;
   objections: Objection[];
+  notes: string;
 };
 
 type Props = {
@@ -32,13 +33,14 @@ const TONES = [
 
 function completude(data: EditorData): number {
   let filled = 0;
+  if (data.notes.trim()) filled++;
   if (data.specialty.trim()) filled++;
   if (data.procedureDescription.trim()) filled++;
   filled++; // toneOfVoice always has value
   if (data.differentials.filter((d) => d.trim()).length > 0) filled++;
   if (data.commercialPolicy.trim()) filled++;
   if (data.objections.filter((o) => o.objection.trim()).length > 0) filled++;
-  return Math.round((filled / 6) * 100);
+  return Math.round((filled / 7) * 100);
 }
 
 type ObjectionFilter = "all" | "pending";
@@ -68,6 +70,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           differentials: newData.differentials.filter((d) => d.trim()),
           commercialPolicy: newData.commercialPolicy || null,
           objections: newData.objections.filter((o) => o.objection.trim()),
+          notes: newData.notes || null,
         });
         setSaving(false);
         setSaved(true);
@@ -180,6 +183,21 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           </div>
 
           <div className="editor-sections">
+            <EditorSection step="0" title="Como a IA deve conduzir a conversa" description="Regras de comportamento que valem em toda resposta — o campo mais importante do playbook.">
+              <FieldGroup
+                label="Orientação comportamental"
+                hint="Ex: nunca pressionar; só oferecer horário com interesse claro; sempre mencionar que os R$100 da avaliação são abatidos; nunca informar preço por mensagem."
+              >
+                <textarea
+                  value={data.notes}
+                  onChange={(e) => updateVersion({ notes: e.target.value })}
+                  placeholder={"COMO CONDUZIR A CONVERSA:\n- Acolha, esclareça e conduza com calma. Nunca pressione.\n- Só ofereça agendamento quando o lead demonstrar interesse claro.\n- Sempre mencione o abatimento da avaliação ao falar de valor.\n- NUNCA informe valores de procedimentos por mensagem."}
+                  rows={7}
+                  style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+                />
+              </FieldGroup>
+            </EditorSection>
+
             <EditorSection step="1" title="Contexto base" description="Informações que a IA usa para entender a clínica e o atendimento.">
               <div className="editor-config-grid">
                 <FieldGroup label="Especialidade">
