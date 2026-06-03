@@ -1,0 +1,1 @@
+ALTER TABLE "clinic_members" ADD COLUMN "password_hash" text;

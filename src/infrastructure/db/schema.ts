@@ -529,6 +529,7 @@ export const clinicMembers = pgTable(
       .references(() => clinics.id),
     email: text("email").notNull(),
     role: memberRoleEnum("role").notNull().default("clinic_admin"),
+    passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

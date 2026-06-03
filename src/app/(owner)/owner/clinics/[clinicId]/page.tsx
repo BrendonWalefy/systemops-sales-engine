@@ -6,6 +6,7 @@ import { ResetClinicDialog } from "./reset-clinic-dialog";
 import { db } from "@/infrastructure/db/client";
 import {
   clinics,
+  clinicMembers,
   leads,
   aiUsageCosts,
   whatsappMessageCosts,
@@ -14,7 +15,8 @@ import {
   agentRecommendations,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
-import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake, FlaskConical, Building2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake, FlaskConical, Building2, KeyRound, UserPlus } from "lucide-react";
+import { hashPassword } from "@/lib/password";
 
 async function toggleIsTest(clinicId: string, currentValue: boolean) {
   "use server";
@@ -23,6 +25,26 @@ async function toggleIsTest(clinicId: string, currentValue: boolean) {
     .set({ isTest: !currentValue })
     .where(eq(clinics.id, clinicId));
   redirect(`/owner/clinics/${clinicId}`);
+}
+
+async function upsertMemberPassword(clinicId: string, formData: FormData) {
+  "use server";
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const password = formData.get("password") as string;
+  if (!email || !password || password.length < 8) redirect(`/owner/clinics/${clinicId}?memberError=1`);
+  const hash = await hashPassword(password);
+  const existing = await db
+    .select({ id: clinicMembers.id })
+    .from(clinicMembers)
+    .where(and(eq(clinicMembers.email, email), eq(clinicMembers.clinicId, clinicId)))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  if (existing) {
+    await db.update(clinicMembers).set({ passwordHash: hash }).where(eq(clinicMembers.id, existing.id));
+  } else {
+    await db.insert(clinicMembers).values({ clinicId, email, role: "clinic_admin", passwordHash: hash });
+  }
+  redirect(`/owner/clinics/${clinicId}?memberOk=1`);
 }
 
 function formatCurrency(micros: number): string {
@@ -54,10 +76,15 @@ function thirtyDaysAgo(): Date {
 
 export default async function ClinicDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ clinicId: string }>;
+  searchParams: Promise<Record<string, string>>;
 }) {
   const { clinicId } = await params;
+  const sp = await searchParams;
+  const memberOk = sp.memberOk === "1";
+  const memberError = sp.memberError === "1";
 
   const [clinic] = await db
     .select({
@@ -72,6 +99,12 @@ export default async function ClinicDetailPage({
   if (!clinic) notFound();
 
   const toggleTestAction = toggleIsTest.bind(null, clinic.id, clinic.isTest);
+  const upsertMemberAction = upsertMemberPassword.bind(null, clinic.id);
+
+  const members = await db
+    .select({ id: clinicMembers.id, email: clinicMembers.email, role: clinicMembers.role, hasPassword: clinicMembers.passwordHash })
+    .from(clinicMembers)
+    .where(eq(clinicMembers.clinicId, clinicId));
 
   const monthStart = startOfMonth();
   const thirtyDays = thirtyDaysAgo();
@@ -478,6 +511,75 @@ export default async function ClinicDetailPage({
                   <><FlaskConical size={13} /> Marcar como teste</>
                 )}
               </button>
+            </form>
+          </div>
+        </div>
+
+        {/* Membros e senhas */}
+        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", alignItems: "center", gap: 8 }}>
+            <KeyRound size={13} style={{ color: "var(--muted)" }} />
+            <p className="eyebrow" style={{ margin: 0 }}>Acesso da clínica</p>
+          </div>
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+            {memberOk && (
+              <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399", fontSize: 13 }}>
+                Senha salva com sucesso.
+              </div>
+            )}
+            {memberError && (
+              <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)", fontSize: 13 }}>
+                Senha inválida — mínimo 8 caracteres.
+              </div>
+            )}
+
+            {/* Membros existentes */}
+            {members.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted)" }}>Membros cadastrados</p>
+                {members.map((m) => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: 8, background: "var(--surface-soft)", border: "1px solid var(--line)" }}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{m.email}</span>
+                      <span style={{ marginLeft: 8, fontSize: 11, color: "var(--muted)" }}>{m.role}</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: m.hasPassword ? "#34d399" : "#f59e0b", fontWeight: 600 }}>
+                      {m.hasPassword ? "Senha definida" : "Sem senha (usa env)"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Formulário para criar/atualizar membro */}
+            <form action={upsertMemberAction} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted)" }}>Adicionar / redefinir senha</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  name="email"
+                  type="email"
+                  placeholder="admin@clinica.com"
+                  required
+                  style={{ flex: "1 1 200px", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)", color: "var(--text)", fontSize: 13 }}
+                />
+                <input
+                  name="password"
+                  type="password"
+                  placeholder="Senha (mín. 8 caracteres)"
+                  required
+                  minLength={8}
+                  style={{ flex: "1 1 200px", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)", color: "var(--text)", fontSize: 13 }}
+                />
+                <button
+                  type="submit"
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)", color: "var(--text-soft)", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  <UserPlus size={13} /> Salvar
+                </button>
+              </div>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
+                Se o e-mail já for membro, apenas a senha é atualizada. Se for novo, cria vínculo com role clinic_admin.
+              </p>
             </form>
           </div>
         </div>
