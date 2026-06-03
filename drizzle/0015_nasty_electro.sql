@@ -1,1 +1,0 @@
-ALTER TABLE "clinics" ADD COLUMN "is_test" boolean DEFAULT false NOT NULL;

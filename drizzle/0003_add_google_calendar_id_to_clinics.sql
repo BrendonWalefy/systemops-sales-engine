@@ -1,1 +1,0 @@
-ALTER TABLE "clinics" ADD COLUMN "google_calendar_id" text;

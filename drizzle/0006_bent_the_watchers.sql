@@ -1,1 +1,0 @@
-ALTER TABLE "appointments" ADD COLUMN "calendar_event_url" text;
