@@ -1,6 +1,10 @@
 /**
- * Cria a versão inicial do playbook da Ximendes no sistema de versões.
- * Ativa a versão e atualiza os campos da clínica para o pipeline de IA.
+ * Versão 2 do playbook Ximendes — reescrita afiada.
+ * - Corrige dessincronismo treatments ↔ playbook (5 → 12 procedimentos)
+ * - Adiciona `notes` com orientação comportamental (campo que não era gravado)
+ * - toneOfVoice descritivo em vez de código opaco
+ * - Avaliação R$100 (não "gratuita")
+ * - greetingMessage alinhada ao tom
  *
  * Run: npx tsx scripts/seed-ximendes-playbook-version.ts
  * Requires: DATABASE_URL in environment (or .env.local)
@@ -8,8 +12,9 @@
 import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { clinics, playbookVersions } from "../src/infrastructure/db/schema";
+import { clinics, playbookVersions, treatments } from "../src/infrastructure/db/schema";
 import { eq, and, ne } from "drizzle-orm";
+import { randomUUID } from "crypto";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) { console.error("❌ DATABASE_URL not set"); process.exit(1); }
@@ -19,12 +24,58 @@ const db = drizzle(sql);
 
 const CLINIC_ID = "c9137774-e783-4461-ac2b-e2f01be739a6";
 
-// ─── Configurações da versão ──────────────────────────────────────────────────
+// ─── Versão ───────────────────────────────────────────────────────────────────
 
-const VERSION_NAME = "Ximendes — Padrão";
+const VERSION_NAME = "Ximendes — Reescrita Afiada v2";
 
 const SPECIALTY = "Odontologia Estética e Reabilitação Oral";
 
+const TONE_OF_VOICE =
+  "Profissional, cordial e consultivo — sem gírias, calmo e nunca insistente.";
+
+/**
+ * Orientação comportamental — vai para o topo do playbookText via composePlaybookText.
+ * Antes esse texto existia como COMPILED_TONE mas nunca era gravado no banco;
+ * a IA nunca recebia. Agora vai no campo `notes`.
+ */
+const NOTES = `COMO CONDUZIR A CONVERSA:
+- Você é a recepcionista virtual do Dr. Gregory Ximendes. Acolha, esclareça e conduza com calma. Nunca pressione.
+- Só ofereça agendamento quando o lead demonstrar interesse claro ou perguntar sobre disponibilidade. NÃO ofereça horário em toda mensagem.
+- Toda jornada começa pela Avaliação (R$100), abatida integralmente do tratamento se o paciente avançar. Sempre que falar da avaliação, mencione o abatimento.
+- NUNCA informe valores de procedimentos por mensagem. O plano e os valores são apresentados pelo Dr. Gregory na avaliação.
+- Quando o lead mencionar um procedimento, confirme o interesse, explique em 1-2 frases e conduza para a avaliação — é nela que o Dr. Gregory monta o plano personalizado.
+- Frases curtas. Uma ideia por mensagem. Caloroso, mas direto.
+- O endereço (Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP) só ao confirmar agendamento ou se o lead perguntar diretamente.`;
+
+const DIFFERENTIALS = [
+  "Escaneamento Digital 3D — sem moldagens tradicionais",
+  "Laboratório próprio com entrega de próteses em 48h",
+  "Dente original preservado sempre que possível",
+  "Atendimento exclusivo com Dr. Gregory Ximendes",
+  "Ambiente climatizado, com TV e Wi-Fi durante o procedimento",
+  "Parcelamento em até 12x (juros da operadora)",
+  "Avaliação de R$100 abatida integralmente do tratamento",
+];
+
+const COMMERCIAL_POLICY = `Nunca informar valores de procedimentos por mensagem.
+
+AVALIAÇÃO PRESENCIAL: custa R$100 e é descontada integralmente do tratamento caso o paciente avance. Comunicar sempre o abatimento.
+
+PARCELAMENTO: procedimentos parcelados em até 12x (acréscimo dos juros da operadora de cartão). Mencionar de forma natural quando o tema "valor" surgir, sem detalhar taxas.
+
+ENDEREÇO: compartilhar apenas ao confirmar agendamento ou quando o lead perguntar diretamente — "Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP."
+
+REGRAS ABSOLUTAS:
+- NUNCA citar valor de procedimentos por mensagem.
+- SEMPRE mencionar o abatimento dos R$100 ao falar da avaliação.
+- NUNCA pressionar para fechar na primeira mensagem.
+- NÃO oferecer agendamento em toda mensagem — apenas com interesse claro.`;
+
+/**
+ * procedureDescription mantida como fallback. Com os 12 treatments preenchidos,
+ * composePlaybookText usa a lista de treatments — esta string fica como backup
+ * caso os treatments sejam removidos.
+ */
 const PROCEDURE_DESCRIPTION = `A Ximendes Odontologia oferece tratamentos completos de estética e saúde bucal:
 
 LIMPEZA DENTAL
@@ -63,122 +114,188 @@ Aplicado para tratamento de bruxismo, disfunção temporomandibular (DTM) e harm
 HARMONIZAÇÃO OROFACIAL
 Combina estética facial e oral: preenchimento labial, bichectomia, bioestimuladores de colágeno e toxina botulínica. Realizado com protocolo seguro e resultado natural.`;
 
-const TONE_OF_VOICE = "tecnico";
-
-const DIFFERENTIALS = [
-  "Escaneamento Digital 3D — sem moldagens tradicionais",
-  "Laboratório próprio com entrega de próteses em 48h",
-  "Dente original preservado sempre que possível",
-  "Atendimento exclusivo com Dr. Gregory Ximendes",
-  "Ambiente climatizado, TV e Wi-Fi durante o procedimento",
-  "Parcelamento em até 12x (juros da operadora)",
-  "Avaliação de R$100 abatida integralmente do tratamento",
-];
-
-const COMMERCIAL_POLICY = `Nunca informar valores de procedimentos por mensagem.
-
-AVALIAÇÃO PRESENCIAL:
-A avaliação custa R$100. Se o paciente decidir avançar com qualquer procedimento, esse valor é integralmente descontado do tratamento. Comunique sempre o abatimento — o lead conhece o trabalho com calma e o investimento já conta para o tratamento.
-
-PARCELAMENTO:
-Os procedimentos podem ser parcelados em até 12 vezes. As parcelas têm acréscimo dos juros da operadora de cartão. Mencione isso de forma natural quando o tema "valor" surgir, sem entrar em detalhes técnicos das taxas.
-
-ENDEREÇO:
-Compartilhe apenas ao confirmar agendamento ou quando o lead perguntar diretamente.
-"Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP."
-
-REGRAS ABSOLUTAS:
-- NUNCA cite valor de procedimentos por mensagem
-- SEMPRE mencione o abatimento dos R$100 ao falar da avaliação
-- NUNCA pressione para fechar na primeira mensagem
-- NÃO ofereça agendamento em toda mensagem — apenas quando o lead demonstrar interesse claro`;
-
 const OBJECTIONS = [
   {
     objection: "Está muito caro / não tenho esse valor agora",
-    response: "O investimento varia de acordo com o caso e a quantidade de dentes. Na avaliação o Dr. Gregory apresenta um plano personalizado com os valores e condições de parcelamento — em até 12x. E os R$100 da avaliação são descontados do tratamento se você decidir avançar.",
+    response:
+      "O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregory monta um plano personalizado, com valores e parcelamento em até 12x. E os R$100 da avaliação saem do tratamento se você decidir avançar.",
   },
   {
     objection: "Vou pensar...",
-    response: "Claro, sem nenhuma pressa. Qualquer dúvida que surgir pode me chamar aqui. Quando quiser, a agenda está aberta.",
+    response:
+      "Claro, sem pressa nenhuma. Qualquer dúvida é só me chamar aqui. Quando quiser, a agenda está aberta.",
   },
   {
     objection: "Tenho medo de dor / medo de dentista",
-    response: "É muito comum ter essa preocupação. Todos os procedimentos da clínica são realizados com anestesia local — a maioria dos pacientes fica surpreso com o quanto é tranquilo. O Dr. Gregory tem o cuidado de explicar cada etapa antes de começar.",
+    response:
+      "É muito comum ter essa preocupação. Todos os procedimentos da clínica são realizados com anestesia local — a maioria dos pacientes fica surpreso com o quanto é tranquilo. O Dr. Gregory tem o cuidado de explicar cada etapa antes de começar.",
   },
   {
     objection: "Não quero pagar a avaliação",
-    response: "Os R$100 garantem uma consulta completa e dedicada ao seu caso — raio-x, análise do sorriso e plano de tratamento detalhado. E esse valor sai integralmente do seu tratamento caso decida avançar. Não é um custo a mais, é o primeiro passo do investimento.",
+    response:
+      "Os R$100 garantem uma consulta completa e dedicada ao seu caso — raio-x, análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você avançar. Não é custo a mais, é o primeiro passo.",
   },
   {
     objection: "Porcelana não é mais durável que resina?",
-    response: "É verdade que a porcelana tem durabilidade maior. Mas ela exige desgaste permanente e irreversível do esmalte — o dente não volta ao estado original. A resina preserva 100% do dente, é reversível e tem resultado estético muito bom. Na avaliação o Dr. Gregory mostra casos dos dois e explica qual faz mais sentido para o seu sorriso.",
+    response:
+      "É verdade que a porcelana tem durabilidade maior. Mas ela exige desgaste permanente e irreversível do esmalte — o dente não volta ao estado original. A resina preserva 100% do dente, é reversível e tem resultado estético muito bom. Na avaliação o Dr. Gregory mostra casos dos dois e explica qual faz mais sentido para o seu sorriso.",
   },
   {
     objection: "Implante é doloroso? Tenho medo da cirurgia",
-    response: "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregory.",
+    response:
+      "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregory.",
   },
   {
     objection: "Canal não mata o dente?",
-    response: "Não. O canal remove apenas a polpa infectada — a estrutura do dente fica completamente preservada. O dente continua vivo, ancorado no osso e funcional. É a melhor alternativa antes de considerar a extração.",
+    response:
+      "Não. O canal remove apenas a polpa infectada — a estrutura do dente fica completamente preservada. O dente continua vivo, ancorado no osso e funcional. É a melhor alternativa antes de considerar a extração.",
   },
   {
     objection: "Clareamento danifica o esmalte?",
-    response: "O protocolo que utilizamos é seguro e aprovado. Pode causar sensibilidade temporária durante o tratamento, mas não prejudica o esmalte. Na avaliação verificamos se o seu caso é indicado e qual modalidade — laser ou caseiro — traz o melhor resultado.",
+    response:
+      "O protocolo que utilizamos é seguro e aprovado. Pode causar sensibilidade temporária durante o tratamento, mas não prejudica o esmalte. Na avaliação verificamos se o seu caso é indicado e qual modalidade — laser ou caseiro — traz o melhor resultado.",
   },
   {
     objection: "Tenho medo que fique artificial / exagerado",
-    response: "O resultado é personalizado junto com você — cor, forma e transparência escolhidas para combinar com o seu rosto e o tom da sua pele. O Dr. Gregory tem cases para mostrar na avaliação. O objetivo é um sorriso que pareça natural, só mais bonito.",
+    response:
+      "O resultado é personalizado junto com você — cor, forma e transparência escolhidas para combinar com o seu rosto e o tom da sua pele. O Dr. Gregory tem cases para mostrar na avaliação. O objetivo é um sorriso que pareça natural, só mais bonito.",
   },
   {
     objection: "Já fiz em outro lugar e não gostei do resultado",
-    response: "Resultado estético depende muito do olhar e da técnica do profissional. Na avaliação você pode ver os casos da clínica e conversar abertamente sobre o que não gostou no tratamento anterior — o Dr. Gregory vai analisar e propor o que faz sentido para o seu caso.",
+    response:
+      "Resultado estético depende muito do olhar e da técnica do profissional. Na avaliação você pode ver os casos da clínica e conversar abertamente sobre o que não gostou no tratamento anterior — o Dr. Gregory vai analisar e propor o que faz mais sentido para o seu caso.",
   },
   {
     objection: "Preciso mesmo de implante? Não dá para fazer uma ponte?",
-    response: "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregory explica as opções e o que é mais indicado para o seu caso.",
+    response:
+      "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregory explica as opções e o que é mais indicado para o seu caso.",
   },
   {
     objection: "Harmonização facial é feita mesmo no dentista?",
-    response: "Sim. Dentistas são os profissionais mais habilitados para harmonização orofacial — conhecem profundamente a anatomia da face e da região oral. O Dr. Gregory realiza o procedimento com protocolo seguro e resultado natural, sempre com foco no equilíbrio entre sorriso e face.",
+    response:
+      "Sim. Dentistas são os profissionais mais habilitados para harmonização orofacial — conhecem profundamente a anatomia da face e da região oral. O Dr. Gregory realiza o procedimento com protocolo seguro e resultado natural, sempre com foco no equilíbrio entre sorriso e face.",
   },
 ];
 
-// ─── Compilação para os campos da clínica ────────────────────────────────────
+const GREETING_MESSAGE =
+  "Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?";
 
-function buildClinicPlaybook(): string {
-  const parts: string[] = [];
+// ─── 12 Treatments ───────────────────────────────────────────────────────────
 
-  parts.push(`ESPECIALIDADE: ${SPECIALTY}`);
-  parts.push(`\nSERVIÇOS OFERECIDOS:\n${PROCEDURE_DESCRIPTION}`);
-  parts.push(
-    `\nDIFERENCIAIS DA CLÍNICA:\n${DIFFERENTIALS.map((d) => `• ${d}`).join("\n")}`,
-  );
+type TreatmentSeed = {
+  name: string;
+  durationMinutes: number;
+  requiresEvaluationFirst: boolean;
+  description: string;
+};
 
-  const objText = OBJECTIONS.map(
-    (o) => `Objeção: ${o.objection}\nResposta: ${o.response}`,
-  ).join("\n\n");
-  parts.push(`\nOBJEÇÕES E RESPOSTAS:\n${objText}`);
-
-  return parts.join("\n");
-}
-
-const COMPILED_TONE =
-  "Profissional, cordial e objetivo. Sem informalidades ou gírias. Nunca pressionar o lead para agendar. Responder de forma direta e clara. Oferecer agendamento apenas quando o lead demonstrar interesse claro ou perguntar sobre disponibilidade.";
+const TREATMENTS: TreatmentSeed[] = [
+  {
+    name: "Avaliação",
+    durationMinutes: 40,
+    requiresEvaluationFirst: false,
+    description:
+      "Consulta inicial com o Dr. Gregory: raio-x, análise do sorriso e plano de tratamento personalizado. R$100, abatido integralmente do tratamento se avançar.",
+  },
+  {
+    name: "Limpeza dental",
+    durationMinutes: 40,
+    requiresEvaluationFirst: false,
+    description:
+      "Profilaxia completa com remoção de tártaro e biofilme. Indicada a cada 6 meses.",
+  },
+  {
+    name: "Clareamento dental",
+    durationMinutes: 60,
+    requiresEvaluationFirst: true,
+    description:
+      "A laser (resultado na mesma sessão) ou caseiro com moldeiras (7-14 dias). Clareia até 8 tons, seguro para o esmalte.",
+  },
+  {
+    name: "Restauração em resina",
+    durationMinutes: 60,
+    requiresEvaluationFirst: true,
+    description:
+      "Resina composta para dentes trincados, lascados ou com cárie. Estético e natural, em sessão única.",
+  },
+  {
+    name: "Exodontia (extração)",
+    durationMinutes: 45,
+    requiresEvaluationFirst: true,
+    description:
+      "Extração simples ou cirúrgica, incluindo siso incluso. Anestesia local, pós-operatório orientado pelo Dr. Gregory.",
+  },
+  {
+    name: "Implante dentário",
+    durationMinutes: 60,
+    requiresEvaluationFirst: true,
+    description:
+      "Titânio biocompatível com osseointegração. Substitui raiz e coroa como um dente natural. Alta durabilidade.",
+  },
+  {
+    name: "Tratamento de canal",
+    durationMinutes: 60,
+    requiresEvaluationFirst: true,
+    description:
+      "Preserva o dente natural eliminando a infecção da polpa. Indolor com anestesia local.",
+  },
+  {
+    name: "Prótese dentária",
+    durationMinutes: 60,
+    requiresEvaluationFirst: true,
+    description:
+      "Fixa, removível ou protocolo All-on-4. Laboratório próprio, entrega em 48h.",
+  },
+  {
+    name: "Lentes de resina composta",
+    durationMinutes: 90,
+    requiresEvaluationFirst: true,
+    description:
+      "Facetas ultrafinas aplicadas sem desgaste do dente. Reversível, em sessão única.",
+  },
+  {
+    name: "Lentes de porcelana (facetas)",
+    durationMinutes: 90,
+    requiresEvaluationFirst: true,
+    description:
+      "Alta durabilidade e estética superior. Exige leve desgaste do esmalte. Resultado definitivo.",
+  },
+  {
+    name: "Gengivoplastia",
+    durationMinutes: 45,
+    requiresEvaluationFirst: true,
+    description:
+      "Remodelamento do contorno gengival para equilibrar o sorriso. A laser ou bisturi, recuperação rápida.",
+  },
+  {
+    name: "Botox odontológico",
+    durationMinutes: 30,
+    requiresEvaluationFirst: true,
+    description:
+      "Para bruxismo, DTM e harmonização do sorriso gengival. Complementa tratamentos estéticos.",
+  },
+  {
+    name: "Harmonização orofacial",
+    durationMinutes: 60,
+    requiresEvaluationFirst: true,
+    description:
+      "Preenchimento labial, bichectomia, bioestimuladores e toxina botulínica. Protocolo seguro, resultado natural.",
+  },
+];
 
 // ─── Script principal ─────────────────────────────────────────────────────────
 
 async function main() {
-  console.log("🚀 Iniciando seed do playbook da Ximendes...\n");
+  console.log("🚀 Iniciando seed v2 do playbook da Ximendes...\n");
 
-  // 1. Arquivar versões ativas anteriores
+  // 1. Arquivar versões ativas/rascunho anteriores
   const archived = await db
     .update(playbookVersions)
     .set({ status: "historical", updatedAt: new Date() })
     .where(
       and(
         eq(playbookVersions.clinicId, CLINIC_ID),
-        ne(playbookVersions.status, "draft"),
+        ne(playbookVersions.status, "historical"),
       ),
     )
     .returning({ id: playbookVersions.id });
@@ -187,7 +304,7 @@ async function main() {
     console.log(`📦 ${archived.length} versão(ões) anterior(es) arquivada(s).`);
   }
 
-  // 2. Inserir nova versão como ativa
+  // 2. Inserir nova versão ativa com `notes` (campo que estava faltando)
   const [version] = await db
     .insert(playbookVersions)
     .values({
@@ -197,6 +314,7 @@ async function main() {
       specialty: SPECIALTY,
       procedureDescription: PROCEDURE_DESCRIPTION,
       toneOfVoice: TONE_OF_VOICE,
+      notes: NOTES,
       differentials: DIFFERENTIALS,
       commercialPolicy: COMMERCIAL_POLICY,
       objections: OBJECTIONS,
@@ -205,19 +323,55 @@ async function main() {
 
   console.log(`✅ Versão criada: "${VERSION_NAME}" (id: ${version.id})`);
 
-  // 3. Atualizar specialty da clínica
+  // 3. Atualizar specialty e greetingMessage da clínica
   await db
     .update(clinics)
-    .set({ specialty: "Odontologia Estética e Reabilitação Oral", updatedAt: new Date() })
+    .set({
+      specialty: SPECIALTY,
+      greetingMessage: GREETING_MESSAGE,
+      updatedAt: new Date(),
+    })
     .where(eq(clinics.id, CLINIC_ID));
 
-  console.log("✅ Specialty da clínica atualizada");
+  console.log("✅ Specialty e greetingMessage da clínica atualizadas");
+
+  // 4. Substituir todos os treatments pelos 12 novos
+  const deleted = await db
+    .delete(treatments)
+    .where(eq(treatments.clinicId, CLINIC_ID))
+    .returning({ id: treatments.id });
+
+  console.log(`🗑️  ${deleted.length} treatment(s) antigo(s) removido(s)`);
+
+  const now = new Date();
+  const treatmentRows = TREATMENTS.map((t) => ({
+    id: randomUUID(),
+    clinicId: CLINIC_ID,
+    name: t.name,
+    durationMinutes: t.durationMinutes,
+    requiresEvaluationFirst: t.requiresEvaluationFirst,
+    description: t.description,
+    commonObjections: [] as string[],
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  await db.insert(treatments).values(treatmentRows);
+
+  console.log(`✅ ${treatmentRows.length} treatments inseridos`);
+
   console.log("\n📋 Resumo:");
-  console.log(`   • Especialidade: ${SPECIALTY}`);
-  console.log(`   • Procedimentos: 12`);
-  console.log(`   • Diferenciais: ${DIFFERENTIALS.length}`);
-  console.log(`   • Objeções mapeadas: ${OBJECTIONS.length}`);
-  console.log(`   • Status: ATIVO — IA já usando esta versão\n`);
+  console.log(`   • Versão:         ${VERSION_NAME}`);
+  console.log(`   • notes:          ✅ gravado (orientação comportamental chega ao LLM)`);
+  console.log(`   • toneOfVoice:    "${TONE_OF_VOICE}"`);
+  console.log(`   • greetingMessage: atualizada`);
+  console.log(`   • Treatments:     ${treatmentRows.length} (era 5)`);
+  console.log(`   • Diferenciais:   ${DIFFERENTIALS.length}`);
+  console.log(`   • Objeções:       ${OBJECTIONS.length}`);
+  console.log(`   • Status:         ATIVO — IA já usando esta versão\n`);
+  console.log(
+    "⚠️  Confirmar com a clínica: durações e quais exigem avaliação primeiro (definidos conforme fluxo estimado).",
+  );
 
   await sql.end();
 }
