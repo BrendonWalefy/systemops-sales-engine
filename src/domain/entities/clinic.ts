@@ -34,6 +34,7 @@ export type Clinic = {
   menuItems: MenuItem[] | null;
   businessHours: string | null;
   googleCalendarId: string | null;
+  receptionistPhone: string | null;
   takeoverTtlHours: number;
   postAppointmentBufferMinutes: number;
   defaultAppointmentDurationMinutes: number;

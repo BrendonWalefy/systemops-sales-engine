@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical } from "lucide-react";
+import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
@@ -33,6 +33,7 @@ type ClinicData = {
   businessHours: string | null;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;
+  receptionistPhone: string | null;
 };
 
 const INTENT_LABELS: Record<MenuItemIntent, string> = {
@@ -429,6 +430,7 @@ function GeralTab({
   const [greetingMessage, setGreetingMessage] = useState(clinic.greetingMessage ?? "");
   const [menuItems, setMenuItems] = useState<MenuItem[]>(clinic.menuItems ?? DEFAULT_MENU_ITEMS);
   const [businessHours, setBusinessHours] = useState(clinic.businessHours ?? "");
+  const [receptionistPhone, setReceptionistPhone] = useState(clinic.receptionistPhone ?? "");
   const [takeoverTtlHours, setTakeoverTtlHours] = useState(clinic.takeoverTtlHours ?? 4);
   const [postAppointmentBufferMinutes, setPostAppointmentBufferMinutes] = useState(clinic.postAppointmentBufferMinutes ?? 60);
   const [saving, setSaving] = useState(false);
@@ -447,6 +449,7 @@ function GeralTab({
     businessHours?: string;
     takeoverTtlHours?: number;
     postAppointmentBufferMinutes?: number;
+    receptionistPhone?: string;
   }) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaved(false);
@@ -458,11 +461,12 @@ function GeralTab({
         businessHours: (patch.businessHours ?? businessHours) || null,
         takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
         postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
+        receptionistPhone: (patch.receptionistPhone ?? receptionistPhone) || null,
       });
       setSaving(false);
       setSaved(true);
     }, 1200);
-  }, [greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes]);
+  }, [greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, receptionistPhone]);
 
   function handleToggle() {
     const next = !enabled;
@@ -605,6 +609,29 @@ function GeralTab({
             triggerSave({ businessHours: e.target.value });
           }}
           placeholder="Ex: Segunda a sexta das 8h às 18h. Sábado das 8h às 13h."
+          style={geralInputStyle}
+        />
+      </div>
+
+      {/* Telefone da recepção */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={iconBoxStyle}>
+            <Phone size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+          </div>
+          <div>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Telefone da recepção</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Número WhatsApp que recebe alertas quando a IA pede atenção humana</p>
+          </div>
+        </div>
+        <input
+          type="tel"
+          value={receptionistPhone}
+          onChange={(e) => {
+            setReceptionistPhone(e.target.value);
+            triggerSave({ receptionistPhone: e.target.value });
+          }}
+          placeholder="Ex: 5511999999999 (com código do país)"
           style={geralInputStyle}
         />
       </div>

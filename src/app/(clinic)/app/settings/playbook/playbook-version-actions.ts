@@ -158,6 +158,7 @@ export async function updateClinicOperationalSettings(data: {
   postAppointmentBufferMinutes?: number;
   greetingMessage?: string | null;
   menuItems?: MenuItem[] | null;
+  receptionistPhone?: string | null;
 }) {
   const CLINIC_ID = await requireSessionClinicId();
   await db

@@ -25,6 +25,7 @@ const clinic: Clinic = {
   menuItems: null,
   businessHours: null,
   googleCalendarId: null,
+  receptionistPhone: null,
   takeoverTtlHours: 4,
   postAppointmentBufferMinutes: 60,
   defaultAppointmentDurationMinutes: 60,

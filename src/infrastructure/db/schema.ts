@@ -112,6 +112,7 @@ export const clinics = pgTable("clinics", {
   monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
   billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
   isTest: boolean("is_test").notNull().default(false),
+  receptionistPhone: text("receptionist_phone"),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──

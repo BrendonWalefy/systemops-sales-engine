@@ -169,6 +169,13 @@
       "when": 1780375674298,
       "tag": "0023_tiresome_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780455218585,
+      "tag": "0024_secret_stark_industries",
+      "breakpoints": true
     }
   ]
 }

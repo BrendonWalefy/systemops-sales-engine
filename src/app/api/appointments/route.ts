@@ -159,6 +159,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         menuItems: clinicRow.menuItems,
         businessHours: clinicRow.businessHours,
         googleCalendarId: clinicRow.googleCalendarId,
+        receptionistPhone: clinicRow.receptionistPhone ?? null,
         takeoverTtlHours: clinicRow.takeoverTtlHours,
         postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,
         defaultAppointmentDurationMinutes: clinicRow.defaultAppointmentDurationMinutes,

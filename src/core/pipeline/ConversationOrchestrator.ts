@@ -209,6 +209,7 @@ function buildClinic(row: ClinicRow): Clinic {
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,
     businessHours: row.businessHours,
     googleCalendarId: row.googleCalendarId,
+    receptionistPhone: row.receptionistPhone ?? null,
     takeoverTtlHours: row.takeoverTtlHours,
     postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
     defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
@@ -1242,7 +1243,7 @@ export class ConversationOrchestrator {
     const displayName = leadName ?? leadPhone;
 
     // WhatsApp para o número da recepção (se configurado)
-    const receptPhone = process.env.RECEPTIONIST_PHONE_NUMBER;
+    const receptPhone = clinic.receptionistPhone ?? process.env.RECEPTIONIST_PHONE_NUMBER;
     if (receptPhone) {
       try {
         await sendTextMessage(
