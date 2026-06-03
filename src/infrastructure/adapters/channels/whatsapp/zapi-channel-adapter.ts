@@ -59,7 +59,10 @@ export async function sendZApiTextMessage(
 ): Promise<string | null> {
   const instanceId = creds?.instanceId ?? process.env.ZAPI_INSTANCE_ID;
   const token = creds?.token ?? process.env.ZAPI_TOKEN;
-  const clientToken = creds?.clientToken ?? process.env.ZAPI_CLIENT_TOKEN;
+  const rawClientToken = creds?.clientToken ?? process.env.ZAPI_CLIENT_TOKEN;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http")
+    ? rawClientToken
+    : undefined;
 
   if (!instanceId || !token) {
     throw new Error("ZAPI_INSTANCE_ID and ZAPI_TOKEN must be set");

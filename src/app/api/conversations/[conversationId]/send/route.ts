@@ -9,6 +9,7 @@ import { clinics, conversations, leads, messages } from "@/infrastructure/db/sch
 import { eq } from "drizzle-orm";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 
 export const dynamic = "force-dynamic";
 
@@ -52,11 +53,20 @@ export async function POST(
 
   // ── 4. Busca TTL configurado para a clínica ──
   const [clinicRow] = await db
-    .select({ takeoverTtlHours: clinics.takeoverTtlHours })
+    .select({
+      takeoverTtlHours: clinics.takeoverTtlHours,
+      channelProvider: clinics.channelProvider,
+      zapiInstanceId: clinics.zapiInstanceId,
+      zapiToken: clinics.zapiToken,
+      zapiClientToken: clinics.zapiClientToken,
+      metaPhoneNumberId: clinics.metaPhoneNumberId,
+      metaAccessToken: clinics.metaAccessToken,
+    })
     .from(clinics)
     .where(eq(clinics.id, conv.clinicId))
     .limit(1);
   const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
+  const channelConfig = clinicRow ? resolveChannelConfig(clinicRow) : undefined;
 
   // ── 5. Busca telefone do lead ──
   const [lead] = await db
@@ -86,7 +96,7 @@ export async function POST(
 
   // ── 7. Envia via WhatsApp e captura messageId para deduplicar echo fromMe ──
   try {
-    const zapiMessageId = await sendTextMessage(phone, messageText);
+    const zapiMessageId = await sendTextMessage(phone, messageText, channelConfig);
     // Salva o messageId retornado pelo Z-API para que o webhook fromMe identifique
     // este envio como nosso e não crie uma mensagem duplicada na conversa.
     if (zapiMessageId) {
