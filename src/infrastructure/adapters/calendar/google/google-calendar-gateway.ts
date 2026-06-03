@@ -19,10 +19,10 @@ function pemToDer(pem: string): ArrayBuffer {
   const lines = pem
     .replace(/-----BEGIN .*-----|-----END .*-----/g, "")
     .replace(/\s/g, "");
-  const binary = atob(lines);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
+  // Buffer.from é mais robusto que atob: não lança InvalidCharacterError
+  // com chaves que tenham padding irregular ou BOM. Uint8Array.from garante
+  // um ArrayBuffer exclusivo (evita pool compartilhado do Node).
+  return Uint8Array.from(Buffer.from(lines, "base64")).buffer;
 }
 
 async function fetchNewToken(): Promise<string> {

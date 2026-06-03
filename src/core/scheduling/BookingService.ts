@@ -89,11 +89,13 @@ export class BookingService {
       return { success: false, reason: "slot_taken" };
     }
 
-    // Passo 3: Cria evento no Google Calendar
+    // Passo 3: Cria evento no Google Calendar (não-fatal)
+    // Se o Calendar falhar, o agendamento é salvo sem calendarEventId.
+    const leadName = lead.name ?? "Paciente";
+    const procedureLabel = treatmentName ?? "Consulta";
     let appointment: Appointment;
+    const now = new Date();
     try {
-      const leadName = lead.name ?? "Paciente";
-      const procedureLabel = treatmentName ?? "Consulta";
       appointment = await this.calendarGateway.createAppointment({
         clinicId: clinic.id,
         leadId: lead.id,
@@ -102,10 +104,23 @@ export class BookingService {
         title: `${procedureLabel} — ${leadName} | ${clinic.name}`,
       });
     } catch (err) {
-      // Libera a reserva imediatamente para o lead poder tentar de novo sem esperar o TTL
-      await this.reservationService.release(reservation.id);
       console.error("[BookingService] Google Calendar createAppointment failed:", err);
-      return { success: false, reason: "calendar_error" };
+      appointment = {
+        id: crypto.randomUUID(),
+        clinicId: clinic.id,
+        leadId: lead.id,
+        professionalId: null,
+        roomId: null,
+        calendarEventId: null,
+        calendarEventUrl: null,
+        startsAt,
+        endsAt,
+        status: "scheduled",
+        source: "app",
+        reminderSentAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
     }
 
     // Passo 4: Confirma reserva (slot agora permanentemente bloqueado)

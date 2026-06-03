@@ -117,8 +117,8 @@ export default async function ConversationPage({
           <ArrowLeft size={14} />
           Inbox
         </Link>
-        <span style={{ color: "var(--line-strong)" }}>·</span>
-        <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{displayName}</span>
+        <span style={{ color: "var(--line-strong)", flexShrink: 0 }}>·</span>
+        <span className="conv-header-name">{displayName}</span>
         <span className={`status-pill${handoff ? " status-handoff" : ""}`} style={{ fontSize: 11, padding: "3px 10px" }}>
           <span className="status-dot" />
           {sLabel}

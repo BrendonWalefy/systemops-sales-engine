@@ -76,26 +76,31 @@ export async function POST(
     let calendarEventId = body.calendarEventId ?? null;
     let calendarEventUrl = body.calendarEventUrl ?? null;
 
-    // Cria evento no Google Calendar quando não foi fornecido um já existente
+    // Cria evento no Google Calendar quando não foi fornecido um já existente.
+    // Não-fatal: se o Calendar falhar, o agendamento é salvo mesmo assim.
     if (!calendarEventId && clinic.googleCalendarId) {
-      const gateway = new GoogleCalendarGateway(
-        clinic.googleCalendarId,
-        timezone,
-        clinic.businessHours,
-        clinic.postAppointmentBufferMinutes,
-      );
+      try {
+        const gateway = new GoogleCalendarGateway(
+          clinic.googleCalendarId,
+          timezone,
+          clinic.businessHours,
+          clinic.postAppointmentBufferMinutes,
+        );
 
-      const leadName = lead.name ?? "Paciente";
-      const appt = await gateway.createAppointment({
-        clinicId: clinic.id,
-        leadId: lead.id,
-        startsAt,
-        endsAt,
-        title: `Consulta — ${leadName} | ${clinic.name}`,
-      });
+        const leadName = lead.name ?? "Paciente";
+        const appt = await gateway.createAppointment({
+          clinicId: clinic.id,
+          leadId: lead.id,
+          startsAt,
+          endsAt,
+          title: `Consulta — ${leadName} | ${clinic.name}`,
+        });
 
-      calendarEventId = appt.calendarEventId;
-      calendarEventUrl = appt.calendarEventUrl;
+        calendarEventId = appt.calendarEventId;
+        calendarEventUrl = appt.calendarEventUrl;
+      } catch (calErr) {
+        console.error("[register-appointment] Google Calendar sync failed:", calErr);
+      }
     }
 
     const apptRepo = new DrizzleAppointmentRepository();

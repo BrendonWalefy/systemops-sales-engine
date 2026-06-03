@@ -311,17 +311,27 @@ describe("BookingService — double-booking guards", () => {
     consoleError.mockRestore();
   });
 
-  it("releases the reservation and returns calendar_error when event creation fails", async () => {
+  it("saves the appointment without calendarEventId when event creation fails", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { calendar, order, reservations, service } = setup();
+    const { appointmentRepo, calendar, order, reservations, service } = setup();
     calendar.createAppointmentError = new Error("create failed");
 
     const result = await bookWith(service);
 
-    expect(result).toEqual({ success: false, reason: "calendar_error" });
-    expect(order).toEqual(["releaseExpired", "reserve", "isSlotFree", "createAppointment", "release"]);
-    expect(reservations.releasedIds).toEqual([reservation.id]);
+    // Agendamento é salvo mesmo sem sync com o Google Calendar
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.appointment.calendarEventId).toBeNull();
+      expect(result.appointment.calendarEventUrl).toBeNull();
+    }
+    expect(order).toEqual([
+      "releaseExpired", "reserve", "isSlotFree", "createAppointment",
+      "confirm", "saveAppointment", "saveLead",
+    ]);
+    // Reserva não é liberada — o slot fica bloqueado para o agendamento salvo
+    expect(reservations.releasedIds).toEqual([]);
     expect(calendar.createAppointmentCalls).toBe(1);
+    expect(appointmentRepo.saved).toHaveLength(1);
 
     consoleError.mockRestore();
   });
