@@ -2,58 +2,9 @@
 
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { clinics, playbookVersions } from "@/infrastructure/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { clinics } from "@/infrastructure/db/schema";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-
-export async function savePlaybook(formData: FormData) {
-  const clinicId = await requireSessionClinicId();
-  const toneOfVoice = (formData.get("toneOfVoice") as string) || null;
-  const commercialPolicy = (formData.get("commercialPolicy") as string) || null;
-  const notes = (formData.get("playbook") as string) || null;
-
-  // Gate: não deixa salvar política comercial vazia (a IA inventaria).
-  if (!commercialPolicy || !commercialPolicy.trim()) {
-    throw new Error("Política comercial não pode ser vazia.");
-  }
-  const businessHours = (formData.get("businessHours") as string) || null;
-
-  // businessHours é OPERACIONAL (usado pelo agendador) — continua em clinics.
-  await db
-    .update(clinics)
-    .set({ businessHours, updatedAt: new Date() })
-    .where(eq(clinics.id, clinicId));
-
-  // Campos EDITORIAIS vão para a versão ATIVA do playbook (fonte única).
-  const active = await db
-    .select({ id: playbookVersions.id })
-    .from(playbookVersions)
-    .where(and(eq(playbookVersions.clinicId, clinicId), eq(playbookVersions.status, "active")))
-    .orderBy(desc(playbookVersions.createdAt))
-    .limit(1)
-    .then((r) => r[0] ?? null);
-
-  if (active) {
-    await db
-      .update(playbookVersions)
-      .set({ toneOfVoice: toneOfVoice ?? "acolhedor", commercialPolicy, notes, updatedAt: new Date() })
-      .where(eq(playbookVersions.id, active.id));
-  } else {
-    await db.insert(playbookVersions).values({
-      clinicId,
-      name: "Editado em settings",
-      status: "active",
-      toneOfVoice: toneOfVoice ?? "acolhedor",
-      commercialPolicy,
-      notes,
-      procedureDescription: "",
-      differentials: [],
-      objections: [],
-    });
-  }
-
-  revalidatePath("/app/settings/playbook");
-}
 
 export async function saveTakeoverTtl(formData: FormData) {
   const clinicId = await requireSessionClinicId();
