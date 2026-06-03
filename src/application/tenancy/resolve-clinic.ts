@@ -7,8 +7,7 @@ import { verifyToken, COOKIE_NAME, type SessionPayload } from "@/lib/session";
 /**
  * RESOLUÇÃO DE TENANT (qual clínica?).
  *
- * Substitui process.env.PILOT_CLINIC_ID. Existem três contextos e cada um
- * resolve a clínica de uma forma:
+ * Existem três contextos e cada um resolve a clínica de uma forma:
  *  - Webhook (mensagem entrando): pela credencial do canal (instância Z-API
  *    ou phone_number_id da Meta) que recebeu a mensagem.
  *  - UI/rotas autenticadas: pela sessão do usuário logado.
@@ -17,39 +16,32 @@ import { verifyToken, COOKIE_NAME, type SessionPayload } from "@/lib/session";
  * NUNCA resolva tenant por variável de ambiente global em código novo.
  */
 
-const PILOT_FALLBACK = process.env.PILOT_CLINIC_ID || null;
-
 /** Inbound Z-API: a instância que recebeu a mensagem identifica a clínica. */
 export async function resolveClinicByZapiInstance(
   instanceId: string | null | undefined,
 ): Promise<string | null> {
-  if (instanceId) {
-    const row = await db
-      .select({ id: clinics.id })
-      .from(clinics)
-      .where(eq(clinics.zapiInstanceId, instanceId))
-      .limit(1)
-      .then((r) => r[0] ?? null);
-    if (row) return row.id;
-  }
-  // Transição: enquanto a clínica piloto não tiver instância cadastrada.
-  return PILOT_FALLBACK;
+  if (!instanceId) return null;
+  const row = await db
+    .select({ id: clinics.id })
+    .from(clinics)
+    .where(eq(clinics.zapiInstanceId, instanceId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  return row?.id ?? null;
 }
 
 /** Inbound Meta: o phone_number_id do payload identifica a clínica. */
 export async function resolveClinicByMetaPhoneNumberId(
   phoneNumberId: string | null | undefined,
 ): Promise<string | null> {
-  if (phoneNumberId) {
-    const row = await db
-      .select({ id: clinics.id })
-      .from(clinics)
-      .where(eq(clinics.metaPhoneNumberId, phoneNumberId))
-      .limit(1)
-      .then((r) => r[0] ?? null);
-    if (row) return row.id;
-  }
-  return PILOT_FALLBACK;
+  if (!phoneNumberId) return null;
+  const row = await db
+    .select({ id: clinics.id })
+    .from(clinics)
+    .where(eq(clinics.metaPhoneNumberId, phoneNumberId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  return row?.id ?? null;
 }
 
 /** Crons: lista todas as clínicas para iterar uma a uma. */
@@ -96,7 +88,7 @@ export async function getSessionClinicId(): Promise<string | null> {
       .orderBy(asc(clinics.createdAt))
       .limit(1)
       .then((r) => r[0] ?? null);
-    return first?.id ?? PILOT_FALLBACK;
+    return first?.id ?? null;
   }
 
   // clinic_admin: resolve pelo vínculo
@@ -107,7 +99,7 @@ export async function getSessionClinicId(): Promise<string | null> {
     .limit(1)
     .then((r) => r[0] ?? null);
 
-  return member?.clinicId ?? PILOT_FALLBACK;
+  return member?.clinicId ?? null;
 }
 
 /**

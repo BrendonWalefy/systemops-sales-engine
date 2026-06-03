@@ -202,9 +202,6 @@ function buildClinic(row: ClinicRow): Clinic {
     city: row.city,
     address: row.address ?? null,
     timezone: row.timezone,
-    toneOfVoice: row.toneOfVoice,
-    commercialPolicy: row.commercialPolicy,
-    playbook: row.playbook,
     greetingMessage: row.greetingMessage ?? null,
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,
     businessHours: row.businessHours,
@@ -270,9 +267,7 @@ export class ConversationOrchestrator {
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
 
-    // FONTE ÚNICA EDITORIAL: lê a versão ativa do playbook. A produção NÃO usa
-    // mais clinics.commercialPolicy / clinics.playbook. O `?? clinic.*` é apenas
-    // rede de transição até a migration de backfill rodar; some depois.
+    // FONTE ÚNICA EDITORIAL: versão ativa de playbook_versions via resolveActiveEditorialConfig.
     const editorial = await resolveActiveEditorialConfig(clinicId);
     // Credenciais de canal DESTA clínica (isola o envio entre tenants).
     const channelConfig = resolveChannelConfig(clinicRows[0]);
@@ -476,9 +471,9 @@ export class ConversationOrchestrator {
         clinic: {
           name: clinic.name,
           specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? clinic.toneOfVoice,
-          playbook: editorial?.playbookText ?? clinic.playbook,
-          commercialPolicy: editorial?.commercialPolicy ?? clinic.commercialPolicy,
+          toneOfVoice: editorial?.toneOfVoice ?? null,
+          playbook: editorial?.playbookText ?? null,
+          commercialPolicy: editorial?.commercialPolicy ?? null,
         },
         leadName: lead.name,
         timezone,
@@ -970,7 +965,7 @@ export class ConversationOrchestrator {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
         } else {
-          clinicContext = `${clinic.name} — ${clinic.specialty}. ${clinic.commercialPolicy ?? ""}`;
+          clinicContext = `${clinic.name} — ${clinic.specialty}. ${editorial?.commercialPolicy ?? ""}`;
         }
         replyText = await compose({ type: "general_question", clinicContext });
         break;
@@ -991,7 +986,7 @@ export class ConversationOrchestrator {
         } else {
           replyText = await compose({
             type: "general_question",
-            clinicContext: `${clinic.name} — ${clinic.specialty}. ${clinic.commercialPolicy ?? ""}`,
+            clinicContext: `${clinic.name} — ${clinic.specialty}. ${editorial?.commercialPolicy ?? ""}`,
           });
         }
         break;

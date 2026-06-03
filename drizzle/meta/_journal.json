@@ -183,6 +183,13 @@
       "when": 1780455503329,
       "tag": "0025_steady_dormammu",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780456331808,
+      "tag": "0026_organic_rictor",
+      "breakpoints": true
     }
   ]
 }

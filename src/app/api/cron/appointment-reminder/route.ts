@@ -60,9 +60,9 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         clinic: {
           name: clinic.name,
           specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? clinic.toneOfVoice,
-          playbook: editorial?.playbookText ?? clinic.playbook,
-          commercialPolicy: editorial?.commercialPolicy ?? clinic.commercialPolicy,
+          toneOfVoice: editorial?.toneOfVoice ?? null,
+          playbook: editorial?.playbookText ?? null,
+          commercialPolicy: editorial?.commercialPolicy ?? null,
         },
         leadName: lead.name,
         timezone,

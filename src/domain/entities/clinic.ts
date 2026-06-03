@@ -27,9 +27,6 @@ export type Clinic = {
   city: string | null;
   address: string | null;
   timezone: string;
-  toneOfVoice: string | null;
-  commercialPolicy: string | null;
-  playbook: string | null;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;
   businessHours: string | null;

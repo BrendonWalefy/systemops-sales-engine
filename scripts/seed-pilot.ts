@@ -45,9 +45,6 @@ async function main() {
     name: "Ximendes Odontologia",
     specialty: "odontologia",
     city: null,
-    toneOfVoice: "Informal, acolhedor e consultivo. Nunca pressionar o lead.",
-    commercialPolicy:
-      "Oferecer sempre a avaliação gratuita como primeiro passo. Nunca informar valores por mensagem.",
     createdAt: now,
     updatedAt: now,
   });

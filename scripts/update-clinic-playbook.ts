@@ -112,18 +112,12 @@ REGRAS ABSOLUTAS:
 
 async function main() {
   await db.update(clinics).set({
-    toneOfVoice: TONE_OF_VOICE,
-    commercialPolicy: COMMERCIAL_POLICY,
     businessHours: "Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.",
-    playbook: PLAYBOOK,
     greetingMessage: GREETING_MESSAGE,
     updatedAt: new Date(),
   }).where(eq(clinics.id, CLINIC_ID));
 
-  console.log("✅ Playbook da Ximendes Odontologia atualizado (v3).");
-  console.log("   • toneOfVoice — profissional, sem informalidade");
-  console.log("   • playbook — bullet points, sem insistência, avaliação como porta de entrada");
-  console.log("   • greetingMessage — saudação fixa com Marina + menu de 5 opções");
+  console.log("✅ Settings operacionais da Ximendes atualizados (greetingMessage, businessHours).");
   await sql.end();
 }
 

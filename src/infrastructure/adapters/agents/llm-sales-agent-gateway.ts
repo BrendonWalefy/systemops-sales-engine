@@ -101,13 +101,9 @@ function buildSystemPrompt(input: SalesAgentInput): string {
   sections.push(`Nome: ${clinic.name}`);
   sections.push(`Especialidade: ${clinic.specialty}`);
   if (clinic.city) sections.push(`Cidade: ${clinic.city}`);
-  if (clinic.toneOfVoice) sections.push(`Tom de voz desejado: ${clinic.toneOfVoice}`);
-  if (clinic.commercialPolicy) sections.push(`Política comercial: ${clinic.commercialPolicy}`);
   if (clinic.businessHours) sections.push(`Horário de funcionamento: ${clinic.businessHours}`);
 
-  if (clinic.playbook) {
-    sections.push("---", "PLAYBOOK DA CLÍNICA (siga estas orientações):", clinic.playbook);
-  } else if (input.playbook) {
+  if (input.playbook) {
     sections.push("---", "PLAYBOOK:", input.playbook);
   }
 

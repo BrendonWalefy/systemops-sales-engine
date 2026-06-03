@@ -205,19 +205,13 @@ async function main() {
 
   console.log(`✅ Versão criada: "${VERSION_NAME}" (id: ${version.id})`);
 
-  // 3. Atualizar campos da clínica para o pipeline de IA
+  // 3. Atualizar specialty da clínica
   await db
     .update(clinics)
-    .set({
-      specialty: "Odontologia Estética e Reabilitação Oral",
-      toneOfVoice: COMPILED_TONE,
-      commercialPolicy: COMMERCIAL_POLICY,
-      playbook: buildClinicPlaybook(),
-      updatedAt: new Date(),
-    })
+    .set({ specialty: "Odontologia Estética e Reabilitação Oral", updatedAt: new Date() })
     .where(eq(clinics.id, CLINIC_ID));
 
-  console.log("✅ Campos da clínica atualizados (specialty, toneOfVoice, commercialPolicy, playbook)");
+  console.log("✅ Specialty da clínica atualizada");
   console.log("\n📋 Resumo:");
   console.log(`   • Especialidade: ${SPECIALTY}`);
   console.log(`   • Procedimentos: 12`);
