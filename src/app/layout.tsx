@@ -6,6 +6,7 @@ import { ViewportHeightFix } from "@/components/viewport-height-fix";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  minimumScale: 1,
   themeColor: "#09090b",
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
