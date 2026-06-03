@@ -153,6 +153,9 @@ export default async function OwnerPage() {
             {testRows.length > 0 && ` · ${testRows.length} em testes`}
           </p>
         </div>
+        <Link href="/owner/clinics/new" className="primary-button">
+          + Nova clínica
+        </Link>
       </div>
 
       {/* KPIs — apenas produção */}

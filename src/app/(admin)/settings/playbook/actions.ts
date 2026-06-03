@@ -11,6 +11,11 @@ export async function savePlaybook(formData: FormData) {
   const toneOfVoice = (formData.get("toneOfVoice") as string) || null;
   const commercialPolicy = (formData.get("commercialPolicy") as string) || null;
   const notes = (formData.get("playbook") as string) || null;
+
+  // Gate: não deixa salvar política comercial vazia (a IA inventaria).
+  if (!commercialPolicy || !commercialPolicy.trim()) {
+    throw new Error("Política comercial não pode ser vazia.");
+  }
   const businessHours = (formData.get("businessHours") as string) || null;
 
   // businessHours é OPERACIONAL (usado pelo agendador) — continua em clinics.

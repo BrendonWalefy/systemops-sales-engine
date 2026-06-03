@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq } from "drizzle-orm";
+import { onboardingConfigSchema } from "../src/application/onboarding/onboarding-config";
 import {
   clinics,
   treatments,
@@ -69,26 +70,13 @@ const cfg: NewClinicConfig = JSON.parse(readFileSync(configPath, "utf8"));
 const sql = postgres(connectionString, { max: 1 });
 const db = drizzle(sql);
 
-function validate(c: NewClinicConfig) {
-  const errs: string[] = [];
-  if (!c.name?.trim()) errs.push("name obrigatório");
-  if (!c.slug?.trim()) errs.push("slug obrigatório");
-  if (!c.playbook?.commercialPolicy?.trim())
-    errs.push("playbook.commercialPolicy não pode ser vazio (a IA inventaria condições)");
-  if (!c.channel?.provider) errs.push("channel.provider obrigatório");
-  if (c.channel?.provider === "z_api" && !c.channel.zapi?.instanceId)
-    errs.push("channel.zapi.instanceId obrigatório para z_api");
-  if (c.channel?.provider === "meta_cloud_api" && !c.channel.meta?.phoneNumberId)
-    errs.push("channel.meta.phoneNumberId obrigatório para meta_cloud_api");
-  if (!c.admins?.length) errs.push("ao menos um admin é obrigatório");
-  if (errs.length) {
-    console.error("Configuração inválida:\n - " + errs.join("\n - "));
+async function main() {
+  const parsed = onboardingConfigSchema.safeParse(cfg);
+  if (!parsed.success) {
+    console.error("Configuração inválida:");
+    for (const i of parsed.error.issues) console.error(` - ${i.path.join('.')}: ${i.message}`);
     process.exit(1);
   }
-}
-
-async function main() {
-  validate(cfg);
   const now = new Date();
 
   // 1) clínica (upsert por slug)
