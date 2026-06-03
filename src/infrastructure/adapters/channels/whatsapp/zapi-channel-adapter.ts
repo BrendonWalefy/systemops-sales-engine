@@ -30,6 +30,10 @@ export type ZApiInboundPayload = {
 };
 
 export class ZApiChannelAdapter implements ChannelAdapter {
+  constructor(
+    private readonly creds: { instanceId: string; token: string; clientToken?: string },
+  ) {}
+
   async receive(payload: unknown): Promise<IncomingChannelMessage> {
     const data = payload as ZApiInboundPayload;
 
@@ -48,24 +52,24 @@ export class ZApiChannelAdapter implements ChannelAdapter {
   }
 
   async send(message: OutgoingChannelMessage): Promise<void> {
-    await sendZApiTextMessage(message.externalThreadId, message.body);
+    await sendZApiTextMessage(message.externalThreadId, message.body, this.creds);
   }
 }
 
 export async function sendZApiTextMessage(
   phone: string,
   text: string,
-  creds?: { instanceId: string; token: string; clientToken?: string },
+  creds: { instanceId: string; token: string; clientToken?: string },
 ): Promise<string | null> {
-  const instanceId = creds?.instanceId ?? process.env.ZAPI_INSTANCE_ID;
-  const token = creds?.token ?? process.env.ZAPI_TOKEN;
-  const rawClientToken = creds?.clientToken ?? process.env.ZAPI_CLIENT_TOKEN;
+  const instanceId = creds.instanceId;
+  const token = creds.token;
+  const rawClientToken = creds.clientToken;
   const clientToken = rawClientToken && !rawClientToken.startsWith("http")
     ? rawClientToken
     : undefined;
 
   if (!instanceId || !token) {
-    throw new Error("ZAPI_INSTANCE_ID and ZAPI_TOKEN must be set");
+    throw new Error("Z-API instance ID and token must be configured for this clinic");
   }
 
   const headers: Record<string, string> = {

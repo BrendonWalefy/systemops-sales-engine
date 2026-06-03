@@ -16,7 +16,7 @@
     "verify:agenda": "vitest run src/__tests__/SlotEngine.test.ts src/__tests__/BookingDoubleBooking.test.ts src/__tests__/SlotDayPreference.test.ts src/__tests__/ClinicTimezone.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
-    "seed": "dotenv -e .env.local -- tsx scripts/seed-pilot.ts",
+    "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts"
   },
   "dependencies": {

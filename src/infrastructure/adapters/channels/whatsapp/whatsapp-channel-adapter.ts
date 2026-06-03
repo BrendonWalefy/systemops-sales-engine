@@ -5,6 +5,10 @@ import type {
 } from "@/application/ports/channel-adapter";
 
 export class WhatsAppChannelAdapter implements ChannelAdapter {
+  constructor(
+    private readonly creds: { phoneNumberId: string; accessToken: string },
+  ) {}
+
   async receive(payload: unknown): Promise<IncomingChannelMessage> {
     const data = payload as Record<string, unknown>;
 
@@ -23,20 +27,20 @@ export class WhatsAppChannelAdapter implements ChannelAdapter {
   }
 
   async send(message: OutgoingChannelMessage): Promise<void> {
-    await sendWhatsAppTextMessage(message.externalThreadId, message.body);
+    await sendWhatsAppTextMessage(message.externalThreadId, message.body, this.creds);
   }
 }
 
 export async function sendWhatsAppTextMessage(
   to: string,
   text: string,
-  creds?: { phoneNumberId: string; accessToken: string },
+  creds: { phoneNumberId: string; accessToken: string },
 ): Promise<string | null> {
-  const accessToken = creds?.accessToken ?? process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = creds?.phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken = creds.accessToken;
+  const phoneNumberId = creds.phoneNumberId;
 
   if (!accessToken || !phoneNumberId) {
-    throw new Error("WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID must be set");
+    throw new Error("Meta WhatsApp phone number ID and access token must be configured for this clinic");
   }
 
   const response = await fetch(

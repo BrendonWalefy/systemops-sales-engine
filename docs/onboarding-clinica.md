@@ -6,15 +6,9 @@ próprios admins. Nenhum dado de uma clínica é visível para outra.
 
 ## Pré-requisitos (uma vez por ambiente)
 
-Aplique as migrations desta entrega antes de qualquer onboarding:
-
-```bash
-npm run db:apply:0024
-npm run db:apply:0025
-```
-
-> As migrations 0024/0025 são SQL idempotentes (`IF NOT EXISTS`), aplicadas
-> direto no banco pelo runner `scripts/run-sql.ts`. Rodar de novo não quebra.
+Garanta que `main` esteja deployada e que `npm run db:migrate` já tenha sido
+rodado no ambiente. O histórico de migrations atual parte de
+`drizzle/0000_baseline.sql`.
 
 ## 1. Monte o JSON da clínica
 
@@ -50,7 +44,7 @@ Crie um arquivo, por exemplo `clinic-nova.json`:
     { "name": "Botox", "durationMinutes": 45, "description": "Aplicação de toxina botulínica" }
   ],
   "admins": [
-    { "email": "dono@clinicaexemplo.com.br", "role": "clinic_admin" }
+    { "email": "dono@clinicaexemplo.com.br", "password": "senha-inicial-forte", "role": "clinic_admin" }
   ]
 }
 ```
@@ -87,13 +81,13 @@ Roteamento e isolamento são o que não pode falhar com duas clínicas:
 
 - [ ] Login como o admin da clínica nova → vê só os dados dela (inbox, agenda,
       dashboard, settings).
-- [ ] Login como o admin da clínica piloto → continua vendo só os dados dela.
+- [ ] Login como admin de outra clínica → continua vendo só os dados dela.
 - [ ] Mande uma mensagem para o WhatsApp da clínica NOVA → a conversa aparece
       na clínica nova, e a resposta sai pelo número da clínica nova.
-- [ ] Mande uma mensagem para o WhatsApp da clínica PILOTO → idem, sem
+- [ ] Mande uma mensagem para o WhatsApp de outra clínica → idem, sem
       vazamento entre as duas.
 - [ ] Publique uma alteração no playbook da clínica nova → o WhatsApp dela
-      reflete; o da piloto não muda.
+      reflete; o da outra clínica não muda.
 - [ ] Tente publicar um playbook com política comercial vazia → a publicação
       deve FALHAR (gate de validação).
 - [ ] Rode o cron de lembrete manualmente → o retorno traz `perClinic` com as
@@ -103,8 +97,5 @@ Roteamento e isolamento são o que não pode falhar com duas clínicas:
 
 - **Tokens de canal estão em colunas de texto.** Funciona, mas para vários
   clientes use criptografia em repouso ou um cofre de segredos.
-- **Notificação ao operador** (`RECEPTIONIST_PHONE_NUMBER`) ainda é global,
-  não por clínica. Mensagens ao lead já são por clínica.
-- **Sessão é por env de credenciais** (`OWNER_EMAIL`/`ADMIN_EMAIL`). O vínculo
-  usuário→clínica vive em `clinic_members`; o login em si ainda valida contra
-  as envs. Uma tabela de usuários com senha por clínica é o próximo passo.
+- **Owner ainda é por env** (`OWNER_EMAIL`/`OWNER_PASSWORD`). Admins de clínica
+  já vivem em `clinic_members.password_hash`.

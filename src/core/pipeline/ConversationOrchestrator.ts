@@ -18,7 +18,7 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
-import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 
 import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -885,7 +885,7 @@ export class ConversationOrchestrator {
           .where(eq(conversationsTable.id, conversation.id));
 
         replyText = await compose({ type: "patient_arrived", appointmentTime: todayAppointment?.startsAt ?? null });
-        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, arrivalReason);
+        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, arrivalReason);
         break;
       }
 
@@ -903,7 +903,7 @@ export class ConversationOrchestrator {
             updatedAt: new Date(),
           })
           .where(eq(conversationsTable.id, conversation.id));
-        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, reason);
+        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, reason);
         break;
       }
 
@@ -914,7 +914,7 @@ export class ConversationOrchestrator {
           .update(conversationsTable)
           .set({ needsAttention: true, attentionReason: "Urgência clínica relatada pelo lead", updatedAt: new Date() })
           .where(eq(conversationsTable.id, conversation.id));
-        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, "Urgência clínica relatada");
+        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Urgência clínica relatada");
         break;
       }
 
@@ -1013,7 +1013,7 @@ export class ConversationOrchestrator {
         .where(eq(conversationsTable.id, conversation.id));
 
       if (hitThreshold) {
-        await this.notifyAttentionNeeded(clinic, phone, lead.name ?? null, "Não conseguiu entender o lead após 3 tentativas");
+        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Não conseguiu entender o lead após 3 tentativas");
       }
     } else if (resetsClarity && (conversation.consecutiveUnclearCount ?? 0) > 0) {
       await db
@@ -1231,19 +1231,21 @@ export class ConversationOrchestrator {
 
   private async notifyAttentionNeeded(
     clinic: Clinic,
+    channelConfig: ClinicChannelConfig,
     leadPhone: string,
     leadName: string | null,
     reason: string,
   ): Promise<void> {
     const displayName = leadName ?? leadPhone;
 
-    // WhatsApp para o número da recepção (se configurado)
-    const receptPhone = clinic.receptionistPhone ?? process.env.RECEPTIONIST_PHONE_NUMBER;
+    // WhatsApp para o número da recepção da clínica (se configurado).
+    const receptPhone = clinic.receptionistPhone;
     if (receptPhone) {
       try {
         await sendTextMessage(
           receptPhone,
           `⚠️ *${displayName} precisa de você*\n\n${reason}\n\nAcesse o Inbox para responder.`,
+          channelConfig,
         );
       } catch (err) {
         console.error("[Orchestrator] Failed to send attention WhatsApp notification:", err);

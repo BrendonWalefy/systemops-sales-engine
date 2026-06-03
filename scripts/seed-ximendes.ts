@@ -1,6 +1,6 @@
 /**
- * Seed the pilot clinic (Ximendes Odontologia) and print the clinic ID.
- * Run: npx tsx scripts/seed-pilot.ts
+ * Seed the Ximendes clinic and print the clinic ID.
+ * Run: npx tsx scripts/seed-ximendes.ts
  * Requires DATABASE_URL in environment (or .env.local).
  */
 import "dotenv/config";
@@ -31,8 +31,7 @@ async function main() {
     console.log("✅ Clinic already exists:");
     console.log(`   Name: ${clinic.name}`);
     console.log(`   ID:   ${clinic.id}`);
-    console.log(`\nAdd to .env.local and Vercel:`);
-    console.log(`PILOT_CLINIC_ID=${clinic.id}`);
+    console.log(`   Slug: ${clinic.slug ?? "(sem slug)"}`);
     await sql.end();
     return;
   }
@@ -43,6 +42,7 @@ async function main() {
   await db.insert(clinics).values({
     id: clinicId,
     name: "Ximendes Odontologia",
+    slug: "ximendes",
     specialty: "odontologia",
     city: null,
     createdAt: now,
@@ -99,9 +99,8 @@ async function main() {
 
   console.log("✅ Clinic created:");
   console.log(`   Name: Ximendes Odontologia`);
+  console.log(`   Slug: ximendes`);
   console.log(`   ID:   ${clinicId}`);
-  console.log(`\nAdd to .env.local and Vercel:`);
-  console.log(`PILOT_CLINIC_ID=${clinicId}`);
 
   await sql.end();
 }

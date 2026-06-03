@@ -89,7 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Roda para TODAS as clínicas, não só a piloto.
+  // Roda para todas as clínicas cadastradas.
   const clinicIds = await listAllClinicIds();
   const results: ClinicResult[] = [];
   for (const id of clinicIds) {

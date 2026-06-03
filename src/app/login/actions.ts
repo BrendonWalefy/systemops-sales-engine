@@ -13,7 +13,7 @@ export async function login(formData: FormData) {
 
   // Owner: env vars (único acesso ao painel /owner)
   const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
-  const ownerPassword = process.env.OWNER_PASSWORD ?? process.env.ADMIN_PASSWORD;
+  const ownerPassword = process.env.OWNER_PASSWORD;
   if (ownerEmail && email === ownerEmail && password === ownerPassword) {
     const token = await signToken(email, "owner");
     const jar = await cookies();
@@ -21,7 +21,7 @@ export async function login(formData: FormData) {
     redirect("/owner");
   }
 
-  // Clinic admin: verifica no banco (passwordHash) com fallback para ADMIN_PASSWORD
+  // Clinic admin: senha própria armazenada em clinic_members.password_hash.
   const member = await db
     .select({ passwordHash: clinicMembers.passwordHash, role: clinicMembers.role })
     .from(clinicMembers)
@@ -30,28 +30,15 @@ export async function login(formData: FormData) {
     .then((r) => r[0] ?? null);
 
   if (member) {
-    let authenticated = false;
     if (member.passwordHash) {
-      authenticated = await verifyPassword(password, member.passwordHash);
-    } else {
-      // Fallback APENAS para os emails-piloto configurados em ADMIN_EMAIL
-      // (ex: a Ximendes enquanto a senha não foi definida). Contas novas sem
-      // hash NÃO logam pela senha global — precisam de senha própria.
-      const pilotEmails = (process.env.ADMIN_EMAIL ?? "")
-        .split(",")
-        .map((e) => e.trim().toLowerCase())
-        .filter(Boolean);
-      const fallbackPwd = process.env.ADMIN_PASSWORD;
-      authenticated =
-        pilotEmails.includes(email.toLowerCase()) && !!fallbackPwd && password === fallbackPwd;
-    }
-
-    if (authenticated) {
-      const role: SessionRole = member.role === "owner" ? "owner" : "clinic_admin";
-      const token = await signToken(email, role);
-      const jar = await cookies();
-      jar.set(COOKIE_NAME, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: MAX_AGE, path: "/" });
-      redirect(role === "owner" ? "/owner" : "/app/dashboard");
+      const authenticated = await verifyPassword(password, member.passwordHash);
+      if (authenticated) {
+        const role: SessionRole = member.role === "owner" ? "owner" : "clinic_admin";
+        const token = await signToken(email, role);
+        const jar = await cookies();
+        jar.set(COOKIE_NAME, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: MAX_AGE, path: "/" });
+        redirect(role === "owner" ? "/owner" : "/app/dashboard");
+      }
     }
   }
 

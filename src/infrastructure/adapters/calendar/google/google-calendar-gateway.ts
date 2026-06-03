@@ -100,9 +100,8 @@ async function getAccessToken(): Promise<string> {
 }
 
 function getCalendarId(clinicCalendarId?: string | null): string {
-  const id = clinicCalendarId ?? process.env.GOOGLE_CALENDAR_ID;
-  if (!id) throw new Error("No Google Calendar ID configured for this clinic");
-  return id;
+  if (!clinicCalendarId) throw new Error("No Google Calendar ID configured for this clinic");
+  return clinicCalendarId;
 }
 
 export class GoogleCalendarGateway implements CalendarGateway {

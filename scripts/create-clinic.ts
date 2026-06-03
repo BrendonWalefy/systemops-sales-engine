@@ -25,6 +25,7 @@ import {
   playbookVersions,
   clinicMembers,
 } from "../src/infrastructure/db/schema";
+import { hashPassword } from "../src/lib/password";
 
 type NewClinicConfig = {
   name: string;
@@ -52,7 +53,7 @@ type NewClinicConfig = {
     description?: string;
     requiresEvaluationFirst?: boolean;
   }[];
-  admins: { email: string; role?: "owner" | "clinic_admin" }[];
+  admins: { email: string; password: string; role?: "owner" | "clinic_admin" }[];
 };
 
 const configPath = process.argv[2];
@@ -164,17 +165,24 @@ async function main() {
   // 4) admins vinculados
   for (const a of cfg.admins) {
     const email = a.email.trim().toLowerCase();
+    const passwordHash = await hashPassword(a.password);
     const existsMember = await db
       .select({ id: clinicMembers.id })
       .from(clinicMembers)
       .where(and(eq(clinicMembers.email, email), eq(clinicMembers.clinicId, clinicId)))
       .limit(1)
       .then((r) => r[0] ?? null);
-    if (!existsMember) {
+    if (existsMember) {
+      await db
+        .update(clinicMembers)
+        .set({ role: a.role ?? "clinic_admin", passwordHash })
+        .where(eq(clinicMembers.id, existsMember.id));
+    } else {
       await db.insert(clinicMembers).values({
         clinicId,
         email,
         role: a.role ?? "clinic_admin",
+        passwordHash,
       });
     }
   }

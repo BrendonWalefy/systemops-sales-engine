@@ -92,7 +92,7 @@ describe("resolveTreatmentDuration", () => {
     });
   });
 
-  describe("procedimentos do piloto Ximendes", () => {
+  describe("procedimentos da Ximendes", () => {
     const ximendesTreatments = [
       makeTreatment("Avaliação", 60),
       makeTreatment("Manutenção das lentes", 60),

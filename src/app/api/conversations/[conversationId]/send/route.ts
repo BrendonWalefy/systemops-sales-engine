@@ -65,8 +65,11 @@ export async function POST(
     .from(clinics)
     .where(eq(clinics.id, conv.clinicId))
     .limit(1);
+  if (!clinicRow) {
+    return NextResponse.json({ error: "Clinic channel not configured" }, { status: 422 });
+  }
   const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
-  const channelConfig = clinicRow ? resolveChannelConfig(clinicRow) : undefined;
+  const channelConfig = resolveChannelConfig(clinicRow);
 
   // ── 5. Busca telefone do lead ──
   const [lead] = await db

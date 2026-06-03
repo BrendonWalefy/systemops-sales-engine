@@ -5,19 +5,20 @@ import type { ClinicChannelConfig } from "./channel-config";
 /**
  * Envia uma mensagem de texto pelo WhatsApp.
  *
- * Se `config` (credenciais da clínica) for fornecido, usa o provedor e as
- * credenciais DAQUELA clínica — garantindo isolamento entre tenants. Sem
- * config, cai no provedor/credenciais globais (env) da fase piloto.
+ * Usa sempre o provedor e as credenciais DAQUELA clínica — garantindo
+ * isolamento entre tenants.
  */
 export async function sendTextMessage(
   to: string,
   text: string,
-  config?: ClinicChannelConfig,
+  config: ClinicChannelConfig,
 ): Promise<string | null> {
-  const provider = config?.provider ?? process.env.WHATSAPP_PROVIDER ?? "meta_cloud_api";
+  if (process.env.DISABLE_REAL_WHATSAPP_SEND === "true") return null;
 
-  if (provider === "z_api") {
-    return sendZApiTextMessage(to, text, config?.zapi ?? undefined);
+  if (config.provider === "z_api") {
+    if (!config.zapi) throw new Error("Z-API credentials are not configured for this clinic");
+    return sendZApiTextMessage(to, text, config.zapi);
   }
-  return sendWhatsAppTextMessage(to, text, config?.meta ?? undefined);
+  if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
+  return sendWhatsAppTextMessage(to, text, config.meta);
 }

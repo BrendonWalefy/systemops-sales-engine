@@ -114,8 +114,7 @@ export const clinics = pgTable("clinics", {
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──
   // Roteiam tanto a entrada (qual clínica recebeu a mensagem) quanto a saída
-  // (por qual número a resposta sai). Nulo = cai no fallback das envs globais
-  // durante a transição da clínica piloto.
+  // (por qual número a resposta sai). Produção deve preencher por clínica.
   channelProvider: whatsappProviderEnum("channel_provider"),
   zapiInstanceId: text("zapi_instance_id"),
   zapiToken: text("zapi_token"),

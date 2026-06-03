@@ -58,7 +58,6 @@
 
 - Edição do nome da clínica pelo admin (fica no painel `/owner`)
 - Configuração das 5 opções do menu como campos individuais
-- Remoção do `PILOT_CLINIC_ID` hardcoded (expansão multi-tenant — tarefa futura)
 - Tela de criação de nova clínica
 
 ---

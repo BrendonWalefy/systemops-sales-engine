@@ -137,6 +137,13 @@ export default function NewClinicPage() {
                 <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("admins.0.email")}</small>
               )}
             </label>
+            <label>
+              Senha inicial do admin
+              <input name="adminPassword" type="password" required minLength={8} autoComplete="new-password" />
+              {errorFor("admins.0.password") && (
+                <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("admins.0.password")}</small>
+              )}
+            </label>
           </div>
         </section>
 

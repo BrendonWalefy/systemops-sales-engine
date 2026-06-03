@@ -78,6 +78,7 @@ export const onboardingConfigSchema = z.object({
     .array(
       z.object({
         email: z.string().trim().email(),
+        password: z.string().min(8, "senha deve ter pelo menos 8 caracteres"),
         role: z.enum(["owner", "clinic_admin"]).default("clinic_admin"),
       }),
     )

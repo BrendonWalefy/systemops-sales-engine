@@ -7,6 +7,7 @@ import { db } from "@/infrastructure/db/client";
 import { clinics, treatments, playbookVersions, clinicMembers } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { onboardingConfigSchema } from "@/application/onboarding/onboarding-config";
+import { hashPassword } from "@/lib/password";
 
 export type OnboardingState = {
   ok: boolean;
@@ -62,7 +63,11 @@ export async function onboardClinic(
       toneOfVoice: (formData.get("toneOfVoice") as string) || "acolhedor",
       notes: (formData.get("notes") as string) || undefined,
     },
-    admins: [{ email: (formData.get("adminEmail") as string) || "", role: "clinic_admin" as const }],
+    admins: [{
+      email: (formData.get("adminEmail") as string) || "",
+      password: (formData.get("adminPassword") as string) || "",
+      role: "clinic_admin" as const,
+    }],
   };
 
   const parsed = onboardingConfigSchema.safeParse(raw);
@@ -132,6 +137,7 @@ export async function onboardClinic(
 
   for (const a of cfg.admins) {
     const email = a.email.toLowerCase();
+    const passwordHash = await hashPassword(a.password);
     const exists = await db
       .select({ id: clinicMembers.id })
       .from(clinicMembers)
@@ -139,7 +145,7 @@ export async function onboardClinic(
       .limit(1)
       .then((r) => r[0] ?? null);
     if (!exists) {
-      await db.insert(clinicMembers).values({ clinicId, email, role: a.role });
+      await db.insert(clinicMembers).values({ clinicId, email, role: a.role, passwordHash });
     }
   }
 

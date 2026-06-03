@@ -9,7 +9,8 @@ import { clinics, conversations, leads, messages } from "@/infrastructure/db/sch
 import { and, desc, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
-import { sendZApiTextMessage } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 
 export const dynamic = "force-dynamic";
@@ -148,8 +149,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  // Mensagem inbound do lead
-  // Determina o texto da mensagem: texto digitado ou áudio transcrito
+  const clinicId = clinicIdOverride ?? (await resolveClinicByZapiInstance(body.instanceId));
+  if (!clinicId) {
+    console.error("[ZApi] Nenhuma clínica resolvida para a instância");
+    return new NextResponse("Server misconfigured", { status: 500 });
+  }
+
+  const [clinicRow] = await db
+    .select({
+      autoReplyEnabled: clinics.autoReplyEnabled,
+      channelProvider: clinics.channelProvider,
+      zapiInstanceId: clinics.zapiInstanceId,
+      zapiToken: clinics.zapiToken,
+      zapiClientToken: clinics.zapiClientToken,
+      metaPhoneNumberId: clinics.metaPhoneNumberId,
+      metaAccessToken: clinics.metaAccessToken,
+    })
+    .from(clinics)
+    .where(eq(clinics.id, clinicId))
+    .limit(1);
+
+  if (clinicRow && !clinicRow.autoReplyEnabled) {
+    return new NextResponse("OK", { status: 200 });
+  }
+
+  const channelConfig = clinicRow ? resolveChannelConfig(clinicRow) : null;
+
+  // Mensagem inbound do lead: texto digitado ou áudio transcrito.
   let messageText: string | null = null;
 
   if (body.text?.message) {
@@ -165,7 +191,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       messageText = `[áudio] ${transcription}`;
     } catch (err) {
       console.error("[ZApi] Falha ao transcrever áudio:", err);
-      await sendZApiTextMessage(body.phone, "Não consegui ouvir seu áudio. Pode me escrever? 😊").catch(
+      if (!channelConfig) return new NextResponse("OK", { status: 200 });
+      await sendTextMessage(body.phone, "Não consegui ouvir seu áudio. Pode me escrever? 😊", channelConfig).catch(
         (e) => console.error("[ZApi] Erro ao enviar fallback de áudio:", e),
       );
       return new NextResponse("OK", { status: 200 });
@@ -175,24 +202,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const clinicId = clinicIdOverride ?? (await resolveClinicByZapiInstance(body.instanceId));
-  if (!clinicId) {
-    console.error("[ZApi] Nenhuma clínica resolvida para a instância");
-    return new NextResponse("Server misconfigured", { status: 500 });
-  }
-
   try {
-    // Verifica se auto-reply está habilitado para esta clínica
-    const clinicRow = await db
-      .select({ autoReplyEnabled: clinics.autoReplyEnabled })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
-      .limit(1);
-
-    if (clinicRow.length > 0 && !clinicRow[0].autoReplyEnabled) {
-      return new NextResponse("OK", { status: 200 });
-    }
-
     await getOrchestrator().handle({
       clinicId,
       phone: body.phone,
