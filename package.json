@@ -17,8 +17,6 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
     "seed": "dotenv -e .env.local -- tsx scripts/seed-pilot.ts",
-    "db:apply:0024": "dotenv -e .env.local -- tsx scripts/run-sql.ts drizzle/0024_editorial_single_source.sql",
-    "db:apply:0025": "dotenv -e .env.local -- tsx scripts/run-sql.ts drizzle/0025_multi_tenant_foundation.sql",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts"
   },
   "dependencies": {

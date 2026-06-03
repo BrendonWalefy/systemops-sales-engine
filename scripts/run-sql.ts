@@ -1,11 +1,9 @@
 /**
  * Aplica um arquivo .sql diretamente no banco (idempotente).
- * Usado para as migrations escritas à mão (0024, 0025) sem depender do
- * journal do drizzle-kit.
+ * Uso emergencial para SQL avulso, sem depender do journal do drizzle-kit.
  *
  * Run:
- *   npx dotenv -e .env.local -- npx tsx scripts/run-sql.ts drizzle/0024_editorial_single_source.sql
- *   npx dotenv -e .env.local -- npx tsx scripts/run-sql.ts drizzle/0025_multi_tenant_foundation.sql
+ *   npx dotenv -e .env.local -- npx tsx scripts/run-sql.ts path/to/file.sql
  */
 import "dotenv/config";
 import { readFileSync } from "node:fs";

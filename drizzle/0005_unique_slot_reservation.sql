@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "slot_reservations_clinic_starts_at_unique" ON "slot_reservations" USING btree ("clinic_id","starts_at");
