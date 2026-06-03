@@ -36,6 +36,7 @@ type PlaybookInput = {
   commercialPolicy: string;
   objections?: { objection: string; response: string }[];
   greetingMessage: string;
+  notes?: string | null;
 };
 
 type SimulateBody = {
@@ -154,6 +155,7 @@ async function fetchSlots(
 
 function buildPlaybookText(p: PlaybookInput): string | null {
   const parts: string[] = [];
+  if (p.notes?.trim()) parts.push(p.notes.trim());
   if (p.specialty) parts.push(`ESPECIALIDADE: ${p.specialty}`);
   if (p.procedureDescription) parts.push(`\nSOBRE O PROCEDIMENTO:\n${p.procedureDescription}`);
   const diffs = p.differentials.filter((d) => d.trim());
