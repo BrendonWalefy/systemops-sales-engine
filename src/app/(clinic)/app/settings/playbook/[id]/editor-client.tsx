@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Search,
   Send,
+  Sparkles,
   UserRound,
   X,
 } from "lucide-react";
@@ -304,6 +305,200 @@ const quickPromptStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+// ── Co-writer box ─────────────────────────────────────────────────────────────
+
+type CowriterBoxProps = {
+  field: string;
+  currentValue: string;
+  clinicContext: { specialty: string; toneOfVoice: string };
+  onApply: (text: string) => void;
+  guidedQuestions?: string[];
+};
+
+function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuestions }: CowriterBoxProps) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"free" | "guided">("free");
+  const [userInput, setUserInput] = useState("");
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ proposedText: string; missingFacts: string[] } | null>(null);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "5px",
+          background: "rgba(139,92,246,0.08)",
+          border: "1px solid rgba(139,92,246,0.2)",
+          borderRadius: "8px",
+          color: "#a78bfa",
+          cursor: "pointer",
+          fontSize: "11px",
+          fontWeight: 700,
+          padding: "5px 10px",
+          marginTop: "6px",
+        }}
+      >
+        <Sparkles size={11} /> Escrever com a IA
+      </button>
+    );
+  }
+
+  async function generate() {
+    const input = mode === "guided"
+      ? answers.map((a, i) => `${guidedQuestions?.[i] ?? `Pergunta ${i + 1}`}: ${a}`).join("\n")
+      : userInput;
+    if (!input.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/playbook/advisor/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field, userInput: input, currentValue, clinicContext }),
+      });
+      const json = await res.json();
+      setResult({ proposedText: json.proposedText ?? "", missingFacts: json.missingFacts ?? [] });
+    } catch {
+      setResult({ proposedText: "", missingFacts: ["Erro de conexão. Tente novamente."] });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function applyAndClose() {
+    if (result?.proposedText) {
+      onApply(result.proposedText);
+      setOpen(false);
+      setResult(null);
+      setUserInput("");
+      setAnswers([]);
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: "8px",
+      padding: "14px",
+      background: "rgba(139,92,246,0.06)",
+      border: "1px solid rgba(139,92,246,0.18)",
+      borderRadius: "12px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <Sparkles size={13} style={{ color: "#a78bfa" }} />
+          <span style={{ fontSize: "12px", fontWeight: 700, color: "#a78bfa" }}>Co-escritor de IA</span>
+          <span style={{ fontSize: "10px", color: "#71717a" }}>— lapida sem inventar fatos</span>
+        </div>
+        <button type="button" onClick={() => { setOpen(false); setResult(null); }} style={{ background: "none", border: "none", color: "#52525b", cursor: "pointer", padding: "2px" }}>
+          <X size={13} />
+        </button>
+      </div>
+
+      {guidedQuestions && guidedQuestions.length > 0 && (
+        <div style={{ display: "flex", gap: "4px", marginBottom: "10px" }}>
+          {(["free", "guided"] as const).map((m) => (
+            <button key={m} type="button" onClick={() => setMode(m)} style={{
+              border: "none", borderRadius: "7px",
+              background: mode === m ? "rgba(139,92,246,0.18)" : "transparent",
+              color: mode === m ? "#a78bfa" : "#52525b",
+              cursor: "pointer", fontSize: "11px", fontWeight: 700, padding: "5px 10px",
+            }}>
+              {m === "free" ? "Texto livre" : "Perguntas guiadas"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mode === "free" ? (
+        <textarea
+          value={userInput}
+          onChange={(e) => setUserInput(e.target.value)}
+          placeholder="Escreva do seu jeito — a IA lapida o texto mantendo os fatos que você forneceu."
+          rows={3}
+          style={{ ...inputStyle, resize: "vertical", marginBottom: "8px", fontSize: "13px" }}
+        />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+          {guidedQuestions?.map((q, i) => (
+            <div key={i}>
+              <label style={{ fontSize: "11px", color: "#71717a", display: "block", marginBottom: "4px" }}>{q}</label>
+              <input
+                type="text"
+                value={answers[i] ?? ""}
+                onChange={(e) => { const next = [...answers]; next[i] = e.target.value; setAnswers(next); }}
+                style={{ ...inputStyle, fontSize: "13px" }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {result && result.proposedText && (
+        <div style={{ marginBottom: "10px", padding: "12px", background: "rgba(0,0,0,0.3)", borderRadius: "8px", border: "1px solid rgba(139,92,246,0.15)" }}>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#6d28d9", marginBottom: "6px", letterSpacing: "0.06em" }}>PROPOSTA DA IA</div>
+          <p style={{ margin: 0, fontSize: "12px", color: "#e4e4e7", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{result.proposedText}</p>
+        </div>
+      )}
+
+      {result && result.missingFacts.length > 0 && (
+        <div style={{ marginBottom: "10px", padding: "10px 12px", background: "rgba(245,158,11,0.07)", borderRadius: "8px", border: "1px solid rgba(245,158,11,0.2)" }}>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#f59e0b", marginBottom: "6px", letterSpacing: "0.06em" }}>FALTA INFORMAR</div>
+          <ul style={{ margin: 0, padding: "0 0 0 14px" }}>
+            {result.missingFacts.map((f, i) => (
+              <li key={i} style={{ fontSize: "12px", color: "#fbbf24", lineHeight: 1.7 }}>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: "8px" }}>
+        <button
+          type="button"
+          onClick={generate}
+          disabled={loading}
+          style={{
+            flex: 1,
+            background: loading ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.18)",
+            border: "1px solid rgba(139,92,246,0.3)",
+            borderRadius: "8px",
+            color: "#a78bfa",
+            cursor: loading ? "default" : "pointer",
+            fontSize: "12px",
+            fontWeight: 700,
+            padding: "8px",
+          }}
+        >
+          {loading ? "Gerando..." : result ? "Regenerar" : "Gerar proposta"}
+        </button>
+        {result?.proposedText && (
+          <button
+            type="button"
+            onClick={applyAndClose}
+            style={{
+              flex: 1,
+              background: "rgba(0,212,170,0.12)",
+              border: "1px solid rgba(0,212,170,0.24)",
+              borderRadius: "8px",
+              color: "#00d4aa",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: 700,
+              padding: "8px",
+            }}
+          >
+            Usar este texto
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main editor ───────────────────────────────────────────────────────────────
 
 export function PlaybookEditorClient({ id, name, initialData, greetingMessage }: Props) {
@@ -482,6 +677,18 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                     rows={7}
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
+                  <CowriterBox
+                    field="notes"
+                    currentValue={data.notes}
+                    clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
+                    onApply={(text) => updateVersion({ notes: text })}
+                    guidedQuestions={[
+                      "Deve pressionar o lead para fechar logo?",
+                      "Quando oferecer agendamento (só com interesse claro ou sempre)?",
+                      "O que sempre mencionar ao falar de avaliação?",
+                      "Pode informar preços por mensagem?",
+                    ]}
+                  />
                 </FieldGroup>
               </EditorSection>
 
@@ -552,6 +759,17 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                     placeholder="Ex: Avaliação R$100, descontada do tratamento. Parcelamento em até 12x. Nunca informar preços por mensagem."
                     rows={4}
                     style={{ ...inputStyle, resize: "vertical" }}
+                  />
+                  <CowriterBox
+                    field="commercialPolicy"
+                    currentValue={data.commercialPolicy}
+                    clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
+                    onApply={(text) => updateVersion({ commercialPolicy: text })}
+                    guidedQuestions={[
+                      "Como cobram a avaliação? Tem desconto no tratamento?",
+                      "Tem parcelamento? Em quantas vezes?",
+                      "Compartilham preço dos procedimentos por mensagem?",
+                    ]}
                   />
                 </FieldGroup>
               </EditorSection>
