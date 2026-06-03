@@ -1,231 +1,142 @@
 # SystemOps Core
 
-Aplicação principal da SystemOps — SaaS de recepcionista IA para clínicas odontológicas.
+Aplicacao principal da SystemOps: recepcionista comercial com IA para clinicas, com WhatsApp, agenda, inbox, onboarding de clinicas e painel de owner.
 
-**Produção:** https://systemops-core-brendon-walefy-s-projects.vercel.app
+Producao: https://systemops-core.vercel.app
 
----
+## Estado Atual
 
-## Tese
+- Multi-clinica: configuracao operacional vive no banco, por clinica.
+- WhatsApp atual: Z-API por clinica, resolvida por `zapiInstanceId`.
+- Agenda atual: Google Calendar por clinica, resolvido por `clinics.googleCalendarId`.
+- Login de clinica: usuarios em `clinic_members.password_hash`.
+- Login owner: `OWNER_EMAIL` e `OWNER_PASSWORD` via env.
+- Migrations: baseline unico em `drizzle/0000_baseline.sql`, reprodutivel do zero.
+- Producao: Vercel + Neon + Drizzle migrate.
 
-Clínicas não precisam apenas de mais leads. Elas precisam operar melhor os leads que já recebem.
+## Rotas Principais
 
-A SystemOps organiza a jornada comercial:
-1. lead entra pelo WhatsApp;
-2. sistema registra origem, conversa e status;
-3. agente especialista em vendas analisa o contexto;
-4. recepção aprova ou edita a recomendação;
-5. Google Calendar ajuda a encontrar/agendar horário;
-6. follow-up e resultado voltam para o core;
-7. gestor enxerga conversão, perdas e ROI.
+### Publicas
 
----
+| Rota | Uso |
+| --- | --- |
+| `/` | Landing/demo inicial |
+| `/login` | Login unico com redirecionamento por role |
 
-## Rotas e Telas
+### Area da Clinica
 
-### Públicas
-| Rota | Descrição |
-|------|-----------|
-| `/` | Landing page com hero e demo flow |
-| `/login` | Login único — redireciona por role após autenticação |
+| Rota | Uso |
+| --- | --- |
+| `/app/dashboard` | KPIs da clinica |
+| `/app/inbox` | Conversas ativas, atencao humana e historico |
+| `/app/inbox/[conversationId]` | Chat, pausa da IA e agendamento manual |
+| `/app/agenda` | Agenda e bloqueios |
+| `/app/settings/playbook` | Configuracao da IA, playbook, simulador e sugestoes |
+| `/app/settings/tratamentos` | Tratamentos/procedimentos |
+| `/app/settings/profissionais` | Profissionais e agenda por recurso |
 
-### Clinic Admin (`/app/*`)
-Requer autenticação com role `clinic_admin` ou `owner`.
+### Owner
 
-| Rota | Tela | URL produção |
-|------|------|--------------|
-| `/app/dashboard` | Dashboard com KPIs (leads, agendamentos, custos, temperatura) | [abrir](https://systemops-core-brendon-walefy-s-projects.vercel.app/app/dashboard) |
-| `/app/inbox` | Inbox — lista de conversas ativas | [abrir](https://systemops-core-brendon-walefy-s-projects.vercel.app/app/inbox) |
-| `/app/inbox/[id]` | Conversa individual com chat + painel do lead | — |
-| `/app/settings/playbook` | Configurações da IA (tom de voz, playbook, horários) | [abrir](https://systemops-core-brendon-walefy-s-projects.vercel.app/app/settings/playbook) |
+| Rota | Uso |
+| --- | --- |
+| `/owner` | Visao consolidada das clinicas |
+| `/owner/clinics/new` | Onboarding manual de clinica |
+| `/owner/clinics/[clinicId]` | Detalhe, saude operacional e reset de dados |
+| `/owner/financeiro` | Custos e indicadores financeiros |
 
-### Owner Panel (`/owner/*`)
-Requer autenticação com role `owner`. Acesso exclusivo via `OWNER_EMAIL`.
+### APIs Operacionais
 
-| Rota | Tela | URL produção |
-|------|------|--------------|
-| `/owner` | Visão consolidada de todas as clínicas (KPIs + alertas) | [abrir](https://systemops-core-brendon-walefy-s-projects.vercel.app/owner) |
-| `/owner/clinics/[id]` | Drill-down de uma clínica (volume diário, handoffs, falhas da IA) | — |
+| Rota | Uso |
+| --- | --- |
+| `POST /api/whatsapp/zapi` | Webhook Z-API atual |
+| `POST /api/conversations/[conversationId]/send` | Envio manual pelo inbox |
+| `POST /api/calendar/setup-watch` | Setup de watch do Google Calendar |
+| `/api/cron/*` | Rotinas protegidas por `CRON_SECRET` |
+| `/api/e2e/*` | Rotas destrutivas de teste, so com `E2E_MODE=true` fora de producao |
 
-### Rotas legadas (redirecionam automaticamente)
-| De | Para |
-|----|------|
-| `/dashboard` | `/app/dashboard` |
-| `/inbox` | `/app/inbox` |
-| `/inbox/[id]` | `/app/inbox/[id]` |
-| `/settings/playbook` | `/app/settings/playbook` |
+O endpoint `POST /api/whatsapp/webhook` para Meta Cloud API ainda existe como compatibilidade, mas nao e o fluxo de producao atual.
 
----
+## Arquitetura em Uma Frase
 
-## Roles e Autenticação
+O LLM entende e verbaliza; o sistema decide.
 
-O sistema usa tokens HMAC-SHA256 com role embutida no payload.
+O fluxo central fica em `ConversationOrchestrator`: ele recebe a mensagem normalizada, consulta estado, classifica intencao, executa regra deterministica, agenda quando necessario e so entao pede ao `ResponseComposer` para escrever a resposta.
 
-| Role | Acesso | Como configurar |
-|------|--------|-----------------|
-| `owner` | `/owner/*` + tudo em `/app/*` | Definir `OWNER_EMAIL` |
-| `clinic_admin` | `/app/*` | Adicionar email em `ADMIN_EMAIL` |
+Leia a arquitetura atual em [docs/architecture/current.md](docs/architecture/current.md).
 
-**Fluxo de login:**
-- `OWNER_EMAIL` + `OWNER_PASSWORD` (ou `ADMIN_PASSWORD`) → role `owner` → `/owner`
-- Qualquer email em `ADMIN_EMAIL` + `ADMIN_PASSWORD` → role `clinic_admin` → `/app/dashboard`
+## Variaveis de Ambiente
 
----
+Use `.env.example` como contrato minimo. Nao coloque credenciais de clinica em env.
 
-## Variáveis de Ambiente
+| Variavel | Uso |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL/Neon |
+| `SESSION_SECRET` | Assinatura das sessoes |
+| `OWNER_EMAIL` | Login do owner |
+| `OWNER_PASSWORD` | Senha do owner |
+| `OPENAI_API_KEY` | Classificacao, composicao e transcricao |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account do Google Calendar |
+| `GOOGLE_PRIVATE_KEY` | Chave privada da service account |
+| `CRON_SECRET` | Protecao das rotas cron |
+| `TOGGLE_SECRET` | Protecao de toggles operacionais |
+| `SIMULATE_API_KEY` | Acesso ao sandbox de simulacao |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Push notifications no browser |
+| `VAPID_PRIVATE_KEY` | Push notifications no servidor |
+| `VAPID_SUBJECT` | Identidade VAPID |
 
-Copie `.env.example` para `.env.local` e preencha:
+Configuracoes por clinica ficam no banco: Z-API, Google Calendar, playbook, tom de voz, horarios, timezone, profissionais e tratamentos.
+
+## Setup Local
 
 ```bash
-# Auth
-OWNER_EMAIL="brendonwalefyom@gmail.com"     # acesso ao /owner panel
-OWNER_PASSWORD=""                            # opcional — usa ADMIN_PASSWORD se vazio
-ADMIN_EMAIL="adm@clinica.com,gregorie@clinica.com"  # múltiplos, separados por vírgula
-ADMIN_PASSWORD="senha-compartilhada"
-
-SESSION_SECRET="string-aleatoria-longa"
-
-# Banco
-DATABASE_URL="postgres://..."
-
-# Google Calendar (service account)
-GOOGLE_CALENDAR_ID=""
-GOOGLE_SERVICE_ACCOUNT_EMAIL=""
-GOOGLE_PRIVATE_KEY=""
-
-# WhatsApp
-WHATSAPP_VERIFY_TOKEN=""
-WHATSAPP_ACCESS_TOKEN=""
-WHATSAPP_PHONE_NUMBER_ID=""
-RECEPTIONIST_PHONE_NUMBER=""
-
-# OpenAI
-OPENAI_API_KEY=""
-
-# Piloto
-PILOT_CLINIC_ID=""
+npm install
+cp .env.example .env.local
+npm run db:migrate
+npm run dev
 ```
 
-### Adicionar usuário Gregorie (clinic admin)
-Edite `ADMIN_EMAIL` no Vercel adicionando o email dele separado por vírgula:
-```
-ADMIN_EMAIL=adm@clinica.com,gregorie@clinica.com
-```
-Ele usará a mesma `ADMIN_PASSWORD` já configurada.
+Scripts uteis:
 
----
-
-## Stack
-
-- **Framework:** Next.js 15 (App Router)
-- **Banco:** PostgreSQL (Neon) via Drizzle ORM
-- **Auth:** Custom HMAC-SHA256 (sem dependência externa)
-- **Deploy:** Vercel
-- **AI:** OpenAI API
-- **WhatsApp:** Z-API / Meta Cloud API
-- **Calendário:** Google Calendar (service account)
-
-## Estrutura de Rotas (App Router)
-
-```
-src/app/
-├── page.tsx                     # Landing
-├── login/                       # Login + actions
-├── (admin)/                     # Rotas legadas com redirects
-├── (clinic)/app/                # Área da clínica (dashboard, inbox, settings)
-└── (owner)/owner/               # Owner panel (visão consolidada)
+```bash
+npm run verify          # lint + typecheck + testes
+npm run verify:agenda   # testes focados em agenda/calendario
+npm run db:generate     # gera migration a partir do schema
+npm run db:migrate      # aplica migrations usando .env.local
+npm run create-clinic   # cria clinica via script de onboarding
+npm run seed            # seed local da Ximendes
 ```
 
-## Instalação no Celular (PWA)
+## Banco e Migrations
 
-O SystemOps é instalável como app na tela inicial — sem App Store ou Play Store.
-Abre em tela cheia, sem barra do navegador, com ícone próprio.
+O historico antigo foi consolidado em um baseline:
 
-### Android — Google Chrome
+- `drizzle/0000_baseline.sql`
+- `drizzle/meta/0000_snapshot.json`
+- `drizzle/meta/_journal.json`
 
-1. Acesse o sistema pelo Chrome
-2. Toque nos **3 pontinhos** → **"Adicionar à tela inicial"**
-3. Confirme o nome e toque em **Adicionar**
+Para detalhes e procedimento seguro, leia [docs/operations/migrations-baseline.md](docs/operations/migrations-baseline.md).
 
-> Em alguns dispositivos o Chrome exibe um banner automático de instalação na parte inferior da tela.
+## Documentacao
 
-### iPhone — Safari
+Comece por [docs/README.md](docs/README.md).
 
-> Obrigatório usar o Safari. Chrome e outros navegadores no iPhone não permitem instalação.
+Documentos mais usados:
 
-1. Acesse o sistema pelo **Safari**
-2. Toque no ícone de **Compartilhar** (seta para cima na barra inferior)
-3. Role e toque em **"Adicionar à Tela de Início"**
-4. Confirme e toque em **Adicionar**
+- [Arquitetura atual](docs/architecture/current.md)
+- [Change control e deploy safety](docs/operations/change-control.md)
+- [Onboarding de clinica](docs/operations/onboarding-clinica.md)
+- [Sandbox omniQA](docs/testing/omniqa-simulate-integration.md)
+- [Posicionamento do produto](docs/product/positioning.md)
+- [Guia de UX para agentes](docs/agent-guides/saas-ux-strategy.md)
 
-### O que esperar após instalar
+## Regras de Trabalho
 
-- App abre em **tela cheia** (sem barra do navegador)
-- Ícone com fundo escuro e raio verde na tela inicial
-- Abre direto no Inbox de conversas
+`main` e producao. Para mudancas normais:
 
-### Arquivos relevantes
+1. criar branch focada;
+2. manter escopo pequeno;
+3. rodar `npm run verify`;
+4. abrir PR ou validar preview;
+5. mergear somente com checks verdes.
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `src/app/manifest.ts` | Manifest PWA (nome, cores, start_url, ícones) |
-| `src/app/layout.tsx` | Meta tags apple-web-app e viewport |
-| `public/icons/` | Ícones PNG: 192×192, 512×512, 180×180 (iOS) |
-
----
-
-## Gerenciar Bloqueios de Agenda
-
-Rota: `/app/agenda`
-
-Permite bloquear horários no Google Calendar para que a IA não ofereça esses períodos automaticamente.
-
-### Modos
-
-| Modo | Quando usar |
-|------|-------------|
-| **Dia único** | Bloquear uma data específica |
-| **Período** | Bloquear vários dias consecutivos (férias, congressos) |
-
-### Atalhos de horário
-
-| Botão | Horário |
-|-------|---------|
-| Manhã | 08:00 – 12:00 |
-| Tarde | 13:00 – 18:00 |
-| Noite | 18:00 – 22:00 |
-
-Os campos de início e fim ficam editáveis após o atalho para ajuste fino.
-
-### Comportamento durante o envio
-
-- Todos os campos e botões ficam desabilitados enquanto o bloqueio é salvo
-- Períodos com 7+ dias exibem o aviso: *"Criando X bloqueios no calendário, aguarde…"*
-- Mensagem de confirmação verde aparece ao concluir
-
-### Limite técnico
-
-- Períodos de até 90 dias
-- Timeout da função configurado em 30s (`maxDuration` em `actions.ts`)
-- Um evento é criado no Google Calendar por dia do período
-
-### Arquivos relevantes
-
-| Arquivo | Descrição |
-|---------|-----------|
-| `src/app/(clinic)/app/agenda/page.tsx` | Página server-side (lista de bloqueios) |
-| `src/app/(clinic)/app/agenda/BlockForm.tsx` | Formulário client-side (presets + período) |
-| `src/app/(clinic)/app/agenda/actions.ts` | Server Actions: `createBlock`, `createBlockRange`, `deleteBlock` |
-
----
-
-## Webhooks (não alterar)
-
-- `POST /api/whatsapp/webhook` — Meta Cloud API
-- `POST /api/whatsapp/zapi` — Z-API incoming messages
-- `GET  /api/clinic/auto-reply` — toggle auto-reply
-
----
-
-## Tese
-Clínicas não precisam de mais leads. Precisam operar melhor os que já chegam.
+As regras completas ficam em [AGENTS.md](AGENTS.md).

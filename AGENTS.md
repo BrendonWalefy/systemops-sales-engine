@@ -2,6 +2,16 @@
 
 These rules are mandatory for every AI agent or human contributor working in this repository.
 
+## Canonical Context
+
+Before code changes, use these files as the current source of truth:
+
+- `README.md`
+- `docs/architecture/current.md`
+- `docs/operations/change-control.md`
+
+Historical prompts, handoffs, notes, or deleted roadmap files must not be treated as current requirements.
+
 ## Stable Production Rule
 
 `main` is treated as production-ready. Do not push directly to `main` for new work unless the user explicitly asks for an emergency hotfix and accepts the risk.
@@ -68,6 +78,23 @@ Changes must include tests when they affect:
 
 Do not rely on playbook text or LLM instructions to enforce business rules. Business rules must live in deterministic code and be tested.
 
+## Architecture Guardrails
+
+The core rule is:
+
+> The LLM understands and verbalizes. The system decides.
+
+Do not regress the conversation-first scheduling architecture:
+
+- HTTP routes in `src/app/api/` should stay thin: parse input, resolve context, call a use case or `ConversationOrchestrator`, return HTTP.
+- Do not infer conversation state from message text. Use `ConversationStateMachine` and `conversation_states`.
+- Do not create Google Calendar events directly outside `BookingService`.
+- Do not bypass `ClinicTimezone` with manual offsets.
+- Do not reintroduce global env fallbacks for clinic config. Z-API, Google Calendar, playbook, tone, hours, professionals, treatments, and clinic users live in the database.
+- Do not reintroduce `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `PILOT_CLINIC_ID`, global Z-API credentials, or global `GOOGLE_CALENDAR_ID`.
+- New LLM behavior belongs in `src/core/intelligence/` or an isolated infrastructure adapter, with deterministic code around decisions.
+- Drizzle queries should live in repositories or explicit maintenance scripts, not scattered through UI components or arbitrary routes.
+
 ## Database And Deploy Safety
 
 - Never edit generated Drizzle migrations by hand unless explicitly correcting a broken generated migration before it has been applied anywhere.
@@ -86,4 +113,3 @@ Stop and report:
 - safest rollback option.
 
 Do not keep stacking unrelated fixes on top of a failing change.
-

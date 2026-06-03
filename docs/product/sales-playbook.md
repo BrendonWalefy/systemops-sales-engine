@@ -1,7 +1,7 @@
 # Playbook de Vendas — SystemOps Recepcionista IA
 
 > Documento interno para apresentar, oferecer planos e fechar contratos.
-> Atualizado em: maio/2026.
+> Atualizado em: junho/2026.
 
 ---
 
@@ -111,7 +111,7 @@ Se forem mais de 5, mostre que o retorno do investimento já está garantido.
 
 Se for R$ 1.500 (conservador para odonto):
 
-> *"O plano Clínica custa R$ 1.497. Se a IA recuperar apenas 1 lead por mês que vocês perderiam fora do horário, o sistema já se paga. No nosso piloto, clínicas como a sua recuperam em média 5 a 10 consultas por mês que antes iam embora."*
+> *"O plano Clínica custa R$ 1.497. Se a IA recuperar apenas 1 lead por mês que vocês perderiam fora do horário, o sistema já se paga. Em clínicas com volume parecido, a meta inicial é recuperar de 5 a 10 consultas por mês que antes iam embora."*
 
 ---
 
@@ -131,7 +131,7 @@ Se for R$ 1.500 (conservador para odonto):
 
 > *"Faz sentido. Uma coisa que eu posso fazer: a gente faz um teste de 7 dias com a IA respondendo ao WhatsApp de vocês — zero custo. Você vê funcionando na prática antes de decidir."*
 
-(Se a clínica já tiver sido onboardada como piloto, esse é o pitch de conversão de piloto para contrato pago.)
+(Se a clínica já tiver sido onboardada para teste, esse é o pitch de conversão para contrato pago.)
 
 ---
 
@@ -221,7 +221,7 @@ ROI = 8.000 / 1.497 = 534% ao mês
 
 ## 10. Case de referência — Ximendes Odontologia
 
-**Contexto:** Clínica odontológica em piloto desde [data de início].
+**Contexto:** Clínica odontológica usando o SystemOps em operação assistida.
 
 **Resultados:**
 - IA responde 100% das mensagens fora do horário
@@ -241,7 +241,7 @@ Sempre termine com uma das opções abaixo:
 **Opção A — Decisão imediata:**
 > *"Posso te enviar o link de pagamento agora. A gente começa o onboarding amanhã e em 3 dias a IA está respondendo pelos seus pacientes."*
 
-**Opção B — Piloto:**
+**Opção B — Teste assistido:**
 > *"Que tal a gente conectar o WhatsApp de vocês por 7 dias sem custo? Você vê o sistema funcionando na prática antes de qualquer compromisso."*
 
 **Opção C — Urgência:**
