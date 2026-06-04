@@ -6,7 +6,9 @@ import { db } from "@/infrastructure/db/client";
 import { slotReservations } from "@/infrastructure/db/schema";
 import { and, eq, gt, lt, or } from "drizzle-orm";
 
-const RESERVATION_TTL_MINUTES = 10;
+// Deve ser >= SLOT_OFFER_TTL_MINUTES (ConversationStateMachine) para o lead não
+// tentar confirmar dentro da janela de oferta com a reserva já expirada.
+const RESERVATION_TTL_MINUTES = 15;
 
 export type SlotReservation = {
   id: string;
