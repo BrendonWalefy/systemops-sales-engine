@@ -50,7 +50,10 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
       const slotEndDate = new Date(slotEnd);
       const endParts = timezone.toLocalParts(slotEndDate);
       const endTimeMin = endParts.hour * 60 + endParts.minute;
-      const endBusinessMin = businessHours.endHour * 60 + businessHours.endMinute;
+      const isSaturdayEnd = endParts.weekday === 6 && businessHours.saturdayEndHour !== undefined;
+      const endBusinessMin = isSaturdayEnd
+        ? businessHours.saturdayEndHour! * 60 + (businessHours.saturdayEndMinute ?? 0)
+        : businessHours.endHour * 60 + businessHours.endMinute;
       const endStillInBusiness =
         businessHours.days.includes(endParts.weekday) &&
         endTimeMin <= endBusinessMin;

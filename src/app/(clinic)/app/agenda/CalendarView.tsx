@@ -1,7 +1,7 @@
 "use client";
 
 import "temporal-polyfill/global";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useCalendarApp, ScheduleXCalendar } from "@schedule-x/react";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 import { createEventsServicePlugin } from "@schedule-x/events-service";
@@ -110,8 +110,8 @@ function toCalendarEvent(e: AppointmentEvent) {
 }
 
 export function CalendarView({ initialEvents, onSlotClick, onEventClick, onEventUpdate }: Props) {
-  const eventsService = createEventsServicePlugin();
-  const scrollController = createScrollControllerPlugin({ initialScroll: "07:00" });
+  const eventsService = useMemo(() => createEventsServicePlugin(), []);
+  const scrollController = useMemo(() => createScrollControllerPlugin({ initialScroll: "07:00" }), []);
 
   const calendar = useCalendarApp({
     locale: "pt-BR",

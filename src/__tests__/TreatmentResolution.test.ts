@@ -69,9 +69,9 @@ describe("resolveTreatmentDuration", () => {
       expect(result).toEqual({ kind: "ask_clarification", durationMinutes: CLINIC_DEFAULT });
     });
 
-    it("tratamentos com durações diferentes + shouldAskClarification=false → default (sem clarificação)", () => {
+    it("tratamentos com durações diferentes + shouldAskClarification=false → ask_clarification (sistema sempre pergunta)", () => {
       const result = resolveTreatmentDuration(null, treatments, CLINIC_DEFAULT, false);
-      expect(result).toEqual({ kind: "default", durationMinutes: CLINIC_DEFAULT });
+      expect(result).toEqual({ kind: "ask_clarification", durationMinutes: CLINIC_DEFAULT });
     });
   });
 

@@ -12,14 +12,14 @@ export type TreatmentResolution =
  * Precedência:
  *  1. Treatment identificado pelo LLM e encontrado na lista → usa duração dele
  *  2. Nenhum treatment identificado, todos com mesma duração → usa essa duração sem perguntar
- *  3. Nenhum treatment identificado, durações diferentes, LLM pediu clarificação → pede esclarecimento
+ *  3. Nenhum treatment identificado, durações diferentes → sempre pede esclarecimento
  *  4. Qualquer outro caso → duração padrão da clínica
  */
 export function resolveTreatmentDuration(
   identifiedTreatment: string | null,
   clinicTreatments: Treatment[],
   clinicDefaultDurationMinutes: number,
-  shouldAskClarification: boolean,
+  _shouldAskClarification: boolean,
 ): TreatmentResolution {
   // Caso 1: LLM identificou um treatment → busca correspondência case-insensitive
   if (identifiedTreatment && clinicTreatments.length > 0) {
@@ -42,8 +42,8 @@ export function resolveTreatmentDuration(
       return { kind: "all_same", durationMinutes: uniqueDurations[0] };
     }
 
-    if (uniqueDurations.length > 1 && shouldAskClarification) {
-      // Durações diferentes e LLM sinalizou ambiguidade → pedir esclarecimento antes de oferecer slots
+    if (uniqueDurations.length > 1) {
+      // Durações diferentes → sempre pedir esclarecimento, independente do LLM
       return { kind: "ask_clarification", durationMinutes: clinicDefaultDurationMinutes };
     }
   }

@@ -327,6 +327,11 @@ export class ConversationOrchestrator {
       },
     });
 
+    // ── 4–11. Processamento principal — erros aqui enviam fallback ao lead ──
+    // O try começa aqui (após registrar lead+conversa) para proteger aiPaused,
+    // rate limit e toda a lógica de IA com o mesmo fallback gracioso.
+    try {
+
     // ── 4. Verifica se a IA está pausada para esta conversa ──
     // Se há TTL expirado → retoma automaticamente e sinaliza ao Composer para contextualizar.
     // Se pausada sem TTL (pause manual) ou TTL ainda vigente → silêncio.
@@ -373,9 +378,6 @@ export class ConversationOrchestrator {
       console.warn(`[Orchestrator] Rate limit: ${phone} atingiu ${msgCount} msgs/h na conversa ${conversation.id}`);
       return { replied: false };
     }
-
-    // ── 7–11. Processamento principal — erros aqui enviam fallback ao lead ──
-    try {
 
     // ── 7. Carrega histórico de mensagens ──
     const allMessages = await this.conversationRepo.listMessages(conversation.id);
@@ -1172,12 +1174,13 @@ export class ConversationOrchestrator {
       );
 
     if (localAppointments.length > 0) {
+      const bufferMs = (clinic.postAppointmentBufferMinutes ?? 0) * 60_000;
       allSlots = allSlots.filter(
         (slot) =>
           !localAppointments.some(
             (a) =>
               a.startsAt.getTime() < slot.endsAt.getTime() &&
-              a.endsAt.getTime() > slot.startsAt.getTime(),
+              (a.endsAt.getTime() + bufferMs) > slot.startsAt.getTime(),
           ),
       );
     }
@@ -1218,7 +1221,7 @@ export class ConversationOrchestrator {
         const parts = timezone.toLocalParts(slot.startsAt);
         if (preferredPeriod === "morning") return parts.hour >= 8 && parts.hour < 12;
         if (preferredPeriod === "afternoon") return parts.hour >= 12 && parts.hour < 18;
-        if (preferredPeriod === "evening") return parts.hour >= 17;
+        if (preferredPeriod === "evening") return parts.hour >= 18;
         return true;
       });
       if (byPeriod.length > 0) {
@@ -1278,15 +1281,15 @@ export class ConversationOrchestrator {
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 
-  // Retorna o appointment ativo de hoje para o lead (dentro de um raio de 4h antes/depois de agora).
+  // Retorna o appointment ativo mais próximo de agora (futuro imediato ou passado recente ≤30min).
   private async findTodayAppointment(
     leadId: string,
     timezone: ClinicTimezone,
   ): Promise<{ startsAt: Date } | null> {
     const now = new Date();
     const { year, month, day } = timezone.toLocalParts(now);
-    const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0));
-    const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59));
+    const startOfDay = timezone.fromLocalParts(year, month, day, 0, 0);
+    const endOfDay = timezone.fromLocalParts(year, month, day, 23, 59);
 
     const rows = await db
       .select({ startsAt: appointmentsTable.startsAt })
@@ -1298,11 +1301,16 @@ export class ConversationOrchestrator {
           gte(appointmentsTable.startsAt, startOfDay),
           lt(appointmentsTable.startsAt, endOfDay),
         ),
-      )
-      .orderBy(asc(appointmentsTable.startsAt))
-      .limit(1);
+      );
 
-    return rows.length > 0 ? { startsAt: rows[0].startsAt } : null;
+    if (rows.length === 0) return null;
+
+    // Retorna o appointment com startsAt mais próximo de agora
+    const nowMs = now.getTime();
+    const nearest = rows.sort(
+      (a, b) => Math.abs(a.startsAt.getTime() - nowMs) - Math.abs(b.startsAt.getTime() - nowMs),
+    )[0];
+    return { startsAt: nearest.startsAt };
   }
 
   private async notifyAttentionNeeded(

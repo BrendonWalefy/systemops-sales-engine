@@ -8,6 +8,10 @@ export type ParsedBusinessHours = {
   endHour: number;     // ex: 18 (exclusivo — slots até endHour ou endHour:endMinute)
   endMinute: number;   // ex: 0 ou 30
   days: number[];      // 0=Dom, 1=Seg, ..., 6=Sáb
+  saturdayStartHour?: number;  // horário de início exclusivo do sábado
+  saturdayStartMinute?: number;
+  saturdayEndHour?: number;    // horário de fim exclusivo do sábado (ex: 13)
+  saturdayEndMinute?: number;
 };
 
 export type LocalDateParts = {
@@ -144,6 +148,11 @@ export class ClinicTimezone {
     const p = this.toLocalParts(utc);
     if (!bh.days.includes(p.weekday)) return false;
     const timeMin = p.hour * 60 + p.minute;
+    if (p.weekday === 6 && bh.saturdayEndHour !== undefined) {
+      const satStartMin = (bh.saturdayStartHour ?? bh.startHour) * 60 + (bh.saturdayStartMinute ?? bh.startMinute);
+      const satEndMin = bh.saturdayEndHour * 60 + (bh.saturdayEndMinute ?? 0);
+      return timeMin >= satStartMin && timeMin < satEndMin;
+    }
     const startMin = bh.startHour * 60 + bh.startMinute;
     const endMin = bh.endHour * 60 + bh.endMinute;
     return timeMin >= startMin && timeMin < endMin;
@@ -277,5 +286,14 @@ export function parseBusinessHours(raw: string | null): ParsedBusinessHours {
   const hasSaturday = /s[aá]b/.test(normalized);
   const days = hasSaturday ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
 
-  return { startHour, startMinute, endHour, endMinute, days };
+  // Tenta capturar horário específico do sábado (ex: "sab 8h-13h")
+  const satMatch = normalized.match(
+    /s[aá]b(?:ado)?\s+(\d{1,2})(?:h(\d{2})?|:(\d{2}))?\s*[-–]\s*(\d{1,2})(?:h(\d{2})?|:(\d{2}))?/,
+  );
+  const saturdayStartHour   = satMatch ? Number(satMatch[1]) : undefined;
+  const saturdayStartMinute = satMatch ? Number(satMatch[2] ?? satMatch[3] ?? "0") : undefined;
+  const saturdayEndHour     = satMatch ? Number(satMatch[4]) : undefined;
+  const saturdayEndMinute   = satMatch ? Number(satMatch[5] ?? satMatch[6] ?? "0") : undefined;
+
+  return { startHour, startMinute, endHour, endMinute, days, saturdayStartHour, saturdayStartMinute, saturdayEndHour, saturdayEndMinute };
 }

@@ -63,6 +63,25 @@ export class BookingService {
       return { success: false, reason: "slot_taken" };
     }
 
+    // Passo 1.5: Verifica a tabela de appointments para blocos criados via E2E/operador
+    // que existem no banco mas não no Google Calendar (não cobertos pelo lock de reserva).
+    const lookbackMs = 4 * 60 * 60_000; // janela retroativa para capturar appointments longos
+    const candidates = await this.appointmentRepo.findByPeriod(
+      clinic.id,
+      new Date(startsAt.getTime() - lookbackMs),
+      endsAt,
+    );
+    const hasDbOverlap = candidates.some(
+      (a) =>
+        (a.status === "scheduled" || a.status === "confirmed") &&
+        a.startsAt.getTime() < endsAt.getTime() &&
+        a.endsAt.getTime() > startsAt.getTime(),
+    );
+    if (hasDbOverlap) {
+      await this.reservationService.release(reservation.id);
+      return { success: false, reason: "slot_taken" };
+    }
+
     // Passo 2.5: Re-verifica disponibilidade no Google Calendar em tempo real.
     // O lock otimista (Passo 2) protege contra concorrência entre dois leads,
     // mas não detecta eventos adicionados manualmente pelo operador após a oferta.
