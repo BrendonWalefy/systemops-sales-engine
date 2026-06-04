@@ -78,6 +78,26 @@ Changes must include tests when they affect:
 
 Do not rely on playbook text or LLM instructions to enforce business rules. Business rules must live in deterministic code and be tested.
 
+## Sources of Truth — Where Each Type of Information Lives
+
+Before adding a new constant, config, or rule, identify which category it fits. The rule: **if you need to change it in more than one place, the architecture is wrong.**
+
+| Type | Canonical Owner | Access Pattern |
+|------|-----------------|----------------|
+| Editorial content (tone, objections, policy, playbook) | `playbook_versions` table | `resolveActiveEditorialConfig(clinicId)` |
+| Clinic operational config (hours, timezone, buffer, limits) | `clinics` table | `Clinic` entity |
+| Universal conversational behavior (not clinic-specific) | LLM prompt strings in `src/core/intelligence/` | Never duplicated in DB |
+| Constants that *could* vary by clinic | `clinics.*` field + code fallback | `clinic.field ?? CODE_DEFAULT` |
+| Time/timezone logic | `ClinicTimezone` (`src/core/scheduling/ClinicTimezone.ts`) | Always use `getTimeGreeting()`, `toLocalParts()` — never manual offsets |
+
+**Explicit prohibitions:**
+
+- Do not hardcode clinic-specific behavior in prompt strings (policy, hours, tone). These must come from the DB via `resolveActiveEditorialConfig` or the `Clinic` entity.
+- Do not duplicate a business rule between code and an LLM prompt. If the rule is in `ClinicTimezone.ts`, the prompt must reference the value injected at runtime — not re-declare it as a string.
+- Do not add a new code constant for something that should be configurable per clinic (rate limits, slot lookahead, thresholds). Add a nullable column to `clinics` with a code default instead.
+- Do not use different context-window sizes in `IntentClassifier` and `ResponseComposer`. Both must use the same `.slice(-N)` value so classification and composition see the same conversation history.
+- The full audit of what is and is not configurable per clinic lives in [`docs/architecture/sources-of-truth.md`](docs/architecture/sources-of-truth.md).
+
 ## Architecture Guardrails
 
 The core rule is:
