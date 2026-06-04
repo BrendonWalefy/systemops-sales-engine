@@ -180,7 +180,7 @@ Responda de forma informativa e acolhedora. Ao final da resposta, adicione uma l
 
     case "greeting":
       return `AÇÃO EXECUTADA: Lead enviou saudação — primeiro contato ou reinício de conversa.
-Use a saudação temporal correta com base no HORÁRIO ATUAL indicado no sistema: antes das 12h → "Bom dia", entre 12h e 18h → "Boa tarde", após 18h → "Boa noite". Se o nome do lead estiver disponível no sistema, inclua-o logo após a saudação (ex: "Boa tarde, João!"). Seja caloroso, se apresente brevemente se for o primeiro contato e pergunte como pode ajudar. Se há histórico de conversa, apenas cumprimente e continue — não reinicie do zero.`;
+Use a saudação temporal correta com base no HORÁRIO ATUAL indicado no sistema: entre 05h e 12h → "Bom dia", entre 12h e 18h → "Boa tarde", fora desse intervalo (incluindo madrugada) → "Boa noite". Se o nome do lead estiver disponível no sistema, inclua-o logo após a saudação (ex: "Boa tarde, João!"). Seja caloroso, se apresente brevemente se for o primeiro contato e pergunte como pode ajudar. Se há histórico de conversa, apenas cumprimente e continue — não reinicie do zero.`;
 
     case "acknowledgment":
       return `AÇÃO EXECUTADA: Lead enviou reconhecimento mid-conversa ("ok", "blz", "entendi", "certo", "obrigado" após info) ou saudação isolada com histórico ativo.

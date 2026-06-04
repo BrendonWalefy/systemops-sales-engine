@@ -5,7 +5,7 @@ import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
-import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import { ClinicTimezone, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import type { ActionResult, ComposedResponse } from "@/core/intelligence/ResponseComposer";
 import type { Message } from "@/domain/entities/conversation";
@@ -93,9 +93,7 @@ function isResetCommand(msg: string): boolean {
 
 function getDayGreeting(timezone: ClinicTimezone): string {
   const { hour } = timezone.toLocalParts(new Date());
-  if (hour < 12) return "Bom dia";
-  if (hour < 18) return "Boa tarde";
-  return "Boa noite";
+  return getTimeGreeting(hour);
 }
 
 // ── Slots: reais (QA Calendar) ou simulados ──────────────────────────────────
