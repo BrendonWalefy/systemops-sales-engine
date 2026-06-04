@@ -108,6 +108,7 @@ REGRA PARA identifiedTreatment:
 - Tente mapear o que o lead disse para um dos procedimentos da lista fornecida.
 - Use correspondência flexível: ignore acentos, maiúsculas, abreviações e erros de digitação comuns.
 - Se o lead mencionar algo que claramente corresponde a um procedimento da lista → retorne o nome exato da lista.
+- EXCEÇÃO — "avaliação": Se o lead pedir "avaliação" (mesmo que cite um procedimento, ex: "avaliação para lentes", "avaliação de implante"), procure na lista um procedimento que contenha "avaliação" ou "avaliaç". Se encontrar, retorne o nome exato desse procedimento de avaliação. Se NÃO encontrar procedimento de avaliação na lista, retorne null — "avaliação" não é equivalente ao procedimento principal.
 - Se o lead mencionar algo que NÃO corresponde a nenhum procedimento da lista → retorne null e use shouldAskClarification: true.
 - Se o lead não mencionou nenhum procedimento (ex: "quero marcar uma consulta" sem especificar qual) → retorne null.
 - identifiedTreatment só é relevante quando intent = "book_appointment" ou "check_availability".

@@ -624,7 +624,7 @@ export class ConversationOrchestrator {
             clinicAddress: clinic.address,
           });
         } else if (result.reason === "slot_taken") {
-          // Slot foi tomado por outro lead — oferece novos horários
+          // Slot foi tomado por outro lead entre a oferta e a confirmação
           const { slots: newSlots } = await this.fetchAndOfferSlots(
             conversation.id,
             clinic,
@@ -633,7 +633,7 @@ export class ConversationOrchestrator {
             businessHours,
           );
           if (newSlots.length > 0) {
-            replyText = await compose({ type: "slots_found", slots: newSlots, askedForPreference: false });
+            replyText = await compose({ type: "slot_taken_reoffered", newSlots });
           } else {
             replyText = await compose({ type: "no_slots_available" });
           }

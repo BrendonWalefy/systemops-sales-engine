@@ -274,7 +274,7 @@ export function parseBusinessHours(raw: string | null): ParsedBusinessHours {
   //   "8h" ou "8h30"  → grupo 1 = hora, grupo 2 = minutos (hXX)
   //   "08:00" ou "08:30" → grupo 1 = hora, grupo 3 = minutos (:XX)
   const hoursMatch = normalized.match(
-    /(\d{1,2})(?:h(\d{2})?|:(\d{2}))?\s*[-–]\s*(\d{1,2})(?:h(\d{2})?|:(\d{2}))?/,
+    /(\d{1,2})(?:h(\d{2})?|:(\d{2}))?\s*(?:[-–]|às)\s*(\d{1,2})(?:h(\d{2})?|:(\d{2}))?/,
   );
 
   const startHour   = hoursMatch ? Number(hoursMatch[1]) : 8;
@@ -287,8 +287,9 @@ export function parseBusinessHours(raw: string | null): ParsedBusinessHours {
   const days = hasSaturday ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
 
   // Tenta capturar horário específico do sábado (ex: "sab 8h-13h")
+  // "sab 8h-13h", "sábado 8h–13h", "sábado das 8h às 13h"
   const satMatch = normalized.match(
-    /s[aá]b(?:ado)?\s+(\d{1,2})(?:h(\d{2})?|:(\d{2}))?\s*[-–]\s*(\d{1,2})(?:h(\d{2})?|:(\d{2}))?/,
+    /s[aá]b(?:ado)?\s+(?:das?\s+)?(\d{1,2})(?:h(\d{2})?|:(\d{2}))?\s*(?:[-–]|às)\s*(\d{1,2})(?:h(\d{2})?|:(\d{2}))?/,
   );
   const saturdayStartHour   = satMatch ? Number(satMatch[1]) : undefined;
   const saturdayStartMinute = satMatch ? Number(satMatch[2] ?? satMatch[3] ?? "0") : undefined;

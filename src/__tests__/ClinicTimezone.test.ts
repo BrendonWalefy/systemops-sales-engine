@@ -2,7 +2,7 @@
 // These tests verify correct day-of-week handling and the round-trip correctness.
 
 import { describe, it, expect } from "vitest";
-import { ClinicTimezone, type ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
+import { ClinicTimezone, parseBusinessHours, type ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 
 const TZ = "America/Sao_Paulo"; // UTC-3 (no DST in winter; UTC-2 in DST summer)
 const tz = new ClinicTimezone(TZ);
@@ -306,5 +306,66 @@ describe("ClinicTimezone — startOfLocalDay", () => {
     expect(parts.day).not.toBe(26); // Must NOT be quinta Jun-26
     expect(parts.day).toBe(27);
     expect(parts.weekday).toBe(5);
+  });
+});
+
+// ─── Section 4: parseBusinessHours ────────────────────────────────────────
+
+describe("parseBusinessHours", () => {
+  it("formato clássico com traço: 'seg-sex 8h-18h, sab 8h-13h'", () => {
+    const bh = parseBusinessHours("seg-sex 8h-18h, sab 8h-13h");
+    expect(bh.startHour).toBe(8);
+    expect(bh.endHour).toBe(18);
+    expect(bh.days).toContain(5); // sexta
+    expect(bh.days).toContain(6); // sábado
+    expect(bh.saturdayEndHour).toBe(13);
+  });
+
+  it("formato 'às': 'Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.' (SYS-AGENDA-020)", () => {
+    const bh = parseBusinessHours("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.");
+    expect(bh.startHour).toBe(8);
+    expect(bh.endHour).toBe(18);
+    expect(bh.days).toContain(1); // segunda
+    expect(bh.days).toContain(5); // sexta
+    expect(bh.days).toContain(6); // sábado
+    expect(bh.saturdayStartHour).toBe(8);
+    expect(bh.saturdayEndHour).toBe(13);
+  });
+
+  it("sexta está incluída nos dias de atendimento (SYS-AGENDA-001)", () => {
+    const bh = parseBusinessHours("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.");
+    expect(bh.days).toContain(5); // weekday 5 = sexta
+  });
+
+  it("isBusinessHour — sábado 12h retorna true com saturdayEndHour=13", () => {
+    const bh = parseBusinessHours("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.");
+    const sat12h = tz.fromLocalParts(2026, 5, 6, 12, 0); // sábado 06/jun/2026 12h
+    expect(tz.isBusinessHour(sat12h, bh)).toBe(true);
+  });
+
+  it("isBusinessHour — sábado 13h retorna false com saturdayEndHour=13 (slot não deve começar às 13h)", () => {
+    const bh = parseBusinessHours("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.");
+    const sat13h = tz.fromLocalParts(2026, 5, 6, 13, 0); // sábado 06/jun/2026 13h
+    expect(tz.isBusinessHour(sat13h, bh)).toBe(false);
+  });
+
+  it("isBusinessHour — sexta 8h retorna true", () => {
+    const bh = parseBusinessHours("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.");
+    const fri8h = tz.fromLocalParts(2026, 5, 5, 8, 0); // sexta 05/jun/2026 8h
+    expect(tz.isBusinessHour(fri8h, bh)).toBe(true);
+  });
+
+  it("isBusinessHour — sexta 17h retorna true", () => {
+    const bh = parseBusinessHours("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.");
+    const fri17h = tz.fromLocalParts(2026, 5, 5, 17, 0); // sexta 05/jun/2026 17h
+    expect(tz.isBusinessHour(fri17h, bh)).toBe(true);
+  });
+
+  it("retorna null → usa defaults (seg-sex 8h-18h)", () => {
+    const bh = parseBusinessHours(null);
+    expect(bh.startHour).toBe(8);
+    expect(bh.endHour).toBe(18);
+    expect(bh.days).toEqual([1, 2, 3, 4, 5]);
+    expect(bh.saturdayEndHour).toBeUndefined();
   });
 });
