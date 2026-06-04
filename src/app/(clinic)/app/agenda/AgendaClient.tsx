@@ -290,8 +290,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
           <div className="calendar-loading">Carregando agenda...</div>
         ) : isScheduleView ? (
           <CalendarView
-            key={`sx-${view}`}
-            defaultView={SX_VIEW_NAMES[view as ScheduleView]}
+            currentView={SX_VIEW_NAMES[view as ScheduleView]}
             initialEvents={allCalendarEvents}
             onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
             onEventClick={(event) => setDrawer({ open: true, event })}

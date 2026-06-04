@@ -47,7 +47,7 @@ const CALENDAR_STATUS_COLORS = {
 
 type Props = {
   initialEvents: AppointmentEvent[];
-  defaultView?: string;
+  currentView?: string;
   onSlotClick?: (date: string, time: string) => void;
   onEventClick?: (event: AppointmentEvent) => void;
   onEventUpdate?: (id: string, startsAt: string, endsAt: string) => void;
@@ -110,12 +110,11 @@ function toCalendarEvent(e: AppointmentEvent) {
     end: toZonedDateTime(e.endsAt),
     calendarId: e.status,
     _meta: e,
-    // Blocks cannot be dragged or resized
     ...(isBlock && { options: { disableDND: true, disableResize: true } }),
   };
 }
 
-export function CalendarView({ initialEvents, defaultView, onSlotClick, onEventClick, onEventUpdate }: Props) {
+export function CalendarView({ initialEvents, currentView, onSlotClick, onEventClick, onEventUpdate }: Props) {
   const eventsService = useMemo(() => createEventsServicePlugin(), []);
   const scrollController = useMemo(() => createScrollControllerPlugin({ initialScroll: "07:00" }), []);
 
@@ -123,7 +122,7 @@ export function CalendarView({ initialEvents, defaultView, onSlotClick, onEventC
     locale: "pt-BR",
     isDark: true,
     views: [createViewWeek(), createViewDay(), createViewMonthGrid()],
-    defaultView: defaultView ?? createViewWeek().name,
+    defaultView: createViewWeek().name,
     plugins: [
       eventsService,
       createDragAndDropPlugin(15),
@@ -158,6 +157,14 @@ export function CalendarView({ initialEvents, defaultView, onSlotClick, onEventC
       },
     },
   });
+
+  // Switch view imperatively — avoids remount and overrides any persisted state
+  useEffect(() => {
+    if (!calendar || !currentView) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const $app = (calendar as any)?.$app;
+    $app?.calendarState?.setView?.(currentView, Temporal.Now.plainDateISO());
+  }, [calendar, currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync events when initialEvents changes
   useEffect(() => {
