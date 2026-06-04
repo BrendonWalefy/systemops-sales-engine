@@ -1,15 +1,32 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Ban, CalendarDays, ChevronLeft, ChevronRight, Plus, Users } from "lucide-react";
+import {
+  Ban,
+  Calendar,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  Plus,
+  Users,
+} from "lucide-react";
 import { CalendarView } from "./CalendarView";
 import { ResourceDayView } from "./ResourceDayView";
 import { AppointmentModal } from "./AppointmentModal";
 import { BlockModal } from "./BlockModal";
 import { AppointmentDrawer } from "./AppointmentDrawer";
-import type { AppointmentEvent, Professional } from "./types";
+import type { AppointmentEvent, BlockEvent, Professional } from "./types";
+import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 
-type View = "schedule" | "resource";
+type ScheduleView = "week" | "day" | "month";
+type View = ScheduleView | "resource";
+
+const SX_VIEW_NAMES: Record<ScheduleView, string> = {
+  week: createViewWeek().name,
+  day: createViewDay().name,
+  month: createViewMonthGrid().name,
+};
 
 type Props = {
   professionals: Professional[];
@@ -32,10 +49,30 @@ function addDays(d: Date, n: number): Date {
   return result;
 }
 
+function blockToEvent(block: BlockEvent): AppointmentEvent {
+  return {
+    id: block.calendarEventId,
+    leadId: "",
+    leadName: block.reason || "Horário bloqueado",
+    leadPhone: null,
+    professionalId: null,
+    professionalName: null,
+    professionalColor: null,
+    calendarEventId: block.calendarEventId,
+    calendarEventUrl: null,
+    conversationId: null,
+    startsAt: block.startsAt,
+    endsAt: block.endsAt,
+    status: "block",
+    source: "app",
+  };
+}
+
 export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
+  const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<View>("schedule");
+  const [view, setView] = useState<View>("week");
   const [resourceDate, setResourceDate] = useState(() => new Date());
 
   const [appointmentModal, setAppointmentModal] = useState<{
@@ -77,17 +114,36 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
           })),
         );
       }
+    } catch (err) {
+      console.error("[AgendaClient] fetchEvents error:", err);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const fetchBlocks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/calendar/blocks");
+      if (res.ok) {
+        const data = await res.json();
+        setBlocks(data.blocks ?? []);
+      }
+    } catch (err) {
+      console.error("[AgendaClient] fetchBlocks error:", err);
+    }
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    fetchEvents(range.from, range.to);
+    fetchBlocks();
+  }, [fetchEvents, fetchBlocks, range]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEvents(range.from, range.to);
-  }, [range, fetchEvents]);
+    fetchBlocks();
+  }, [range, fetchEvents, fetchBlocks]);
 
-  // When navigating resource view outside the loaded range, extend the fetch window
   useEffect(() => {
     const iso = resourceDate.toISOString();
     if (iso < range.from || iso > range.to) {
@@ -100,95 +156,131 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
 
   async function handleEventUpdate(id: string, startsAt: string, endsAt: string) {
     const [date, time] = startsAt.split(" ");
-    const startDate = new Date(startsAt.replace(" ", "T") + "Z");
-    const endDate = new Date(endsAt.replace(" ", "T") + "Z");
-    const durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / 60_000);
+    const [, endTime] = endsAt.split(" ");
 
-    await fetch(`/api/appointments/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, time: time.slice(0, 5), durationMinutes }),
-    });
-    fetchEvents(range.from, range.to);
+    // Compute duration from local time components — never add "Z" to a local time string
+    const [sh, sm] = time.split(":").map(Number);
+    const [eh, em] = endTime.split(":").map(Number);
+    let durationMinutes = eh * 60 + em - (sh * 60 + sm);
+    if (durationMinutes <= 0) durationMinutes += 24 * 60; // midnight-crossing edge case
+
+    try {
+      const res = await fetch(`/api/appointments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, time: time.slice(0, 5), durationMinutes }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("[AgendaClient] drag-drop update failed:", data.error);
+      }
+    } catch (err) {
+      console.error("[AgendaClient] drag-drop update error:", err);
+    } finally {
+      fetchEvents(range.from, range.to);
+    }
   }
 
-  const refresh = () => fetchEvents(range.from, range.to);
   const hasProfs = professionals.length > 0;
+  const isScheduleView = view !== "resource";
+
+  // Merge appointment events + block events for the calendar views
+  const allCalendarEvents: AppointmentEvent[] = [
+    ...events,
+    ...blocks.map(blockToEvent),
+  ];
 
   return (
     <div className="agenda-v2">
       {/* ── Toolbar ── */}
       <div className="agenda-v2-header">
-        {/* Left: title or date navigation */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          {view === "resource" ? (
-            <div className="agenda-date-nav">
-              <button
-                className="agenda-nav-btn"
-                onClick={() => setResourceDate((d) => addDays(d, -1))}
-                aria-label="Dia anterior"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <button
-                className="agenda-today-btn"
-                onClick={() => setResourceDate(new Date())}
-              >
-                Hoje
-              </button>
-              <h1>{formatResourceDate(resourceDate)}</h1>
-              <button
-                className="agenda-nav-btn"
-                onClick={() => setResourceDate((d) => addDays(d, 1))}
-                aria-label="Próximo dia"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
-          ) : (
-            <div>
-              <p className="eyebrow">Agenda</p>
-              <h1>Agenda da clínica</h1>
-            </div>
-          )}
+        {/* Row 1: title/date-nav + actions */}
+        <div className="agenda-v2-header-top">
+          <div className="agenda-v2-title-area">
+            {view === "resource" ? (
+              <div className="agenda-date-nav">
+                <button
+                  className="agenda-nav-btn"
+                  onClick={() => setResourceDate((d) => addDays(d, -1))}
+                  aria-label="Dia anterior"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <button
+                  className="agenda-today-btn"
+                  onClick={() => setResourceDate(new Date())}
+                >
+                  Hoje
+                </button>
+                <h1>{formatResourceDate(resourceDate)}</h1>
+                <button
+                  className="agenda-nav-btn"
+                  onClick={() => setResourceDate((d) => addDays(d, 1))}
+                  aria-label="Próximo dia"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            ) : (
+              <div>
+                <p className="eyebrow">Agenda</p>
+                <h1>Agenda da clínica</h1>
+              </div>
+            )}
+          </div>
 
-          {/* View switcher — only when professionals exist */}
-          {hasProfs && (
-            <div className="agenda-view-tabs">
-              <button
-                className={`agenda-view-tab${view === "schedule" ? " active" : ""}`}
-                onClick={() => setView("schedule")}
-              >
-                <CalendarDays size={12} />
-                Semana
-              </button>
-              <button
-                className={`agenda-view-tab${view === "resource" ? " active" : ""}`}
-                onClick={() => setView("resource")}
-              >
-                <Users size={12} />
-                Por profissional
-              </button>
-            </div>
-          )}
+          <div className="agenda-v2-actions">
+            <button
+              className="btn-secondary btn-sm"
+              onClick={() => setBlockModal({ open: true })}
+              aria-label="Bloquear horário"
+            >
+              <Ban size={14} />
+              <span className="agenda-btn-label">Bloquear horário</span>
+            </button>
+            <button
+              className="btn-primary btn-sm"
+              onClick={() => setAppointmentModal({ open: true })}
+            >
+              <Plus size={14} />
+              <span className="agenda-btn-label">Novo agendamento</span>
+            </button>
+          </div>
         </div>
 
-        {/* Right: actions */}
-        <div className="agenda-v2-actions">
+        {/* Row 2: view tabs */}
+        <div className="agenda-view-tabs">
           <button
-            className="btn-secondary btn-sm"
-            onClick={() => setBlockModal({ open: true })}
+            className={`agenda-view-tab${view === "day" ? " active" : ""}`}
+            onClick={() => setView("day")}
           >
-            <Ban size={14} />
-            Bloquear horário
+            <Calendar size={12} />
+            Dia
           </button>
           <button
-            className="btn-primary btn-sm"
-            onClick={() => setAppointmentModal({ open: true })}
+            className={`agenda-view-tab${view === "week" ? " active" : ""}`}
+            onClick={() => setView("week")}
           >
-            <Plus size={14} />
-            Novo agendamento
+            <CalendarDays size={12} />
+            Semana
           </button>
+          <button
+            className={`agenda-view-tab${view === "month" ? " active" : ""}`}
+            onClick={() => setView("month")}
+          >
+            <LayoutGrid size={12} />
+            Mês
+          </button>
+          {hasProfs && (
+            <button
+              className={`agenda-view-tab${view === "resource" ? " active" : ""}`}
+              onClick={() => setView("resource")}
+            >
+              <Users size={12} />
+              <span className="tab-label-full">Profissionais</span>
+              <span className="tab-label-short">Profis.</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -196,9 +288,11 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
       <div className="agenda-v2-calendar">
         {loading && events.length === 0 ? (
           <div className="calendar-loading">Carregando agenda...</div>
-        ) : view === "schedule" ? (
+        ) : isScheduleView ? (
           <CalendarView
-            initialEvents={events}
+            key={`sx-${view}`}
+            defaultView={SX_VIEW_NAMES[view as ScheduleView]}
+            initialEvents={allCalendarEvents}
             onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
             onEventClick={(event) => setDrawer({ open: true, event })}
             onEventUpdate={handleEventUpdate}
@@ -224,7 +318,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
           defaultProfessionalId={appointmentModal.professionalId}
           professionals={professionals}
           onClose={() => setAppointmentModal({ open: false })}
-          onCreated={refresh}
+          onCreated={refreshAll}
         />
       )}
 
@@ -233,7 +327,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
           defaultDate={blockModal.date}
           defaultTime={blockModal.time}
           onClose={() => setBlockModal({ open: false })}
-          onCreated={refresh}
+          onCreated={refreshAll}
         />
       )}
 
@@ -242,7 +336,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
           event={drawer.event}
           conversationId={drawer.event.conversationId ?? undefined}
           onClose={() => setDrawer({ open: false })}
-          onUpdated={refresh}
+          onUpdated={refreshAll}
         />
       )}
     </div>

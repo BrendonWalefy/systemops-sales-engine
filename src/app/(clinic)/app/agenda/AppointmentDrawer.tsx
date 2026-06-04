@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, ExternalLink, Loader2, CheckCircle2, XCircle, Clock, UserX } from "lucide-react";
+import { X, ExternalLink, Loader2, CheckCircle2, XCircle, Clock, UserX, Trash2 } from "lucide-react";
 import Link from "next/link";
 import type { AppointmentEvent } from "./types";
 
@@ -32,6 +32,7 @@ type Action = "confirmed" | "cancelled" | "completed" | "no_show";
 
 export function AppointmentDrawer({ event, conversationId, onClose, onUpdated }: Props) {
   const [loading, setLoading] = useState<Action | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const startsAt = new Date(event.startsAt);
@@ -66,8 +67,70 @@ export function AppointmentDrawer({ event, conversationId, onClose, onUpdated }:
     }
   }
 
+  async function deleteBlock() {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/calendar/blocks/${event.calendarEventId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Erro ao remover bloqueio");
+        return;
+      }
+      onUpdated();
+      onClose();
+    } catch {
+      setError("Erro de conexão");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const isBlock = event.status === "block";
   const isActive = event.status === "scheduled" || event.status === "confirmed";
 
+  // ── Block drawer ──────────────────────────────────────────────────────
+  if (isBlock) {
+    return (
+      <div className="drawer-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="drawer-panel">
+          <div className="drawer-header">
+            <div>
+              <h2 className="drawer-title">Horário Bloqueado</h2>
+              {event.leadName && event.leadName !== "Horário bloqueado" && (
+                <p className="drawer-subtitle">{event.leadName}</p>
+              )}
+            </div>
+            <button className="modal-close" onClick={onClose}><X size={18} /></button>
+          </div>
+
+          <div className="drawer-body">
+            <div className="drawer-section">
+              <p className="drawer-date">{dateStr}</p>
+              <p className="drawer-time">{timeStr}</p>
+            </div>
+
+            {error && <p className="field-error">{error}</p>}
+
+            <div className="drawer-actions">
+              <button
+                className="btn-action btn-cancel"
+                onClick={deleteBlock}
+                disabled={deleting}
+              >
+                {deleting ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+                Remover bloqueio
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Appointment drawer ────────────────────────────────────────────────
   return (
     <div className="drawer-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="drawer-panel">

@@ -47,6 +47,7 @@ const CALENDAR_STATUS_COLORS = {
 
 type Props = {
   initialEvents: AppointmentEvent[];
+  defaultView?: string;
   onSlotClick?: (date: string, time: string) => void;
   onEventClick?: (event: AppointmentEvent) => void;
   onEventUpdate?: (id: string, startsAt: string, endsAt: string) => void;
@@ -99,17 +100,22 @@ function toDateTimeParts(value: unknown): { date: string; time: string; value: s
 }
 
 function toCalendarEvent(e: AppointmentEvent) {
+  const isBlock = e.status === "block";
   return {
     id: e.id,
-    title: e.leadName ?? e.leadPhone ?? "Paciente",
+    title: isBlock
+      ? `🚫 ${e.leadName || "Bloqueado"}`
+      : (e.leadName ?? e.leadPhone ?? "Paciente"),
     start: toZonedDateTime(e.startsAt),
     end: toZonedDateTime(e.endsAt),
     calendarId: e.status,
     _meta: e,
+    // Blocks cannot be dragged or resized
+    ...(isBlock && { options: { disableDND: true, disableResize: true } }),
   };
 }
 
-export function CalendarView({ initialEvents, onSlotClick, onEventClick, onEventUpdate }: Props) {
+export function CalendarView({ initialEvents, defaultView, onSlotClick, onEventClick, onEventUpdate }: Props) {
   const eventsService = useMemo(() => createEventsServicePlugin(), []);
   const scrollController = useMemo(() => createScrollControllerPlugin({ initialScroll: "07:00" }), []);
 
@@ -117,7 +123,7 @@ export function CalendarView({ initialEvents, onSlotClick, onEventClick, onEvent
     locale: "pt-BR",
     isDark: true,
     views: [createViewWeek(), createViewDay(), createViewMonthGrid()],
-    defaultView: createViewWeek().name,
+    defaultView: defaultView ?? createViewWeek().name,
     plugins: [
       eventsService,
       createDragAndDropPlugin(15),

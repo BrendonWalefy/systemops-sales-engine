@@ -11,7 +11,7 @@ export type AppointmentEvent = {
   conversationId: string | null;
   startsAt: string; // ISO string
   endsAt: string;   // ISO string
-  status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show";
+  status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show" | "block";
   source: "app" | "gcal_import";
 };
 
