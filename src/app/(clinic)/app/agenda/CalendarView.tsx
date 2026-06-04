@@ -139,7 +139,10 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
       onClickDateTime(dateTime) {
         if (onSlotClick) {
           const parts = toDateTimeParts(dateTime);
-          if (parts) onSlotClick(parts.date, parts.time);
+          if (!parts) return;
+          // Não abre modal para datas passadas
+          if (parts.date < Temporal.Now.plainDateISO().toString()) return;
+          onSlotClick(parts.date, parts.time);
         }
       },
       onEventUpdate(updatedEvent) {

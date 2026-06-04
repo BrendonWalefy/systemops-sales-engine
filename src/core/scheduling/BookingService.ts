@@ -94,9 +94,10 @@ export class BookingService {
         endsAt,
       });
     } catch (err) {
-      await this.reservationService.release(reservation.id);
-      console.error("[BookingService] Google Calendar isSlotFree failed:", err);
-      return { success: false, reason: "calendar_error" };
+      // GCal indisponível — assume slot livre e prossegue.
+      // A reserva no DB (Passo 1) e o overlap check (Passo 1.5) são proteção suficiente.
+      console.error("[BookingService] Google Calendar isSlotFree failed — assumindo slot livre:", err);
+      slotStillFree = true;
     }
 
     if (!slotStillFree) {

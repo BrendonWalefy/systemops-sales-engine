@@ -95,36 +95,204 @@
   height: 100%;
 }
 
-.sx-calendar-wrapper .sx__calendar-header {
-  align-items: center;
-}
+/* ── Schedule-X header — layout e alinhamento ─────────────── */
 
 .sx-calendar-wrapper .sx__header {
   background:
     linear-gradient(90deg, rgba(0, 212, 170, 0.07), transparent 54%),
     var(--agenda-panel-raised);
   border-bottom: 1px solid var(--agenda-border);
-  padding: 0 16px;
+  padding: 0 14px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
 }
 
 .sx-calendar-wrapper .sx__header-content {
   color: var(--agenda-text);
 }
 
-/* Our toolbar controls the view — hide Schedule-X's internal selector everywhere */
-.sx-calendar-wrapper .sx__view-selection {
-  display: none !important;
+.sx-calendar-wrapper .sx__calendar-header {
+  align-items: center;
+  width: 100%;
 }
 
-.sx-calendar-wrapper .sx__view-selection-item {
-  color: var(--agenda-muted);
-  font-size: 13px;
+.sx-calendar-wrapper .sx__calendar-header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
-.sx-calendar-wrapper .sx__view-selection-item.is-selected,
-.sx-calendar-wrapper .sx__view-selection-item:hover {
+/* Navegação prev/next + range heading */
+.sx-calendar-wrapper .sx__forward-backward-navigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sx-calendar-wrapper .sx__range-heading {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--agenda-text);
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+/* Botões prev / next */
+.sx-calendar-wrapper .sx__chevron-wrapper {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--agenda-border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.sx-calendar-wrapper .sx__chevron-wrapper:hover {
   background: var(--agenda-panel-soft);
+  border-color: color-mix(in srgb, var(--agenda-accent) 40%, var(--agenda-border));
+}
+
+.sx-calendar-wrapper .sx__chevron {
+  color: var(--agenda-muted);
+  width: 14px;
+  height: 14px;
+}
+
+.sx-calendar-wrapper .sx__chevron-wrapper:hover .sx__chevron {
+  color: var(--agenda-accent-strong);
+}
+
+/* Botão "Hoje" */
+.sx-calendar-wrapper .sx__today-button {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--agenda-muted);
+  background: var(--agenda-panel-raised);
+  border: 1px solid var(--agenda-border);
+  border-radius: 7px;
+  padding: 0 10px;
+  height: 28px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.sx-calendar-wrapper .sx__today-button:hover {
+  background: var(--agenda-panel-soft);
+  color: var(--agenda-text);
+}
+
+/* Botão de seleção de data (ex: "04/06/2026 ▼") */
+.sx-calendar-wrapper .sx__date-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--agenda-panel-raised);
+  border: 1px solid var(--agenda-border);
+  border-radius: 7px;
+  padding: 0 10px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.sx-calendar-wrapper .sx__date-input:hover,
+.sx-calendar-wrapper .sx__date-input--active {
+  background: var(--agenda-accent-soft);
+  border-color: color-mix(in srgb, var(--agenda-accent) 40%, var(--agenda-border));
+}
+
+.sx-calendar-wrapper .sx__date-input-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--agenda-text-soft);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.sx-calendar-wrapper .sx__date-input--active .sx__date-input-label {
+  color: var(--agenda-accent-strong);
+}
+
+.sx-calendar-wrapper .sx__date-input-chevron {
+  color: var(--agenda-muted);
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.sx-calendar-wrapper .sx__date-input--active .sx__date-input-chevron {
+  color: var(--agenda-accent);
+}
+
+/* Popup do calendário de data */
+.sx__date-picker-popup {
+  background: var(--agenda-panel-raised);
+  border: 1px solid var(--agenda-border-strong);
+  border-radius: 10px;
+  box-shadow: var(--agenda-shadow);
+  color: var(--agenda-text);
+  z-index: 300;
+  padding: 8px;
+}
+
+.sx__date-picker__day-name {
+  color: var(--agenda-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sx__date-picker__day {
+  color: var(--agenda-text-soft);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.sx__date-picker__day:hover {
+  background: var(--agenda-panel-soft);
+  color: var(--agenda-text);
+}
+
+.sx__date-picker__day--today {
+  background: var(--agenda-accent-soft);
+  color: var(--agenda-accent-strong);
+  font-weight: 600;
+}
+
+.sx__date-picker__day--selected {
+  background: var(--agenda-accent) !important;
+  color: #03221c !important;
+  font-weight: 700;
+}
+
+.sx__date-picker__month-view-header__month-year {
+  color: var(--agenda-text);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Bug 1: Our toolbar controls the view — hide Schedule-X's internal selector.
+   Selector is global (no wrapper scope) in case SX renders the dropdown in a portal. */
+.sx__view-selection,
+.sx__view-selection-items {
+  display: none !important;
 }
 
 .sx-calendar-wrapper .sx__date-grid-day,
@@ -238,7 +406,8 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  height: calc(100vh - 64px);
+  /* 100dvh: preenche exatamente a viewport visível — sem barra lateral superior */
+  height: 100dvh;
   padding: 20px 24px 0;
   background:
     radial-gradient(circle at 18% 0%, rgba(0, 212, 170, 0.14), transparent 28rem),
@@ -297,7 +466,8 @@
 .agenda-v2-calendar {
   flex: 1;
   min-height: 0;
-  padding-bottom: 20px;
+  /* 12px de respiro entre o calendário e a borda inferior no desktop */
+  padding-bottom: 12px;
 }
 
 .calendar-loading {
@@ -370,7 +540,9 @@ body:has(.drawer-overlay) {
   /* z-index 200: above bottom nav (z-index 100) */
   z-index: 200;
   backdrop-filter: blur(8px);
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
+  /* Bug 4: bloqueia propagação de scroll para a página no iOS */
+  touch-action: none;
 }
 
 .modal-card {
@@ -430,6 +602,8 @@ body:has(.drawer-overlay) {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  /* Bug 4: restaura touch scroll dentro do modal */
+  touch-action: auto;
 }
 
 .modal-actions {
@@ -602,6 +776,9 @@ select.field-input option {
   align-items: flex-start;
   justify-content: flex-end;
   backdrop-filter: blur(6px);
+  /* Bug 4: bloqueia propagação de scroll para a página no iOS */
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 .drawer-panel {
@@ -614,6 +791,9 @@ select.field-input option {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  /* Bug 4: contém o scroll dentro do painel */
+  overscroll-behavior: contain;
+  touch-action: auto;
 }
 
 .drawer-header {
@@ -1148,9 +1328,10 @@ select.field-input option {
 }
 
 @media (max-width: 900px) {
+  /* Bug 8: height fixo para que o SX scroll internamente; sem barra inferior nessa faixa */
   .agenda-v2 {
-    height: auto;
-    min-height: calc(100vh - 64px);
+    height: 100dvh;
+    overflow: hidden;
     padding: 14px 14px 0;
   }
 
@@ -1167,10 +1348,8 @@ select.field-input option {
     text-align: left;
   }
 
-  .agenda-v2-calendar,
-  .sx-calendar-wrapper,
-  .rdv-wrapper {
-    min-height: 640px;
+  .agenda-v2-calendar {
+    padding-bottom: 0;
   }
 
   .field-row {
@@ -1187,9 +1366,11 @@ select.field-input option {
 }
 
 @media (max-width: 640px) {
+  /* Bug 8+9: height fixo excluindo bottom nav; safe-area-inset-top para o notch */
   .agenda-v2 {
-    min-height: calc(100dvh - 58px);
-    padding: 12px 10px 0;
+    height: calc(100dvh - 56px - env(safe-area-inset-bottom));
+    overflow: hidden;
+    padding: max(12px, env(safe-area-inset-top)) 10px 0;
   }
 
   .agenda-v2-header {
@@ -1228,40 +1409,42 @@ select.field-input option {
     gap: 3px;
   }
 
-  /* Calendar area height */
-  .agenda-v2-calendar,
-  .sx-calendar-wrapper,
-  .rdv-wrapper {
-    min-height: calc(100dvh - 240px);
+  /* Calendar area: flex:1 cuida do height com o pai fixo — sem padding de respiro */
+  .agenda-v2-calendar {
+    min-height: 0;
+    padding-bottom: 0;
   }
 
   .sx-calendar-wrapper {
     border-radius: 8px;
   }
 
-  /* Tighten up Schedule-X header on mobile */
-  .sx-calendar-wrapper .sx__calendar-header {
-    gap: 8px;
-    padding: 8px 10px;
-  }
-
-  .sx-calendar-wrapper .sx__calendar-header-content {
-    width: 100%;
-    gap: 6px;
+  /* SX header mobile: compacta range heading, mantém botões alinhados */
+  .sx-calendar-wrapper .sx__header {
+    padding: 0 10px;
+    min-height: 42px;
   }
 
   .sx-calendar-wrapper .sx__range-heading {
-    flex: 1 1 auto;
-    max-width: none;
-    font-size: 15px;
+    font-size: 13px;
   }
 
-  .sx-calendar-wrapper .sx__date-picker-wrapper {
-    flex: 0 0 auto;
+  .sx-calendar-wrapper .sx__chevron-wrapper {
+    width: 26px;
+    height: 26px;
   }
 
-  .sx-calendar-wrapper .sx__calendar-header .sx__date-input {
-    padding: 8px 10px;
+  .sx-calendar-wrapper .sx__date-input {
+    height: 26px;
+    padding: 0 8px;
+  }
+
+  .sx-calendar-wrapper .sx__date-input-label {
+    font-size: 11px;
+  }
+
+  .sx-calendar-wrapper .sx__today-button {
+    display: none; /* Oculta "Hoje" no mobile para economizar espaço */
   }
 
   .sx-calendar-wrapper .sx__view-container {
@@ -1269,10 +1452,14 @@ select.field-input option {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Week/day need horizontal scroll; month must NOT */
-  .sx-calendar-wrapper .sx__week-grid,
-  .sx-calendar-wrapper .sx__date-grid {
+  /* Bug 8: semana precisa de scroll horizontal; dia ocupa 100% da largura */
+  .sx-calendar-wrapper .sx__week-grid {
     min-width: 680px;
+  }
+
+  .sx-calendar-wrapper .sx__date-grid {
+    min-width: unset;
+    width: 100%;
   }
 
   .sx-calendar-wrapper .sx__month-grid-wrapper {
@@ -1291,6 +1478,19 @@ select.field-input option {
   .sx-calendar-wrapper .sx__month-grid-event {
     font-size: 10px;
     padding: 1px 4px;
+  }
+
+  /* Bugs 2+3: font-size 16px previne auto-zoom do iOS em inputs focados */
+  .field-input,
+  input.field-input,
+  select.field-input,
+  textarea.field-input {
+    font-size: 16px;
+  }
+
+  /* Previne duplo-toque zoom no calendário */
+  .sx-calendar-wrapper {
+    touch-action: manipulation;
   }
 
   .rdv-corner,
@@ -1315,9 +1515,19 @@ select.field-input option {
     padding-bottom: env(safe-area-inset-bottom);
   }
 
-  /* Drawer full height, allow scroll inside */
+  /* Bug 7: drawer vira bottom sheet no mobile — X sempre visível, sem risco de notch */
+  .drawer-overlay {
+    align-items: flex-end;
+    justify-content: center;
+  }
+
   .drawer-panel {
     width: 100%;
-    max-height: 92dvh;
+    height: auto;
+    max-height: 85dvh;
+    border-left: none;
+    border-top: 1px solid var(--agenda-border-strong);
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
