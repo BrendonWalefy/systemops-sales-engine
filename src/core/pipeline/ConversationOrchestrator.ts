@@ -599,13 +599,10 @@ export class ConversationOrchestrator {
           break;
         }
 
-        // Opção B: cancela appointment ativo existente antes de criar novo.
-        // Garante que o lead nunca acumule múltiplos agendamentos ativos —
-        // qualquer nova confirmação é tratada como remarcação implícita.
+        // Guarda o appointment ativo (se houver) mas só cancela APÓS a nova reserva ser confirmada.
+        // Cancelar antes de book() é perigoso: se book() falhar (slot_taken ou calendar_error),
+        // o lead ficaria sem agendamento nenhum.
         const existingAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
-        if (existingAppointment) {
-          await bookingService.cancel({ lead, appointment: existingAppointment });
-        }
 
         const offeredTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
         const result = await bookingService.book({
@@ -617,6 +614,10 @@ export class ConversationOrchestrator {
         });
 
         if (result.success) {
+          // Só agora é seguro cancelar o agendamento anterior (remarcação implícita)
+          if (existingAppointment) {
+            await bookingService.cancel({ lead, appointment: existingAppointment });
+          }
           await this.stateMachine.transition(conversation.id, "idle");
           replyText = await compose({
             type: "appointment_confirmed",
