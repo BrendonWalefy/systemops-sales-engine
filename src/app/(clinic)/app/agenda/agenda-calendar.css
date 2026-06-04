@@ -78,6 +78,7 @@
 
   height: 100%;
   min-height: 600px;
+  position: relative;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--agenda-border);
@@ -93,6 +94,28 @@
     var(--agenda-panel-solid);
   color: var(--agenda-text);
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sx-calendar-wrapper .sx__calendar-wrapper,
+.sx-calendar-wrapper .sx__view-container,
+.sx-calendar-wrapper .sx__week-wrapper,
+.sx-calendar-wrapper .sx__week-header-content {
+  min-width: 0;
+  min-height: 0;
+}
+
+.sx-calendar-wrapper > .sx-react-calendar-wrapper {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sx-calendar-wrapper > .sx-react-calendar-wrapper > .sx__calendar-wrapper {
+  height: 100%;
+  min-height: 0;
 }
 
 /* ── Schedule-X header — layout e alinhamento ─────────────── */
@@ -144,6 +167,12 @@
 .sx-calendar-wrapper .sx__week-header {
   background: var(--agenda-panel-raised);
   border-bottom: 1px solid var(--agenda-border);
+}
+
+.sx-calendar-wrapper .sx__week-header-border {
+  left: var(--sx-calendar-week-grid-padding-left);
+  width: calc(100% - var(--sx-calendar-week-grid-padding-left));
+  border-left: 0;
 }
 
 .sx-calendar-wrapper .sx__range-heading {
@@ -350,6 +379,18 @@
 .sx-calendar-wrapper .sx__week-grid__time-axis-time {
   color: var(--agenda-muted);
   font-size: 11px;
+}
+
+.sx-calendar-wrapper .sx__week-grid__time-axis {
+  width: calc(100% - var(--sx-calendar-week-grid-padding-left));
+}
+
+.sx-calendar-wrapper .sx__week-grid__date,
+.sx-calendar-wrapper .sx__date-grid-day,
+.sx-calendar-wrapper .sx__time-grid-day {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
 }
 
 .sx-calendar-wrapper .sx__month-grid-day {
@@ -589,6 +630,7 @@ body:has(.drawer-overlay) {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
   /* z-index 200: above bottom nav (z-index 100) */
   z-index: 200;
   backdrop-filter: blur(8px);
@@ -603,9 +645,10 @@ body:has(.drawer-overlay) {
     var(--agenda-panel-solid);
   border: 1px solid var(--agenda-border-strong);
   border-radius: 12px;
-  width: 100%;
+  width: min(100%, 480px);
   max-width: 480px;
   max-height: 92dvh;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   box-shadow: var(--agenda-shadow);
@@ -652,6 +695,8 @@ body:has(.drawer-overlay) {
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   /* Bug 4: restaura touch scroll dentro do modal */
@@ -682,12 +727,14 @@ body:has(.drawer-overlay) {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
 }
 
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 10px;
+  min-width: 0;
 }
 
 .field-label {
@@ -706,6 +753,8 @@ body:has(.drawer-overlay) {
   font-size: 14px;
   padding: 8px 10px;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   transition: border-color 0.15s;
   font-family: inherit;
 }
@@ -733,6 +782,7 @@ select.field-input option {
 
 .search-wrapper {
   position: relative;
+  min-width: 0;
 }
 
 .search-icon {
@@ -796,12 +846,22 @@ select.field-input option {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   background: var(--agenda-accent-soft);
   border: 1px solid color-mix(in srgb, var(--agenda-accent) 56%, transparent);
   border-radius: 7px;
   padding: 8px 10px;
   font-size: 14px;
   color: var(--agenda-text);
+  min-width: 0;
+  width: 100%;
+}
+
+.lead-selected span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lead-clear {
@@ -1418,11 +1478,19 @@ select.field-input option {
 }
 
 @media (max-width: 640px) {
+  .clinic-layout:has(.agenda-v2) > main {
+    padding-bottom: 0;
+  }
+
   /* Bug 8+9: height fixo excluindo bottom nav; safe-area-inset-top para o notch */
   .agenda-v2 {
     height: calc(100dvh - 56px - env(safe-area-inset-bottom));
     overflow: hidden;
-    padding: max(12px, env(safe-area-inset-top)) 10px 0;
+    padding:
+      max(14px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      0
+      max(10px, env(safe-area-inset-left));
   }
 
   .agenda-v2-header {
@@ -1469,6 +1537,14 @@ select.field-input option {
 
   .sx-calendar-wrapper {
     border-radius: 8px;
+    min-height: 0;
+    --sx-calendar-week-grid-padding-left: 48px;
+    --agenda-week-mobile-width: 640px;
+  }
+
+  .sx-calendar-wrapper .sx__calendar-wrapper,
+  .sx-calendar-wrapper .sx__calendar {
+    min-height: 0;
   }
 
   /* SX header mobile: compacta range heading, mantém botões alinhados */
@@ -1507,13 +1583,60 @@ select.field-input option {
   }
 
   .sx-calendar-wrapper .sx__view-container {
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
-  /* Bug 8: semana precisa de scroll horizontal; dia ocupa 100% da largura */
-  .sx-calendar-wrapper .sx__week-grid {
-    min-width: 680px;
+  /* Dia: sem faixa horizontal; a navegacao principal e vertical. */
+  .sx-calendar-wrapper .is-day-view .sx__week-wrapper,
+  .sx-calendar-wrapper .is-day-view .sx__week-header,
+  .sx-calendar-wrapper .is-day-view .sx__week-header-content,
+  .sx-calendar-wrapper .is-day-view .sx__date-grid,
+  .sx-calendar-wrapper .is-day-view .sx__week-grid {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .sx-calendar-wrapper .is-day-view .sx__date-grid,
+  .sx-calendar-wrapper .is-day-view .sx__week-grid__date-axis,
+  .sx-calendar-wrapper .is-day-view .sx__week-grid {
+    padding-left: var(--sx-calendar-week-grid-padding-left);
+  }
+
+  .sx-calendar-wrapper .is-day-view .sx__week-grid__time-axis {
+    width: calc(100% - var(--sx-calendar-week-grid-padding-left));
+  }
+
+  /* Semana: corpo, cabecalho e faixa de eventos precisam ter a mesma largura. */
+  .sx-calendar-wrapper .is-week-view .sx__view-container {
+    overflow: auto;
+    touch-action: pan-x pan-y;
+  }
+
+  .sx-calendar-wrapper .is-week-view .sx__week-wrapper,
+  .sx-calendar-wrapper .is-week-view .sx__week-header,
+  .sx-calendar-wrapper .is-week-view .sx__week-header-content,
+  .sx-calendar-wrapper .is-week-view .sx__date-grid,
+  .sx-calendar-wrapper .is-week-view .sx__week-grid,
+  .sx-calendar-wrapper .is-week-view .sx__week-grid__date-axis {
+    min-width: var(--agenda-week-mobile-width);
+    width: var(--agenda-week-mobile-width);
+  }
+
+  .sx-calendar-wrapper .is-week-view .sx__date-grid,
+  .sx-calendar-wrapper .is-week-view .sx__week-grid__date-axis,
+  .sx-calendar-wrapper .is-week-view .sx__week-grid {
+    padding-left: var(--sx-calendar-week-grid-padding-left);
+  }
+
+  .sx-calendar-wrapper .is-week-view .sx__week-grid__time-axis {
+    width: calc(var(--agenda-week-mobile-width) - var(--sx-calendar-week-grid-padding-left));
+  }
+
+  .sx-calendar-wrapper .is-week-view .sx__week-header-border {
+    width: calc(var(--agenda-week-mobile-width) - var(--sx-calendar-week-grid-padding-left));
   }
 
   .sx-calendar-wrapper .sx__date-grid {
@@ -1521,15 +1644,36 @@ select.field-input option {
     width: 100%;
   }
 
-  .sx-calendar-wrapper .sx__month-grid-wrapper {
+  .sx-calendar-wrapper .is-week-view .sx__date-grid {
+    width: var(--agenda-week-mobile-width);
+  }
+
+  .sx-calendar-wrapper .is-month-grid-view .sx__view-container {
+    display: flex;
+    overflow: hidden;
+  }
+
+  .sx-calendar-wrapper .is-month-grid-view .sx__month-grid-wrapper {
     min-width: unset;
     width: 100%;
-    /* Ensure wrapper fills view-container so flex:1 weeks divide full height, not 0 */
     height: 100%;
+    min-height: 100%;
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sx-calendar-wrapper .is-month-grid-view .sx__month-grid-week {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  .sx-calendar-wrapper .is-month-grid-view .sx__month-grid-day {
+    min-height: 0;
   }
 
   .sx-calendar-wrapper .sx__month-grid-week {
-    min-height: 72px;
+    min-height: 0;
   }
 
   .sx-calendar-wrapper .sx__month-grid-day__header-day-name {
@@ -1587,13 +1731,35 @@ select.field-input option {
   /* Bottom-sheet modal on mobile */
   .modal-overlay {
     align-items: flex-end;
+    padding: 0;
   }
 
   .modal-card {
+    width: 100%;
     max-width: 100%;
+    max-height: min(88dvh, calc(100dvh - max(14px, env(safe-area-inset-top))));
     border-radius: 14px 14px 0 0;
     /* Push content above safe area / home indicator */
     padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .modal-header {
+    padding: 16px;
+  }
+
+  .modal-body {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: calc(-1 * env(safe-area-inset-bottom));
+    background:
+      linear-gradient(180deg, rgba(21, 30, 39, 0), var(--agenda-panel-solid) 20%),
+      var(--agenda-panel-solid);
+    padding-top: 12px;
+    margin-top: 0;
   }
 
   /* Bug 7: drawer vira bottom sheet no mobile — X sempre visível, sem risco de notch */

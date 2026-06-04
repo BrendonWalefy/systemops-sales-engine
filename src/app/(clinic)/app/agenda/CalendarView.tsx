@@ -121,6 +121,8 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
   const calendar = useCalendarApp({
     locale: "pt-BR",
     isDark: true,
+    isResponsive: false,
+    timezone: CALENDAR_TIMEZONE,
     views: [createViewWeek(), createViewDay(), createViewMonthGrid()],
     defaultView: createViewWeek().name,
     plugins: [
@@ -167,7 +169,7 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const $app = (calendar as any)?.$app;
     $app?.calendarState?.setView?.(currentView, Temporal.Now.plainDateISO());
-  }, [calendar, currentView]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [calendar, currentView]);
 
   // Sync events when initialEvents changes
   useEffect(() => {
