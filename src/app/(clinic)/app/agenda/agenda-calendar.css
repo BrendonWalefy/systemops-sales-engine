@@ -112,9 +112,12 @@
   color: var(--agenda-text);
 }
 
+/* Bug: SX default adds flex-wrap:wrap — causes "junho 2026" + "04/06/2026 ▼" to
+   break to a second line on narrow mobile screens. */
 .sx-calendar-wrapper .sx__calendar-header {
   align-items: center;
   width: 100%;
+  flex-wrap: nowrap;
 }
 
 .sx-calendar-wrapper .sx__calendar-header-content {
@@ -122,15 +125,25 @@
   align-items: center;
   gap: 8px;
   width: 100%;
+  flex-wrap: nowrap;
 }
 
 /* Navegação prev/next + range heading */
+/* Bug: SX default sets height: 45px on this element, inflating the header on mobile. */
 .sx-calendar-wrapper .sx__forward-backward-navigation {
   display: flex;
   align-items: center;
   gap: 4px;
   flex: 1;
   min-width: 0;
+  height: auto;
+}
+
+/* Week/Day sticky day-name header row — override SX dark mode background (#141218)
+   so it blends with our design instead of appearing as a stark black bar. */
+.sx-calendar-wrapper .sx__week-header {
+  background: var(--agenda-panel-raised);
+  border-bottom: 1px solid var(--agenda-border);
 }
 
 .sx-calendar-wrapper .sx__range-heading {
@@ -295,6 +308,31 @@
   display: none !important;
 }
 
+/* Bug 2: SX .is-dark redefines ALL color variables (--sx-color-background: #141218,
+   --sx-color-primary: #d0bcff, etc.) at the .sx__calendar level, overriding our
+   wrapper-level vars. We must re-apply everything at .sx-calendar-wrapper .is-dark
+   to win the cascade. */
+.sx-calendar-wrapper .is-dark {
+  --sx-color-primary: var(--agenda-accent);
+  --sx-color-on-primary: #04231d;
+  --sx-color-primary-container: var(--agenda-accent-soft);
+  --sx-color-on-primary-container: var(--agenda-accent-strong);
+  --sx-color-surface: var(--agenda-panel-solid);
+  --sx-color-surface-dim: rgba(8, 13, 20, 0.82);
+  --sx-color-surface-bright: var(--agenda-panel-raised);
+  --sx-color-on-surface: var(--agenda-text);
+  --sx-color-surface-container: var(--agenda-panel-raised);
+  --sx-color-surface-container-low: rgba(21, 30, 39, 0.9);
+  --sx-color-surface-container-high: rgba(32, 45, 57, 0.98);
+  --sx-color-background: var(--agenda-panel-solid);
+  --sx-color-on-background: var(--agenda-text);
+  --sx-color-outline: var(--agenda-grid);
+  --sx-color-outline-variant: var(--agenda-grid);
+  --sx-color-neutral: var(--agenda-muted);
+  --sx-internal-color-text: var(--agenda-text);
+  --sx-internal-color-light-gray: var(--agenda-panel-soft);
+}
+
 .sx-calendar-wrapper .sx__date-grid-day,
 .sx-calendar-wrapper .sx__time-grid-day {
   border-right: 1px solid var(--agenda-grid);
@@ -316,6 +354,8 @@
 
 .sx-calendar-wrapper .sx__month-grid-day {
   border-color: var(--agenda-grid);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .sx-calendar-wrapper .sx__month-grid-day:hover,
@@ -335,8 +375,9 @@
   min-height: 78px;
 }
 
+/* Exclude today indicator from generic text-color override (would clobber on-primary) */
 .sx-calendar-wrapper .sx__month-grid-day__header-day-name,
-.sx-calendar-wrapper .sx__month-grid-day__header-date,
+.sx-calendar-wrapper .sx__month-grid-day__header-date:not(.sx__is-today),
 .sx-calendar-wrapper .sx__range-heading {
   color: var(--agenda-text-soft);
 }
@@ -385,10 +426,21 @@
   white-space: nowrap;
 }
 
-.sx-calendar-wrapper .sx__month-grid-day__header-date.is-today,
-.sx-calendar-wrapper .sx__week-grid-date.is-today {
-  background: var(--agenda-accent);
-  color: #04231d;
+/* Today indicator — month view (SX v4.x uses .sx__is-today, not .is-today) */
+.sx-calendar-wrapper .sx__month-grid-day__header-date.sx__is-today {
+  background: var(--agenda-accent) !important;
+  color: #04231d !important;
+}
+
+/* Today indicator — week/day view (SX v4.x: .sx__week-grid__date--is-today) */
+.sx-calendar-wrapper .sx__week-grid__date--is-today .sx__week-grid__day-name {
+  color: var(--agenda-accent-strong);
+  font-weight: 700;
+}
+
+.sx-calendar-wrapper .sx__week-grid__date--is-today .sx__week-grid__date-number {
+  background: var(--agenda-accent) !important;
+  color: #04231d !important;
   border-radius: 50%;
 }
 
@@ -1425,6 +1477,13 @@ select.field-input option {
     min-height: 42px;
   }
 
+  /* SX default: sx__calendar-header has padding: 16px (sx-spacing-padding4).
+     Override to 0 so the outer sx__header controls all spacing. */
+  .sx-calendar-wrapper .sx__calendar-header {
+    padding: 0;
+    gap: 6px;
+  }
+
   .sx-calendar-wrapper .sx__range-heading {
     font-size: 13px;
   }
@@ -1465,6 +1524,8 @@ select.field-input option {
   .sx-calendar-wrapper .sx__month-grid-wrapper {
     min-width: unset;
     width: 100%;
+    /* Ensure wrapper fills view-container so flex:1 weeks divide full height, not 0 */
+    height: 100%;
   }
 
   .sx-calendar-wrapper .sx__month-grid-week {
@@ -1472,7 +1533,27 @@ select.field-input option {
   }
 
   .sx-calendar-wrapper .sx__month-grid-day__header-day-name {
-    font-size: 10px;
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+
+  /* Fix: today circle fixed size so it doesn't shift cell layout on mobile */
+  .sx-calendar-wrapper .sx__month-grid-day__header-date {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+    font-size: 11px;
+    line-height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Fix: prevent cell header content from overflowing narrow month columns */
+  .sx-calendar-wrapper .sx__month-grid-day__header {
+    padding: 2px 2px 0;
+    gap: 1px;
   }
 
   .sx-calendar-wrapper .sx__month-grid-event {
