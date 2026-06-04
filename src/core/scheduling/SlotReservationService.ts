@@ -84,7 +84,7 @@ export class SlotReservationService {
   }
 
   // Confirma a reserva após criar evento no Google Calendar com sucesso
-  async confirm(reservationId: string, calendarEventId: string): Promise<void> {
+  async confirm(reservationId: string, calendarEventId: string | null): Promise<void> {
     await db
       .update(slotReservations)
       .set({ status: "confirmed", calendarEventId })

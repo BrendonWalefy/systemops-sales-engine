@@ -1109,6 +1109,31 @@ export class ConversationOrchestrator {
       slotDurationMinutes: duration,
     });
 
+    // Remove slots que conflitam com appointments locais (inclui blocos sintéticos de E2E
+    // que não existem no Google Calendar e appointments reais como defesa contra lag da API).
+    const localAppointments = await db
+      .select({ startsAt: appointmentsTable.startsAt, endsAt: appointmentsTable.endsAt })
+      .from(appointmentsTable)
+      .where(
+        and(
+          eq(appointmentsTable.clinicId, clinic.id),
+          eq(appointmentsTable.status, "scheduled"),
+          lt(appointmentsTable.startsAt, to),
+          gte(appointmentsTable.endsAt, from),
+        ),
+      );
+
+    if (localAppointments.length > 0) {
+      allSlots = allSlots.filter(
+        (slot) =>
+          !localAppointments.some(
+            (a) =>
+              a.startsAt.getTime() < slot.endsAt.getTime() &&
+              a.endsAt.getTime() > slot.startsAt.getTime(),
+          ),
+      );
+    }
+
     let filteredToDay = false;
     let preferredDayEmpty = false;
 
@@ -1184,6 +1209,9 @@ export class ConversationOrchestrator {
       : MAX_SLOTS_TO_OFFER;
 
     const best = selectBestSlots(allSlots, count, timezone);
+    // Garante que a lista exibida e os índices salvos no banco estejam sempre em ordem
+    // cronológica, independente do sort por proximidade de horário feito acima.
+    best.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 
     if (best.length === 0) return { slots: [], preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
 

@@ -49,10 +49,11 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
       // Verifica se o FIM do slot também está dentro do horário comercial
       const slotEndDate = new Date(slotEnd);
       const endParts = timezone.toLocalParts(slotEndDate);
+      const endTimeMin = endParts.hour * 60 + endParts.minute;
+      const endBusinessMin = businessHours.endHour * 60 + businessHours.endMinute;
       const endStillInBusiness =
         businessHours.days.includes(endParts.weekday) &&
-        endParts.hour <= businessHours.endHour &&
-        !(endParts.hour === businessHours.endHour && endParts.minute > 0);
+        endTimeMin <= endBusinessMin;
 
       if (endStillInBusiness) {
         const isBusy = busyRanges.some((r) => r.start < slotEnd && r.end > slotStart);

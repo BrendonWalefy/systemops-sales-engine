@@ -259,7 +259,6 @@ describe("BookingService — double-booking guards", () => {
 
     expect(result.success).toBe(true);
     expect(order).toEqual([
-      "releaseExpired",
       "reserve",
       "isSlotFree",
       "createAppointment",
@@ -280,7 +279,7 @@ describe("BookingService — double-booking guards", () => {
     const result = await bookWith(service);
 
     expect(result).toEqual({ success: false, reason: "slot_taken" });
-    expect(order).toEqual(["releaseExpired", "reserve"]);
+    expect(order).toEqual(["reserve"]);
     expect(calendar.createAppointmentCalls).toBe(0);
   });
 
@@ -291,7 +290,7 @@ describe("BookingService — double-booking guards", () => {
     const result = await bookWith(service);
 
     expect(result).toEqual({ success: false, reason: "slot_taken" });
-    expect(order).toEqual(["releaseExpired", "reserve", "isSlotFree", "release"]);
+    expect(order).toEqual(["reserve", "isSlotFree", "release"]);
     expect(reservations.releasedIds).toEqual([reservation.id]);
     expect(calendar.createAppointmentCalls).toBe(0);
   });
@@ -304,7 +303,7 @@ describe("BookingService — double-booking guards", () => {
     const result = await bookWith(service);
 
     expect(result).toEqual({ success: false, reason: "calendar_error" });
-    expect(order).toEqual(["releaseExpired", "reserve", "isSlotFree", "release"]);
+    expect(order).toEqual(["reserve", "isSlotFree", "release"]);
     expect(reservations.releasedIds).toEqual([reservation.id]);
     expect(calendar.createAppointmentCalls).toBe(0);
 
@@ -325,7 +324,7 @@ describe("BookingService — double-booking guards", () => {
       expect(result.appointment.calendarEventUrl).toBeNull();
     }
     expect(order).toEqual([
-      "releaseExpired", "reserve", "isSlotFree", "createAppointment",
+      "reserve", "isSlotFree", "createAppointment",
       "confirm", "saveAppointment", "saveLead",
     ]);
     // Reserva não é liberada — o slot fica bloqueado para o agendamento salvo

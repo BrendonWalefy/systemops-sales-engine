@@ -202,15 +202,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
+  const WEBHOOK_TIMEOUT_MS = 55_000;
+
   try {
-    await getOrchestrator().handle({
-      clinicId,
-      phone: body.phone,
-      messageText,
-      messageId: body.messageId,
-      senderName: body.senderName || undefined,
-      timestamp: body.momment ? new Date(body.momment) : new Date(),
-    });
+    await Promise.race([
+      getOrchestrator().handle({
+        clinicId,
+        phone: body.phone,
+        messageText,
+        messageId: body.messageId,
+        senderName: body.senderName || undefined,
+        timestamp: body.momment ? new Date(body.momment) : new Date(),
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Webhook timeout após ${WEBHOOK_TIMEOUT_MS / 1000}s`)),
+          WEBHOOK_TIMEOUT_MS,
+        ),
+      ),
+    ]);
 
     return new NextResponse("OK", { status: 200 });
   } catch (error) {

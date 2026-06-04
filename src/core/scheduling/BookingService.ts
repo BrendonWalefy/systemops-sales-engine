@@ -2,15 +2,14 @@
 // Garante atomicidade entre banco de dados e Google Calendar.
 //
 // Fluxo:
-//   1. releaseExpired()           → limpa TTL vencidos
-//   2. reserve()                  → lock otimista (falha se slot tomado)
-//   3. isSlotFree()               → revalida conflito/manual no Google Calendar
-//   4. createAppointment()        → cria evento no Google Calendar
+//   1. reserve()                  → lock otimista (chama releaseExpired internamente; falha se slot tomado)
+//   2. isSlotFree()               → revalida conflito/manual no Google Calendar
+//   3. createAppointment()        → cria evento no Google Calendar
 //      → se falhar: reserva expira por TTL automaticamente (sem rollback manual)
-//   5. confirm()                  → marca reserva como confirmada
-//   6. save(appointment) no DB    → persiste agendamento
-//   7. updateLead status          → "appointment_scheduled"
-//   8. Retorna appointment
+//   4. confirm()                  → marca reserva como confirmada
+//   5. save(appointment) no DB    → persiste agendamento
+//   6. updateLead status          → "appointment_scheduled"
+//   7. Retorna appointment
 
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
@@ -29,7 +28,7 @@ export type BookingResult =
 export type BookingReservationService = {
   releaseExpired(): Promise<void>;
   reserve(clinicId: string, leadId: string, startsAt: Date, endsAt: Date): Promise<SlotReservation | null>;
-  confirm(reservationId: string, calendarEventId: string): Promise<void>;
+  confirm(reservationId: string, calendarEventId: string | null): Promise<void>;
   release(reservationId: string): Promise<void>;
   releaseBySlot(clinicId: string, startsAt: Date): Promise<void>;
 };
@@ -52,10 +51,7 @@ export class BookingService {
   }): Promise<BookingResult> {
     const { clinic, lead, startsAt, endsAt, treatmentName } = params;
 
-    // Passo 1: Limpa TTL expirados
-    await this.reservationService.releaseExpired();
-
-    // Passo 2: Lock otimista — previne double-booking
+    // Passo 1: Lock otimista — previne double-booking (reserve() já chama releaseExpired internamente)
     const reservation = await this.reservationService.reserve(
       clinic.id,
       lead.id,
@@ -124,7 +120,7 @@ export class BookingService {
     }
 
     // Passo 4: Confirma reserva (slot agora permanentemente bloqueado)
-    await this.reservationService.confirm(reservation.id, appointment.calendarEventId ?? "");
+    await this.reservationService.confirm(reservation.id, appointment.calendarEventId ?? null);
 
     // Passo 5: Persiste agendamento no banco
     try {
@@ -173,15 +169,16 @@ export class BookingService {
   }): Promise<{ success: boolean; reason?: string }> {
     const { lead, appointment } = params;
 
-    // Cancela no Google Calendar primeiro
+    // Cancela no Google Calendar (não-fatal — o banco é sempre atualizado independentemente).
+    // Se o Calendar falhar por erro de rede ou transiente, o evento pode ser removido
+    // manualmente pelo operador. Não bloquear o cancelamento no banco por causa disso.
     if (appointment.calendarEventId) {
       try {
         await this.calendarGateway.cancelAppointment({
           calendarEventId: appointment.calendarEventId,
         });
       } catch (err) {
-        console.error("[BookingService] Google Calendar cancelAppointment failed:", err);
-        return { success: false, reason: "calendar_error" };
+        console.error("[BookingService] Google Calendar cancelAppointment failed — prosseguindo com cancelamento no banco:", err);
       }
     }
 

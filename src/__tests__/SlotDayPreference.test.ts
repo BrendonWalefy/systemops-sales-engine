@@ -10,7 +10,9 @@ const tz = new ClinicTimezone(TZ);
 
 const businessHours: ParsedBusinessHours = {
   startHour: 8,
+  startMinute: 0,
   endHour: 18,
+  endMinute: 0,
   days: [1, 2, 3, 4, 5], // Mon-Fri
 };
 

@@ -3,9 +3,11 @@
 // Todas as Dates armazenadas no banco são UTC. Esta classe converte para exibição local.
 
 export type ParsedBusinessHours = {
-  startHour: number; // ex: 8
-  endHour: number;   // ex: 18 (exclusivo — slots até 17h)
-  days: number[];    // 0=Dom, 1=Seg, ..., 6=Sáb
+  startHour: number;   // ex: 8
+  startMinute: number; // ex: 0 ou 30
+  endHour: number;     // ex: 18 (exclusivo — slots até endHour ou endHour:endMinute)
+  endMinute: number;   // ex: 0 ou 30
+  days: number[];      // 0=Dom, 1=Seg, ..., 6=Sáb
 };
 
 export type LocalDateParts = {
@@ -39,7 +41,9 @@ const MONTH_PT: Record<number, string> = {
 // Default para clínicas sem horário configurado
 export const DEFAULT_BUSINESS_HOURS: ParsedBusinessHours = {
   startHour: 8,
+  startMinute: 0,
   endHour: 18,
+  endMinute: 0,
   days: [1, 2, 3, 4, 5], // Seg-Sex
 };
 
@@ -138,7 +142,11 @@ export class ClinicTimezone {
   // Verifica se um instante UTC está dentro do horário comercial da clínica
   isBusinessHour(utc: Date, bh: ParsedBusinessHours): boolean {
     const p = this.toLocalParts(utc);
-    return bh.days.includes(p.weekday) && p.hour >= bh.startHour && p.hour < bh.endHour;
+    if (!bh.days.includes(p.weekday)) return false;
+    const timeMin = p.hour * 60 + p.minute;
+    const startMin = bh.startHour * 60 + bh.startMinute;
+    const endMin = bh.endHour * 60 + bh.endMinute;
+    return timeMin >= startMin && timeMin < endMin;
   }
 
   // Data/hora atual no fuso, formatada para prompt do LLM
@@ -246,21 +254,28 @@ export class ClinicTimezone {
   }
 }
 
-// Parseia string de businessHours (ex: "seg-sex 8h-18h") → ParsedBusinessHours
+// Parseia string de businessHours (ex: "seg-sex 8h-18h", "9h30-18h30", "08:30-18:00") → ParsedBusinessHours
 // Mantém compatibilidade com o campo texto existente no banco
 export function parseBusinessHours(raw: string | null): ParsedBusinessHours {
   if (!raw) return DEFAULT_BUSINESS_HOURS;
 
   const normalized = raw.toLowerCase().trim();
 
-  // Extrai horas: "8h-18h", "08:00-18:00", "8-18"
-  const hoursMatch = normalized.match(/(\d{1,2})(?:h|:00)?\s*[-–]\s*(\d{1,2})(?:h|:00)?/);
-  const startHour = hoursMatch ? Number(hoursMatch[1]) : 8;
-  const endHour = hoursMatch ? Number(hoursMatch[2]) : 18;
+  // Captura hora e minutos opcionais em dois formatos:
+  //   "8h" ou "8h30"  → grupo 1 = hora, grupo 2 = minutos (hXX)
+  //   "08:00" ou "08:30" → grupo 1 = hora, grupo 3 = minutos (:XX)
+  const hoursMatch = normalized.match(
+    /(\d{1,2})(?:h(\d{2})?|:(\d{2}))?\s*[-–]\s*(\d{1,2})(?:h(\d{2})?|:(\d{2}))?/,
+  );
+
+  const startHour   = hoursMatch ? Number(hoursMatch[1]) : 8;
+  const startMinute = hoursMatch ? Number(hoursMatch[2] ?? hoursMatch[3] ?? "0") : 0;
+  const endHour     = hoursMatch ? Number(hoursMatch[4]) : 18;
+  const endMinute   = hoursMatch ? Number(hoursMatch[5] ?? hoursMatch[6] ?? "0") : 0;
 
   // Detecta sábado
   const hasSaturday = /s[aá]b/.test(normalized);
   const days = hasSaturday ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
 
-  return { startHour, endHour, days };
+  return { startHour, startMinute, endHour, endMinute, days };
 }

@@ -52,18 +52,29 @@ export class DrizzleConversationRepository implements ConversationRepository {
   }
 
   async appendMessage(message: Message): Promise<void> {
-    await db
-      .insert(messages)
-      .values({
-        id: message.id,
-        conversationId: message.conversationId,
-        author: message.author,
-        body: message.body,
-        sentAt: message.sentAt,
-        externalId: message.externalId,
-        intent: message.intent ?? null,
-      })
-      .onConflictDoNothing();
+    try {
+      await db
+        .insert(messages)
+        .values({
+          id: message.id,
+          conversationId: message.conversationId,
+          author: message.author,
+          body: message.body,
+          sentAt: message.sentAt,
+          externalId: message.externalId,
+          intent: message.intent ?? null,
+        })
+        .onConflictDoNothing();
+    } catch (err) {
+      // Código 23503 = foreign_key_violation no PostgreSQL.
+      // Ocorre quando a conversa foi deletada concorrentemente (ex: reset E2E)
+      // enquanto o Orchestrator ainda estava processando. Ignorar é seguro aqui.
+      if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "23503") {
+        console.warn("[appendMessage] FK violation — conversa deletada concorrentemente:", message.conversationId);
+        return;
+      }
+      throw err;
+    }
   }
 
   async listMessages(conversationId: string): Promise<Message[]> {
