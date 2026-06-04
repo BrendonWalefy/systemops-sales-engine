@@ -20,7 +20,7 @@ import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 
-import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
+import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
@@ -151,9 +151,7 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
 
 function getDayGreeting(timezone: ClinicTimezone): string {
   const { hour } = timezone.toLocalParts(new Date());
-  if (hour < 12) return "Bom dia";
-  if (hour < 18) return "Boa tarde";
-  return "Boa noite";
+  return getTimeGreeting(hour);
 }
 const MAX_SLOTS_TO_OFFER = 5;
 const RATE_LIMIT_MESSAGES_PER_HOUR = 20;

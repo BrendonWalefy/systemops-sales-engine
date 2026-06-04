@@ -297,3 +297,13 @@ export function parseBusinessHours(raw: string | null): ParsedBusinessHours {
 
   return { startHour, startMinute, endHour, endMinute, days, saturdayStartHour, saturdayStartMinute, saturdayEndHour, saturdayEndMinute };
 }
+
+/**
+ * Saudação temporal baseada na hora local da clínica.
+ * Madrugada (00h–04h) retorna "Boa noite" para evitar "Bom dia" às 00:00.
+ */
+export function getTimeGreeting(hour: number): "Bom dia" | "Boa tarde" | "Boa noite" {
+  if (hour >= 5 && hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
