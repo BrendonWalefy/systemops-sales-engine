@@ -254,10 +254,11 @@ export class ResponseComposer {
     const actionContext = buildActionContext(input.actionResult);
 
     // Histórico recente — filtra mensagens de sistema (marcadores internos como __appointment_confirmed__)
-    // para evitar que o LLM use dados de agendamentos anteriores como referência de horários
+    // para evitar que o LLM use dados de agendamentos anteriores como referência de horários.
+    // Manter em sincronia com IntentClassifier.ts (também usa 8).
     const recentHistory = input.conversationHistory
       .filter((m) => m.author !== "system" && !m.body.startsWith("__"))
-      .slice(-6);
+      .slice(-8);
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
       ...recentHistory.map((m): OpenAI.Chat.ChatCompletionMessageParam => ({

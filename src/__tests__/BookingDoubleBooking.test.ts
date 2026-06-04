@@ -295,17 +295,19 @@ describe("BookingService — double-booking guards", () => {
     expect(calendar.createAppointmentCalls).toBe(0);
   });
 
-  it("releases the reservation and returns calendar_error when Calendar revalidation fails", async () => {
+  it("assume slot livre e conclui o booking quando isSlotFree falha (GCal indisponível)", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { calendar, order, reservations, service } = setup();
+    const { calendar, order, service } = setup();
     calendar.isSlotFreeError = new Error("calendar unavailable");
 
     const result = await bookWith(service);
 
-    expect(result).toEqual({ success: false, reason: "calendar_error" });
-    expect(order).toEqual(["reserve", "isSlotFree", "release"]);
-    expect(reservations.releasedIds).toEqual([reservation.id]);
-    expect(calendar.createAppointmentCalls).toBe(0);
+    // GCal indisponível: o lock do DB + overlap check são proteção suficiente.
+    // O booking prossegue em vez de falhar, para não bloquear agendamentos durante downtime do GCal.
+    expect(result.success).toBe(true);
+    expect(order).toContain("reserve");
+    expect(order).toContain("isSlotFree");
+    expect(calendar.createAppointmentCalls).toBe(1);
 
     consoleError.mockRestore();
   });
