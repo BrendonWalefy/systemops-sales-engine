@@ -301,8 +301,10 @@ export class ConversationOrchestrator {
     messageId: string;
     senderName?: string;
     timestamp: Date;
+    replyEnabled?: boolean;
   }): Promise<{ replied: boolean }> {
     const { clinicId, phone, messageText, messageId, senderName, timestamp } = params;
+    const replyEnabled = params.replyEnabled ?? true;
 
     // ── 1. Deduplicação por ID: retorna se já processamos esta mensagem ──
     const alreadyProcessed = await db
@@ -390,6 +392,18 @@ export class ConversationOrchestrator {
         receivedAt: timestamp,
       },
     });
+
+    if (!replyEnabled) {
+      const leadDisplayName = lead.name ?? phone;
+      await this.notifier
+        .execute(clinicId, {
+          title: leadDisplayName,
+          body: messageText.slice(0, 100),
+          url: `/app/inbox/${conversation.id}`,
+        })
+        .catch((err) => console.error("[Orchestrator] Push falhou:", err));
+      return { replied: false };
+    }
 
     // ── 4–11. Processamento principal — erros aqui enviam fallback ao lead ──
     // O try começa aqui (após registrar lead+conversa) para proteger aiPaused,
