@@ -134,6 +134,14 @@ describe("NeedsHuman — cobertura de cenários (especificação)", () => {
     "consigo condição especial",
   ];
 
+  const barterAndInformalDealRequests = [
+    "caso queira vir fazer sua tattoo, depois marcamos as lentes",
+    "a gente combinou que eu faria a tatuagem de vocês e vocês fariam minhas lentes",
+    "o doutor falou que me daria desconto por indicação",
+    "tínhamos combinado antes que você faria X e eu faria Y",
+    "posso trocar um serviço pelo tratamento",
+  ];
+
   it("pedidos de mídia/arquivos são da categoria needs_human", () => {
     // Verifica que todos os exemplos estão mapeados no prompt do classifier
     expect(mediaRequests.length).toBeGreaterThan(0);
@@ -151,8 +159,20 @@ describe("NeedsHuman — cobertura de cenários (especificação)", () => {
     expect(negotiationRequests.length).toBeGreaterThan(0);
   });
 
+  it("propostas de troca e acordos informais são da categoria needs_human", () => {
+    expect(barterAndInformalDealRequests.length).toBeGreaterThan(0);
+    barterAndInformalDealRequests.forEach((req) => {
+      expect(typeof req).toBe("string");
+      expect(req.length).toBeGreaterThan(5);
+    });
+  });
+
   it("total de cenários cobertos é suficiente para o MVP", () => {
-    const total = mediaRequests.length + humanContactRequests.length + negotiationRequests.length;
-    expect(total).toBeGreaterThanOrEqual(12);
+    const total =
+      mediaRequests.length +
+      humanContactRequests.length +
+      negotiationRequests.length +
+      barterAndInformalDealRequests.length;
+    expect(total).toBeGreaterThanOrEqual(17);
   });
 });

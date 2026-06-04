@@ -130,7 +130,12 @@ export async function POST(
     });
 
     const leadRepo = new DrizzleLeadRepository();
-    await leadRepo.save({ ...lead, status: "appointment_scheduled", updatedAt: now });
+    // Garante temperatura mínima "warm" em agendamentos manuais — a inferência automática
+    // só roda no Orchestrator, então leads gerenciados pelo operador ficavam sem temperatura.
+    const newTemperature = (lead.temperature === "hot" || lead.temperature === "warm")
+      ? lead.temperature
+      : "warm";
+    await leadRepo.save({ ...lead, status: "appointment_scheduled", temperature: newTemperature, updatedAt: now });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

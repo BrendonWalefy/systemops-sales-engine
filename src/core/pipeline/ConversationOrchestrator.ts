@@ -5,7 +5,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations as conversationsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
+import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
 import { eq, and, count, gte, lt, asc } from "drizzle-orm";
 
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
@@ -240,7 +240,7 @@ export class ConversationOrchestrator {
   }): Promise<{ replied: boolean }> {
     const { clinicId, phone, messageText, messageId, senderName, timestamp } = params;
 
-    // ── 1. Deduplicação: retorna imediatamente se já processamos esta mensagem ──
+    // ── 1. Deduplicação por ID: retorna se já processamos esta mensagem ──
     const alreadyProcessed = await db
       .select({ id: messagesTable.id })
       .from(messagesTable)
@@ -248,6 +248,30 @@ export class ConversationOrchestrator {
       .limit(1);
 
     if (alreadyProcessed.length > 0) {
+      return { replied: false };
+    }
+
+    // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
+    // Janela de 5s: suficiente para cobrir o lag do Z-API sem bloquear mensagens legítimas iguais.
+    const fiveSecondsAgo = new Date(timestamp.getTime() - 5_000);
+    const [contentDupe] = await db
+      .select({ id: messagesTable.id })
+      .from(messagesTable)
+      .innerJoin(conversationsTable, eq(conversationsTable.id, messagesTable.conversationId))
+      .innerJoin(leadsTable, eq(leadsTable.id, conversationsTable.leadId))
+      .where(
+        and(
+          eq(leadsTable.clinicId, clinicId),
+          eq(leadsTable.phone, phone),
+          eq(messagesTable.author, "lead"),
+          eq(messagesTable.body, messageText),
+          gte(messagesTable.sentAt, fiveSecondsAgo),
+        ),
+      )
+      .limit(1);
+
+    if (contentDupe) {
+      console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${phone} — ignorado`);
       return { replied: false };
     }
 
@@ -349,6 +373,9 @@ export class ConversationOrchestrator {
       console.warn(`[Orchestrator] Rate limit: ${phone} atingiu ${msgCount} msgs/h na conversa ${conversation.id}`);
       return { replied: false };
     }
+
+    // ── 7–11. Processamento principal — erros aqui enviam fallback ao lead ──
+    try {
 
     // ── 7. Carrega histórico de mensagens ──
     const allMessages = await this.conversationRepo.listMessages(conversation.id);
@@ -1067,6 +1094,27 @@ export class ConversationOrchestrator {
     }
 
     return { replied: true };
+
+    } catch (err) {
+      console.error("[Orchestrator] Falha no processamento:", err);
+      // Garante que o lead sempre recebe resposta — evita silêncio em erros de Calendar/LLM.
+      try {
+        const fallback = "Ops, tive um problema técnico por aqui. Pode tentar novamente? 🙏";
+        const fallbackMsgId = await sendTextMessage(phone, fallback, channelConfig);
+        await this.conversationRepo.appendMessage({
+          id: randomUUID(),
+          conversationId: conversation.id,
+          author: "agent",
+          body: fallback,
+          sentAt: new Date(),
+          externalId: fallbackMsgId ?? null,
+          intent: null,
+        });
+      } catch (fallbackErr) {
+        console.error("[Orchestrator] Fallback também falhou:", fallbackErr);
+      }
+      return { replied: false };
+    }
   }
 
   // Snapa para a próxima hora cheia com antecedência mínima de 2h.

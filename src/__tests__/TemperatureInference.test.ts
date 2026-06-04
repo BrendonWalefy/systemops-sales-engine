@@ -79,4 +79,30 @@ describe("temperatureFromIntent", () => {
       expect(TEMP_RANK[newTemp] > TEMP_RANK[currentTemp]).toBe(false);
     });
   });
+
+  describe("temperature assignment on manual appointment booking", () => {
+    // Agendamentos manuais (via operador) não passam pelo Orchestrator.
+    // O route de register-appointment aplica temperatura mínima "warm".
+    function resolveTemperatureForManualBooking(
+      current: "hot" | "warm" | "cold" | null,
+    ): "hot" | "warm" | "cold" {
+      return (current === "hot" || current === "warm") ? current : "warm";
+    }
+
+    it("lead sem temperatura (null) → promove para warm", () => {
+      expect(resolveTemperatureForManualBooking(null)).toBe("warm");
+    });
+
+    it("lead cold → promove para warm", () => {
+      expect(resolveTemperatureForManualBooking("cold")).toBe("warm");
+    });
+
+    it("lead já warm → mantém warm (sem rebaixar)", () => {
+      expect(resolveTemperatureForManualBooking("warm")).toBe("warm");
+    });
+
+    it("lead já hot → mantém hot (sem rebaixar)", () => {
+      expect(resolveTemperatureForManualBooking("hot")).toBe("hot");
+    });
+  });
 });

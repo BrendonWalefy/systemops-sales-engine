@@ -81,7 +81,8 @@ Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou de
 - Mídia/arquivos: "me manda as fotos", "pode enviar o orçamento por escrito", "me manda o comprovante", "quero ver o antes e depois", "me envia o resultado do exame"
 - Falar com humano: "quero falar com o dentista", "preciso falar com alguém", "pode me ligar?", "me passa o número do doutor"
 - Negociação/exceção: "preciso de um desconto", "tem como parcelar diferente?", "tenho uma situação especial", "consigo condição especial?"
-- Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do procedimento realizado", "Lead quer falar com o dentista", "Lead pediu condição especial de pagamento"). Máximo 60 caracteres.
+- Acordo/troca informal: lead propõe permuta de serviços, menciona combinado anterior com o doutor ou situação negociada fora do fluxo padrão. Exemplos: "a gente combinou que eu faria a tatuagem de vocês e vocês fariam minhas lentes", "o doutor falou que me daria desconto por indicação", "tínhamos combinado antes que você faria X e eu faria Y", "caso queira vir fazer sua tattoo, depois marcamos as lentes" — qualquer proposta de troca ou referência a acordo pessoal com a clínica/doutor.
+- Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do procedimento realizado", "Lead quer falar com o dentista", "Lead pediu condição especial de pagamento", "Lead propôs acordo de troca de serviços"). Máximo 60 caracteres.
 
 REGRA PARA unclear:
 - Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.

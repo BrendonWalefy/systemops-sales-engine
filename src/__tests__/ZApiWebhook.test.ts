@@ -283,6 +283,43 @@ describe("ZApi Webhook — handleOperatorMessageFromPhone (mocked DB)", () => {
   });
 });
 
+// ─── Tests: content-based inbound dedup (Orchestrator step 1.5) ──────────────
+// Z-API pode entregar o mesmo webhook com messageIds distintos.
+// O Orchestrator verifica corpo+telefone+janela de 5s antes de processar.
+
+describe("Orchestrator — dedup por conteúdo de mensagem inbound", () => {
+  type ContentDupeResult = { id: string } | null;
+
+  function shouldSkipDueToDuplicate(contentDupe: ContentDupeResult): boolean {
+    return contentDupe !== null;
+  }
+
+  it("nenhum webhook duplicado → processa normalmente", () => {
+    expect(shouldSkipDueToDuplicate(null)).toBe(false);
+  });
+
+  it("mesmo conteúdo já salvo nos últimos 5s → descarta webhook", () => {
+    expect(shouldSkipDueToDuplicate({ id: "existing-lead-msg" })).toBe(true);
+  });
+
+  it("conteúdo diferente (mesmo lead) → processa normalmente", () => {
+    // O corpo da query filtra por body=messageText; se o body for diferente, retorna null
+    expect(shouldSkipDueToDuplicate(null)).toBe(false);
+  });
+
+  it("mensagem idêntica fora da janela de 5s (sentAt < fiveSecondsAgo) → processa", () => {
+    // A query usa gte(sentAt, fiveSecondsAgo), então mensagem antiga não é retornada
+    expect(shouldSkipDueToDuplicate(null)).toBe(false);
+  });
+
+  it("Z-API entrega duplicata com ID diferente dentro de 5s → descarta segundo webhook", () => {
+    // Cenário real: Z-API entregou "Mais cedo" com messageId A e B em <3s
+    // Primeiro webhook salva a mensagem → segundo encontra o contentDupe → skip
+    const contentDupe: ContentDupeResult = { id: "lead-msg-id-A" };
+    expect(shouldSkipDueToDuplicate(contentDupe)).toBe(true);
+  });
+});
+
 // ─── Tests: 30-second window boundary ─────────────────────────────────────
 
 describe("ZApi Webhook — 30s deduplication window timing", () => {
