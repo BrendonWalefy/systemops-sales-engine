@@ -36,6 +36,7 @@ export type ActionResult =
   | { type: "acknowledgment" }
   | { type: "farewell" }
   | { type: "slots_expired"; freshSlots: FormattedSlot[] }
+  | { type: "slot_taken_reoffered"; newSlots: FormattedSlot[] }
   | { type: "reengagement"; lastAppointmentLabel: string }
   | { type: "appointment_reminder"; appointmentLabel: string }
   | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] }
@@ -195,6 +196,16 @@ Responda com despedida calorosa em UMA frase. Deixe a porta aberta para contato 
       const slotList = result.freshSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
       return `AÇÃO EXECUTADA: A oferta de horários expirou (lead demorou para responder).
 Informe gentilmente que o horário reservado não está mais disponível e apresente estes novos horários disponíveis.
+REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
+NOVOS HORÁRIOS:
+${slotList}`;
+    }
+
+    case "slot_taken_reoffered": {
+      const slotList = result.newSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
+      return `AÇÃO EXECUTADA: O horário escolhido ficou indisponível — outro paciente acabou de reservá-lo.
+NÃO confirme o agendamento. NÃO diga que o horário foi marcado. Informe com empatia que aquele horário foi ocupado agora e apresente estas novas opções disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
 FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
 NOVOS HORÁRIOS:

@@ -199,3 +199,51 @@ describe("SlotEngine", () => {
     expect(starts).toEqual(["08:00", "10:00", "11:00"]);
   });
 });
+
+// ─── Sábado com horário reduzido (SYS-AGENDA-020) ─────────────────────────
+
+describe("SlotEngine — Saturday short hours", () => {
+  // Sábado 07/Jun/2026 (weekday=6)
+  const satBH: ParsedBusinessHours = {
+    startHour: 8,
+    startMinute: 0,
+    endHour: 18,
+    endMinute: 0,
+    days: [1, 2, 3, 4, 5, 6],
+    saturdayStartHour: 8,
+    saturdayStartMinute: 0,
+    saturdayEndHour: 13,
+    saturdayEndMinute: 0,
+  };
+
+  function satDate(hour: number, minute = 0): Date {
+    return tz.fromLocalParts(2026, 5, 6, hour, minute); // 06/Jun/2026 = sábado
+  }
+
+  it("oferece slots das 8h às 12h (last start) no sábado com fim às 13h", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours: satBH,
+      existingEvents: [],
+      from: satDate(8),
+      to: satDate(14),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-sat",
+    });
+    expect(starts).toEqual(["08:00", "09:00", "10:00", "11:00", "12:00"]);
+  });
+
+  it("NÃO oferece slot das 13h-14h no sábado com fim às 13h (SYS-AGENDA-020)", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours: satBH,
+      existingEvents: [],
+      from: satDate(8),
+      to: satDate(16),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-sat",
+    });
+    expect(starts).not.toContain("13:00");
+    expect(starts[starts.length - 1]).toBe("12:00");
+  });
+});
