@@ -1,10 +1,10 @@
 DO $$
 DECLARE
-  source_clinic_id uuid;
-  target_clinic_id uuid;
+  v_source_clinic_id uuid;
+  v_target_clinic_id uuid;
 BEGIN
   SELECT id
-    INTO source_clinic_id
+    INTO v_source_clinic_id
     FROM clinics
    WHERE (slug = 'ximendes' OR name = 'Ximendes Odontologia')
      AND zapi_instance_id IS NOT NULL
@@ -12,14 +12,14 @@ BEGIN
    LIMIT 1;
 
   SELECT id
-    INTO target_clinic_id
+    INTO v_target_clinic_id
     FROM clinics
    WHERE slug = 'bw-odontologia' OR name = 'BW odontologia'
    ORDER BY created_at
    LIMIT 1;
 
-  IF target_clinic_id IS NULL THEN
-    target_clinic_id := gen_random_uuid();
+  IF v_target_clinic_id IS NULL THEN
+    v_target_clinic_id := gen_random_uuid();
 
     INSERT INTO clinics (
       id,
@@ -51,7 +51,7 @@ BEGIN
       created_at,
       updated_at
     ) VALUES (
-      target_clinic_id,
+      v_target_clinic_id,
       'BW odontologia',
       'bw-odontologia',
       'Odontologia',
@@ -118,7 +118,7 @@ BEGIN
            meta_phone_number_id = NULL,
            meta_access_token = NULL,
            updated_at = now()
-     WHERE id = target_clinic_id;
+     WHERE id = v_target_clinic_id;
   END IF;
 
   INSERT INTO professionals (
@@ -135,7 +135,7 @@ BEGIN
   )
   SELECT
     gen_random_uuid(),
-    target_clinic_id,
+    v_target_clinic_id,
     'Equipe BW',
     'Odontologia',
     '#2563EB',
@@ -145,7 +145,7 @@ BEGIN
     now(),
     now()
   WHERE NOT EXISTS (
-    SELECT 1 FROM professionals WHERE clinic_id = target_clinic_id AND name = 'Equipe BW'
+    SELECT 1 FROM professionals WHERE clinic_id = v_target_clinic_id AND name = 'Equipe BW'
   );
 
   INSERT INTO treatments (
@@ -161,7 +161,7 @@ BEGIN
   )
   SELECT
     gen_random_uuid(),
-    target_clinic_id,
+    v_target_clinic_id,
     seed.name,
     seed.duration_minutes,
     seed.description,
@@ -186,7 +186,7 @@ BEGIN
   UPDATE playbook_versions
      SET status = 'historical',
          updated_at = now()
-   WHERE clinic_id = target_clinic_id
+   WHERE clinic_id = v_target_clinic_id
      AND status <> 'historical';
 
   INSERT INTO playbook_versions (
@@ -205,15 +205,15 @@ BEGIN
     updated_at
   ) VALUES (
     gen_random_uuid(),
-    target_clinic_id,
-    'BW odontologia - QA real v1',
+    v_target_clinic_id,
+    'BW odontologia - Atendimento inicial v1',
     'active',
     'Odontologia',
     'Avaliacao odontologica, limpeza dental, clareamento dental, implante dentario e lentes de resina composta.',
     'Acolhedor, consultivo e objetivo.',
-    '["Clinica fake de QA com agenda interna","Usa canal Z-API compartilhado apenas para telefones allowlistados","Ambiente para reproduzir conversas reais antes de producao"]'::jsonb,
+    '["Atendimento odontologico acolhedor","Agenda organizada para avaliacao inicial","Comunicacao clara sobre proximos passos e formas de pagamento"]'::jsonb,
     'Nao informar valores fechados sem avaliacao. Explique que o plano e os valores dependem da avaliacao presencial. Quando o lead pedir agendamento, consulte a agenda interna e ofereca horarios reais.',
-    'Contexto QA: esta clinica existe para testar o comportamento real da IA, webhook, persistencia, agenda interna, pausa humana e reenvios com numeros allowlistados. Nunca mencione que e ambiente de teste para o lead.',
+    'Voce e a recepcionista virtual da BW odontologia. Atenda com calma, clareza e objetividade. Entenda o interesse do paciente, explique que a avaliacao inicial define o plano ideal e ofereca agendamento quando houver interesse claro.',
     '[
       {"objection":"Estou so pesquisando","response":"Tudo bem. Posso te explicar com calma e, se fizer sentido, vemos um horario para avaliacao."},
       {"objection":"Quero saber valor","response":"O valor depende da avaliacao e do plano indicado. Posso te ajudar a marcar um horario para uma avaliacao inicial."}
@@ -222,7 +222,7 @@ BEGIN
     now()
   );
 
-  IF source_clinic_id IS NULL THEN
+  IF v_source_clinic_id IS NULL THEN
     RAISE NOTICE 'BW odontologia criada, mas nenhuma Ximendes com Z-API foi encontrada para criar rotas QA.';
   ELSE
     INSERT INTO whatsapp_qa_routes (
@@ -237,8 +237,8 @@ BEGIN
     )
     SELECT
       gen_random_uuid(),
-      source_clinic_id,
-      target_clinic_id,
+      v_source_clinic_id,
+      v_target_clinic_id,
       seed.phone,
       seed.label,
       true,
