@@ -670,7 +670,14 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
         .objection-status { display: inline-flex; align-items: center; flex-shrink: 0; border-radius: 999px; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.035); color: #71717a; font-size: 10px; font-weight: 700; padding: 4px 8px; }
         .mobile-tab-bar { display: none; }
         @media (max-width: 820px) {
+          .editor-root { height: var(--vh, 100dvh) !important; }
+          .editor-root input,
+          .editor-root textarea,
+          .editor-root select {
+            font-size: 16px !important;
+          }
           .editor-cols { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+          .editor-form-col { padding: 16px; }
           .editor-sim-col { border-left: none; border-top: 1px solid rgba(255,255,255,0.07); }
           .editor-config-grid { grid-template-columns: 1fr; }
           .objection-toolbar { grid-template-columns: 1fr; }
@@ -681,6 +688,8 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           .editor-cols.tab-edit .editor-sim-col { display: none; }
           .editor-cols.tab-test .editor-form-col { display: none; }
           .cowriter-compare { grid-template-columns: 1fr !important; }
+          .editor-bottom-bar { padding: 10px 14px !important; gap: 10px !important; }
+          .editor-bottom-bar > button { padding: 8px 10px !important; }
         }
       `}</style>
 
@@ -1020,7 +1029,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
       </div>
 
       {/* Bottom bar */}
-      <div style={{
+      <div className="editor-bottom-bar" style={{
         borderTop: "1px solid rgba(255,255,255,0.07)",
         background: "rgba(9,9,11,0.94)",
         backdropFilter: "blur(12px)",
@@ -1129,12 +1138,13 @@ const inputStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.09)",
   borderRadius: "10px",
   color: "#e4e4e7",
-  fontSize: "14px",
+  fontSize: "16px",
   padding: "10px 14px",
   outline: "none",
   fontFamily: "inherit",
   boxSizing: "border-box",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.035)",
+  lineHeight: 1.45,
 };
 
 const labelStyle: React.CSSProperties = {

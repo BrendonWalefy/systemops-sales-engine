@@ -108,6 +108,12 @@ export function SimulateClient({ clinicId, clinicName, menuItems }: { clinicId: 
         @media (max-width: 640px) {
           .sim-header { padding: 12px 16px !important; }
           .sim-body { padding: 14px 16px 20px !important; }
+          .sim-body textarea,
+          .sim-body input,
+          .sim-body select {
+            font-size: 16px !important;
+          }
+          .sim-composer { gap: 8px !important; }
         }
       `}</style>
 
@@ -237,7 +243,7 @@ export function SimulateClient({ clinicId, clinicName, menuItems }: { clinicId: 
         </div>
 
         {/* Input */}
-        <div style={{ paddingTop: "16px", display: "flex", gap: "10px", alignItems: "flex-end" }}>
+        <div className="sim-composer" style={{ paddingTop: "16px", display: "flex", gap: "10px", alignItems: "flex-end" }}>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
             {!isEmpty && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
@@ -261,7 +267,7 @@ export function SimulateClient({ clinicId, clinicName, menuItems }: { clinicId: 
                 border: "1px solid rgba(255,255,255,0.1)",
                 borderRadius: "12px",
                 color: "#e4e4e7",
-                fontSize: "14px",
+                fontSize: "16px",
                 padding: "12px 14px",
                 outline: "none",
                 fontFamily: "inherit",
