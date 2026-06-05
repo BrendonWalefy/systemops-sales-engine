@@ -3230,6 +3230,16 @@ textarea:focus {
     display: none;
   }
 
+  .clinic-layout:has(.editor-root) > main,
+  .clinic-layout:has(.sim-root) > main {
+    padding-bottom: 0;
+  }
+
+  .clinic-layout:has(.editor-root) .sidebar,
+  .clinic-layout:has(.sim-root) .sidebar {
+    display: none;
+  }
+
   /*
    * conv-root fixed ao viewport: elimina o gap de timing do iOS Safari.
    * position:fixed é relativo ao viewport — não depende de JS para ajustar

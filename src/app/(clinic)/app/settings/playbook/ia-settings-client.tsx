@@ -845,19 +845,53 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
   return (
     <div className="ia-settings-shell">
       <style>{`
+        .ia-settings-shell {
+          width: 100%;
+          max-width: 100vw;
+          overflow-x: hidden;
+          -webkit-text-size-adjust: 100%;
+        }
+        .ia-settings-shell *,
+        .ia-settings-shell *::before,
+        .ia-settings-shell *::after { box-sizing: border-box; }
         .ia-header { padding: 28px 32px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .ia-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
         .ia-pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-        .ia-content { padding: 28px 32px; }
+        .ia-content { padding: 28px 32px; overflow-x: hidden; }
         .ia-versions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
         .ia-geral-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
         .ia-playbooks-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
-        @media (max-width: 640px) {
+        .ia-settings-shell input,
+        .ia-settings-shell textarea,
+        .ia-settings-shell select {
+          caret-color: #10b981;
+          min-width: 0;
+        }
+        .ia-settings-shell input:focus,
+        .ia-settings-shell textarea:focus,
+        .ia-settings-shell select:focus {
+          border-color: rgba(16,185,129,0.5) !important;
+          box-shadow: 0 0 0 3px rgba(16,185,129,0.12) !important;
+          outline: none !important;
+        }
+        @media (max-width: 820px) {
           .ia-settings-shell { padding: 0 !important; min-height: var(--vh, 100dvh); }
-          .ia-header { padding: 20px 16px 0; }
+          .ia-header {
+            padding:
+              calc(env(safe-area-inset-top, 0px) + 20px)
+              calc(env(safe-area-inset-right, 0px) + 16px)
+              0
+              calc(env(safe-area-inset-left, 0px) + 16px);
+          }
           .ia-header-top { flex-direction: column; gap: 14px; margin-bottom: 16px; }
           .ia-pills { display: none; }
-          .ia-content { padding: 20px 16px; }
+          .ia-content {
+            padding:
+              20px
+              calc(env(safe-area-inset-right, 0px) + 16px)
+              calc(env(safe-area-inset-bottom, 0px) + 20px)
+              calc(env(safe-area-inset-left, 0px) + 16px);
+          }
           .ia-versions-grid { grid-template-columns: 1fr; }
           .ia-geral-grid { grid-template-columns: 1fr; }
           .ia-status-card { padding: 14px !important; }
@@ -871,6 +905,7 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
           .ia-settings-shell textarea,
           .ia-settings-shell select {
             font-size: 16px !important;
+            -webkit-text-size-adjust: 100%;
           }
           .ia-tabs { width: 100%; overflow-x: auto; scrollbar-width: none; }
           .ia-tabs::-webkit-scrollbar { display: none; }

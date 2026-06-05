@@ -86,7 +86,7 @@ export function AddTreatmentForm() {
             name="name"
             placeholder="Ex: 20 Lentes"
             required
-            style={{ margin: 0 }}
+            style={{ margin: 0, fontSize: "16px" }}
           />
         </label>
 
@@ -106,7 +106,7 @@ export function AddTreatmentForm() {
             step={5}
             required
             defaultValue={60}
-            style={{ textAlign: "center", margin: 0 }}
+            style={{ textAlign: "center", margin: 0, fontSize: "16px" }}
           />
         </label>
 

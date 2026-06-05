@@ -100,18 +100,53 @@ export function SimulateClient({ clinicId, clinicName, menuItems }: { clinicId: 
   const quickPrompts = buildQuickPrompts(menuItems);
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column" }}>
+    <div className="sim-root" style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column" }}>
       <style>{`
+        .sim-root {
+          width: 100%;
+          max-width: 100vw;
+          overflow-x: hidden;
+          -webkit-text-size-adjust: 100%;
+        }
+        .sim-root *,
+        .sim-root *::before,
+        .sim-root *::after { box-sizing: border-box; }
         .sim-list::-webkit-scrollbar { width: 4px; }
         .sim-list::-webkit-scrollbar-track { background: transparent; }
         .sim-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
-        @media (max-width: 640px) {
-          .sim-header { padding: 12px 16px !important; }
-          .sim-body { padding: 14px 16px 20px !important; }
-          .sim-body textarea,
-          .sim-body input,
-          .sim-body select {
+        .sim-root input,
+        .sim-root textarea,
+        .sim-root select {
+          caret-color: #00d4aa;
+          min-width: 0;
+        }
+        .sim-root input:focus,
+        .sim-root textarea:focus,
+        .sim-root select:focus {
+          border-color: rgba(0,212,170,0.5) !important;
+          box-shadow: 0 0 0 3px rgba(0,212,170,0.12) !important;
+          outline: none !important;
+        }
+        @media (max-width: 820px) {
+          .sim-header {
+            padding:
+              calc(env(safe-area-inset-top, 0px) + 12px)
+              calc(env(safe-area-inset-right, 0px) + 16px)
+              12px
+              calc(env(safe-area-inset-left, 0px) + 16px) !important;
+          }
+          .sim-body {
+            padding:
+              14px
+              calc(env(safe-area-inset-right, 0px) + 16px)
+              calc(env(safe-area-inset-bottom, 0px) + 20px)
+              calc(env(safe-area-inset-left, 0px) + 16px) !important;
+          }
+          .sim-root textarea,
+          .sim-root input,
+          .sim-root select {
             font-size: 16px !important;
+            -webkit-text-size-adjust: 100%;
           }
           .sim-composer { gap: 8px !important; }
         }
