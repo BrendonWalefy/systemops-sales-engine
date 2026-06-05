@@ -1,55 +1,78 @@
 # Estratégia de Calendário — Interno vs. Google Calendar
 
-> Documento de decisão arquitetural e produto. Atualizado em 2026-06-04.
+> Documento de decisão arquitetural e produto. Atualizado em 2026-06-05.
 
 ---
 
-## O problema
+## O Modelo Atual
 
-Existem dois "calendários" percebidos no sistema, mas eles são camadas diferentes, não paralelas:
+Existe uma UI interna de agenda e existe uma integração opcional com Google Calendar. A fonte de verdade depende de `clinics.calendarMode`:
 
 ```
 [/app/agenda — UI @schedule-x]
     ↑
-    │ lê do banco de dados (tabela appointments)
+    │ lê appointments e bloqueios internos do banco
     │
-[PostgreSQL DB] ←——→ [Google Calendar (GCal)]
-                              ↑
-                              │ fonte de verdade atual para SLOTS
-                              │ SlotEngine + IA booking flow
+[PostgreSQL DB]
+    ↑
+    │ modo internal: fonte de verdade para slots, agendamentos e bloqueios
+    │
+[InternalCalendarGateway + SlotEngine + IA]
+
+[Google Calendar (GCal)]
+    ↑
+    │ modo google_calendar: opt-in/legado para disponibilidade externa
+    │
+[GoogleCalendarGateway + SlotEngine + IA]
 ```
 
-**Camada 1 — UI Interna (@schedule-x):** renderiza os `appointments` do banco. Funciona sem GCal.
+**Modo `internal`:** o banco é a fonte de verdade. Disponibilidade = `businessHours` da clínica menos `appointments` ativos e `calendar_blocks`.
 
-**Camada 2 — Google Calendar (backend):** é de onde o `SlotEngine` busca horários disponíveis para oferecer ao paciente no WhatsApp. Sem GCal configurado, a IA não consegue oferecer slots.
+**Modo `google_calendar`:** Google Calendar segue como fonte opt-in/legado para disponibilidade externa. O banco mantém os `appointments` do produto.
 
 ---
 
-## Estado de sincronização hoje
+## Estado de sincronização
 
 | Ação | Sincronizado? | Mecanismo |
 |------|:---:|-----------|
-| Criar agendamento (UI) → GCal | ✅ | `BookingService.book()` chama `createAppointment()` |
-| Cancelar (UI) → GCal | ✅ | `cancelAppointment()` deleta o evento GCal |
-| Drag-and-drop (UI) → GCal | ✅ | `updateCalendarEvent()` via PATCH no GCal |
-| Deletar no GCal → DB | ❌ | Fase 4 (webhook) ainda não construída |
-| Criar evento no GCal → aparecer na UI | ❌ | Fase 4 pendente |
+| Criar agendamento no modo `internal` | ✅ | `BookingService.book()` salva `appointments`; gateway interno não cria evento externo |
+| Criar bloqueio no modo `internal` | ✅ | `calendar_blocks` |
+| Cancelar/reagendar no modo `internal` | ✅ | `appointments` no banco |
+| Criar/cancelar/reagendar no modo `google_calendar` | ✅ | `GoogleCalendarGateway` + persistência em `appointments` |
+| Cancelar evento diretamente no GCal → DB | ⚠️ parcial | Webhook atual sincroniza cancelamentos apenas no modo `google_calendar` |
+| Criar/editar evento diretamente no GCal → DB | ❌ | Fase B (sync reverso completo) ainda não construída |
 
-**Gap crítico:** Se uma clínica não tiver `googleCalendarId` configurado, o `SlotEngine` falha silenciosamente e a IA não agenda. A UI funciona, a IA não.
+**Gap crítico de rollout:** ao mudar uma clínica com histórico no GCal para `internal`, os eventos e bloqueios relevantes precisam existir no banco antes de a IA oferecer horários. A alternativa operacional é assumir explicitamente uma agenda nova.
 
 ---
 
-## Decisão recomendada: `calendarMode` por clínica
+## Status de implementação (atualizado)
 
-Adicionar campo `calendarMode: "internal" | "google_calendar"` na tabela `clinics`.
+- ✅ **Fase A implementada.** `calendarMode` (`internal` | `google_calendar`, nullable) na
+  tabela `clinics`; `InternalCalendarGateway` reusa o `SlotEngine`; resolver único
+  (`resolveCalendarGateway`) escolhe o gateway; consumidores de booking/agenda usam a port.
+- ✅ **Ximendes opera 100% no modo interno** (`calendar_mode = 'internal'`), via migração e seed.
+- ✅ **Bloqueios first-class** na tabela `calendar_blocks` (sem lead falso). No modo interno
+  vivem no banco; no modo google_calendar continuam como eventos no GCal.
+- ✅ **Testes**: conflito/double booking (reserva + overlap no banco), bloqueio, timezone,
+  buffer, filtro por profissional, cancelamento e pipeline de oferta de slots.
+- ⏳ **Fase B (GCal espelho/sync completo)** e **Fase C (multi-profissional + salas)**: ver abaixo.
+
+---
+
+## Decisão Implementada: `calendarMode` por clínica
+
+Campo `calendarMode: "internal" | "google_calendar"` na tabela `clinics`.
 
 ### Modo `"internal"` (padrão para clínicas novas)
 
 - @schedule-x + banco de dados é o sistema completo
-- `InternalCalendarGateway` (novo) implementa a mesma port `CalendarGateway`
-- Slots calculados a partir de `professionals.workSchedule` + `appointments` no banco
+- `InternalCalendarGateway` implementa a mesma port `CalendarGateway`
+- Slots calculados a partir de `businessHours` + `appointments` + `calendar_blocks`
 - Zero dependência de GCal
-- Ideal para: maioria das clínicas, onboarding simples, produto standalone
+- Ideal para: clínicas de recurso único, onboarding simples, produto standalone
+- `professionals.workSchedule`, salas e multi-profissional entram na Fase C
 
 ### Modo `"google_calendar"`
 
@@ -68,11 +91,11 @@ Adicionar campo `calendarMode: "internal" | "google_calendar"` na tabela `clinic
 
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|:---:|:---:|-----------|
-| Lógica de slots divergir do GCal | Médio | Alto | Cobrir `InternalCalendarGateway.listAvailableSlots()` com testes unitários usando fixtures de workSchedule |
-| Ximendes (GCal configurado) ser afetada | Baixo | Alto | `calendarMode` default `"internal"` só se aplica a clínicas sem `googleCalendarId`; Ximendes mantém comportamento atual |
+| Lógica de slots divergir do GCal | Médio | Alto | Cobrir `InternalCalendarGateway.listAvailableSlots()` com testes unitários usando `businessHours`, appointments, bloqueios e timezone |
+| Ximendes (GCal configurado) ser afetada | Médio | Alto | Ximendes fica com `calendarMode = "internal"` de forma explícita; antes de liberar a IA, garantir que eventos/bloqueios relevantes existam no banco |
 | `BookingService` receber gateway errado | Baixo | Alto | Injeção de dependência explícita por `clinicId`; teste de integração verifica qual gateway é resolvido |
 | Conflito de agendamento não detectado no modo interno | Médio | Alto | Manter DB overlap check (já existe); adicionar índice composto em `(clinicId, professionalId, startsAt, endsAt)` |
-| `workSchedule` de profissionais não preenchido | Alto | Médio | Fallback para `businessHours` da clínica se `workSchedule` for null |
+| Clínica multi-profissional usar modo interno antes da Fase C | Médio | Alto | Manter Fase A restrita a clínica de recurso único; documentar limite e validar no onboarding |
 
 ### Fase B — GCal Connector completo (webhook bidirecional)
 
@@ -92,11 +115,10 @@ Adicionar campo `calendarMode: "internal" | "google_calendar"` na tabela `clinic
 
 ---
 
-## O que NÃO quebrará hoje
+## Cuidados de rollout
 
 - **UI da agenda** (`/app/agenda`): independente de GCal; não muda nas Fases A/C
-- **Agendamentos existentes da Ximendes**: `calendarMode` da Ximendes ficará `"google_calendar"` (tem `googleCalendarId` configurado); sem alteração de comportamento
-- **IA de agendamento da Ximendes**: continua usando GCal; sem alteração
+- **Ximendes**: `calendarMode` fica `"internal"` mesmo com `googleCalendarId` preenchido. Eventos e bloqueios que existiam só no GCal deixam de decidir disponibilidade; precisam ser importados/recriados no banco ou a operação precisa assumir agenda nova.
 - **Lembretes D-1**: baseados em `appointments.startsAt`; não dependem de GCal
 - **Follow-up re-engajamento**: baseado em `appointments.status`; não dependem de GCal
 - **Takeover / Smart Inbox**: sem relação com calendário
@@ -115,8 +137,65 @@ Adicionar campo `calendarMode: "internal" | "google_calendar"` na tabela `clinic
 
 **Sequência recomendada:**
 1. Fase A → desbloqueia todas as clínicas novas sem GCal
-2. Fase C → necessário para múltiplos profissionais (Ximendes)
+2. Fase C → necessária antes de vender modo interno para clínicas multi-profissionais/salas
 3. Fase B → somente se uma clínica futura exigir GCal bidirecional
+
+---
+
+## Fase C — multi-profissional e salas (design, ainda não implementado)
+
+Implantar quando surgir a segunda clínica com 2+ profissionais. A preocupação central
+é modelar uma clínica com **diferentes salas e diferentes especialistas**.
+
+### O modelo
+
+Hoje (Fase A) a clínica é tratada como um recurso único: a disponibilidade é
+`businessHours da clínica − (appointments + calendar_blocks)`. Para multi-profissional,
+a disponibilidade passa a ser, para um dado slot, a interseção de três condições:
+
+1. **Profissional livre** — o especialista tem janela de trabalho naquele horário
+   (`professionals.workSchedule`) e não tem outro appointment/bloqueio ali.
+2. **Sala livre** — existe ao menos uma sala compatível com o procedimento sem
+   appointment naquele horário.
+3. **Dentro do funcionamento da clínica** — o slot cai no horário comercial.
+
+Um slot é ofertável se as três valem ao mesmo tempo. Reservar consome um profissional
+**e** uma sala; double booking passa a ser por (profissional) e por (sala),
+independentemente.
+
+### Shape sugerido de `professionals.workSchedule` (jsonb)
+
+```jsonc
+{
+  "weekly": {
+    "1": [{ "start": "08:00", "end": "12:00" }, { "start": "14:00", "end": "18:00" }],
+    "2": [{ "start": "08:00", "end": "12:00" }]
+    // chave = dia da semana (0=dom ... 6=sáb); ausência = não atende
+  },
+  "exceptions": [{ "date": "2026-12-24", "closed": true }]
+}
+```
+
+### Salas
+
+- Tabela `rooms` já existe (`appointments.roomId` referencia). Falta: associar quais
+  procedimentos/profissionais usam quais salas, e contar a sala como recurso no overlap.
+- Regra inicial simples: nº de slots simultâneos no mesmo horário ≤ nº de salas compatíveis.
+
+### Mudanças necessárias (quando for a hora)
+
+1. `buildBusyEvents` já filtra por `professionalId`; falta a janela do profissional
+   (`workSchedule`) substituir o `businessHours` quando há profissional.
+2. `listAvailableSlots` recebe `professionalId` e passa a usar a janela do profissional;
+   um segundo passo cruza com disponibilidade de sala.
+3. `SlotReservationService`: unique por `(clinicId, professionalId, startsAt)` e por
+   `(clinicId, roomId, startsAt)` em vez de só `(clinicId, startsAt)`.
+4. UI: ligar o **resource view** do @schedule-x (uma coluna por profissional).
+5. Settings: CRUD de profissionais (editar `workSchedule`) e de salas.
+
+> Enquanto a Fase C não existir, o modo interno só é correto para clínicas de **um
+> profissional / um recurso**. Não vender modo interno para clínica multi-profissional
+> antes disso (ou o overlap bloqueia horários indevidamente).
 
 ---
 
@@ -124,20 +203,22 @@ Adicionar campo `calendarMode: "internal" | "google_calendar"` na tabela `clinic
 
 | Arquivo | Papel |
 |---------|-------|
-| `src/infrastructure/db/schema.ts` | Adicionar `calendarMode` em `clinics` |
+| `src/infrastructure/db/schema.ts` | `calendarMode` em `clinics` e `calendar_blocks` |
 | `src/application/ports/calendar-gateway.ts` | Port que `InternalCalendarGateway` deve implementar |
 | `src/infrastructure/adapters/calendar/google/google-calendar-gateway.ts` | Referência de implementação |
-| `src/core/scheduling/BookingService.ts` | Recebe gateway via DI; precisa resolver gateway por clinicId |
+| `src/infrastructure/adapters/calendar/resolve-calendar-gateway.ts` | Resolve o gateway efetivo por clínica |
+| `src/core/scheduling/BookingService.ts` | Recebe gateway via DI e revalida conflito no banco/gateway |
 | `src/core/scheduling/SlotEngine.ts` | Usa gateway para listar slots |
 | `src/app/api/appointments/route.ts` | Endpoint de criação usa BookingService |
-| `src/infrastructure/db/schema.ts` linha professionals | `workSchedule` (jsonb) é a fonte de disponibilidade no modo interno |
+| `src/core/scheduling/internal-availability.ts` | Normaliza appointments/bloqueios internos para o SlotEngine |
 
 ---
 
 ## Verificação de ponta a ponta
 
-1. Clínica sem GCal → IA oferece horários baseados em `workSchedule` do profissional
-2. Clínica com GCal → comportamento atual preservado; nenhum agendamento perdido
-3. Settings: toggle `calendarMode` persiste e muda o gateway usado em tempo real
-4. Conflito de horário no modo interno detectado corretamente (dois pacientes no mesmo slot)
-5. Lembrete D-1 disparado para appointments criados via modo interno
+1. Clínica sem GCal → IA oferece horários baseados em `businessHours` + banco.
+2. Ximendes com `calendarMode = "internal"` e `googleCalendarId` preenchido → usa `InternalCalendarGateway`.
+3. Bloqueio criado em `/api/calendar/blocks` no modo interno → remove o horário das ofertas.
+4. Conflito de horário no modo interno detectado corretamente (dois pacientes no mesmo slot).
+5. Cancelamento/reagendamento no modo interno atualiza o banco e libera/ocupa disponibilidade.
+6. Lembrete D-1 disparado para appointments criados via modo interno.

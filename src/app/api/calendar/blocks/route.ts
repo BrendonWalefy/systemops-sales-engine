@@ -5,7 +5,7 @@ import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
-import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ async function getGateway() {
   if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
   const [clinic] = await db
-    .select({ googleCalendarId: clinics.googleCalendarId, timezone: clinics.timezone, businessHours: clinics.businessHours })
+    .select({ googleCalendarId: clinics.googleCalendarId, calendarMode: clinics.calendarMode, timezone: clinics.timezone, businessHours: clinics.businessHours })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
     .limit(1);
@@ -25,7 +25,13 @@ async function getGateway() {
   const tz = new ClinicTimezone(clinic.timezone);
   return {
     tz,
-    gateway: new GoogleCalendarGateway(clinic.googleCalendarId, tz, clinic.businessHours),
+    gateway: resolveCalendarGateway({
+      clinicId,
+      calendarMode: clinic.calendarMode,
+      googleCalendarId: clinic.googleCalendarId,
+      timezone: tz,
+      businessHours: clinic.businessHours,
+    }),
   };
 }
 

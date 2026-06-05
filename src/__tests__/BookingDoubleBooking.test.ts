@@ -23,6 +23,7 @@ const clinic: Clinic = {
   menuItems: null,
   businessHours: null,
   googleCalendarId: null,
+  calendarMode: null,
   receptionistPhone: null,
   takeoverTtlHours: 4,
   postAppointmentBufferMinutes: 60,

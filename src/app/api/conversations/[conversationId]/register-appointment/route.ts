@@ -4,8 +4,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, leads } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
-import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import { BookingService } from "@/core/scheduling/BookingService";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 
@@ -73,69 +74,100 @@ export async function POST(
     const startsAt = timezone.fromLocalParts(year, month - 1, day, hour, minute);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
-    let calendarEventId = body.calendarEventId ?? null;
-    let calendarEventUrl = body.calendarEventUrl ?? null;
+    const apptRepo = new DrizzleAppointmentRepository();
+    const leadRepo = new DrizzleLeadRepository();
+    const gateway = resolveCalendarGateway({
+      clinicId: clinic.id,
+      calendarMode: clinic.calendarMode,
+      googleCalendarId: clinic.googleCalendarId,
+      timezone,
+      businessHours: clinic.businessHours,
+      postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
+    });
+    const bookingService = new BookingService(gateway, apptRepo, leadRepo);
 
-    // Cria evento no Google Calendar quando não foi fornecido um já existente.
-    // Não-fatal: se o Calendar falhar, o agendamento é salvo mesmo assim.
-    if (!calendarEventId && clinic.googleCalendarId) {
-      try {
-        const gateway = new GoogleCalendarGateway(
-          clinic.googleCalendarId,
-          timezone,
-          clinic.businessHours,
-          clinic.postAppointmentBufferMinutes,
-        );
+    const conflicts = await apptRepo.findByPeriod(clinic.id, startsAt, endsAt);
+    const hasConflict = conflicts.some(
+      (appt) => (appt.status === "scheduled" || appt.status === "confirmed") && appt.leadId !== lead.id,
+    );
+    if (hasConflict) {
+      return NextResponse.json({ error: "Horário não disponível", reason: "slot_taken" }, { status: 409 });
+    }
 
-        const leadName = lead.name ?? "Paciente";
-        const appt = await gateway.createAppointment({
-          clinicId: clinic.id,
-          leadId: lead.id,
-          startsAt,
-          endsAt,
-          title: `Consulta — ${leadName} | ${clinic.name}`,
-        });
-
-        calendarEventId = appt.calendarEventId;
-        calendarEventUrl = appt.calendarEventUrl;
-      } catch (calErr) {
-        console.error("[register-appointment] Google Calendar sync failed:", calErr);
+    // Cancela qualquer agendamento ativo anterior do lead nesta clínica
+    const existingAppointments = await apptRepo.findAllActiveByLeadId(lead.id);
+    for (const existing of existingAppointments) {
+      const cancelResult = await bookingService.cancel({ lead, appointment: existing });
+      if (!cancelResult.success) {
+        return NextResponse.json({ error: cancelResult.reason ?? "Falha ao cancelar agendamento anterior" }, { status: 500 });
       }
     }
 
-    const apptRepo = new DrizzleAppointmentRepository();
+    const now = new Date();
 
-    // Cancela qualquer agendamento ativo anterior do lead nesta clínica
-    const existing = await apptRepo.findActiveByLeadId(lead.id);
-    if (existing) {
-      await apptRepo.save({ ...existing, status: "cancelled", updatedAt: new Date() });
+    if (body.calendarEventId) {
+      await apptRepo.save({
+        id: crypto.randomUUID(),
+        clinicId: clinic.id,
+        leadId: lead.id,
+        professionalId: null,
+        roomId: null,
+        calendarEventId: body.calendarEventId,
+        calendarEventUrl: body.calendarEventUrl ?? null,
+        startsAt,
+        endsAt,
+        status: "scheduled",
+        source: "app",
+        reminderSentAt: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      const result = await bookingService.book({
+        clinic: {
+          id: clinic.id,
+          name: clinic.name,
+          specialty: clinic.specialty,
+          city: clinic.city,
+          address: clinic.address,
+          timezone: clinic.timezone,
+          conversationExperience: clinic.conversationExperience,
+          greetingMessage: clinic.greetingMessage,
+          menuItems: clinic.menuItems,
+          businessHours: clinic.businessHours,
+          googleCalendarId: clinic.googleCalendarId,
+          calendarMode: clinic.calendarMode,
+          receptionistPhone: clinic.receptionistPhone ?? null,
+          takeoverTtlHours: clinic.takeoverTtlHours,
+          postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
+          defaultAppointmentDurationMinutes: clinic.defaultAppointmentDurationMinutes,
+          createdAt: clinic.createdAt,
+          updatedAt: clinic.updatedAt,
+        },
+        lead,
+        startsAt,
+        endsAt,
+      });
+
+      if (!result.success) {
+        const statusCode = result.reason === "slot_taken" ? 409 : 500;
+        const message =
+          result.reason === "slot_taken"
+            ? "Horário não disponível"
+            : "Erro ao criar agendamento";
+        return NextResponse.json({ error: message, reason: result.reason }, { status: statusCode });
+      }
     }
 
-    const now = new Date();
-    await apptRepo.save({
-      id: crypto.randomUUID(),
-      clinicId: clinic.id,
-      leadId: lead.id,
-      professionalId: null,
-      roomId: null,
-      calendarEventId,
-      calendarEventUrl,
-      startsAt,
-      endsAt,
-      status: "scheduled",
-      source: "app",
-      reminderSentAt: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const leadRepo = new DrizzleLeadRepository();
-    // Garante temperatura mínima "warm" em agendamentos manuais — a inferência automática
-    // só roda no Orchestrator, então leads gerenciados pelo operador ficavam sem temperatura.
     const newTemperature = (lead.temperature === "hot" || lead.temperature === "warm")
       ? lead.temperature
       : "warm";
-    await leadRepo.save({ ...lead, status: "appointment_scheduled", temperature: newTemperature, updatedAt: now });
+    await leadRepo.save({
+      ...lead,
+      status: "appointment_scheduled",
+      temperature: newTemperature,
+      updatedAt: now,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

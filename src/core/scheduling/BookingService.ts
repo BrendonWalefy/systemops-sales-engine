@@ -1,10 +1,10 @@
 // Saga de agendamento com compensação.
-// Garante atomicidade entre banco de dados e Google Calendar.
+// Garante atomicidade entre banco de dados e o gateway de calendario efetivo.
 //
 // Fluxo:
 //   1. reserve()                  → lock otimista (chama releaseExpired internamente; falha se slot tomado)
-//   2. isSlotFree()               → revalida conflito/manual no Google Calendar
-//   3. createAppointment()        → cria evento no Google Calendar
+//   2. isSlotFree()               → revalida conflito/manual no CalendarGateway
+//   3. createAppointment()        → cria evento externo ou appointment interno
 //      → se falhar: reserva expira por TTL automaticamente (sem rollback manual)
 //   4. confirm()                  → marca reserva como confirmada
 //   5. save(appointment) no DB    → persiste agendamento
@@ -63,12 +63,11 @@ export class BookingService {
       return { success: false, reason: "slot_taken" };
     }
 
-    // Passo 1.5: Verifica a tabela de appointments para blocos criados via E2E/operador
-    // que existem no banco mas não no Google Calendar (não cobertos pelo lock de reserva).
-    const lookbackMs = 4 * 60 * 60_000; // janela retroativa para capturar appointments longos
+    // Passo 1.5: Verifica a tabela de appointments para agendamentos criados
+    // por outro fluxo e não cobertos pelo lock de reserva.
     const candidates = await this.appointmentRepo.findByPeriod(
       clinic.id,
-      new Date(startsAt.getTime() - lookbackMs),
+      startsAt,
       endsAt,
     );
     const hasDbOverlap = candidates.some(
@@ -82,10 +81,9 @@ export class BookingService {
       return { success: false, reason: "slot_taken" };
     }
 
-    // Passo 2.5: Re-verifica disponibilidade no Google Calendar em tempo real.
+    // Passo 2.5: Re-verifica disponibilidade no gateway efetivo em tempo real.
     // O lock otimista (Passo 2) protege contra concorrência entre dois leads,
-    // mas não detecta eventos adicionados manualmente pelo operador após a oferta.
-    // Sem esta checagem, o Google Calendar criaria dois eventos sobrepostos sem erro.
+    // mas não detecta eventos ou bloqueios adicionados manualmente após a oferta.
     let slotStillFree: boolean;
     try {
       slotStillFree = await this.calendarGateway.isSlotFree({
@@ -94,9 +92,9 @@ export class BookingService {
         endsAt,
       });
     } catch (err) {
-      // GCal indisponível — assume slot livre e prossegue.
+      // Gateway indisponível — assume slot livre e prossegue.
       // A reserva no DB (Passo 1) e o overlap check (Passo 1.5) são proteção suficiente.
-      console.error("[BookingService] Google Calendar isSlotFree failed — assumindo slot livre:", err);
+      console.error("[BookingService] CalendarGateway isSlotFree failed — assumindo slot livre:", err);
       slotStillFree = true;
     }
 
@@ -105,8 +103,8 @@ export class BookingService {
       return { success: false, reason: "slot_taken" };
     }
 
-    // Passo 3: Cria evento no Google Calendar (não-fatal)
-    // Se o Calendar falhar, o agendamento é salvo sem calendarEventId.
+    // Passo 3: Cria o appointment via gateway efetivo.
+    // Se o gateway externo falhar, o agendamento é salvo sem calendarEventId.
     const leadName = lead.name ?? "Paciente";
     const procedureLabel = treatmentName ?? "Consulta";
     let appointment: Appointment;
@@ -120,7 +118,7 @@ export class BookingService {
         title: `${procedureLabel} — ${leadName} | ${clinic.name}`,
       });
     } catch (err) {
-      console.error("[BookingService] Google Calendar createAppointment failed:", err);
+      console.error("[BookingService] CalendarGateway createAppointment failed:", err);
       appointment = {
         id: crypto.randomUUID(),
         clinicId: clinic.id,
@@ -146,8 +144,6 @@ export class BookingService {
     try {
       await this.appointmentRepo.save(appointment);
     } catch (err) {
-      // Appointment já existe no Calendar — não é catastrófico.
-      // Log para reconciliação manual, mas não falhamos a saga.
       console.error("[BookingService] Failed to save appointment to DB:", err);
       return { success: false, reason: "db_error" };
     }
@@ -189,16 +185,15 @@ export class BookingService {
   }): Promise<{ success: boolean; reason?: string }> {
     const { lead, appointment } = params;
 
-    // Cancela no Google Calendar (não-fatal — o banco é sempre atualizado independentemente).
-    // Se o Calendar falhar por erro de rede ou transiente, o evento pode ser removido
-    // manualmente pelo operador. Não bloquear o cancelamento no banco por causa disso.
+    // Cancela no gateway externo quando houver evento remoto. O banco é sempre
+    // atualizado independentemente para manter a agenda interna coerente.
     if (appointment.calendarEventId) {
       try {
         await this.calendarGateway.cancelAppointment({
           calendarEventId: appointment.calendarEventId,
         });
       } catch (err) {
-        console.error("[BookingService] Google Calendar cancelAppointment failed — prosseguindo com cancelamento no banco:", err);
+        console.error("[BookingService] CalendarGateway cancelAppointment failed — prosseguindo com cancelamento no banco:", err);
       }
     }
 
