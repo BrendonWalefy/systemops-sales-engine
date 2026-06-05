@@ -389,3 +389,39 @@ e se há múltiplas reservas para o mesmo slot com diferentes `leadId`.
 
 5. **Concierge NÃO deve forçar menu** — T01 confirma que `conversationExperience=concierge`
    guia o lead naturalmente sem lista numerada.
+
+---
+
+## Sessão 004 — 2026-06-05
+
+**Contexto:** validação pós-deploy do PR #21 (fix/ximendes-e2e-hardening). Migration
+`0009_tranquil_captain_cross` aplicada manualmente antes do merge. Código deployado em
+produção via Vercel. Runner completo + extras executados para fechar BUG-001.
+
+**Comandos executados:**
+- `npx dotenv -e .env.local -- tsx scripts/migrate.ts` → migrations aplicadas ✓
+- `gh pr merge 21 --merge` → PR mergeado, Vercel deploy iniciado
+- `git checkout main && git pull`
+- `npx dotenv -e .env.local -- tsx scripts/delete-e2e-leads.ts`
+- `npm run bw:e2e`
+- `npx dotenv -e .env.local -- tsx scripts/bw-e2e-extras.ts`
+- `npm run bw:dump`
+
+### Resultados
+
+| Conjunto | Resultado |
+|---|---|
+| Runner principal T01-T11 | ✅ `47/47` |
+| Extras (áudio/dupla/stale/fora-expediente/sábado/lista/follow-up/TTL) | ✅ `24/24` |
+
+### Fechamento de BUG-001
+
+**BUG-001 — slot_taken ao rebook após cancelamento** → ✅ **ENCERRADO**
+
+T08 passou sem falha: após cancelamento (T07), o lead reagendou com sucesso e um novo
+appointment `status=scheduled` foi criado no banco. O appointment anterior permaneceu
+como `cancelled`. Causa raiz corrigida na Session 002 (`SlotReservationService.reserve()`
+reutiliza reserva `released` antes de tentar INSERT, e o índice único em
+`slot_reservations (clinic_id, starts_at)` garante consistência).
+
+**Transcrição exportada:** `docs/testing/transcripts/bw/2026-06-05T18-53-04_bw_qa_lead_13e7f557.txt`
