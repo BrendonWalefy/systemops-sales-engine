@@ -4,11 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { Search, AlertTriangle, Calendar, CheckCircle2, MessageSquare, Inbox, PauseCircle } from "lucide-react";
 import { filterBySearch, resolveEmConversa, type InboxFilter } from "./inbox-filter";
+import { isConversationUnreadByClinic } from "./inbox-visibility";
 
 export type ConvRow = {
   convId: string;
   leadId: string;
   lastMessageAt: Date | null;
+  lastReadAt: Date | null;
   needsAttention: boolean;
   attentionReason: string | null;
   aiPaused: boolean;
@@ -79,6 +81,15 @@ function authorPreviewPrefix(author: string): string {
   return "";
 }
 
+function markConversationRead(conversationId: string): void {
+  void fetch(`/api/conversations/${conversationId}/read`, {
+    method: "POST",
+    keepalive: true,
+  }).catch(() => {
+    // A conversa tambem marca leitura ao abrir; este clique e so uma otimizacao.
+  });
+}
+
 function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; author: string } }) {
   const initial = row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0] ?? "?";
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
@@ -86,13 +97,17 @@ function ActiveCard({ row, lastMsg }: { row: ConvRow; lastMsg: { body: string; a
   const preview = (authorPrefix + lastMsg.body).slice(0, 65);
   const tk = tempKey(row.leadTemperature);
   const isHandoff = row.needsAttention && row.aiPaused;
-  const hasUnread = lastMsg.author === "lead";
+  const hasUnread = isConversationUnreadByClinic({
+    lastAuthor: lastMsg.author,
+    lastMessageAt: row.lastMessageAt,
+    lastReadAt: row.lastReadAt,
+  });
 
   const apptDate = row.appointmentStartsAt ? new Date(row.appointmentStartsAt) : null;
   const apptIsPast = apptDate !== null && apptDate < new Date();
 
   return (
-    <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
+    <Link href={`/app/inbox/${row.convId}`} onClick={() => markConversationRead(row.convId)} style={{ textDecoration: "none" }}>
       <div className={`inbox-active-card conv-temp-${tk}${isHandoff ? " needs-attention" : ""}${hasUnread ? " has-unread" : ""}`}>
 
         {/* Header: avatar + nome + badge temperatura + timestamp */}
@@ -172,11 +187,15 @@ function ScheduledCard({ row, lastMsg }: { row: ConvRow; lastMsg?: { body: strin
   const isManualPause = row.aiPaused && !row.needsAttention;
   const apptDate = row.appointmentStartsAt ? new Date(row.appointmentStartsAt) : null;
   const isPast = apptDate !== null && apptDate < new Date();
-  const hasUnread = lastMsg?.author === "lead";
+  const hasUnread = isConversationUnreadByClinic({
+    lastAuthor: lastMsg?.author,
+    lastMessageAt: row.lastMessageAt,
+    lastReadAt: row.lastReadAt,
+  });
   const preview = lastMsg ? (authorPreviewPrefix(lastMsg.author) + lastMsg.body).slice(0, 42) : "";
 
   return (
-    <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none" }}>
+    <Link href={`/app/inbox/${row.convId}`} onClick={() => markConversationRead(row.convId)} style={{ textDecoration: "none" }}>
       <div className={`inbox-scheduled-card conv-temp-${tk}${hasUnread ? " has-unread" : ""}`}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 8 }}>
           <div style={{ position: "relative", flexShrink: 0 }}>

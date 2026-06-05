@@ -8,6 +8,7 @@ function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
   return {
     leadId: "lead-1",
     lastMessageAt: new Date(),
+    lastReadAt: null,
     needsAttention: false,
     attentionReason: null,
     aiPaused: false,

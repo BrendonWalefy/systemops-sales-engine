@@ -2949,7 +2949,14 @@ textarea:focus {
 .clinic-layout {
   display: grid;
   grid-template-columns: 220px 1fr;
+  height: var(--vh, 100dvh);
   min-height: var(--vh, 100dvh);
+  overflow: hidden;
+}
+
+.clinic-layout > main {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* ─── Conversation Page ──────────────────────────────────── */
