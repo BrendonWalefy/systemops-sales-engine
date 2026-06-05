@@ -29,7 +29,8 @@ const BW_ID = "5a2ce07d-cfa1-4108-9a3c-3d1fae017067";
 
 let msgCounter = Date.now();
 
-async function webhook(text: string, fromMe = false): Promise<void> {
+async function webhook(text: string, fromMe = false): Promise<Date> {
+  const startedAt = new Date();
   const payload = {
     phone: TEST_PHONE,
     instanceId: ZAPI_INSTANCE,
@@ -50,9 +51,13 @@ async function webhook(text: string, fromMe = false): Promise<void> {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Webhook falhou: ${res.status}`);
+  return startedAt;
 }
 
-async function waitAgent(timeoutMs = 20000): Promise<{ conv: Record<string, unknown>; msg: Record<string, unknown> } | null> {
+async function waitAgent(
+  timeoutMs = 20000,
+  since?: Date,
+): Promise<{ conv: Record<string, unknown>; msg: Record<string, unknown> } | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 900));
@@ -65,10 +70,15 @@ async function waitAgent(timeoutMs = 20000): Promise<{ conv: Record<string, unkn
     `;
     if (!conv) continue;
     const [msg] = await sql`
-      SELECT author, body, intent FROM messages
+      SELECT author, body, intent, sent_at FROM messages
       WHERE conversation_id = ${conv.id as string} ORDER BY sent_at DESC LIMIT 1
     `;
-    if (msg?.author === "agent") return { conv, msg };
+    if (
+      msg?.author === "agent" &&
+      (!since || new Date(String(msg.sent_at)).getTime() >= since.getTime())
+    ) {
+      return { conv, msg };
+    }
   }
   return null;
 }
@@ -147,8 +157,8 @@ console.log("   Pronto.\n");
 // ─── T01-T04: Conversação ────────────────────────────────────────────────────
 
 section("T01 — Saudação concierge");
-await webhook("Oi");
-const t01 = await waitAgent();
+const t01StartedAt = await webhook("Oi");
+const t01 = await waitAgent(20000, t01StartedAt);
 ok(!!t01, "agente respondeu");
 ok(t01?.msg?.intent === "greeting" || t01?.msg?.intent === "acknowledgment", "intent greeting/acknowledgment");
 ok(!String(t01?.msg?.body ?? "").includes("menu"), "sem menu numerado forçado");
@@ -157,8 +167,8 @@ console.log("  resp:", String(t01?.msg?.body ?? "").slice(0, 120));
 
 section("T02 — Lentes (palavra isolada) — 2 opções com preço");
 await wait(1500);
-await webhook("Lentes");
-const t02 = await waitAgent();
+const t02StartedAt = await webhook("Lentes");
+const t02 = await waitAgent(20000, t02StartedAt);
 ok(!!t02, "agente respondeu");
 ok(String(t02?.msg?.body ?? "").toLowerCase().includes("simplificad"), "mencionou simplificada");
 ok(String(t02?.msg?.body ?? "").toLowerCase().includes("estratificad"), "mencionou estratificada");
@@ -167,16 +177,16 @@ console.log("  resp:", String(t02?.msg?.body ?? "").replace(/\n/g, " | ").slice(
 
 section("T03 — Opções de lentes — NÃO deve ser unclear");
 await wait(1500);
-await webhook("Tem quais opcoes de lentes?");
-const t03 = await waitAgent();
+const t03StartedAt = await webhook("Tem quais opcoes de lentes?");
+const t03 = await waitAgent(20000, t03StartedAt);
 ok(!!t03, "agente respondeu");
 ok(t03?.msg?.intent !== "unclear", "intent NÃO é unclear");
 console.log("  intent:", t03?.msg?.intent, "| resp:", String(t03?.msg?.body ?? "").replace(/\n/g, " | ").slice(0, 160));
 
 section("T04 — Price inquiry com valores explícitos");
 await wait(1500);
-await webhook("qual o valor das lentes simplificadas e estratificadas?");
-const t04 = await waitAgent();
+const t04StartedAt = await webhook("qual o valor das lentes simplificadas e estratificadas?");
+const t04 = await waitAgent(20000, t04StartedAt);
 ok(!!t04, "agente respondeu");
 ok(t04?.msg?.intent === "price_inquiry", "intent price_inquiry");
 ok(String(t04?.msg?.body ?? "").includes("2.500") || String(t04?.msg?.body ?? "").includes("2500"), "R$ 2.500 simplificada");
@@ -187,16 +197,16 @@ console.log("  resp:", String(t04?.msg?.body ?? "").replace(/\n/g, " | ").slice(
 
 section("T05 — Agendamento completo");
 await wait(1500);
-await webhook("quero agendar uma avaliacao odontologica");
-const t05a = await waitAgent();
+const t05aStartedAt = await webhook("quero agendar uma avaliacao odontologica");
+const t05a = await waitAgent(20000, t05aStartedAt);
 ok(!!t05a, "agente respondeu ao pedido de agendamento");
 const t05HasSlots = String(t05a?.msg?.body ?? "").includes("1.") && String(t05a?.msg?.body ?? "").toLowerCase().includes("h");
 ok(t05HasSlots, "slots oferecidos");
 console.log("  intent:", t05a?.msg?.intent);
 
 await wait(1500);
-await webhook("1");
-const t05b = await waitAgent();
+const t05bStartedAt = await webhook("1");
+const t05b = await waitAgent(20000, t05bStartedAt);
 ok(!!t05b, "agente confirmou slot");
 ok(t05b?.msg?.intent === "confirm_slot" || String(t05b?.msg?.body ?? "").toLowerCase().includes("confirmad"), "confirmação na resposta");
 console.log("  intent:", t05b?.msg?.intent, "| resp:", String(t05b?.msg?.body ?? "").replace(/\n/g, " | ").slice(0, 150));
@@ -215,8 +225,8 @@ if (a06) console.log(`  Appt: status=${a06.status} source=${a06.source} starts=$
 
 section("T07 — Cancelamento");
 await wait(1500);
-await webhook("quero cancelar minha consulta");
-const t07 = await waitAgent();
+const t07StartedAt = await webhook("quero cancelar minha consulta");
+const t07 = await waitAgent(20000, t07StartedAt);
 ok(!!t07, "agente respondeu ao cancelamento");
 ok(t07?.msg?.intent === "cancel_appointment", "intent cancel_appointment");
 await wait(1500);
@@ -228,20 +238,20 @@ console.log("  appts:", appts07.map(a => a.status).join(", "));
 
 section("T08 — Reagendamento após cancelamento");
 await wait(1500);
-await webhook("quero agendar uma avaliacao");
-const t08a = await waitAgent();
+const t08aStartedAt = await webhook("quero agendar uma avaliacao");
+const t08a = await waitAgent(20000, t08aStartedAt);
 ok(!!t08a, "agente respondeu ao pedido de reagendamento");
 const needsProcedure = String(t08a?.msg?.body ?? "").toLowerCase().includes("procedimento");
 if (needsProcedure) {
   console.log("  → agente pediu procedimento, enviando nome...");
   await wait(1500);
-  await webhook("Avaliacao odontologica");
-  const t08proc = await waitAgent();
+  const t08procStartedAt = await webhook("Avaliacao odontologica");
+  const t08proc = await waitAgent(20000, t08procStartedAt);
   ok(String(t08proc?.msg?.body ?? "").includes("1."), "slots oferecidos após procedimento");
 }
 await wait(1500);
-await webhook("1");
-const t08b = await waitAgent();
+const t08bStartedAt = await webhook("1");
+const t08b = await waitAgent(20000, t08bStartedAt);
 ok(!!t08b, "agente respondeu confirmação");
 ok(t08b?.msg?.intent === "confirm_slot" || String(t08b?.msg?.body ?? "").toLowerCase().includes("confirmad"), "reagendamento confirmado");
 await wait(1500);
@@ -265,8 +275,8 @@ if (convReset?.id) {
 }
 await wait(500);
 
-await webhook("quero falar diretamente com o dentista");
-const t09 = await waitAgent();
+const t09StartedAt = await webhook("quero falar diretamente com o dentista");
+const t09 = await waitAgent(20000, t09StartedAt);
 ok(!!t09, "agente respondeu");
 ok(t09?.msg?.intent === "needs_human", "intent needs_human");
 ok(t09?.conv?.ai_paused === true, "ai_paused = true no banco");
@@ -303,8 +313,8 @@ section("T11 — Urgência clínica");
 await sql`UPDATE conversations SET ai_paused=false, takeover_expires_at=null, needs_attention=false WHERE id=${convId10}`;
 await wait(500);
 
-await webhook("estou com muita dor de dente");
-const t11 = await waitAgent();
+const t11StartedAt = await webhook("estou com muita dor de dente");
+const t11 = await waitAgent(20000, t11StartedAt);
 ok(!!t11, "agente respondeu");
 ok(t11?.msg?.intent === "clinical_urgency", "intent clinical_urgency");
 ok(String(t11?.msg?.body ?? "").toLowerCase().match(/equipe|contato|acion/) !== null, "mencionou contato/equipe");

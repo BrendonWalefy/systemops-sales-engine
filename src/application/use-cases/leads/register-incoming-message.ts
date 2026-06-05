@@ -25,7 +25,7 @@ export class RegisterIncomingMessage {
       ? await this.deps.leadRepository.findByPhone(input.clinicId, input.message.phone)
       : null;
 
-    const lead: Lead =
+    const candidateLead: Lead =
       existingLead ??
       {
         id: this.deps.idGenerator(),
@@ -45,8 +45,23 @@ export class RegisterIncomingMessage {
         updatedAt: now,
       };
 
+    await this.deps.leadRepository.save({
+      ...candidateLead,
+      status: candidateLead.status === "new" ? "waiting_response" : candidateLead.status,
+      updatedAt: now,
+    });
+
+    const persistedLead = input.message.phone
+      ? await this.deps.leadRepository.findByPhone(input.clinicId, input.message.phone)
+      : await this.deps.leadRepository.findById(candidateLead.id);
+    const lead = persistedLead ?? {
+      ...candidateLead,
+      status: candidateLead.status === "new" ? "waiting_response" : candidateLead.status,
+      updatedAt: now,
+    };
+
     const existingConversation = await this.deps.conversationRepository.findByLeadId(lead.id);
-    const conversation: Conversation =
+    const candidateConversation: Conversation =
       existingConversation ??
       {
         id: this.deps.idGenerator(),
@@ -65,6 +80,18 @@ export class RegisterIncomingMessage {
         updatedAt: now,
       };
 
+    await this.deps.conversationRepository.saveConversation({
+      ...candidateConversation,
+      lastMessageAt: input.message.receivedAt,
+      updatedAt: now,
+    });
+
+    const conversation = await this.deps.conversationRepository.findByLeadId(lead.id) ?? {
+      ...candidateConversation,
+      lastMessageAt: input.message.receivedAt,
+      updatedAt: now,
+    };
+
     const message: Message = {
       id: this.deps.idGenerator(),
       conversationId: conversation.id,
@@ -74,16 +101,6 @@ export class RegisterIncomingMessage {
       externalId: input.message.externalMessageId,
     };
 
-    await this.deps.leadRepository.save({
-      ...lead,
-      status: lead.status === "new" ? "waiting_response" : lead.status,
-      updatedAt: now,
-    });
-    await this.deps.conversationRepository.saveConversation({
-      ...conversation,
-      lastMessageAt: input.message.receivedAt,
-      updatedAt: now,
-    });
     await this.deps.conversationRepository.appendMessage(message);
     if (input.message.channel === "whatsapp") {
       await this.deps.usageCostTracker.trackWhatsAppCost({

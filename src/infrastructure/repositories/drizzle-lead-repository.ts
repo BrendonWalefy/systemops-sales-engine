@@ -39,40 +39,47 @@ export class DrizzleLeadRepository implements LeadRepository {
   }
 
   async save(lead: Lead): Promise<void> {
-    await db
-      .insert(leads)
-      .values({
-        id: lead.id,
-        clinicId: lead.clinicId,
-        name: lead.name,
-        phone: lead.phone,
-        email: lead.email,
-        channel: lead.channel,
-        campaignId: lead.campaignId,
-        treatmentInterest: lead.treatmentInterest,
-        status: lead.status,
-        temperature: lead.temperature,
-        assignedToUserId: lead.assignedToUserId,
-        nextActionAt: lead.nextActionAt,
-        lostReason: lead.lostReason,
-        createdAt: lead.createdAt,
-        updatedAt: lead.updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: leads.id,
-        set: {
-          name: lead.name,
-          phone: lead.phone,
-          email: lead.email,
-          status: lead.status,
-          temperature: lead.temperature,
-          treatmentInterest: lead.treatmentInterest,
-          assignedToUserId: lead.assignedToUserId,
-          nextActionAt: lead.nextActionAt,
-          lostReason: lead.lostReason,
-          updatedAt: lead.updatedAt,
-        },
+    const values = {
+      id: lead.id,
+      clinicId: lead.clinicId,
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      channel: lead.channel,
+      campaignId: lead.campaignId,
+      treatmentInterest: lead.treatmentInterest,
+      status: lead.status,
+      temperature: lead.temperature,
+      assignedToUserId: lead.assignedToUserId,
+      nextActionAt: lead.nextActionAt,
+      lostReason: lead.lostReason,
+      createdAt: lead.createdAt,
+      updatedAt: lead.updatedAt,
+    };
+    const set = {
+      name: lead.name,
+      email: lead.email,
+      status: lead.status,
+      temperature: lead.temperature,
+      treatmentInterest: lead.treatmentInterest,
+      assignedToUserId: lead.assignedToUserId,
+      nextActionAt: lead.nextActionAt,
+      lostReason: lead.lostReason,
+      updatedAt: lead.updatedAt,
+    };
+
+    if (lead.phone) {
+      await db.insert(leads).values(values).onConflictDoUpdate({
+        target: [leads.clinicId, leads.phone],
+        set,
       });
+      return;
+    }
+
+    await db.insert(leads).values(values).onConflictDoUpdate({
+      target: leads.id,
+      set,
+    });
   }
 }
 
