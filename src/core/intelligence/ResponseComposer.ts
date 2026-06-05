@@ -11,6 +11,7 @@ import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 
 const MODEL = "gpt-4o-mini";
 const PROMPT_VERSION = "composer-v2-experience";
+const OPENAI_TIMEOUT_MS = 30_000;
 
 export type FormattedAppointment = {
   label: string;   // "Seg 26/05 às 14h"
@@ -103,6 +104,7 @@ REGRAS ABSOLUTAS:
 4. Use o nome do lead com naturalidade, não em toda frase.
 5. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
 6. Saudações: se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.
+7. FIDELIDADE EDITORIAL: se a política comercial ou as orientações da clínica exigirem valores, condições, nomes de técnicas ou limites explícitos para o assunto perguntado, preserve esses dados na resposta. Não resuma removendo preços, quantidades ou condições autorizadas.
 
 ${experienceRules}
 
@@ -276,7 +278,11 @@ export class ResponseComposer {
   private client: OpenAI;
 
   constructor() {
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      timeout: OPENAI_TIMEOUT_MS,
+      maxRetries: 0,
+    });
   }
 
   async compose(input: ComposerInput): Promise<ComposedResponse> {
@@ -300,7 +306,7 @@ export class ResponseComposer {
       })),
       {
         role: "user",
-        content: `[INSTRUÇÃO INTERNA — NÃO VISÍVEL AO LEAD]\nANTES DE REDIGIR: releia as mensagens anteriores. Se uma informação já foi mencionada (valor, parcelas, condições, endereço), OMITA-a — a menos que a mensagem atual do lead seja uma pergunta explícita sobre esse mesmo assunto.\n\n${actionContext}\n\nEscreva a resposta agora:`,
+        content: `[INSTRUÇÃO INTERNA — NÃO VISÍVEL AO LEAD]\nANTES DE REDIGIR: releia as mensagens anteriores. Se uma informação já foi mencionada (valor, parcelas, condições, endereço), OMITA-a — a menos que a mensagem atual do lead seja uma pergunta explícita sobre esse mesmo assunto. Se a ação/política/playbook trouxer valores, técnicas ou condições obrigatórias ainda não comunicadas sobre o assunto atual, inclua-os exatamente.\n\n${actionContext}\n\nEscreva a resposta agora:`,
       },
     ];
 

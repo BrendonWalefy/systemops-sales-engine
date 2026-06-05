@@ -50,6 +50,20 @@
       "when": 1780663803882,
       "tag": "0006_bw_qa_playbook_copy_fix",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780681323540,
+      "tag": "0007_early_echo",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780681400000,
+      "tag": "0008_completed_appointment_follow_up",
+      "breakpoints": true
     }
   ]
 }

@@ -55,6 +55,38 @@ export class SlotReservationService {
     if (existing.length > 0) return null;
 
     const expiresAt = new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000);
+
+    const [reused] = await db
+      .update(slotReservations)
+      .set({
+        leadId,
+        endsAt,
+        status: "pending",
+        calendarEventId: null,
+        expiresAt,
+      })
+      .where(
+        and(
+          eq(slotReservations.clinicId, clinicId),
+          eq(slotReservations.startsAt, startsAt),
+          eq(slotReservations.status, "released"),
+        ),
+      )
+      .returning();
+
+    if (reused) {
+      return {
+        id: reused.id,
+        clinicId: reused.clinicId,
+        leadId: reused.leadId,
+        startsAt: reused.startsAt,
+        endsAt: reused.endsAt,
+        status: reused.status as SlotReservation["status"],
+        calendarEventId: reused.calendarEventId,
+        expiresAt: reused.expiresAt,
+      };
+    }
+
     const id = crypto.randomUUID();
 
     try {

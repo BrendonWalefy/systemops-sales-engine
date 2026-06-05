@@ -17,7 +17,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
     "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
-    "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts"
+    "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
+    "bw:dump": "dotenv -e .env.local -- tsx scripts/dump-bw-transcripts.ts",
+    "bw:e2e": "dotenv -e .env.local -- tsx scripts/bw-e2e-runner.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

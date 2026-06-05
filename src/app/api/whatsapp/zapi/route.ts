@@ -12,8 +12,6 @@ import {
   resolveClinicByZapiInbound,
   type ZapiClinicResolution,
 } from "@/application/tenancy/resolve-clinic";
-import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 
 export const dynamic = "force-dynamic";
@@ -201,20 +199,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("Server misconfigured", { status: 500 });
   }
 
-  const [channelClinicRow] = await db
-    .select({
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
-    })
-    .from(clinics)
-    .where(eq(clinics.id, resolution.channelClinicId))
-    .limit(1);
-
-  const channelConfig = channelClinicRow ? resolveChannelConfig(channelClinicRow) : null;
   const replyEnabled = clinicRow?.autoReplyEnabled !== false;
 
   // Mensagem inbound do lead: texto digitado ou áudio transcrito.
@@ -236,11 +220,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         messageText = `[áudio] ${transcription}`;
       } catch (err) {
         console.error("[ZApi] Falha ao transcrever áudio:", err);
-        if (!channelConfig) return new NextResponse("OK", { status: 200 });
-        await sendTextMessage(body.phone, "Não consegui ouvir seu áudio. Pode me escrever? 😊", channelConfig).catch(
-          (e) => console.error("[ZApi] Erro ao enviar fallback de áudio:", e),
-        );
-        return new NextResponse("OK", { status: 200 });
+        messageText = "[áudio] Transcrição automática indisponível. O lead enviou um áudio, mas não foi possível baixar ou transcrever. Peça para ele escrever a mensagem.";
       }
     }
   } else {
