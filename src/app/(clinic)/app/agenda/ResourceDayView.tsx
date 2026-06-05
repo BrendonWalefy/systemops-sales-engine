@@ -52,6 +52,15 @@ function eventHeight(startsAt: string, endsAt: string): number {
   return Math.max(28, (dur / 60) * HOUR_HEIGHT);
 }
 
+function formatDate(d: Date): string {
+  return d.toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  });
+}
+
 function currentNowY(): number | null {
   const now = new Date();
   const { h, m } = toSpTimeParts(now.toISOString());
@@ -65,11 +74,14 @@ type Props = {
   professionals: Professional[];
   events: AppointmentEvent[];
   selectedDate: Date;
+  onPrevDay: () => void;
+  onNextDay: () => void;
+  onToday: () => void;
   onSlotClick: (date: string, time: string, professionalId?: string) => void;
   onEventClick: (event: AppointmentEvent) => void;
 };
 
-export function ResourceDayView({ professionals, events, selectedDate, onSlotClick, onEventClick }: Props) {
+export function ResourceDayView({ professionals, events, selectedDate, onPrevDay, onNextDay, onToday, onSlotClick, onEventClick }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
   const headerColsRef = useRef<HTMLDivElement>(null);
@@ -133,8 +145,22 @@ export function ResourceDayView({ professionals, events, selectedDate, onSlotCli
 
   const totalHeight = (END_HOUR - START_HOUR) * HOUR_HEIGHT;
 
+  const isToday = selectedStr === todayStr;
+
   return (
     <div className="rdv-wrapper">
+      {/* Date navigation sub-header — mirrors SX internal nav style */}
+      <div className="rdv-sub-header">
+        <button className="agenda-nav-btn" onClick={onPrevDay} aria-label="Dia anterior">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        </button>
+        <button className={`agenda-today-btn${isToday ? " rdv-today-active" : ""}`} onClick={onToday}>Hoje</button>
+        <span className="rdv-sub-header-date">{formatDate(selectedDate)}</span>
+        <button className="agenda-nav-btn" onClick={onNextDay} aria-label="Próximo dia">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+        </button>
+      </div>
+
       {/* Sticky top: corner + col headers */}
       <div className="rdv-top">
         <div className="rdv-corner" />

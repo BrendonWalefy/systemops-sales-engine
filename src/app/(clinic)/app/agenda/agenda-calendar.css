@@ -1193,6 +1193,34 @@ select.field-input option {
 
 /* ── Resource Day View ─────────────────────────────────────────── */
 
+/* Navigation sub-header — mirrors the SX internal header aesthetics */
+.rdv-sub-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--agenda-border);
+  background:
+    linear-gradient(90deg, rgba(0, 212, 170, 0.06), transparent 60%),
+    var(--agenda-panel-raised);
+}
+
+.rdv-sub-header-date {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--agenda-text);
+  text-transform: capitalize;
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.rdv-today-active {
+  color: var(--agenda-accent) !important;
+  border-color: var(--agenda-accent) !important;
+}
+
 .rdv-wrapper {
   display: flex;
   flex-direction: column;
@@ -1726,6 +1754,15 @@ select.field-input option {
   .rdv-time-label {
     right: 6px;
     font-size: 9px;
+  }
+
+  .rdv-sub-header {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .rdv-sub-header-date {
+    font-size: 13px;
   }
 
   /* Bottom-sheet modal on mobile */

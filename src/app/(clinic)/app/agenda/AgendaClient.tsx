@@ -5,8 +5,6 @@ import {
   Ban,
   Calendar,
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   LayoutGrid,
   Plus,
   Users,
@@ -33,15 +31,6 @@ type Props = {
   initialFrom: string;
   initialTo: string;
 };
-
-function formatResourceDate(d: Date): string {
-  return d.toLocaleDateString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  });
-}
 
 function addDays(d: Date, n: number): Date {
   const result = new Date(d);
@@ -197,36 +186,10 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
         {/* Row 1: title/date-nav + actions */}
         <div className="agenda-v2-header-top">
           <div className="agenda-v2-title-area">
-            {view === "resource" ? (
-              <div className="agenda-date-nav">
-                <button
-                  className="agenda-nav-btn"
-                  onClick={() => setResourceDate((d) => addDays(d, -1))}
-                  aria-label="Dia anterior"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                <button
-                  className="agenda-today-btn"
-                  onClick={() => setResourceDate(new Date())}
-                >
-                  Hoje
-                </button>
-                <h1>{formatResourceDate(resourceDate)}</h1>
-                <button
-                  className="agenda-nav-btn"
-                  onClick={() => setResourceDate((d) => addDays(d, 1))}
-                  aria-label="Próximo dia"
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            ) : (
-              <div>
-                <p className="eyebrow">Agenda</p>
-                <h1>Agenda da clínica</h1>
-              </div>
-            )}
+            <div>
+              <p className="eyebrow">Agenda</p>
+              <h1>Agenda da clínica</h1>
+            </div>
           </div>
 
           <div className="agenda-v2-actions">
@@ -301,6 +264,9 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
             professionals={professionals}
             events={events}
             selectedDate={resourceDate}
+            onPrevDay={() => setResourceDate((d) => addDays(d, -1))}
+            onNextDay={() => setResourceDate((d) => addDays(d, 1))}
+            onToday={() => setResourceDate(new Date())}
             onSlotClick={(date, time, professionalId) =>
               setAppointmentModal({ open: true, date, time, professionalId })
             }

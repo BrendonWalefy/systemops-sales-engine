@@ -114,9 +114,22 @@ function toCalendarEvent(e: AppointmentEvent) {
   };
 }
 
+function nowInSP(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CALENDAR_TIMEZONE,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "8");
+  // Show 1 hour of context before current time; clamp to 07:00–18:00
+  const scrollHour = Math.max(7, Math.min(18, hour - 1));
+  return `${String(scrollHour).padStart(2, "0")}:00`;
+}
+
 export function CalendarView({ initialEvents, currentView, onSlotClick, onEventClick, onEventUpdate }: Props) {
   const eventsService = useMemo(() => createEventsServicePlugin(), []);
-  const scrollController = useMemo(() => createScrollControllerPlugin({ initialScroll: "07:00" }), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const scrollController = useMemo(() => createScrollControllerPlugin({ initialScroll: nowInSP() }), []);
 
   const calendar = useCalendarApp({
     locale: "pt-BR",
@@ -169,6 +182,18 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const $app = (calendar as any)?.$app;
     $app?.calendarState?.setView?.(currentView, Temporal.Now.plainDateISO());
+  }, [calendar, currentView]);
+
+  // Scroll the week grid horizontally to center today's column after SX finishes rendering
+  useEffect(() => {
+    if (!calendar) return;
+    const timer = setTimeout(() => {
+      const todayHeader = document.querySelector(
+        ".sx__week-grid__date--is-today",
+      ) as HTMLElement | null;
+      todayHeader?.scrollIntoView({ behavior: "instant", block: "nearest", inline: "center" });
+    }, 120);
+    return () => clearTimeout(timer);
   }, [calendar, currentView]);
 
   // Sync events when initialEvents changes

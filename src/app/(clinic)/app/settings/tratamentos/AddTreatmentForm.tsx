@@ -71,6 +71,7 @@ export function AddTreatmentForm() {
       <form
         ref={formRef}
         action={formAction}
+        className="treatment-add-form"
         style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: "12px", alignItems: "end" }}
       >
         <label style={{ margin: 0 }}>

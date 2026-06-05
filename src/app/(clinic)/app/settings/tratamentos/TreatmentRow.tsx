@@ -60,6 +60,7 @@ export function TreatmentRow({ treatment, isLast }: { treatment: Treatment; isLa
   return (
     <form
       action={formAction}
+      className="treatment-form"
       style={{
         display: "grid",
         gridTemplateColumns: "1fr 130px auto auto",
@@ -93,12 +94,15 @@ export function TreatmentRow({ treatment, isLast }: { treatment: Treatment; isLa
         </span>
       </label>
 
-      <SaveButton saved={state?.success === true} />
+      <div className="treatment-save-btn">
+        <SaveButton saved={state?.success === true} />
+      </div>
 
       <button
         type="submit"
         formAction={deleteTreatment}
         title="Remover procedimento"
+        className="treatment-delete-btn"
         style={{
           display: "flex",
           alignItems: "center",

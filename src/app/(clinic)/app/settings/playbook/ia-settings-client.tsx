@@ -858,6 +858,16 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
           .ia-versions-grid { grid-template-columns: 1fr; }
           .ia-geral-grid { grid-template-columns: 1fr; }
           .menu-intent-label { display: none; }
+          .ia-tab-btn { flex: 1; text-align: center; justify-content: center; padding: 10px 6px !important; font-size: 12px !important; }
+          .treatment-form { grid-template-columns: 1fr auto !important; grid-template-rows: auto auto; padding: 12px 14px !important; gap: 8px 10px !important; }
+          .treatment-form > input[type="text"] { grid-column: 1; grid-row: 1; }
+          .treatment-form > label { grid-column: 1; grid-row: 2; align-items: center; }
+          .treatment-form > .treatment-save-btn { grid-column: 2; grid-row: 2; align-self: center; }
+          .treatment-form > .treatment-delete-btn { grid-column: 2; grid-row: 1; align-self: center; }
+          .treatment-add-form { grid-template-columns: 1fr 90px !important; grid-template-rows: auto auto; }
+          .treatment-add-form > label:first-of-type { grid-column: 1 / -1; }
+          .treatment-add-form > label:last-of-type { grid-column: 1; }
+          .treatment-add-form > button { grid-column: 2; align-self: end; }
         }
       `}</style>
 
@@ -905,10 +915,11 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: "0", overflowX: "auto" }}>
+        <div style={{ display: "flex", gap: "0" }}>
           {tabs.map((t) => (
             <button
               key={t.id}
+              className="ia-tab-btn"
               onClick={() => setTab(t.id)}
               style={{
                 background: "transparent",
