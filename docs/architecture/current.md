@@ -17,7 +17,7 @@ Playbook e tom de voz influenciam comunicacao. Eles nao podem alterar regra de a
 ```text
 WhatsApp Z-API
   -> /api/whatsapp/zapi
-  -> resolveClinicByZapiInstance()
+  -> resolveClinicByZapiInbound()
   -> ConversationOrchestrator.handle()
      -> RegisterIncomingMessage
      -> ConversationStateMachine
@@ -58,6 +58,11 @@ Cada clinica possui sua propria configuracao no banco:
 - flags como `autoReplyEnabled`.
 
 Nao existe fallback global de Z-API, calendario ou usuario de clinica por env.
+
+Para QA real sem nova instancia Z-API, `whatsapp_qa_routes` pode desviar
+telefones allowlistados: a conversa, o lead, a agenda e os custos vivem na
+clinica fake alvo; o envio WhatsApp usa a clinica fonte dona da instancia.
+Sem rota ativa, a instancia continua resolvendo para a propria clinica.
 
 ## Autenticacao
 

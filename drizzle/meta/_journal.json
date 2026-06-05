@@ -29,6 +29,20 @@
       "when": 1780658165223,
       "tag": "0003_ximendes_internal_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780663346326,
+      "tag": "0004_whatsapp_qa_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780663352101,
+      "tag": "0005_bw_qa_clinic_seed",
+      "breakpoints": true
     }
   ]
 }

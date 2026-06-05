@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, clinicMembers } from "@/infrastructure/db/schema";
+import { clinics, clinicMembers, whatsappQaRoutes } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME, type SessionPayload } from "@/lib/session";
 
 /**
@@ -28,6 +28,126 @@ export async function resolveClinicByZapiInstance(
     .limit(1)
     .then((r) => r[0] ?? null);
   return row?.id ?? null;
+}
+
+export type ZapiClinicResolution = {
+  clinicId: string;
+  channelClinicId: string;
+  sourceClinicId: string;
+  isQaRoute: boolean;
+  routeLabel: string | null;
+};
+
+type WhatsappQaRouteRow = {
+  sourceClinicId: string;
+  targetClinicId: string;
+  label: string | null;
+  enabled: boolean;
+};
+
+export function normalizeWhatsappRoutePhone(phone: string | null | undefined): string | null {
+  const normalized = (phone ?? "").replace(/\D/g, "");
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function resolveZapiClinicRouteFromRows(params: {
+  sourceClinicId: string | null;
+  route: WhatsappQaRouteRow | null;
+}): ZapiClinicResolution | null {
+  if (!params.sourceClinicId) return null;
+  const route = params.route;
+  if (route?.enabled && route.sourceClinicId === params.sourceClinicId) {
+    return {
+      clinicId: route.targetClinicId,
+      channelClinicId: route.sourceClinicId,
+      sourceClinicId: route.sourceClinicId,
+      isQaRoute: true,
+      routeLabel: route.label ?? null,
+    };
+  }
+
+  return {
+    clinicId: params.sourceClinicId,
+    channelClinicId: params.sourceClinicId,
+    sourceClinicId: params.sourceClinicId,
+    isQaRoute: false,
+    routeLabel: null,
+  };
+}
+
+/**
+ * Inbound Z-API com suporte a QA por allowlist de telefone.
+ *
+ * Normal: instanceId -> clínica dona da instância.
+ * QA: instanceId -> clínica fonte do canal, phone -> clínica fake onde a
+ * conversa/agenda devem viver.
+ */
+export async function resolveClinicByZapiInbound(params: {
+  instanceId: string | null | undefined;
+  phone: string | null | undefined;
+}): Promise<ZapiClinicResolution | null> {
+  if (!params.instanceId) return null;
+
+  const sourceClinic = await db
+    .select({ id: clinics.id })
+    .from(clinics)
+    .where(eq(clinics.zapiInstanceId, params.instanceId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+
+  if (!sourceClinic) return null;
+
+  const phone = normalizeWhatsappRoutePhone(params.phone);
+  if (!phone) {
+    return resolveZapiClinicRouteFromRows({ sourceClinicId: sourceClinic.id, route: null });
+  }
+
+  const route = await db
+    .select({
+      sourceClinicId: whatsappQaRoutes.sourceClinicId,
+      targetClinicId: whatsappQaRoutes.targetClinicId,
+      label: whatsappQaRoutes.label,
+      enabled: whatsappQaRoutes.enabled,
+    })
+    .from(whatsappQaRoutes)
+    .where(
+      and(
+        eq(whatsappQaRoutes.sourceClinicId, sourceClinic.id),
+        eq(whatsappQaRoutes.phone, phone),
+        eq(whatsappQaRoutes.enabled, true),
+      ),
+    )
+    .limit(1)
+    .then((r) => r[0] ?? null);
+
+  return resolveZapiClinicRouteFromRows({ sourceClinicId: sourceClinic.id, route });
+}
+
+/**
+ * Outbound de conversas já registradas: se a conversa vive numa clínica fake
+ * e o telefone está allowlistado, usa a clínica fonte como canal de envio.
+ */
+export async function resolveWhatsappChannelClinicForOutbound(params: {
+  clinicId: string;
+  phone: string | null | undefined;
+}): Promise<string> {
+  const phone = normalizeWhatsappRoutePhone(params.phone);
+  if (!phone) return params.clinicId;
+
+  const route = await db
+    .select({ sourceClinicId: whatsappQaRoutes.sourceClinicId })
+    .from(whatsappQaRoutes)
+    .where(
+      and(
+        eq(whatsappQaRoutes.targetClinicId, params.clinicId),
+        eq(whatsappQaRoutes.phone, phone),
+        eq(whatsappQaRoutes.enabled, true),
+      ),
+    )
+    .limit(1)
+    .then((r) => r[0] ?? null);
+
+  return route?.sourceClinicId ?? params.clinicId;
 }
 
 /** Inbound Meta: o phone_number_id do payload identifica a clínica. */

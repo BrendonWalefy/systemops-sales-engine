@@ -8,7 +8,10 @@ import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { and, desc, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
-import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
+import {
+  resolveClinicByZapiInbound,
+  type ZapiClinicResolution,
+} from "@/application/tenancy/resolve-clinic";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
@@ -25,6 +28,31 @@ let whisperGateway: WhisperGateway | null = null;
 function getWhisperGateway() {
   if (!whisperGateway) whisperGateway = new WhisperGateway();
   return whisperGateway;
+}
+
+function overrideResolution(clinicId: string): ZapiClinicResolution {
+  return {
+    clinicId,
+    channelClinicId: clinicId,
+    sourceClinicId: clinicId,
+    isQaRoute: false,
+    routeLabel: null,
+  };
+}
+
+async function resolveWebhookClinic(
+  body: ZApiInboundPayload,
+  clinicIdOverride: string | null,
+): Promise<ZapiClinicResolution | null> {
+  if (clinicIdOverride) return overrideResolution(clinicIdOverride);
+  return resolveClinicByZapiInbound({ instanceId: body.instanceId, phone: body.phone });
+}
+
+function logQaRoute(resolution: ZapiClinicResolution, phone: string): void {
+  if (!resolution.isQaRoute) return;
+  console.log(
+    `[ZApi] QA route ${resolution.routeLabel ?? phone}: canal=${resolution.sourceClinicId} -> clínica=${resolution.clinicId}`,
+  );
 }
 
 // Detecta e registra mensagem enviada pelo operador direto pelo celular (fromMe: true).
@@ -101,8 +129,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Sem texto → mídia, sticker, reação — ignora
     if (!body.text?.message) return new NextResponse("OK", { status: 200 });
 
-    const clinicId = clinicIdOverride ?? (await resolveClinicByZapiInstance(body.instanceId));
-    if (!clinicId) return new NextResponse("OK", { status: 200 });
+    const resolution = await resolveWebhookClinic(body, clinicIdOverride);
+    if (!resolution) return new NextResponse("OK", { status: 200 });
+    logQaRoute(resolution, body.phone);
+    const clinicId = resolution.clinicId;
 
     try {
       // 1ª verificação: messageId já está no banco → é echo da IA → ignora
@@ -149,15 +179,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const clinicId = clinicIdOverride ?? (await resolveClinicByZapiInstance(body.instanceId));
-  if (!clinicId) {
+  const resolution = await resolveWebhookClinic(body, clinicIdOverride);
+  if (!resolution) {
     console.error("[ZApi] Nenhuma clínica resolvida para a instância");
     return new NextResponse("Server misconfigured", { status: 500 });
   }
+  logQaRoute(resolution, body.phone);
+
+  const clinicId = resolution.clinicId;
 
   const [clinicRow] = await db
     .select({
       autoReplyEnabled: clinics.autoReplyEnabled,
+    })
+    .from(clinics)
+    .where(eq(clinics.id, clinicId))
+    .limit(1);
+
+  if (!clinicRow) {
+    console.error("[ZApi] Clínica de destino não encontrada");
+    return new NextResponse("Server misconfigured", { status: 500 });
+  }
+
+  const [channelClinicRow] = await db
+    .select({
       channelProvider: clinics.channelProvider,
       zapiInstanceId: clinics.zapiInstanceId,
       zapiToken: clinics.zapiToken,
@@ -166,10 +211,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       metaAccessToken: clinics.metaAccessToken,
     })
     .from(clinics)
-    .where(eq(clinics.id, clinicId))
+    .where(eq(clinics.id, resolution.channelClinicId))
     .limit(1);
 
-  const channelConfig = clinicRow ? resolveChannelConfig(clinicRow) : null;
+  const channelConfig = channelClinicRow ? resolveChannelConfig(channelClinicRow) : null;
   const replyEnabled = clinicRow?.autoReplyEnabled !== false;
 
   // Mensagem inbound do lead: texto digitado ou áudio transcrito.
@@ -215,6 +260,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         senderName: body.senderName || undefined,
         timestamp: body.momment ? new Date(body.momment) : new Date(),
         replyEnabled,
+        channelClinicId: resolution.channelClinicId,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(

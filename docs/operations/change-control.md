@@ -97,6 +97,10 @@ WhatsApp webhooks:
 - media/audio fallback paths;
 - idempotency and retry-safe behavior.
 
+For regressions observed in real WhatsApp conversations, replay the lead
+messages in `BW odontologia` through the allowlisted QA phones before enabling
+the change for production leads.
+
 Conversation and AI:
 
 - intent/action routing when deterministic;
