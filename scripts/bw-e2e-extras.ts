@@ -11,6 +11,94 @@ const ZAPI_INSTANCE = "3F3939F113D8221F7B34C609B9308FED";
 const TEST_PHONE = "5511953628848";
 const BW_ID = "5a2ce07d-cfa1-4108-9a3c-3d1fae017067";
 
+type TreatmentFixture = {
+  name: string;
+  durationMinutes: number;
+  description: string;
+  requiresEvaluationFirst: boolean;
+};
+
+const XIMENDES_TREATMENT_FIXTURES: TreatmentFixture[] = [
+  {
+    name: "Avaliação",
+    durationMinutes: 40,
+    description: "Consulta inicial com raio-x, análise do sorriso e plano de tratamento personalizado.",
+    requiresEvaluationFirst: false,
+  },
+  {
+    name: "Botox odontológico",
+    durationMinutes: 30,
+    description: "Para bruxismo, DTM e harmonização do sorriso gengival.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Clareamento dental",
+    durationMinutes: 60,
+    description: "A laser ou caseiro com moldeiras, conforme avaliação.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Exodontia (extração)",
+    durationMinutes: 45,
+    description: "Extração simples ou cirúrgica, incluindo siso incluso.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Gengivoplastia",
+    durationMinutes: 45,
+    description: "Remodelamento do contorno gengival para equilibrar o sorriso.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Harmonização orofacial",
+    durationMinutes: 60,
+    description: "Preenchimento labial, bichectomia, bioestimuladores e toxina botulínica.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Implante dentário",
+    durationMinutes: 60,
+    description: "Implante de titânio biocompatível para substituir raiz e coroa.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Lentes de porcelana (facetas)",
+    durationMinutes: 90,
+    description: "Alta durabilidade e estética superior, com indicação definida na avaliação.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Lentes de resina composta",
+    durationMinutes: 90,
+    description: "Facetas em resina para transformar o sorriso, com técnica definida na avaliação.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Limpeza dental",
+    durationMinutes: 40,
+    description: "Profilaxia completa com remoção de tártaro e biofilme.",
+    requiresEvaluationFirst: false,
+  },
+  {
+    name: "Prótese dentária",
+    durationMinutes: 60,
+    description: "Prótese fixa, removível ou protocolo, conforme avaliação.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Restauração em resina",
+    durationMinutes: 60,
+    description: "Resina composta para dentes trincados, lascados ou com cárie.",
+    requiresEvaluationFirst: true,
+  },
+  {
+    name: "Tratamento de canal",
+    durationMinutes: 60,
+    description: "Tratamento endodôntico para preservar o dente natural.",
+    requiresEvaluationFirst: true,
+  },
+];
+
 let msgCounter = Date.now();
 let totalPass = 0;
 let totalFail = 0;
@@ -91,7 +179,7 @@ async function getConversation(): Promise<Record<string, unknown> | null> {
   return conv ?? null;
 }
 
-async function waitAgent(timeoutMs = 25000): Promise<Record<string, unknown> | null> {
+async function waitAgentSince(since: Date, timeoutMs = 25000): Promise<Record<string, unknown> | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await wait(700);
@@ -100,6 +188,8 @@ async function waitAgent(timeoutMs = 25000): Promise<Record<string, unknown> | n
     const [msg] = await sql`
       SELECT author, body, intent, sent_at FROM messages
       WHERE conversation_id = ${conv.id as string}
+        AND author = 'agent'
+        AND sent_at >= ${since}
       ORDER BY sent_at DESC LIMIT 1
     `;
     if (msg?.author === "agent") return msg;
@@ -115,9 +205,34 @@ async function countAgentMessagesSince(conversationId: string, since: Date): Pro
   return Number(row?.total ?? 0);
 }
 
+async function getLatestConversationState(conversationId: string): Promise<Record<string, unknown> | null> {
+  const [state] = await sql`
+    SELECT state, payload, created_at
+    FROM conversation_states
+    WHERE conversation_id = ${conversationId}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  return state ?? null;
+}
+
+function getOfferedSlotStartHours(state: Record<string, unknown> | null): number[] {
+  const payload = state?.payload as { slots?: Array<{ startsAt?: string }> } | null;
+  const slots = payload?.slots ?? [];
+  return slots
+    .map((slot) => slot.startsAt ? new Date(slot.startsAt) : null)
+    .filter((date): date is Date => date !== null)
+    .map((date) => Number(new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      hour12: false,
+    }).format(date)));
+}
+
 async function createLeadConversation(): Promise<{ leadId: string; conversationId: string }> {
+  const startedAt = new Date();
   await webhook({ text: "Oi" });
-  await waitAgent();
+  await waitAgentSince(startedAt);
   const conv = await getConversation();
   if (!conv?.id || !conv.lead_id) throw new Error("Conversa não criada");
   return { leadId: String(conv.lead_id), conversationId: String(conv.id) };
@@ -132,6 +247,47 @@ async function createAppointment(leadId: string, startsAt: Date, status = "sched
   return id;
 }
 
+async function replaceBwTreatmentsForTest(fixtures: TreatmentFixture[]): Promise<() => Promise<void>> {
+  const original = await sql`
+    SELECT id, name, duration_minutes, description, common_objections, requires_evaluation_first, created_at, updated_at
+    FROM treatments
+    WHERE clinic_id = ${BW_ID}
+    ORDER BY created_at
+  `;
+
+  await sql`DELETE FROM treatments WHERE clinic_id = ${BW_ID}`;
+  for (const fixture of fixtures) {
+    await sql`
+      INSERT INTO treatments (
+        id, clinic_id, name, duration_minutes, description, common_objections,
+        requires_evaluation_first, created_at, updated_at
+      )
+      VALUES (
+        ${crypto.randomUUID()}, ${BW_ID}, ${fixture.name}, ${fixture.durationMinutes},
+        ${fixture.description}, ${JSON.stringify([])}::jsonb, ${fixture.requiresEvaluationFirst},
+        now(), now()
+      )
+    `;
+  }
+
+  return async () => {
+    await sql`DELETE FROM treatments WHERE clinic_id = ${BW_ID}`;
+    for (const row of original) {
+      await sql`
+        INSERT INTO treatments (
+          id, clinic_id, name, duration_minutes, description, common_objections,
+          requires_evaluation_first, created_at, updated_at
+        )
+        VALUES (
+          ${row.id as string}, ${BW_ID}, ${row.name as string}, ${row.duration_minutes as number},
+          ${row.description as string | null}, ${JSON.stringify(row.common_objections ?? [])}::jsonb,
+          ${row.requires_evaluation_first as boolean}, ${row.created_at as Date}, ${row.updated_at as Date}
+        )
+      `;
+    }
+  };
+}
+
 console.log("\n🧪 BW Odontologia — Cenários E2E Extras");
 
 try {
@@ -144,6 +300,7 @@ try {
 
 section("T-AUDIO-01 — áudio com autoReply=true");
 await cleanState();
+const audioStartedAt = new Date();
 await webhook({
   audio: {
     audioUrl: "https://www2.cs.uic.edu/~i101/SoundFiles/StarWars3.wav",
@@ -151,7 +308,7 @@ await webhook({
     seconds: 3,
   },
 });
-const audioAgent = await waitAgent(35000);
+const audioAgent = await waitAgentSince(audioStartedAt, 35000);
 const convAudio = await getConversation();
 const [audioLead] = convAudio?.id
   ? await sql`SELECT body FROM messages WHERE conversation_id = ${convAudio.id as string} AND author='lead' ORDER BY sent_at DESC LIMIT 1`
@@ -200,22 +357,58 @@ const stale = await createLeadConversation();
 const pastStart = new Date(Date.now() - 2 * 24 * 60 * 60_000);
 await createAppointment(stale.leadId, pastStart, "scheduled");
 await sql`UPDATE leads SET status='appointment_scheduled' WHERE id=${stale.leadId}`;
+const staleStartedAt = new Date();
 await webhook({ text: "quero agendar uma avaliacao" });
-const staleAgent = await waitAgent();
+const staleAgent = await waitAgentSince(staleStartedAt);
 const staleBody = String(staleAgent?.body ?? "");
 ok(!!staleAgent, "agente respondeu");
 ok(!staleBody.toLowerCase().includes("problema técnico"), "não retornou problema técnico");
 ok(staleBody.includes("1.") || staleBody.toLowerCase().includes("horários"), "ofereceu slots normalmente", staleBody.slice(0, 160));
 
-section("T-NUMBER-LIST — número após lista de procedimentos");
+section("T-FORA-EXPEDIENTE — pedido hoje às 20h");
 await cleanState();
-await webhook({ text: "quais procedimentos voces fazem" });
-await waitAgent();
-await webhook({ text: "8" });
-const numberAgent = await waitAgent();
-const numberBody = String(numberAgent?.body ?? "");
-ok(!!numberAgent, "agente respondeu ao número");
-ok(!numberBody.toLowerCase().includes("problema técnico"), "não retornou problema técnico");
+const outsideStartedAt = new Date();
+await webhook({ text: "quero agendar uma avaliacao hoje as 20h" });
+const outsideAgent = await waitAgentSince(outsideStartedAt);
+const outsideConv = await getConversation();
+const outsideState = outsideConv?.id ? await getLatestConversationState(String(outsideConv.id)) : null;
+const outsideHours = getOfferedSlotStartHours(outsideState);
+const outsideBody = String(outsideAgent?.body ?? "");
+ok(!!outsideAgent, "agente respondeu ao pedido fora do expediente");
+ok(!outsideBody.toLowerCase().includes("problema técnico"), "não retornou problema técnico");
+ok(!outsideHours.includes(20), "não ofertou slot iniciando às 20h", `slots=${outsideHours.join(",")}`);
+
+section("T-SABADO-REDUZIDO — sábado de manhã respeita fim às 13h");
+await cleanState();
+const saturdayStartedAt = new Date();
+await webhook({ text: "quero agendar uma avaliacao sabado de manha" });
+const saturdayAgent = await waitAgentSince(saturdayStartedAt);
+const saturdayConv = await getConversation();
+const saturdayState = saturdayConv?.id ? await getLatestConversationState(String(saturdayConv.id)) : null;
+const saturdayHours = getOfferedSlotStartHours(saturdayState);
+const saturdayBody = String(saturdayAgent?.body ?? "");
+ok(!!saturdayAgent, "agente respondeu ao pedido de sábado");
+ok(!saturdayBody.toLowerCase().includes("problema técnico"), "sem problema técnico no sábado");
+ok(saturdayHours.length > 0, "ofertou slots de sábado de manhã", `slots=${saturdayHours.join(",")}`);
+ok(saturdayHours.every((hour) => hour < 13), "nenhum slot inicia às 13h ou depois", `slots=${saturdayHours.join(",")}`);
+
+section("T-NUMBER-LIST — número após lista de procedimentos");
+const restoreTreatments = await replaceBwTreatmentsForTest(XIMENDES_TREATMENT_FIXTURES);
+try {
+  await cleanState();
+  const listStartedAt = new Date();
+  await webhook({ text: "quais procedimentos voces fazem" });
+  await waitAgentSince(listStartedAt);
+  const numberStartedAt = new Date();
+  await webhook({ text: "8" });
+  const numberAgent = await waitAgentSince(numberStartedAt);
+  const numberBody = String(numberAgent?.body ?? "");
+  ok(!!numberAgent, "agente respondeu ao número");
+  ok(!numberBody.toLowerCase().includes("problema técnico"), "não retornou problema técnico");
+  ok(/porcelana|faceta/i.test(numberBody), "resposta reconheceu o item 8 da lista Ximendes", numberBody.slice(0, 180));
+} finally {
+  await restoreTreatments();
+}
 
 section("T-FOLLOWUP — follow-up após completed");
 await cleanState();
@@ -244,8 +437,9 @@ await sql`
   SET ai_paused=true, takeover_expires_at=${new Date(Date.now() - 60_000)}, updated_at=now()
   WHERE id=${ttl.conversationId}
 `;
+const ttlStartedAt = new Date();
 await webhook({ text: "Boa tarde, podemos continuar?" });
-const ttlAgent = await waitAgent();
+const ttlAgent = await waitAgentSince(ttlStartedAt);
 const ttlBody = String(ttlAgent?.body ?? "");
 ok(!!ttlAgent, "agente respondeu após TTL expirado");
 ok(!ttlBody.toLowerCase().includes("problema técnico"), "sem problema técnico na retomada");

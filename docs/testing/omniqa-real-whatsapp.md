@@ -316,11 +316,11 @@ IA:   [retoma — resumedFromHumanTakeover=true]
 
 | # | Lead | Sequencia | Bug | Status |
 |---|------|-----------|-----|--------|
-| 1 | Gregorie | `appointment_scheduled` → "Oi" → "2" → "Avaliação" | "Ops, tive problema tecnico" | A investigar |
-| 2 | Fe Em Deus | Duas mensagens em 5s | Duas saudacoes identicas enviadas | A investigar |
-| 3 | Larissa Sales | Duas mensagens em 2s | Duas conversas criadas | A investigar |
-| 4 | Dina | "8" apos lista de 13 procedimentos | "Ops, tive problema tecnico" | A investigar |
-| 5 | Gregorie | "9" duas vezes apos lista de procedimentos | Sem resposta (silencio) | A investigar |
+| 1 | Gregorie | `appointment_scheduled` → "Oi" → "2" → "Avaliação" | "Ops, tive problema tecnico" | Coberto em BW Session 002 |
+| 2 | Fe Em Deus | Duas mensagens em 5s | Duas saudacoes identicas enviadas | Coberto em BW Session 002 |
+| 3 | Larissa Sales | Duas mensagens em 2s | Duas conversas criadas | Corrigido/coberto em BW Session 003 |
+| 4 | Dina | "8" apos lista de 13 procedimentos | "Ops, tive problema tecnico" | Reforçado com catálogo Ximendes em BW Session 003 |
+| 5 | Gregorie | "9" duas vezes apos lista de procedimentos | Sem resposta (silencio) | Coberto por lista ativa + bypass de throttle; reforçar com item 9 se regressar |
 
 Para reproduzir qualquer bug, usar a sequencia exata descrita no cenario correspondente
 a partir dos telefones allowlistados na BW Odontologia.

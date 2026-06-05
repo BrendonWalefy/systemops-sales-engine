@@ -212,7 +212,7 @@ export const leads = pgTable(
   },
   (table) => ({
     clinicStatusIdx: index("leads_clinic_status_idx").on(table.clinicId, table.status),
-    clinicPhoneIdx: index("leads_clinic_phone_idx").on(table.clinicId, table.phone),
+    clinicPhoneIdx: uniqueIndex("leads_clinic_phone_idx").on(table.clinicId, table.phone),
   }),
 );
 
@@ -239,7 +239,7 @@ export const conversations = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    leadIdx: index("conversations_lead_idx").on(table.leadId),
+    leadIdx: uniqueIndex("conversations_lead_idx").on(table.leadId),
     externalThreadIdx: index("conversations_external_thread_idx").on(table.externalThreadId),
   }),
 );

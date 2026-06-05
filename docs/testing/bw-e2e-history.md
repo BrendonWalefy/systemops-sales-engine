@@ -299,6 +299,46 @@ na Ximendes. Ambiente local com OpenAI real, Z-API send bloqueado
 ambiente local durante esta sessão. A correção garante que, nesses casos, o áudio
 não seja perdido: a mensagem é salva com contexto de transcrição indisponível e a
 IA responde pedindo o texto ao lead.
+
+---
+
+## Sessão 003 — 2026-06-05
+
+**Contexto:** hardening pós-revalidação, focado nas lacunas das conversas reais
+da Ximendes em junho: Larissa (duplicidade de lead/conversa), Dina (item 8 em
+lista de 13 procedimentos) e cenários de horário que ainda não estavam no runner
+extra via webhook.
+
+### Auditoria Ximendes
+
+- Janela auditada: desde `2026-06-01`.
+- Duplicata real encontrada: Larissa Sales tinha dois leads com mesmo
+  `clinic_id + phone`, cada um com uma conversa.
+- Conversas duplicadas por `lead_id`: nenhuma antes da migração, mas a duplicata
+  de leads comprova a corrida de primeiro contato.
+
+### Correções e reforços
+
+| Item | Causa raiz | Correção |
+|---|---|---|
+| Larissa: duas mensagens simultâneas podiam criar dois leads | `leads` não tinha unicidade por `clinic_id + phone`; `RegisterIncomingMessage` confiava no ID gerado localmente | Migration `0009_tranquil_captain_cross` consolida duplicatas e cria unique index; ingestão recarrega lead persistido após upsert |
+| Larissa: duas conversas podiam nascer para o mesmo lead | `conversations` só tinha índice comum em `lead_id` | Migration `0009_tranquil_captain_cross` consolida conversas duplicadas e cria unique index por `lead_id`; repositório usa conflito natural |
+| Dina: item `8` não era testado com catálogo real | BW tinha lista curta; o teste só validava "não crashar" | `bw-e2e-extras` substitui temporariamente os tratamentos da BW pela matriz Ximendes de 13 itens e exige resposta para "Lentes de porcelana (facetas)" |
+| Runners E2E podiam pegar resposta antiga | `waitAgent()` aceitava a última mensagem agent sem marco temporal | Runner principal e extras agora só aceitam resposta agent enviada após o webhook testado |
+| Horários fora de expediente/sábado reduzido faltavam no webhook E2E | Cobertura existia em unit tests, mas não no runner real | Extras adicionados para "hoje às 20h" e "sábado de manhã", validando `conversation_states`/slots |
+
+### Verificação local
+
+| Comando | Resultado |
+|---|---|
+| Migration `0009` em transação com rollback | ✅ sem duplicatas após a migration simulada |
+| `npm run verify` | ✅ `394/394` |
+| Agenda focada | ✅ `79/79` |
+
+**Observação de deploy:** o código novo usa `ON CONFLICT (clinic_id, phone)` e
+`ON CONFLICT (lead_id)`. A migration `0009_tranquil_captain_cross` deve ser
+aplicada antes de liberar o código em produção. Depois da migration aplicada em
+ambiente aprovado, reexecutar `npm run bw:e2e` e o runner extra com OpenAI real.
 >
 > CONFIRMAÇÃO DE PREÇO: Quando o lead perguntar "é a partir de R$ 2.500?" responda diretamente com os valores.
 >

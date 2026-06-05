@@ -27,7 +27,7 @@ export class DrizzleConversationRepository implements ConversationRepository {
         updatedAt: conversation.updatedAt,
       })
       .onConflictDoUpdate({
-        target: conversations.id,
+        target: conversations.leadId,
         set: {
           externalThreadId: conversation.externalThreadId,
           summary: conversation.summary,
