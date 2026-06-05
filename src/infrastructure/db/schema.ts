@@ -88,6 +88,13 @@ export const playbookVersionStatusEnum = pgEnum("playbook_version_status", [
 
 export const appointmentSourceEnum = pgEnum("appointment_source", ["app", "gcal_import"]);
 
+// Fonte de verdade da DISPONIBILIDADE da clínica.
+//   "internal"        → banco (appointments + calendar_blocks) é a fonte de verdade
+//   "google_calendar" → legado/opt-in: GCal é a fonte de verdade para slots
+// Nullable de propósito: quando null, o resolver deriva o modo a partir de
+// googleCalendarId. Garante zero mudança para clínicas existentes na migração.
+export const calendarModeEnum = pgEnum("calendar_mode", ["internal", "google_calendar"]);
+
 export const clinics = pgTable("clinics", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -105,6 +112,8 @@ export const clinics = pgTable("clinics", {
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),
   businessHours: text("business_hours"),
   googleCalendarId: text("google_calendar_id"),
+  // Fonte de verdade da disponibilidade. Null = derivar de googleCalendarId no resolver.
+  calendarMode: calendarModeEnum("calendar_mode"),
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
   takeoverTtlHours: integer("takeover_ttl_hours").notNull().default(4),
   postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes").notNull().default(60),
@@ -355,6 +364,31 @@ export const appointments = pgTable(
     clinicProfessionalIdx: index("appointments_clinic_professional_idx").on(
       table.clinicId,
       table.professionalId,
+    ),
+  }),
+);
+
+// Bloqueios de horário FIRST-CLASS (almoço, férias, ausência, manutenção).
+// Não usam lead falso. No modo google_calendar os bloqueios continuam como
+// eventos no GCal (prefixo 🚫); esta tabela é usada no modo interno.
+// professionalId null = bloqueio da clínica inteira.
+export const calendarBlocks = pgTable(
+  "calendar_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    professionalId: uuid("professional_id").references(() => professionals.id),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    reason: text("reason").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    clinicStartsAtIdx: index("calendar_blocks_clinic_starts_at_idx").on(
+      table.clinicId,
+      table.startsAt,
     ),
   }),
 );

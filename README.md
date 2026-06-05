@@ -8,7 +8,7 @@ Producao: https://systemops-core.vercel.app
 
 - Multi-clinica: configuracao operacional vive no banco, por clinica.
 - WhatsApp atual: Z-API por clinica, resolvida por `zapiInstanceId`.
-- Agenda atual: Google Calendar por clinica, resolvido por `clinics.googleCalendarId`.
+- Agenda atual: `clinics.calendarMode` define a fonte de verdade. No modo `internal`, slots, agendamentos e bloqueios vivem no banco; no modo `google_calendar`, Google Calendar segue como opt-in legado.
 - Login de clinica: usuarios em `clinic_members.password_hash`.
 - Login owner: `OWNER_EMAIL` e `OWNER_PASSWORD` via env.
 - Migrations: baseline unico em `drizzle/0000_baseline.sql`, reprodutivel do zero.
@@ -50,7 +50,7 @@ Producao: https://systemops-core.vercel.app
 | --- | --- |
 | `POST /api/whatsapp/zapi` | Webhook Z-API atual |
 | `POST /api/conversations/[conversationId]/send` | Envio manual pelo inbox |
-| `POST /api/calendar/setup-watch` | Setup de watch do Google Calendar |
+| `POST /api/calendar/setup-watch` | Setup de watch do Google Calendar para clinicas em modo opt-in |
 | `/api/cron/*` | Rotinas protegidas por `CRON_SECRET` |
 | `/api/e2e/*` | Rotas destrutivas de teste, so com `E2E_MODE=true` fora de producao |
 
@@ -75,8 +75,8 @@ Use `.env.example` como contrato minimo. Nao coloque credenciais de clinica em e
 | `OWNER_EMAIL` | Login do owner |
 | `OWNER_PASSWORD` | Senha do owner |
 | `OPENAI_API_KEY` | Classificacao, composicao e transcricao |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account do Google Calendar |
-| `GOOGLE_PRIVATE_KEY` | Chave privada da service account |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account do Google Calendar, usada apenas no modo `google_calendar` |
+| `GOOGLE_PRIVATE_KEY` | Chave privada da service account, usada apenas no modo `google_calendar` |
 | `CRON_SECRET` | Protecao das rotas cron |
 | `TOGGLE_SECRET` | Protecao de toggles operacionais |
 | `SIMULATE_API_KEY` | Acesso ao sandbox de simulacao |
@@ -84,7 +84,7 @@ Use `.env.example` como contrato minimo. Nao coloque credenciais de clinica em e
 | `VAPID_PRIVATE_KEY` | Push notifications no servidor |
 | `VAPID_SUBJECT` | Identidade VAPID |
 
-Configuracoes por clinica ficam no banco: Z-API, Google Calendar, playbook, tom de voz, horarios, timezone, profissionais e tratamentos.
+Configuracoes por clinica ficam no banco: Z-API, `calendarMode`, Google Calendar opcional, playbook, tom de voz, horarios, timezone, profissionais e tratamentos.
 
 ## Setup Local
 

@@ -111,7 +111,7 @@ export class InMemoryDemoStore
 
   async findByPeriod(clinicId: string, from: Date, to: Date): Promise<Appointment[]> {
     return Array.from(this.appointments.values()).filter(
-      (a) => a.clinicId === clinicId && a.startsAt >= from && a.startsAt <= to,
+      (a) => a.clinicId === clinicId && a.startsAt < to && a.endsAt > from,
     );
   }
 

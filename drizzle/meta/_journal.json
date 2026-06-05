@@ -15,6 +15,20 @@
       "when": 1780633924843,
       "tag": "0001_smart_morph",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780658164545,
+      "tag": "0002_calendar_internal_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780658165223,
+      "tag": "0003_ximendes_internal_calendar",
+      "breakpoints": true
     }
   ]
 }

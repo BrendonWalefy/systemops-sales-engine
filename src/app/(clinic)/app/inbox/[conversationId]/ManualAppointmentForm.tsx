@@ -150,7 +150,7 @@ export function ManualAppointmentForm({ conversationId, defaultDurationMinutes, 
             }}
           >
             {showAdvanced ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-            Evento já existe no Google Calendar
+            Evento externo já existe
           </button>
 
           {showAdvanced && (
@@ -166,7 +166,7 @@ export function ManualAppointmentForm({ conversationId, defaultDurationMinutes, 
                 style={inputStyle}
               />
               <span style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.4 }}>
-                Informe o ID para vincular ao evento existente e evitar duplicata no Calendar.
+                Informe o ID para vincular ao evento existente e evitar duplicata externa.
               </span>
             </div>
           )}

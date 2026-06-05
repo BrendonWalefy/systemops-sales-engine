@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte } from "drizzle-orm";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import { db } from "@/infrastructure/db/client";
@@ -90,8 +90,8 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const rows = await db.query.appointments.findMany({
       where: and(
         eq(appointments.clinicId, clinicId),
-        gte(appointments.startsAt, from),
-        lte(appointments.startsAt, to),
+        lt(appointments.startsAt, to),
+        gt(appointments.endsAt, from),
       ),
       orderBy: [appointments.startsAt],
     });

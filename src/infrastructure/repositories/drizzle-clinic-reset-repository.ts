@@ -1,4 +1,4 @@
-import { eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import {
   clinics,
@@ -10,6 +10,7 @@ import {
   slotReservations,
   followUps,
   appointments,
+  calendarBlocks,
   aiUsageCosts,
   whatsappMessageCosts,
 } from "@/infrastructure/db/schema";
@@ -29,7 +30,7 @@ export class DrizzleClinicResetRepository implements ClinicResetPort {
     const rows = await db
       .select({ calendarEventId: appointments.calendarEventId })
       .from(appointments)
-      .where(eq(appointments.clinicId, clinicId) && isNotNull(appointments.calendarEventId));
+      .where(and(eq(appointments.clinicId, clinicId), isNotNull(appointments.calendarEventId)));
     return rows.map((r) => r.calendarEventId!);
   }
 
@@ -54,6 +55,7 @@ export class DrizzleClinicResetRepository implements ClinicResetPort {
       slotReservations: 0,
       followUps: 0,
       appointments: 0,
+      calendarBlocks: 0,
       conversations: 0,
       aiUsageCosts: 0,
       whatsappMessageCosts: 0,
@@ -99,6 +101,12 @@ export class DrizzleClinicResetRepository implements ClinicResetPort {
         .returning({ id: appointments.id });
       counts.appointments = apDeleted.length;
     }
+
+    const blocksDeleted = await db
+      .delete(calendarBlocks)
+      .where(eq(calendarBlocks.clinicId, clinicId))
+      .returning({ id: calendarBlocks.id });
+    counts.calendarBlocks = blocksDeleted.length;
 
     if (convIds.length > 0) {
       const convDeleted = await db

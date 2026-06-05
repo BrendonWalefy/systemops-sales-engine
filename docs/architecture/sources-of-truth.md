@@ -35,10 +35,26 @@ O Orchestrator injeta o conteúdo editorial no prompt via `ComposerInput.clinic`
 | `menuItems` | `resolveMenuSelection()` | Itens do menu conversacional |
 | `receptionistPhone` | `ConversationOrchestrator` | Notificações de urgência/needs_human |
 | `autoReplyEnabled` | webhook `zapi/route.ts` | Gate de resposta automática |
-| `googleCalendarId` | `GoogleCalendarGateway` | Busca e criação de slots |
+| `calendarMode` | `resolveCalendarGateway()` | Fonte de verdade da disponibilidade: `internal` ou `google_calendar` |
+| `googleCalendarId` | `GoogleCalendarGateway` | Conector opcional para clínicas em modo `google_calendar` |
 | `zapiToken`, `metaAccessToken` etc. | `sendTextMessage()` | Credenciais de canal |
 | `specialty` | `ResponseComposer` | Fallback quando editorial não especifica |
 | `address` | `ConversationOrchestrator` | Resposta de localização |
+
+### 2.1. Agenda Interna
+
+**Dono de agendamentos:** tabela `appointments`
+
+**Dono de bloqueios internos:** tabela `calendar_blocks`
+
+**Porta de acesso:** `resolveCalendarGateway()` em `src/infrastructure/adapters/calendar/resolve-calendar-gateway.ts`
+
+No modo `internal`, a disponibilidade é calculada pelo `InternalCalendarGateway`
+com `SlotEngine`, `appointments` ativos e `calendar_blocks`. Google Calendar não
+decide disponibilidade nesse modo.
+
+No modo `google_calendar`, Google Calendar continua como fonte opt-in/legado para
+disponibilidade e eventos externos. O banco mantém os `appointments` do produto.
 
 **Campos no banco que NÃO são lidos em runtime (dead code de schema):**
 

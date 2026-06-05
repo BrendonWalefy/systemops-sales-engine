@@ -8,7 +8,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
-import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { updateAppointment } from "@/application/use-cases/calendar/update-appointment";
@@ -55,12 +55,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     const apptRepo = new DrizzleAppointmentRepository();
     const leadRepo = new DrizzleLeadRepository();
     const followUpRepo = new DrizzleFollowUpRepository();
-    const gateway = new GoogleCalendarGateway(
-      clinicRow.googleCalendarId,
+    const gateway = resolveCalendarGateway({
+      clinicId: clinicRow.id,
+      calendarMode: clinicRow.calendarMode,
+      googleCalendarId: clinicRow.googleCalendarId,
       timezone,
-      clinicRow.businessHours,
-      clinicRow.postAppointmentBufferMinutes,
-    );
+      businessHours: clinicRow.businessHours,
+      postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,
+    });
 
     // Cancelamento usa a saga completa do BookingService (GCal + reserva + lead status)
     if (body.status === "cancelled") {
@@ -137,12 +139,14 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams): Pr
     const apptRepo = new DrizzleAppointmentRepository();
     const leadRepo = new DrizzleLeadRepository();
     const timezone = new ClinicTimezone(clinicRow.timezone);
-    const gateway = new GoogleCalendarGateway(
-      clinicRow.googleCalendarId,
+    const gateway = resolveCalendarGateway({
+      clinicId: clinicRow.id,
+      calendarMode: clinicRow.calendarMode,
+      googleCalendarId: clinicRow.googleCalendarId,
       timezone,
-      clinicRow.businessHours,
-      clinicRow.postAppointmentBufferMinutes,
-    );
+      businessHours: clinicRow.businessHours,
+      postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,
+    });
 
     const appt = await apptRepo.findById(id);
     if (!appt || appt.clinicId !== clinicId) {

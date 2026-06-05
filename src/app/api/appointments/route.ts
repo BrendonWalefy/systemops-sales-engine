@@ -7,7 +7,7 @@ import { appointments, clinics, conversations, leads, professionals } from "@/in
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
-import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
 
@@ -136,12 +136,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
     const apptRepo = new DrizzleAppointmentRepository();
-    const gateway = new GoogleCalendarGateway(
-      clinicRow.googleCalendarId,
+    const gateway = resolveCalendarGateway({
+      clinicId: clinicRow.id,
+      calendarMode: clinicRow.calendarMode,
+      googleCalendarId: clinicRow.googleCalendarId,
       timezone,
-      clinicRow.businessHours,
-      clinicRow.postAppointmentBufferMinutes,
-    );
+      businessHours: clinicRow.businessHours,
+      postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,
+    });
 
     const bookingService = new BookingService(gateway, apptRepo, leadRepo);
     const result = await bookingService.book({
@@ -157,6 +159,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         menuItems: clinicRow.menuItems,
         businessHours: clinicRow.businessHours,
         googleCalendarId: clinicRow.googleCalendarId,
+        calendarMode: clinicRow.calendarMode,
         receptionistPhone: clinicRow.receptionistPhone ?? null,
         takeoverTtlHours: clinicRow.takeoverTtlHours,
         postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,

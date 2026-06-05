@@ -40,7 +40,9 @@ export async function POST(
       .from(clinics)
       .where(eq(clinics.id, clinicId))
       .limit(1);
-    calendarGateway = new GoogleCalendarGateway(clinic?.googleCalendarId);
+    if (clinic?.googleCalendarId) {
+      calendarGateway = new GoogleCalendarGateway(clinic.googleCalendarId);
+    }
   }
 
   const useCase = new ResetClinicData({

@@ -58,7 +58,7 @@ Prefer commits that answer one sentence:
 
 - "Add clinic scheduling buffer column."
 - "Apply post-event buffer in SlotEngine."
-- "Revalidate Google Calendar before booking."
+- "Revalidate CalendarGateway before booking."
 - "Clean lint warnings."
 
 Small commits make rollback safer. If a deploy breaks, we can revert the exact commit instead of guessing inside a package of unrelated changes.
@@ -86,7 +86,7 @@ Scheduling and agenda:
 
 - slot generation rules;
 - timezone/date preference behavior;
-- Google Calendar conflict/revalidation behavior;
+- CalendarGateway conflict/revalidation behavior, including Google Calendar opt-in clinics;
 - booking saga failure paths;
 - migrations for any clinic scheduling setting.
 
@@ -131,4 +131,3 @@ If production breaks after a deploy:
 5. Only then investigate a forward fix.
 
 Do not stack unrelated fixes on top of an unstable deploy.
-

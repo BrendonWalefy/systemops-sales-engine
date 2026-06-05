@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics } from "@/infrastructure/db/schema";
+import { clinics } from "@/infrastructure/db/schema";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 
@@ -35,8 +36,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .where(eq(clinics.calendarChannelId, channelId))
       .limit(1);
 
-    if (!clinic || !clinic.googleCalendarId) {
-      console.warn("[GCal webhook] No clinic found for channelId:", channelId);
+    if (
+      !clinic ||
+      !clinic.googleCalendarId ||
+      resolveCalendarMode({
+        calendarMode: clinic.calendarMode,
+        googleCalendarId: clinic.googleCalendarId,
+      }) !== "google_calendar"
+    ) {
+      console.warn("[GCal webhook] Clinic not eligible for GCal sync:", channelId);
       return new NextResponse(null, { status: 200 });
     }
 

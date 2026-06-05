@@ -28,6 +28,10 @@ async function main() {
 
   if (existing.length > 0) {
     const clinic = existing[0];
+    if (clinic.calendarMode !== "internal") {
+      await db.update(clinics).set({ calendarMode: "internal" }).where(eq(clinics.id, clinic.id));
+      console.log("   → calendarMode atualizado para 'internal'");
+    }
     console.log("✅ Clinic already exists:");
     console.log(`   Name: ${clinic.name}`);
     console.log(`   ID:   ${clinic.id}`);
@@ -45,6 +49,7 @@ async function main() {
     slug: "ximendes",
     specialty: "odontologia",
     city: null,
+    calendarMode: "internal",
     createdAt: now,
     updatedAt: now,
   });

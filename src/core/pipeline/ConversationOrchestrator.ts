@@ -16,7 +16,8 @@ import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzl
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
-import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import type { CalendarGateway } from "@/application/ports/calendar-gateway";
+import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 
@@ -270,6 +271,7 @@ function buildClinic(row: ClinicRow): Clinic {
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,
     businessHours: row.businessHours,
     googleCalendarId: row.googleCalendarId,
+    calendarMode: row.calendarMode,
     receptionistPhone: row.receptionistPhone ?? null,
     takeoverTtlHours: row.takeoverTtlHours,
     postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
@@ -568,12 +570,14 @@ export class ConversationOrchestrator {
     let composerInputTokens = 0;
     let composerOutputTokens = 0;
 
-    const calendarGateway = new GoogleCalendarGateway(
-      clinic.googleCalendarId,
+    const calendarGateway = resolveCalendarGateway({
+      clinicId: clinic.id,
+      calendarMode: clinic.calendarMode,
+      googleCalendarId: clinic.googleCalendarId,
       timezone,
-      clinic.businessHours,
-      clinic.postAppointmentBufferMinutes,
-    );
+      businessHours: clinic.businessHours,
+      postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
+    });
 
     const bookingService = new BookingService(
       calendarGateway,
@@ -1263,7 +1267,7 @@ export class ConversationOrchestrator {
   private async fetchAndOfferSlots(
     conversationId: string,
     clinic: Clinic,
-    calendarGateway: GoogleCalendarGateway,
+    calendarGateway: CalendarGateway,
     timezone: ClinicTimezone,
     businessHours: ReturnType<typeof parseBusinessHours>,
     preferredDate?: string,

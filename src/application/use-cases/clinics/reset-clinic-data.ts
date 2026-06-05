@@ -7,6 +7,7 @@ export type DbResetCounts = {
   slotReservations: number;
   followUps: number;
   appointments: number;
+  calendarBlocks: number;
   conversations: number;
   aiUsageCosts: number;
   whatsappMessageCosts: number;

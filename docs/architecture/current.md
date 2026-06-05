@@ -23,7 +23,7 @@ WhatsApp Z-API
      -> ConversationStateMachine
      -> IntentClassifier
      -> regra deterministica por intent
-     -> BookingService / repositories / GoogleCalendarGateway
+     -> BookingService / repositories / CalendarGateway resolvido por clinic.calendarMode
      -> ResponseComposer
      -> sendTextMessage()
 ```
@@ -37,7 +37,7 @@ O endpoint Meta Cloud API (`/api/whatsapp/webhook`) existe como compatibilidade,
 | Domain | `src/domain/` | Entidades, value objects e contratos de repositorio |
 | Application | `src/application/` | Use cases, ports e servicos de aplicacao |
 | Core | `src/core/` | Pipeline de conversa, agenda, state machine e inteligencia |
-| Infrastructure | `src/infrastructure/` | Drizzle, Google Calendar, Z-API, OpenAI, push |
+| Infrastructure | `src/infrastructure/` | Drizzle, calendario interno/Google Calendar, Z-API, OpenAI, push |
 | App | `src/app/` | UI Next.js, route handlers e server actions |
 
 Route handlers devem ser adapters finos: validar entrada, resolver contexto e delegar.
@@ -47,7 +47,8 @@ Route handlers devem ser adapters finos: validar entrada, resolver contexto e de
 Cada clinica possui sua propria configuracao no banco:
 
 - credenciais Z-API;
-- Google Calendar ID;
+- modo de calendario (`calendarMode`);
+- Google Calendar ID opcional;
 - timezone;
 - horarios comerciais;
 - profissionais;
@@ -72,10 +73,13 @@ Componentes principais:
 
 - `ClinicTimezone`: unica fonte para conversao e formatacao de fuso.
 - `SlotEngine`: pure function para disponibilidade.
+- `InternalCalendarGateway`: usa `appointments` + `calendar_blocks` no banco como fonte de verdade.
+- `GoogleCalendarGateway`: modo opt-in/legado para clinicas que mantem GCal como fonte de disponibilidade.
+- `resolveCalendarGateway`: escolhe o gateway por `clinics.calendarMode` e, quando nulo, deriva de `googleCalendarId`.
 - `SlotReservationService`: lock otimista anti-double-booking.
-- `BookingService`: saga reserva -> Google Calendar -> banco.
+- `BookingService`: saga reserva -> CalendarGateway -> banco.
 
-Nao crie eventos no Google Calendar diretamente fora do `BookingService`.
+Nao crie agendamentos diretamente no Google Calendar fora do `BookingService`. Bloqueios devem passar pela port `CalendarGateway`.
 
 ## Estado de Conversa
 

@@ -9,6 +9,7 @@ type ResetCounts = {
   conversations: number;
   messages: number;
   appointments: number;
+  calendarBlocks: number;
   followUps: number;
   slotReservations: number;
   agentRecommendations: number;
@@ -162,6 +163,7 @@ export function ResetClinicDialog({
                     Conversas: result.conversations,
                     Mensagens: result.messages,
                     Agendamentos: result.appointments,
+                    Bloqueios: result.calendarBlocks,
                     "Follow-ups": result.followUps,
                     Reservas: result.slotReservations,
                     Recomendações: result.agentRecommendations,
@@ -196,7 +198,7 @@ export function ResetClinicDialog({
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)", lineHeight: 1.6 }}>
                   Isso apagará permanentemente todos os <strong>leads, conversas, mensagens,
-                  agendamentos e custos</strong> desta clínica. As configurações e tratamentos
+                  agendamentos, bloqueios e custos</strong> desta clínica. As configurações e tratamentos
                   serão preservados.
                 </p>
 

@@ -3,6 +3,7 @@ import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
+import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 
@@ -16,7 +17,13 @@ async function renewForClinic(
 ): Promise<{ clinicId: string; ok: boolean; skipped?: boolean; expiration?: string; error?: string }> {
   try {
     const [clinic] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
-    if (!clinic?.googleCalendarId) {
+    if (
+      !clinic?.googleCalendarId ||
+      resolveCalendarMode({
+        calendarMode: clinic.calendarMode,
+        googleCalendarId: clinic.googleCalendarId,
+      }) !== "google_calendar"
+    ) {
       return { clinicId, ok: true, skipped: true };
     }
 

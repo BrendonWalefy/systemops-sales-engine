@@ -21,6 +21,10 @@ export function resolveTreatmentDuration(
   clinicDefaultDurationMinutes: number,
   _shouldAskClarification: boolean,
 ): TreatmentResolution {
+  // Mantido na assinatura por compatibilidade com o classificador; a regra
+  // determinística abaixo decide quando pedir esclarecimento.
+  void _shouldAskClarification;
+
   // Caso 1: LLM identificou um treatment → busca correspondência case-insensitive
   if (identifiedTreatment && clinicTreatments.length > 0) {
     const match = clinicTreatments.find(
