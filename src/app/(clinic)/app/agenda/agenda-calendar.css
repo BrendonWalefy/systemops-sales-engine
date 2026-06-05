@@ -1815,4 +1815,251 @@ select.field-input option {
     border-radius: 20px 20px 0 0;
     padding-bottom: env(safe-area-inset-bottom);
   }
+
+  .period-presets {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .block-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .block-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ── Block Modal — Mini Calendar ──────────────────────────────── */
+
+.block-cal {
+  border: 1px solid var(--agenda-border);
+  border-radius: 9px;
+  padding: 10px;
+  background: var(--agenda-panel-raised);
+}
+
+.block-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.block-cal-nav-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--agenda-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--agenda-text-soft);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.block-cal-nav-btn:hover {
+  background: var(--agenda-panel-soft);
+  color: var(--agenda-text);
+}
+
+.block-cal-month {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--agenda-text);
+}
+
+.block-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.block-cal-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--agenda-muted);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+}
+
+.block-cal-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--agenda-text-soft);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  min-width: 0;
+  padding: 0;
+}
+
+.block-cal-day:hover:not(:disabled):not(.selected) {
+  background: var(--agenda-panel-soft);
+  color: var(--agenda-text);
+}
+
+.block-cal-day.selected {
+  background: var(--agenda-accent);
+  color: #03221c;
+  font-weight: 700;
+}
+
+.block-cal-day.is-today {
+  color: var(--agenda-accent);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agenda-accent) 50%, transparent);
+}
+
+.block-cal-day.past {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+.block-cal-day.empty {
+  pointer-events: none;
+}
+
+/* ── Period presets ─────────────────────────────────────────────── */
+
+.period-presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.period-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 1px solid var(--agenda-border);
+  border-radius: 8px;
+  background: var(--agenda-panel-raised);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.period-btn:hover {
+  border-color: color-mix(in srgb, var(--agenda-accent) 40%, var(--agenda-border));
+  background: var(--agenda-accent-soft);
+}
+
+.period-btn.active {
+  border-color: var(--agenda-accent);
+  background: color-mix(in srgb, var(--agenda-accent) 14%, var(--agenda-panel-raised));
+}
+
+.period-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--agenda-text);
+  white-space: nowrap;
+}
+
+.period-sub {
+  font-size: 10px;
+  color: var(--agenda-muted);
+  white-space: nowrap;
+}
+
+.period-btn.active .period-label {
+  color: var(--agenda-accent-strong);
+}
+
+/* ── Partial failure banner ─────────────────────────────────────── */
+
+.block-partial-error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--agenda-danger) 10%, var(--agenda-panel-raised));
+  border: 1px solid color-mix(in srgb, var(--agenda-danger) 30%, var(--agenda-border));
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.block-partial-icon {
+  color: var(--agenda-danger);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.block-partial-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.block-partial-body p {
+  font-size: 12.5px;
+  color: var(--agenda-text-soft);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.block-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--agenda-accent-strong);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+
+.block-retry-btn:hover { opacity: 0.75; }
+.block-retry-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Footer ─────────────────────────────────────────────────────── */
+
+.block-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--agenda-border);
+  margin-top: 2px;
+}
+
+.block-status {
+  font-size: 12px;
+  color: var(--agenda-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.block-actions .btn-primary,
+.block-actions .btn-secondary {
+  min-height: 34px;
+  border-radius: 7px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
 }

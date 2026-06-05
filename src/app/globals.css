@@ -1894,74 +1894,6 @@ button:disabled {
   line-height: 1.45;
 }
 
-.agenda-block-list {
-  display: grid;
-  gap: 9px;
-}
-
-.agenda-block-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--surface-raised) 66%, transparent);
-  padding: 12px;
-}
-
-.agenda-block-card.full-day {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
-  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface-raised));
-}
-
-.agenda-block-marker {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--warm);
-  box-shadow: 0 0 0 4px var(--warm-soft);
-}
-
-.agenda-block-card.full-day .agenda-block-marker {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft);
-}
-
-.agenda-block-main {
-  min-width: 0;
-}
-
-.agenda-block-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  min-width: 0;
-}
-
-.agenda-block-row strong {
-  color: var(--text);
-  font-size: 14px;
-  line-height: 1.3;
-}
-
-.agenda-block-row span {
-  color: var(--text-soft);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.agenda-block-main p {
-  margin: 3px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.35;
-}
-
 .agenda-delete-btn {
   display: grid;
   width: 36px;
@@ -3929,17 +3861,6 @@ textarea:focus {
   .agenda-time-grid,
   .agenda-preset-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .agenda-block-card {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: flex-start;
-  }
-
-  .agenda-block-card form {
-    grid-column: 1 / -1;
-    justify-self: stretch;
-    width: 100%;
   }
 
   .agenda-delete-btn {
