@@ -3,10 +3,11 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray, between } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
+import { getAppointmentBadgeWindow } from "./inbox-visibility";
 
 export default async function InboxPage() {
   const clinicId = (await getSessionClinicId()) ?? "";
@@ -24,6 +25,7 @@ export default async function InboxPage() {
         needsAttention: conversations.needsAttention,
         attentionReason: conversations.attentionReason,
         aiPaused: conversations.aiPaused,
+        lastReadAt: conversations.lastReadAt,
         leadName: leads.name,
         leadPhone: leads.phone,
         leadStatus: leads.status,
@@ -36,8 +38,9 @@ export default async function InboxPage() {
   ]);
 
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
+  const appointmentBadgeWindow = getAppointmentBadgeWindow();
 
-  // Busca appointments para todos os leads agendados (badge dentro do card)
+  // Badge de agenda no inbox: só o lembrete operacional perto da consulta.
   const scheduledLeadIds = rows
     .filter((r) => r.leadStatus === "appointment_scheduled")
     .map((r) => r.leadId);
@@ -62,6 +65,7 @@ export default async function InboxPage() {
             and(
               inArray(appointments.leadId, scheduledLeadIds),
               inArray(appointments.status, ["scheduled", "confirmed"]),
+              between(appointments.startsAt, appointmentBadgeWindow.startsAtFrom, appointmentBadgeWindow.startsAtTo),
             ),
           )
           .orderBy(desc(appointments.startsAt))

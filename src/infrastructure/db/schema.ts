@@ -235,6 +235,7 @@ export const conversations = pgTable(
     attentionReason: text("attention_reason"),
     consecutiveUnclearCount: integer("consecutive_unclear_count").notNull().default(0),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

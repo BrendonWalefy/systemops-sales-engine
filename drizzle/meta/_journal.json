@@ -71,6 +71,13 @@
       "when": 1780683788257,
       "tag": "0009_tranquil_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780698077418,
+      "tag": "0010_brown_sheva_callister",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ import { AiPauseButton } from "./AiPauseButton";
 import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
 import { ManualAppointmentForm } from "./ManualAppointmentForm";
+import { ConversationReadMarker } from "./ConversationReadMarker";
 
 const TZ = "America/Sao_Paulo";
 
@@ -101,6 +102,7 @@ export default async function ConversationPage({
 
   return (
     <div className="conv-root">
+      <ConversationReadMarker conversationId={conversationId} />
       <div className="conv-header">
         <Link
           href="/app/inbox"
