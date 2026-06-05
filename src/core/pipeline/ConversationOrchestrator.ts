@@ -395,7 +395,9 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
 
 export function buildLocationClinicContext(address: string | null): string {
   const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
-  return address ? `${base}\nEndereço: ${address}.` : base;
+  if (address) return `${base}\nEndereço: ${address}.`;
+  // Endereço não cadastrado — instrução explícita para não inventar
+  return `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
 }
 
 function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {

@@ -8,8 +8,11 @@ describe("buildLocationClinicContext", () => {
   const BASE =
     `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
 
-  it("returns base instruction when address is null", () => {
-    expect(buildLocationClinicContext(null)).toBe(BASE);
+  it("returns anti-hallucination instruction when address is null", () => {
+    const result = buildLocationClinicContext(null);
+    expect(result).toContain(BASE);
+    expect(result).toContain("NÃO invente endereço");
+    expect(result).toContain("não cadastrado no sistema");
   });
 
   it("appends address line when address is provided", () => {

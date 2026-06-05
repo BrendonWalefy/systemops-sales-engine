@@ -468,7 +468,7 @@ export async function POST(req: NextRequest) {
         return { intent: "price_inquiry" };
       if (n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
         return { intent: "general_question", subtype: "location" };
-      if (n.includes("especialista") || n.includes("falar") || n.includes("humano") || n.includes("atendente"))
+      if (n.includes("especialista") || n.includes("humano") || n.includes("atendente"))
         return { intent: "needs_human" };
       return null;
     }
@@ -582,10 +582,14 @@ export async function POST(req: NextRequest) {
     let clinicContext = buildClinicContext(playbook);
     if (menuResolution?.subtype === "procedures") {
       const desc = playbook.procedureDescription?.trim();
-      clinicContext = `Lead selecionou "Procedimentos" no menu. Apresente os procedimentos disponíveis de forma numerada e direta. Ao final, diga: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar ao final.\n${desc ?? ""}`;
+      clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como uma lista numerada, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número. Para voltar ao menu principal, é só digitar *menu*." Sem convite para agendar.\n${desc ?? ""}`;
     } else if (menuResolution?.subtype === "location") {
       const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
-      clinicContext = clinicAddress ? `${base}\nEndereço: ${clinicAddress}.` : base;
+      if (clinicAddress) {
+        clinicContext = `${base}\nEndereço: ${clinicAddress}.`;
+      } else {
+        clinicContext = `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
+      }
     }
 
     const actionResult = intentToActionResult(classification, clinicContext, clinicName, slots);
