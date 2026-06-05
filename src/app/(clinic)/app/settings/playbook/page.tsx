@@ -6,7 +6,8 @@ import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
-import type { MenuItem } from "@/domain/entities/clinic";
+import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
+import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 
 async function getData() {
   const clinicId = await requireSessionClinicId();
@@ -17,6 +18,7 @@ async function getData() {
         autoReplyEnabled: clinics.autoReplyEnabled,
         takeoverTtlHours: clinics.takeoverTtlHours,
         postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
+        conversationExperience: clinics.conversationExperience,
         businessHours: clinics.businessHours,
         greetingMessage: clinics.greetingMessage,
         menuItems: clinics.menuItems,
@@ -51,6 +53,7 @@ export default async function PlaybookPage() {
         autoReplyEnabled: clinic?.autoReplyEnabled ?? false,
         takeoverTtlHours: clinic?.takeoverTtlHours ?? 4,
         postAppointmentBufferMinutes: clinic?.postAppointmentBufferMinutes ?? 60,
+        conversationExperience: (clinic?.conversationExperience as ConversationExperience | null) ?? DEFAULT_CONVERSATION_EXPERIENCE,
         businessHours: clinic?.businessHours ?? null,
         greetingMessage: clinic?.greetingMessage ?? null,
         menuItems: (clinic?.menuItems as MenuItem[] | null) ?? null,

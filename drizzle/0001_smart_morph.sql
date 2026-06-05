@@ -1,0 +1,1 @@
+ALTER TABLE "clinics" ADD COLUMN "conversation_experience" text DEFAULT 'menu_first' NOT NULL;

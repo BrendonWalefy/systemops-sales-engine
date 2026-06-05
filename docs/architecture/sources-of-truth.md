@@ -30,6 +30,7 @@ O Orchestrator injeta o conteúdo editorial no prompt via `ComposerInput.clinic`
 | `defaultAppointmentDurationMinutes` | `ConversationOrchestrator` | Duração de consulta quando treatment não especifica |
 | `postAppointmentBufferMinutes` | `SlotEngine` | Buffer entre consultas |
 | `takeoverTtlHours` | `ConversationOrchestrator` | Tempo até IA retomar após pausa humana |
+| `conversationExperience` | `ConversationOrchestrator`, `ResponseComposer` | Modo da jornada: `menu_first` ou `concierge` |
 | `greetingMessage` | `buildMenuBody()` | Saudação inicial no menu |
 | `menuItems` | `resolveMenuSelection()` | Itens do menu conversacional |
 | `receptionistPhone` | `ConversationOrchestrator` | Notificações de urgência/needs_human |

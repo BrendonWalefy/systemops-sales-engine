@@ -169,11 +169,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(clinics.id, clinicId))
     .limit(1);
 
-  if (clinicRow && !clinicRow.autoReplyEnabled) {
-    return new NextResponse("OK", { status: 200 });
-  }
-
   const channelConfig = clinicRow ? resolveChannelConfig(clinicRow) : null;
+  const replyEnabled = clinicRow?.autoReplyEnabled !== false;
 
   // Mensagem inbound do lead: texto digitado ou áudio transcrito.
   let messageText: string | null = null;
@@ -181,21 +178,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (body.text?.message) {
     messageText = body.text.message;
   } else if (body.audio?.audioUrl) {
-    try {
-      const audioRes = await fetch(body.audio.audioUrl, {
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!audioRes.ok) throw new Error(`Audio download failed (${audioRes.status})`);
-      const audioBuffer = await audioRes.arrayBuffer();
-      const transcription = await getWhisperGateway().transcribe(audioBuffer, body.audio.mimeType);
-      messageText = `[áudio] ${transcription}`;
-    } catch (err) {
-      console.error("[ZApi] Falha ao transcrever áudio:", err);
-      if (!channelConfig) return new NextResponse("OK", { status: 200 });
-      await sendTextMessage(body.phone, "Não consegui ouvir seu áudio. Pode me escrever? 😊", channelConfig).catch(
-        (e) => console.error("[ZApi] Erro ao enviar fallback de áudio:", e),
-      );
-      return new NextResponse("OK", { status: 200 });
+    if (!replyEnabled) {
+      messageText = "[áudio recebido]";
+    } else {
+      try {
+        const audioRes = await fetch(body.audio.audioUrl, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!audioRes.ok) throw new Error(`Audio download failed (${audioRes.status})`);
+        const audioBuffer = await audioRes.arrayBuffer();
+        const transcription = await getWhisperGateway().transcribe(audioBuffer, body.audio.mimeType);
+        messageText = `[áudio] ${transcription}`;
+      } catch (err) {
+        console.error("[ZApi] Falha ao transcrever áudio:", err);
+        if (!channelConfig) return new NextResponse("OK", { status: 200 });
+        await sendTextMessage(body.phone, "Não consegui ouvir seu áudio. Pode me escrever? 😊", channelConfig).catch(
+          (e) => console.error("[ZApi] Erro ao enviar fallback de áudio:", e),
+        );
+        return new NextResponse("OK", { status: 200 });
+      }
     }
   } else {
     // Mídia não suportada (imagem, sticker, vídeo, reação)
@@ -213,6 +214,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         messageId: body.messageId,
         senderName: body.senderName || undefined,
         timestamp: body.momment ? new Date(body.momment) : new Date(),
+        replyEnabled,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(

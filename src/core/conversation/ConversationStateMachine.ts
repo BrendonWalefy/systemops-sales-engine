@@ -5,13 +5,15 @@ import { db } from "@/infrastructure/db/client";
 import { conversationStates } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import type { Treatment } from "@/domain/entities/treatment";
 
 export type ConversationStateType =
   | "idle"
   | "slots_offered"
   | "awaiting_confirmation"
   | "booking_pending"
-  | "menu_offered";
+  | "menu_offered"
+  | "procedure_list_offered";
 
 export type FormattedSlot = {
   index: number;       // 1, 2, 3 — o número que o lead vê
@@ -27,7 +29,20 @@ export type SlotsOfferedPayload = {
   durationMinutes?: number;
 };
 
-type StatePayload = SlotsOfferedPayload | Record<string, unknown>;
+export type ProcedureListItem = {
+  index: number;
+  treatmentId: string;
+  name: string;
+  description: string | null;
+  durationMinutes: number;
+  requiresEvaluationFirst: boolean;
+};
+
+export type ProcedureListPayload = {
+  treatments: ProcedureListItem[];
+};
+
+type StatePayload = SlotsOfferedPayload | ProcedureListPayload | Record<string, unknown>;
 
 export type ConversationStateRow = {
   id: string;
@@ -155,6 +170,44 @@ export class ConversationStateMachine {
   async isMenuOffered(conversationId: string): Promise<boolean> {
     const state = await this.getCurrentState(conversationId);
     return state?.state === "menu_offered";
+  }
+
+  // Salva lista numerada de procedimentos com TTL de 30 minutos
+  async offerProcedureList(conversationId: string, treatments: Treatment[]): Promise<ProcedureListItem[]> {
+    const items: ProcedureListItem[] = treatments.map((t, i) => ({
+      index: i + 1,
+      treatmentId: t.id,
+      name: t.name,
+      description: t.description,
+      durationMinutes: t.durationMinutes,
+      requiresEvaluationFirst: t.requiresEvaluationFirst,
+    }));
+
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "procedure_list_offered",
+      payload: { treatments: items },
+      expiresAt: new Date(Date.now() + 30 * 60_000),
+    });
+
+    return items;
+  }
+
+  async getOfferedProcedureByIndex(
+    conversationId: string,
+    rawSelection: string,
+  ): Promise<ProcedureListItem | null> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "procedure_list_offered") return null;
+
+    const normalized = rawSelection.trim();
+    if (!/^\d+$/.test(normalized)) return null;
+
+    const payload = state.payload as ProcedureListPayload | null;
+    if (!payload?.treatments?.length) return null;
+
+    const index = Number(normalized);
+    return payload.treatments.find((item) => item.index === index) ?? null;
   }
 
   // Retorna o nome do tratamento associado à oferta vigente, se houver

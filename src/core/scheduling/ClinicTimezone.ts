@@ -122,14 +122,16 @@ export class ClinicTimezone {
     const month = p.month + 1;
     const d = String(p.day).padStart(2, "0");
     const m = String(month).padStart(2, "0");
-    return `${WEEKDAY_PT[p.weekday]} ${d}/${m} às ${p.hour}h`;
+    const time = p.minute === 0 ? `${p.hour}h` : `${p.hour}h${String(p.minute).padStart(2, "0")}`;
+    return `${WEEKDAY_PT[p.weekday]} ${d}/${m} às ${time}`;
   }
 
   // "segunda-feira, 26 de maio às 14h" — para confirmações mais formais
   formatForConfirmation(utc: Date): string {
     const p = this.toLocalParts(utc);
     const month = MONTH_PT[p.month + 1];
-    return `${WEEKDAY_PT[p.weekday].toLowerCase()}-feira, dia ${p.day} de ${month} às ${p.hour}h`;
+    const time = p.minute === 0 ? `${p.hour}h` : `${p.hour}h${String(p.minute).padStart(2, "0")}`;
+    return `${WEEKDAY_PT[p.weekday].toLowerCase()}-feira, dia ${p.day} de ${month} às ${time}`;
   }
 
   // Início do dia local (meia-noite do dia) em UTC

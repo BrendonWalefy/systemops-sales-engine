@@ -54,6 +54,44 @@ function classifyWebhookEvent(params: {
   return classifyFromMeMessage(existingByMessageId, recentAgentMessage);
 }
 
+function resolveLeadInboundHandling(params: {
+  autoReplyEnabled: boolean;
+  textMessage?: string | null;
+  hasAudio: boolean;
+}): { shouldRegister: boolean; shouldReply: boolean; messageText: string | null } {
+  const shouldReply = params.autoReplyEnabled;
+
+  if (params.textMessage) {
+    return {
+      shouldRegister: true,
+      shouldReply,
+      messageText: params.textMessage,
+    };
+  }
+
+  if (params.hasAudio && !shouldReply) {
+    return {
+      shouldRegister: true,
+      shouldReply: false,
+      messageText: "[áudio recebido]",
+    };
+  }
+
+  if (params.hasAudio) {
+    return {
+      shouldRegister: true,
+      shouldReply: true,
+      messageText: "[áudio] <transcrição>",
+    };
+  }
+
+  return {
+    shouldRegister: false,
+    shouldReply,
+    messageText: null,
+  };
+}
+
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe("ZApi Webhook — fromMe deduplication logic", () => {
@@ -127,6 +165,64 @@ describe("ZApi Webhook — fromMe deduplication logic", () => {
       recentAgentMessage: { id: "recent-agent-msg-uuid" },
     });
     expect(result).toBe("echo_ai");
+  });
+});
+
+describe("ZApi Webhook — autoReply desligado mantém ingestão", () => {
+  it("mensagem de texto com autoReply=false é registrada, mas sem resposta da IA", () => {
+    const result = resolveLeadInboundHandling({
+      autoReplyEnabled: false,
+      textMessage: "Olá, quero saber valores",
+      hasAudio: false,
+    });
+
+    expect(result).toEqual({
+      shouldRegister: true,
+      shouldReply: false,
+      messageText: "Olá, quero saber valores",
+    });
+  });
+
+  it("áudio com autoReply=false é registrado como placeholder, sem transcrever nem responder", () => {
+    const result = resolveLeadInboundHandling({
+      autoReplyEnabled: false,
+      textMessage: null,
+      hasAudio: true,
+    });
+
+    expect(result).toEqual({
+      shouldRegister: true,
+      shouldReply: false,
+      messageText: "[áudio recebido]",
+    });
+  });
+
+  it("mensagem de texto com autoReply=true segue para resposta normal", () => {
+    const result = resolveLeadInboundHandling({
+      autoReplyEnabled: true,
+      textMessage: "Quero agendar",
+      hasAudio: false,
+    });
+
+    expect(result).toEqual({
+      shouldRegister: true,
+      shouldReply: true,
+      messageText: "Quero agendar",
+    });
+  });
+
+  it("mídia sem texto nem áudio continua sem registro", () => {
+    const result = resolveLeadInboundHandling({
+      autoReplyEnabled: false,
+      textMessage: null,
+      hasAudio: false,
+    });
+
+    expect(result).toEqual({
+      shouldRegister: false,
+      shouldReply: false,
+      messageText: null,
+    });
   });
 });
 

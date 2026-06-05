@@ -11,8 +11,12 @@ import type { ActionResult, ComposedResponse } from "@/core/intelligence/Respons
 import type { Message } from "@/domain/entities/conversation";
 import type { IntentClassification, IntentType } from "@/core/intelligence/IntentClassifier";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
-import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
-import type { MenuItem } from "@/domain/entities/clinic";
+import {
+  CONCIERGE_MENU_ITEMS,
+  DEFAULT_CONVERSATION_EXPERIENCE,
+  DEFAULT_MENU_ITEMS,
+} from "@/domain/entities/clinic";
+import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
@@ -36,6 +40,7 @@ type PlaybookInput = {
   commercialPolicy: string;
   objections?: { objection: string; response: string }[];
   greetingMessage: string;
+  conversationExperience?: ConversationExperience;
   notes?: string | null;
 };
 
@@ -94,6 +99,15 @@ function isResetCommand(msg: string): boolean {
 function getDayGreeting(timezone: ClinicTimezone): string {
   const { hour } = timezone.toLocalParts(new Date());
   return getTimeGreeting(hour);
+}
+
+function defaultMenuItemsForExperience(experience: ConversationExperience): MenuItem[] {
+  return experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS;
+}
+
+function buildConciergeStarter(timezone: ClinicTimezone): string {
+  const salutation = getDayGreeting(timezone);
+  return `${salutation}. Tudo bem?\n\nMe conta o que você gostaria de ver hoje: avaliação, lentes, valores ou algum tratamento específico?`;
 }
 
 // ── Slots: reais (QA Calendar) ou simulados ──────────────────────────────────
@@ -411,6 +425,7 @@ export async function POST(req: NextRequest) {
         timezone: clinics.timezone,
         businessHours: clinics.businessHours,
         defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
+        conversationExperience: clinics.conversationExperience,
         menuItems: clinics.menuItems,
         address: clinics.address,
       })
@@ -424,7 +439,11 @@ export async function POST(req: NextRequest) {
     const businessHours = clinic?.businessHours ?? null;
     const durationMinutes = clinic?.defaultAppointmentDurationMinutes ?? 60;
     const clinicAddress = clinic?.address ?? null;
-    const menuItems: MenuItem[] = (clinic?.menuItems as MenuItem[] | null) ?? DEFAULT_MENU_ITEMS;
+    const conversationExperience: ConversationExperience =
+      body.playbook?.conversationExperience ??
+      clinic?.conversationExperience ??
+      DEFAULT_CONVERSATION_EXPERIENCE;
+    const menuItems: MenuItem[] = (clinic?.menuItems as MenuItem[] | null) ?? defaultMenuItemsForExperience(conversationExperience);
     const menuText = menuItems.filter((i) => i.enabled).map((i) => `${i.number}. ${i.label}`).join("\n");
     const isFirst = history.length === 0;
 
@@ -443,7 +462,7 @@ export async function POST(req: NextRequest) {
       }
       if (n.includes("procedimento") || n.includes("tratamento") || n.includes("servico"))
         return { intent: "general_question", subtype: "procedures" };
-      if (n.includes("agendar") || n.includes("horario") || n.includes("marcar") || n.includes("consulta") || n.includes("avaliacao"))
+      if (n.includes("agendar") || n.includes("horario") || n.includes("marcar") || n.includes("avaliacao"))
         return { intent: "book_appointment" };
       if (n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
         return { intent: "price_inquiry" };
@@ -460,16 +479,25 @@ export async function POST(req: NextRequest) {
     const firstContactBypassIntents = /dor|urgente|urgencia|sangrament|emergencia|falar com|dentista|humano|especialista|atendente/;
     const isFirstContactBypass = isFirst && firstContactBypassIntents.test(norm(message));
 
-    if (isFirst && !isFirstContactBypass && playbook.greetingMessage.trim()) {
+    if (
+      isFirst &&
+      conversationExperience === "menu_first" &&
+      !isFirstContactBypass &&
+      isIsolatedGreeting(message) &&
+      playbook.greetingMessage.trim()
+    ) {
       return NextResponse.json({ text: buildGreeting(playbook.greetingMessage.trim()), intent: "greeting" });
     }
 
     if (!isFirst && isResetCommand(message)) {
-      const salutation = getDayGreeting(timezone);
-      const intro = playbook.greetingMessage.trim()
-        ? `${salutation}! ${playbook.greetingMessage.trim()}`
-        : `${salutation}! Como posso ajudá-lo?`;
-      return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
+      if (conversationExperience === "menu_first") {
+        const salutation = getDayGreeting(timezone);
+        const intro = playbook.greetingMessage.trim()
+          ? `${salutation}! ${playbook.greetingMessage.trim()}`
+          : `${salutation}! Como posso ajudá-lo?`;
+        return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
+      }
+      return NextResponse.json({ text: buildConciergeStarter(timezone), intent: "greeting" });
     }
 
     // Detecção de oferta de slots pendente via intent do histórico (espelho da state machine)
@@ -487,11 +515,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isFirst && !hasPendingSlotOffer && isIsolatedGreeting(message)) {
-      const salutation = getDayGreeting(timezone);
-      const intro = playbook.greetingMessage.trim()
-        ? `${salutation}! ${playbook.greetingMessage.trim()}`
-        : `${salutation}! Como posso ajudá-lo?`;
-      return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
+      if (conversationExperience === "menu_first") {
+        const salutation = getDayGreeting(timezone);
+        const intro = playbook.greetingMessage.trim()
+          ? `${salutation}! ${playbook.greetingMessage.trim()}`
+          : `${salutation}! Como posso ajudá-lo?`;
+        return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
+      }
+      return NextResponse.json({ text: `${getDayGreeting(timezone)}! Estou por aqui.`, intent: "acknowledgment" });
     }
 
     // ── Resolução de menu (sem LLM) — espelho do Orchestrator ────────────
@@ -525,11 +556,14 @@ export async function POST(req: NextRequest) {
 
     // greeting via LLM → retorna menu
     if (classification.intent === "greeting") {
-      const salutation = getDayGreeting(timezone);
-      const intro = playbook.greetingMessage.trim()
-        ? `${salutation}! ${playbook.greetingMessage.trim()}`
-        : `${salutation}! Como posso ajudá-lo?`;
-      return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
+      if (conversationExperience === "menu_first") {
+        const salutation = getDayGreeting(timezone);
+        const intro = playbook.greetingMessage.trim()
+          ? `${salutation}! ${playbook.greetingMessage.trim()}`
+          : `${salutation}! Como posso ajudá-lo?`;
+        return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
+      }
+      return NextResponse.json({ text: buildConciergeStarter(timezone), intent: "greeting" });
     }
 
     // ── Slots: busca real (QA Calendar) ou simulada ───────────────────────
@@ -540,7 +574,7 @@ export async function POST(req: NextRequest) {
     let clinicContext = buildClinicContext(playbook);
     if (menuResolution?.subtype === "procedures") {
       const desc = playbook.procedureDescription?.trim();
-      clinicContext = `FORMATO: tópicos\nLead selecionou "Procedimentos" no menu. Liste os procedimentos disponíveis em bullet points (•), um por linha, com breve descrição. Separe cada procedimento com uma linha em branco. Sem convite para agendar ao final.\n${desc ?? ""}`;
+      clinicContext = `Lead selecionou "Procedimentos" no menu. Apresente os procedimentos disponíveis de forma numerada e direta. Ao final, diga: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar ao final.\n${desc ?? ""}`;
     } else if (menuResolution?.subtype === "location") {
       const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
       clinicContext = clinicAddress ? `${base}\nEndereço: ${clinicAddress}.` : base;
@@ -563,6 +597,7 @@ export async function POST(req: NextRequest) {
           leadName: null,
           timezone,
           isFirstMessage: isFirst,
+          conversationExperience,
         });
 
     const debugInfo = process.env.E2E_MODE === "true"
@@ -581,7 +616,11 @@ export async function POST(req: NextRequest) {
 
     // Quando o pipeline produziu uma oferta de slots, retornar "slots_found" como intent
     // para que conversas multi-turno detectem hasPendingSlotOffer corretamente via histórico.
-    const responseIntent = actionResult.type === "slots_found" ? "slots_found" : classification.intent;
+    const responseIntent = menuResolution?.subtype === "procedures"
+      ? "procedure_list"
+      : actionResult.type === "slots_found"
+        ? "slots_found"
+        : classification.intent;
 
     return NextResponse.json({
       text: result.text,

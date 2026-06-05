@@ -6,7 +6,7 @@ import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { MenuItem } from "@/domain/entities/clinic";
+import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
 
 
 type PlaybookVersionData = {
@@ -158,6 +158,7 @@ export async function updateClinicOperationalSettings(data: {
   businessHours?: string | null;
   takeoverTtlHours?: number;
   postAppointmentBufferMinutes?: number;
+  conversationExperience?: ConversationExperience;
   greetingMessage?: string | null;
   menuItems?: MenuItem[] | null;
   receptionistPhone?: string | null;
