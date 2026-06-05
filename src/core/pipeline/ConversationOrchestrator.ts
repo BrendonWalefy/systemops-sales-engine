@@ -73,6 +73,16 @@ function getMenuItemsForExperience(clinic: Clinic, experience: ConversationExper
   return clinic.menuItems ?? (experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS);
 }
 
+// Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
+// com a saudação temporal que o Orchestrator prepende no primeiro contato.
+// Conservador: só remove openers de uma palavra — não toca frases compostas como
+// "Seja bem-vindo à Ximendes" ou saudações temporais ("Bom dia!").
+function stripGreetingPrefix(text: string): string {
+  const stripped = text.replace(/^(?:olá|ola|oi|ei|e\s+aí|e\s+ai|hey)[!.,]?\s+/i, "");
+  if (stripped === text) return text;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
 function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer" | "stale", experience: ConversationExperience): string {
   const items = getMenuItemsForExperience(clinic, experience);
   const menuText = buildMenuText(items);
@@ -85,12 +95,15 @@ function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer" | "stale", e
   }
 
   if (clinic.menuItems !== null) {
-    // Structured mode: greetingMessage só no primeiro contato; reoffer usa texto neutro
-    const intro = variant === "first"
+    // Structured mode: greetingMessage só no primeiro contato; reoffer usa texto neutro.
+    // stripGreetingPrefix evita "Boa tarde! Olá! Sou a..." quando greetingMessage
+    // começa com uma saudação própria.
+    const raw = variant === "first"
       ? (clinic.greetingMessage ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?`)
       : variant === "stale"
       ? "Retomando nossa conversa — como posso ajudá-lo?"
       : "Como posso ajudá-lo?";
+    const intro = variant === "first" ? stripGreetingPrefix(raw) : raw;
     return `${intro}\n\n${menuText}`;
   }
 
@@ -98,9 +111,11 @@ function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer" | "stale", e
   if (variant === "stale") {
     return `Retomando nossa conversa — como posso ajudá-lo?\n\n${menuText}`;
   }
-  return variant === "first"
-    ? (clinic.greetingMessage ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n${menuText}`)
-    : `Como posso ajudá-lo?\n\n${menuText}`;
+  if (variant === "first") {
+    const raw = clinic.greetingMessage ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n${menuText}`;
+    return stripGreetingPrefix(raw);
+  }
+  return `Como posso ajudá-lo?\n\n${menuText}`;
 }
 
 export function shouldShowInitialMenu(experience: ConversationExperience, intent: IntentType): boolean {

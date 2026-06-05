@@ -105,6 +105,12 @@ function defaultMenuItemsForExperience(experience: ConversationExperience): Menu
   return experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS;
 }
 
+function stripGreetingPrefix(text: string): string {
+  const stripped = text.replace(/^(?:olá|ola|oi|ei|e\s+aí|e\s+ai|hey)[!.,]?\s+/i, "");
+  if (stripped === text) return text;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
 function buildConciergeStarter(timezone: ClinicTimezone): string {
   const salutation = getDayGreeting(timezone);
   return `${salutation}. Tudo bem?\n\nMe conta o que você gostaria de ver hoje: avaliação, lentes, valores ou algum tratamento específico?`;
@@ -493,7 +499,7 @@ export async function POST(req: NextRequest) {
       if (conversationExperience === "menu_first") {
         const salutation = getDayGreeting(timezone);
         const intro = playbook.greetingMessage.trim()
-          ? `${salutation}! ${playbook.greetingMessage.trim()}`
+          ? `${salutation}! ${stripGreetingPrefix(playbook.greetingMessage.trim())}`
           : `${salutation}! Como posso ajudá-lo?`;
         return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
       }
@@ -518,7 +524,7 @@ export async function POST(req: NextRequest) {
       if (conversationExperience === "menu_first") {
         const salutation = getDayGreeting(timezone);
         const intro = playbook.greetingMessage.trim()
-          ? `${salutation}! ${playbook.greetingMessage.trim()}`
+          ? `${salutation}! ${stripGreetingPrefix(playbook.greetingMessage.trim())}`
           : `${salutation}! Como posso ajudá-lo?`;
         return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
       }
@@ -567,7 +573,7 @@ export async function POST(req: NextRequest) {
       if (conversationExperience === "menu_first") {
         const salutation = getDayGreeting(timezone);
         const intro = playbook.greetingMessage.trim()
-          ? `${salutation}! ${playbook.greetingMessage.trim()}`
+          ? `${salutation}! ${stripGreetingPrefix(playbook.greetingMessage.trim())}`
           : `${salutation}! Como posso ajudá-lo?`;
         return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
       }
