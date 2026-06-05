@@ -492,7 +492,9 @@ export async function POST(req: NextRequest) {
       isIsolatedGreeting(message) &&
       playbook.greetingMessage.trim()
     ) {
-      return NextResponse.json({ text: buildGreeting(playbook.greetingMessage.trim()), intent: "greeting" });
+      const salutation = getDayGreeting(timezone);
+      const cleanedGreeting = stripGreetingPrefix(playbook.greetingMessage.trim());
+      return NextResponse.json({ text: buildGreeting(`${salutation}! ${cleanedGreeting}`), intent: "greeting" });
     }
 
     if (!isFirst && isResetCommand(message)) {
