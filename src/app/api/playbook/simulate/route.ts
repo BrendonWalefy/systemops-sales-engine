@@ -554,7 +554,15 @@ export async function POST(req: NextRequest) {
       ? mockClassify(message, hasPendingSlotOffer)
       : await new IntentClassifier().classify(message, conversationHistory, hasPendingSlotOffer);
 
-    // greeting via LLM → retorna menu
+    if (
+      isFirst &&
+      conversationExperience === "concierge" &&
+      (classification.intent === "greeting" || classification.intent === "acknowledgment" || classification.intent === "unclear")
+    ) {
+      return NextResponse.json({ text: buildConciergeStarter(timezone), intent: "greeting" });
+    }
+
+    // greeting via LLM → retorna menu ou starter conforme experiência
     if (classification.intent === "greeting") {
       if (conversationExperience === "menu_first") {
         const salutation = getDayGreeting(timezone);
