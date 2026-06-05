@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { resolveWhatsappChannelClinicForOutbound } from "@/application/tenancy/resolve-clinic";
 
 export const dynamic = "force-dynamic";
 
@@ -51,25 +52,18 @@ export async function POST(
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
 
-  // ── 4. Busca TTL configurado para a clínica ──
+  // ── 4. Busca TTL configurado para a clínica lógica ──
   const [clinicRow] = await db
     .select({
       takeoverTtlHours: clinics.takeoverTtlHours,
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
     })
     .from(clinics)
     .where(eq(clinics.id, conv.clinicId))
     .limit(1);
   if (!clinicRow) {
-    return NextResponse.json({ error: "Clinic channel not configured" }, { status: 422 });
+    return NextResponse.json({ error: "Clinic not found" }, { status: 422 });
   }
   const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
-  const channelConfig = resolveChannelConfig(clinicRow);
 
   // ── 5. Busca telefone do lead ──
   const [lead] = await db
@@ -83,6 +77,29 @@ export async function POST(
   if (!phone) {
     return NextResponse.json({ error: "Lead phone not found" }, { status: 422 });
   }
+
+  const channelClinicId = await resolveWhatsappChannelClinicForOutbound({
+    clinicId: conv.clinicId,
+    phone,
+  });
+
+  const [channelClinicRow] = await db
+    .select({
+      channelProvider: clinics.channelProvider,
+      zapiInstanceId: clinics.zapiInstanceId,
+      zapiToken: clinics.zapiToken,
+      zapiClientToken: clinics.zapiClientToken,
+      metaPhoneNumberId: clinics.metaPhoneNumberId,
+      metaAccessToken: clinics.metaAccessToken,
+    })
+    .from(clinics)
+    .where(eq(clinics.id, channelClinicId))
+    .limit(1);
+
+  if (!channelClinicRow) {
+    return NextResponse.json({ error: "Clinic channel not configured" }, { status: 422 });
+  }
+  const channelConfig = resolveChannelConfig(channelClinicRow);
 
   const now = new Date();
   const msgId = randomUUID();

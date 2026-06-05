@@ -13,6 +13,11 @@ O `/api/playbook/simulate` é o pipeline de produção completo (IntentClassifie
 - Com `QA_GOOGLE_CALENDAR_ID` configurado, os slots de agendamento são reais (Google Calendar de QA)
 - Sem `QA_GOOGLE_CALENDAR_ID`, os slots são simulados com datas realistas
 
+Para validar webhook, estado persistido, dedupe, pausa humana, envio Z-API e
+agenda interna com banco real, use tambem o modo
+[omniQA WhatsApp real](omniqa-real-whatsapp.md). O simulate nao substitui esse
+teste em regressões de produção.
+
 ---
 
 ## Autenticação

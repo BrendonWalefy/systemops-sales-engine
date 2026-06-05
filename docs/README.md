@@ -21,6 +21,7 @@ Esta pasta contem apenas documentacao que ainda deve orientar manutencao, operac
 ## Testes e QA
 
 - [Sandbox omniQA](testing/omniqa-simulate-integration.md)
+- [omniQA WhatsApp real](testing/omniqa-real-whatsapp.md)
 
 ## Guias Para Agentes
 

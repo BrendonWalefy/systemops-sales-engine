@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
+import {
+  listAllClinicIds,
+  resolveWhatsappChannelClinicForOutbound,
+} from "@/application/tenancy/resolve-clinic";
 import { clinics } from "@/infrastructure/db/schema";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -21,7 +24,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   if (!clinic) return null;
 
   const editorial = await resolveActiveEditorialConfig(clinicId);
-  const channelConfig = resolveChannelConfig(clinic);
+  const defaultChannelConfig = resolveChannelConfig(clinic);
 
   const followUpRepository = new DrizzleFollowUpRepository();
   const leadRepository = new DrizzleLeadRepository();
@@ -41,6 +44,16 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
       if (!lead?.phone) {
         await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
         continue;
+      }
+      let channelConfig = defaultChannelConfig;
+      const channelClinicId = await resolveWhatsappChannelClinicForOutbound({
+        clinicId,
+        phone: lead.phone,
+      });
+      if (channelClinicId !== clinicId) {
+        const channelClinic = await db.query.clinics.findFirst({ where: eq(clinics.id, channelClinicId) });
+        if (!channelClinic) throw new Error(`Channel clinic not found: ${channelClinicId}`);
+        channelConfig = resolveChannelConfig(channelClinic);
       }
 
       const lastAppointment = await appointmentRepository.findByLeadId(followUp.leadId);
