@@ -121,8 +121,8 @@ function nowInSP(): string {
     hourCycle: "h23",
   }).formatToParts(new Date());
   const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "8");
-  // Show 1 hour of context before current time; clamp to 07:00–18:00
-  const scrollHour = Math.max(7, Math.min(18, hour - 1));
+  // Show 1 hour of context before current time; clamp to 07:00–20:00
+  const scrollHour = Math.max(7, Math.min(20, hour - 1));
   return `${String(scrollHour).padStart(2, "0")}:00`;
 }
 
@@ -136,6 +136,7 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
     isDark: true,
     isResponsive: false,
     timezone: CALENDAR_TIMEZONE,
+    dayBoundaries: { start: "07:00", end: "21:00" },
     views: [createViewWeek(), createViewDay(), createViewMonthGrid()],
     defaultView: createViewWeek().name,
     plugins: [

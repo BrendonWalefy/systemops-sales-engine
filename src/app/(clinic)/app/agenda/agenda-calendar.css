@@ -1322,7 +1322,8 @@ select.field-input option {
   right: 8px;
   font-size: 10px;
   color: var(--agenda-muted);
-  transform: translateY(-50%);
+  /* 4px below the grid line — keeps first label (07:00) fully visible inside the gutter */
+  transform: translateY(4px);
   white-space: nowrap;
   user-select: none;
   pointer-events: none;
@@ -1665,6 +1666,18 @@ select.field-input option {
 
   .sx-calendar-wrapper .is-week-view .sx__week-header-border {
     width: calc(var(--agenda-week-mobile-width) - var(--sx-calendar-week-grid-padding-left));
+  }
+
+  /* Bug 1: sticky time axis — overflow:clip allows sticky children (unlike overflow:hidden) */
+  .sx-calendar-wrapper .is-week-view .sx__week-grid {
+    overflow: clip;
+  }
+  .sx-calendar-wrapper .is-week-view .sx__week-grid__time-axis-time {
+    position: sticky;
+    left: 0;
+    z-index: 8;
+    background: var(--agenda-panel-solid);
+    padding-right: 4px;
   }
 
   .sx-calendar-wrapper .sx__date-grid {

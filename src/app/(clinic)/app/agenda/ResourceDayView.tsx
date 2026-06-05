@@ -5,7 +5,7 @@ import type { AppointmentEvent, Professional } from "./types";
 
 const HOUR_HEIGHT = 64;
 const START_HOUR = 7;
-const END_HOUR = 20;
+const END_HOUR = 21;
 const COL_MIN = 220;
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
