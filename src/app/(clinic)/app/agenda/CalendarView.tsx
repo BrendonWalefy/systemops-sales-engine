@@ -6,7 +6,6 @@ import { useCalendarApp, ScheduleXCalendar } from "@schedule-x/react";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 import { createEventsServicePlugin } from "@schedule-x/events-service";
 import { createDragAndDropPlugin } from "@schedule-x/drag-and-drop";
-import { createScrollControllerPlugin } from "@schedule-x/scroll-controller";
 import "@schedule-x/theme-default/dist/index.css";
 import type { AppointmentEvent } from "./types";
 
@@ -114,22 +113,8 @@ function toCalendarEvent(e: AppointmentEvent) {
   };
 }
 
-function nowInSP(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: CALENDAR_TIMEZONE,
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "8");
-  // Show 1 hour of context before current time; clamp to 07:00–20:00
-  const scrollHour = Math.max(7, Math.min(20, hour - 1));
-  return `${String(scrollHour).padStart(2, "0")}:00`;
-}
-
 export function CalendarView({ initialEvents, currentView, onSlotClick, onEventClick, onEventUpdate }: Props) {
   const eventsService = useMemo(() => createEventsServicePlugin(), []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const scrollController = useMemo(() => createScrollControllerPlugin({ initialScroll: nowInSP() }), []);
 
   const calendar = useCalendarApp({
     locale: "pt-BR",
@@ -142,7 +127,6 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
     plugins: [
       eventsService,
       createDragAndDropPlugin(15),
-      scrollController,
     ],
     calendars: CALENDAR_STATUS_COLORS,
     events: initialEvents.map(toCalendarEvent),

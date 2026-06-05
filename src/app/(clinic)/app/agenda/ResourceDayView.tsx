@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import type { AppointmentEvent, Professional } from "./types";
 
-const HOUR_HEIGHT = 64;
+const HOUR_HEIGHT = 44;
 const START_HOUR = 7;
 const END_HOUR = 21;
 const COL_MIN = 220;

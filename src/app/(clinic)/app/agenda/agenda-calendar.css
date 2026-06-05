@@ -96,6 +96,10 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
+  /* Fit 14 hours (07:00–21:00) in viewport without vertical scrolling.
+     Formula: (100dvh - outer_header - sx_sticky_header - date_axis) / 14 = (100dvh - 300px) / 14 */
+  --sx-week-grid-hour-height: clamp(36px, calc((100dvh - 300px) / 14), 52px);
+  --sx-week-grid-height: calc(var(--sx-week-grid-hour-height) * 14);
 }
 
 .sx-calendar-wrapper .sx__calendar-wrapper,
@@ -1568,12 +1572,17 @@ select.field-input option {
     border-radius: 8px;
     min-height: 0;
     --sx-calendar-week-grid-padding-left: 48px;
-    --agenda-week-mobile-width: 640px;
   }
 
   .sx-calendar-wrapper .sx__calendar-wrapper,
   .sx-calendar-wrapper .sx__calendar {
     min-height: 0;
+  }
+
+  /* Mobile: account for bottom nav (56px) + smaller header → (100dvh - 295px) / 14 */
+  .sx-calendar-wrapper .sx__calendar {
+    --sx-week-grid-hour-height: clamp(34px, calc((100dvh - 295px) / 14), 44px);
+    --sx-week-grid-height: calc(var(--sx-week-grid-hour-height) * 14);
   }
 
   /* SX header mobile: compacta range heading, mantém botões alinhados */
@@ -1638,20 +1647,15 @@ select.field-input option {
     width: calc(100% - var(--sx-calendar-week-grid-padding-left));
   }
 
-  /* Semana: corpo, cabecalho e faixa de eventos precisam ter a mesma largura. */
-  .sx-calendar-wrapper .is-week-view .sx__view-container {
-    overflow: auto;
-    touch-action: pan-x pan-y;
-  }
-
+  /* Semana: igual ao dia — sem scroll horizontal, 7 colunas dividem o espaço disponível. */
   .sx-calendar-wrapper .is-week-view .sx__week-wrapper,
   .sx-calendar-wrapper .is-week-view .sx__week-header,
   .sx-calendar-wrapper .is-week-view .sx__week-header-content,
   .sx-calendar-wrapper .is-week-view .sx__date-grid,
   .sx-calendar-wrapper .is-week-view .sx__week-grid,
   .sx-calendar-wrapper .is-week-view .sx__week-grid__date-axis {
-    min-width: var(--agenda-week-mobile-width);
-    width: var(--agenda-week-mobile-width);
+    min-width: 0;
+    width: 100%;
   }
 
   .sx-calendar-wrapper .is-week-view .sx__date-grid,
@@ -1661,32 +1665,16 @@ select.field-input option {
   }
 
   .sx-calendar-wrapper .is-week-view .sx__week-grid__time-axis {
-    width: calc(var(--agenda-week-mobile-width) - var(--sx-calendar-week-grid-padding-left));
+    width: calc(100% - var(--sx-calendar-week-grid-padding-left));
   }
 
   .sx-calendar-wrapper .is-week-view .sx__week-header-border {
-    width: calc(var(--agenda-week-mobile-width) - var(--sx-calendar-week-grid-padding-left));
-  }
-
-  /* Bug 1: sticky time axis — overflow:clip allows sticky children (unlike overflow:hidden) */
-  .sx-calendar-wrapper .is-week-view .sx__week-grid {
-    overflow: clip;
-  }
-  .sx-calendar-wrapper .is-week-view .sx__week-grid__time-axis-time {
-    position: sticky;
-    left: 0;
-    z-index: 8;
-    background: var(--agenda-panel-solid);
-    padding-right: 4px;
+    width: calc(100% - var(--sx-calendar-week-grid-padding-left));
   }
 
   .sx-calendar-wrapper .sx__date-grid {
     min-width: unset;
     width: 100%;
-  }
-
-  .sx-calendar-wrapper .is-week-view .sx__date-grid {
-    width: var(--agenda-week-mobile-width);
   }
 
   .sx-calendar-wrapper .is-month-grid-view .sx__view-container {
