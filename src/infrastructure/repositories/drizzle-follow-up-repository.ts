@@ -21,9 +21,10 @@ export class DrizzleFollowUpRepository implements FollowUpRepository {
         updatedAt: followUp.updatedAt,
       })
       .onConflictDoUpdate({
-        target: followUps.id,
+        target: [followUps.clinicId, followUps.leadId, followUps.reason, followUps.dueAt],
         set: {
           status: followUp.status,
+          suggestedMessage: followUp.suggestedMessage,
           completedAt: followUp.completedAt,
           updatedAt: followUp.updatedAt,
         },

@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import type { Message } from "@/domain/entities/conversation";
 
 const MODEL = "gpt-4o-mini";
+const OPENAI_TIMEOUT_MS = 30_000;
 
 export type SlotPreference = {
   preferredDate?: string | null;
@@ -172,7 +173,11 @@ export class IntentClassifier {
   private client: OpenAI;
 
   constructor() {
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      timeout: OPENAI_TIMEOUT_MS,
+      maxRetries: 0,
+    });
   }
 
   async classify(

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "follow_ups_lead_reason_due_at_idx" ON "follow_ups" USING btree ("clinic_id","lead_id","reason","due_at");

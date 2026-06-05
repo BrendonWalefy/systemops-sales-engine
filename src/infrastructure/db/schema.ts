@@ -323,6 +323,12 @@ export const followUps = pgTable(
   },
   (table) => ({
     clinicDueAtIdx: index("follow_ups_clinic_due_at_idx").on(table.clinicId, table.dueAt),
+    leadReasonDueAtIdx: uniqueIndex("follow_ups_lead_reason_due_at_idx").on(
+      table.clinicId,
+      table.leadId,
+      table.reason,
+      table.dueAt,
+    ),
   }),
 );
 

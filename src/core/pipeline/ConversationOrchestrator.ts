@@ -36,6 +36,8 @@ import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway"
 
 import type { Clinic, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import type { ConversationExperience } from "@/domain/entities/clinic";
+import type { Message } from "@/domain/entities/conversation";
+import type { Treatment } from "@/domain/entities/treatment";
 import {
   CONCIERGE_MENU_ITEMS,
   DEFAULT_CONVERSATION_EXPERIENCE,
@@ -202,6 +204,153 @@ function isProcedureCatalogRequest(message: string): boolean {
   return n.includes("procedimento") || n.includes("tratamento") || n.includes("servico") || n.includes("opcoes");
 }
 
+function normalizeFreeText(message: string): string {
+  return message
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasAnyKeyword(normalized: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => normalized.includes(keyword));
+}
+
+function isSchedulingRequestText(normalized: string): boolean {
+  return hasAnyKeyword(normalized, [
+    "agendar",
+    "agenda",
+    "marcar",
+    "horario",
+    "consulta",
+    "remarcar",
+    "cancelar",
+  ]);
+}
+
+function isPriceRequestText(normalized: string): boolean {
+  return hasAnyKeyword(normalized, ["valor", "preco", "quanto", "custa", "pagamento", "parcela"]);
+}
+
+function isLocationRequestText(normalized: string): boolean {
+  return hasAnyKeyword(normalized, ["localizacao", "endereco", "onde", "fica"]);
+}
+
+function isProcedureCatalogRequestText(normalized: string): boolean {
+  return hasAnyKeyword(normalized, ["procedimento", "tratamento", "servico", "opcoes"]);
+}
+
+function isUrgencyRequestText(normalized: string): boolean {
+  return hasAnyKeyword(normalized, ["dor", "urgencia", "sangramento", "emergencia", "urgente"]);
+}
+
+function isHumanRequestText(normalized: string): boolean {
+  return hasAnyKeyword(normalized, ["dentista", "doutor", "atendente", "humano", "ligar", "desconto", "especial"]);
+}
+
+function isPeriodPreferenceText(normalized: string): boolean {
+  return hasAnyKeyword(normalized, ["manha", "tarde", "noite", "cedo"]);
+}
+
+function didAgentAskForProcedure(lastAgentMessage?: string | null): boolean {
+  if (!lastAgentMessage) return false;
+  const n = normalizeFreeText(lastAgentMessage);
+  return (
+    n.includes("qual procedimento") ||
+    n.includes("qual tratamento") ||
+    n.includes("procedimento voce") ||
+    n.includes("tratamento voce")
+  );
+}
+
+const TREATMENT_MENTION_STOPWORDS = new Set([
+  "sobre",
+  "quais",
+  "qual",
+  "opcoes",
+  "opcao",
+  "voces",
+  "fazem",
+  "fazer",
+  "tenho",
+  "interesse",
+  "saber",
+  "mais",
+  "tem",
+  "me",
+  "fala",
+  "explica",
+]);
+
+export function resolveDirectTreatmentMention(
+  message: string,
+  treatments: Treatment[],
+  lastAgentMessage?: string | null,
+): Treatment | null {
+  const normalized = normalizeFreeText(message);
+  if (!normalized || /^\d+$/.test(normalized)) return null;
+  if (normalized.split(/\s+/).length > 8) return null;
+  if (isSchedulingRequestText(normalized) || isPriceRequestText(normalized)) return null;
+  if (didAgentAskForProcedure(lastAgentMessage)) return null;
+  const tokens = normalized
+    .split(/\s+/)
+    .filter((token) => token.length >= 4 && !TREATMENT_MENTION_STOPWORDS.has(token));
+
+  return treatments.find((treatment) => {
+    const treatmentName = normalizeFreeText(treatment.name);
+    if (treatmentName === normalized) return true;
+    if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
+    if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
+    if (tokens.some((token) => treatmentName.includes(token))) return true;
+    return false;
+  }) ?? null;
+}
+
+function isLikelyBusinessMessage(message: string, treatments: Treatment[]): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  if (
+    isSchedulingRequestText(normalized) ||
+    isPriceRequestText(normalized) ||
+    isLocationRequestText(normalized) ||
+    isProcedureCatalogRequestText(normalized) ||
+    isUrgencyRequestText(normalized) ||
+    isHumanRequestText(normalized) ||
+    isPeriodPreferenceText(normalized)
+  ) {
+    return true;
+  }
+
+  return resolveDirectTreatmentMention(message, treatments) !== null;
+}
+
+export function shouldThrottleRapidLeadMessage(params: {
+  messages: Message[];
+  currentExternalId: string;
+  hasPendingSlotOffer: boolean;
+  isMenuActive: boolean;
+  isProcedureListActive?: boolean;
+  treatments: Treatment[];
+  windowMs?: number;
+}): boolean {
+  if (params.hasPendingSlotOffer || params.isMenuActive || params.isProcedureListActive) return false;
+
+  const current = params.messages.find((m) => m.externalId === params.currentExternalId);
+  if (!current || current.author !== "lead") return false;
+  if (isLikelyBusinessMessage(current.body, params.treatments)) return false;
+
+  const previousLead = params.messages
+    .filter((m) => m.author === "lead" && m.id !== current.id && m.sentAt <= current.sentAt)
+    .sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime())
+    .at(-1);
+  if (!previousLead) return false;
+
+  const windowMs = params.windowMs ?? RAPID_LEAD_MESSAGE_THROTTLE_MS;
+  return current.sentAt.getTime() - previousLead.sentAt.getTime() < windowMs;
+}
+
 function getDayGreeting(timezone: ClinicTimezone): string {
   const { hour } = timezone.toLocalParts(new Date());
   return getTimeGreeting(hour);
@@ -214,6 +363,7 @@ const UNCLEAR_THRESHOLD = 3;
 const SLOTS_WITH_DATE_ONLY = 3;
 // Gap de inatividade (horas) que sinaliza recomeço de conversa
 const CONVERSATION_RESTART_HOURS = 4;
+const RAPID_LEAD_MESSAGE_THROTTLE_MS = 4_000;
 
 const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
 
@@ -254,6 +404,20 @@ function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy
   ].filter(Boolean);
 
   return `${details.join("\n")}\nFormato: até 2 parágrafos curtos, sem lista.`;
+}
+
+function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null): string {
+  const details = [
+    `Lead mencionou diretamente o tratamento "${treatment.name}".`,
+    treatment.description ? `Descrição cadastrada: ${treatment.description}` : null,
+    treatment.requiresEvaluationFirst
+      ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
+      : "Explique o procedimento com naturalidade e ofereça avaliação se fizer sentido.",
+    commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
+    "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
+  ].filter(Boolean);
+
+  return `${details.join("\n")}\nFormato: até 2 parágrafos curtos.`;
 }
 
 type ClinicRow = typeof clinics.$inferSelect;
@@ -480,6 +644,7 @@ export class ConversationOrchestrator {
     const allMessages = await this.conversationRepo.listMessages(conversation.id);
 
     const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
+    const lastAgentMessage = [...allMessages].reverse().find((m) => m.author === "agent");
 
     // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
@@ -489,7 +654,9 @@ export class ConversationOrchestrator {
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
     const experience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
 
-    const isMenuActive = await this.stateMachine.isMenuOffered(conversation.id);
+    const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
+    const isMenuActive = currentConversationState?.state === "menu_offered";
+    const isProcedureListActive = currentConversationState?.state === "procedure_list_offered";
     const clinicMenuItems = getMenuItemsForExperience(clinic, experience);
     let menuResolution: MenuResolution | null = null;
     if (isMenuActive) {
@@ -500,6 +667,21 @@ export class ConversationOrchestrator {
     const procedureSelection = await this.stateMachine.getOfferedProcedureByIndex(conversation.id, messageText);
     if (procedureSelection) {
       await this.stateMachine.invalidate(conversation.id);
+    }
+
+    if (
+      procedureSelection === null &&
+      shouldThrottleRapidLeadMessage({
+        messages: allMessages,
+        currentExternalId: messageId,
+        hasPendingSlotOffer: hasPendingOffer,
+        isMenuActive,
+        isProcedureListActive,
+        treatments: clinicTreatments,
+      })
+    ) {
+      console.log(`[Orchestrator] Mensagem rápida de baixa informação para ${phone} — resposta suprimida`);
+      return { replied: false };
     }
 
     // Comando de reset (testes): zera estado e reinicia conversa com saudação completa
@@ -542,11 +724,31 @@ export class ConversationOrchestrator {
       /^\d+$/.test(nMsg) &&
       !clinicMenuItems.some(i => nMsg === String(i.number));
 
+    const directTreatmentMention = !hasPendingOffer &&
+      !isMenuActive &&
+      menuResolution === null &&
+      procedureSelection === null &&
+      !resetRequested &&
+      !menuReRequested &&
+      !isStaleConversation &&
+      !isolatedGreeting
+        ? resolveDirectTreatmentMention(messageText, clinicTreatments, lastAgentMessage?.body ?? null)
+        : null;
+
     const skipLlm = procedureSelection !== null || menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
-    const classification = procedureSelection
+    const classification = directTreatmentMention
+      ? {
+          intent: "general_question" as IntentType,
+          slotPreference: nullSlotPref,
+          confidence: 1,
+          shouldAskClarification: false,
+          clarificationQuestion: null as null,
+          handoffReason: null as null,
+        }
+      : procedureSelection
       ? {
           intent: "general_question" as IntentType,
           slotPreference: nullSlotPref,
@@ -1121,6 +1323,8 @@ export class ConversationOrchestrator {
 
         if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null);
+        } else if (directTreatmentMention) {
+          clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null);
         } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
           if (menuGeneralSubtype === "procedures") {
             const items = clinicTreatments.length > 0

@@ -138,20 +138,14 @@ describe("ZApi audio — fluxo completo (simulado)", () => {
     transcription: string | null; // null = lança erro
   }): Promise<{
     orchestratorCalledWith: HandleInput | null;
-    fallbackSent: boolean;
     httpStatus: number;
   }> {
     let orchestratorCalledWith: HandleInput | null = null;
-    let fallbackSent = false;
 
     const mockOrchestrator = {
       handle: async (input: HandleInput) => {
         orchestratorCalledWith = input;
       },
-    };
-
-    const mockSendFallback = async () => {
-      fallbackSent = true;
     };
 
     let messageText: string | null = null;
@@ -165,8 +159,7 @@ describe("ZApi audio — fluxo completo (simulado)", () => {
 
       messageText = `[áudio] ${params.transcription}`;
     } catch {
-      await mockSendFallback();
-      return { orchestratorCalledWith: null, fallbackSent: true, httpStatus: 200 };
+      messageText = "[áudio] Transcrição automática indisponível. O lead enviou um áudio, mas não foi possível baixar ou transcrever. Peça para ele escrever a mensagem.";
     }
 
     await mockOrchestrator.handle({
@@ -177,7 +170,7 @@ describe("ZApi audio — fluxo completo (simulado)", () => {
       timestamp: new Date(),
     });
 
-    return { orchestratorCalledWith, fallbackSent, httpStatus };
+    return { orchestratorCalledWith, httpStatus };
   }
 
   it("áudio válido → transcrição bem-sucedida → orchestrator chamado com prefixo [áudio]", async () => {
@@ -190,11 +183,10 @@ describe("ZApi audio — fluxo completo (simulado)", () => {
     });
 
     expect(result.orchestratorCalledWith?.messageText).toBe("[áudio] Quero marcar uma consulta");
-    expect(result.fallbackSent).toBe(false);
     expect(result.httpStatus).toBe(200);
   });
 
-  it("falha no download do áudio → fallback enviado → retorna HTTP 200", async () => {
+  it("falha no download do áudio → salva fallback transcritivo e retorna HTTP 200", async () => {
     const result = await simulateAudioBranch({
       audioUrl: "https://cdn.z-api.io/abc.ogg",
       mimeType: "audio/ogg; codecs=opus",
@@ -203,12 +195,11 @@ describe("ZApi audio — fluxo completo (simulado)", () => {
       transcription: "irrelevante",
     });
 
-    expect(result.orchestratorCalledWith).toBeNull();
-    expect(result.fallbackSent).toBe(true);
+    expect(result.orchestratorCalledWith?.messageText).toContain("Transcrição automática indisponível");
     expect(result.httpStatus).toBe(200);
   });
 
-  it("Whisper lança erro → fallback disparado → orchestrator não chamado", async () => {
+  it("Whisper lança erro → salva fallback transcritivo e chama orchestrator", async () => {
     const result = await simulateAudioBranch({
       audioUrl: "https://cdn.z-api.io/abc.ogg",
       mimeType: "audio/ogg; codecs=opus",
@@ -217,8 +208,7 @@ describe("ZApi audio — fluxo completo (simulado)", () => {
       transcription: null,
     });
 
-    expect(result.orchestratorCalledWith).toBeNull();
-    expect(result.fallbackSent).toBe(true);
+    expect(result.orchestratorCalledWith?.messageText).toContain("Transcrição automática indisponível");
     expect(result.httpStatus).toBe(200);
   });
 

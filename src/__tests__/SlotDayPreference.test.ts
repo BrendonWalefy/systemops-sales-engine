@@ -31,7 +31,7 @@ function makeSlot(year: number, month: number, day: number, hour: number): Calen
     professionalId: null,
     startsAt,
     endsAt,
-    source: "google_calendar",
+    source: "manual",
   };
 }
 
