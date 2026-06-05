@@ -124,7 +124,7 @@ export function buildActionContext(result: ActionResult, conversationExperience:
       const slotList = result.slots.map((s) => `${s.index}. ${s.label}`).join("\n");
       return `AÇÃO EXECUTADA: Encontramos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
-FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
 HORÁRIOS DISPONÍVEIS:
 ${slotList}`;
     }

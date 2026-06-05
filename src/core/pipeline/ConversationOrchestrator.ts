@@ -73,29 +73,34 @@ function getMenuItemsForExperience(clinic: Clinic, experience: ConversationExper
   return clinic.menuItems ?? (experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS);
 }
 
-function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer", experience: ConversationExperience): string {
+function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer" | "stale", experience: ConversationExperience): string {
   const items = getMenuItemsForExperience(clinic, experience);
   const menuText = buildMenuText(items);
 
   if (experience === "concierge") {
     const intro = variant === "first"
       ? "Claro. Você pode escolher por onde quer começar:"
-      : "Claro. Você pode escolher por onde quer começar:";
+      : "Aqui estão as opções novamente:";
     return `${intro}\n\n${menuText}`;
   }
 
   if (clinic.menuItems !== null) {
-    // Structured mode: greetingMessage é somente o texto intro antes do menu
-    const intro = clinic.greetingMessage
-      ?? (variant === "first" ? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?` : "Como posso ajudá-lo?");
+    // Structured mode: greetingMessage só no primeiro contato; reoffer usa texto neutro
+    const intro = variant === "first"
+      ? (clinic.greetingMessage ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?`)
+      : variant === "stale"
+      ? "Retomando nossa conversa — como posso ajudá-lo?"
+      : "Como posso ajudá-lo?";
     return `${intro}\n\n${menuText}`;
   }
 
-  // Modo legado: greetingMessage substitui tudo (intro + menu)
-  return clinic.greetingMessage
-    ?? (variant === "first"
-      ? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n${menuText}`
-      : `Como posso ajudá-lo?\n\n${menuText}`);
+  // Modo legado: greetingMessage substitui tudo apenas no primeiro contato
+  if (variant === "stale") {
+    return `Retomando nossa conversa — como posso ajudá-lo?\n\n${menuText}`;
+  }
+  return variant === "first"
+    ? (clinic.greetingMessage ?? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n${menuText}`)
+    : `Como posso ajudá-lo?\n\n${menuText}`;
 }
 
 export function shouldShowInitialMenu(experience: ConversationExperience, intent: IntentType): boolean {
@@ -188,7 +193,7 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
     return { intent: "price_inquiry" };
   if (n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
     return { intent: "general_question", subtype: "location" };
-  if (n.includes("especialista") || n.includes("dentista") || n.includes("falar") || n.includes("doutor") || n === "dr")
+  if (n.includes("especialista") || n.includes("dentista") || n.includes("doutor") || n === "dr")
     return { intent: "needs_human" };
 
   return null;
@@ -393,7 +398,7 @@ export function buildLocationClinicContext(address: string | null): string {
   return address ? `${base}\nEndereço: ${address}.` : base;
 }
 
-function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null): string {
+function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
   const details = [
     `Lead selecionou o procedimento "${item.name}" em uma lista numerada.`,
     item.description ? `Descrição cadastrada: ${item.description}` : null,
@@ -403,10 +408,14 @@ function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
   ].filter(Boolean);
 
-  return `${details.join("\n")}\nFormato: até 2 parágrafos curtos, sem lista.`;
+  const format = experience === "concierge"
+    ? "FORMATO: tópicos — apresente os destaques do procedimento em até 4 bullet points (•), um por linha. Depois de listar, conclua com 1 frase curta de convite."
+    : "Formato: até 2 parágrafos curtos, sem lista.";
+
+  return `${details.join("\n")}\n${format}`;
 }
 
-function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null): string {
+function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
   const details = [
     `Lead mencionou diretamente o tratamento "${treatment.name}".`,
     treatment.description ? `Descrição cadastrada: ${treatment.description}` : null,
@@ -417,7 +426,11 @@ function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: st
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
   ].filter(Boolean);
 
-  return `${details.join("\n")}\nFormato: até 2 parágrafos curtos.`;
+  const format = experience === "concierge"
+    ? "FORMATO: tópicos — apresente os destaques do tratamento em até 4 bullet points (•), um por linha. Depois de listar, conclua com 1 frase curta de convite."
+    : "Formato: até 2 parágrafos curtos.";
+
+  return `${details.join("\n")}\n${format}`;
 }
 
 type ClinicRow = typeof clinics.$inferSelect;
@@ -856,7 +869,7 @@ export class ConversationOrchestrator {
       } else if (experience === "menu_first") {
         const salutation = getDayGreeting(timezone);
         const nameGreeting = lead.name ? `, ${lead.name}` : "";
-        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer", experience)}`;
+        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "stale", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else if (isStaleConversation) {
         replyText = buildConciergeStarter(clinic, timezone, lead.name);
@@ -1298,13 +1311,9 @@ export class ConversationOrchestrator {
 
       // ── Reconhecimento mid-conversa ──
       case "acknowledgment": {
-        // Paciente respondeu ao menu com algo ambíguo (ex: "não sei") — reapresenta o menu
-        if (isMenuActive && !menuResolution) {
-          replyText = buildMenuBody(clinic, "reoffer", experience);
-          await this.stateMachine.offerMenu(conversation.id);
-        } else {
-          replyText = await compose({ type: "acknowledgment" });
-        }
+        // Apenas responde com mensagem calorosa; se o menu ainda estiver ativo (TTL),
+        // o lead pode selecionar por número normalmente — sem necessidade de reapresenter.
+        replyText = await compose({ type: "acknowledgment" });
         break;
       }
 
@@ -1322,20 +1331,20 @@ export class ConversationOrchestrator {
         const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
 
         if (procedureSelection) {
-          clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null);
+          clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
         } else if (directTreatmentMention) {
-          clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null);
+          clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null, experience);
         } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
           if (menuGeneralSubtype === "procedures") {
             const items = clinicTreatments.length > 0
               ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
               : "";
-            clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar.\n${items}`;
+            clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número. Para voltar ao menu principal, é só digitar *menu*." Sem convite para agendar.\n${items}`;
           } else if (directProcedureCatalogRequested) {
             const items = clinicTreatments.length > 0
               ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
               : "";
-            clinicContext = `Lead pediu para ver procedimentos/tratamentos.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar.\n${items}`;
+            clinicContext = `Lead pediu para ver procedimentos/tratamentos.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número. Para voltar ao menu principal, é só digitar *menu*." Sem convite para agendar.\n${items}`;
           } else {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
