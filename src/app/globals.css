@@ -259,9 +259,10 @@ button:disabled {
   font-size: 13.5px;
   font-weight: 500;
   transition:
-    background 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
 }
 
 .nav-label {
@@ -277,6 +278,7 @@ button:disabled {
   border-color: var(--line);
   background: color-mix(in srgb, var(--accent) 9%, var(--surface-soft));
   color: var(--accent-strong);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .sidebar-footer {
@@ -614,11 +616,11 @@ button:disabled {
   min-height: var(--vh, 100dvh);
   overflow-x: hidden;
   background:
-    linear-gradient(120deg, rgba(0, 212, 170, 0.1), transparent 36%),
-    linear-gradient(180deg, rgba(22, 27, 39, 0.35), transparent 38%),
+    linear-gradient(120deg, rgba(0, 212, 170, 0.07), transparent 34%),
+    linear-gradient(180deg, rgba(22, 27, 39, 0.26), transparent 36%),
     var(--background);
   color: var(--text);
-  padding: 26px 30px 40px;
+  padding: 22px 24px 34px;
 }
 
 .dashboard-topbar {
@@ -626,7 +628,7 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .dashboard-title {
@@ -647,8 +649,8 @@ button:disabled {
 .dashboard-title h1 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(28px, 3vw, 38px);
-  font-weight: 800;
+  font-size: clamp(24px, 2.2vw, 30px);
+  font-weight: 760;
   letter-spacing: 0;
   line-height: 1.05;
 }
@@ -676,8 +678,8 @@ button:disabled {
   align-items: center;
   gap: 6px;
   border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 740;
   white-space: nowrap;
 }
 
@@ -686,21 +688,21 @@ button:disabled {
   border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
   background: var(--accent-soft);
   color: var(--accent-strong);
-  padding: 7px 11px;
+  padding: 6px 10px;
 }
 
 .dashboard-alert-pill {
   border: 1px solid color-mix(in srgb, var(--warm) 42%, transparent);
   background: var(--warm-soft);
   color: var(--warm);
-  padding: 7px 11px;
+  padding: 6px 10px;
 }
 
 .dashboard-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .dashboard-kpi-card {
@@ -709,28 +711,38 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(0, 212, 170, 0.08), transparent 52%),
+    linear-gradient(135deg, rgba(0, 212, 170, 0.045), transparent 52%),
     var(--surface);
-  padding: 14px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.13);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dashboard-kpi-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(0, 212, 170, 0.065), transparent 52%),
+    var(--surface);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
 }
 
 .dashboard-kpi-card.featured {
-  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
   background:
-    linear-gradient(135deg, rgba(0, 212, 170, 0.22), rgba(0, 212, 170, 0.06) 48%, transparent),
+    linear-gradient(135deg, rgba(0, 212, 170, 0.11), rgba(0, 212, 170, 0.035) 48%, transparent),
     var(--surface);
 }
 
 .dashboard-kpi-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
-  margin-bottom: 9px;
+  margin-bottom: 7px;
   color: var(--text-soft);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11.5px;
+  font-weight: 680;
 }
 
 .dashboard-kpi-header > span:nth-child(2) {
@@ -742,8 +754,8 @@ button:disabled {
 
 .dashboard-kpi-icon {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
@@ -764,7 +776,7 @@ button:disabled {
   background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
   padding: 3px 7px;
-  font-size: 10.5px;
+  font-size: 10px;
 }
 
 .dashboard-trend.positive {
@@ -781,10 +793,10 @@ button:disabled {
 
 .dashboard-kpi-card strong {
   display: block;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
   color: var(--text);
-  font-size: clamp(27px, 3vw, 38px);
-  font-weight: 850;
+  font-size: clamp(22px, 2.15vw, 30px);
+  font-weight: 780;
   letter-spacing: 0;
   line-height: 0.98;
 }
@@ -792,7 +804,7 @@ button:disabled {
 .dashboard-kpi-card small {
   display: block;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11.5px;
   line-height: 1.35;
 }
 
@@ -802,7 +814,7 @@ button:disabled {
     "flow leads"
     "flow temp";
   grid-template-columns: minmax(0, 1.12fr) minmax(380px, 0.88fr);
-  gap: 12px;
+  gap: 10px;
   align-items: stretch;
 }
 
@@ -812,16 +824,22 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(145deg, rgba(0, 212, 170, 0.07), transparent 38%),
+    linear-gradient(145deg, rgba(0, 212, 170, 0.04), transparent 38%),
     var(--surface);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.13);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.dashboard-panel:hover {
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--line));
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.15);
 }
 
 .dashboard-flow-panel {
   display: flex;
   grid-area: flow;
   flex-direction: column;
-  min-height: 526px;
+  min-height: 462px;
 }
 
 .dashboard-leads-panel {
@@ -838,7 +856,7 @@ button:disabled {
   justify-content: space-between;
   gap: 14px;
   border-bottom: 1px solid var(--line);
-  padding: 15px 16px 13px;
+  padding: 13px 14px 11px;
 }
 
 .dashboard-panel-header.compact {
@@ -848,8 +866,8 @@ button:disabled {
 .dashboard-panel-header h2 {
   margin: 0;
   color: var(--text);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 740;
   letter-spacing: 0;
 }
 
@@ -862,21 +880,21 @@ button:disabled {
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
   background: var(--accent-soft);
   color: var(--accent-strong);
-  padding: 5px 9px;
+  padding: 4px 8px;
 }
 
 .dashboard-chart-wrap {
   display: grid;
   flex: 1;
   align-content: center;
-  gap: 10px;
-  padding: 12px 14px 14px;
+  gap: 9px;
+  padding: 10px 12px 12px;
 }
 
 .dashboard-line-chart {
   display: block;
   width: 100%;
-  min-height: 300px;
+  min-height: 252px;
 }
 
 .dashboard-chart-gridline {
@@ -889,13 +907,13 @@ button:disabled {
   stroke: var(--accent);
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 5;
+  stroke-width: 3.5;
 }
 
 .dashboard-chart-dot {
   fill: var(--surface-muted);
   stroke: var(--accent);
-  stroke-width: 4;
+  stroke-width: 3;
 }
 
 .dashboard-chart-labels {
@@ -928,9 +946,9 @@ button:disabled {
 .dashboard-insights > div {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 13px 14px;
+  padding: 11px 12px;
   color: var(--accent-strong);
 }
 
@@ -1090,15 +1108,15 @@ button:disabled {
 
 .dashboard-temp-content {
   display: grid;
-  grid-template-columns: 138px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 122px minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
-  padding: 16px;
+  padding: 14px;
 }
 
 .dashboard-donut {
   display: grid;
-  width: 132px;
+  width: 116px;
   max-width: 100%;
   aspect-ratio: 1;
   place-items: center;
@@ -1107,7 +1125,7 @@ button:disabled {
 
 .dashboard-donut > div {
   display: grid;
-  width: 72px;
+  width: 64px;
   aspect-ratio: 1;
   place-items: center;
   border: 1px solid var(--line);
@@ -1119,7 +1137,7 @@ button:disabled {
 .dashboard-donut strong {
   display: block;
   color: var(--text);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
 }
 
@@ -1210,7 +1228,7 @@ button:disabled {
 
 @media (max-width: 640px) {
   .dashboard-shell {
-    padding: 18px max(14px, env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom))
+    padding: 16px max(14px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom))
       max(14px, env(safe-area-inset-left));
   }
 
@@ -1221,7 +1239,7 @@ button:disabled {
   }
 
   .dashboard-title h1 {
-    font-size: 28px;
+    font-size: 24px;
   }
 
   .dashboard-topbar-actions {
@@ -1235,15 +1253,15 @@ button:disabled {
   .dashboard-quiet-pill {
     justify-content: center;
     min-width: 0;
-    padding: 7px 9px;
+    padding: 6px 9px;
   }
 
   .dashboard-kpis {
-    gap: 10px;
+    gap: 8px;
   }
 
   .dashboard-kpi-card {
-    padding: 12px;
+    padding: 11px;
   }
 
   .dashboard-kpi-header {
@@ -1257,15 +1275,15 @@ button:disabled {
   }
 
   .dashboard-kpi-card strong {
-    font-size: 30px;
+    font-size: 25px;
   }
 
   .dashboard-panel-header {
-    padding: 14px;
+    padding: 12px;
   }
 
   .dashboard-line-chart {
-    min-height: 220px;
+    min-height: 190px;
   }
 
   .dashboard-insights {
@@ -1291,8 +1309,8 @@ button:disabled {
     gap: 10px;
     min-width: 0;
     border-bottom: 1px solid var(--line);
-    border-left: 4px solid var(--line);
-    padding: 13px 14px;
+    border-left: 3px solid var(--line);
+    padding: 11px 12px;
   }
 
   .dashboard-mobile-lead:last-child {
@@ -1319,12 +1337,12 @@ button:disabled {
   }
 
   .dashboard-temp-content {
-    grid-template-columns: 118px minmax(0, 1fr);
-    padding: 14px;
+    grid-template-columns: 104px minmax(0, 1fr);
+    padding: 12px;
   }
 
   .dashboard-donut {
-    width: 112px;
+    width: 100px;
   }
 }
 
@@ -1341,6 +1359,18 @@ button:disabled {
 
   .dashboard-chart-labels {
     font-size: 9.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-kpi-card,
+  .dashboard-panel,
+  .side-nav-item {
+    transition: none;
+  }
+
+  .dashboard-kpi-card:hover {
+    transform: none;
   }
 }
 
@@ -3227,6 +3257,16 @@ textarea:focus {
 
   /* Nav inferior some na tela de conversa — há o ← Inbox no header */
   .clinic-layout:has(.conv-root) .sidebar {
+    display: none;
+  }
+
+  .clinic-layout:has(.editor-root) > main,
+  .clinic-layout:has(.sim-root) > main {
+    padding-bottom: 0;
+  }
+
+  .clinic-layout:has(.editor-root) .sidebar,
+  .clinic-layout:has(.sim-root) .sidebar {
     display: none;
   }
 

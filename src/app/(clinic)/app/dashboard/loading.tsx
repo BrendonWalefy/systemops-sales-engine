@@ -4,7 +4,7 @@ export default function DashboardLoading() {
       <header className="dashboard-topbar">
         <div className="dashboard-title">
           <div className="skeleton" style={{ width: 118, height: 12, marginBottom: 8 }} />
-          <div className="skeleton" style={{ width: 170, height: 36, marginBottom: 10 }} />
+          <div className="skeleton" style={{ width: 158, height: 30, marginBottom: 8 }} />
           <div className="skeleton" style={{ width: 230, height: 14 }} />
         </div>
 
@@ -22,7 +22,7 @@ export default function DashboardLoading() {
               <div className="skeleton" style={{ width: 112, height: 13 }} />
               <div className="skeleton" style={{ width: 46, height: 20, borderRadius: 999, marginLeft: "auto" }} />
             </div>
-            <div className="skeleton" style={{ width: 66, height: 38, marginBottom: 8 }} />
+            <div className="skeleton" style={{ width: 60, height: 30, marginBottom: 7 }} />
             <div className="skeleton" style={{ width: 134, height: 12 }} />
           </article>
         ))}
@@ -38,7 +38,7 @@ export default function DashboardLoading() {
             <div className="skeleton" style={{ width: 72, height: 26, borderRadius: 999 }} />
           </div>
           <div className="dashboard-chart-wrap">
-            <div className="skeleton" style={{ width: "100%", minHeight: 300, borderRadius: 8 }} />
+            <div className="skeleton" style={{ width: "100%", minHeight: 252, borderRadius: 8 }} />
             <div className="dashboard-chart-labels">
               {Array.from({ length: 7 }).map((_, index) => (
                 <span key={index}>
@@ -92,7 +92,7 @@ export default function DashboardLoading() {
             <div className="skeleton" style={{ width: 48, height: 26, borderRadius: 999 }} />
           </div>
           <div className="dashboard-temp-content">
-            <div className="skeleton" style={{ width: 132, aspectRatio: "1", borderRadius: 999 }} />
+            <div className="skeleton" style={{ width: 116, aspectRatio: "1", borderRadius: 999 }} />
             <div className="dashboard-temp-list">
               {Array.from({ length: 3 }).map((_, index) => (
                 <div key={index} className="dashboard-temp-row">

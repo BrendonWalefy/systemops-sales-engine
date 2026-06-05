@@ -76,7 +76,7 @@ export function TreatmentRow({ treatment, isLast }: { treatment: Treatment; isLa
         name="name"
         defaultValue={treatment.name}
         required
-        style={{ margin: 0, fontSize: "14px" }}
+        style={{ margin: 0, fontSize: "16px" }}
       />
       <label style={{ display: "flex", alignItems: "center", gap: "6px", margin: 0 }}>
         <input
@@ -87,7 +87,7 @@ export function TreatmentRow({ treatment, isLast }: { treatment: Treatment; isLa
           max={480}
           step={5}
           required
-          style={{ width: "60px", textAlign: "center", margin: 0, fontSize: "13px" }}
+          style={{ width: "72px", textAlign: "center", margin: 0, fontSize: "16px" }}
         />
         <span style={{ fontSize: "12px", color: "var(--muted)", whiteSpace: "nowrap" }}>
           min · {formatDuration(treatment.durationMinutes)}

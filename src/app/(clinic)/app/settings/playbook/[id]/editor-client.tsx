@@ -229,7 +229,7 @@ function SimulatorPanel({ data, greetingMessage }: { data: EditorData; greetingM
               border: "1px solid rgba(255,255,255,0.09)",
               borderRadius: "10px",
               color: "#e4e4e7",
-              fontSize: "13px",
+              fontSize: "16px",
               padding: "9px 12px",
               outline: "none",
               fontFamily: "inherit",
@@ -460,7 +460,7 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
           onChange={(e) => setUserInput(e.target.value)}
           placeholder="Escreva do seu jeito — a IA lapida o texto mantendo os fatos que você forneceu."
           rows={3}
-          style={{ ...inputStyle, resize: "vertical", marginBottom: "8px", fontSize: "13px" }}
+          style={{ ...inputStyle, resize: "vertical", marginBottom: "8px" }}
         />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
@@ -471,7 +471,7 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
                 type="text"
                 value={answers[i] ?? ""}
                 onChange={(e) => { const next = [...answers]; next[i] = e.target.value; setAnswers(next); }}
-                style={{ ...inputStyle, fontSize: "13px" }}
+                style={inputStyle}
               />
             </div>
           ))}
@@ -492,7 +492,7 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
               value={result.proposedText}
               onChange={(e) => setResult({ ...result, proposedText: e.target.value })}
               rows={Math.max(4, Math.min(10, result.proposedText.split("\n").length + 1))}
-              style={{ ...inputStyle, resize: "vertical", fontSize: "12px", lineHeight: 1.55, background: "rgba(9,9,11,0.5)" }}
+              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.55, background: "rgba(9,9,11,0.5)" }}
             />
           </div>
         </div>
@@ -657,10 +657,22 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
   return (
     <div className="editor-root" style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr auto", overflow: "hidden", background: "var(--background)" }}>
       <style>{`
-        .editor-root { grid-template-rows: auto 1fr auto; }
-        .editor-cols { display: grid; grid-template-columns: minmax(0, 1fr) 400px; overflow: hidden; }
-        .editor-form-col { overflow-y: auto; padding: 20px 24px 24px; }
-        .editor-sim-col { border-left: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; overflow: hidden; }
+        .editor-root {
+          grid-template-rows: auto 1fr auto;
+          width: 100%;
+          max-width: 100vw;
+          overflow: hidden;
+          -webkit-text-size-adjust: 100%;
+        }
+        .editor-root *,
+        .editor-root *::before,
+        .editor-root *::after { box-sizing: border-box; }
+        .editor-header { min-width: 0; }
+        .editor-crumbs { min-width: 0; overflow: hidden; }
+        .editor-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .editor-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); overflow: hidden; min-width: 0; }
+        .editor-form-col { overflow-y: auto; overflow-x: hidden; padding: 20px 24px 24px; min-width: 0; }
+        .editor-sim-col { border-left: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
         .editor-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .editor-sections { display: flex; flex-direction: column; gap: 20px; }
         .objection-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 260px); gap: 10px; align-items: center; }
@@ -669,8 +681,44 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
         .objection-segment { display: flex; width: fit-content; gap: 4px; padding: 4px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07); background: rgba(15,17,23,0.62); }
         .objection-status { display: inline-flex; align-items: center; flex-shrink: 0; border-radius: 999px; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.035); color: #71717a; font-size: 10px; font-weight: 700; padding: 4px 8px; }
         .mobile-tab-bar { display: none; }
+        .editor-root input,
+        .editor-root textarea,
+        .editor-root select {
+          caret-color: #00d4aa;
+          min-width: 0;
+        }
+        .editor-root input:focus,
+        .editor-root textarea:focus,
+        .editor-root select:focus {
+          border-color: rgba(0,212,170,0.5) !important;
+          box-shadow: 0 0 0 3px rgba(0,212,170,0.12), inset 0 1px 0 rgba(255,255,255,0.035) !important;
+        }
         @media (max-width: 820px) {
+          .editor-root { height: var(--vh, 100dvh) !important; max-width: 100vw; }
+          .editor-header {
+            align-items: stretch !important;
+            padding:
+              calc(env(safe-area-inset-top, 0px) + 14px)
+              calc(env(safe-area-inset-right, 0px) + 14px)
+              10px
+              calc(env(safe-area-inset-left, 0px) + 14px) !important;
+          }
+          .editor-crumbs { flex: 1 1 auto; }
+          .editor-title { max-width: 42vw; }
+          .editor-root input,
+          .editor-root textarea,
+          .editor-root select {
+            font-size: 16px !important;
+            -webkit-text-size-adjust: 100%;
+          }
           .editor-cols { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+          .editor-form-col {
+            padding:
+              16px
+              calc(env(safe-area-inset-right, 0px) + 14px)
+              16px
+              calc(env(safe-area-inset-left, 0px) + 14px);
+          }
           .editor-sim-col { border-left: none; border-top: 1px solid rgba(255,255,255,0.07); }
           .editor-config-grid { grid-template-columns: 1fr; }
           .objection-toolbar { grid-template-columns: 1fr; }
@@ -681,11 +729,28 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           .editor-cols.tab-edit .editor-sim-col { display: none; }
           .editor-cols.tab-test .editor-form-col { display: none; }
           .cowriter-compare { grid-template-columns: 1fr !important; }
+          .editor-bottom-bar {
+            padding:
+              10px
+              calc(env(safe-area-inset-right, 0px) + 14px)
+              calc(env(safe-area-inset-bottom, 0px) + 10px)
+              calc(env(safe-area-inset-left, 0px) + 14px) !important;
+            gap: 10px !important;
+          }
+          .editor-bottom-bar > button { padding: 8px 10px !important; }
+        }
+        @media (max-width: 520px) {
+          .editor-header { flex-direction: column; gap: 8px !important; }
+          .editor-title { max-width: 100%; }
+          .mobile-tab-bar { width: 100%; }
+          .mobile-tab-bar button { flex: 1; }
+          .editor-bottom-bar { align-items: stretch !important; }
+          .editor-bottom-bar > div:last-child { display: none !important; }
         }
       `}</style>
 
       {/* Breadcrumb header */}
-      <div style={{
+      <div className="editor-header" style={{
         padding: "14px 24px 12px",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         display: "flex",
@@ -694,12 +759,12 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
         gap: "12px",
         flexShrink: 0,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div className="editor-crumbs" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <button onClick={() => router.push("/app/settings/playbook")} style={crumbBtn}>IA</button>
           <ChevronRight size={12} style={{ color: "#3f3f46" }} />
           <button onClick={() => router.push("/app/settings/playbook")} style={crumbBtn}>Playbooks</button>
           <ChevronRight size={12} style={{ color: "#3f3f46" }} />
-          <span style={{ fontSize: "12px", color: "#a1a1aa", fontWeight: 500 }}>Editor: {name}</span>
+          <span className="editor-title" style={{ fontSize: "12px", color: "#a1a1aa", fontWeight: 500 }}>Editor: {name}</span>
         </div>
         {/* Mobile tab switcher */}
         <div className="mobile-tab-bar" style={{ gap: "3px", padding: "3px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.07)", background: "rgba(9,9,11,0.6)" }}>
@@ -1020,7 +1085,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
       </div>
 
       {/* Bottom bar */}
-      <div style={{
+      <div className="editor-bottom-bar" style={{
         borderTop: "1px solid rgba(255,255,255,0.07)",
         background: "rgba(9,9,11,0.94)",
         backdropFilter: "blur(12px)",
@@ -1129,12 +1194,13 @@ const inputStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.09)",
   borderRadius: "10px",
   color: "#e4e4e7",
-  fontSize: "14px",
+  fontSize: "16px",
   padding: "10px 14px",
   outline: "none",
   fontFamily: "inherit",
   boxSizing: "border-box",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.035)",
+  lineHeight: 1.45,
 };
 
 const labelStyle: React.CSSProperties = {

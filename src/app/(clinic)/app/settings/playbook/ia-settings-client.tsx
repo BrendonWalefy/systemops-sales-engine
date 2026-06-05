@@ -292,7 +292,7 @@ function NewVersionCard() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Nome do playbook..."
             onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") { setCreating(false); setName(""); } }}
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(16,185,129,0.4)", borderRadius: "8px", color: "#fafafa", fontSize: "14px", padding: "10px 12px", width: "100%", outline: "none", boxSizing: "border-box" }}
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(16,185,129,0.4)", borderRadius: "8px", color: "#fafafa", fontSize: "16px", padding: "10px 12px", width: "100%", outline: "none", boxSizing: "border-box" }}
           />
           <div style={{ display: "flex", gap: "8px" }}>
             <button onClick={handleSubmit} disabled={isPending} style={{ ...primaryBtnStyle, flex: 1 }}>Criar</button>
@@ -372,8 +372,9 @@ function MenuEditor({
               border: "none",
               outline: "none",
               color: item.enabled ? "#e4e4e7" : "#52525b",
-              fontSize: "13px",
+              fontSize: "16px",
               fontFamily: "inherit",
+              lineHeight: 1.35,
             }}
           />
           <span className="menu-intent-label" style={{ fontSize: "10px", color: "#3f3f46", flexShrink: 0, minWidth: "100px", textAlign: "right" }}>
@@ -453,9 +454,9 @@ function GeralTab({
 
   const triggerSave = useCallback((patch: {
     greetingMessage?: string;
-	    menuItems?: MenuItem[];
+    menuItems?: MenuItem[];
     conversationExperience?: ConversationExperience;
-	    businessHours?: string;
+    businessHours?: string;
     takeoverTtlHours?: number;
     postAppointmentBufferMinutes?: number;
     receptionistPhone?: string;
@@ -465,10 +466,10 @@ function GeralTab({
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
       await updateClinicOperationalSettings({
-	        greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
-	        menuItems: patch.menuItems ?? menuItems,
+        greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
+        menuItems: patch.menuItems ?? menuItems,
         conversationExperience: patch.conversationExperience ?? conversationExperience,
-	        businessHours: (patch.businessHours ?? businessHours) || null,
+        businessHours: (patch.businessHours ?? businessHours) || null,
         takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
         postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
         receptionistPhone: (patch.receptionistPhone ?? receptionistPhone) || null,
@@ -525,14 +526,14 @@ function GeralTab({
     <div style={{ display: "flex", flexDirection: "column", gap: "20px", maxWidth: "680px" }}>
 
       {/* Status da IA */}
-      <div style={cardStyle}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+      <div className="ia-status-card" style={cardStyle}>
+        <div className="ia-status-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "14px" }}>
+          <div className="ia-status-main" style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
             <div style={iconBoxStyle}>
               <Zap size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
             </div>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Status da IA</strong>
                 <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(enabled ? { background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
                   {enabled ? "Ativa" : "Pausada"}
@@ -541,7 +542,7 @@ function GeralTab({
               <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>Recepcionista responde automaticamente via WhatsApp</p>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div className="ia-status-actions" style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
             {enabled && (
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399", display: "inline-block" }} />
@@ -557,16 +558,16 @@ function GeralTab({
 
       {/* Experiência da conversa */}
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="ia-section-heading" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <Sparkles size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Experiência da conversa</p>
             <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Define como a IA inicia e conduz leads no WhatsApp</p>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px" }}>
+        <div className="ia-choice-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px" }}>
           <button
             type="button"
             onClick={() => handleExperienceChange("concierge")}
@@ -586,12 +587,12 @@ function GeralTab({
 
       {/* Texto de boas-vindas */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="ia-section-heading" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <MessageSquare size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
-          <div>
-	            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Texto de boas-vindas</p>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Texto de boas-vindas</p>
             <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Usado como introdução do menu quando a experiência permite menu</p>
           </div>
         </div>
@@ -605,18 +606,18 @@ function GeralTab({
           rows={3}
           style={{ ...geralInputStyle, resize: "vertical" }}
         />
-	        <p style={{ margin: 0, fontSize: "11px", color: "#3f3f46" }}>
+        <p style={{ margin: 0, fontSize: "11px", color: "#3f3f46" }}>
           Se vazio, usa o texto padrão da IA. No concierge, pergunta clara é respondida antes de qualquer menu.
-	        </p>
+        </p>
       </div>
 
       {/* Menu de opções */}
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="ia-section-heading" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <Plus size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Menu de opções</p>
             <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>
               Itens exibidos ao lead. Edite os rótulos ou desative itens que não se aplicam à sua clínica.
@@ -638,11 +639,11 @@ function GeralTab({
 
       {/* Horário de funcionamento */}
       <div ref={businessHoursSectionRef} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="ia-section-heading" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <Clock size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Horário de funcionamento</p>
             <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Usado pela IA ao informar leads e na lógica de agendamento</p>
           </div>
@@ -662,11 +663,11 @@ function GeralTab({
 
       {/* Telefone da recepção */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="ia-section-heading" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <Phone size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Telefone da recepção</p>
             <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Número WhatsApp que recebe alertas quando a IA pede atenção humana</p>
           </div>
@@ -685,20 +686,20 @@ function GeralTab({
 
       {/* Comportamento automático */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="ia-section-heading" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={iconBoxStyle}>
             <Timer size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Comportamento automático</p>
             <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Controla quando a IA retoma e quanto tempo reserva entre atendimentos</p>
           </div>
         </div>
         <div className="ia-geral-grid" style={{ display: "grid", gap: "12px" }}>
-          <div ref={takeoverSectionRef} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+          <div className="ia-number-card" ref={takeoverSectionRef} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
             <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Pausa automática</p>
             <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Horas até a IA retomar após atendimento humano</p>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className="ia-number-row" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <input
                 ref={takeoverInputRef}
                 type="number"
@@ -714,10 +715,10 @@ function GeralTab({
               <span style={{ fontSize: "13px", color: "#52525b" }}>horas</span>
             </div>
           </div>
-          <div ref={bufferSectionRef} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+          <div className="ia-number-card" ref={bufferSectionRef} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
             <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Intervalo entre atendimentos</p>
             <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Buffer de tempo reservado após cada agendamento</p>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className="ia-number-row" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <input
                 ref={bufferInputRef}
                 type="number"
@@ -844,30 +845,85 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
   return (
     <div className="ia-settings-shell">
       <style>{`
+        .ia-settings-shell {
+          width: 100%;
+          max-width: 100vw;
+          overflow-x: hidden;
+          -webkit-text-size-adjust: 100%;
+        }
+        .ia-settings-shell *,
+        .ia-settings-shell *::before,
+        .ia-settings-shell *::after { box-sizing: border-box; }
         .ia-header { padding: 28px 32px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
-        .ia-header-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+        .ia-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
         .ia-pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-        .ia-content { padding: 28px 32px; }
+        .ia-content { padding: 28px 32px; overflow-x: hidden; }
         .ia-versions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
         .ia-geral-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-        @media (max-width: 640px) {
-          .ia-header { padding: 20px 16px 0; }
+        .ia-playbooks-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+        .ia-settings-shell input,
+        .ia-settings-shell textarea,
+        .ia-settings-shell select {
+          caret-color: #10b981;
+          min-width: 0;
+        }
+        .ia-settings-shell input:focus,
+        .ia-settings-shell textarea:focus,
+        .ia-settings-shell select:focus {
+          border-color: rgba(16,185,129,0.5) !important;
+          box-shadow: 0 0 0 3px rgba(16,185,129,0.12) !important;
+          outline: none !important;
+        }
+        @media (max-width: 820px) {
+          .ia-settings-shell { padding: 0 !important; min-height: var(--vh, 100dvh); }
+          .ia-header {
+            padding:
+              calc(env(safe-area-inset-top, 0px) + 20px)
+              calc(env(safe-area-inset-right, 0px) + 16px)
+              0
+              calc(env(safe-area-inset-left, 0px) + 16px);
+          }
           .ia-header-top { flex-direction: column; gap: 14px; margin-bottom: 16px; }
           .ia-pills { display: none; }
-          .ia-content { padding: 20px 16px; }
+          .ia-content {
+            padding:
+              20px
+              calc(env(safe-area-inset-right, 0px) + 16px)
+              calc(env(safe-area-inset-bottom, 0px) + 20px)
+              calc(env(safe-area-inset-left, 0px) + 16px);
+          }
           .ia-versions-grid { grid-template-columns: 1fr; }
           .ia-geral-grid { grid-template-columns: 1fr; }
+          .ia-status-card { padding: 14px !important; }
+          .ia-status-row { flex-direction: column; align-items: stretch !important; }
+          .ia-status-main { align-items: flex-start !important; }
+          .ia-status-actions { width: 100%; justify-content: space-between; padding-left: 48px; }
+          .ia-section-heading { align-items: flex-start !important; }
+          .ia-choice-grid { grid-template-columns: 1fr !important; }
+          .ia-number-row input { width: 96px !important; }
+          .ia-settings-shell input,
+          .ia-settings-shell textarea,
+          .ia-settings-shell select {
+            font-size: 16px !important;
+            -webkit-text-size-adjust: 100%;
+          }
+          .ia-tabs { width: 100%; overflow-x: auto; scrollbar-width: none; }
+          .ia-tabs::-webkit-scrollbar { display: none; }
           .menu-intent-label { display: none; }
-          .ia-tab-btn { flex: 1; text-align: center; justify-content: center; padding: 10px 6px !important; font-size: 12px !important; }
-          .treatment-form { grid-template-columns: 1fr auto !important; grid-template-rows: auto auto; padding: 12px 14px !important; gap: 8px 10px !important; }
-          .treatment-form > input[type="text"] { grid-column: 1; grid-row: 1; }
-          .treatment-form > label { grid-column: 1; grid-row: 2; align-items: center; }
-          .treatment-form > .treatment-save-btn { grid-column: 2; grid-row: 2; align-self: center; }
-          .treatment-form > .treatment-delete-btn { grid-column: 2; grid-row: 1; align-self: center; }
-          .treatment-add-form { grid-template-columns: 1fr 90px !important; grid-template-rows: auto auto; }
+          .ia-tab-btn { flex: 1 0 auto; text-align: center; justify-content: center; padding: 10px 8px !important; font-size: 13px !important; min-width: max-content; }
+          .treatment-form { grid-template-columns: minmax(0, 1fr) auto !important; grid-template-rows: auto auto auto; padding: 14px !important; gap: 10px !important; align-items: center !important; }
+          .treatment-form > input[type="text"] { grid-column: 1 / -1; grid-row: 1; }
+          .treatment-form > label { grid-column: 1 / -1; grid-row: 2; align-items: center; min-width: 0; }
+          .treatment-form > label input { width: 84px !important; }
+          .treatment-form > .treatment-save-btn { grid-column: 1; grid-row: 3; align-self: stretch; }
+          .treatment-form > .treatment-save-btn button { width: 100%; justify-content: center; }
+          .treatment-form > .treatment-delete-btn { grid-column: 2; grid-row: 3; align-self: stretch; min-width: 42px; }
+          .treatment-add-form { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: auto auto auto; }
           .treatment-add-form > label:first-of-type { grid-column: 1 / -1; }
-          .treatment-add-form > label:last-of-type { grid-column: 1; }
-          .treatment-add-form > button { grid-column: 2; align-self: end; }
+          .treatment-add-form > label:last-of-type { grid-column: 1 / -1; }
+          .treatment-add-form > button { grid-column: 1 / -1; align-self: stretch; justify-content: center; }
+          .ia-playbooks-toolbar { align-items: stretch; }
+          .ia-playbooks-toolbar > button { width: 100%; justify-content: center; }
         }
       `}</style>
 
@@ -915,7 +971,7 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: "0" }}>
+        <div className="ia-tabs" style={{ display: "flex", gap: "0" }}>
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -954,7 +1010,7 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
 
         {tab === "playbooks" && (
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", gap: "12px", flexWrap: "wrap" }}>
+            <div className="ia-playbooks-toolbar">
               <p style={{ margin: 0, fontSize: "13px", color: "#52525b", lineHeight: 1.6 }}>
                 Cada versão é um conjunto independente de regras para a IA. A versão em produção é a que está ativa.
               </p>
@@ -1064,9 +1120,10 @@ const geralInputStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.09)",
   borderRadius: "8px",
   color: "#e4e4e7",
-  fontSize: "14px",
+  fontSize: "16px",
   padding: "10px 14px",
   outline: "none",
   fontFamily: "inherit",
   boxSizing: "border-box",
+  lineHeight: 1.45,
 };
