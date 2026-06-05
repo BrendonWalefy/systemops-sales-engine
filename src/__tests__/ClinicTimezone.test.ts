@@ -2,7 +2,7 @@
 // These tests verify correct day-of-week handling and the round-trip correctness.
 
 import { describe, it, expect } from "vitest";
-import { ClinicTimezone, parseBusinessHours, type ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
+import { ClinicTimezone, getTimeGreeting, parseBusinessHours, type ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 
 const TZ = "America/Sao_Paulo"; // UTC-3 (no DST in winter; UTC-2 in DST summer)
 const tz = new ClinicTimezone(TZ);
@@ -137,6 +137,28 @@ describe("ClinicTimezone — human labels", () => {
   it("formatForConfirmation includes minutes for non-round slots", () => {
     const slot = tz.fromLocalParts(2025, 5, 27, 15, 40);
     expect(tz.formatForConfirmation(slot)).toContain("às 15h40");
+  });
+});
+
+describe("getTimeGreeting", () => {
+  it("uses Boa noite during madrugada", () => {
+    expect(getTimeGreeting(0)).toBe("Boa noite");
+    expect(getTimeGreeting(4)).toBe("Boa noite");
+  });
+
+  it("uses Bom dia only from 05h until before noon", () => {
+    expect(getTimeGreeting(5)).toBe("Bom dia");
+    expect(getTimeGreeting(11)).toBe("Bom dia");
+  });
+
+  it("uses Boa tarde from noon until before 18h", () => {
+    expect(getTimeGreeting(12)).toBe("Boa tarde");
+    expect(getTimeGreeting(17)).toBe("Boa tarde");
+  });
+
+  it("uses Boa noite from 18h onward", () => {
+    expect(getTimeGreeting(18)).toBe("Boa noite");
+    expect(getTimeGreeting(23)).toBe("Boa noite");
   });
 });
 

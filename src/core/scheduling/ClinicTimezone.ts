@@ -307,6 +307,6 @@ export function parseBusinessHours(raw: string | null): ParsedBusinessHours {
  */
 export function getTimeGreeting(hour: number): "Bom dia" | "Boa tarde" | "Boa noite" {
   if (hour >= 5 && hour < 12) return "Bom dia";
-  if (hour < 18) return "Boa tarde";
+  if (hour >= 12 && hour < 18) return "Boa tarde";
   return "Boa noite";
 }
