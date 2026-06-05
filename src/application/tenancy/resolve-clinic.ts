@@ -79,7 +79,7 @@ export function resolveZapiClinicRouteFromRows(params: {
  * Inbound Z-API com suporte a QA por allowlist de telefone.
  *
  * Normal: instanceId -> clínica dona da instância.
- * QA: instanceId -> clínica fonte do canal, phone -> clínica fake onde a
+ * QA: instanceId -> clínica fonte do canal, phone -> clínica alvo onde a
  * conversa/agenda devem viver.
  */
 export async function resolveClinicByZapiInbound(params: {
@@ -124,7 +124,7 @@ export async function resolveClinicByZapiInbound(params: {
 }
 
 /**
- * Outbound de conversas já registradas: se a conversa vive numa clínica fake
+ * Outbound de conversas já registradas: se a conversa vive numa clínica alvo de QA
  * e o telefone está allowlistado, usa a clínica fonte como canal de envio.
  */
 export async function resolveWhatsappChannelClinicForOutbound(params: {

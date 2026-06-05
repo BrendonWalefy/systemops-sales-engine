@@ -64,7 +64,7 @@ disponibilidade e eventos externos. O banco mantém os `appointments` do produto
 `resolveWhatsappChannelClinicForOutbound()` em
 `src/application/tenancy/resolve-clinic.ts`
 
-Essa tabela permite testar uma clinica fake com WhatsApp real sem criar nova
+Essa tabela permite testar uma segunda clinica com WhatsApp real sem criar nova
 instancia Z-API. A chave de entrada e `source_clinic_id + phone`: a instancia
 continua pertencendo a clinica fonte, mas telefones allowlistados passam a
 registrar leads, conversas, agenda e custos na clinica alvo. Sem rota ativa, o

@@ -1,10 +1,10 @@
-# omniQA — WhatsApp Real Com Clinica Fake
+# omniQA — WhatsApp Real Com Segunda Clinica
 
 Este modo complementa o sandbox `/api/playbook/simulate`. Ele usa webhook,
 persistencia, estado de conversa, agenda interna e envio Z-API reais, mas
 mantem os testes fora da Ximendes.
 
-## Clinica De QA
+## Clinica De Validacao
 
 - Nome: `BW odontologia`
 - Slug: `bw-odontologia`
@@ -13,9 +13,13 @@ mantem os testes fora da Ximendes.
 - `conversationExperience = concierge`
 - `autoReplyEnabled = true`
 
-A BW nao possui credenciais Z-API proprias. Ela usa `whatsapp_qa_routes` para
+A BW odontologia funciona como uma segunda clinica completa para validacao real.
+Ela nao possui credenciais Z-API proprias. Usa `whatsapp_qa_routes` para
 enviar pelos tokens da clinica fonte apenas quando o telefone do lead esta
 allowlistado.
+
+`isTest = true` deixa a clinica fora do MRR e do custo fixo no financeiro
+enquanto ela estiver em validacao; nao altera o comportamento da conversa.
 
 ## Telefones Allowlistados
 

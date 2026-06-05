@@ -61,7 +61,7 @@ Nao existe fallback global de Z-API, calendario ou usuario de clinica por env.
 
 Para QA real sem nova instancia Z-API, `whatsapp_qa_routes` pode desviar
 telefones allowlistados: a conversa, o lead, a agenda e os custos vivem na
-clinica fake alvo; o envio WhatsApp usa a clinica fonte dona da instancia.
+clinica alvo de validacao; o envio WhatsApp usa a clinica fonte dona da instancia.
 Sem rota ativa, a instancia continua resolvendo para a propria clinica.
 
 ## Autenticacao
