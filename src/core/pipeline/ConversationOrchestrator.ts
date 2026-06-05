@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
-import { eq, and, count, gte, lt, asc } from "drizzle-orm";
+import { eq, and, count, gte, lt } from "drizzle-orm";
 
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
@@ -34,7 +34,13 @@ import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 
 import type { Clinic, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
-import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
+import type { ConversationExperience } from "@/domain/entities/clinic";
+import {
+  CONCIERGE_MENU_ITEMS,
+  DEFAULT_CONVERSATION_EXPERIENCE,
+  DEFAULT_MENU_ITEMS,
+} from "@/domain/entities/clinic";
+import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 
 const SLOTS_LOOKAHEAD_DAYS = 14;
 
@@ -60,9 +66,20 @@ function buildMenuText(items: MenuItem[]): string {
   return items.filter(i => i.enabled).map(i => `${i.number}. ${i.label}`).join("\n");
 }
 
-function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer"): string {
-  const items = clinic.menuItems ?? DEFAULT_MENU_ITEMS;
+function getMenuItemsForExperience(clinic: Clinic, experience: ConversationExperience): MenuItem[] {
+  return clinic.menuItems ?? (experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS);
+}
+
+function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer", experience: ConversationExperience): string {
+  const items = getMenuItemsForExperience(clinic, experience);
   const menuText = buildMenuText(items);
+
+  if (experience === "concierge") {
+    const intro = variant === "first"
+      ? "Claro. Você pode escolher por onde quer começar:"
+      : "Claro. Você pode escolher por onde quer começar:";
+    return `${intro}\n\n${menuText}`;
+  }
 
   if (clinic.menuItems !== null) {
     // Structured mode: greetingMessage é somente o texto intro antes do menu
@@ -76,6 +93,31 @@ function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer"): string {
     ?? (variant === "first"
       ? `Seja bem-vindo à ${clinic.name}. Como posso ajudá-lo?\n\n${menuText}`
       : `Como posso ajudá-lo?\n\n${menuText}`);
+}
+
+export function shouldShowInitialMenu(experience: ConversationExperience, intent: IntentType): boolean {
+  if (intent === "clinical_urgency" || intent === "needs_human" || intent === "patient_arrived") {
+    return false;
+  }
+
+  if (experience === "concierge") return false;
+
+  return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
+}
+
+function shouldSendConciergeStarter(experience: ConversationExperience, intent: IntentType): boolean {
+  if (experience !== "concierge") return false;
+  return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
+}
+
+function buildConciergeStarter(clinic: Clinic, timezone: ClinicTimezone, leadName?: string | null): string {
+  const salutation = getDayGreeting(timezone);
+  const nameGreeting = leadName ? `, ${leadName}` : "";
+  const specialtyHint = clinic.specialty.toLowerCase().includes("estética")
+    ? "lentes, avaliação, valores ou algum tratamento específico"
+    : "avaliação, valores ou algum tratamento específico";
+
+  return `${salutation}${nameGreeting}. Tudo bem?\n\nMe conta o que você gostaria de ver hoje: ${specialtyHint}?`;
 }
 
 function isMenuRerequest(message: string): boolean {
@@ -149,6 +191,16 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
   return null;
 }
 
+function isLocationRequest(message: string): boolean {
+  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica");
+}
+
+function isProcedureCatalogRequest(message: string): boolean {
+  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return n.includes("procedimento") || n.includes("tratamento") || n.includes("servico") || n.includes("opcoes");
+}
+
 function getDayGreeting(timezone: ClinicTimezone): string {
   const { hour } = timezone.toLocalParts(new Date());
   return getTimeGreeting(hour);
@@ -190,6 +242,19 @@ export function buildLocationClinicContext(address: string | null): string {
   return address ? `${base}\nEndereço: ${address}.` : base;
 }
 
+function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null): string {
+  const details = [
+    `Lead selecionou o procedimento "${item.name}" em uma lista numerada.`,
+    item.description ? `Descrição cadastrada: ${item.description}` : null,
+    item.requiresEvaluationFirst
+      ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
+      : "Explique o procedimento com naturalidade e ofereça avaliação se fizer sentido.",
+    commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
+  ].filter(Boolean);
+
+  return `${details.join("\n")}\nFormato: até 2 parágrafos curtos, sem lista.`;
+}
+
 type ClinicRow = typeof clinics.$inferSelect;
 
 function buildClinic(row: ClinicRow): Clinic {
@@ -200,6 +265,7 @@ function buildClinic(row: ClinicRow): Clinic {
     city: row.city,
     address: row.address ?? null,
     timezone: row.timezone,
+    conversationExperience: row.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
     greetingMessage: row.greetingMessage ?? null,
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,
     businessHours: row.businessHours,
@@ -388,12 +454,18 @@ export class ConversationOrchestrator {
 
     // ── 9. Resolve intenção: menu pré-classificado ou LLM estágio 1 ──
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
+    const experience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
 
     const isMenuActive = await this.stateMachine.isMenuOffered(conversation.id);
-    const clinicMenuItems = clinic.menuItems ?? DEFAULT_MENU_ITEMS;
+    const clinicMenuItems = getMenuItemsForExperience(clinic, experience);
     let menuResolution: MenuResolution | null = null;
     if (isMenuActive) {
       menuResolution = resolveMenuSelection(messageText, clinicMenuItems);
+      await this.stateMachine.invalidate(conversation.id);
+    }
+
+    const procedureSelection = await this.stateMachine.getOfferedProcedureByIndex(conversation.id, messageText);
+    if (procedureSelection) {
       await this.stateMachine.invalidate(conversation.id);
     }
 
@@ -437,11 +509,20 @@ export class ConversationOrchestrator {
       /^\d+$/.test(nMsg) &&
       !clinicMenuItems.some(i => nMsg === String(i.number));
 
-    const skipLlm = menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber;
+    const skipLlm = procedureSelection !== null || menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
-    const classification = menuResolution
+    const classification = procedureSelection
+      ? {
+          intent: "general_question" as IntentType,
+          slotPreference: nullSlotPref,
+          confidence: 1,
+          shouldAskClarification: false,
+          clarificationQuestion: null as null,
+          handoffReason: null as null,
+        }
+      : menuResolution
       ? {
           intent: menuResolution.intent as IntentType,
           slotPreference: nullSlotPref,
@@ -497,42 +578,54 @@ export class ConversationOrchestrator {
         conversationHistory: allMessages,
         clinic: {
           name: clinic.name,
-          specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? null,
-          playbook: editorial?.playbookText ?? null,
-          commercialPolicy: editorial?.commercialPolicy ?? null,
-        },
-        leadName: lead.name,
-        timezone,
-        isFirstMessage,
-        resumedFromHumanTakeover,
-      });
+            specialty: editorial?.specialty ?? clinic.specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: editorial?.commercialPolicy ?? null,
+          },
+          leadName: lead.name,
+          timezone,
+          isFirstMessage,
+          conversationExperience: experience,
+          resumedFromHumanTakeover,
+        });
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
       return composed.text;
     };
 
-    if (isFirstMessage && intent !== "clinical_urgency" && intent !== "needs_human" && intent !== "patient_arrived") {
+    if (isFirstMessage && shouldShowInitialMenu(experience, intent)) {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = lead.name ? `, ${lead.name}` : "";
-      replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;
+      replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
       await this.stateMachine.offerMenu(conversation.id);
+    } else if (isFirstMessage && shouldSendConciergeStarter(experience, intent)) {
+      replyText = buildConciergeStarter(clinic, timezone, lead.name);
     } else if (resetRequested) {
       // Zera estado e reinicia como se fosse primeiro contato
       await this.stateMachine.invalidate(conversation.id);
-      const salutation = getDayGreeting(timezone);
-      const nameGreeting = lead.name ? `, ${lead.name}` : "";
-      replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first")}`;
-      await this.stateMachine.offerMenu(conversation.id);
-    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber) {
-      if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber) {
-        replyText = buildMenuBody(clinic, "reoffer");
-      } else {
+      if (experience === "menu_first") {
         const salutation = getDayGreeting(timezone);
         const nameGreeting = lead.name ? `, ${lead.name}` : "";
-        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer")}`;
+        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
+        await this.stateMachine.offerMenu(conversation.id);
+      } else {
+        replyText = buildConciergeStarter(clinic, timezone, lead.name);
       }
-      await this.stateMachine.offerMenu(conversation.id);
+    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber) {
+      if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber) {
+        replyText = buildMenuBody(clinic, "reoffer", experience);
+        await this.stateMachine.offerMenu(conversation.id);
+      } else if (experience === "menu_first") {
+        const salutation = getDayGreeting(timezone);
+        const nameGreeting = lead.name ? `, ${lead.name}` : "";
+        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer", experience)}`;
+        await this.stateMachine.offerMenu(conversation.id);
+      } else if (isStaleConversation) {
+        replyText = buildConciergeStarter(clinic, timezone, lead.name);
+      } else {
+        replyText = await compose({ type: "acknowledgment" });
+      }
     } else switch (intent) {
       // ── Confirmação de slot ──
       case "confirm_slot": {
@@ -953,12 +1046,16 @@ export class ConversationOrchestrator {
       }
 
       // ── Saudação ──
-      // Lead reiniciou a conversa: re-oferece o menu com saudação, igual ao primeiro contato.
+      // Lead reiniciou a conversa: respeita a experiência configurada.
       case "greeting": {
-        const salutation = getDayGreeting(timezone);
-        const nameGreeting = lead.name ? `, ${lead.name}` : "";
-        replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer")}`;
-        await this.stateMachine.offerMenu(conversation.id);
+        if (experience === "menu_first") {
+          const salutation = getDayGreeting(timezone);
+          const nameGreeting = lead.name ? `, ${lead.name}` : "";
+          replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer", experience)}`;
+          await this.stateMachine.offerMenu(conversation.id);
+        } else {
+          replyText = buildConciergeStarter(clinic, timezone, lead.name);
+        }
         break;
       }
 
@@ -966,7 +1063,7 @@ export class ConversationOrchestrator {
       case "acknowledgment": {
         // Paciente respondeu ao menu com algo ambíguo (ex: "não sei") — reapresenta o menu
         if (isMenuActive && !menuResolution) {
-          replyText = buildMenuBody(clinic, "reoffer");
+          replyText = buildMenuBody(clinic, "reoffer", experience);
           await this.stateMachine.offerMenu(conversation.id);
         } else {
           replyText = await compose({ type: "acknowledgment" });
@@ -983,12 +1080,23 @@ export class ConversationOrchestrator {
       // ── Pergunta geral (inclui seleções de menu: procedimentos e localização) ──
       case "general_question": {
         let clinicContext: string;
-        if (menuResolution?.intent === "general_question") {
-          if (menuResolution.subtype === "procedures") {
+        const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
+        const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
+        const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
+
+        if (procedureSelection) {
+          clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null);
+        } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
+          if (menuGeneralSubtype === "procedures") {
             const items = clinicTreatments.length > 0
               ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
               : "";
             clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar.\n${items}`;
+          } else if (directProcedureCatalogRequested) {
+            const items = clinicTreatments.length > 0
+              ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
+              : "";
+            clinicContext = `Lead pediu para ver procedimentos/tratamentos.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número." Sem convite para agendar.\n${items}`;
           } else {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
@@ -996,6 +1104,9 @@ export class ConversationOrchestrator {
           clinicContext = `${clinic.name} — ${clinic.specialty}. ${editorial?.commercialPolicy ?? ""}`;
         }
         replyText = await compose({ type: "general_question", clinicContext });
+        if ((menuGeneralSubtype === "procedures" || directProcedureCatalogRequested) && clinicTreatments.length > 0) {
+          await this.stateMachine.offerProcedureList(conversation.id, clinicTreatments);
+        }
         break;
       }
 
@@ -1004,7 +1115,7 @@ export class ConversationOrchestrator {
       default: {
         // Paciente respondeu ao menu com input inválido ou confuso — reapresenta o menu
         if (isMenuActive && !menuResolution) {
-          replyText = buildMenuBody(clinic, "reoffer");
+          replyText = buildMenuBody(clinic, "reoffer", experience);
           await this.stateMachine.offerMenu(conversation.id);
         } else if (classification.shouldAskClarification && classification.clarificationQuestion) {
           replyText = await compose({

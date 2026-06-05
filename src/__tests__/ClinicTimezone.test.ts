@@ -123,6 +123,23 @@ describe("ClinicTimezone — fromLocalParts/toLocalParts roundtrip (UTC-3)", () 
   });
 });
 
+describe("ClinicTimezone — human labels", () => {
+  it("formatForHuman keeps compact hour when minute is zero", () => {
+    const slot = tz.fromLocalParts(2025, 5, 27, 14, 0);
+    expect(tz.formatForHuman(slot)).toContain("às 14h");
+  });
+
+  it("formatForHuman includes minutes for non-round slots", () => {
+    const slot = tz.fromLocalParts(2025, 5, 27, 15, 40);
+    expect(tz.formatForHuman(slot)).toContain("às 15h40");
+  });
+
+  it("formatForConfirmation includes minutes for non-round slots", () => {
+    const slot = tz.fromLocalParts(2025, 5, 27, 15, 40);
+    expect(tz.formatForConfirmation(slot)).toContain("às 15h40");
+  });
+});
+
 // ─── Section 2: resolvePreferredDate ───────────────────────────────────────
 
 describe("ClinicTimezone — resolvePreferredDate day names", () => {

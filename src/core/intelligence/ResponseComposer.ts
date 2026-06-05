@@ -6,9 +6,11 @@ import OpenAI from "openai";
 import type { Message } from "@/domain/entities/conversation";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import type { ConversationExperience } from "@/domain/entities/clinic";
+import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 
 const MODEL = "gpt-4o-mini";
-const PROMPT_VERSION = "composer-v1";
+const PROMPT_VERSION = "composer-v2-experience";
 
 export type FormattedAppointment = {
   label: string;   // "Seg 26/05 às 14h"
@@ -55,6 +57,7 @@ export type ComposerInput = {
   leadName?: string | null;
   timezone: ClinicTimezone;
   isFirstMessage: boolean;
+  conversationExperience?: ConversationExperience;
   resumedFromHumanTakeover?: boolean;
 };
 
@@ -68,7 +71,19 @@ export type ComposedResponse = {
 
 function buildSystemPrompt(input: ComposerInput): string {
   const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover } = input;
+  const conversationExperience = input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const nowStr = timezone.formatNowForPrompt();
+  const experienceRules = conversationExperience === "concierge"
+    ? `MODO DE EXPERIÊNCIA: concierge.
+- Responda primeiro ao que o lead escreveu; menu é fallback, não ponto de partida.
+- Não encerre com "digite menu" ou variações, a menos que o lead tenha pedido o menu.
+- Se o lead perguntou preço, pagamento, lentes ou tratamento, responda a dúvida e conduza para avaliação apenas quando fizer sentido.
+- Máximo 1 pergunta no final. A pergunta deve ter objetivo claro.`
+    : `MODO DE EXPERIÊNCIA: menu-first.
+- O menu pode ser usado para saudações genéricas, pedidos de menu ou entradas confusas.
+- Se o lead fez uma pergunta clara, responda a intenção antes de oferecer qualquer menu.
+- Não repita o menu depois de responder preço, pagamento, endereço ou tratamento.
+- Máximo 1 pergunta no final.`;
 
   return `Você é a recepcionista virtual da ${clinic.name}, uma clínica de ${clinic.specialty}.
 
@@ -89,6 +104,8 @@ REGRAS ABSOLUTAS:
 5. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
 6. Saudações: se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.
 
+${experienceRules}
+
 ESCOPO ESTRITO: Você responde SOMENTE sobre assuntos da ${clinic.name} — agendamentos, especialidades, localização, preços e tratamentos. Para perguntas completamente fora do escopo da clínica (política, outros serviços, programação, etc.), responda gentilmente que você é a recepcionista virtual e pode ajudar apenas com assuntos da clínica.
 ${clinic.commercialPolicy ? `\nPOLÍTICA COMERCIAL:\n${clinic.commercialPolicy}` : ""}
 ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}
@@ -97,7 +114,9 @@ ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}`;
 }
 
-function buildActionContext(result: ActionResult): string {
+export function buildActionContext(result: ActionResult, conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE): string {
+  const isConcierge = conversationExperience === "concierge";
+
   switch (result.type) {
     case "slots_found": {
       const slotList = result.slots.map((s) => `${s.index}. ${s.label}`).join("\n");
@@ -170,13 +189,13 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
 
     case "price_inquiry":
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
-Siga EXATAMENTE a política comercial descrita no sistema — condições de avaliação, valores e formas de pagamento. Se a política não mencionar um dado, não invente. Não convide para agendar — o lead decide o próximo passo. Ao final, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
+Siga EXATAMENTE a política comercial descrita no sistema — condições de avaliação, valores e formas de pagamento. Se a política não mencionar um dado, não invente. ${isConcierge ? "Depois de responder, conduza para a avaliação com uma pergunta leve quando houver interesse real." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
 
 
     case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
-Responda de forma informativa e acolhedora. Ao final da resposta, adicione uma linha em branco seguida de: "Se quiser, pode digitar *menu* para ver outras opções."`;
+Responda de forma informativa e acolhedora. ${isConcierge ? "Se a dúvida indicar interesse comercial, conduza para avaliação de forma natural." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
     case "greeting":
@@ -262,7 +281,10 @@ export class ResponseComposer {
 
   async compose(input: ComposerInput): Promise<ComposedResponse> {
     const systemPrompt = buildSystemPrompt(input);
-    const actionContext = buildActionContext(input.actionResult);
+    const actionContext = buildActionContext(
+      input.actionResult,
+      input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
+    );
 
     // Histórico recente — filtra mensagens de sistema (marcadores internos como __appointment_confirmed__)
     // para evitar que o LLM use dados de agendamentos anteriores como referência de horários.

@@ -7,6 +7,7 @@ import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { clinics } from "../src/infrastructure/db/schema";
+import { CONCIERGE_MENU_ITEMS } from "../src/domain/entities/clinic";
 import { eq } from "drizzle-orm";
 
 const connectionString = process.env.DATABASE_URL;
@@ -21,13 +22,7 @@ const CLINIC_ID = "c9137774-e783-4461-ac2b-e2f01be739a6";
 // Exibida na primeira mensagem — sem LLM. Prefixo de período (Bom dia/Boa tarde/Boa noite)
 // é gerado em runtime pelo Orchestrator com base no horário local da clínica.
 const GREETING_MESSAGE = `Seja bem-vindo à Ximendes Odontologia.
-Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
-
-1. Procedimentos
-2. Agendar horário
-3. Formas de pagamento
-4. Localização
-5. Falar com um especialista`;
+Sou a Marina, assistente do Dr. Gregorie. Para te direcionar melhor, escolha uma opção:`;
 
 // ─── Tom de Voz ──────────────────────────────────────────────────────────────
 const TONE_OF_VOICE = `Profissional, cordial e objetivo. Sem informalidades ou gírias.
@@ -113,7 +108,9 @@ REGRAS ABSOLUTAS:
 async function main() {
   await db.update(clinics).set({
     businessHours: "Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.",
+    conversationExperience: "concierge",
     greetingMessage: GREETING_MESSAGE,
+    menuItems: CONCIERGE_MENU_ITEMS,
     updatedAt: new Date(),
   }).where(eq(clinics.id, CLINIC_ID));
 

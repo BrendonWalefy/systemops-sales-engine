@@ -1,5 +1,5 @@
 /**
- * Versão 3 do playbook Ximendes — adendo lentes Dr. Gregory.
+ * Versão 3 do playbook Ximendes — adendo lentes Dr. Gregorie.
  * - Exceção controlada de preço para lentes em resina (a partir de)
  * - Fluxo de lentes adicionado ao `notes`
  * - Treatment "Lentes de resina composta" com descrição das duas técnicas
@@ -13,6 +13,7 @@ import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { clinics, playbookVersions, treatments } from "../src/infrastructure/db/schema";
+import { CONCIERGE_MENU_ITEMS } from "../src/domain/entities/clinic";
 import { eq, and, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -26,7 +27,7 @@ const CLINIC_ID = "c9137774-e783-4461-ac2b-e2f01be739a6";
 
 // ─── Versão ───────────────────────────────────────────────────────────────────
 
-const VERSION_NAME = "Ximendes — Reescrita Afiada v3 (Lentes Gregory)";
+const VERSION_NAME = "Ximendes — Reescrita Afiada v3 (Lentes Gregorie)";
 
 const SPECIALTY = "Odontologia Estética e Reabilitação Oral";
 
@@ -39,11 +40,11 @@ const TONE_OF_VOICE =
  * a IA nunca recebia. Agora vai no campo `notes`.
  */
 const NOTES = `COMO CONDUZIR A CONVERSA:
-- Você é a recepcionista virtual do Dr. Gregory Ximendes. Acolha, esclareça e conduza com calma. Nunca pressione.
+- Você é a recepcionista virtual do Dr. Gregorie Ximendes. Acolha, esclareça e conduza com calma. Nunca pressione.
 - Só ofereça agendamento quando o lead demonstrar interesse claro ou perguntar sobre disponibilidade. NÃO ofereça horário em toda mensagem.
 - Toda jornada começa pela Avaliação (R$100), abatida integralmente do tratamento se o paciente avançar. Sempre que falar da avaliação, mencione o abatimento.
 - NUNCA informe valores de procedimentos por mensagem — exceto lentes em resina (ver regra abaixo).
-- Quando o lead mencionar um procedimento, confirme o interesse, explique em 1-2 frases e conduza para a avaliação — é nela que o Dr. Gregory monta o plano personalizado.
+- Quando o lead mencionar um procedimento, confirme o interesse, explique em 1-2 frases e conduza para a avaliação — é nela que o Dr. Gregorie monta o plano personalizado.
 - Frases curtas. Uma ideia por mensagem. Caloroso, mas direto.
 - O endereço (Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP) só ao confirmar agendamento ou se o lead perguntar diretamente.
 - LENTES EM RESINA é o foco da clínica. Quando o lead perguntar sobre lentes, preço ou a diferença entre as opções: explique as duas técnicas, informe os valores "a partir de" (R$2.500 nacional / R$5.000 importada, 20 elementos), deixe claro que o valor final depende da avaliação e ofereça agendar. Uma ideia por mensagem.
@@ -53,13 +54,13 @@ const DIFFERENTIALS = [
   "Escaneamento Digital 3D — sem moldagens tradicionais",
   "Laboratório próprio com entrega de próteses em 48h",
   "Dente original preservado sempre que possível",
-  "Atendimento exclusivo com Dr. Gregory Ximendes",
+  "Atendimento exclusivo com Dr. Gregorie Ximendes",
   "Ambiente climatizado, com TV e Wi-Fi durante o procedimento",
   "Parcelamento em até 12x (juros da operadora)",
   "Avaliação de R$100 abatida integralmente do tratamento",
 ];
 
-const COMMERCIAL_POLICY = `PREÇO — REGRA GERAL: não informar valores de procedimentos por mensagem. O plano e os valores são apresentados pelo Dr. Gregory na avaliação.
+const COMMERCIAL_POLICY = `PREÇO — REGRA GERAL: não informar valores de procedimentos por mensagem. O plano e os valores são apresentados pelo Dr. Gregorie na avaliação.
 
 PREÇO — EXCEÇÃO (LENTES EM RESINA, foco da clínica): pode informar os valores DE PARTIDA, sempre como "a partir de" e sempre seguidos da ressalva de que o valor final depende da avaliação:
 - Técnica Simplificada (resina nacional): a partir de R$2.500 — 20 elementos.
@@ -104,7 +105,7 @@ const OBJECTIONS = [
   {
     objection: "Está muito caro / não tenho esse valor agora",
     response:
-      "O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregory monta um plano personalizado, com valores e parcelamento em até 12x. E os R$100 da avaliação saem do tratamento se você decidir avançar.",
+      "O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregorie monta um plano personalizado, com valores e parcelamento em até 12x. E os R$100 da avaliação saem do tratamento se você decidir avançar.",
   },
   {
     objection: "Vou pensar...",
@@ -114,7 +115,7 @@ const OBJECTIONS = [
   {
     objection: "Tenho medo de dor / medo de dentista",
     response:
-      "É muito comum ter essa preocupação. Todos os procedimentos da clínica são realizados com anestesia local — a maioria dos pacientes fica surpreso com o quanto é tranquilo. O Dr. Gregory tem o cuidado de explicar cada etapa antes de começar.",
+      "É muito comum ter essa preocupação. Todos os procedimentos da clínica são realizados com anestesia local — a maioria dos pacientes fica surpreso com o quanto é tranquilo. O Dr. Gregorie tem o cuidado de explicar cada etapa antes de começar.",
   },
   {
     objection: "Não quero pagar a avaliação",
@@ -124,12 +125,12 @@ const OBJECTIONS = [
   {
     objection: "Porcelana não é mais durável que resina?",
     response:
-      "É verdade que a porcelana tem durabilidade maior. Mas ela exige desgaste permanente e irreversível do esmalte — o dente não volta ao estado original. A resina preserva 100% do dente, é reversível e tem resultado estético muito bom. Na avaliação o Dr. Gregory mostra casos dos dois e explica qual faz mais sentido para o seu sorriso.",
+      "É verdade que a porcelana tem durabilidade maior. Mas ela exige desgaste permanente e irreversível do esmalte — o dente não volta ao estado original. A resina preserva 100% do dente, é reversível e tem resultado estético muito bom. Na avaliação o Dr. Gregorie mostra casos dos dois e explica qual faz mais sentido para o seu sorriso.",
   },
   {
     objection: "Implante é doloroso? Tenho medo da cirurgia",
     response:
-      "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregory.",
+      "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregorie.",
   },
   {
     objection: "Canal não mata o dente?",
@@ -144,27 +145,27 @@ const OBJECTIONS = [
   {
     objection: "Tenho medo que fique artificial / exagerado",
     response:
-      "O resultado é personalizado junto com você — cor, forma e transparência escolhidas para combinar com o seu rosto e o tom da sua pele. O Dr. Gregory tem cases para mostrar na avaliação. O objetivo é um sorriso que pareça natural, só mais bonito.",
+      "O resultado é personalizado junto com você — cor, forma e transparência escolhidas para combinar com o seu rosto e o tom da sua pele. O Dr. Gregorie tem cases para mostrar na avaliação. O objetivo é um sorriso que pareça natural, só mais bonito.",
   },
   {
     objection: "Já fiz em outro lugar e não gostei do resultado",
     response:
-      "Resultado estético depende muito do olhar e da técnica do profissional. Na avaliação você pode ver os casos da clínica e conversar abertamente sobre o que não gostou no tratamento anterior — o Dr. Gregory vai analisar e propor o que faz mais sentido para o seu caso.",
+      "Resultado estético depende muito do olhar e da técnica do profissional. Na avaliação você pode ver os casos da clínica e conversar abertamente sobre o que não gostou no tratamento anterior — o Dr. Gregorie vai analisar e propor o que faz mais sentido para o seu caso.",
   },
   {
     objection: "Preciso mesmo de implante? Não dá para fazer uma ponte?",
     response:
-      "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregory explica as opções e o que é mais indicado para o seu caso.",
+      "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregorie explica as opções e o que é mais indicado para o seu caso.",
   },
   {
     objection: "Harmonização facial é feita mesmo no dentista?",
     response:
-      "Sim. Dentistas são os profissionais mais habilitados para harmonização orofacial — conhecem profundamente a anatomia da face e da região oral. O Dr. Gregory realiza o procedimento com protocolo seguro e resultado natural, sempre com foco no equilíbrio entre sorriso e face.",
+      "Sim. Dentistas são os profissionais mais habilitados para harmonização orofacial — conhecem profundamente a anatomia da face e da região oral. O Dr. Gregorie realiza o procedimento com protocolo seguro e resultado natural, sempre com foco no equilíbrio entre sorriso e face.",
   },
   {
     objection: "Quanto custam as lentes? / Qual a diferença entre as lentes?",
     response:
-      "Trabalhamos com duas técnicas de lentes em resina:\n\nSimplificada (resina nacional): resina de alta qualidade para um sorriso harmonioso e natural — a opção mais acessível. A partir de R$2.500 para 20 elementos.\n\nEstratificada (resina importada): resina premium em múltiplas camadas, com translucidez, profundidade e brilho — resultado mais refinado e personalizado. A partir de R$5.000 para 20 elementos.\n\nEsses são valores iniciais. A indicação ideal e o valor do seu caso o Dr. Gregory define na avaliação. Quer que eu veja um horário para você?",
+      "Trabalhamos com duas técnicas de lentes em resina:\n\nSimplificada (resina nacional): resina de alta qualidade para um sorriso harmonioso e natural — a opção mais acessível. A partir de R$2.500 para 20 elementos.\n\nEstratificada (resina importada): resina premium em múltiplas camadas, com translucidez, profundidade e brilho — resultado mais refinado e personalizado. A partir de R$5.000 para 20 elementos.\n\nEsses são valores iniciais. A indicação ideal e o valor do seu caso o Dr. Gregorie define na avaliação. Quer que eu veja um horário para você?",
   },
 ];
 
@@ -186,7 +187,7 @@ const TREATMENTS: TreatmentSeed[] = [
     durationMinutes: 40,
     requiresEvaluationFirst: false,
     description:
-      "Consulta inicial com o Dr. Gregory: raio-x, análise do sorriso e plano de tratamento personalizado. R$100, abatido integralmente do tratamento se avançar.",
+      "Consulta inicial com o Dr. Gregorie: raio-x, análise do sorriso e plano de tratamento personalizado. R$100, abatido integralmente do tratamento se avançar.",
   },
   {
     name: "Limpeza dental",
@@ -214,7 +215,7 @@ const TREATMENTS: TreatmentSeed[] = [
     durationMinutes: 45,
     requiresEvaluationFirst: true,
     description:
-      "Extração simples ou cirúrgica, incluindo siso incluso. Anestesia local, pós-operatório orientado pelo Dr. Gregory.",
+      "Extração simples ou cirúrgica, incluindo siso incluso. Anestesia local, pós-operatório orientado pelo Dr. Gregorie.",
   },
   {
     name: "Implante dentário",
@@ -242,7 +243,7 @@ const TREATMENTS: TreatmentSeed[] = [
     durationMinutes: 90,
     requiresEvaluationFirst: true,
     description:
-      "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível. A partir de R$2.500 / 20 elementos.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado. A partir de R$5.000 / 20 elementos.\nA indicação e o valor do caso são definidos na avaliação com o Dr. Gregory.",
+      "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível. A partir de R$2.500 / 20 elementos.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado. A partir de R$5.000 / 20 elementos.\nA indicação e o valor do caso são definidos na avaliação com o Dr. Gregorie.",
   },
   {
     name: "Lentes de porcelana (facetas)",
@@ -277,7 +278,7 @@ const TREATMENTS: TreatmentSeed[] = [
 // ─── Script principal ─────────────────────────────────────────────────────────
 
 async function main() {
-  console.log("🚀 Iniciando seed v3 do playbook da Ximendes (adendo lentes Gregory)...\n");
+  console.log("🚀 Iniciando seed v3 do playbook da Ximendes (adendo lentes Gregorie)...\n");
 
   // 1. Arquivar versões ativas/rascunho anteriores
   const archived = await db
@@ -320,6 +321,8 @@ async function main() {
     .set({
       specialty: SPECIALTY,
       greetingMessage: GREETING_MESSAGE,
+      conversationExperience: "concierge",
+      menuItems: CONCIERGE_MENU_ITEMS,
       updatedAt: new Date(),
     })
     .where(eq(clinics.id, CLINIC_ID));

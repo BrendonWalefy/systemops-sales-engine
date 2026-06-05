@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone } from "lucide-react";
+import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone, Sparkles, ListChecks } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
@@ -12,8 +12,8 @@ import {
   updateClinicOperationalSettings,
 } from "./playbook-version-actions";
 import { toggleAutoReply } from "./actions";
-import type { MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
-import { DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
+import type { ConversationExperience, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
+import { CONCIERGE_MENU_ITEMS, DEFAULT_CONVERSATION_EXPERIENCE, DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { AddTreatmentForm } from "../tratamentos/AddTreatmentForm";
@@ -30,6 +30,7 @@ type ClinicData = {
   autoReplyEnabled: boolean | null;
   takeoverTtlHours: number | null;
   postAppointmentBufferMinutes: number | null;
+  conversationExperience: ConversationExperience | null;
   businessHours: string | null;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;
@@ -43,6 +44,10 @@ const INTENT_LABELS: Record<MenuItemIntent, string> = {
   location: "Localização",
   needs_human: "Falar com especialista",
 };
+
+function defaultMenuItemsForExperience(experience: ConversationExperience): MenuItem[] {
+  return experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS;
+}
 
 type Tab = "geral" | "playbooks" | "procedimentos";
 type SettingsFocusTarget = "takeover" | "buffer" | "hours";
@@ -427,8 +432,11 @@ function GeralTab({
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
 
+  const initialExperience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
+  const customMenuRef = useRef(clinic.menuItems !== null);
   const [greetingMessage, setGreetingMessage] = useState(clinic.greetingMessage ?? "");
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(clinic.menuItems ?? DEFAULT_MENU_ITEMS);
+  const [conversationExperience, setConversationExperience] = useState<ConversationExperience>(initialExperience);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(clinic.menuItems ?? defaultMenuItemsForExperience(initialExperience));
   const [businessHours, setBusinessHours] = useState(clinic.businessHours ?? "");
   const [receptionistPhone, setReceptionistPhone] = useState(clinic.receptionistPhone ?? "");
   const [takeoverTtlHours, setTakeoverTtlHours] = useState(clinic.takeoverTtlHours ?? 4);
@@ -445,8 +453,9 @@ function GeralTab({
 
   const triggerSave = useCallback((patch: {
     greetingMessage?: string;
-    menuItems?: MenuItem[];
-    businessHours?: string;
+	    menuItems?: MenuItem[];
+    conversationExperience?: ConversationExperience;
+	    businessHours?: string;
     takeoverTtlHours?: number;
     postAppointmentBufferMinutes?: number;
     receptionistPhone?: string;
@@ -456,9 +465,10 @@ function GeralTab({
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
       await updateClinicOperationalSettings({
-        greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
-        menuItems: patch.menuItems ?? menuItems,
-        businessHours: (patch.businessHours ?? businessHours) || null,
+	        greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
+	        menuItems: patch.menuItems ?? menuItems,
+        conversationExperience: patch.conversationExperience ?? conversationExperience,
+	        businessHours: (patch.businessHours ?? businessHours) || null,
         takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
         postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
         receptionistPhone: (patch.receptionistPhone ?? receptionistPhone) || null,
@@ -466,7 +476,7 @@ function GeralTab({
       setSaving(false);
       setSaved(true);
     }, 1200);
-  }, [greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, receptionistPhone]);
+  }, [greetingMessage, menuItems, conversationExperience, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, receptionistPhone]);
 
   function handleToggle() {
     const next = !enabled;
@@ -475,8 +485,16 @@ function GeralTab({
   }
 
   function handleMenuChange(next: MenuItem[]) {
+    customMenuRef.current = true;
     setMenuItems(next);
     triggerSave({ menuItems: next });
+  }
+
+  function handleExperienceChange(next: ConversationExperience) {
+    const nextMenuItems = customMenuRef.current ? menuItems : defaultMenuItemsForExperience(next);
+    setConversationExperience(next);
+    setMenuItems(nextMenuItems);
+    triggerSave({ conversationExperience: next, menuItems: nextMenuItems });
   }
 
   useEffect(() => {
@@ -537,6 +555,35 @@ function GeralTab({
         </div>
       </div>
 
+      {/* Experiência da conversa */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={iconBoxStyle}>
+            <Sparkles size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+          </div>
+          <div>
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Experiência da conversa</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Define como a IA inicia e conduz leads no WhatsApp</p>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px" }}>
+          <button
+            type="button"
+            onClick={() => handleExperienceChange("concierge")}
+            style={conversationExperience === "concierge" ? activeBtnStyle : outlineBtnStyle}
+          >
+            <Sparkles size={14} /> Concierge
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExperienceChange("menu_first")}
+            style={conversationExperience === "menu_first" ? activeBtnStyle : outlineBtnStyle}
+          >
+            <ListChecks size={14} /> Menu-first
+          </button>
+        </div>
+      </div>
+
       {/* Texto de boas-vindas */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -544,8 +591,8 @@ function GeralTab({
             <MessageSquare size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
           </div>
           <div>
-            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Texto de boas-vindas</p>
-            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Aparece antes do menu quando o lead inicia o contato</p>
+	            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Texto de boas-vindas</p>
+            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Usado como introdução do menu quando a experiência permite menu</p>
           </div>
         </div>
         <textarea
@@ -558,9 +605,9 @@ function GeralTab({
           rows={3}
           style={{ ...geralInputStyle, resize: "vertical" }}
         />
-        <p style={{ margin: 0, fontSize: "11px", color: "#3f3f46" }}>
-          Se vazio, usa o texto padrão da IA. O menu de opções é exibido logo abaixo deste texto.
-        </p>
+	        <p style={{ margin: 0, fontSize: "11px", color: "#3f3f46" }}>
+          Se vazio, usa o texto padrão da IA. No concierge, pergunta clara é respondida antes de qualquer menu.
+	        </p>
       </div>
 
       {/* Menu de opções */}

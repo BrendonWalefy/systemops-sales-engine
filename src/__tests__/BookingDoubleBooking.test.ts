@@ -18,6 +18,7 @@ const clinic: Clinic = {
   city: null,
   address: null,
   timezone: "America/Sao_Paulo",
+  conversationExperience: "menu_first",
   greetingMessage: null,
   menuItems: null,
   businessHours: null,

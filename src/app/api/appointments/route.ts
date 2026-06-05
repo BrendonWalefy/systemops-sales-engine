@@ -152,6 +152,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         city: clinicRow.city,
         address: clinicRow.address,
         timezone: clinicRow.timezone,
+        conversationExperience: clinicRow.conversationExperience,
         greetingMessage: clinicRow.greetingMessage,
         menuItems: clinicRow.menuItems,
         businessHours: clinicRow.businessHours,

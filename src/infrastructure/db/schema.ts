@@ -10,7 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { MenuItem } from "@/domain/entities/clinic";
+import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -97,6 +97,10 @@ export const clinics = pgTable("clinics", {
   city: text("city"),
   address: text("address"),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
+  conversationExperience: text("conversation_experience")
+    .$type<ConversationExperience>()
+    .notNull()
+    .default("menu_first"),
   greetingMessage: text("greeting_message"),
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),
   businessHours: text("business_hours"),
@@ -408,7 +412,7 @@ export const conversationStates = pgTable(
     conversationId: uuid("conversation_id")
       .notNull()
       .references(() => conversations.id),
-    // idle | slots_offered | awaiting_confirmation | booking_pending
+    // idle | slots_offered | awaiting_confirmation | booking_pending | menu_offered | procedure_list_offered
     state: text("state").notNull(),
     payload: jsonb("payload"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
