@@ -376,7 +376,7 @@ function getDayGreeting(timezone: ClinicTimezone): string {
   return getTimeGreeting(hour);
 }
 const MAX_SLOTS_TO_OFFER = 5;
-const RATE_LIMIT_MESSAGES_PER_HOUR = 20;
+const RATE_LIMIT_MESSAGES_PER_HOUR = 60; // temporário para testes — reduzir para 20 após
 const SLOTS_WITH_DATE_AND_TIME = 2;
 // Quantas classificações unclear consecutivas disparam notificação ao operador
 const UNCLEAR_THRESHOLD = 3;
@@ -416,35 +416,46 @@ export function buildLocationClinicContext(address: string | null): string {
 }
 
 function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
+  const nextStep = item.requiresEvaluationFirst
+    ? "Ao final, pergunte de forma objetiva se o lead gostaria de verificar os horários disponíveis para uma avaliação."
+    : "Ao final, pergunte de forma objetiva se o lead gostaria de agendar ou verificar os horários disponíveis.";
+
   const details = [
     `Lead selecionou o procedimento "${item.name}" em uma lista numerada.`,
     item.description ? `Descrição cadastrada: ${item.description}` : null,
     item.requiresEvaluationFirst
       ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
-      : "Explique o procedimento com naturalidade e ofereça avaliação se fizer sentido.",
+      : "Explique o procedimento com naturalidade.",
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
+    nextStep,
+    "Mencione que o lead pode digitar *menu* a qualquer momento para ver outras opções.",
   ].filter(Boolean);
 
   const format = experience === "concierge"
-    ? "FORMATO: tópicos — apresente os destaques do procedimento em até 4 bullet points (•), um por linha. Depois de listar, conclua com 1 frase curta de convite."
+    ? "FORMATO: tópicos — apresente os destaques do procedimento em até 4 bullet points (•), um por linha. Depois de listar, faça a pergunta de próximo passo."
     : "Formato: até 2 parágrafos curtos, sem lista.";
 
   return `${details.join("\n")}\n${format}`;
 }
 
 function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
+  const nextStep = treatment.requiresEvaluationFirst
+    ? "Ao final, pergunte de forma objetiva se o lead gostaria de verificar os horários disponíveis para uma avaliação."
+    : "Ao final, pergunte de forma objetiva se o lead gostaria de agendar ou verificar os horários disponíveis.";
+
   const details = [
     `Lead mencionou diretamente o tratamento "${treatment.name}".`,
     treatment.description ? `Descrição cadastrada: ${treatment.description}` : null,
     treatment.requiresEvaluationFirst
       ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
-      : "Explique o procedimento com naturalidade e ofereça avaliação se fizer sentido.",
+      : "Explique o procedimento com naturalidade.",
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
+    nextStep,
   ].filter(Boolean);
 
   const format = experience === "concierge"
-    ? "FORMATO: tópicos — apresente os destaques do tratamento em até 4 bullet points (•), um por linha. Depois de listar, conclua com 1 frase curta de convite."
+    ? "FORMATO: tópicos — apresente os destaques do tratamento em até 4 bullet points (•), um por linha. Depois de listar, faça a pergunta de próximo passo."
     : "Formato: até 2 parágrafos curtos.";
 
   return `${details.join("\n")}\n${format}`;
@@ -754,6 +765,19 @@ export class ConversationOrchestrator {
       /^\d+$/.test(nMsg) &&
       !clinicMenuItems.some(i => nMsg === String(i.number));
 
+    // Lead digitou um número de item válido do menu sem o menu estar ativo (ex: escolheu opção 4,
+    // a IA respondeu, e mandou "1" sem ter voltado ao menu). Reapresenta o menu sem chamar o LLM
+    // para evitar o false-positive de confirm_slot que gera a mensagem de "horário indisponível".
+    const isOrphanedMenuNumber =
+      !isMenuActive &&
+      !hasPendingOffer &&
+      !isProcedureListActive &&
+      !resetRequested &&
+      !menuReRequested &&
+      !isFirstMessage &&
+      /^\d+$/.test(nMsg) &&
+      clinicMenuItems.some(i => i.enabled && nMsg === String(i.number));
+
     const directTreatmentMention = !hasPendingOffer &&
       !isMenuActive &&
       menuResolution === null &&
@@ -765,7 +789,7 @@ export class ConversationOrchestrator {
         ? resolveDirectTreatmentMention(messageText, clinicTreatments, lastAgentMessage?.body ?? null)
         : null;
 
-    const skipLlm = procedureSelection !== null || menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber;
+    const skipLlm = procedureSelection !== null || menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
@@ -879,8 +903,8 @@ export class ConversationOrchestrator {
       } else {
         replyText = buildConciergeStarter(clinic, timezone, lead.name);
       }
-    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber) {
-      if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber) {
+    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
+      if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
         replyText = buildMenuBody(clinic, "reoffer", experience);
         await this.stateMachine.offerMenu(conversation.id);
       } else if (experience === "menu_first") {

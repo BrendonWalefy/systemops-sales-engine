@@ -143,6 +143,12 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
     }
   }, [resourceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Polling: agenda atualiza automaticamente quando IA agenda/cancela via WhatsApp
+  useEffect(() => {
+    const id = setInterval(() => refreshAll(), 30_000);
+    return () => clearInterval(id);
+  }, [refreshAll]);
+
   async function handleEventUpdate(id: string, startsAt: string, endsAt: string) {
     const [date, time] = startsAt.split(" ");
     const [, endTime] = endsAt.split(" ");
