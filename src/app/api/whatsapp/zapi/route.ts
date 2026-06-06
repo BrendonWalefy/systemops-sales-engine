@@ -53,35 +53,17 @@ function logQaRoute(resolution: ZapiClinicResolution, phone: string): void {
   );
 }
 
-// Detecta e registra mensagem enviada pelo operador direto pelo celular (fromMe: true).
-// Pausa a IA com TTL configurável por clínica — retoma automaticamente se o operador
-// não voltar ao lead dentro desse período.
+// Registra mensagem do operador enviada direto pelo celular (fromMe: true) e pausa a IA.
 async function handleOperatorMessageFromPhone(
   body: ZApiInboundPayload,
-  clinicId: string,
+  convId: string,
   ttlHours: number,
 ): Promise<void> {
-  // body.phone em mensagens fromMe é o destinatário (o lead)
-  const leadPhone = body.phone;
-
-  const [conv] = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .innerJoin(leads, eq(conversations.leadId, leads.id))
-    .where(and(eq(conversations.clinicId, clinicId), eq(leads.phone, leadPhone)))
-    .orderBy(desc(conversations.updatedAt))
-    .limit(1);
-
-  if (!conv) {
-    console.log(`[ZApi] fromMe sem conversa ativa para ${leadPhone} — ignorado`);
-    return;
-  }
-
   const now = new Date();
 
   await db.insert(messages).values({
     id: randomUUID(),
-    conversationId: conv.id,
+    conversationId: convId,
     author: "clinic_user",
     body: body.text!.message,
     sentAt: body.momment ? new Date(body.momment) : now,
@@ -95,9 +77,9 @@ async function handleOperatorMessageFromPhone(
   await db
     .update(conversations)
     .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
-    .where(eq(conversations.id, conv.id));
+    .where(eq(conversations.id, convId));
 
-  console.log(`[ZApi] Operador enviou mensagem pelo celular para ${leadPhone} — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`);
+  console.log(`[ZApi] Operador enviou mensagem pelo celular (conv=${convId}) — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -133,7 +115,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const clinicId = resolution.clinicId;
 
     try {
-      // 1ª verificação: messageId já está no banco → é echo da IA → ignora
+      // 1ª verificação: messageId já está no banco → echo já registrado → ignora
       const [existing] = await db
         .select({ id: messages.id })
         .from(messages)
@@ -142,17 +124,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       if (existing) return new NextResponse("OK", { status: 200 });
 
-      // 2ª verificação (race condition): mensagem da IA com mesmo corpo salva nos últimos 10s
-      // Cobre o caso onde o echo chega antes do Orchestrator terminar de salvar.
-      // 10s é suficiente — echoes Z-API chegam em <3s e o Orchestrator salva em <5s.
-      // Janela maior causa falso positivo: operador enviando mesmo texto que a IA enviou
-      // nos últimos segundos seria classificado como echo e a pausa nunca aconteceria.
+      // Busca a conversa pelo telefone do destinatário (lead) antes das verificações.
+      // Crucial: o filtro de race-condition abaixo precisa ser por conversa, não global —
+      // textos comuns ("Entendido", "Ok") gerariam falso positivo entre conversas diferentes.
+      const leadPhone = body.phone;
+      const [conv] = await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .innerJoin(leads, eq(conversations.leadId, leads.id))
+        .where(and(eq(conversations.clinicId, clinicId), eq(leads.phone, leadPhone)))
+        .orderBy(desc(conversations.updatedAt))
+        .limit(1);
+
+      if (!conv) {
+        console.log(`[ZApi] fromMe sem conversa ativa — clinicId=${clinicId} phone=${leadPhone}`);
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      // 2ª verificação (race condition): echo da IA chegou antes do Orchestrator salvar.
+      // Filtrado pela conversa específica para evitar falsos positivos com textos idênticos
+      // em conversas de outros leads (ex: dois leads recebem "Olá!" em <10s).
       const tenSecondsAgo = new Date(Date.now() - 10_000);
       const [recentAgent] = await db
-        .select({ id: messages.id })
+        .select({ id: messages.id, externalId: messages.externalId })
         .from(messages)
         .where(
           and(
+            eq(messages.conversationId, conv.id),
             eq(messages.author, "agent"),
             eq(messages.body, body.text.message),
             gte(messages.sentAt, tenSecondsAgo),
@@ -160,16 +158,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         )
         .limit(1);
 
-      if (recentAgent) return new NextResponse("OK", { status: 200 });
+      if (recentAgent) {
+        // Atualiza o externalId do agente se ainda não foi preenchido (race condition)
+        if (!recentAgent.externalId) {
+          await db
+            .update(messages)
+            .set({ externalId: body.messageId })
+            .where(eq(messages.id, recentAgent.id));
+        }
+        return new NextResponse("OK", { status: 200 });
+      }
 
-      // Nenhuma das verificações bateu → é o operador enviando do celular
+      // Nenhuma verificação bateu → é o operador enviando do celular
       const [clinicRow] = await db
         .select({ takeoverTtlHours: clinics.takeoverTtlHours })
         .from(clinics)
         .where(eq(clinics.id, clinicId))
         .limit(1);
       const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
-      await handleOperatorMessageFromPhone(body, clinicId, ttlHours);
+      await handleOperatorMessageFromPhone(body, conv.id, ttlHours);
     } catch (err) {
       console.error("[ZApi] Erro ao processar mensagem fromMe:", err);
     }
