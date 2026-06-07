@@ -34,6 +34,7 @@ function makeLead(overrides: Partial<Lead> = {}): Lead {
     clinicId: "clinic-1",
     name: "Maria",
     phone: "+5511999999999",
+    whatsappLid: null,
     email: null,
     channel: "whatsapp",
     campaignId: null,
@@ -81,7 +82,9 @@ function makeLeadRepo(lead: Lead | null = makeLead()): LeadRepository {
     save: vi.fn().mockResolvedValue(undefined),
     findById: vi.fn().mockResolvedValue(lead),
     findByPhone: vi.fn().mockResolvedValue(null),
+    findByWhatsAppLid: vi.fn().mockResolvedValue(null),
     findInactiveLeads: vi.fn().mockResolvedValue([]),
+    mergeDuplicateLeads: vi.fn().mockResolvedValue(lead),
   };
 }
 

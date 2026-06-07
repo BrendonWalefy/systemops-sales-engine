@@ -5,14 +5,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { clinics, conversations, messages } from "@/infrastructure/db/schema";
+import { and, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import {
   resolveClinicByZapiInbound,
   type ZapiClinicResolution,
 } from "@/application/tenancy/resolve-clinic";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
+import { buildContactIdentifiersFromWebhook } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { findConversationByWhatsAppContact } from "@/application/whatsapp/find-conversation-by-whatsapp-contact";
+import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
+import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 
 export const dynamic = "force-dynamic";
 
@@ -124,22 +128,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       if (existing) return new NextResponse("OK", { status: 200 });
 
-      // Busca a conversa pelo telefone do destinatário (lead) antes das verificações.
-      // Crucial: o filtro de race-condition abaixo precisa ser por conversa, não global —
-      // textos comuns ("Entendido", "Ok") gerariam falso positivo entre conversas diferentes.
-      const leadPhone = body.phone;
-      const [conv] = await db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .innerJoin(leads, eq(conversations.leadId, leads.id))
-        .where(and(eq(conversations.clinicId, clinicId), eq(leads.phone, leadPhone)))
-        .orderBy(desc(conversations.updatedAt))
-        .limit(1);
+      // Busca conversa pelo identificador WhatsApp (telefone e/ou @lid).
+      const contactIdentifiers = buildContactIdentifiersFromWebhook({
+        phone: body.phone,
+        chatLid: body.chatLid,
+      });
+      const leadRepo = new DrizzleLeadRepository();
+      const conversationRepo = new DrizzleConversationRepository();
+      const match = await findConversationByWhatsAppContact({
+        clinicId,
+        identifiers: contactIdentifiers,
+        senderName: body.senderName,
+        channel: "whatsapp",
+        leadRepository: leadRepo,
+        conversationRepository: conversationRepo,
+        idGenerator: randomUUID,
+        now: new Date(),
+      });
 
-      if (!conv) {
-        console.log(`[ZApi] fromMe sem conversa ativa — clinicId=${clinicId} phone=${leadPhone}`);
+      if (!match) {
+        console.log(
+          `[ZApi] fromMe sem conversa ativa — clinicId=${clinicId} phone=${body.phone} chatLid=${body.chatLid ?? "—"}`,
+        );
         return new NextResponse("OK", { status: 200 });
       }
+
+      const conv = { id: match.conversation.id };
 
       // 2ª verificação (race condition): echo da IA chegou antes do Orchestrator salvar.
       // Filtrado pela conversa específica para evitar falsos positivos com textos idênticos
@@ -242,6 +256,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       getOrchestrator().handle({
         clinicId,
         phone: body.phone,
+        whatsappLid: body.chatLid ?? null,
         messageText,
         messageId: body.messageId,
         senderName: body.senderName || undefined,

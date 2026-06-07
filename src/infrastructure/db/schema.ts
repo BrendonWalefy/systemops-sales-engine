@@ -198,6 +198,7 @@ export const leads = pgTable(
       .references(() => clinics.id),
     name: text("name"),
     phone: text("phone"),
+    whatsappLid: text("whatsapp_lid"),
     email: text("email"),
     channel: channelEnum("channel").notNull(),
     campaignId: text("campaign_id"),
@@ -213,6 +214,10 @@ export const leads = pgTable(
   (table) => ({
     clinicStatusIdx: index("leads_clinic_status_idx").on(table.clinicId, table.status),
     clinicPhoneIdx: uniqueIndex("leads_clinic_phone_idx").on(table.clinicId, table.phone),
+    clinicWhatsappLidIdx: uniqueIndex("leads_clinic_whatsapp_lid_idx").on(
+      table.clinicId,
+      table.whatsappLid,
+    ),
   }),
 );
 

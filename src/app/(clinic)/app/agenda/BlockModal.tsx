@@ -269,7 +269,6 @@ export function BlockModal({ defaultDate, defaultTime, onClose, onCreated }: Pro
                 placeholder="Descreva o motivo..."
                 value={customReason}
                 onChange={e => setCustomReason(e.target.value)}
-                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
               />
             )}

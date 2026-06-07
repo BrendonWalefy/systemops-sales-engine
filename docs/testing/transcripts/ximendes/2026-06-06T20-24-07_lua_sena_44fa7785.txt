@@ -1,0 +1,23 @@
+=================================================================
+LEAD: Lua Sena | 557192463179
+Status: waiting_response | Temperatura: —
+Criado em: 04/06/2026, 10:18:25
+=================================================================
+
+  CONVERSA 7a24b765
+  Criada: 04/06/2026, 10:18:25
+  Última msg: 04/06/2026, 10:18:21
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [10:18:21] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [10:18:28] 🤖 IA    [acknowledgment]
+          Bom dia, Lua Sena! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+

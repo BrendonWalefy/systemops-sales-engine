@@ -1,0 +1,61 @@
+=================================================================
+LEAD: Aline Morais | 5511940617713
+Status: waiting_response | Temperatura: —
+Criado em: 28/05/2026, 15:30:11
+=================================================================
+
+  CONVERSA aae8fd65
+  Criada: 28/05/2026, 15:30:11
+  Última msg: 30/05/2026, 13:03:47
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [15:30:08] 👤 Lead 
+          Oi
+
+  [15:30:17] 🤖 IA   
+          Oi, Aline! Estou aqui se você precisar de algo.
+
+  [15:30:29] 👤 Lead 
+          Oi
+
+  [15:30:35] 🤖 IA   
+          Oi, Aline! Qualquer coisa é só chamar. 😊
+
+  [15:31:28] 👤 Lead 
+          Acompanhei seu trabalho na internet e achei incrível pode me explicar um pouco mais?
+
+  [15:31:36] 🤖 IA   
+          Fico feliz que você tenha acompanhado nosso trabalho, Aline! Aqui, oferecemos uma abordagem personalizada para cuidar do seu sorriso. Uma das nossas especialidades são as lentes de resina composta, que são aplicadas sobre o esmalte do dente sem desgastá-lo, preservando sua estrutura. O resultado é natural e pode ser ajustado conforme suas preferências.
+          
+          Se você tiver algo específico que gostaria de mudar ou melhorar no seu sorriso, estou aqui para ajudar!
+
+  [15:37:34] 👤 Lead 
+          Oi
+
+  [15:37:39] 🤖 IA   
+          Oi, Aline! Estou aqui se precisar de mais informações. 😊
+
+  [15:39:08] 👤 Lead 
+          Oi
+
+  [15:39:21] 🤖 IA   
+          Oi, Aline! Estou aqui se precisar de mais informações. 😊
+
+  [15:49:28] 👤 Lead 
+          Oi
+
+  [15:49:33] 🤖 IA   
+          Oi, Aline! Estou aqui se precisar de algo. 😊
+
+  [15:49:47] 👤 Lead 
+          Oi
+
+  [15:49:53] 🤖 IA   
+          Oi, Aline! Estou aqui se precisar de algo. 😊
+
+  [13:03:47] 👤 Lead 
+          Boa tarde
+
+  [13:03:55] 🤖 IA   
+          Boa tarde, Aline! Estou à disposição para qualquer informação que você precise.
+

@@ -50,8 +50,36 @@ export class InMemoryDemoStore
     );
   }
 
+  async findByWhatsAppLid(clinicId: string, whatsappLid: string): Promise<Lead | null> {
+    return (
+      Array.from(this.leads.values()).find(
+        (lead) => lead.clinicId === clinicId && lead.whatsappLid === whatsappLid,
+      ) ?? null
+    );
+  }
+
   async findInactiveLeads(): Promise<Lead[]> {
     return [];
+  }
+
+  async mergeDuplicateLeads(params: {
+    canonicalLeadId: string;
+    duplicateLeadId: string;
+  }): Promise<Lead> {
+    const canonical = this.leads.get(params.canonicalLeadId);
+    const duplicate = this.leads.get(params.duplicateLeadId);
+    if (!canonical || !duplicate) {
+      throw new Error("mergeDuplicateLeads: lead não encontrado");
+    }
+    const merged: Lead = {
+      ...canonical,
+      phone: canonical.phone ?? duplicate.phone,
+      whatsappLid: canonical.whatsappLid ?? duplicate.whatsappLid,
+      name: canonical.name ?? duplicate.name,
+    };
+    this.leads.set(canonical.id, merged);
+    this.leads.delete(duplicate.id);
+    return merged;
   }
 
   async save(leadOrRecommendationOrFollowUpOrAppointment: Lead): Promise<void>;

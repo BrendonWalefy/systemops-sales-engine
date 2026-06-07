@@ -7,6 +7,7 @@ export type IncomingChannelMessage = {
   externalMessageId: string;
   name: string | null;
   phone: string | null;
+  whatsappLid: string | null;
   email: string | null;
   body: string;
   receivedAt: Date;

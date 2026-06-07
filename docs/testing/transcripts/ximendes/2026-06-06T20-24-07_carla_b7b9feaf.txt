@@ -1,0 +1,20 @@
+=================================================================
+LEAD: Carla | 5511990161996
+Status: waiting_response | Temperatura: —
+Criado em: 06/06/2026, 14:58:31
+=================================================================
+
+  CONVERSA 93250e6d
+  Criada: 06/06/2026, 14:58:31
+  Última msg: 06/06/2026, 16:08:45
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [14:58:23] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [16:06:25] 👤 Lead 
+          Boa tarde qual o valor p facetas em resina?
+
+  [16:08:45] 👤 Lead 
+          Qual o seu endereço?
+

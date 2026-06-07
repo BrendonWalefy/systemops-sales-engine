@@ -1,0 +1,35 @@
+======================================================================
+ANÁLISE DE CONVERSAS — Ximendes Odontologia
+Exportado em: 06/06/2026, 17:24:07
+Total de leads: 25
+======================================================================
+
+## STATUS DOS LEADS
+  waiting_response     19
+  in_conversation      3
+  appointment_scheduled 3
+
+## TEMPERATURA DOS LEADS
+  warm                 3
+  hot                  3
+
+## MENSAGENS
+  Total de mensagens:   419
+  Mensagens da IA:      148
+  Mensagens de leads:   229
+  Mensagens da equipe:  42
+
+## INTENTS DETECTADOS (top 20)
+  acknowledgment                 32
+  price_inquiry                  8
+  general_question               8
+  confirm_slot                   4
+  needs_human                    3
+  book_appointment               3
+  reschedule_appointment         1
+  list_appointments              1
+
+## SAÚDE DAS CONVERSAS
+  Conversas com needs_attention:  1
+  Conversas com ai_paused:         4
+  Conversas com unclear > 0:       0

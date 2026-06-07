@@ -17,6 +17,12 @@ vi.mock("@/infrastructure/repositories/drizzle-lead-repository", () => ({
   })),
 }));
 
+vi.mock("@/infrastructure/repositories/drizzle-follow-up-repository", () => ({
+  DrizzleFollowUpRepository: vi.fn().mockImplementation(() => ({
+    save: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 // ─── Import after mock ──────────────────────────────────────────────────────
 
 const { markStaleLeads } = await import(
@@ -31,6 +37,7 @@ function makeLead(overrides: Partial<Lead> = {}): Lead {
     clinicId: "clinic-1",
     name: "Test Lead",
     phone: "5511999999999",
+    whatsappLid: null,
     email: null,
     channel: "whatsapp",
     campaignId: null,

@@ -14,6 +14,7 @@ import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/driz
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,15 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   for (const followUp of dueFollowUps) {
     try {
       const lead = await leadRepository.findById(followUp.leadId);
-      if (!lead?.phone) {
+      if (!lead) {
+        await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+        continue;
+      }
+      const channelAddress = resolveWhatsAppChannelAddress({
+        phone: lead.phone,
+        whatsappLid: lead.whatsappLid,
+      });
+      if (!channelAddress) {
         await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
         continue;
       }
@@ -81,7 +90,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         isFirstMessage: true,
       });
 
-      await sendTextMessage(lead.phone, composed.text, channelConfig);
+      await sendTextMessage(channelAddress, composed.text, channelConfig);
 
       await followUpRepository.save({ ...followUp, status: "done", completedAt: now, updatedAt: now });
       await leadRepository.save({ ...lead, status: "in_conversation", updatedAt: now });

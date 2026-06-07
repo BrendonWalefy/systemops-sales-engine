@@ -46,8 +46,33 @@ class RacyLeadRepository implements LeadRepository {
     return null;
   }
 
+  async findByWhatsAppLid(clinicId: string, whatsappLid: string): Promise<Lead | null> {
+    return (
+      Array.from(this.leads.values()).find(
+        (lead) => lead.clinicId === clinicId && lead.whatsappLid === whatsappLid,
+      ) ?? null
+    );
+  }
+
   async findInactiveLeads(): Promise<Lead[]> {
     return [];
+  }
+
+  async mergeDuplicateLeads(params: {
+    canonicalLeadId: string;
+    duplicateLeadId: string;
+  }): Promise<Lead> {
+    const canonical = this.leads.get(params.canonicalLeadId);
+    const duplicate = this.leads.get(params.duplicateLeadId);
+    if (!canonical || !duplicate) throw new Error("missing lead");
+    const merged = {
+      ...canonical,
+      whatsappLid: canonical.whatsappLid ?? duplicate.whatsappLid,
+      phone: canonical.phone ?? duplicate.phone,
+    };
+    this.leads.set(canonical.id, merged);
+    this.leads.delete(duplicate.id);
+    return merged;
   }
 
   async save(lead: Lead): Promise<void> {
@@ -126,6 +151,7 @@ function makeMessage(body: string, externalMessageId: string, receivedAt: Date):
     externalThreadId: "5511986905114",
     body,
     phone: "5511986905114",
+    whatsappLid: null,
     name: "Larissa Sales",
     email: null,
     receivedAt,

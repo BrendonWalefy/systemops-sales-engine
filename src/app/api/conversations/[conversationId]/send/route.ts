@@ -11,6 +11,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { resolveWhatsappChannelClinicForOutbound } from "@/application/tenancy/resolve-clinic";
+import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -67,20 +68,23 @@ export async function POST(
 
   // ── 5. Busca telefone do lead ──
   const [lead] = await db
-    .select({ phone: leads.phone })
+    .select({ phone: leads.phone, whatsappLid: leads.whatsappLid })
     .from(leads)
     .where(eq(leads.id, conv.leadId))
     .limit(1);
 
-  // externalThreadId é o telefone — usa como fallback se lead.phone não estiver preenchido
-  const phone = lead?.phone ?? conv.externalThreadId;
-  if (!phone) {
-    return NextResponse.json({ error: "Lead phone not found" }, { status: 422 });
+  const channelAddress =
+    resolveWhatsAppChannelAddress({
+      phone: lead?.phone ?? null,
+      whatsappLid: lead?.whatsappLid ?? null,
+    }) ?? conv.externalThreadId;
+  if (!channelAddress) {
+    return NextResponse.json({ error: "Lead WhatsApp identity not found" }, { status: 422 });
   }
 
   const channelClinicId = await resolveWhatsappChannelClinicForOutbound({
     clinicId: conv.clinicId,
-    phone,
+    phone: lead?.phone ?? channelAddress,
   });
 
   const [channelClinicRow] = await db
@@ -116,7 +120,7 @@ export async function POST(
 
   // ── 7. Envia via WhatsApp e captura messageId para deduplicar echo fromMe ──
   try {
-    const zapiMessageId = await sendTextMessage(phone, messageText, channelConfig);
+    const zapiMessageId = await sendTextMessage(channelAddress, messageText, channelConfig);
     // Salva o messageId retornado pelo Z-API para que o webhook fromMe identifique
     // este envio como nosso e não crie uma mensagem duplicada na conversa.
     if (zapiMessageId) {

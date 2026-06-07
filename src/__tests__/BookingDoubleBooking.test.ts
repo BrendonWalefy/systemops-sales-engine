@@ -37,6 +37,7 @@ const lead: Lead = {
   clinicId: clinic.id,
   name: "Maria",
   phone: "5511999999999",
+  whatsappLid: null,
   email: null,
   channel: "whatsapp",
   campaignId: null,
@@ -207,8 +208,16 @@ class FakeLeadRepository implements LeadRepository {
     return lead;
   }
 
+  async findByWhatsAppLid(): Promise<Lead | null> {
+    return null;
+  }
+
   async findInactiveLeads(): Promise<Lead[]> {
     return [];
+  }
+
+  async mergeDuplicateLeads(): Promise<Lead> {
+    return lead;
   }
 
   async save(input: Lead): Promise<void> {

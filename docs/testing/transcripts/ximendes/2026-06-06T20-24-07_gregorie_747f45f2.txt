@@ -1,0 +1,277 @@
+=================================================================
+LEAD: Gregorie | 5511954368563
+Status: appointment_scheduled | Temperatura: hot
+Criado em: 27/05/2026, 22:49:49
+=================================================================
+
+  CONVERSA 691035f4
+  Criada: 27/05/2026, 22:49:49
+  Última msg: 04/06/2026, 10:13:41
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [22:49:45] 👤 Lead 
+          Boa noite
+
+  [22:49:54] 🤖 IA   
+          Boa noite! Estou por aqui se precisar de algo.
+
+  [22:50:19] 👤 Lead 
+          Tem horário para segunda dia 1 às 11h ?
+
+  [22:50:28] 🤖 IA   
+          Infelizmente, não temos horário disponível para segunda-feira, dia 1, às 11h. Mas temos outras opções que podem funcionar para você:
+          
+          1. Sex 29/05 às 12h  
+          2. Sex 29/05 às 11h  
+          3. Seg 01/06 às 13h  
+          4. Seg 01/06 às 11h  
+          5. Ter 02/06 às 12h  
+          
+          Qual dessas opções você prefere?
+
+  [22:51:09] 👤 Lead 
+          4
+
+  [22:51:18] 🤖 IA   
+          Seu agendamento para segunda-feira, dia 1, às 11h, está confirmado! A equipe estará esperando por você. Se surgir qualquer dúvida antes da sua visita, é só me chamar. Até lá!
+
+  [22:53:42] 👤 Lead 
+          Tem horário dia 01/06 às 12h ?
+
+  [22:53:51] 🤖 IA   
+          Infelizmente, não temos horário disponível para dia 01/06 às 12h. Mas temos outras opções que podem funcionar para você:
+          
+          1. Seg 01/06 às 13h  
+          2. Seg 01/06 às 8h  
+          3. Seg 01/06 às 14h  
+          
+          Qual dessas opções você prefere?
+
+  [16:03:40] 👤 Lead 
+          Oi
+
+  [16:03:47] 🤖 IA   
+          Oi, Gregorie! Se precisar de algo, estou por aqui. 😊
+
+  [16:03:49] 👤 Lead 
+          Tem horário amanhã às 10h
+
+  [16:03:55] 🤖 IA   
+          Temos horários disponíveis para amanhã! Veja as opções:
+          
+          1. Sex 29/05 às 10h  
+          2. Sex 29/05 às 9h  
+          
+          Qual delas você prefere? Responda com o número.
+
+  [16:05:35] 👤 Lead 
+          Gostaria ass 11h
+
+  [16:05:43] 🤖 IA   
+          Infelizmente, não temos horário disponível para amanhã às 11h. Mas temos outras opções que podem funcionar para você:
+          
+          1. Sex 29/05 às 14h  
+          2. Sex 29/05 às 8h  
+          3. Sex 29/05 às 15h  
+          
+          Qual delas você prefere? Responda com o número.
+
+  [16:09:23] 👤 Lead 
+          Tem dia 08/06 às 11h ?
+
+  [16:09:32] 🤖 IA   
+          Para o dia 08/06, temos os seguintes horários disponíveis:
+          
+          1. Seg 08/06 às 16h  
+          2. Seg 08/06 às 8h  
+          3. Seg 08/06 às 17h  
+          
+          Qual deles você prefere? Responda com o número.
+
+  [19:14:03] 👤 Lead 
+          Oi
+
+  [19:14:06] 👤 Lead 
+          Qual o valor das lentes ?
+
+  [19:14:11] 🤖 IA   
+          Oi, Gregorie! Estou aqui se precisar de algo. 😊
+
+  [19:14:13] 👤 Lead 
+          E como funciona ?
+
+  [19:14:14] 🤖 IA   
+          Oi, Gregorie! O valor das lentes de resina varia conforme o caso, e a melhor forma de entender isso é passando por uma avaliação. Nela, vamos analisar suas necessidades e discutir o que é mais adequado para você. E o melhor: o valor da avaliação é integralmente abatido do tratamento, caso você decida avançar. 
+          
+          Se você quiser, podemos agendar sua avaliação! Que tal?
+
+  [19:14:20] 🤖 IA   
+          Claro, Gregorie! Você poderia especificar sobre o que exatamente gostaria de saber como funciona? Assim, posso te ajudar melhor!
+
+  [19:15:05] 👤 Lead 
+          Falar com atendente
+
+  [19:15:14] 🤖 IA   
+          Entendi, Gregorie! Já avisei a equipe e eles vão te responder em breve. Fique à vontade para qualquer outra dúvida enquanto isso!
+
+  [17:47:11] 👤 Lead 
+          Boa tarde
+
+  [17:47:43] 👤 Lead 
+          Oi
+
+  [17:50:07] 👨‍⚕️ Op.  
+          Reset
+
+  [17:50:37] 👤 Lead 
+          Boa tarde
+
+  [17:51:34] 👤 Lead 
+          Oi
+
+  [17:54:27] 👤 Lead 
+          Boa tarde
+
+  [17:56:06] 👤 Lead 
+          Boa tarde
+
+  [17:56:10] 🤖 IA   
+          Boa tarde, Gregorie! Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [17:56:30] 👤 Lead 
+          3
+
+  [17:56:35] 🤖 IA   
+          O investimento varia de acordo com a quantidade de dentes e o resultado desejado. Para isso, realizamos uma avaliação presencial, onde o dentista analisa seu caso e apresenta um plano personalizado. A avaliação custa R$100, e esse valor é totalmente abatido do tratamento caso decida avançar.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [17:57:45] 👤 Lead 
+          Menu
+
+  [17:57:49] 🤖 IA   
+          Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [17:57:53] 👤 Lead 
+          1
+
+  [17:58:00] 🤖 IA   
+          Aqui estão os procedimentos disponíveis:
+          
+          • Lentes de Resina Composta — Facetas ultra-finas aplicadas diretamente sobre o esmalte do dente, sem desgaste.
+          
+          • Avaliação — Consulta inicial para análise do seu caso e plano de tratamento personalizado.
+          
+          • Limpeza — Procedimento para remoção de placa e tartar, promovendo saúde bucal.
+          
+          • Manutenção das lentes — Consulta para verificar a condição das lentes e realizar ajustes, se necessário.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [10:37:07] 👨‍⚕️ Op.  
+          Olá Gregorie! Lembrando que sua consulta é amanhã, 01/06, às 11:00. A equipe estará esperando por você.
+
+  [17:49:09] 👤 Lead 
+          Oi
+
+  [17:49:16] 🤖 IA    [acknowledgment]
+          Boa tarde, Gregorie! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [17:49:39] 👤 Lead 
+          1
+
+  [17:49:47] 🤖 IA    [general_question]
+          Aqui estão os procedimentos disponíveis:
+          
+          1. Avaliação  
+          2. Botox odontológico  
+          3. Clareamento dental  
+          4. Exodontia (extração)  
+          5. Gengivoplastia  
+          6. Harmonização orofacial  
+          7. Implante dentário  
+          8. Lentes de porcelana (facetas)  
+          9. Lentes de resina composta  
+          10. Limpeza dental  
+          11. Prótese dentária  
+          12. Restauração em resina  
+          13. Tratamento de canal  
+          
+          Quer saber mais sobre algum? É só digitar o número.  
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [17:50:03] 👤 Lead 
+          9
+
+  [17:50:41] 👤 Lead 
+          9
+
+  [17:51:25] 👤 Lead 
+          Menu
+
+  [17:51:29] 🤖 IA    [acknowledgment]
+          Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [17:51:36] 👤 Lead 
+          2
+
+  [17:52:04] 👤 Lead 
+          2
+
+  [10:12:51] 👤 Lead 
+          Oi
+
+  [10:12:56] 🤖 IA    [acknowledgment]
+          Bom dia, Gregorie! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [10:13:02] 👤 Lead 
+          2
+
+  [10:13:08] 🤖 IA    [book_appointment]
+          Gregorie, para agendarmos sua consulta, poderia me informar qual procedimento você gostaria de realizar? Assim, posso te ajudar da melhor forma possível.
+
+  [10:13:20] 👤 Lead 
+          Avaliação
+
+  [10:13:26] 🤖 IA   
+          Ops, tive um problema técnico por aqui. Pode tentar novamente? 🙏
+
+  [10:13:41] 👤 Lead 
+          Avaliação
+
+  [10:13:48] 🤖 IA   
+          Ops, tive um problema técnico por aqui. Pode tentar novamente? 🙏
+

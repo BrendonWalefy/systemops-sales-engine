@@ -19,6 +19,7 @@ export class WhatsAppChannelAdapter implements ChannelAdapter {
       externalMessageId: String(data.messageId ?? ""),
       name: data.name ? String(data.name) : null,
       phone: data.phone ? String(data.phone) : String(data.from ?? ""),
+      whatsappLid: null,
       email: null,
       body: String(data.body ?? ""),
       receivedAt: data.receivedAt ? new Date(String(data.receivedAt)) : new Date(),

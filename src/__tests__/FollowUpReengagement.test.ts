@@ -44,6 +44,7 @@ function makeLead(overrides: Partial<Lead> = {}): Lead {
     clinicId: "clinic-1",
     name: "Maria",
     phone: "5511999999999",
+    whatsappLid: null,
     email: null,
     channel: "whatsapp",
     campaignId: null,

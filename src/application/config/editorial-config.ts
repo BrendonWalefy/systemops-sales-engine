@@ -32,6 +32,7 @@ export type EditorialConfig = {
   toneOfVoice: string | null;
   commercialPolicy: string | null;
   procedures: EditorialProcedure[];
+  receptionistName: string;
   differentials: string[];
   objections: { objection: string; response: string }[];
   /** Texto pronto para o prompt, composto a partir dos campos estruturados. */
@@ -54,6 +55,7 @@ export const publishablePlaybookSchema = z.object({
     .trim()
     .min(1, "descrição de procedimentos não pode ser vazia"),
   toneOfVoice: z.string().trim().min(1).default("acolhedor"),
+  receptionistName: z.string().trim().min(1).default("Mariana"),
   differentials: z.array(z.string()).default([]),
   objections: z
     .array(z.object({ objection: z.string(), response: z.string() }))
@@ -147,6 +149,8 @@ export async function resolveActiveEditorialConfig(
     specialty: activeVersion.specialty,
     toneOfVoice: activeVersion.toneOfVoice,
     commercialPolicy: activeVersion.commercialPolicy,
+    receptionistName:
+      (activeVersion as unknown as { receptionistName?: string }).receptionistName ?? "Mariana",
     procedures,
     differentials,
     objections,

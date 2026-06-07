@@ -53,6 +53,7 @@ export type ComposerInput = {
     specialty: string;
     toneOfVoice: string | null;
     playbook: string | null;
+    receptionistName?: string;
     commercialPolicy: string | null;
   };
   leadName?: string | null;
@@ -86,7 +87,7 @@ function buildSystemPrompt(input: ComposerInput): string {
 - Não repita o menu depois de responder preço, pagamento, endereço ou tratamento.
 - Máximo 1 pergunta no final.`;
 
-  return `Você é a recepcionista virtual da ${clinic.name}, uma clínica de ${clinic.specialty}.
+  return `Você é a ${clinic.receptionistName ?? "Mariana"}, recepcionista virtual da ${clinic.name}, uma clínica de ${clinic.specialty}.
 
 IDENTIDADE:
 - Tom de voz: ${clinic.toneOfVoice ?? "informal e acolhedor"}

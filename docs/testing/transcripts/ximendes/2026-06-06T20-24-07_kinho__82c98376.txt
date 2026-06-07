@@ -1,0 +1,38 @@
+=================================================================
+LEAD: Kinho 🟢⚪ | 5511988824046
+Status: waiting_response | Temperatura: —
+Criado em: 05/06/2026, 11:17:19
+=================================================================
+
+  CONVERSA 02774c52
+  Criada: 05/06/2026, 11:17:19
+  Última msg: 05/06/2026, 11:22:31
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [11:17:11] 👤 Lead 
+          Bom dia
+
+  [11:17:21] 👤 Lead 
+          Falo com Gregorie
+
+  [11:17:35] 👤 Lead 
+          Tenho uma entrega da dental cremer
+
+  [11:17:46] 👤 Lead 
+          Tem alguem para receber?
+
+  [11:21:16] 👤 Lead 
+          Recebeu
+
+  [11:21:20] 👤 Lead 
+          Esta na papelaria
+
+  [11:21:27] 👤 Lead 
+          Nome Gi
+
+  [11:21:34] 👤 Lead 
+          Loira
+
+  [11:22:31] 👤 Lead 
+          👍🏼
+

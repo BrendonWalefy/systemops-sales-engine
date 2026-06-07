@@ -13,6 +13,7 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,12 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   for (const appointment of dueAppointments) {
     try {
       const lead = await leadRepository.findById(appointment.leadId);
-      if (!lead?.phone) continue;
+      if (!lead) continue;
+      const channelAddress = resolveWhatsAppChannelAddress({
+        phone: lead.phone,
+        whatsappLid: lead.whatsappLid,
+      });
+      if (!channelAddress) continue;
       let channelConfig = defaultChannelConfig;
       const channelClinicId = await resolveWhatsappChannelClinicForOutbound({
         clinicId,
@@ -82,7 +88,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         isFirstMessage: false,
       });
 
-      await sendTextMessage(lead.phone, composed.text, channelConfig);
+      await sendTextMessage(channelAddress, composed.text, channelConfig);
       await appointmentRepository.save({ ...appointment, reminderSentAt: now, updatedAt: now });
       sent++;
     } catch (err) {

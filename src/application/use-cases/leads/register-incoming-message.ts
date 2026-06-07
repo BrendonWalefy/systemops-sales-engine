@@ -4,6 +4,11 @@ import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { IncomingChannelMessage } from "@/application/ports/channel-adapter";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
+import { ResolveWhatsAppLead } from "@/application/whatsapp/resolve-whatsapp-lead";
+import {
+  buildContactIdentifiersFromWebhook,
+  resolveWhatsAppThreadId,
+} from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export type RegisterIncomingMessageDependencies = {
   leadRepository: LeadRepository;
@@ -21,44 +26,47 @@ export class RegisterIncomingMessage {
     message: IncomingChannelMessage;
   }): Promise<{ lead: Lead; conversation: Conversation; message: Message }> {
     const now = this.deps.now();
-    const existingLead = input.message.phone
-      ? await this.deps.leadRepository.findByPhone(input.clinicId, input.message.phone)
-      : null;
+    const identifiers = buildContactIdentifiersFromWebhook({
+      phone: input.message.phone,
+      chatLid: input.message.whatsappLid,
+    });
 
-    const candidateLead: Lead =
-      existingLead ??
-      {
-        id: this.deps.idGenerator(),
-        clinicId: input.clinicId,
-        name: input.message.name,
-        phone: input.message.phone,
-        email: input.message.email,
-        channel: input.message.channel,
-        campaignId: input.message.campaignId,
-        treatmentInterest: null,
-        status: "new",
-        temperature: null,
-        assignedToUserId: null,
-        nextActionAt: null,
-        lostReason: null,
-        createdAt: now,
-        updatedAt: now,
-      };
+    const resolver = new ResolveWhatsAppLead(this.deps.leadRepository);
+    const resolvedLead = await resolver.execute({
+      clinicId: input.clinicId,
+      identifiers,
+      name: input.message.name,
+      channel: input.message.channel,
+      now,
+      idGenerator: this.deps.idGenerator,
+    });
+
+    const leadStatus =
+      resolvedLead.status === "new" ? "waiting_response" : resolvedLead.status;
 
     await this.deps.leadRepository.save({
-      ...candidateLead,
-      status: candidateLead.status === "new" ? "waiting_response" : candidateLead.status,
+      ...resolvedLead,
+      status: leadStatus,
       updatedAt: now,
     });
 
-    const persistedLead = input.message.phone
-      ? await this.deps.leadRepository.findByPhone(input.clinicId, input.message.phone)
-      : await this.deps.leadRepository.findById(candidateLead.id);
-    const lead = persistedLead ?? {
-      ...candidateLead,
-      status: candidateLead.status === "new" ? "waiting_response" : candidateLead.status,
-      updatedAt: now,
-    };
+    const lead =
+      (identifiers.phone
+        ? await this.deps.leadRepository.findByPhone(input.clinicId, identifiers.phone)
+        : null) ??
+      (identifiers.whatsappLid
+        ? await this.deps.leadRepository.findByWhatsAppLid(input.clinicId, identifiers.whatsappLid)
+        : null) ??
+      (await this.deps.leadRepository.findById(resolvedLead.id)) ?? {
+        ...resolvedLead,
+        status: leadStatus,
+        updatedAt: now,
+      };
+
+    const threadId =
+      input.message.externalThreadId ??
+      resolveWhatsAppThreadId(identifiers) ??
+      input.message.externalContactId;
 
     const existingConversation = await this.deps.conversationRepository.findByLeadId(lead.id);
     const candidateConversation: Conversation =
@@ -68,7 +76,7 @@ export class RegisterIncomingMessage {
         clinicId: input.clinicId,
         leadId: lead.id,
         channel: input.message.channel,
-        externalThreadId: input.message.externalThreadId,
+        externalThreadId: threadId,
         summary: null,
         aiPaused: false,
         takeoverExpiresAt: null,
@@ -82,6 +90,7 @@ export class RegisterIncomingMessage {
 
     await this.deps.conversationRepository.saveConversation({
       ...candidateConversation,
+      externalThreadId: threadId,
       lastMessageAt: input.message.receivedAt,
       updatedAt: now,
     });

@@ -6,6 +6,8 @@ export type Lead = {
   clinicId: string;
   name: string | null;
   phone: string | null;
+  /** Linked ID (@lid) do WhatsApp quando o número não está disponível no webhook. */
+  whatsappLid: string | null;
   email: string | null;
   channel: Channel;
   campaignId: string | null;

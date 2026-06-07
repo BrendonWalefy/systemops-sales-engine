@@ -44,6 +44,7 @@ const lead: Lead = {
   clinicId: clinic.id,
   name: "Gregorie",
   phone: "5511954368563",
+  whatsappLid: null,
   email: null,
   channel: "whatsapp",
   campaignId: null,
@@ -149,7 +150,9 @@ function makeLeadRepo() {
     async save(l) { saved.push(l); },
     async findById() { return null; },
     async findByPhone() { return null; },
+    async findByWhatsAppLid() { return null; },
     async findInactiveLeads() { return []; },
+    async mergeDuplicateLeads() { throw new Error("not implemented"); },
   };
   return { repo, saved };
 }

@@ -10,6 +10,7 @@ import type {
  */
 export type ZApiInboundPayload = {
   phone: string;
+  chatLid?: string | null;
   instanceId: string;
   messageId: string;
   momment: number; // Z-API typo — kept as-is
@@ -44,6 +45,7 @@ export class ZApiChannelAdapter implements ChannelAdapter {
       externalMessageId: data.messageId,
       name: data.senderName || null,
       phone: data.phone,
+      whatsappLid: data.chatLid ?? null,
       email: null,
       body: data.text?.message ?? "",
       receivedAt: data.momment ? new Date(data.momment) : new Date(),

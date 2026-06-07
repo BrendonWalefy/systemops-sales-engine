@@ -6,7 +6,11 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
-import { eq, and, count, gte, lt } from "drizzle-orm";
+import { eq, and, or, count, gte, lt } from "drizzle-orm";
+import {
+  buildContactIdentifiersFromWebhook,
+  resolveWhatsAppChannelAddress,
+} from "@/core/whatsapp/WhatsAppContactIdentity";
 
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
@@ -504,6 +508,7 @@ export class ConversationOrchestrator {
   async handle(params: {
     clinicId: string;
     phone: string;
+    whatsappLid?: string | null;
     messageText: string;
     messageId: string;
     senderName?: string;
@@ -513,6 +518,11 @@ export class ConversationOrchestrator {
   }): Promise<{ replied: boolean }> {
     const { clinicId, phone, messageText, messageId, senderName, timestamp } = params;
     const replyEnabled = params.replyEnabled ?? true;
+    const contactIdentifiers = buildContactIdentifiersFromWebhook({
+      phone,
+      chatLid: params.whatsappLid,
+    });
+    const channelAddress = resolveWhatsAppChannelAddress(contactIdentifiers) ?? phone;
 
     // ── 1. Deduplicação por ID: retorna se já processamos esta mensagem ──
     const alreadyProcessed = await db
@@ -528,6 +538,21 @@ export class ConversationOrchestrator {
     // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
     // Janela de 5s: suficiente para cobrir o lag do Z-API sem bloquear mensagens legítimas iguais.
     const fiveSecondsAgo = new Date(timestamp.getTime() - 5_000);
+    const identityMatch = contactIdentifiers.phone
+      ? contactIdentifiers.whatsappLid
+        ? or(
+            eq(leadsTable.phone, contactIdentifiers.phone),
+            eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
+            eq(leadsTable.phone, contactIdentifiers.whatsappLid),
+          )
+        : eq(leadsTable.phone, contactIdentifiers.phone)
+      : contactIdentifiers.whatsappLid
+        ? or(
+            eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
+            eq(leadsTable.phone, contactIdentifiers.whatsappLid),
+          )
+        : eq(leadsTable.phone, phone);
+
     const [contentDupe] = await db
       .select({ id: messagesTable.id })
       .from(messagesTable)
@@ -536,7 +561,7 @@ export class ConversationOrchestrator {
       .where(
         and(
           eq(leadsTable.clinicId, clinicId),
-          eq(leadsTable.phone, phone),
+          identityMatch,
           eq(messagesTable.author, "lead"),
           eq(messagesTable.body, messageText),
           gte(messagesTable.sentAt, fiveSecondsAgo),
@@ -545,7 +570,7 @@ export class ConversationOrchestrator {
       .limit(1);
 
     if (contentDupe) {
-      console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${phone} — ignorado`);
+      console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
       return { replied: false };
     }
 
@@ -605,20 +630,25 @@ export class ConversationOrchestrator {
       clinicId,
       message: {
         externalMessageId: messageId,
-        externalContactId: phone,
+        externalContactId: channelAddress,
         phone,
+        whatsappLid: params.whatsappLid ?? null,
         name: senderName ?? null,
         email: null,
         campaignId: null,
         channel: "whatsapp",
-        externalThreadId: phone,
+        externalThreadId: channelAddress,
         body: messageText,
         receivedAt: timestamp,
       },
     });
 
+    const outboundAddress =
+      resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
+      channelAddress;
+
     if (!replyEnabled) {
-      const leadDisplayName = lead.name ?? phone;
+      const leadDisplayName = lead.name ?? channelAddress;
       await this.notifier
         .execute(clinicId, {
           title: leadDisplayName,
@@ -1458,7 +1488,7 @@ export class ConversationOrchestrator {
     }
 
     // ── 9. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
-    const zapiMessageId = await sendTextMessage(phone, replyText, channelConfig);
+    const zapiMessageId = await sendTextMessage(outboundAddress, replyText, channelConfig);
 
     // ── 9.1 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;
@@ -1501,7 +1531,7 @@ export class ConversationOrchestrator {
       // Garante que o lead sempre recebe resposta — evita silêncio em erros de Calendar/LLM.
       try {
         const fallback = "Ops, tive um problema técnico por aqui. Pode tentar novamente? 🙏";
-        const fallbackMsgId = await sendTextMessage(phone, fallback, channelConfig);
+        const fallbackMsgId = await sendTextMessage(outboundAddress, fallback, channelConfig);
         await this.conversationRepo.appendMessage({
           id: randomUUID(),
           conversationId: conversation.id,

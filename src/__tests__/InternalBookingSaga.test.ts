@@ -43,6 +43,7 @@ const lead: Lead = {
   clinicId: clinic.id,
   name: "Maria",
   phone: "5511999999999",
+  whatsappLid: null,
   email: null,
   channel: "whatsapp",
   campaignId: null,

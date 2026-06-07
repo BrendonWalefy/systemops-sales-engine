@@ -1,0 +1,763 @@
+=================================================================
+LEAD: Brendon Walefy | 5511953628848
+Status: in_conversation | Temperatura: hot
+Criado em: 28/05/2026, 03:47:41
+=================================================================
+
+  CONVERSA 5d3bdd13
+  Criada: 28/05/2026, 03:47:41
+  Última msg: 03/06/2026, 14:31:52
+  ai_paused=true | needs_attention=false | unclear_count=0
+  takeover_expires_at: 03/06/2026, 17:26:25
+  ------------------------------------------------------------
+  [03:47:37] 👤 Lead 
+          Bom dia gostaria de saber sobre instalar 20 lentes de resina
+
+  [03:47:48] 🤖 IA   
+          Bom dia, Brendon! Que legal que você está interessado em instalar 20 lentes de resina. Antes de falarmos sobre o procedimento, me conta: o que você gostaria de mudar no seu sorriso? Isso vai me ajudar a entender melhor suas expectativas. E, se você quiser, podemos agendar uma consulta para conversar mais sobre isso!
+
+  [03:48:16] 👤 Lead 
+          Gostaria que ficasse mais claro, sorriso caro sabe?
+
+  [03:48:22] 🤖 IA   
+          Entendi, Brendon! Clarear o sorriso é realmente um desejo comum. Você poderia me contar um pouco mais sobre o que exatamente você gostaria de mudar ou melhorar? Isso vai me ajudar a entender melhor suas expectativas e como podemos alcançar o resultado que você deseja.
+
+  [03:48:46] 👤 Lead 
+          10 dentes em cima e 10 em baixo
+
+  [03:48:55] 🤖 IA   
+          Entendi, Brendon! Você está pensando em colocar 10 lentes em cima e 10 embaixo. Você já tem em mente um tratamento específico ou está buscando agendar uma avaliação para conversarmos mais sobre isso? Estou aqui para ajudar no que você precisar!
+
+  [03:49:14] 👤 Lead 
+          Quero agendar a colocação de 20 lentes
+
+  [03:49:23] 🤖 IA   
+          Ótimo, Brendon! Vamos agendar a avaliação para a colocação das 20 lentes. Aqui estão os horários disponíveis:
+          
+          1. Sex 29/05 às 12h  
+          2. Sex 29/05 às 8h  
+          3. Seg 01/06 às 14h  
+          4. Seg 01/06 às 8h  
+          5. Ter 02/06 às 12h  
+          
+          Por favor, me diga qual horário funciona melhor para você!
+
+  [03:50:44] 👤 Lead 
+          Quanto tempo dura ?
+
+  [03:50:50] 🤖 IA   
+          As lentes de resina composta, com os cuidados adequados, duram de 3 a 5 anos em média. Mas, claro, isso pode variar de pessoa para pessoa. Para entender melhor o que você precisa e oferecer um plano mais adequado, o ideal é fazer uma avaliação. Que tal agendarmos?
+
+  [03:51:07] 👤 Lead 
+          Quanto tempo dura a instalação das lentes
+
+  [03:51:13] 🤖 IA   
+          A instalação das lentes geralmente leva de 2 a 4 horas, dependendo do caso. É uma sessão única e, na maioria das vezes, não é necessário usar anestesia. Durante a avaliação, podemos conversar mais sobre todos os detalhes e tirar suas dúvidas. Que tal agendarmos essa avaliação?
+
+  [03:51:35] 👤 Lead 
+          Quero agendar
+
+  [03:51:42] 🤖 IA   
+          Perfeito, Brendon! Seu agendamento está confirmado para sexta-feira, 29 de maio, às 12h. A equipe estará te esperando para a avaliação e para conversarmos sobre as lentes. Se surgir qualquer dúvida até lá, estou por aqui. Até breve!
+
+  [03:52:14] 👤 Lead 
+          Pode cancelar
+
+  [03:52:24] 🤖 IA   
+          Claro, Brendon! O agendamento foi cancelado com sucesso. Se você decidir agendar novamente ou tiver qualquer dúvida, estou aqui para ajudar. Fique à vontade para voltar quando quiser!
+
+  [15:28:54] 👤 Lead 
+          Teste de notificação no app quando recebe uma mensagem
+
+  [15:29:03] 🤖 IA   
+          Entendi! Se precisar de mais informações ou quiser agendar algo, é só avisar. 😊
+
+  [15:29:32] 👨‍⚕️ Op.  
+          tetse
+
+  [16:04:42] 👤 Lead 
+          Testando notificação
+
+  [16:04:47] 🤖 IA   
+          Entendi! Se precisar de algo, é só avisar. 😊
+
+  [16:04:55] 👤 Lead 
+          Teste
+
+  [16:05:01] 🤖 IA   
+          Certo! Estou por aqui se precisar de algo. 😊
+
+  [18:36:44] 👤 Lead 
+          Preciso falar com o doutor
+
+  [18:36:55] 🤖 IA   
+          Entendi, Brendon! Já avisei a equipe e eles irão responder em breve. Se precisar de mais alguma coisa, estou aqui!
+
+  [18:47:19] 👤 Lead 
+          Teste
+
+  [19:05:10] 👤 Lead 
+          Teste
+
+  [19:12:37] 👤 Lead 
+          Quero a nota do serviço
+
+  [10:57:03] 👤 Lead 
+          Bom dia
+
+  [11:03:56] 👤 Lead 
+          Oi
+
+  [11:39:32] 👤 Lead 
+          Bom dia
+
+  [11:39:39] 🤖 IA   
+          Bom dia! Estou à disposição para ajudar com suas dúvidas.
+
+  [11:40:04] 👤 Lead 
+          Tudo bem?
+
+  [11:40:10] 🤖 IA   
+          Bom dia! Estou aqui para ajudar no que precisar.
+
+  [11:40:28] 👤 Lead 
+          Você tem menu?
+
+  [11:40:37] 🤖 IA   
+          Você poderia especificar o que você gostaria de saber sobre o menu? Estou aqui para ajudar com informações sobre os tratamentos e procedimentos disponíveis.
+
+  [11:40:52] 👤 Lead 
+          Quais tratamentos
+
+  [11:40:57] 🤖 IA   
+          Oferecemos os seguintes tratamentos:
+          
+          • Lentes de Resina Composta: facetas ultra-finas aplicadas diretamente sobre o esmalte do dente, sem desgaste e em sessão única.
+          
+          Se você estiver interessado, podemos agendar uma avaliação para discutir suas necessidades específicas e apresentar um plano personalizado. Caso tenha mais perguntas, estou à disposição!
+
+  [12:34:52] 👤 Lead 
+          Boa tarde
+
+  [12:35:02] 🤖 IA   
+          Boa tarde! Estou à disposição para qualquer informação que você precise.
+
+  [12:35:21] 👤 Lead 
+          Você tem menu?
+
+  [12:35:30] 🤖 IA   
+          Atualmente, oferecemos o tratamento de Lentes de Resina Composta. Esse procedimento consiste na aplicação de facetas ultra-finas diretamente sobre o esmalte do dente, sem necessidade de desgaste, preservando o dente natural.
+          
+          Se você tiver interesse em saber mais ou agendar uma avaliação, estou à disposição para ajudar!
+
+  [13:01:58] 👤 Lead 
+          Boa tarde
+
+  [13:02:06] 🤖 IA   
+          Boa tarde! Estou à disposição para qualquer dúvida que você tenha.
+
+  [13:17:34] 👤 Lead 
+          Reset
+
+  [13:17:41] 🤖 IA   
+          Boa tarde! Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [13:18:13] 👤 Lead 
+          1
+
+  [13:18:20] 🤖 IA   
+          Atualmente, oferecemos os seguintes procedimentos:
+          
+          • Lentes de Resina Composta — Facetas ultra-finas aplicadas diretamente sobre o esmalte do dente, sem desgaste.
+          • Avaliação — Consulta para análise e planejamento de tratamentos personalizados.
+          • Limpeza — Procedimentos para manutenção da saúde bucal e estética dental.
+          • Manutenção das lentes — Consulta para acompanhamento e cuidados das lentes aplicadas.
+          
+          Se precisar de mais informações sobre algum desses procedimentos, estou à disposição para ajudar!
+
+  [13:19:40] 👤 Lead 
+          Voltar ao menu
+
+  [13:19:47] 🤖 IA   
+          Certo! Se precisar de mais informações ou quiser discutir algum procedimento, estou à disposição.
+
+  [13:34:38] 👤 Lead 
+          Reset
+
+  [13:34:44] 🤖 IA   
+          Boa tarde, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [13:35:04] 👤 Lead 
+          4
+
+  [13:35:10] 🤖 IA   
+          Nosso endereço é Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP. 
+          
+          Os horários de atendimento são de segunda a sexta-feira, das 9h às 18h. 
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [13:35:35] 👤 Lead 
+          Menu
+
+  [13:35:39] 🤖 IA   
+          Boa tarde, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [13:35:50] 👤 Lead 
+          1
+
+  [13:35:57] 🤖 IA   
+          Os procedimentos disponíveis são:
+          
+          • Lentes de resina composta — Facetas ultra-finas aplicadas diretamente sobre o esmalte do dente, sem desgaste, preservando o dente natural.
+          
+          • Avaliação — Consulta para analisar seu caso e apresentar um plano personalizado de tratamento.
+          
+          • Limpeza — Procedimentos para a remoção de placas e manchas, promovendo a saúde e estética dental.
+          
+          • Manutenção das lentes — Consulta para verificar a condição das lentes e realizar ajustes, se necessário.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [13:36:21] 👤 Lead 
+          Voltar ao menu
+
+  [13:36:24] 🤖 IA   
+          Boa tarde, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [18:15:19] 👤 Lead 
+          reset
+
+  [18:15:24] 🤖 IA   
+          Boa noite, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [18:16:51] 👨‍⚕️ Op.  
+          1
+
+  [18:17:11] 👤 Lead 
+          Reset
+
+  [18:17:14] 🤖 IA   
+          Boa noite, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia.
+          Sou a Marina, assistente do Dr. Gregory. Como posso ajudá-lo?
+          
+          1. Procedimentos
+          2. Agendar horário
+          3. Formas de pagamento
+          4. Localização
+          5. Falar com um especialista
+
+  [17:53:27] 👤 Lead 
+          boa tarde
+
+  [17:53:33] 🤖 IA    [acknowledgment]
+          Boa tarde, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [21:13:28] 👤 Lead 
+          Boa noite
+
+  [21:13:33] 🤖 IA    [acknowledgment]
+          Boa noite, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [21:14:11] 👤 Lead 
+          1
+
+  [21:14:24] 🤖 IA    [general_question]
+          Brendon Walefy, aqui estão os procedimentos disponíveis na clínica:
+          
+          • Odontologia geral — Abrange consultas, diagnósticos e tratamentos básicos para a saúde bucal.
+          
+          • Limpeza — Procedimento para remoção de placa e tártaro, promovendo a saúde periodontal.
+          
+          • Restaurações — Reparo de dentes danificados por cáries ou fraturas, utilizando materiais estéticos.
+          
+          • Exodontia — Extração de dentes que não podem ser recuperados ou que estão comprometidos.
+          
+          • Tratamento de canal — Procedimento para salvar dentes com infecção na polpa, garantindo a preservação do dente.
+          
+          • Implante dentário — Reposição de dentes perdidos com a colocação de um implante de titânio.
+          
+          • Prótese dentária — Soluções para substituir dentes ausentes, podendo ser fixas ou removíveis.
+          
+          • Ortodontia — Correção de dentes e mandíbulas desalinhados, utilizando aparelhos fixos ou alinhadores.
+          
+          • Clareamento dental — Procedimento para clarear os dentes, utilizando técnicas seguras e eficazes.
+          
+          • Lentes de contato em resina e porcelana — Estética dental que melhora a aparência dos dentes, corrigindo forma e cor.
+          
+          • Facetas — Finas lâminas aplicadas sobre os dentes para melhorar a estética dental.
+          
+          • Gengivoplastia — Procedimento para remodelar a gengiva, melhorando a estética do sorriso.
+          
+          • Botox odontológico e harmon
+
+  [21:17:22] 👤 Lead 
+          Voltar
+
+  [21:17:41] 🤖 IA    [acknowledgment]
+          Entendi, Brendon. Se precisar de mais informações ou quiser agendar uma consulta, estou à disposição.
+
+  [21:18:12] 👤 Lead 
+          Boa noite
+
+  [21:18:15] 🤖 IA    [acknowledgment]
+          Boa noite, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [21:21:56] 👤 Lead 
+          2
+
+  [21:22:04] 🤖 IA    [book_appointment]
+          Brendon, encontrei alguns horários disponíveis para agendarmos sua consulta. Por favor, escolha uma das opções abaixo:
+          
+          1. Terça-feira, 02 de junho, às 12h  
+          2. Terça-feira, 02 de junho, às 8h  
+          3. Sexta-feira, 05 de junho, às 15h  
+          4. Sexta-feira, 05 de junho, às 8h  
+          5. Segunda-feira, 08 de junho, às 16h  
+          
+          Aguardo sua resposta com o número da opção escolhida.
+
+  [21:26:09] 👤 Lead 
+          1
+
+  [21:26:19] 🤖 IA    [confirm_slot]
+          Seu agendamento está confirmado para terça-feira, 02 de junho, às 12h. A equipe estará esperando por você para a sua avaliação. 
+          
+          Se precisar de mais alguma informação ou tiver alguma dúvida antes da consulta, estou à disposição. Até breve!
+
+  [21:29:22] 👤 Lead 
+          Quero trocar o agendamento de amanhã para as 8h
+
+  [21:29:30] 🤖 IA    [reschedule_appointment]
+          Brendon, seu agendamento anterior foi cancelado. Agora, temos as seguintes opções disponíveis para a sua consulta:
+          
+          1. Terça-feira, 02 de junho, às 8h  
+          2. Terça-feira, 02 de junho, às 9h  
+          
+          Por favor, responda com o número da opção que você prefere.
+
+  [21:29:57] 👤 Lead 
+          1
+
+  [21:30:06] 🤖 IA    [confirm_slot]
+          Seu agendamento está confirmado para amanhã, 02 de junho, às 8h. A equipe estará esperando por você para a sua avaliação.
+          
+          Se precisar de qualquer informação adicional, não hesite em me chamar. Até amanhã!
+
+  [21:39:38] 👤 Lead 
+          Tenho consultas agendadas?
+
+  [21:39:46] 🤖 IA    [list_appointments]
+          Você tem uma consulta agendada para amanhã, 02 de junho, às 8h. 
+          
+          Caso precise de mais alguma informação ou tenha outras perguntas, estou à disposição para ajudar.
+
+  [21:41:21] 👤 Lead 
+          Boa noite
+
+  [21:41:25] 🤖 IA    [acknowledgment]
+          Boa noite, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [21:41:32] 👤 Lead 
+          3
+
+  [21:41:38] 🤖 IA    [price_inquiry]
+          O valor dos procedimentos é definido após a avaliação clínica, onde analisamos suas necessidades específicas. A taxa de avaliação é de R$100, que é integralmente abatida do tratamento caso você decida prosseguir. Esse é o primeiro passo para entendermos melhor o seu caso e apresentarmos um orçamento adequado.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [21:42:26] 👤 Lead 
+          Menu
+
+  [21:42:30] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [21:42:44] 👤 Lead 
+          4
+
+  [21:42:48] 🤖 IA    [general_question]
+          Estamos localizados na Rua das Flores, 123, no centro da cidade. O nosso horário de atendimento é de segunda a sexta-feira, das 8h às 18h.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [21:44:04] 👤 Lead 
+          Menu
+
+  [21:44:07] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [21:44:12] 👤 Lead 
+          5
+
+  [21:44:19] 🤖 IA    [needs_human]
+          Entendi que você gostaria de falar com um especialista. Já avisei a equipe e eles irão responder a sua solicitação em breve.
+
+  [21:44:35] 👤 Lead 
+          Oi
+
+  [21:44:41] 👤 Lead 
+          Você é um especialista?
+
+  [21:45:18] 👨‍⚕️ Op.  
+          Sim em que posso ajudá-lo?
+
+  [21:45:39] 👤 Lead 
+          Vi que o endereço que enviou mudou, está correto?
+
+  [04:03:01] 👤 Lead 
+          Boa noite
+
+  [04:03:06] 🤖 IA    [acknowledgment]
+          Bom dia, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [04:03:18] 👤 Lead 
+          3
+
+  [04:03:26] 🤖 IA    [price_inquiry]
+          O pagamento pode ser realizado por meio de cartão de crédito ou débito. O parcelamento é feito conforme o limite e as condições do seu cartão. É importante ressaltar que a clínica não atende convênios odontológicos, sendo o atendimento particular.
+          
+          Para o primeiro passo, realizamos uma avaliação que possui uma taxa, a qual é abatida do tratamento caso você decida prosseguir. 
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [04:04:01] 👤 Lead 
+          4
+
+  [04:04:10] 🤖 IA    [confirm_slot]
+          Infelizmente, o horário reservado anteriormente não está mais disponível. No entanto, temos novas opções para a sua avaliação. Veja as seguintes datas e horários:
+          
+          1. Terça-feira, 02/06 às 12h
+          2. Terça-feira, 02/06 às 8h
+          3. Sexta-feira, 05/06 às 15h
+          4. Sexta-feira, 05/06 às 8h
+          5. Segunda-feira, 08/06 às 16h
+          
+          Por favor, responda com o número correspondente ao horário que melhor lhe atende.
+
+  [04:04:20] 👤 Lead 
+          Menu
+
+  [04:04:24] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [04:04:30] 👤 Lead 
+          4
+
+  [04:04:34] 🤖 IA    [general_question]
+          A clínica está localizada na Rua das Flores, 123, no centro da cidade. O horário de atendimento é de segunda a sexta-feira, das 8h às 18h. 
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [11:20:36] 👤 Lead 
+          bom dia
+
+  [11:20:43] 🤖 IA    [acknowledgment]
+          Bom dia, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          5. Falar com um atendente
+
+  [11:21:22] 👤 Lead 
+          3
+
+  [11:21:42] 🤖 IA    [price_inquiry]
+          O pagamento é feito de forma particular, aceitando cartões de crédito e débito. O parcelamento é realizado conforme o limite e as condições do seu cartão. 
+          
+          Lembre-se de que a avaliação inicial possui uma taxa, que será abatida do tratamento caso você decida prosseguir. 
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [11:22:18] 👤 Lead 
+          menu
+
+  [11:22:21] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          5. Falar com um atendente
+
+  [11:22:26] 👤 Lead 
+          3
+
+  [11:22:32] 🤖 IA    [price_inquiry]
+          O pagamento é realizado de forma particular, aceitando cartões de crédito e débito. O parcelamento é conforme o limite e as condições do seu cartão. 
+          
+          A avaliação inicial possui uma taxa, que será abatida do tratamento caso você decida prosseguir. 
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [11:23:47] 👤 Lead 
+          menu
+
+  [11:23:51] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          5. Falar com um atendente
+
+  [11:23:55] 👤 Lead 
+          1
+
+  [11:24:00] 🤖 IA    [general_question]
+          Os procedimentos oferecidos incluem:
+          
+          1. 20 Lentes
+          2. Avaliação
+          3. Limpeza
+          4. Manutenção das lentes
+          
+          Quer saber mais sobre algum? É só digitar o número.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [11:25:51] 👤 Lead 
+          menu
+
+  [11:25:54] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          5. Falar com um atendente
+
+  [11:26:16] 👤 Lead 
+          2
+
+  [11:26:22] 🤖 IA    [book_appointment]
+          Encontrei alguns horários disponíveis para agendar sua consulta. Veja as opções abaixo:
+          
+          1. Terça-feira, 02 de junho, às 14h  
+          2. Sexta-feira, 05 de junho, às 15h  
+          3. Sexta-feira, 05 de junho, às 8h  
+          4. Segunda-feira, 08 de junho, às 16h  
+          5. Segunda-feira, 08 de junho, às 8h  
+          
+          Por favor, responda com o número do horário que melhor lhe convier.
+
+  [11:28:01] 👤 Lead 
+          4
+
+  [11:28:09] 🤖 IA    [confirm_slot]
+          Seu agendamento foi confirmado com sucesso para segunda-feira, 08 de junho, às 16h. A equipe estará esperando por você para a avaliação.
+          
+          Estamos localizados em um ambiente acolhedor, preparado para oferecer o melhor atendimento. Caso tenha alguma dúvida ou precise de mais informações, estou à disposição.
+
+  [02:20:24] 👨‍⚕️ Op.  
+          oi
+
+  [02:57:20] 👤 Lead 
+          Oi
+
+  [02:57:26] 🤖 IA    [acknowledgment]
+          Bom dia, Brendon Walefy! Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [02:57:50] 👤 Lead 
+          1
+
+  [02:57:59] 🤖 IA    [general_question]
+          Claro, Brendon! Aqui estão os procedimentos que oferecemos:
+          
+          1. BOTOX ODONTOLÓGICO  
+          2. CLAREAMENTO DENTAL  
+          3. EXODONTIA  
+          4. GENGIVOPLASTIA  
+          5. HARMONIZAÇÃO OROFACIAL  
+          6. IMPLANTES DENTÁRIOS  
+          7. LENTES DE PORCELANA (Facetas)  
+          8. LENTES DE RESINA COMPOSTA  
+          9. LIMPEZA DENTAL  
+          10. PRÓTESE DENTÁRIA  
+          11. RESTAURAÇÕES  
+          12. TRATAMENTO DE CANAL (Endodontia)  
+          
+          Quer saber mais sobre algum? É só digitar o número.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [02:58:25] 👤 Lead 
+          12
+
+  [02:59:30] 👤 Lead 
+          Menu
+
+  [02:59:35] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [02:59:53] 👤 Lead 
+          3
+
+  [03:00:00] 🤖 IA    [price_inquiry]
+          Os procedimentos podem ser parcelados em até 12 vezes, com acréscimo dos juros da operadora de cartão. Para iniciar, a avaliação custa R$100, que é integralmente descontado do tratamento caso você decida avançar. 
+          
+          Se precisar de mais informações ou tiver alguma dúvida, estou à disposição!
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [03:00:15] 👤 Lead 
+          Menu
+
+  [03:00:20] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [03:00:28] 👤 Lead 
+          4
+
+  [03:00:35] 🤖 IA    [general_question]
+          A clínica está localizada na Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP. Nossos horários de atendimento são de segunda a sexta-feira, das 9h às 18h.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [03:00:52] 👤 Lead 
+          Menu
+
+  [03:00:56] 🤖 IA    [acknowledgment]
+          Seja bem-vindo à Ximendes Odontologia. Sou a Mariana, recepcionista virtual da clínica e estou aqui para orientá-lo. Como posso ajudá-lo hoje?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [03:01:02] 👤 Lead 
+          5
+
+  [03:01:09] 🤖 IA    [needs_human]
+          Entendi, Brendon. Já avisei a equipe e um especialista irá entrar em contato com você em breve. Se precisar de mais alguma coisa, estou à disposição!
+
+  [03:01:37] 👨‍⚕️ Op.  
+          Oi
+
+  [03:01:58] 👨‍⚕️ Op.  
+          Aqui é o brendon testando as novas mudancas no banco de dados
+
+  [03:02:12] 👤 Lead 
+          Ok
+
+  [03:02:38] 👤 Lead 
+          Ok
+
+  [03:02:48] 🤖 IA    [acknowledgment]
+          Se precisar de mais informações ou tiver alguma dúvida, estou à disposição!
+
+  [13:26:21] 👨‍⚕️ Op.  
+          🧪 SPIKE — Texto puro (fallback)
+          
+          Se os botões acima falharem, esta é a mensagem que o paciente receberia.
+          
+          1. Botão A
+          2. Botão B
+          
+          Responda com o número ou o nome da opção.
+
+  [14:31:52] 👤 Lead 
+          Oi
+
