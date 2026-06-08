@@ -55,6 +55,7 @@ export type ComposerInput = {
     playbook: string | null;
     receptionistName?: string;
     commercialPolicy: string | null;
+    installmentTable?: string | null;
   };
   leadName?: string | null;
   timezone: ClinicTimezone;
@@ -117,7 +118,11 @@ ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}`;
 }
 
-export function buildActionContext(result: ActionResult, conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE): string {
+export function buildActionContext(
+  result: ActionResult,
+  conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE,
+  installmentTable?: string | null,
+): string {
   const isConcierge = conversationExperience === "concierge";
 
   switch (result.type) {
@@ -190,10 +195,17 @@ ${context}
 REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá responder em breve. Máximo 2 frases. NÃO diga que vai "verificar" — diga que já avisou a equipe.`;
     }
 
-    case "price_inquiry":
+    case "price_inquiry": {
+      const installmentInstruction = installmentTable
+        ? `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO: use a TABELA DE PARCELAMENTO abaixo — os valores já incluem a taxa da operadora, apresente-os diretamente sem mencionar taxa adicional.\n${installmentTable}`
+        : `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO (ex: "12x quanto fica?", "parcela em quantas vezes?"): calcule a parcela base (valor ÷ número de parcelas), apresente como "Nx de R$X — a taxa da maquininha fica com a operadora, não entra no valor da clínica 😊". NÃO invente uma porcentagem de taxa.`;
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
-Apresente os valores e condições descritos na política comercial do sistema. REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados. ${isConcierge ? "Depois de responder, conduza para a avaliação com uma pergunta leve quando houver interesse real." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
-
+Apresente os valores e condições descritos na política comercial do sistema. REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados.
+${installmentInstruction}
+SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes.
+SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o procedimento como se o destinatário fosse o paciente; sugira a avaliação presencial para que o dentista avalie o caso do paciente real.
+${isConcierge ? "Depois de responder, conduza para a avaliação com uma pergunta leve quando houver interesse real." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
+    }
 
     case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
@@ -291,6 +303,7 @@ export class ResponseComposer {
     const actionContext = buildActionContext(
       input.actionResult,
       input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
+      input.clinic.installmentTable,
     );
 
     // Histórico recente — filtra mensagens de sistema (marcadores internos como __appointment_confirmed__)

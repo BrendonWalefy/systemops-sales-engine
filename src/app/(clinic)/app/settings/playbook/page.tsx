@@ -23,6 +23,7 @@ async function getData() {
         greetingMessage: clinics.greetingMessage,
         menuItems: clinics.menuItems,
         receptionistPhone: clinics.receptionistPhone,
+        installmentRates: clinics.installmentRates,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
@@ -58,6 +59,7 @@ export default async function PlaybookPage() {
         greetingMessage: clinic?.greetingMessage ?? null,
         menuItems: (clinic?.menuItems as MenuItem[] | null) ?? null,
         receptionistPhone: clinic?.receptionistPhone ?? null,
+        installmentRates: (clinic?.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
       }}
       versions={versions.map((v) => ({
         id: v.id,

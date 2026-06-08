@@ -162,6 +162,7 @@ export async function updateClinicOperationalSettings(data: {
   greetingMessage?: string | null;
   menuItems?: MenuItem[] | null;
   receptionistPhone?: string | null;
+  installmentRates?: { n: number; rate: number; active: boolean }[] | null;
 }) {
   const CLINIC_ID = await requireSessionClinicId();
   await db

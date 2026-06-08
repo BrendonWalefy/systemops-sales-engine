@@ -419,10 +419,71 @@ export function buildLocationClinicContext(address: string | null): string {
   return `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
 }
 
-function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
+// ─── Cálculo de parcelas (flat rate exato) ───────────────────────────────────
+
+export type InstallmentRate = { n: number; rate: number; active: boolean };
+
+/** Parcela exata usando taxa flat da maquininha: preço ÷ (1 − taxa) ÷ N */
+export function calculateFlatInstallment(principal: number, flatRatePercent: number, n: number): number {
+  return Math.ceil(principal / (1 - flatRatePercent / 100) / n);
+}
+
+/**
+ * Gera tabela de parcelamento com taxas flat exatas da maquininha.
+ * Extrai preços da política comercial e aplica cada faixa ativa.
+ */
+export function buildInstallmentTable(
+  policy: string,
+  rates: InstallmentRate[],
+): string | null {
+  const activeRates = rates.filter((r) => r.active).sort((a, b) => a.n - b.n);
+  if (activeRates.length === 0) return null;
+
+  const matches = [...policy.matchAll(/R\$\s*([\d.]+(?:,\d{1,2})?)/g)];
+  const prices = [
+    ...new Set(
+      matches
+        .map((m) => parseFloat(m[1].replace(/\./g, "").replace(",", ".")))
+        .filter((v) => !isNaN(v) && v >= 200),
+    ),
+  ].sort((a, b) => a - b);
+
+  if (prices.length === 0) return null;
+
+  const rows = prices.map((price) => {
+    const opts = activeRates
+      .map((r) => `${r.n}x R$${calculateFlatInstallment(price, r.rate, r.n).toLocaleString("pt-BR")}`)
+      .join(" | ");
+    return `• R$${price.toLocaleString("pt-BR")}: ${opts}`;
+  });
+
+  return `TABELA DE PARCELAMENTO (taxa já embutida — apresente estes valores diretamente, sem mencionar taxa adicional):
+${rows.join("\n")}
+Se o lead pedir faixa não listada, indique a mais próxima. NUNCA diga "+ taxa" — a taxa já está nos valores acima.`;
+}
+
+// Tratamentos estéticos visíveis onde o contexto visual do sorriso ajuda a
+// personalizar a resposta. Chave: nome normalizado do tratamento.
+const AESTHETIC_TREATMENT_KEYWORDS = [
+  "lente", "faceta", "clareamento", "harmonização", "harmonizacao",
+  "gengivoplastia", "botox", "sorriso",
+];
+
+export function isAestheticTreatment(treatmentName: string): boolean {
+  const normalized = treatmentName.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  return AESTHETIC_TREATMENT_KEYWORDS.some((kw) => normalized.includes(kw));
+}
+
+// Instrução de convite à foto — posicionada como benefício ao paciente, nunca obrigatória.
+// Usada apenas em modo concierge e apenas para tratamentos estéticos visuais.
+function buildPhotoInviteInstruction(): string {
+  return `SE O LEAD AINDA NÃO ENVIOU FOTO DO SORRISO e demonstrou interesse neste procedimento: APÓS apresentar os benefícios e valores (mas ANTES da pergunta de agendamento), convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Me manda uma foto do seu sorriso quando quiser — assim consigo te dar uma ideia mais personalizada de como ficaria 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use "quando quiser" ou "se quiser"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita.`;
+}
+
+export function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
   const nextStep = item.requiresEvaluationFirst
-    ? "Ao final, pergunte de forma objetiva se o lead gostaria de verificar os horários disponíveis para uma avaliação."
-    : "Ao final, pergunte de forma objetiva se o lead gostaria de agendar ou verificar os horários disponíveis.";
+    ? "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você fazer a avaliação?' ou 'Quando você teria disponibilidade?'. Nunca pergunte 'Quer verificar?' (fechado). Pressuposto de avanço, não pedido de permissão."
+    : "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você?' ou 'Que dia fica melhor para você?'. Nunca pergunte 'Quer agendar?' (fechado). Pressuposto de avanço, não pedido de permissão.";
 
   const details = [
     `Lead selecionou o procedimento "${item.name}" em uma lista numerada.`,
@@ -431,8 +492,9 @@ function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy
       ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
       : "Explique o procedimento com naturalidade.",
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
+    experience === "concierge" && isAestheticTreatment(item.name) ? buildPhotoInviteInstruction() : null,
     nextStep,
-    "Mencione que o lead pode digitar *menu* a qualquer momento para ver outras opções.",
+    experience !== "concierge" ? "Mencione que o lead pode digitar *menu* a qualquer momento para ver outras opções." : null,
   ].filter(Boolean);
 
   const format = experience === "concierge"
@@ -442,10 +504,10 @@ function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy
   return `${details.join("\n")}\n${format}`;
 }
 
-function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
+export function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
   const nextStep = treatment.requiresEvaluationFirst
-    ? "Ao final, pergunte de forma objetiva se o lead gostaria de verificar os horários disponíveis para uma avaliação."
-    : "Ao final, pergunte de forma objetiva se o lead gostaria de agendar ou verificar os horários disponíveis.";
+    ? "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você fazer a avaliação?' ou 'Quando você teria disponibilidade?'. Nunca pergunte 'Quer verificar?' (fechado). Pressuposto de avanço, não pedido de permissão."
+    : "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você?' ou 'Que dia fica melhor para você?'. Nunca pergunte 'Quer agendar?' (fechado). Pressuposto de avanço, não pedido de permissão.";
 
   const details = [
     `Lead mencionou diretamente o tratamento "${treatment.name}".`,
@@ -455,6 +517,7 @@ function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: st
       : "Explique o procedimento com naturalidade.",
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
+    experience === "concierge" && isAestheticTreatment(treatment.name) ? buildPhotoInviteInstruction() : null,
     nextStep,
   ].filter(Boolean);
 
@@ -903,6 +966,9 @@ export class ConversationOrchestrator {
             toneOfVoice: editorial?.toneOfVoice ?? null,
             playbook: editorial?.playbookText ?? null,
             commercialPolicy: editorial?.commercialPolicy ?? null,
+            installmentTable: clinic.installmentRates && editorial?.commercialPolicy
+              ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
+              : null,
           },
           leadName: lead.name,
           timezone,

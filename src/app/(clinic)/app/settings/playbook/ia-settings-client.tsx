@@ -35,6 +35,7 @@ type ClinicData = {
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;
   receptionistPhone: string | null;
+  installmentRates: { n: number; rate: number; active: boolean }[] | null;
 };
 
 const INTENT_LABELS: Record<MenuItemIntent, string> = {
@@ -49,7 +50,7 @@ function defaultMenuItemsForExperience(experience: ConversationExperience): Menu
   return experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS;
 }
 
-type Tab = "geral" | "playbooks" | "procedimentos";
+type Tab = "geral" | "playbooks" | "procedimentos" | "financeiro";
 type SettingsFocusTarget = "takeover" | "buffer" | "hours";
 
 function timeAgo(date: Date): string {
@@ -824,6 +825,261 @@ function ProcedimentosTab({ treatments }: { treatments: Treatment[] }) {
   );
 }
 
+type InstallmentRow = { n: number; rate: number; active: boolean };
+
+const SAUDE_SERVICE_DEFAULTS: InstallmentRow[] = [
+  { n: 1,  rate: 2.99,  active: false },
+  { n: 2,  rate: 5.49,  active: false },
+  { n: 3,  rate: 5.99,  active: false },
+  { n: 4,  rate: 6.99,  active: true  },
+  { n: 5,  rate: 7.99,  active: true  },
+  { n: 6,  rate: 8.99,  active: false },
+  { n: 7,  rate: 9.99,  active: false },
+  { n: 8,  rate: 10.99, active: false },
+  { n: 9,  rate: 11.99, active: false },
+  { n: 10, rate: 12.99, active: true  },
+  { n: 11, rate: 13.99, active: false },
+  { n: 12, rate: 14.99, active: true  },
+  { n: 13, rate: 0,     active: false },
+  { n: 14, rate: 0,     active: false },
+  { n: 15, rate: 0,     active: false },
+  { n: 16, rate: 0,     active: false },
+  { n: 17, rate: 0,     active: false },
+  { n: 18, rate: 0,     active: false },
+  { n: 19, rate: 0,     active: false },
+  { n: 20, rate: 0,     active: false },
+  { n: 21, rate: 0,     active: false },
+  { n: 22, rate: 0,     active: false },
+  { n: 23, rate: 0,     active: false },
+  { n: 24, rate: 0,     active: false },
+];
+
+function calcPreview(principal: number, rate: number, n: number): string {
+  if (rate <= 0 || n <= 0) return "—";
+  const val = Math.ceil(principal / (1 - rate / 100) / n);
+  return `R$${val.toLocaleString("pt-BR")}`;
+}
+
+function FinanceiroTab({ clinic }: { clinic: ClinicData }) {
+  const [rows, setRows] = useState<InstallmentRow[]>(() => {
+    if (clinic.installmentRates && clinic.installmentRates.length > 0) {
+      const saved = new Map(clinic.installmentRates.map((r) => [r.n, r]));
+      return SAUDE_SERVICE_DEFAULTS.map((def) => saved.get(def.n) ?? def);
+    }
+    return SAUDE_SERVICE_DEFAULTS;
+  });
+  const [previewValue, setPreviewValue] = useState(2500);
+  const [previewInput, setPreviewInput] = useState("2.500");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function triggerSave(next: InstallmentRow[]) {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSaved(false);
+    saveTimer.current = setTimeout(async () => {
+      setSaving(true);
+      await updateClinicOperationalSettings({ installmentRates: next });
+      setSaving(false);
+      setSaved(true);
+    }, 800);
+  }
+
+  function updateRow(n: number, patch: Partial<InstallmentRow>) {
+    const next = rows.map((r) => (r.n === n ? { ...r, ...patch } : r));
+    setRows(next);
+    triggerSave(next);
+  }
+
+  const current12 = rows.slice(0, 12);
+  const future = rows.slice(12);
+
+  return (
+    <div style={{ maxWidth: "720px", display: "flex", flexDirection: "column", gap: "28px" }}>
+
+      {/* Header + preview input */}
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700, color: "#fafafa" }}>Parcelamento</h2>
+          <p style={{ margin: 0, fontSize: "13px", color: "#52525b" }}>
+            Configure as taxas da sua maquininha. A IA apresenta os valores já com taxa embutida.
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+          <span style={{ fontSize: "12px", color: "#52525b" }}>Simular para</span>
+          <div style={{ position: "relative" }}>
+            <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", fontSize: "12px", color: "#71717a" }}>R$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={previewInput}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/\D/g, "");
+                const num = parseInt(raw) || 0;
+                setPreviewValue(num);
+                setPreviewInput(num.toLocaleString("pt-BR"));
+              }}
+              style={{ ...geralInputStyle, width: "110px", paddingLeft: "28px", fontSize: "13px", padding: "7px 10px 7px 26px" }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Grade 1x–12x */}
+      <div>
+        <p style={{ margin: "0 0 12px", fontSize: "11px", fontWeight: 700, color: "#3f3f46", letterSpacing: "0.07em" }}>ATÉ 12x — OPERADORA ATUAL</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+          {current12.map((row) => (
+            <div
+              key={row.n}
+              style={{
+                background: row.active ? "rgba(16,185,129,0.05)" : "rgba(255,255,255,0.02)",
+                border: `1px solid ${row.active ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.07)"}`,
+                borderRadius: "12px",
+                padding: "14px 12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                transition: "all 150ms",
+              }}
+            >
+              {/* Número da parcela + toggle */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "18px", fontWeight: 700, color: row.active ? "#fafafa" : "#52525b" }}>
+                  {row.n}x
+                </span>
+                <button
+                  onClick={() => updateRow(row.n, { active: !row.active })}
+                  style={{
+                    width: "32px", height: "18px", borderRadius: "9px", border: "none",
+                    background: row.active ? "#10b981" : "rgba(255,255,255,0.1)",
+                    cursor: "pointer", position: "relative", transition: "background 200ms", flexShrink: 0,
+                  }}
+                >
+                  <span style={{
+                    position: "absolute", top: "3px",
+                    left: row.active ? "16px" : "3px",
+                    width: "12px", height: "12px", borderRadius: "50%",
+                    background: "#fff", transition: "left 200ms",
+                  }} />
+                </button>
+              </div>
+
+              {/* Taxa */}
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={row.rate === 0 ? "" : String(row.rate).replace(".", ",")}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9,]/g, "");
+                    const num = parseFloat(raw.replace(",", "."));
+                    updateRow(row.n, { rate: isNaN(num) ? 0 : num });
+                  }}
+                  placeholder="0,00"
+                  style={{
+                    width: "52px", background: "transparent", border: "none",
+                    borderBottom: `1px solid ${row.active ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.1)"}`,
+                    color: row.active ? "#e4e4e7" : "#52525b", fontSize: "13px",
+                    outline: "none", padding: "2px 0", textAlign: "right",
+                    fontFamily: "inherit",
+                  }}
+                />
+                <span style={{ fontSize: "11px", color: "#52525b" }}>%</span>
+              </div>
+
+              {/* Preview */}
+              <span style={{
+                fontSize: "11px",
+                fontWeight: row.active ? 600 : 400,
+                color: row.active ? "#34d399" : "#3f3f46",
+              }}>
+                {row.active && row.rate > 0
+                  ? calcPreview(previewValue, row.rate, row.n)
+                  : "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Grade 13x–24x (Em breve) */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+          <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: "#3f3f46", letterSpacing: "0.07em" }}>13x – 24x — NOVA OPERADORA</p>
+          <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", background: "rgba(251,191,36,0.08)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.15)" }}>
+            Em breve
+          </span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+          {future.map((row) => (
+            <div
+              key={row.n}
+              style={{
+                background: "rgba(255,255,255,0.01)",
+                border: "1px solid rgba(255,255,255,0.05)",
+                borderRadius: "12px",
+                padding: "14px 12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                opacity: 0.5,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "18px", fontWeight: 700, color: "#3f3f46" }}>{row.n}x</span>
+                <button
+                  onClick={() => updateRow(row.n, { active: !row.active })}
+                  style={{
+                    width: "32px", height: "18px", borderRadius: "9px", border: "none",
+                    background: row.active ? "#10b981" : "rgba(255,255,255,0.08)",
+                    cursor: "pointer", position: "relative", transition: "background 200ms",
+                  }}
+                >
+                  <span style={{
+                    position: "absolute", top: "3px",
+                    left: row.active ? "16px" : "3px",
+                    width: "12px", height: "12px", borderRadius: "50%",
+                    background: "#fff", transition: "left 200ms",
+                  }} />
+                </button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={row.rate === 0 ? "" : String(row.rate).replace(".", ",")}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9,]/g, "");
+                    const num = parseFloat(raw.replace(",", "."));
+                    updateRow(row.n, { rate: isNaN(num) ? 0 : num });
+                  }}
+                  placeholder="—"
+                  style={{
+                    width: "52px", background: "transparent", border: "none",
+                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                    color: "#52525b", fontSize: "13px",
+                    outline: "none", padding: "2px 0", textAlign: "right",
+                    fontFamily: "inherit",
+                  }}
+                />
+                <span style={{ fontSize: "11px", color: "#3f3f46" }}>%</span>
+              </div>
+              <span style={{ fontSize: "11px", color: "#3f3f46" }}>—</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Status save */}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#52525b" }}>
+        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: saving ? "#fbbf24" : saved ? "#10b981" : "#3f3f46", flexShrink: 0, display: "inline-block" }} />
+        {saving ? "Salvando..." : saved ? "Configurações salvas" : "Alterações salvas automaticamente"}
+      </div>
+    </div>
+  );
+}
+
 export function IASettingsClient({ clinic, versions, treatments }: { clinic: ClinicData; versions: Version[]; treatments: Treatment[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("geral");
@@ -840,6 +1096,7 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
     { id: "geral", label: "Comportamento" },
     { id: "playbooks", label: "Playbooks" },
     { id: "procedimentos", label: "Procedimentos" },
+    { id: "financeiro", label: "Financeiro" },
   ];
 
   return (
@@ -1031,6 +1288,7 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
         )}
 
         {tab === "procedimentos" && <ProcedimentosTab treatments={treatments} />}
+        {tab === "financeiro" && <FinanceiroTab clinic={clinic} />}
       </div>
     </div>
   );

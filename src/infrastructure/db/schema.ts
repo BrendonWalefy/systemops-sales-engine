@@ -123,6 +123,8 @@ export const clinics = pgTable("clinics", {
   billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
   isTest: boolean("is_test").notNull().default(false),
   receptionistPhone: text("receptionist_phone"),
+  // Taxa flat por faixa de parcela { n, rate (%), active }. Null = fallback "taxa da maquininha".
+  installmentRates: jsonb("installment_rates").$type<{ n: number; rate: number; active: boolean }[]>(),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──
