@@ -1,10 +1,11 @@
-// Testes para o fluxo de mídia inbound (foto/vídeo/documento):
+// Testes para:
 //   1. buildActionContext("media_received") — template correto por tipo de mídia
-//   2. Regras de negócio do template — sem diagnóstico, sem prazo, sem pedido de mais fotos
+//   2. sanitizeForTts — limpeza de texto antes de síntese de voz
 
 import { describe, it, expect } from "vitest";
 import { buildActionContext } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult } from "@/core/intelligence/ResponseComposer";
+import { sanitizeForTts } from "@/infrastructure/adapters/ai/tts/openai-tts-gateway";
 
 // ─── buildActionContext para media_received ────────────────────────────────────
 
@@ -59,5 +60,50 @@ describe("buildActionContext — media_received", () => {
     expect(photoResult).not.toBe(videoResult);
     expect(photoResult).not.toBe(docResult);
     expect(videoResult).not.toBe(docResult);
+  });
+});
+
+// ─── sanitizeForTts ───────────────────────────────────────────────────────────
+
+describe("sanitizeForTts", () => {
+  it("remove emojis comuns de respostas da IA", () => {
+    expect(sanitizeForTts("Olá! 😊 Tudo bem?")).toBe("Olá! Tudo bem?");
+    expect(sanitizeForTts("Até logo! 👋")).toBe("Até logo!");
+    expect(sanitizeForTts("Perfeito 🙏")).toBe("Perfeito");
+  });
+
+  it("remove formatação WhatsApp bold/italic/strikethrough/code", () => {
+    expect(sanitizeForTts("*negrito* normal")).toBe("negrito normal");
+    expect(sanitizeForTts("_itálico_ normal")).toBe("itálico normal");
+    expect(sanitizeForTts("~tachado~ normal")).toBe("tachado normal");
+    expect(sanitizeForTts("`código` normal")).toBe("código normal");
+  });
+
+  it("transforma quebra de linha dupla em pausa de frase", () => {
+    const result = sanitizeForTts("Primeira frase.\n\nSegunda frase.");
+    expect(result).toBe("Primeira frase.. Segunda frase.");
+  });
+
+  it("transforma quebra simples em pausa leve (vírgula)", () => {
+    const result = sanitizeForTts("Linha um\nLinha dois");
+    expect(result).toBe("Linha um, Linha dois");
+  });
+
+  it("colapsa espaços múltiplos", () => {
+    expect(sanitizeForTts("texto   com    espaços")).toBe("texto com espaços");
+  });
+
+  it("preserva texto sem formatação intacto", () => {
+    const plain = "Boa tarde, tudo bem com você? Estou aqui para ajudar.";
+    expect(sanitizeForTts(plain)).toBe(plain);
+  });
+
+  it("mensagem típica da IA: remove emojis + asteriscos", () => {
+    const aiMsg = "*Boa tarde*, Karen! 😊\nRecebi sua solicitação e vou verificar os horários disponíveis para você!";
+    const result = sanitizeForTts(aiMsg);
+    expect(result).not.toContain("*");
+    expect(result).not.toContain("😊");
+    expect(result).toContain("Boa tarde");
+    expect(result).toContain("Karen");
   });
 });
