@@ -44,6 +44,7 @@ export default async function PlaybookEditorPage({
         commercialPolicy: version.commercialPolicy ?? "",
         objections: version.objections.length > 0 ? version.objections : [],
         notes: version.notes ?? "",
+        mediaLibrary: (version.mediaLibrary as { id: string; title: string; url: string; type: "video" | "image" }[] | null) ?? [],
       }}
     />
   );

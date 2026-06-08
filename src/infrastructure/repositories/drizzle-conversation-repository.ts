@@ -60,6 +60,8 @@ export class DrizzleConversationRepository implements ConversationRepository {
           conversationId: message.conversationId,
           author: message.author,
           body: message.body,
+          mediaUrl: message.mediaUrl ?? null,
+          mediaType: message.mediaType ?? null,
           sentAt: message.sentAt,
           externalId: message.externalId,
           intent: message.intent ?? null,
@@ -112,6 +114,8 @@ function mapMessageRow(row: typeof messages.$inferSelect): Message {
     conversationId: row.conversationId,
     author: row.author,
     body: row.body,
+    mediaUrl: row.mediaUrl ?? null,
+    mediaType: (row.mediaType as Message["mediaType"]) ?? null,
     sentAt: row.sentAt,
     externalId: row.externalId,
   };

@@ -27,6 +27,13 @@ export type EditorialProcedure = {
   description: string | null;
 };
 
+export type MediaLibraryItem = {
+  id: string;
+  title: string;
+  url: string;
+  type: "video" | "image";
+};
+
 export type EditorialConfig = {
   specialty: string | null;
   toneOfVoice: string | null;
@@ -35,6 +42,7 @@ export type EditorialConfig = {
   receptionistName: string;
   differentials: string[];
   objections: { objection: string; response: string }[];
+  mediaLibrary: MediaLibraryItem[];
   /** Texto pronto para o prompt, composto a partir dos campos estruturados. */
   playbookText: string;
 };
@@ -76,6 +84,7 @@ export function composePlaybookText(parts: {
   objections?: { objection: string; response: string }[] | null;
   procedures?: EditorialProcedure[];
   notes?: string | null;
+  mediaLibrary?: MediaLibraryItem[] | null;
 }): string {
   const sections: string[] = [];
 
@@ -102,6 +111,13 @@ export function composePlaybookText(parts: {
   if (objections.length > 0) {
     const text = objections.map((o) => `- "${o.objection}" → ${o.response}`).join("\n");
     sections.push(`COMO LIDAR COM OBJEÇÕES:\n${text}`);
+  }
+
+  if (parts.mediaLibrary && parts.mediaLibrary.length > 0) {
+    const items = parts.mediaLibrary
+      .map((m) => `• [${m.type === "video" ? "VÍDEO" : "FOTO"}] ${m.title}: ${m.url}`)
+      .join("\n");
+    sections.push(`MÍDIA DISPONÍVEL PARA ENVIAR (quando relevante para o lead):\n${items}`);
   }
 
   return sections.join("\n\n");
@@ -144,6 +160,8 @@ export async function resolveActiveEditorialConfig(
   const differentials = (activeVersion.differentials as string[] | null) ?? [];
   const objections =
     (activeVersion.objections as { objection: string; response: string }[] | null) ?? [];
+  const mediaLibrary =
+    (activeVersion.mediaLibrary as MediaLibraryItem[] | null) ?? [];
 
   return {
     specialty: activeVersion.specialty,
@@ -154,12 +172,14 @@ export async function resolveActiveEditorialConfig(
     procedures,
     differentials,
     objections,
+    mediaLibrary,
     playbookText: composePlaybookText({
       procedureDescription: activeVersion.procedureDescription,
       differentials,
       objections,
       procedures,
       notes: activeVersion.notes,
+      mediaLibrary,
     }),
   };
 }

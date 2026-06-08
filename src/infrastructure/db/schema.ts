@@ -125,6 +125,7 @@ export const clinics = pgTable("clinics", {
   receptionistPhone: text("receptionist_phone"),
   // Taxa flat por faixa de parcela { n, rate (%), active }. Null = fallback "taxa da maquininha".
   installmentRates: jsonb("installment_rates").$type<{ n: number; rate: number; active: boolean }[]>(),
+  voiceResponseEnabled: boolean("voice_response_enabled").notNull().default(false),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──
@@ -261,6 +262,8 @@ export const messages = pgTable(
       .references(() => conversations.id),
     author: messageAuthorEnum("author").notNull(),
     body: text("body").notNull(),
+    mediaUrl: text("media_url"),
+    mediaType: text("media_type").$type<"image" | "video" | "audio" | "document">(),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
     externalId: text("external_id"),
     intent: text("intent"),
@@ -544,6 +547,10 @@ export const playbookVersions = pgTable(
     notes: text("notes"),
     objections: jsonb("objections")
       .$type<{ objection: string; response: string }[]>()
+      .notNull()
+      .default([]),
+    mediaLibrary: jsonb("media_library")
+      .$type<{ id: string; title: string; url: string; type: "video" | "image" }[]>()
       .notNull()
       .default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

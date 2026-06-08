@@ -50,6 +50,7 @@ export type Clinic = {
   postAppointmentBufferMinutes: number;
   defaultAppointmentDurationMinutes: number;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
+  voiceResponseEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 };

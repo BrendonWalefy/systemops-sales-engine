@@ -17,6 +17,7 @@ type PlaybookVersionData = {
   commercialPolicy?: string | null;
   objections?: { objection: string; response: string }[];
   notes?: string | null;
+  mediaLibrary?: { id: string; title: string; url: string; type: "video" | "image" }[];
 };
 
 function compileToClinicFields(data: PlaybookVersionData) {
@@ -163,6 +164,7 @@ export async function updateClinicOperationalSettings(data: {
   menuItems?: MenuItem[] | null;
   receptionistPhone?: string | null;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
+  voiceResponseEnabled?: boolean;
 }) {
   const CLINIC_ID = await requireSessionClinicId();
   await db

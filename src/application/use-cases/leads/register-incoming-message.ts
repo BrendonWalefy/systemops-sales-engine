@@ -106,6 +106,8 @@ export class RegisterIncomingMessage {
       conversationId: conversation.id,
       author: "lead",
       body: input.message.body,
+      mediaUrl: input.message.mediaUrl ?? null,
+      mediaType: input.message.mediaType ?? null,
       sentAt: input.message.receivedAt,
       externalId: input.message.externalMessageId,
     };

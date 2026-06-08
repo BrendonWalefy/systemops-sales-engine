@@ -22,8 +22,10 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { sendTextMessage, sendMediaMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { OpenAiTtsGateway } from "@/infrastructure/adapters/ai/tts/openai-tts-gateway";
+import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -549,9 +551,41 @@ function buildClinic(row: ClinicRow): Clinic {
     postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
     defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
     installmentRates: (row.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
+    voiceResponseEnabled: row.voiceResponseEnabled ?? false,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/**
+ * Envia a resposta da IA. Se voiceEnabled, sintetiza áudio via TTS, faz upload
+ * no Vercel Blob, envia o áudio e deleta o blob logo após. Em caso de falha no
+ * TTS, cai silenciosamente para o envio de texto.
+ */
+async function sendReply(
+  to: string,
+  text: string,
+  config: ClinicChannelConfig,
+  voiceEnabled: boolean,
+): Promise<string | null> {
+  if (voiceEnabled) {
+    try {
+      const tts = new OpenAiTtsGateway();
+      const storage = new VercelBlobStorageGateway();
+      const audioBuffer = await tts.synthesize(text, { format: "mp3" });
+      const blobUrl = await storage.upload(`tts/${randomUUID()}.mp3`, audioBuffer, {
+        contentType: "audio/mpeg",
+      });
+      const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
+      await storage.delete(blobUrl).catch((e) =>
+        console.warn("[TTS] Blob delete failed:", e),
+      );
+      return msgId;
+    } catch (err) {
+      console.error("[TTS] Falhou, enviando texto:", err);
+    }
+  }
+  return sendTextMessage(to, text, config);
 }
 
 export class ConversationOrchestrator {
@@ -579,6 +613,8 @@ export class ConversationOrchestrator {
     timestamp: Date;
     replyEnabled?: boolean;
     channelClinicId?: string;
+    mediaUrl?: string;
+    mediaType?: "image" | "video" | "audio" | "document";
   }): Promise<{ replied: boolean }> {
     const { clinicId, phone, messageText, messageId, senderName, timestamp } = params;
     const replyEnabled = params.replyEnabled ?? true;
@@ -703,6 +739,8 @@ export class ConversationOrchestrator {
         channel: "whatsapp",
         externalThreadId: channelAddress,
         body: messageText,
+        mediaUrl: params.mediaUrl ?? null,
+        mediaType: params.mediaType ?? null,
         receivedAt: timestamp,
       },
     });
@@ -1555,7 +1593,7 @@ export class ConversationOrchestrator {
     }
 
     // ── 9. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
-    const zapiMessageId = await sendTextMessage(outboundAddress, replyText, channelConfig);
+    const zapiMessageId = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled);
 
     // ── 9.1 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;

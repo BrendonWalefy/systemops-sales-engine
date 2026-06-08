@@ -222,12 +222,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const replyEnabled = clinicRow?.autoReplyEnabled !== false;
 
-  // Mensagem inbound do lead: texto digitado ou áudio transcrito.
+  // Mensagem inbound do lead: texto digitado, áudio transcrito, ou mídia (imagem/vídeo/documento).
   let messageText: string | null = null;
+  let inboundMediaUrl: string | null = null;
+  let inboundMediaType: "image" | "video" | "audio" | "document" | null = null;
 
   if (body.text?.message) {
     messageText = body.text.message;
   } else if (body.audio?.audioUrl) {
+    inboundMediaUrl = body.audio.audioUrl;
+    inboundMediaType = "audio";
     if (!replyEnabled) {
       messageText = "[áudio recebido]";
     } else {
@@ -244,8 +248,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         messageText = "[áudio] Transcrição automática indisponível. O lead enviou um áudio, mas não foi possível baixar ou transcrever. Peça para ele escrever a mensagem.";
       }
     }
+  } else if (body.image?.imageUrl) {
+    inboundMediaUrl = body.image.imageUrl;
+    inboundMediaType = "image";
+    messageText = body.image.caption?.trim() || "[imagem recebida]";
+  } else if (body.video?.videoUrl) {
+    inboundMediaUrl = body.video.videoUrl;
+    inboundMediaType = "video";
+    messageText = body.video.caption?.trim() || "[vídeo recebido]";
+  } else if (body.document?.documentUrl) {
+    inboundMediaUrl = body.document.documentUrl;
+    inboundMediaType = "document";
+    messageText = `[documento] ${body.document.fileName ?? "arquivo recebido"}`;
   } else {
-    // Mídia não suportada (imagem, sticker, vídeo, reação)
+    // Sticker, reação ou tipo não suportado — ignora silenciosamente
     return new NextResponse("OK", { status: 200 });
   }
 
@@ -263,6 +279,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         timestamp: body.momment ? new Date(body.momment) : new Date(),
         replyEnabled,
         channelClinicId: resolution.channelClinicId,
+        mediaUrl: inboundMediaUrl ?? undefined,
+        mediaType: inboundMediaType ?? undefined,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(

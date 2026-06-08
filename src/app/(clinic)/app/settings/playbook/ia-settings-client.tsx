@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone, Sparkles, ListChecks } from "lucide-react";
+import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone, Sparkles, ListChecks, Mic } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
@@ -36,6 +36,7 @@ type ClinicData = {
   menuItems: MenuItem[] | null;
   receptionistPhone: string | null;
   installmentRates: { n: number; rate: number; active: boolean }[] | null;
+  voiceResponseEnabled: boolean;
 };
 
 const INTENT_LABELS: Record<MenuItemIntent, string> = {
@@ -433,6 +434,8 @@ function GeralTab({
 }) {
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
+  const [voiceEnabled, setVoiceEnabled] = useState(clinic.voiceResponseEnabled);
+  const [voiceTogglePending, startVoiceToggleTransition] = useTransition();
 
   const initialExperience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const customMenuRef = useRef(clinic.menuItems !== null);
@@ -452,6 +455,14 @@ function GeralTab({
   const businessHoursInputRef = useRef<HTMLInputElement>(null);
   const takeoverInputRef = useRef<HTMLInputElement>(null);
   const bufferInputRef = useRef<HTMLInputElement>(null);
+
+  function handleVoiceToggle() {
+    const next = !voiceEnabled;
+    setVoiceEnabled(next);
+    startVoiceToggleTransition(async () => {
+      await updateClinicOperationalSettings({ voiceResponseEnabled: next });
+    });
+  }
 
   const triggerSave = useCallback((patch: {
     greetingMessage?: string;
@@ -554,6 +565,29 @@ function GeralTab({
               <span style={{ position: "absolute", top: "3px", left: enabled ? "23px" : "3px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Resposta por voz */}
+      <div className="ia-status-card" style={cardStyle}>
+        <div className="ia-status-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "14px" }}>
+          <div className="ia-status-main" style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
+            <div style={iconBoxStyle}>
+              <Mic size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Resposta por Voz</strong>
+                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(voiceEnabled ? { background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
+                  {voiceEnabled ? "Ativa" : "Desativada"}
+                </span>
+              </div>
+              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>IA envia áudios de voz em vez de texto (OpenAI TTS)</p>
+            </div>
+          </div>
+          <button onClick={handleVoiceToggle} disabled={voiceTogglePending} style={{ width: "44px", height: "24px", borderRadius: "12px", border: "none", background: voiceEnabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: voiceTogglePending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: voiceTogglePending ? 0.7 : 1 }}>
+            <span style={{ position: "absolute", top: "3px", left: voiceEnabled ? "23px" : "3px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
+          </button>
         </div>
       </div>
 

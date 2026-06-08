@@ -141,6 +141,7 @@ export async function POST(
           takeoverTtlHours: clinic.takeoverTtlHours,
           postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
           defaultAppointmentDurationMinutes: clinic.defaultAppointmentDurationMinutes,
+          voiceResponseEnabled: clinic.voiceResponseEnabled ?? false,
           createdAt: clinic.createdAt,
           updatedAt: clinic.updatedAt,
         },

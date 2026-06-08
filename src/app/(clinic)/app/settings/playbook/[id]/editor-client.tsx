@@ -15,11 +15,13 @@ import {
   Sparkles,
   UserRound,
   X,
+  Film,
 } from "lucide-react";
 import { updatePlaybookVersion } from "../playbook-version-actions";
 import type { FieldTarget } from "@/core/intelligence/FieldComposer";
 
 type Objection = { objection: string; response: string };
+type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
 type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
 
 type EditorData = {
@@ -30,6 +32,7 @@ type EditorData = {
   commercialPolicy: string;
   objections: Objection[];
   notes: string;
+  mediaLibrary: MediaItem[];
 };
 
 type Props = {
@@ -592,6 +595,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           commercialPolicy: newData.commercialPolicy || null,
           objections: newData.objections.filter((o) => o.objection.trim()),
           notes: newData.notes || null,
+          mediaLibrary: newData.mediaLibrary.filter((m) => m.title.trim() && m.url.trim()),
         });
         setSaving(false);
         setSaved(true);
@@ -637,6 +641,17 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
     const next = [...data.objections];
     next[index] = parseObjectionRewrite(text, next[index]);
     updateVersion({ objections: next });
+  }
+
+  function addMediaItem() {
+    const newItem: MediaItem = { id: crypto.randomUUID(), title: "", url: "", type: "video" };
+    updateVersion({ mediaLibrary: [...data.mediaLibrary, newItem] });
+  }
+  function updateMediaItem(id: string, patch: Partial<MediaItem>) {
+    updateVersion({ mediaLibrary: data.mediaLibrary.map((m) => m.id === id ? { ...m, ...patch } : m) });
+  }
+  function removeMediaItem(id: string) {
+    updateVersion({ mediaLibrary: data.mediaLibrary.filter((m) => m.id !== id) });
   }
 
   const pct = completude(data);
@@ -1071,6 +1086,44 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
 
                   <button type="button" onClick={addObjection} style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(0,212,170,0.04)", border: "1px dashed rgba(0,212,170,0.3)", borderRadius: "12px", color: "#00d4aa", cursor: "pointer", fontSize: "13px", fontWeight: 600, padding: "12px", justifyContent: "center" }}>
                     <Plus size={13} /> Adicionar objeção
+                  </button>
+                </div>
+              </EditorSection>
+
+              <EditorSection step="4" title="Biblioteca de mídia" description="Vídeos e imagens que a IA pode enviar ao lead quando relevante (ex: vídeo do procedimento).">
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {data.mediaLibrary.map((item) => (
+                    <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto auto", gap: "8px", alignItems: "center", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "10px 12px" }}>
+                      <input
+                        value={item.title}
+                        onChange={(e) => updateMediaItem(item.id, { title: e.target.value })}
+                        placeholder="Título (ex: Lentes de Contato)"
+                        style={{ ...inputStyle, fontSize: "13px", padding: "7px 10px" }}
+                      />
+                      <input
+                        value={item.url}
+                        onChange={(e) => updateMediaItem(item.id, { url: e.target.value })}
+                        placeholder="URL pública do vídeo ou imagem"
+                        style={{ ...inputStyle, fontSize: "13px", padding: "7px 10px" }}
+                      />
+                      <select
+                        value={item.type}
+                        onChange={(e) => updateMediaItem(item.id, { type: e.target.value as "video" | "image" })}
+                        style={{ ...inputStyle, fontSize: "12px", padding: "7px 10px", width: "80px" }}
+                      >
+                        <option value="video">Vídeo</option>
+                        <option value="image">Imagem</option>
+                      </select>
+                      <button type="button" onClick={() => removeMediaItem(item.id)} style={iconBtnStyle}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {data.mediaLibrary.length === 0 && (
+                    <p style={{ fontSize: "12px", color: "#52525b", margin: 0 }}>Nenhuma mídia cadastrada. Adicione URLs de vídeos ou fotos do doutor para a IA enviar automaticamente.</p>
+                  )}
+                  <button type="button" onClick={addMediaItem} style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(0,212,170,0.04)", border: "1px dashed rgba(0,212,170,0.3)", borderRadius: "12px", color: "#00d4aa", cursor: "pointer", fontSize: "13px", fontWeight: 600, padding: "12px", justifyContent: "center" }}>
+                    <Film size={13} /> Adicionar mídia
                   </button>
                 </div>
               </EditorSection>

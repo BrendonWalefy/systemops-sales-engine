@@ -6,6 +6,8 @@ type Msg = {
   id: string;
   author: string;
   body: string;
+  mediaUrl?: string | null;
+  mediaType?: "image" | "video" | "audio" | "document" | null;
   sentAt: Date | string;
 };
 
@@ -14,6 +16,43 @@ const TZ = "America/Sao_Paulo";
 function formatTime(sentAt: Date | string): string {
   const d = sentAt instanceof Date ? sentAt : new Date(sentAt);
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
+}
+
+function MediaPreview({ url, type }: { url?: string | null; type?: string | null }) {
+  if (!url || !type) return null;
+
+  if (type === "image") {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginBottom: "4px" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt="imagem" style={{ maxWidth: "220px", maxHeight: "180px", borderRadius: "8px", display: "block", objectFit: "cover" }} />
+      </a>
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <video controls src={url} style={{ maxWidth: "280px", borderRadius: "8px", display: "block", marginBottom: "4px" }}>
+        <track kind="captions" />
+      </video>
+    );
+  }
+
+  if (type === "audio") {
+    return (
+      <audio controls src={url} style={{ width: "220px", display: "block", marginBottom: "4px" }} />
+    );
+  }
+
+  if (type === "document") {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#34d399", marginBottom: "4px" }}>
+        📎 Documento
+      </a>
+    );
+  }
+
+  return null;
 }
 
 interface Props {
@@ -119,7 +158,8 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
                 {!isRight && <span className="lead-badge">{displayName}</span>}
                 <span className="message-time">{formatTime(msg.sentAt)}</span>
               </div>
-              <p>{msg.body}</p>
+              <MediaPreview url={msg.mediaUrl} type={msg.mediaType} />
+              {msg.body && <p>{msg.body}</p>}
             </div>
           );
         })}

@@ -28,6 +28,7 @@ const clinic: Clinic = {
   takeoverTtlHours: 4,
   postAppointmentBufferMinutes: 60,
   defaultAppointmentDurationMinutes: 60,
+  voiceResponseEnabled: false,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 };

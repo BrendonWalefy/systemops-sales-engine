@@ -92,6 +92,20 @@
       "when": 1780954140015,
       "tag": "0012_installment_rate",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1749427200000,
+      "tag": "0013_media_support",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1749513600000,
+      "tag": "0014_voice_and_media_library",
+      "breakpoints": true
     }
   ]
 }
