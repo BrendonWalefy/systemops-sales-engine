@@ -49,6 +49,7 @@ export type Clinic = {
   takeoverTtlHours: number;
   postAppointmentBufferMinutes: number;
   defaultAppointmentDurationMinutes: number;
+  installmentRates?: { n: number; rate: number; active: boolean }[] | null;
   createdAt: Date;
   updatedAt: Date;
 };

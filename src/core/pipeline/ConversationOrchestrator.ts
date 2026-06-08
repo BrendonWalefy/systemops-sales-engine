@@ -548,6 +548,7 @@ function buildClinic(row: ClinicRow): Clinic {
     takeoverTtlHours: row.takeoverTtlHours,
     postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
     defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
+    installmentRates: (row.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

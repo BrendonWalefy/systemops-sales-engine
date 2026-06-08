@@ -32,9 +32,10 @@ function makeTreatment(name: string, requiresEval = false): Treatment {
 
 function makeProcedureItem(name: string, requiresEval = false) {
   return {
-    id: name.toLowerCase().replace(/\s+/g, "-"),
+    index: 1,
+    treatmentId: name.toLowerCase().replace(/\s+/g, "-"),
     name,
-    number: 1,
+    durationMinutes: 60,
     description: null,
     requiresEvaluationFirst: requiresEval,
   };
@@ -157,10 +158,6 @@ describe("buildDirectTreatmentContext — photo hook (concierge + estético)", (
 // ─── 4. Cálculo de parcelas em price_inquiry ─────────────────────────────────
 
 describe("calculateFlatInstallment — cálculo exato com taxa flat da maquininha", () => {
-  const rates12 = [{ n: 12, rate: 11.99, active: true }];
-  const rates6  = [{ n: 6,  rate: 8.99,  active: true }];
-  const rates4  = [{ n: 4,  rate: 6.99,  active: true }];
-
   it("12x a 11,99% flat → R$237 (igual screenshot da maquininha)", () => {
     // 2500 / (1 - 0.1199) / 12 = 2840.59 / 12 = 236.72 → ceil → 237
     expect(calculateFlatInstallment(2500, 11.99, 12)).toBe(237);
