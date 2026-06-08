@@ -8,13 +8,16 @@ import {
   whatsappMessageCosts,
 } from "@/infrastructure/db/schema";
 import { eq, sum, and, gte } from "drizzle-orm";
-import { TrendingUp, DollarSign, Percent, AlertCircle, ArrowLeft, FlaskConical } from "lucide-react";
+import { TrendingUp, DollarSign, Percent, AlertCircle, ArrowLeft, FlaskConical, Activity } from "lucide-react";
 
-// Custos de infra mensais em BRL (centavos)
+// Custos de infra mensais em BRL (centavos) — auditados em jun/2026
+// Vercel: Hobby plan (gratuito). Neon: Free tier (gratuito, DB < 30 MB).
+// Z-API: R$79,99/instância (fatura 24/05/2026, plano "Meu número").
+// Estes valores devem ser revisados ao migrar de plano.
 const INFRA_FIXED_BRL = {
-  vercel: 10000,        // R$ 100 (Pro plan ~$20 ≈ R$100)
-  neon: 9500,           // R$ 95
-  zapi_per_clinic: 15000, // R$ 150 por clínica (instância dedicada)
+  vercel: 0,            // Hobby (gratuito até ~20 clínicas)
+  neon: 0,              // Free tier (gratuito até 512 MB / 100 CU-hrs)
+  zapi_per_clinic: 7999, // R$ 79,99 por instância (confirmado fatura jun/2026)
 };
 
 // Preços dos planos em centavos
@@ -295,11 +298,11 @@ export default async function FinanceiroPage() {
           {/* Layout mobile: lista de linhas com valor visível */}
           <div style={{ display: "flex", flexDirection: "column" }}>
             {[
-              { label: "Vercel Pro", note: "fixo", value: INFRA_FIXED_BRL.vercel },
-              { label: "Neon (PostgreSQL)", note: "fixo", value: INFRA_FIXED_BRL.neon },
+              { label: "Vercel", note: "Hobby — gratuito", value: INFRA_FIXED_BRL.vercel },
+              { label: "Neon (PostgreSQL)", note: "Free tier — gratuito", value: INFRA_FIXED_BRL.neon },
               {
-                label: `Z-API produção (${nProdClinics} instância${nProdClinics !== 1 ? "s" : ""})`,
-                note: `${nProdClinics} × R$150`,
+                label: `Z-API (${nProdClinics} instância${nProdClinics !== 1 ? "s" : ""})`,
+                note: `${nProdClinics} × R$79,99`,
                 value: infraVar,
               },
               {
@@ -531,10 +534,73 @@ export default async function FinanceiroPage() {
           </div>
         )}
 
+        {/* Benchmark do piloto — dados reais auditados jun/2026 */}
+        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+          <div
+            style={{
+              padding: "14px 18px 12px",
+              borderBottom: "1px solid var(--line)",
+              background: "var(--surface-soft)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <Activity size={13} style={{ color: "var(--accent-strong)" }} />
+            <p className="eyebrow" style={{ margin: 0 }}>Benchmark do piloto — Ximendes Odontologia (jun/2026)</p>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+              gap: 0,
+            }}
+          >
+            {[
+              { label: "Custo total/mês", value: "R$ 82,49", note: "Z-API R$79,99 + OpenAI R$2,50" },
+              { label: "Receita (Starter)", value: "R$ 897,00", note: "plano confirmado" },
+              { label: "Margem bruta", value: "91%", note: "R$ 814/mês de lucro bruto", highlight: true },
+              { label: "Custo por lead", value: "R$ 2,29", note: "36 leads no período" },
+              { label: "Custo por agendamento", value: "R$ 6,87", note: "12 agendamentos" },
+              { label: "Custo OpenAI (IA)", value: "R$ 2,11", note: "$0.41 em 12 dias de piloto" },
+            ].map((item, i) => (
+              <div
+                key={item.label}
+                style={{
+                  padding: "14px 18px",
+                  borderRight: "1px solid var(--line)",
+                  borderBottom: "1px solid var(--line)",
+                }}
+              >
+                <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 4 }}>{item.label}</span>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 800,
+                    letterSpacing: "-0.03em",
+                    color: item.highlight ? "var(--accent-strong)" : "var(--text)",
+                    display: "block",
+                  }}
+                >
+                  {item.value}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{item.note}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: "10px 18px", background: "var(--surface-soft)", borderTop: "1px solid var(--line)" }}>
+            <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
+              Projeção para 5 clínicas: ~R$415/mês de custo · ~R$4.485/mês MRR · margem ~91%.
+              Vercel e Neon permanecem gratuitos até ~15 clínicas ativas.
+            </p>
+          </div>
+        </div>
+
         {/* Nota de cotação */}
         <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
           Cotação USD/BRL utilizada: R${USD_TO_BRL.toFixed(2)} (estimativa estática). Custos de IA em USD são convertidos apenas para referência.
           {nTestClinics > 0 && " Clínicas de teste excluídas do MRR e da margem."}
+          {" "}Custos de infra auditados em jun/2026: Vercel Hobby (R$0), Neon Free (R$0), Z-API R$79,99/instância.
         </p>
       </div>
     </div>
