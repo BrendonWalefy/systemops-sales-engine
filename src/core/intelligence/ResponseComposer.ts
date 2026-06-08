@@ -43,7 +43,8 @@ export type ActionResult =
   | { type: "reengagement"; lastAppointmentLabel: string }
   | { type: "appointment_reminder"; appointmentLabel: string }
   | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] }
-  | { type: "patient_arrived"; appointmentTime: Date | null };
+  | { type: "patient_arrived"; appointmentTime: Date | null }
+  | { type: "media_received"; mediaType: "image" | "video" | "document" };
 
 export type ComposerInput = {
   actionResult: ActionResult;
@@ -272,6 +273,13 @@ REGRAS OBRIGATÓRIAS:
 3. NÃO ofereça menu, NÃO ofereça agendamento, NÃO faça perguntas.
 4. Máximo 2 frases curtas e calorosas.
 Exemplo de tom: "Olá! Já avisamos a equipe sobre sua chegada — em instantes você será atendido 😊"`;
+    }
+
+    case "media_received": {
+      const artigo = result.mediaType === "image" ? "a foto" : result.mediaType === "video" ? "o vídeo" : "o arquivo";
+      const recebido = result.mediaType === "image" ? "Recebi sua foto" : result.mediaType === "video" ? "Recebi seu vídeo" : "Recebi seu arquivo";
+      return `AÇÃO EXECUTADA: Lead enviou ${artigo} para avaliação pelo especialista.
+${recebido}! Informe acolhedoramente que ${artigo} foi recebido(a) e que o especialista irá avaliar o caso pessoalmente. Diga que a equipe retorna em breve com orientações. Máximo 2 frases. Tom caloroso e profissional. NÃO peça mais fotos. NÃO dê diagnóstico. NÃO mencione prazo específico que não possa cumprir.`;
     }
 
     case "appointment_reminder":

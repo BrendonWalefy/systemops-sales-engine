@@ -558,6 +558,36 @@ function buildClinic(row: ClinicRow): Clinic {
 }
 
 /**
+ * Baixa a mídia do CDN do Z-API e rehospeda no Vercel Blob para persistência longa.
+ * Fire-and-forget: falhas são logadas mas não propagadas.
+ * Atualiza o campo media_url do registro de mensagem após o upload.
+ */
+async function rehostLeadMedia(
+  messageId: string,
+  originalUrl: string,
+  mediaType: "image" | "video" | "document",
+): Promise<void> {
+  try {
+    const res = await fetch(originalUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) {
+      console.warn(`[MediaRehoster] Download falhou (${res.status}) para msg ${messageId}`);
+      return;
+    }
+    const buffer = await res.arrayBuffer();
+    const contentType =
+      res.headers.get("content-type") ??
+      (mediaType === "image" ? "image/jpeg" : mediaType === "video" ? "video/mp4" : "application/octet-stream");
+    const ext = mediaType === "image" ? "jpg" : mediaType === "video" ? "mp4" : "bin";
+    const storage = new VercelBlobStorageGateway();
+    const blobUrl = await storage.upload(`lead-media/${messageId}.${ext}`, buffer, { contentType });
+    await db.update(messagesTable).set({ mediaUrl: blobUrl }).where(eq(messagesTable.id, messageId));
+    console.log(`[MediaRehoster] ${mediaType} rehostado em Blob para msg ${messageId}`);
+  } catch (err) {
+    console.warn(`[MediaRehoster] Falha silenciosa para msg ${messageId}:`, err);
+  }
+}
+
+/**
  * Envia a resposta da IA. Se voiceEnabled, sintetiza áudio via TTS, faz upload
  * no Vercel Blob, envia o áudio e deleta o blob logo após. Em caso de falha no
  * TTS, cai silenciosamente para o envio de texto.
@@ -726,7 +756,7 @@ export class ConversationOrchestrator {
       now: () => new Date(),
     });
 
-    const { lead, conversation } = await registerUseCase.execute({
+    const { lead, conversation, message: incomingMessage } = await registerUseCase.execute({
       clinicId,
       message: {
         externalMessageId: messageId,
@@ -748,6 +778,90 @@ export class ConversationOrchestrator {
     const outboundAddress =
       resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
       channelAddress;
+
+    // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
+    // Rehospeda no Blob (persistência), encaminha para o doutor no WhatsApp e pausa a IA.
+    // Áudio é tratado separadamente pelo pipeline de transcrição — não entra aqui.
+    const inboundMediaType = params.mediaType;
+    if (inboundMediaType === "image" || inboundMediaType === "video" || inboundMediaType === "document") {
+      // Rehospeda de forma assíncrona: Z-API URLs expiram em horas
+      if (params.mediaUrl) {
+        rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType)
+          .catch(() => { /* já logado dentro da função */ });
+      }
+
+      // Encaminha para o WhatsApp do doutor com contexto + mídia original
+      const receptionistPhone = clinic.receptionistPhone;
+      if (receptionistPhone) {
+        const mediaLabel = inboundMediaType === "image" ? "foto" : inboundMediaType === "video" ? "vídeo" : "documento";
+        const artigo = inboundMediaType === "image" ? "uma" : "um";
+        const leadName = lead.name ?? outboundAddress;
+        const contextMsg = `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nResponda neste chat — sua resposta será encaminhada automaticamente ao lead.`;
+        sendTextMessage(receptionistPhone, contextMsg, channelConfig)
+          .catch(e => console.warn("[MediaForward] contexto falhou:", e));
+        if (params.mediaUrl) {
+          sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig)
+            .catch(e => console.warn("[MediaForward] mídia falhou:", e));
+        }
+      }
+
+      // Notifica operadores via push
+      await this.notifier.execute(clinicId, {
+        title: lead.name ?? phone,
+        body: `Enviou ${inboundMediaType === "image" ? "uma foto" : "um " + inboundMediaType} para avaliação`,
+        url: `/app/inbox/${conversation.id}`,
+      }).catch(() => {});
+
+      // Se IA está pausada ou auto-reply desligado, o doutor já está no controle — sem resposta automática
+      if (!replyEnabled || conversation.aiPaused) {
+        return { replied: false };
+      }
+
+      // IA ativa: responde ao lead com mensagem específica e pausa
+      const mediaHistory = await this.conversationRepo.listMessages(conversation.id);
+      const mediaComposed = await this.responseComposer.compose({
+        actionResult: { type: "media_received", mediaType: inboundMediaType },
+        conversationHistory: mediaHistory,
+        clinic: {
+          name: clinic.name,
+          specialty: editorial?.specialty ?? clinic.specialty,
+          toneOfVoice: editorial?.toneOfVoice ?? null,
+          playbook: editorial?.playbookText ?? null,
+          commercialPolicy: editorial?.commercialPolicy ?? null,
+          installmentTable: null,
+        },
+        leadName: lead.name,
+        timezone,
+        isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
+        conversationExperience: clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
+        resumedFromHumanTakeover: false,
+      });
+      const mediaReplyText = mediaComposed.text;
+
+      const attentionReason = `Lead enviou ${inboundMediaType === "image" ? "foto" : inboundMediaType} para avaliação`;
+      const now = new Date();
+      await db.update(conversationsTable).set({
+        aiPaused: true,
+        takeoverExpiresAt: null,
+        needsAttention: true,
+        attentionReason,
+        updatedAt: now,
+      }).where(eq(conversationsTable.id, conversation.id));
+
+      const mediaAgentId = randomUUID();
+      const zapiMediaMsgId = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled);
+      await this.conversationRepo.appendMessage({
+        id: mediaAgentId,
+        conversationId: conversation.id,
+        author: "agent",
+        body: mediaReplyText,
+        sentAt: now,
+        externalId: zapiMediaMsgId ?? null,
+        intent: "needs_human",
+      });
+
+      return { replied: true };
+    }
 
     if (!replyEnabled) {
       const leadDisplayName = lead.name ?? channelAddress;
