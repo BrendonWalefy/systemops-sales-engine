@@ -54,6 +54,13 @@ REGRAS GERAIS:
 - "quanto custa", "qual o valor", "tem plano" → intent = "price_inquiry"
 - "dor", "urgência", "sangramento", "emergência", "urgente" → intent = "clinical_urgency"
 
+REGRA CRÍTICA — nome de tratamento SEM intenção de agendar → "general_question":
+- "book_appointment" exige INTENÇÃO EXPLÍCITA de agendar: palavras como "marcar", "agendar", "reservar", "quero fazer", "quero agendar", "pode marcar", "queria agendar".
+- Quando o lead menciona um tratamento SEM nenhuma dessas palavras (ex: "lentes", "implante", "clareamento", "quero saber sobre lentes", "me fala de lentes", "o que é lentes") → intent = "general_question", NÃO "book_appointment".
+- Isso vale mesmo que "lentes" (ou outro tratamento) esteja na lista de procedimentos da clínica.
+- Exemplos de "general_question": "lentes", "implante", "lentes de contato", "clareamento dental", "quero saber sobre implante", "me conta sobre lentes".
+- Exemplos de "book_appointment": "quero agendar lentes", "marcar lentes", "quero fazer implante", "pode marcar um horário para lentes".
+
 REGRAS CRÍTICAS PARA ENCERRAMENTO E RECONHECIMENTO:
 - "opa blz", "blz", "ok", "entendi", "certo", "tá", "tá bom", "legal", "bacana", "perfeito", "combinado", "show" quando há histórico de conversa → intent = "acknowledgment"
 - "obrigado" isolado após receber informação (ex: após receber resposta sobre preço, formas de pagamento, procedimentos) → intent = "acknowledgment"
