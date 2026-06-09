@@ -19,6 +19,7 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 let orchestrator: ConversationOrchestrator | null = null;
 function getOrchestrator() {
