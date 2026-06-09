@@ -110,6 +110,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Mensagem enviada pela instância Z-API (fromMe: true)
   // Pode ser: (a) echo da IA enviando via API ou (b) operador digitando no celular
+  // QA routes são excluídas: o testador envia do próprio número (fromMe=true) mas
+  // deve ser tratado como lead — não pausa a IA.
   if (body.fromMe) {
     // Sem texto → mídia, sticker, reação — ignora
     if (!body.text?.message) return new NextResponse("OK", { status: 200 });
@@ -117,86 +119,90 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const resolution = await resolveWebhookClinic(body, clinicIdOverride);
     if (!resolution) return new NextResponse("OK", { status: 200 });
     logQaRoute(resolution, body.phone);
-    const clinicId = resolution.clinicId;
 
-    try {
-      // 1ª verificação: messageId já está no banco → echo já registrado → ignora
-      const [existing] = await db
-        .select({ id: messages.id })
-        .from(messages)
-        .where(eq(messages.externalId, body.messageId))
-        .limit(1);
+    // QA route: não trata como operador — cai no fluxo de lead abaixo
+    if (!resolution.isQaRoute) {
+      const clinicId = resolution.clinicId;
 
-      if (existing) return new NextResponse("OK", { status: 200 });
+      try {
+        // 1ª verificação: messageId já está no banco → echo já registrado → ignora
+        const [existing] = await db
+          .select({ id: messages.id })
+          .from(messages)
+          .where(eq(messages.externalId, body.messageId))
+          .limit(1);
 
-      // Busca conversa pelo identificador WhatsApp (telefone e/ou @lid).
-      const contactIdentifiers = buildContactIdentifiersFromWebhook({
-        phone: body.phone,
-        chatLid: body.chatLid,
-      });
-      const leadRepo = new DrizzleLeadRepository();
-      const conversationRepo = new DrizzleConversationRepository();
-      const match = await findConversationByWhatsAppContact({
-        clinicId,
-        identifiers: contactIdentifiers,
-        senderName: body.senderName,
-        channel: "whatsapp",
-        leadRepository: leadRepo,
-        conversationRepository: conversationRepo,
-        idGenerator: randomUUID,
-        now: new Date(),
-      });
+        if (existing) return new NextResponse("OK", { status: 200 });
 
-      if (!match) {
-        console.log(
-          `[ZApi] fromMe sem conversa ativa — clinicId=${clinicId} phone=${body.phone} chatLid=${body.chatLid ?? "—"}`,
-        );
-        return new NextResponse("OK", { status: 200 });
-      }
+        // Busca conversa pelo identificador WhatsApp (telefone e/ou @lid).
+        const contactIdentifiers = buildContactIdentifiersFromWebhook({
+          phone: body.phone,
+          chatLid: body.chatLid,
+        });
+        const leadRepo = new DrizzleLeadRepository();
+        const conversationRepo = new DrizzleConversationRepository();
+        const match = await findConversationByWhatsAppContact({
+          clinicId,
+          identifiers: contactIdentifiers,
+          senderName: body.senderName,
+          channel: "whatsapp",
+          leadRepository: leadRepo,
+          conversationRepository: conversationRepo,
+          idGenerator: randomUUID,
+          now: new Date(),
+        });
 
-      const conv = { id: match.conversation.id };
-
-      // 2ª verificação (race condition): echo da IA chegou antes do Orchestrator salvar.
-      // Filtrado pela conversa específica para evitar falsos positivos com textos idênticos
-      // em conversas de outros leads (ex: dois leads recebem "Olá!" em <10s).
-      const tenSecondsAgo = new Date(Date.now() - 10_000);
-      const [recentAgent] = await db
-        .select({ id: messages.id, externalId: messages.externalId })
-        .from(messages)
-        .where(
-          and(
-            eq(messages.conversationId, conv.id),
-            eq(messages.author, "agent"),
-            eq(messages.body, body.text.message),
-            gte(messages.sentAt, tenSecondsAgo),
-          ),
-        )
-        .limit(1);
-
-      if (recentAgent) {
-        // Atualiza o externalId do agente se ainda não foi preenchido (race condition)
-        if (!recentAgent.externalId) {
-          await db
-            .update(messages)
-            .set({ externalId: body.messageId })
-            .where(eq(messages.id, recentAgent.id));
+        if (!match) {
+          console.log(
+            `[ZApi] fromMe sem conversa ativa — clinicId=${clinicId} phone=${body.phone} chatLid=${body.chatLid ?? "—"}`,
+          );
+          return new NextResponse("OK", { status: 200 });
         }
-        return new NextResponse("OK", { status: 200 });
+
+        const conv = { id: match.conversation.id };
+
+        // 2ª verificação (race condition): echo da IA chegou antes do Orchestrator salvar.
+        // Filtrado pela conversa específica para evitar falsos positivos com textos idênticos
+        // em conversas de outros leads (ex: dois leads recebem "Olá!" em <10s).
+        const tenSecondsAgo = new Date(Date.now() - 10_000);
+        const [recentAgent] = await db
+          .select({ id: messages.id, externalId: messages.externalId })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, conv.id),
+              eq(messages.author, "agent"),
+              eq(messages.body, body.text.message),
+              gte(messages.sentAt, tenSecondsAgo),
+            ),
+          )
+          .limit(1);
+
+        if (recentAgent) {
+          // Atualiza o externalId do agente se ainda não foi preenchido (race condition)
+          if (!recentAgent.externalId) {
+            await db
+              .update(messages)
+              .set({ externalId: body.messageId })
+              .where(eq(messages.id, recentAgent.id));
+          }
+          return new NextResponse("OK", { status: 200 });
+        }
+
+        // Nenhuma verificação bateu → é o operador enviando do celular
+        const [clinicRow] = await db
+          .select({ takeoverTtlHours: clinics.takeoverTtlHours })
+          .from(clinics)
+          .where(eq(clinics.id, clinicId))
+          .limit(1);
+        const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
+        await handleOperatorMessageFromPhone(body, conv.id, ttlHours);
+      } catch (err) {
+        console.error("[ZApi] Erro ao processar mensagem fromMe:", err);
       }
 
-      // Nenhuma verificação bateu → é o operador enviando do celular
-      const [clinicRow] = await db
-        .select({ takeoverTtlHours: clinics.takeoverTtlHours })
-        .from(clinics)
-        .where(eq(clinics.id, clinicId))
-        .limit(1);
-      const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
-      await handleOperatorMessageFromPhone(body, conv.id, ttlHours);
-    } catch (err) {
-      console.error("[ZApi] Erro ao processar mensagem fromMe:", err);
+      return new NextResponse("OK", { status: 200 });
     }
-
-    return new NextResponse("OK", { status: 200 });
   }
 
   const resolution = await resolveWebhookClinic(body, clinicIdOverride);
