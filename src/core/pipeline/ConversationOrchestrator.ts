@@ -1044,31 +1044,11 @@ export class ConversationOrchestrator {
       /^\d+$/.test(nMsg) &&
       clinicMenuItems.some(i => i.enabled && nMsg === String(i.number));
 
-    const directTreatmentMention = !hasPendingOffer &&
-      !isMenuActive &&
-      menuResolution === null &&
-      procedureSelection === null &&
-      !resetRequested &&
-      !menuReRequested &&
-      !isStaleConversation &&
-      !isolatedGreeting
-        ? resolveDirectTreatmentMention(messageText, clinicTreatments, lastAgentMessage?.body ?? null)
-        : null;
-
     const skipLlm = procedureSelection !== null || menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
-    const classification = directTreatmentMention
-      ? {
-          intent: "general_question" as IntentType,
-          slotPreference: nullSlotPref,
-          confidence: 1,
-          shouldAskClarification: false,
-          clarificationQuestion: null as null,
-          handoffReason: null as null,
-        }
-      : procedureSelection
+    const classification = procedureSelection
       ? {
           intent: "general_question" as IntentType,
           slotPreference: nullSlotPref,
@@ -1649,27 +1629,30 @@ export class ConversationOrchestrator {
 
         if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
-        } else if (directTreatmentMention) {
-          const treatmentKeyword = directTreatmentMention.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
-          const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
-          if (notesHasTrigger) {
-            // Entrega determinística: extrai o FORMATO OBRIGATÓRIO das notas e monta as partes
-            // sem chamar o LLM — garante que [MEDIA:id] ficam na posição correta.
-            const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
-            if (template) {
-              triggerPartsOverride = parseIntoParts(template);
-              composedParts = triggerPartsOverride;
-              composedMediaIds = triggerPartsOverride
-                .filter((p): p is { type: "media"; id: string } => p.type === "media")
-                .map((p) => p.id);
-              replyText = triggerPartsOverride
-                .filter((p): p is { type: "text"; content: string } => p.type === "text")
-                .map((p) => p.content)
-                .join(" ");
+        } else if (classification.slotPreference.identifiedTreatment) {
+          const matchedTreatment = clinicTreatments.find(t => t.name === classification.slotPreference.identifiedTreatment) ?? null;
+          if (matchedTreatment) {
+            const treatmentKeyword = matchedTreatment.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
+            const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
+            if (notesHasTrigger) {
+              const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
+              if (template) {
+                triggerPartsOverride = parseIntoParts(template);
+                composedParts = triggerPartsOverride;
+                composedMediaIds = triggerPartsOverride
+                  .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                  .map((p) => p.id);
+                replyText = triggerPartsOverride
+                  .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                  .map((p) => p.content)
+                  .join(" ");
+              }
+              clinicContext = "";
+            } else {
+              clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
             }
-            clinicContext = ""; // não usado quando triggerPartsOverride está ativo
           } else {
-            clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null, experience);
+            clinicContext = "";
           }
         } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
           if (menuGeneralSubtype === "procedures") {
