@@ -1,6 +1,7 @@
 /**
- * Patch: atualiza o notes da versão ativa da BW Odontologia
- * para o formato vídeo-primeiro intercalado.
+ * Patch: atualiza o notes da versão ativa da BW Odontologia.
+ * Busca os IDs reais dos vídeos da biblioteca e os hardcoda no notes
+ * para que o LLM não precise "adivinhar" o ID pelo título.
  *
  * Run: npx dotenv -e .env.local -- tsx scripts/patch-bw-notes-video-first.ts
  */
@@ -19,43 +20,77 @@ const db = drizzle(sql);
 
 const CLINIC_ID = "5a2ce07d-cfa1-4108-9a3c-3d1fae017067";
 
-const NOTES = `ESPECIALIDADE DO DR. GREGORIE:
+type MediaItem = { id: string; title: string; type: string };
+
+function buildNotes(idSimplificada: string, idEstratificada: string): string {
+  return `ESPECIALIDADE DO DR. GREGORIE:
 O Dr. Gregorie é especialista em lentes de resina composta. Toda conversa sobre lentes tem prioridade máxima e segue a sequência abaixo sem exceção.
 
-TRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: "lentes", "técnica", "simplificada", "estratificada", "lentes de contato dental", "faceta", "faceta de resina", "resina nos dentes", "lente no dente", "lentes de porcelana" ou pedir agendamento relacionado a lentes. NUNCA mostre horários antes de concluir os passos abaixo, mesmo quando a ação for de agendamento.
+TRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: "lentes", "técnica", "simplificada", "estratificada", "lentes de contato dental", "faceta", "faceta de resina", "resina nos dentes", "lente no dente", "lentes de porcelana" ou pedir agendamento relacionado a lentes.
 
-Passo 1 — apresente cada técnica em dois blocos separados. Em cada bloco: primeiro a explicação em prosa, depois o vídeo correspondente (tag [MEDIA:id] na linha seguinte à explicação).
+PROIBIÇÕES ABSOLUTAS durante este trigger:
+- NÃO mencione preços ou valores de nenhuma técnica — isso vem depois, se o lead perguntar
+- NÃO peça foto do sorriso
+- NÃO ofereça agendamento nem avaliação antes de concluir o Passo 2
+- NÃO combine as duas técnicas em um único parágrafo — cada uma tem seu bloco separado
+- NÃO mostre horários disponíveis
 
-Bloco A — Técnica Simplificada: escreva em prosa corrida "A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo." Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Simplificada (busque na biblioteca pelo título — deve conter "simplificada").
+FORMATO OBRIGATÓRIO — dois blocos em sequência, nesta ordem exata:
 
-Bloco B — Técnica Estratificada: escreva em prosa corrida "A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético." Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Estratificada (busque na biblioteca pelo título — deve conter "estratificada").
+Bloco A — escreva exatamente este texto em prosa: "A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo." Na linha seguinte, escreva exatamente: [MEDIA:${idSimplificada}]
 
-Passo 2 — após os dois blocos, pergunte: "Ficou com mais alguma dúvida sobre as técnicas?" Se o lead tiver dúvidas, responda de forma consultiva antes de seguir. Se não houver dúvidas, pergunte qual o melhor período para ele e ofereça os horários disponíveis com o Dr. Gregorie.
+Bloco B — escreva exatamente este texto em prosa: "A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético." Na linha seguinte, escreva exatamente: [MEDIA:${idEstratificada}]
+
+Após os dois blocos: pergunte "Ficou com mais alguma dúvida sobre as técnicas?" Se o lead tiver dúvidas, responda de forma consultiva. Se não houver dúvidas, pergunte qual o melhor período e ofereça os horários disponíveis com o Dr. Gregorie.
 
 CONDUTA ESPECÍFICA DA CLÍNICA:
 Só ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço só ao confirmar agendamento ou se o lead perguntar diretamente.`;
+}
 
 async function main() {
-  console.log("🔧 Patch: BW Odontologia — notes para formato vídeo-primeiro\n");
+  console.log("🔧 Patch: BW Odontologia — notes com IDs reais + PROIBIÇÕES\n");
 
-  const result = await db
-    .update(playbookVersions)
-    .set({ notes: NOTES, updatedAt: new Date() })
-    .where(
-      and(
-        eq(playbookVersions.clinicId, CLINIC_ID),
-        eq(playbookVersions.status, "active"),
-      ),
-    )
-    .returning({ id: playbookVersions.id, name: playbookVersions.name });
+  // 1. Busca versão ativa e biblioteca de mídia
+  const [version] = await db
+    .select({ id: playbookVersions.id, name: playbookVersions.name, mediaLibrary: playbookVersions.mediaLibrary })
+    .from(playbookVersions)
+    .where(and(eq(playbookVersions.clinicId, CLINIC_ID), eq(playbookVersions.status, "active")))
+    .limit(1);
 
-  if (result.length === 0) {
+  if (!version) {
     console.error("❌ Nenhuma versão ativa encontrada para BW Odontologia");
     process.exit(1);
   }
 
-  console.log(`✅ Notes atualizado: "${result[0].name}" (${result[0].id})`);
-  console.log("   → Formato: texto Simplificada + [MEDIA:id-s] + texto Estratificada + [MEDIA:id-e] + pergunta de dúvidas");
+  const library = (version.mediaLibrary ?? []) as MediaItem[];
+  console.log(`📚 Biblioteca de mídia (${library.length} itens):`);
+  library.forEach((m) => console.log(`   • [${m.type}] id="${m.id}" — ${m.title}`));
+
+  // 2. Encontra os vídeos das técnicas
+  const simplificada = library.find((m) => m.title.toLowerCase().includes("simplificada"));
+  const estratificada = library.find((m) => m.title.toLowerCase().includes("estratificada"));
+
+  if (!simplificada || !estratificada) {
+    console.error("❌ Vídeos não encontrados na biblioteca.");
+    console.error(`   simplificada: ${simplificada ? simplificada.title : "NÃO ENCONTRADO"}`);
+    console.error(`   estratificada: ${estratificada ? estratificada.title : "NÃO ENCONTRADO"}`);
+    process.exit(1);
+  }
+
+  console.log(`\n✅ Vídeo Simplificada: "${simplificada.title}" → id="${simplificada.id}"`);
+  console.log(`✅ Vídeo Estratificada: "${estratificada.title}" → id="${estratificada.id}"\n`);
+
+  // 3. Atualiza notes com IDs hardcodados
+  const notes = buildNotes(simplificada.id, estratificada.id);
+
+  await db
+    .update(playbookVersions)
+    .set({ notes, updatedAt: new Date() })
+    .where(eq(playbookVersions.id, version.id));
+
+  console.log(`✅ Notes atualizado: "${version.name}" (${version.id})`);
+  console.log(`   → IDs hardcodados: [MEDIA:${simplificada.id}] e [MEDIA:${estratificada.id}]`);
+  console.log(`   → PROIBIÇÕES adicionadas: sem preços, sem foto, sem agenda antes do Passo 2`);
   await sql.end();
 }
 
