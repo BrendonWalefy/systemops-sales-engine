@@ -58,13 +58,20 @@ const CLINIC_ID = "5a2ce07d-cfa1-4108-9a3c-3d1fae017067";
 const NOTES = `ESPECIALIDADE DO DR. GREGORIE:
 O Dr. Gregorie é especialista em lentes de resina composta. Toda conversa sobre lentes tem prioridade máxima e segue a sequência abaixo sem exceção.
 
-TRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: "lentes", "técnica", "simplificada", "estratificada", "lentes de contato dental", "faceta", "faceta de resina", "resina nos dentes", "lente no dente", "lentes de porcelana" ou pedir agendamento relacionado a lentes. NUNCA mostre horários antes de concluir os passos abaixo, mesmo quando a ação for de agendamento.
+TRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: "lentes", "técnica", "simplificada", "estratificada", "lentes de contato dental", "faceta", "faceta de resina", "resina nos dentes", "lente no dente", "lentes de porcelana" ou pedir agendamento relacionado a lentes.
 
-Passo 1 — apresente cada técnica em dois blocos separados. Em cada bloco: primeiro a explicação em prosa, depois o vídeo correspondente (tag [MEDIA:id] na linha seguinte à explicação).
+PROIBIÇÕES ABSOLUTAS durante este trigger:
+- NÃO mencione preços ou valores de nenhuma técnica — isso vem depois, se o lead perguntar
+- NÃO peça foto do sorriso
+- NÃO ofereça agendamento nem avaliação antes de concluir o Passo 2
+- NÃO combine as duas técnicas em um único parágrafo — cada uma tem seu bloco separado
+- NÃO mostre horários disponíveis
 
-Bloco A — Técnica Simplificada: escreva em prosa corrida "A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo." Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Simplificada (busque na biblioteca pelo título — deve conter "simplificada").
+FORMATO OBRIGATÓRIO — dois blocos em sequência, nesta ordem exata:
 
-Bloco B — Técnica Estratificada: escreva em prosa corrida "A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético." Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Estratificada (busque na biblioteca pelo título — deve conter "estratificada").
+Bloco A — escreva exatamente este texto em prosa: "A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo." Na linha seguinte, escreva exatamente: [MEDIA:3f5354c0-b6bc-460c-9dfe-e6df59517709]
+
+Bloco B — escreva exatamente este texto em prosa: "A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético." Na linha seguinte, escreva exatamente: [MEDIA:70da6047-75bf-4062-8a20-6c7ef39a8682]
 
 Passo 2 — após os dois blocos, pergunte: "Ficou com mais alguma dúvida sobre as técnicas?" Se o lead tiver dúvidas, responda de forma consultiva antes de seguir. Se não houver dúvidas, pergunte qual o melhor período para ele e ofereça os horários disponíveis com o Dr. Gregorie.
 
