@@ -24,6 +24,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
     "@auth/core": "^0.40.0",
+    "@fal-ai/client": "^1.10.1",
     "@neondatabase/serverless": "^1.1.0",
     "@schedule-x/calendar": "^4.6.0",
     "@schedule-x/drag-and-drop": "^3.7.3",

@@ -142,6 +142,7 @@ export async function POST(
           postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
           defaultAppointmentDurationMinutes: clinic.defaultAppointmentDurationMinutes,
           voiceResponseEnabled: clinic.voiceResponseEnabled ?? false,
+          ttsVoice: clinic.ttsVoice ?? "nova",
           createdAt: clinic.createdAt,
           updatedAt: clinic.updatedAt,
         },

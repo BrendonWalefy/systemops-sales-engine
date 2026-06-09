@@ -165,6 +165,7 @@ export async function updateClinicOperationalSettings(data: {
   receptionistPhone?: string | null;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
   voiceResponseEnabled?: boolean;
+  ttsVoice?: string;
 }) {
   const CLINIC_ID = await requireSessionClinicId();
   await db

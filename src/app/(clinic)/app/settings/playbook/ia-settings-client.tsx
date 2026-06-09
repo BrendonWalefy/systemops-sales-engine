@@ -37,6 +37,7 @@ type ClinicData = {
   receptionistPhone: string | null;
   installmentRates: { n: number; rate: number; active: boolean }[] | null;
   voiceResponseEnabled: boolean;
+  ttsVoice: string;
 };
 
 const INTENT_LABELS: Record<MenuItemIntent, string> = {
@@ -436,6 +437,8 @@ function GeralTab({
   const [togglePending, startToggleTransition] = useTransition();
   const [voiceEnabled, setVoiceEnabled] = useState(clinic.voiceResponseEnabled);
   const [voiceTogglePending, startVoiceToggleTransition] = useTransition();
+  const [ttsVoice, setTtsVoice] = useState<string>(clinic.ttsVoice ?? "nova");
+  const [ttsVoicePending, startTtsVoiceTransition] = useTransition();
 
   const initialExperience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const customMenuRef = useRef(clinic.menuItems !== null);
@@ -461,6 +464,13 @@ function GeralTab({
     setVoiceEnabled(next);
     startVoiceToggleTransition(async () => {
       await updateClinicOperationalSettings({ voiceResponseEnabled: next });
+    });
+  }
+
+  function handleTtsVoiceChange(voice: string) {
+    setTtsVoice(voice);
+    startTtsVoiceTransition(async () => {
+      await updateClinicOperationalSettings({ ttsVoice: voice });
     });
   }
 
@@ -582,13 +592,49 @@ function GeralTab({
                   {voiceEnabled ? "Ativa" : "Desativada"}
                 </span>
               </div>
-              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>IA envia áudios de voz em vez de texto (OpenAI TTS)</p>
+              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>IA envia áudios de voz em vez de texto</p>
             </div>
           </div>
           <button onClick={handleVoiceToggle} disabled={voiceTogglePending} style={{ width: "44px", height: "24px", borderRadius: "12px", border: "none", background: voiceEnabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: voiceTogglePending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: voiceTogglePending ? 0.7 : 1 }}>
             <span style={{ position: "absolute", top: "3px", left: voiceEnabled ? "23px" : "3px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
           </button>
         </div>
+
+        {voiceEnabled && (
+          <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#71717a", fontWeight: 500 }}>Voz da assistente</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+              {([
+                { id: "nova", label: "Nova", description: "OpenAI · EN-native", badge: "Padrão" },
+                { id: "dora", label: "Dora", description: "Kokoro · PT-BR nativa", badge: "Recomendada" },
+              ] as const).map((opt) => {
+                const selected = ttsVoice === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={ttsVoicePending}
+                    onClick={() => handleTtsVoiceChange(opt.id)}
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "flex-start",
+                      gap: "3px", padding: "10px 12px", borderRadius: "8px", border: "none",
+                      cursor: ttsVoicePending ? "default" : "pointer", textAlign: "left",
+                      opacity: ttsVoicePending ? 0.7 : 1, transition: "background 150ms",
+                      background: selected ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.04)",
+                      outline: selected ? "1px solid rgba(16,185,129,0.35)" : "1px solid rgba(255,255,255,0.07)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: selected ? "#34d399" : "#fafafa" }}>{opt.label}</span>
+                      <span style={{ fontSize: "9px", fontWeight: 700, padding: "1px 6px", borderRadius: "4px", background: selected ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.07)", color: selected ? "#34d399" : "#71717a" }}>{opt.badge}</span>
+                    </div>
+                    <span style={{ fontSize: "11px", color: "#52525b" }}>{opt.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Experiência da conversa */}

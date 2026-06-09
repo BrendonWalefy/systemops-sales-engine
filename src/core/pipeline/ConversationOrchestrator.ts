@@ -24,7 +24,7 @@ import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { sendTextMessage, sendMediaMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { OpenAiTtsGateway } from "@/infrastructure/adapters/ai/tts/openai-tts-gateway";
+import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
@@ -555,6 +555,7 @@ function buildClinic(row: ClinicRow): Clinic {
     defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
     installmentRates: (row.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
     voiceResponseEnabled: row.voiceResponseEnabled ?? false,
+    ttsVoice: row.ttsVoice ?? "nova",
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -601,15 +602,18 @@ async function sendReply(
   text: string,
   config: ClinicChannelConfig,
   voiceEnabled: boolean,
+  ttsVoice: string = "nova",
 ): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text" }> {
   if (voiceEnabled) {
     try {
-      const tts = new OpenAiTtsGateway();
+      const { gateway, format, contentType } = createTtsProvider(ttsVoice);
       const storage = new VercelBlobStorageGateway();
-      const audioBuffer = await tts.synthesize(text, { format: "mp3" });
-      const blobUrl = await storage.upload(`tts/${randomUUID()}.mp3`, audioBuffer, {
-        contentType: "audio/mpeg",
-      });
+      const audioBuffer = await gateway.synthesize(text, { format });
+      const blobUrl = await storage.upload(
+        `tts/${randomUUID()}.${format}`,
+        audioBuffer,
+        { contentType },
+      );
       const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
       await storage.delete(blobUrl).catch((e) =>
         console.warn("[TTS] Blob delete failed:", e),
@@ -854,7 +858,7 @@ export class ConversationOrchestrator {
       }).where(eq(conversationsTable.id, conversation.id));
 
       const mediaAgentId = randomUUID();
-      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled);
+      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsVoice);
       await this.conversationRepo.appendMessage({
         id: mediaAgentId,
         conversationId: conversation.id,
@@ -1732,7 +1736,7 @@ export class ConversationOrchestrator {
     });
 
     // ── 9.1 Envia resposta, atualiza externalId e deliveryFormat ──
-    const { msgId: zapiMessageId, deliveryFormat } = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled);
+    const { msgId: zapiMessageId, deliveryFormat } = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsVoice);
     await db
       .update(messagesTable)
       .set({

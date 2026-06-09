@@ -126,6 +126,7 @@ export const clinics = pgTable("clinics", {
   // Taxa flat por faixa de parcela { n, rate (%), active }. Null = fallback "taxa da maquininha".
   installmentRates: jsonb("installment_rates").$type<{ n: number; rate: number; active: boolean }[]>(),
   voiceResponseEnabled: boolean("voice_response_enabled").notNull().default(false),
+  ttsVoice: text("tts_voice").notNull().default("nova"),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──
