@@ -652,6 +652,33 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
   }
   function removeMediaItem(id: string) {
     updateVersion({ mediaLibrary: data.mediaLibrary.filter((m) => m.id !== id) });
+    setUploadState((prev) => { const next = { ...prev }; delete next[id]; return next; });
+  }
+
+  // Estado de upload por item: idle | uploading | done | error
+  type UploadStatus = "idle" | "uploading" | "done" | "error";
+  const [uploadState, setUploadState] = useState<Record<string, UploadStatus>>({});
+
+  async function handleFileUpload(itemId: string, file: File) {
+    setUploadState((prev) => ({ ...prev, [itemId]: "uploading" }));
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/media/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro no upload" }));
+        alert(err.error ?? "Falha no upload. Tente novamente.");
+        setUploadState((prev) => ({ ...prev, [itemId]: "error" }));
+        return;
+      }
+      const { url } = await res.json() as { url: string };
+      const type: "video" | "image" = file.type.startsWith("video") ? "video" : "image";
+      updateMediaItem(itemId, { url, type });
+      setUploadState((prev) => ({ ...prev, [itemId]: "done" }));
+    } catch {
+      alert("Falha ao conectar com o servidor. Verifique sua conexão e tente novamente.");
+      setUploadState((prev) => ({ ...prev, [itemId]: "error" }));
+    }
   }
 
   const pct = completude(data);
@@ -672,6 +699,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
   return (
     <div className="editor-root" style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr auto", overflow: "hidden", background: "var(--background)" }}>
       <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
         .editor-root {
           grid-template-rows: auto 1fr auto;
           width: 100%;
@@ -1090,38 +1118,73 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                 </div>
               </EditorSection>
 
-              <EditorSection step="4" title="Biblioteca de mídia" description="Vídeos e imagens que a IA pode enviar ao lead quando relevante (ex: vídeo do procedimento).">
+              <EditorSection step="4" title="Biblioteca de mídia" description="Faça upload dos vídeos que a IA pode enviar ao lead automaticamente — a IA decide o momento certo com base na conversa.">
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {data.mediaLibrary.map((item) => (
-                    <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto auto", gap: "8px", alignItems: "center", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "10px 12px" }}>
-                      <input
-                        value={item.title}
-                        onChange={(e) => updateMediaItem(item.id, { title: e.target.value })}
-                        placeholder="Título (ex: Lentes de Contato)"
-                        style={{ ...inputStyle, fontSize: "13px", padding: "7px 10px" }}
-                      />
-                      <input
-                        value={item.url}
-                        onChange={(e) => updateMediaItem(item.id, { url: e.target.value })}
-                        placeholder="URL pública do vídeo ou imagem"
-                        style={{ ...inputStyle, fontSize: "13px", padding: "7px 10px" }}
-                      />
-                      <select
-                        value={item.type}
-                        onChange={(e) => updateMediaItem(item.id, { type: e.target.value as "video" | "image" })}
-                        style={{ ...inputStyle, fontSize: "12px", padding: "7px 10px", width: "80px" }}
-                      >
-                        <option value="video">Vídeo</option>
-                        <option value="image">Imagem</option>
-                      </select>
-                      <button type="button" onClick={() => removeMediaItem(item.id)} style={iconBtnStyle}>
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
+                  {data.mediaLibrary.map((item) => {
+                    const status = uploadState[item.id] ?? (item.url ? "done" : "idle");
+                    const fileInputId = `file-upload-${item.id}`;
+                    return (
+                      <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: "8px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "12px 14px" }}>
+                        {/* Linha 1: título + remover */}
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <input
+                            value={item.title}
+                            onChange={(e) => updateMediaItem(item.id, { title: e.target.value })}
+                            placeholder="Título (ex: Lentes – Técnica Simplificada)"
+                            style={{ ...inputStyle, fontSize: "13px", padding: "7px 10px", flex: 1 }}
+                          />
+                          <button type="button" onClick={() => removeMediaItem(item.id)} style={iconBtnStyle} title="Remover">
+                            <X size={14} />
+                          </button>
+                        </div>
+
+                        {/* Linha 2: área de upload */}
+                        <div>
+                          {status === "idle" && (
+                            <label htmlFor={fileInputId} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "10px 14px", borderRadius: "8px", border: "1px dashed rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.02)", fontSize: "13px", color: "#a1a1aa" }}>
+                              <Film size={14} style={{ flexShrink: 0 }} />
+                              <span>Selecionar vídeo ou imagem</span>
+                            </label>
+                          )}
+
+                          {status === "uploading" && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)", fontSize: "13px", color: "#a1a1aa" }}>
+                              <span style={{ display: "inline-block", width: 14, height: 14, border: "2px solid #00d4aa", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                              <span>Enviando arquivo...</span>
+                            </div>
+                          )}
+
+                          {(status === "done" || status === "error") && item.url && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", borderRadius: "8px", border: `1px solid ${status === "error" ? "rgba(239,68,68,0.3)" : "rgba(0,212,170,0.2)"}`, background: status === "error" ? "rgba(239,68,68,0.04)" : "rgba(0,212,170,0.04)", fontSize: "13px" }}>
+                              <Film size={14} style={{ flexShrink: 0, color: status === "error" ? "#ef4444" : "#00d4aa" }} />
+                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: status === "error" ? "#ef4444" : "#d4d4d8" }}>
+                                {item.url.split("/").pop()}
+                              </span>
+                              <span style={{ color: "#00d4aa", fontSize: "11px" }}>{item.type === "video" ? "vídeo" : "imagem"}</span>
+                              <label htmlFor={fileInputId} style={{ cursor: "pointer", fontSize: "12px", color: "#71717a", textDecoration: "underline", whiteSpace: "nowrap" }}>Trocar</label>
+                            </div>
+                          )}
+
+                          <input
+                            id={fileInputId}
+                            type="file"
+                            accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp"
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleFileUpload(item.id, file);
+                              e.target.value = "";
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+
                   {data.mediaLibrary.length === 0 && (
-                    <p style={{ fontSize: "12px", color: "#52525b", margin: 0 }}>Nenhuma mídia cadastrada. Adicione URLs de vídeos ou fotos do doutor para a IA enviar automaticamente.</p>
+                    <p style={{ fontSize: "12px", color: "#52525b", margin: 0 }}>Nenhuma mídia cadastrada. Adicione um vídeo do procedimento para a IA enviar automaticamente quando o lead se interessar.</p>
                   )}
+
                   <button type="button" onClick={addMediaItem} style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(0,212,170,0.04)", border: "1px dashed rgba(0,212,170,0.3)", borderRadius: "12px", color: "#00d4aa", cursor: "pointer", fontSize: "13px", fontWeight: 600, padding: "12px", justifyContent: "center" }}>
                     <Film size={13} /> Adicionar mídia
                   </button>

@@ -267,6 +267,7 @@ export const messages = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
     externalId: text("external_id"),
     intent: text("intent"),
+    deliveryFormat: text("delivery_format").$type<"text" | "audio">(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

@@ -1,6 +1,6 @@
 import type { TtsGateway, TtsRequest } from "@/application/ports/tts-gateway";
 
-const VOICE_DEFAULT = "nova";
+const VOICE_DEFAULT = "shimmer";
 const FORMAT_DEFAULT = "mp3";
 const TIMEOUT_MS = 20_000;
 

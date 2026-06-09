@@ -57,6 +57,7 @@ export type ComposerInput = {
     receptionistName?: string;
     commercialPolicy: string | null;
     installmentTable?: string | null;
+    mediaLibrary?: { id: string; title: string; type: "video" | "image" }[];
   };
   leadName?: string | null;
   timezone: ClinicTimezone;
@@ -67,6 +68,7 @@ export type ComposerInput = {
 
 export type ComposedResponse = {
   text: string;
+  mediaId: string | null;
   model: string;
   promptVersion: string;
   inputTokens: number;
@@ -114,6 +116,12 @@ ${experienceRules}
 ESCOPO ESTRITO: Você responde SOMENTE sobre assuntos da ${clinic.name} — agendamentos, especialidades, localização, preços e tratamentos. Para perguntas completamente fora do escopo da clínica (política, outros serviços, programação, etc.), responda gentilmente que você é a recepcionista virtual e pode ajudar apenas com assuntos da clínica.
 ${clinic.commercialPolicy ? `\nPOLÍTICA COMERCIAL:\n${clinic.commercialPolicy}` : ""}
 ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}
+${clinic.mediaLibrary && clinic.mediaLibrary.length > 0 ? `
+BIBLIOTECA DE MÍDIA DISPONÍVEL PARA ENVIAR AO LEAD:
+${clinic.mediaLibrary.map((m) => `• [${m.type === "video" ? "VÍDEO" : "FOTO"}] id="${m.id}" — ${m.title}`).join("\n")}
+INSTRUÇÃO: Se enviar uma dessas mídias for genuinamente útil neste momento (lead pediu detalhes, quer ver como fica, perguntou sobre o procedimento específico), adicione exatamente ao final da sua resposta (sem espaço após o texto): [MEDIA:id_aqui]
+Exemplo: "...agende sua avaliação! [MEDIA:abc-123]"
+Envie no máximo 1 mídia por resposta. Não envie se não for diretamente relevante.` : ""}
 ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}`;
@@ -339,10 +347,16 @@ export class ResponseComposer {
       messages,
     });
 
-    const text = response.choices[0]?.message?.content?.trim() ?? "";
+    const raw = response.choices[0]?.message?.content?.trim() ?? "";
+
+    // Extrai tag opcional [MEDIA:id] que o LLM insere ao final quando quer enviar mídia.
+    const mediaMatch = raw.match(/\[MEDIA:([a-zA-Z0-9_-]+)\]/);
+    const mediaId = mediaMatch?.[1] ?? null;
+    const text = raw.replace(/\s*\[MEDIA:[a-zA-Z0-9_-]+\]/g, "").trim();
 
     return {
       text,
+      mediaId,
       model: MODEL,
       promptVersion: PROMPT_VERSION,
       inputTokens: response.usage?.prompt_tokens ?? 0,

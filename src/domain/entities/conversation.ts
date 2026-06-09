@@ -14,6 +14,7 @@ export type Message = {
   sentAt: Date;
   externalId: string | null;
   intent?: string | null;
+  deliveryFormat?: "text" | "audio" | null;
 };
 
 export type Conversation = {

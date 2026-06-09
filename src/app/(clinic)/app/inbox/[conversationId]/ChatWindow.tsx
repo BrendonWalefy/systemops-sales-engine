@@ -9,6 +9,7 @@ type Msg = {
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | "audio" | "document" | null;
   sentAt: Date | string;
+  deliveryFormat?: "text" | "audio" | null;
 };
 
 const TZ = "America/Sao_Paulo";
@@ -149,7 +150,14 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
           return (
             <div key={msg.id} className={`chat-message ${isRight ? "agent" : "lead"}`}>
               <div className="message-meta">
-                {isAgent && <span className="agent-badge">IA Recepcionista</span>}
+                {isAgent && (
+                  <span className="agent-badge" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    IA Recepcionista
+                    {msg.deliveryFormat === "audio" && (
+                      <span title="Enviado como áudio" style={{ fontSize: 10, opacity: 0.75 }}>🔊</span>
+                    )}
+                  </span>
+                )}
                 {isOperator && (
                   <span className="agent-badge" style={{ color: "var(--cold)" }}>
                     Operador

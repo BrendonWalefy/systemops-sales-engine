@@ -591,13 +591,14 @@ async function rehostLeadMedia(
  * Envia a resposta da IA. Se voiceEnabled, sintetiza áudio via TTS, faz upload
  * no Vercel Blob, envia o áudio e deleta o blob logo após. Em caso de falha no
  * TTS, cai silenciosamente para o envio de texto.
+ * Retorna o messageId do Z-API e o formato de entrega real ("audio" | "text").
  */
 async function sendReply(
   to: string,
   text: string,
   config: ClinicChannelConfig,
   voiceEnabled: boolean,
-): Promise<string | null> {
+): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text" }> {
   if (voiceEnabled) {
     try {
       const tts = new OpenAiTtsGateway();
@@ -610,12 +611,13 @@ async function sendReply(
       await storage.delete(blobUrl).catch((e) =>
         console.warn("[TTS] Blob delete failed:", e),
       );
-      return msgId;
+      return { msgId, deliveryFormat: "audio" };
     } catch (err) {
       console.error("[TTS] Falhou, enviando texto:", err);
     }
   }
-  return sendTextMessage(to, text, config);
+  const msgId = await sendTextMessage(to, text, config);
+  return { msgId, deliveryFormat: "text" };
 }
 
 export class ConversationOrchestrator {
@@ -849,7 +851,7 @@ export class ConversationOrchestrator {
       }).where(eq(conversationsTable.id, conversation.id));
 
       const mediaAgentId = randomUUID();
-      const zapiMediaMsgId = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled);
+      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled);
       await this.conversationRepo.appendMessage({
         id: mediaAgentId,
         conversationId: conversation.id,
@@ -858,6 +860,7 @@ export class ConversationOrchestrator {
         sentAt: now,
         externalId: zapiMediaMsgId ?? null,
         intent: "needs_human",
+        deliveryFormat: mediaDeliveryFormat,
       });
 
       return { replied: true };
@@ -1107,6 +1110,7 @@ export class ConversationOrchestrator {
     );
 
     // Helper para compor resposta
+    let composedMediaId: string | null = null;
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
     ) => {
@@ -1122,6 +1126,7 @@ export class ConversationOrchestrator {
             installmentTable: clinic.installmentRates && editorial?.commercialPolicy
               ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
               : null,
+            mediaLibrary: editorial?.mediaLibrary ?? [],
           },
           leadName: lead.name,
           timezone,
@@ -1131,6 +1136,7 @@ export class ConversationOrchestrator {
         });
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
+      composedMediaId = composed.mediaId;
       return composed.text;
     };
 
@@ -1706,10 +1712,48 @@ export class ConversationOrchestrator {
       await this.leadRepo.save({ ...lead, temperature: inferredTemp, updatedAt: new Date() });
     }
 
-    // ── 9. Envia resposta e captura messageId para deduplicar o echo fromMe do Z-API ──
-    const zapiMessageId = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled);
+    // ── 9. Salva mensagem do agente ANTES de enviar — garante inbox mesmo se envio falhar ──
+    // deliveryFormat será atualizado após envio com o formato real (audio ou text).
+    const agentMessageId = randomUUID();
+    const agentSentAt = new Date();
+    await this.conversationRepo.appendMessage({
+      id: agentMessageId,
+      conversationId: conversation.id,
+      author: "agent",
+      body: replyText,
+      sentAt: agentSentAt,
+      externalId: null, // preenchido após envio
+      intent: intent ?? null,
+      deliveryFormat: null, // preenchido após envio
+    });
 
-    // ── 9.1 Push notification — avisa operadores que um lead enviou mensagem ──
+    // ── 9.1 Envia resposta, atualiza externalId e deliveryFormat ──
+    const { msgId: zapiMessageId, deliveryFormat } = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled);
+    await db
+      .update(messagesTable)
+      .set({
+        ...(zapiMessageId ? { externalId: zapiMessageId } : {}),
+        deliveryFormat,
+      })
+      .where(eq(messagesTable.id, agentMessageId))
+      .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
+
+    // ── 9.2 Envia mídia da biblioteca se o Composer solicitou ──
+    if (composedMediaId && editorial?.mediaLibrary) {
+      const mediaItem = editorial.mediaLibrary.find((m) => m.id === composedMediaId);
+      if (mediaItem) {
+        try {
+          await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig);
+          console.log(`[Orchestrator] Mídia enviada: ${mediaItem.title} (${mediaItem.type})`);
+        } catch (err) {
+          console.error("[Orchestrator] Falha ao enviar mídia da biblioteca:", err);
+        }
+      } else {
+        console.warn(`[Orchestrator] mediaId "${composedMediaId}" não encontrado na biblioteca`);
+      }
+    }
+
+    // ── 9.3 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;
     await this.notifier
       .execute(clinicId, {
@@ -1718,18 +1762,6 @@ export class ConversationOrchestrator {
         url: `/app/inbox/${conversation.id}`,
       })
       .catch((err) => console.error("[Orchestrator] Push falhou:", err));
-
-    // ── 10. Salva mensagem do agente no histórico ──
-    const agentMessageId = randomUUID();
-    await this.conversationRepo.appendMessage({
-      id: agentMessageId,
-      conversationId: conversation.id,
-      author: "agent",
-      body: replyText,
-      sentAt: new Date(),
-      externalId: zapiMessageId ?? null,
-      intent: intent ?? null,
-    });
 
     // ── 11. Registra custo do LLM (classifier + composer) ──
     if (composerInputTokens > 0) {

@@ -65,6 +65,7 @@ export class DrizzleConversationRepository implements ConversationRepository {
           sentAt: message.sentAt,
           externalId: message.externalId,
           intent: message.intent ?? null,
+          deliveryFormat: message.deliveryFormat ?? null,
         })
         .onConflictDoNothing();
     } catch (err) {
@@ -118,5 +119,7 @@ function mapMessageRow(row: typeof messages.$inferSelect): Message {
     mediaType: (row.mediaType as Message["mediaType"]) ?? null,
     sentAt: row.sentAt,
     externalId: row.externalId,
+    intent: row.intent ?? null,
+    deliveryFormat: (row.deliveryFormat as Message["deliveryFormat"]) ?? null,
   };
 }
