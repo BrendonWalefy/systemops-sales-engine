@@ -1119,7 +1119,7 @@ export class ConversationOrchestrator {
     );
 
     // Helper para compor resposta
-    let composedMediaId: string | null = null;
+    let composedMediaIds: string[] = [];
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
     ) => {
@@ -1146,7 +1146,7 @@ export class ConversationOrchestrator {
         });
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
-      composedMediaId = composed.mediaId;
+      composedMediaIds = composed.mediaIds;
       return composed.text;
     };
 
@@ -1748,15 +1748,18 @@ export class ConversationOrchestrator {
       .where(eq(messagesTable.id, agentMessageId))
       .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
 
-    // ── 9.2 Envia mídia da biblioteca se o Composer solicitou ──
-    if (composedMediaId && editorial?.mediaLibrary) {
-      const mediaItem = editorial.mediaLibrary.find((m) => m.id === composedMediaId);
-      if (mediaItem) {
+    // ── 9.2 Envia mídias da biblioteca solicitadas pelo Composer (suporta múltiplas) ──
+    if (composedMediaIds.length > 0 && editorial?.mediaLibrary) {
+      for (const mediaId of composedMediaIds) {
+        const mediaItem = editorial.mediaLibrary.find((m) => m.id === mediaId);
+        if (!mediaItem) {
+          console.warn(`[Orchestrator] mediaId "${mediaId}" não encontrado na biblioteca`);
+          continue;
+        }
         try {
           await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig);
           console.log(`[Orchestrator] Mídia enviada: ${mediaItem.title} (${mediaItem.type})`);
 
-          // Registra o envio de mídia como mensagem do agente no inbox.
           const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
           await this.conversationRepo.appendMessage({
             id: randomUUID(),
@@ -1769,7 +1772,6 @@ export class ConversationOrchestrator {
             deliveryFormat: "text",
           });
 
-          // Agenda follow-up específico para leads que receberam vídeo e não responderam.
           if (mediaItem.type === "video") {
             await scheduleFollowUp({
               clinicId,
@@ -1780,10 +1782,8 @@ export class ConversationOrchestrator {
             }).catch((err) => console.warn("[Orchestrator] Falha ao agendar follow-up pós-vídeo:", err));
           }
         } catch (err) {
-          console.error("[Orchestrator] Falha ao enviar mídia da biblioteca:", err);
+          console.error(`[Orchestrator] Falha ao enviar mídia "${mediaItem.title}":`, err);
         }
-      } else {
-        console.warn(`[Orchestrator] mediaId "${composedMediaId}" não encontrado na biblioteca`);
       }
     }
 

@@ -1,8 +1,8 @@
 import type { TtsGateway, TtsRequest } from "@/application/ports/tts-gateway";
 import { sanitizeForTts } from "./openai-tts-gateway";
 
-// pt-BR-Neural2-C: feminina, naturalidade alta, sotaque brasileiro
-const VOICE_DEFAULT = "pt-BR-Neural2-C";
+// pt-BR-Chirp3-HD-Leda: feminina, calorosa, profissional — melhor qualidade disponível
+const VOICE_DEFAULT = "pt-BR-Chirp3-HD-Leda";
 const TIMEOUT_MS = 20_000;
 // Neural2 soa bem em 1.0 — PT-BR não precisa de ajuste como OpenAI
 const SPEED_DEFAULT = 1.0;

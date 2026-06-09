@@ -70,7 +70,7 @@ export type ComposerInput = {
 
 export type ComposedResponse = {
   text: string;
-  mediaId: string | null;
+  mediaIds: string[];
   model: string;
   promptVersion: string;
   inputTokens: number;
@@ -130,11 +130,12 @@ Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um p
 ${voiceResponseEnabled ? `
 MODO ÁUDIO — REGRAS ABSOLUTAS DE VOZ:
 Esta resposta será convertida em áudio e enviada pelo WhatsApp. Siga rigorosamente:
-1. Máximo 60 palavras no total — equivale a cerca de 25 segundos de fala.
+1. Máximo 60 palavras no texto falado — as tags [MEDIA:id] NÃO contam como palavras, adicione-as normalmente.
 2. Prosa corrida apenas — sem listas numeradas, traços, bullets ou símbolos de qualquer tipo.
 3. Para horários disponíveis: mencione em linguagem natural, não em lista ("temos segunda às catorze horas e terça às nove da manhã, qual fica melhor?").
 4. Português brasileiro natural — fale como uma pessoa real, sem linguagem de call center.
-5. Sem emojis. Sem asteriscos. Sem markdown de nenhum tipo.` : ""}`;
+5. Sem emojis. Sem asteriscos. Sem markdown de nenhum tipo.
+6. Quando houver vídeos relevantes na biblioteca, inclua todos os [MEDIA:id] aplicáveis ao final — cada vídeo será enviado separadamente após o áudio.` : ""}`;
 }
 
 export function buildActionContext(
@@ -371,14 +372,13 @@ export class ResponseComposer {
 
     const raw = response.choices[0]?.message?.content?.trim() ?? "";
 
-    // Extrai tag opcional [MEDIA:id] que o LLM insere ao final quando quer enviar mídia.
-    const mediaMatch = raw.match(/\[MEDIA:([a-zA-Z0-9_-]+)\]/);
-    const mediaId = mediaMatch?.[1] ?? null;
+    // Extrai todas as tags [MEDIA:id] que o LLM insere quando quer enviar mídia.
+    const mediaIds = [...raw.matchAll(/\[MEDIA:([a-zA-Z0-9_-]+)\]/g)].map((m) => m[1]);
     const text = raw.replace(/\s*\[MEDIA:[a-zA-Z0-9_-]+\]/g, "").trim();
 
     return {
       text,
-      mediaId,
+      mediaIds,
       model: MODEL,
       promptVersion: PROMPT_VERSION,
       inputTokens: response.usage?.prompt_tokens ?? 0,
