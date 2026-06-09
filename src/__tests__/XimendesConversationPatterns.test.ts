@@ -21,6 +21,10 @@ function makeTreatment(name: string, requiresEvaluation = false): Treatment {
     description: null,
     commonObjections: [],
     requiresEvaluationFirst: requiresEvaluation,
+    triggerTemplate: null,
+    keywordMatchEnabled: true,
+    aliases: [],
+    isAesthetic: false,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
   };

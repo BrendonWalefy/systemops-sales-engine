@@ -326,11 +326,17 @@ export function resolveDirectTreatmentMention(
     .filter((token) => token.length >= 4 && !TREATMENT_MENTION_STOPWORDS.has(token));
 
   return treatments.find((treatment) => {
+    if (!treatment.keywordMatchEnabled) return false;
     const treatmentName = normalizeFreeText(treatment.name);
     if (treatmentName === normalized) return true;
     if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
     if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
     if (tokens.some((token) => treatmentName.includes(token))) return true;
+    const aliases = treatment.aliases ?? [];
+    if (aliases.some((alias) => {
+      const normalizedAlias = normalizeFreeText(alias);
+      return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
+    })) return true;
     return false;
   }) ?? null;
 }
@@ -521,7 +527,7 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
     "MÍDIA: se houver vídeo ou imagem na BIBLIOTECA DE MÍDIA com título relacionado a este tratamento, inclua [MEDIA:id] ao final da resposta conforme a regra da biblioteca.",
-    experience === "concierge" && isAestheticTreatment(treatment.name) ? buildPhotoInviteInstruction() : null,
+    experience === "concierge" && (treatment.isAesthetic || isAestheticTreatment(treatment.name)) ? buildPhotoInviteInstruction() : null,
     nextStep,
   ].filter(Boolean);
 
@@ -1636,24 +1642,39 @@ export class ConversationOrchestrator {
         } else if (classification.slotPreference.identifiedTreatment) {
           const matchedTreatment = clinicTreatments.find(t => t.name === classification.slotPreference.identifiedTreatment) ?? null;
           if (matchedTreatment) {
-            const treatmentKeyword = matchedTreatment.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
-            const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
-            if (notesHasTrigger) {
-              const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
-              if (template) {
-                triggerPartsOverride = parseIntoParts(template);
-                composedParts = triggerPartsOverride;
-                composedMediaIds = triggerPartsOverride
-                  .filter((p): p is { type: "media"; id: string } => p.type === "media")
-                  .map((p) => p.id);
-                replyText = triggerPartsOverride
-                  .filter((p): p is { type: "text"; content: string } => p.type === "text")
-                  .map((p) => p.content)
-                  .join(" ");
-              }
+            if (matchedTreatment.triggerTemplate) {
+              // Campo estruturado — entrega determinística sem depender das notas do playbook
+              triggerPartsOverride = parseIntoParts(matchedTreatment.triggerTemplate);
+              composedParts = triggerPartsOverride;
+              composedMediaIds = triggerPartsOverride
+                .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                .map((p) => p.id);
+              replyText = triggerPartsOverride
+                .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                .map((p) => p.content)
+                .join(" ");
               clinicContext = "";
             } else {
-              clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
+              // Backward compat: TRIGGER FORMAT nas notas do playbook (remover após migrar todos os tratamentos)
+              const treatmentKeyword = matchedTreatment.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
+              const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
+              if (notesHasTrigger) {
+                const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
+                if (template) {
+                  triggerPartsOverride = parseIntoParts(template);
+                  composedParts = triggerPartsOverride;
+                  composedMediaIds = triggerPartsOverride
+                    .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                    .map((p) => p.id);
+                  replyText = triggerPartsOverride
+                    .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                    .map((p) => p.content)
+                    .join(" ");
+                }
+                clinicContext = "";
+              } else {
+                clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
+              }
             }
           } else {
             clinicContext = "";

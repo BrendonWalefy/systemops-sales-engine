@@ -13,6 +13,10 @@ function makeTreatment(name: string, durationMinutes: number): Treatment {
     description: null,
     commonObjections: [],
     requiresEvaluationFirst: false,
+    triggerTemplate: null,
+    keywordMatchEnabled: true,
+    aliases: [],
+    isAesthetic: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
