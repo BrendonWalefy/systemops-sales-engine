@@ -327,7 +327,7 @@ function mockCompose(actionResult: ActionResult): ComposedResponse {
     }
   }
 
-  return { text, model: "mock", promptVersion: "mock-v1", inputTokens: 0, outputTokens: 0 };
+  return { text, mediaId: null, model: "mock", promptVersion: "mock-v1", inputTokens: 0, outputTokens: 0 };
 }
 
 // ── Handler principal ────────────────────────────────────────────────────────
