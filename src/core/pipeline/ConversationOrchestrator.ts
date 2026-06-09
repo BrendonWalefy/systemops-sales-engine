@@ -37,7 +37,8 @@ import { resolveActiveEditorialConfig } from "@/application/config/editorial-con
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
-import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
+import type { FormattedSlot, TreatmentPipelinePayload } from "@/core/conversation/ConversationStateMachine";
+import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
@@ -642,6 +643,35 @@ async function sendReply(
   return { msgId, deliveryFormat: "text" };
 }
 
+// ─── Pipeline helpers ─────────────────────────────────────────────────────────
+
+// Converte os blocos de um step "content" em ResponseParts prontas para envio.
+function buildPipelineContentParts(blocks: ContentBlock[]): ResponsePart[] {
+  return blocks.map((b) =>
+    b.kind === "text"
+      ? { type: "text" as const, content: b.content }
+      : { type: "media" as const, id: b.mediaId },
+  );
+}
+
+// Retorna o próximo step do pipeline que requer condução ativa (content, qa, photo).
+// Steps ask_availability / offer_slots / book são documentação para o doutor;
+// o fluxo reativo existente os cobre quando o lead expressa intenção.
+function nextActivePipelineStep(
+  steps: PipelineStep[],
+  fromIndex: number,
+): { step: PipelineStep; index: number } | null {
+  for (let i = fromIndex; i < steps.length; i++) {
+    const s = steps[i];
+    if (s.type === "content" || s.type === "qa" || s.type === "photo") {
+      return { step: s, index: i };
+    }
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export class ConversationOrchestrator {
   private stateMachine = new ConversationStateMachine();
   private intentClassifier = new IntentClassifier();
@@ -965,6 +995,9 @@ export class ConversationOrchestrator {
     // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
     const hasPendingOffer = pendingSlots !== null;
+
+    // ── 8.5. Verifica pipeline de tratamento ativo ──
+    const pipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
 
     // ── 9. Resolve intenção: menu pré-classificado ou LLM estágio 1 ──
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
@@ -1352,6 +1385,23 @@ export class ConversationOrchestrator {
       // ── Verificar disponibilidade ou agendar ──
       case "book_appointment":
       case "check_availability": {
+        // Pipeline ativo: verifica se foto obrigatória ainda não foi recebida.
+        // Se sim, entrega o pedido de foto e aguarda — não avança para booking.
+        // ⚠️ OPEN v2: quando a foto chegar, o intercept de mídia inbound deve marcar
+        // photoReceived=true e avançar o pipeline automaticamente.
+        if (pipelineState) {
+          const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId);
+          const photoStep = pipelineTreatment?.pipelineSteps?.find(
+            (s): s is Extract<PipelineStep, { type: "photo" }> => s.type === "photo",
+          );
+          if (photoStep?.required && !pipelineState.photoReceived) {
+            replyText = photoStep.message;
+            break;
+          }
+          // Foto OK (ou não obrigatória) → sai do pipeline, fluxo de booking assume.
+          await this.stateMachine.exitTreatmentPipeline(conversation.id);
+        }
+
         // Invalida oferta anterior se houver nova mensagem com preferência
         if (hasPendingOffer && (slotPreference.preferredDate || slotPreference.preferredPeriod)) {
           await this.stateMachine.invalidate(conversation.id);
@@ -1637,11 +1687,90 @@ export class ConversationOrchestrator {
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
         const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
 
+        // ── Pipeline continuação ──
+        // Se há pipeline ativo, ele tem prioridade sobre a lógica normal de contexto.
+        // Isso garante que durante Q&A a instrução do passo seja usada mesmo quando
+        // o lead não menciona o nome do tratamento na mensagem.
+        if (pipelineState && !procedureSelection) {
+          const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
+          const currentStep = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex];
+
+          if (currentStep?.type === "qa" && pipelineTreatment) {
+            const maxTurns = currentStep.maxTurns ?? 10;
+            await this.stateMachine.incrementPipelineQaTurns(conversation.id);
+            if (pipelineState.qaTurns + 1 >= maxTurns) {
+              const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
+              if (next) await this.stateMachine.advancePipelineStep(conversation.id, next.index);
+              else await this.stateMachine.exitTreatmentPipeline(conversation.id);
+            }
+            clinicContext = [
+              `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
+              currentStep.instruction ?? null,
+              pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
+              editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
+            ].filter(Boolean).join("\n");
+            replyText = await compose({ type: "general_question", clinicContext });
+            break;
+          }
+
+          if (currentStep?.type === "photo") {
+            replyText = currentStep.message;
+            break;
+          }
+        }
+        // ── Fim pipeline continuação ──
+
         if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
         } else if (classification.slotPreference.identifiedTreatment) {
           const matchedTreatment = clinicTreatments.find(t => t.name === classification.slotPreference.identifiedTreatment) ?? null;
           if (matchedTreatment) {
+            // ── Pipeline start ──
+            // Tratamento com pipeline configurado: inicia o pipeline pelo step "content".
+            // Se o primeiro step ativo não for content (ex: começa com qa), entrega diretamente.
+            if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
+              const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0);
+              if (firstActive) {
+                await this.stateMachine.startTreatmentPipeline(
+                  conversation.id,
+                  matchedTreatment.id,
+                  matchedTreatment.name,
+                  clinic.staleConversationHours * 60,
+                );
+                if (firstActive.step.type === "content") {
+                  const parts = buildPipelineContentParts(firstActive.step.blocks);
+                  triggerPartsOverride = parts;
+                  composedParts = parts;
+                  composedMediaIds = parts
+                    .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                    .map((p) => p.id);
+                  replyText = parts
+                    .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                    .map((p) => p.content)
+                    .join(" ");
+                  clinicContext = "";
+                  // Avança pipeline para o próximo step após entregar o conteúdo
+                  const nextActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, firstActive.index + 1);
+                  if (nextActive) {
+                    await this.stateMachine.advancePipelineStep(conversation.id, nextActive.index);
+                  } else {
+                    await this.stateMachine.exitTreatmentPipeline(conversation.id);
+                  }
+                  break;
+                } else if (firstActive.step.type === "qa") {
+                  clinicContext = [
+                    `Lead está em conversa consultiva sobre "${matchedTreatment.name}".`,
+                    firstActive.step.instruction ?? null,
+                    matchedTreatment.description ? `Descrição do tratamento: ${matchedTreatment.description}` : null,
+                    editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
+                  ].filter(Boolean).join("\n");
+                  replyText = await compose({ type: "general_question", clinicContext });
+                  break;
+                }
+              }
+            }
+            // ── Fim pipeline start ──
+
             if (matchedTreatment.triggerTemplate) {
               // Campo estruturado — entrega determinística sem depender das notas do playbook
               triggerPartsOverride = parseIntoParts(matchedTreatment.triggerTemplate);
@@ -1709,6 +1838,21 @@ export class ConversationOrchestrator {
       // ── Unclear / Default ──
       case "unclear":
       default: {
+        // Pipeline ativo: lead mandou algo confuso durante Q&A → mantém contexto do pipeline
+        if (pipelineState) {
+          const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
+          const currentStep = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex];
+          if (currentStep?.type === "qa" && pipelineTreatment) {
+            const clinicContext = [
+              `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
+              currentStep.instruction ?? null,
+              pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
+              editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
+            ].filter(Boolean).join("\n");
+            replyText = await compose({ type: "general_question", clinicContext });
+            break;
+          }
+        }
         // Paciente respondeu ao menu com input inválido ou confuso — reapresenta o menu
         if (isMenuActive && !menuResolution) {
           replyText = buildMenuBody(clinic, "reoffer", experience);

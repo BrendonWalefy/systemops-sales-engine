@@ -200,6 +200,7 @@ export const treatments = pgTable(
     keywordMatchEnabled: boolean("keyword_match_enabled").notNull().default(true),
     aliases: text("aliases").array().notNull().default([]),
     isAesthetic: boolean("is_aesthetic").notNull().default(false),
+    pipelineSteps: jsonb("pipeline_steps").$type<import("@/domain/entities/treatment").PipelineStep[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

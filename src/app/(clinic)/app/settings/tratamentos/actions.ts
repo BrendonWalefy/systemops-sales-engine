@@ -16,7 +16,7 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     return { success: false, error: "Preencha todos os campos corretamente." };
   }
 
-  await repo.create({ clinicId, name, durationMinutes, description: null, commonObjections: [], requiresEvaluationFirst: false, triggerTemplate: null, keywordMatchEnabled: true, aliases: [], isAesthetic: false });
+  await repo.create({ clinicId, name, durationMinutes, description: null, commonObjections: [], requiresEvaluationFirst: false, triggerTemplate: null, keywordMatchEnabled: true, aliases: [], isAesthetic: false, pipelineSteps: null });
   revalidatePath("/app/settings/playbook");
   return { success: true };
 }

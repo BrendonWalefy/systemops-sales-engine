@@ -13,7 +13,8 @@ export type ConversationStateType =
   | "awaiting_confirmation"
   | "booking_pending"
   | "menu_offered"
-  | "procedure_list_offered";
+  | "procedure_list_offered"
+  | "treatment_pipeline_active";
 
 export type FormattedSlot = {
   index: number;       // 1, 2, 3 — o número que o lead vê
@@ -42,7 +43,15 @@ export type ProcedureListPayload = {
   treatments: ProcedureListItem[];
 };
 
-type StatePayload = SlotsOfferedPayload | ProcedureListPayload | Record<string, unknown>;
+export type TreatmentPipelinePayload = {
+  treatmentId: string;
+  treatmentName: string;
+  stepIndex: number;
+  qaTurns: number;
+  photoReceived: boolean;
+};
+
+type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | Record<string, unknown>;
 
 export type ConversationStateRow = {
   id: string;
@@ -235,5 +244,80 @@ export class ConversationStateMachine {
       startsAt: new Date(slot.startsAt),
       endsAt: new Date(slot.endsAt),
     };
+  }
+
+  // ─── Pipeline de tratamento ───────────────────────────────────────────────
+
+  // Inicia o pipeline para um tratamento. TTL: 4 horas (mesmo que staleConversationHours default).
+  async startTreatmentPipeline(
+    conversationId: string,
+    treatmentId: string,
+    treatmentName: string,
+    ttlMinutes = 240,
+  ): Promise<void> {
+    const payload: TreatmentPipelinePayload = {
+      treatmentId,
+      treatmentName,
+      stepIndex: 0,
+      qaTurns: 0,
+      photoReceived: false,
+    };
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "treatment_pipeline_active",
+      payload,
+      expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+    });
+  }
+
+  // Retorna o estado atual do pipeline, ou null se não houver pipeline ativo.
+  async getTreatmentPipelineState(conversationId: string): Promise<TreatmentPipelinePayload | null> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "treatment_pipeline_active") return null;
+    return state.payload as TreatmentPipelinePayload;
+  }
+
+  // Avança o pipeline para o próximo passo, preservando TTL original.
+  async advancePipelineStep(conversationId: string, nextStepIndex: number): Promise<void> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "treatment_pipeline_active") return;
+    const current = state.payload as TreatmentPipelinePayload;
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "treatment_pipeline_active",
+      payload: { ...current, stepIndex: nextStepIndex, qaTurns: 0 } satisfies TreatmentPipelinePayload,
+      expiresAt: state.expiresAt,
+    });
+  }
+
+  // Incrementa o contador de turnos Q&A sem mudar de passo.
+  async incrementPipelineQaTurns(conversationId: string): Promise<void> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "treatment_pipeline_active") return;
+    const current = state.payload as TreatmentPipelinePayload;
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "treatment_pipeline_active",
+      payload: { ...current, qaTurns: current.qaTurns + 1 } satisfies TreatmentPipelinePayload,
+      expiresAt: state.expiresAt,
+    });
+  }
+
+  // Marca que a foto foi recebida (v2: intercept de mídia inbound).
+  async markPipelinePhotoReceived(conversationId: string): Promise<void> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "treatment_pipeline_active") return;
+    const current = state.payload as TreatmentPipelinePayload;
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "treatment_pipeline_active",
+      payload: { ...current, photoReceived: true } satisfies TreatmentPipelinePayload,
+      expiresAt: state.expiresAt,
+    });
+  }
+
+  // Encerra o pipeline. O fluxo reativo normal assume a partir daqui.
+  async exitTreatmentPipeline(conversationId: string): Promise<void> {
+    await this.invalidate(conversationId);
   }
 }

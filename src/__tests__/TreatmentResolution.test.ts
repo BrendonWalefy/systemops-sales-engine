@@ -17,6 +17,7 @@ function makeTreatment(name: string, durationMinutes: number): Treatment {
     keywordMatchEnabled: true,
     aliases: [],
     isAesthetic: false,
+    pipelineSteps: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

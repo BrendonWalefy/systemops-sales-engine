@@ -1,5 +1,5 @@
 import { and, eq, ilike } from "drizzle-orm";
-import type { Treatment } from "@/domain/entities/treatment";
+import type { PipelineStep, Treatment } from "@/domain/entities/treatment";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
 import { db } from "@/infrastructure/db/client";
 import { treatments } from "@/infrastructure/db/schema";
@@ -34,6 +34,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         keywordMatchEnabled: data.keywordMatchEnabled,
         aliases: data.aliases,
         isAesthetic: data.isAesthetic,
+        pipelineSteps: data.pipelineSteps ?? null,
       })
       .returning();
     return mapRow(row);
@@ -41,7 +42,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "commonObjections" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "commonObjections" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -69,6 +70,7 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     keywordMatchEnabled: row.keywordMatchEnabled,
     aliases: row.aliases as string[],
     isAesthetic: row.isAesthetic,
+    pipelineSteps: (row.pipelineSteps as PipelineStep[] | null) ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
