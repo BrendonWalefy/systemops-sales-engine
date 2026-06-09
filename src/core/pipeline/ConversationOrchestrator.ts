@@ -606,6 +606,7 @@ async function sendReply(
 ): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text" }> {
   if (voiceEnabled) {
     try {
+      console.log(`[TTS] provider=${ttsVoice} FAL_KEY_SET=${!!process.env.FAL_KEY}`);
       const { gateway, format, contentType } = createTtsProvider(ttsVoice);
       const storage = new VercelBlobStorageGateway();
       const audioBuffer = await gateway.synthesize(text, { format });
@@ -620,7 +621,8 @@ async function sendReply(
       );
       return { msgId, deliveryFormat: "audio" };
     } catch (err) {
-      console.error("[TTS] Falhou, enviando texto:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[TTS] Falhou (provider=${ttsVoice}): ${msg}`);
     }
   }
   const msgId = await sendTextMessage(to, text, config);
