@@ -42,6 +42,7 @@ type PlaybookInput = {
   greetingMessage: string;
   conversationExperience?: ConversationExperience;
   notes?: string | null;
+  mediaLibrary?: { id: string; title: string; url: string; type: "video" | "image" }[];
 };
 
 type SimulateBody = {
@@ -385,6 +386,7 @@ export async function POST(req: NextRequest) {
         commercialPolicy: editorial?.commercialPolicy ?? "",
         objections: editorial?.objections ?? [],
         greetingMessage: clinicRow?.greetingMessage ?? "",
+        mediaLibrary: (editorial?.mediaLibrary ?? []) as { id: string; title: string; url: string; type: "video" | "image" }[],
       };
     } else if (body.clinicId) {
       // Modo 1a — lê do playbook_versions ativo (rascunho publicado)
@@ -416,6 +418,8 @@ export async function POST(req: NextRequest) {
         commercialPolicy: activeVersion.commercialPolicy ?? "",
         objections: (activeVersion.objections as { objection: string; response: string }[] | null) ?? [],
         greetingMessage: clinicRow?.greetingMessage ?? "",
+        notes: activeVersion.notes ?? null,
+        mediaLibrary: (activeVersion.mediaLibrary as { id: string; title: string; url: string; type: "video" | "image" }[] | null) ?? [],
       };
     } else if (body.playbook) {
       playbook = body.playbook;
@@ -613,6 +617,7 @@ export async function POST(req: NextRequest) {
             toneOfVoice: playbook.toneOfVoiceRaw ?? TONE_MAP[playbook.toneOfVoice] ?? playbook.toneOfVoice,
             playbook: buildPlaybookText(playbook),
             commercialPolicy: playbook.commercialPolicy || null,
+            mediaLibrary: playbook.mediaLibrary ?? [],
           },
           leadName: null,
           timezone,
