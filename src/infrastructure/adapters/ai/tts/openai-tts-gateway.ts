@@ -1,8 +1,12 @@
 import type { TtsGateway, TtsRequest } from "@/application/ports/tts-gateway";
 
-const VOICE_DEFAULT = "shimmer";
+// nova: voz feminina calorosa, ótima para PT-BR conversacional
+// shimmer: alternativa mais leve/expressiva
+const VOICE_DEFAULT = "nova";
 const FORMAT_DEFAULT = "mp3";
 const TIMEOUT_MS = 20_000;
+// 0.92 soa mais natural em português brasileiro do que o padrão 1.0
+const SPEED_DEFAULT = 0.92;
 
 /**
  * Remove formatação markdown e emojis antes de enviar ao TTS.
@@ -17,13 +21,14 @@ export function sanitizeForTts(text: string): string {
     .replace(/[*_~`]/g, "")
     // Remove bullet points (• e variantes) — lidos literalmente pelo TTS
     .replace(/[•·–—]/g, "")
-    // Transforma quebras de linha em pausa natural (vírgula ou ponto)
+    // Parágrafo duplo → pausa de frase (ponto)
     .replace(/\n{2,}/g, ". ")
-    .replace(/\n/g, ", ")
+    // Quebra simples → espaço; vírgula causaria "dois ponto cinco vírgula um ponto Seg..."
+    .replace(/\n/g, " ")
     // Colapsa espaços múltiplos
     .replace(/  +/g, " ")
-    // Remove ponto seguido de vírgula que pode surgir da transformação acima
-    .replace(/\.\s*,/g, ".")
+    // Ponto duplicado que pode surgir da transformação acima
+    .replace(/\.\s*\./g, ".")
     .trim();
 }
 
@@ -50,7 +55,7 @@ export class OpenAiTtsGateway implements TtsGateway {
           input: cleanText,
           voice: options?.voice ?? VOICE_DEFAULT,
           response_format: options?.format ?? FORMAT_DEFAULT,
-          speed: options?.speed ?? 0.95,
+          speed: options?.speed ?? SPEED_DEFAULT,
         }),
         signal: controller.signal,
       });

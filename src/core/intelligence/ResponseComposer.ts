@@ -65,6 +65,7 @@ export type ComposerInput = {
   isFirstMessage: boolean;
   conversationExperience?: ConversationExperience;
   resumedFromHumanTakeover?: boolean;
+  voiceResponseEnabled?: boolean;
 };
 
 export type ComposedResponse = {
@@ -77,7 +78,7 @@ export type ComposedResponse = {
 };
 
 function buildSystemPrompt(input: ComposerInput): string {
-  const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover } = input;
+  const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover, voiceResponseEnabled } = input;
   const conversationExperience = input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const nowStr = timezone.formatNowForPrompt();
   const experienceRules = conversationExperience === "concierge"
@@ -125,7 +126,15 @@ Exemplo: "...qual seria o melhor momento para você? [MEDIA:abc-123]"
 Envie no máximo 1 mídia por resposta. Só omita se a mídia for claramente irrelevante para o assunto atual.` : ""}
 ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
-Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}`;
+Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}
+${voiceResponseEnabled ? `
+MODO ÁUDIO — REGRAS ABSOLUTAS DE VOZ:
+Esta resposta será convertida em áudio e enviada pelo WhatsApp. Siga rigorosamente:
+1. Máximo 60 palavras no total — equivale a cerca de 25 segundos de fala.
+2. Prosa corrida apenas — sem listas numeradas, traços, bullets ou símbolos de qualquer tipo.
+3. Para horários disponíveis: mencione em linguagem natural, não em lista ("temos segunda às catorze horas e terça às nove da manhã, qual fica melhor?").
+4. Português brasileiro natural — fale como uma pessoa real, sem linguagem de call center.
+5. Sem emojis. Sem asteriscos. Sem markdown de nenhum tipo.` : ""}`;
 }
 
 export function buildActionContext(
@@ -265,7 +274,8 @@ Envie uma mensagem calorosa e breve lembrando que pode estar na hora de agendar 
       const slotList = result.evaluationSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
       return `AÇÃO EXECUTADA: O procedimento solicitado (${result.treatmentName}) requer uma avaliação presencial antes do agendamento completo.
 REGRA CRÍTICA: Use EXATAMENTE os labels dos horários abaixo. NÃO altere datas, horas ou dias.
-FORMATO OBRIGATÓRIO: uma frase curta explicando que a avaliação é o primeiro passo para ${result.treatmentName}, depois a lista numerada de horários disponíveis, depois peça que o lead responda com o número.
+PRIORIDADE DE PLAYBOOK: Se as ORIENTAÇÕES DA CLÍNICA contiverem regras prioritárias para "${result.treatmentName}" (ex: explicar técnicas ou fazer pergunta de qualificação antes dos horários), execute essas regras PRIMEIRO. Só apresente os horários se as orientações não proibirem ou após cumprir os passos obrigatórios.
+FORMATO PADRÃO (quando não houver instrução prioritária de playbook): uma frase curta explicando que a avaliação é o primeiro passo para ${result.treatmentName}, depois a lista numerada de horários, depois peça que o lead responda com o número.
 HORÁRIOS PARA AVALIAÇÃO:
 ${slotList}`;
     }

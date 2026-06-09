@@ -79,14 +79,16 @@ describe("sanitizeForTts", () => {
     expect(sanitizeForTts("`código` normal")).toBe("código normal");
   });
 
-  it("transforma quebra de linha dupla em pausa de frase", () => {
+  it("transforma quebra de linha dupla em pausa de frase (ponto único)", () => {
+    // \n\n → ". " e depois ". ." colapsado em "." — evita ponto duplo no áudio
     const result = sanitizeForTts("Primeira frase.\n\nSegunda frase.");
-    expect(result).toBe("Primeira frase.. Segunda frase.");
+    expect(result).toBe("Primeira frase. Segunda frase.");
   });
 
-  it("transforma quebra simples em pausa leve (vírgula)", () => {
+  it("transforma quebra simples em espaço (não vírgula)", () => {
+    // \n → " " — vírgula causa leitura literal "Linha um vírgula Linha dois" no TTS
     const result = sanitizeForTts("Linha um\nLinha dois");
-    expect(result).toBe("Linha um, Linha dois");
+    expect(result).toBe("Linha um Linha dois");
   });
 
   it("colapsa espaços múltiplos", () => {

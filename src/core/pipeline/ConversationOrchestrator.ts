@@ -1136,6 +1136,7 @@ export class ConversationOrchestrator {
           isFirstMessage,
           conversationExperience: experience,
           resumedFromHumanTakeover,
+          voiceResponseEnabled: clinic.voiceResponseEnabled,
         });
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
