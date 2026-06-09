@@ -31,7 +31,8 @@ import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/verc
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
-import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
+import { ResponseComposer, parseIntoParts } from "@/core/intelligence/ResponseComposer";
+import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
@@ -482,6 +483,13 @@ export function isAestheticTreatment(treatmentName: string): boolean {
 // Usada apenas em modo concierge e apenas para tratamentos estéticos visuais.
 function buildPhotoInviteInstruction(): string {
   return `SE O LEAD AINDA NÃO ENVIOU FOTO DO SORRISO e demonstrou interesse neste procedimento: APÓS apresentar os benefícios e valores (mas ANTES da pergunta de agendamento), convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Me manda uma foto do seu sorriso quando quiser — assim consigo te dar uma ideia mais personalizada de como ficaria 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use "quando quiser" ou "se quiser"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita.`;
+}
+
+// Extrai o bloco "FORMATO OBRIGATÓRIO" das notas para entrega determinística.
+// Retorna o texto do template (com tags [MEDIA:id] intercaladas) ou null se não encontrado.
+export function extractTriggerFormatTemplate(playbookText: string): string | null {
+  const match = playbookText.match(/FORMATO OBRIGATÓRIO[^\n]*\n+([\s\S]+?)(?:\n\nPasso 2|\n\nCONDUTA|$)/);
+  return match ? match[1].trim() : null;
 }
 
 export function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
@@ -1097,7 +1105,7 @@ export class ConversationOrchestrator {
     const { intent, slotPreference } = classification;
 
     // ── 7. Executa ação e compõe resposta ──
-    let replyText: string;
+    let replyText = "";
     let composerInputTokens = 0;
     let composerOutputTokens = 0;
 
@@ -1634,6 +1642,7 @@ export class ConversationOrchestrator {
       // ── Pergunta geral (inclui seleções de menu: procedimentos e localização) ──
       case "general_question": {
         let clinicContext: string;
+        let triggerPartsOverride: ResponsePart[] | null = null;
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
         const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
@@ -1641,13 +1650,24 @@ export class ConversationOrchestrator {
         if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
         } else if (directTreatmentMention) {
-          // Se as orientações definem um TRIGGER para este tratamento, não injetar contexto
-          // adicional (preços, pedido de foto, fechamento prematuro) — o LLM deve seguir
-          // exclusivamente a sequência das notas.
           const treatmentKeyword = directTreatmentMention.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
           const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
           if (notesHasTrigger) {
-            clinicContext = `Lead mencionou "${directTreatmentMention.name}". As ORIENTAÇÕES DA CLÍNICA definem uma sequência específica (TRIGGER) para este tratamento. Seguir o TRIGGER exatamente como descrito nas ORIENTAÇÕES — sem adicionar preços, sem pedir foto, sem oferecer agendamento antes de concluir a sequência.`;
+            // Entrega determinística: extrai o FORMATO OBRIGATÓRIO das notas e monta as partes
+            // sem chamar o LLM — garante que [MEDIA:id] ficam na posição correta.
+            const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
+            if (template) {
+              triggerPartsOverride = parseIntoParts(template);
+              composedParts = triggerPartsOverride;
+              composedMediaIds = triggerPartsOverride
+                .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                .map((p) => p.id);
+              replyText = triggerPartsOverride
+                .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                .map((p) => p.content)
+                .join(" ");
+            }
+            clinicContext = ""; // não usado quando triggerPartsOverride está ativo
           } else {
             clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null, experience);
           }
@@ -1669,7 +1689,9 @@ export class ConversationOrchestrator {
           // Fallback: contexto mínimo — commercialPolicy já está no system prompt via buildSystemPrompt
           clinicContext = `${clinic.name} — ${clinic.specialty}.`;
         }
-        replyText = await compose({ type: "general_question", clinicContext });
+        if (!triggerPartsOverride) {
+          replyText = await compose({ type: "general_question", clinicContext });
+        }
         if ((menuGeneralSubtype === "procedures" || directProcedureCatalogRequested) && clinicTreatments.length > 0) {
           await this.stateMachine.offerProcedureList(conversation.id, clinicTreatments);
         }
