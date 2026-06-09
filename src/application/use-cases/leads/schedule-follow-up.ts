@@ -1,12 +1,13 @@
 import { randomUUID } from "crypto";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 
-export type ScheduleFollowUpTrigger = "appointment_completed" | "no_show" | "lost";
+export type ScheduleFollowUpTrigger = "appointment_completed" | "no_show" | "lost" | "video_sent";
 
 const FOLLOW_UP_REASONS: Record<ScheduleFollowUpTrigger, string> = {
   appointment_completed: "Retorno de rotina",
   no_show: "Lead não compareceu à consulta",
   lost: "Lead inativo — segunda chance",
+  video_sent: "video_sent",
 };
 
 function addMonths(date: Date, months: number): Date {
@@ -19,6 +20,10 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
+function addHours(date: Date, hours: number): Date {
+  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
 export function calculateFollowUpDueAt(trigger: ScheduleFollowUpTrigger, referenceDate: Date): Date {
   switch (trigger) {
     case "appointment_completed":
@@ -27,6 +32,8 @@ export function calculateFollowUpDueAt(trigger: ScheduleFollowUpTrigger, referen
       return addDays(referenceDate, 7);
     case "lost":
       return addDays(referenceDate, 30);
+    case "video_sent":
+      return addHours(referenceDate, 6);
   }
 }
 
@@ -36,10 +43,17 @@ export async function scheduleFollowUp(params: {
   trigger: ScheduleFollowUpTrigger;
   referenceDate?: Date;
   followUpRepository: FollowUpRepository;
+  /** Para trigger 'video_sent': título do vídeo enviado, usado pelo dispatcher para personalizar a mensagem. */
+  videoTitle?: string;
 }): Promise<void> {
-  const { clinicId, leadId, trigger, followUpRepository } = params;
+  const { clinicId, leadId, trigger, followUpRepository, videoTitle } = params;
   const referenceDate = params.referenceDate ?? new Date();
   const now = new Date();
+
+  const reason =
+    trigger === "video_sent" && videoTitle
+      ? `video_sent:${videoTitle}`
+      : FOLLOW_UP_REASONS[trigger];
 
   await followUpRepository.save({
     id: randomUUID(),
@@ -47,7 +61,7 @@ export async function scheduleFollowUp(params: {
     leadId,
     dueAt: calculateFollowUpDueAt(trigger, referenceDate),
     status: "pending",
-    reason: FOLLOW_UP_REASONS[trigger],
+    reason,
     suggestedMessage: null,
     completedAt: null,
     createdAt: now,

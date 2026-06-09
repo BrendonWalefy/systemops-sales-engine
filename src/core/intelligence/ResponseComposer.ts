@@ -44,7 +44,8 @@ export type ActionResult =
   | { type: "appointment_reminder"; appointmentLabel: string }
   | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] }
   | { type: "patient_arrived"; appointmentTime: Date | null }
-  | { type: "media_received"; mediaType: "image" | "video" | "document" };
+  | { type: "media_received"; mediaType: "image" | "video" | "document" }
+  | { type: "video_sent_followup"; videoTitle: string };
 
 export type ComposerInput = {
   actionResult: ActionResult;
@@ -289,6 +290,17 @@ Exemplo de tom: "Olá! Já avisamos a equipe sobre sua chegada — em instantes 
       return `AÇÃO EXECUTADA: Lead enviou ${artigo} para avaliação pelo especialista.
 ${recebido}! Informe acolhedoramente que ${artigo} foi recebido(a) e que o especialista irá avaliar o caso pessoalmente. Diga que a equipe retorna em breve com orientações. Máximo 2 frases. Tom caloroso e profissional. NÃO peça mais fotos. NÃO dê diagnóstico. NÃO mencione prazo específico que não possa cumprir.`;
     }
+
+    case "video_sent_followup":
+      return `AÇÃO EXECUTADA: Re-engajamento específico para lead que recebeu um vídeo e não respondeu.
+VÍDEO ENVIADO: ${result.videoTitle}
+REGRAS OBRIGATÓRIAS:
+1. Não mencione que é uma mensagem automática.
+2. Seja breve, caloroso e curiosa — máximo 2 frases.
+3. Pergunte o que o lead achou do vídeo de forma natural.
+4. Ofereça verificar horários disponíveis para o lead conhecer pessoalmente o resultado.
+5. Não use emojis. Escreva em prosa, como se estivesse falando.
+Exemplo de tom: "Oi! Conseguiu ver o vídeo sobre as lentes? O Dr. Gregorie tem horários disponíveis essa semana — posso verificar um para você."`;
 
     case "appointment_reminder":
       return `AÇÃO EXECUTADA: Lembrete de consulta agendada para amanhã.

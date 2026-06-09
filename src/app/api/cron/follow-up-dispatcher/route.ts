@@ -65,18 +65,28 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         channelConfig = resolveChannelConfig(channelClinic);
       }
 
-      const lastAppointment = await appointmentRepository.findByLeadId(followUp.leadId);
-      const lastAppointmentLabel = lastAppointment
-        ? new Intl.DateTimeFormat("pt-BR", {
-            timeZone: clinic.timezone,
-            weekday: "short",
-            day: "2-digit",
-            month: "2-digit",
-          }).format(lastAppointment.startsAt)
-        : "consulta anterior";
+      const isVideoFollowUp = followUp.reason.startsWith("video_sent:");
+      const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;
+
+      let actionResult: Parameters<typeof composer.compose>[0]["actionResult"];
+
+      if (isVideoFollowUp && videoTitle) {
+        actionResult = { type: "video_sent_followup", videoTitle };
+      } else {
+        const lastAppointment = await appointmentRepository.findByLeadId(followUp.leadId);
+        const lastAppointmentLabel = lastAppointment
+          ? new Intl.DateTimeFormat("pt-BR", {
+              timeZone: clinic.timezone,
+              weekday: "short",
+              day: "2-digit",
+              month: "2-digit",
+            }).format(lastAppointment.startsAt)
+          : "consulta anterior";
+        actionResult = { type: "reengagement", lastAppointmentLabel };
+      }
 
       const composed = await composer.compose({
-        actionResult: { type: "reengagement", lastAppointmentLabel },
+        actionResult,
         conversationHistory: [],
         clinic: {
           name: clinic.name,

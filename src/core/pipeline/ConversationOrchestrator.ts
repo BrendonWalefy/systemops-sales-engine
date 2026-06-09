@@ -37,6 +37,7 @@ import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
+import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 
@@ -1745,6 +1746,16 @@ export class ConversationOrchestrator {
         try {
           await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig);
           console.log(`[Orchestrator] Mídia enviada: ${mediaItem.title} (${mediaItem.type})`);
+          // Agenda follow-up específico para leads que receberam vídeo e não responderam.
+          if (mediaItem.type === "video") {
+            await scheduleFollowUp({
+              clinicId,
+              leadId: lead.id,
+              trigger: "video_sent",
+              videoTitle: mediaItem.title,
+              followUpRepository: new DrizzleFollowUpRepository(),
+            }).catch((err) => console.warn("[Orchestrator] Falha ao agendar follow-up pós-vídeo:", err));
+          }
         } catch (err) {
           console.error("[Orchestrator] Falha ao enviar mídia da biblioteca:", err);
         }
