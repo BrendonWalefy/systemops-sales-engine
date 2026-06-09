@@ -113,12 +113,9 @@ export function composePlaybookText(parts: {
     sections.push(`COMO LIDAR COM OBJEÇÕES:\n${text}`);
   }
 
-  if (parts.mediaLibrary && parts.mediaLibrary.length > 0) {
-    const items = parts.mediaLibrary
-      .map((m) => `• [${m.type === "video" ? "VÍDEO" : "FOTO"}] ${m.title}: ${m.url}`)
-      .join("\n");
-    sections.push(`MÍDIA DISPONÍVEL PARA ENVIAR (quando relevante para o lead):\n${items}`);
-  }
+  // Nota: mediaLibrary não é listada aqui com URL. Os vídeos/imagens são injetados
+  // no system prompt via clinic.mediaLibrary → buildSystemPrompt com a instrução
+  // [MEDIA:id] correta. Listar URLs aqui criaria um segundo bloco conflitante.
 
   return sections.join("\n\n");
 }

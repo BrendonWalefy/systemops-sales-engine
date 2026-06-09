@@ -377,14 +377,17 @@ export async function POST(req: NextRequest) {
           .then((r) => r[0] ?? null),
       ]);
 
+      // playbookText já é compilado por composePlaybookText e inclui differentials,
+      // objections e procedures. Não passar esses campos novamente para buildPlaybookText
+      // evita duplicação que tornava o system prompt enorme e confuso para o modelo.
       playbook = {
         specialty: editorial?.specialty ?? clinicRow?.specialty ?? "Odontologia",
         procedureDescription: editorial?.playbookText ?? "",
         toneOfVoice: "acolhedor", // ignorado — toneOfVoiceRaw tem prioridade
         toneOfVoiceRaw: editorial?.toneOfVoice ?? undefined,
-        differentials: editorial?.differentials ?? [],
+        differentials: [],
         commercialPolicy: editorial?.commercialPolicy ?? "",
-        objections: editorial?.objections ?? [],
+        objections: [],
         greetingMessage: clinicRow?.greetingMessage ?? "",
         mediaLibrary: (editorial?.mediaLibrary ?? []) as { id: string; title: string; url: string; type: "video" | "image" }[],
       };
