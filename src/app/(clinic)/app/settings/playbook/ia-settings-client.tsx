@@ -612,11 +612,11 @@ function GeralTab({
         </div>
 
         {voiceEnabled && (
-          <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "14px" }}>
-            {/* Seletor de provider */}
+          <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "12px" }}>
+            {/* Seletor de provider — empilhado, funciona em qualquer largura */}
             <div>
-              <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#71717a", fontWeight: 500 }}>Voz da assistente</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+              <p style={{ margin: "0 0 6px", fontSize: "11px", color: "#71717a", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Voz</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {([
                   { id: "nova" as TtsProvider, label: "Nova", description: "OpenAI · EN-native", badge: "Padrão" },
                   { id: "dora" as TtsProvider, label: "Dora", description: "Kokoro · PT-BR nativa", badge: "Recomendada" },
@@ -629,19 +629,20 @@ function GeralTab({
                       disabled={ttsConfigPending}
                       onClick={() => handleTtsProviderChange(opt.id)}
                       style={{
-                        display: "flex", flexDirection: "column", alignItems: "flex-start",
-                        gap: "3px", padding: "10px 12px", borderRadius: "8px", border: "none",
+                        display: "flex", flexDirection: "row", alignItems: "center",
+                        justifyContent: "space-between", gap: "8px",
+                        padding: "9px 12px", borderRadius: "8px", border: "none", width: "100%",
                         cursor: ttsConfigPending ? "default" : "pointer", textAlign: "left",
                         opacity: ttsConfigPending ? 0.7 : 1, transition: "background 150ms",
                         background: selected ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.04)",
                         outline: selected ? "1px solid rgba(16,185,129,0.35)" : "1px solid rgba(255,255,255,0.07)",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: selected ? "#34d399" : "#fafafa" }}>{opt.label}</span>
-                        <span style={{ fontSize: "9px", fontWeight: 700, padding: "1px 6px", borderRadius: "4px", background: selected ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.07)", color: selected ? "#34d399" : "#71717a" }}>{opt.badge}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: selected ? "#34d399" : "#fafafa", flexShrink: 0 }}>{opt.label}</span>
+                        <span style={{ fontSize: "11px", color: "#52525b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.description}</span>
                       </div>
-                      <span style={{ fontSize: "11px", color: "#52525b" }}>{opt.description}</span>
+                      <span style={{ fontSize: "9px", fontWeight: 700, padding: "2px 7px", borderRadius: "4px", flexShrink: 0, background: selected ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.07)", color: selected ? "#34d399" : "#52525b" }}>{opt.badge}</span>
                     </button>
                   );
                 })}
@@ -650,10 +651,10 @@ function GeralTab({
 
             {/* Slider de velocidade */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <p style={{ margin: 0, fontSize: "12px", color: "#71717a", fontWeight: 500 }}>Velocidade da fala</p>
-                <span style={{ fontSize: "12px", fontWeight: 600, color: "#34d399", fontVariantNumeric: "tabular-nums" }}>
-                  {ttsConfig.speed.toFixed(2)}x
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <p style={{ margin: 0, fontSize: "11px", color: "#71717a", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Velocidade</p>
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#34d399", fontVariantNumeric: "tabular-nums" }}>
+                  {ttsConfig.speed.toFixed(2)}×
                 </span>
               </div>
               <input
@@ -664,12 +665,12 @@ function GeralTab({
                 value={ttsConfig.speed}
                 disabled={ttsConfigPending}
                 onChange={(e) => handleTtsSpeedChange(Number(e.target.value))}
-                onMouseUp={(e) => handleTtsSpeedChange(Number((e.target as HTMLInputElement).value))}
-                style={{ width: "100%", accentColor: "#10b981", cursor: ttsConfigPending ? "default" : "pointer" }}
+                onPointerUp={(e) => handleTtsSpeedChange(Number((e.target as HTMLInputElement).value))}
+                style={{ width: "100%", accentColor: "#10b981", cursor: ttsConfigPending ? "default" : "pointer", touchAction: "none" }}
               />
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
-                <span style={{ fontSize: "10px", color: "#52525b" }}>0.7x — lento</span>
-                <span style={{ fontSize: "10px", color: "#52525b" }}>1.3x — rápido</span>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
+                <span style={{ fontSize: "10px", color: "#3f3f46" }}>lento</span>
+                <span style={{ fontSize: "10px", color: "#3f3f46" }}>rápido</span>
               </div>
             </div>
           </div>
