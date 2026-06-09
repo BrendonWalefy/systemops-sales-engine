@@ -4,6 +4,8 @@ import { sanitizeForTts } from "./openai-tts-gateway";
 
 const TIMEOUT_MS = 30_000;
 const FAL_MODEL = "fal-ai/kokoro/brazilian-portuguese";
+// PT-BR soa mais natural em 1.05 — mais rápido e cadenciado que PT-PT
+const SPEED_DEFAULT = 1.05;
 
 type FalAudioResult = {
   data: {
@@ -46,7 +48,7 @@ export class FalKokoroTtsGateway implements TtsGateway {
         input: {
           prompt: cleanText,
           voice: "pf_dora",
-          speed: options?.speed ?? 0.92,
+          speed: options?.speed ?? SPEED_DEFAULT,
         } as any,
       });
     } finally {
