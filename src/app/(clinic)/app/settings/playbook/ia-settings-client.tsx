@@ -591,6 +591,8 @@ function GeralTab({
 
       {/* Resposta por voz */}
       <div className="ia-status-card" style={cardStyle}>
+        {/* wrapper column garante que header e config de voz empilham verticalmente */}
+        <div style={{ display: "flex", flexDirection: "column", width: "100%", minWidth: 0 }}>
         <div className="ia-status-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "14px" }}>
           <div className="ia-status-main" style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
             <div style={iconBoxStyle}>
@@ -675,6 +677,7 @@ function GeralTab({
             </div>
           </div>
         )}
+        </div>{/* fim wrapper column */}
       </div>
 
       {/* Experiência da conversa */}
