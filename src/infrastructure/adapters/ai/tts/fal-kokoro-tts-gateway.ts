@@ -41,12 +41,13 @@ export class FalKokoroTtsGateway implements TtsGateway {
 
     let result: unknown;
     try {
-      result = await fal.subscribe(FAL_MODEL, {
+      // fal SDK usa um tipo genérico específico por modelo; cast via unknown evita o erro sem any
+      result = await (fal.subscribe as (model: string, opts: unknown) => Promise<unknown>)(FAL_MODEL, {
         input: {
           prompt: cleanText,
           voice: "pf_dora",
           speed: options?.speed ?? 1.05,
-        } as Record<string, unknown>,
+        },
       });
     } finally {
       clearTimeout(timeout);
