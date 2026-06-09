@@ -384,7 +384,7 @@ function getDayGreeting(timezone: ClinicTimezone): string {
   return getTimeGreeting(hour);
 }
 const MAX_SLOTS_TO_OFFER = 5;
-const RATE_LIMIT_MESSAGES_PER_HOUR = 30;
+const RATE_LIMIT_MESSAGES_PER_HOUR = 60; // aumentado para testes de lab IA
 const SLOTS_WITH_DATE_AND_TIME = 2;
 // Quantas classificações unclear consecutivas disparam notificação ao operador
 const UNCLEAR_THRESHOLD = 3;
