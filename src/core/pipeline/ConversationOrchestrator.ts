@@ -1641,7 +1641,16 @@ export class ConversationOrchestrator {
         if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
         } else if (directTreatmentMention) {
-          clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null, experience);
+          // Se as orientações definem um TRIGGER para este tratamento, não injetar contexto
+          // adicional (preços, pedido de foto, fechamento prematuro) — o LLM deve seguir
+          // exclusivamente a sequência das notas.
+          const treatmentKeyword = directTreatmentMention.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
+          const notesHasTrigger = !!(editorial?.notes && /TRIGGER/i.test(editorial.notes) && (treatmentKeyword === "" || editorial.notes.toLowerCase().includes(treatmentKeyword)));
+          if (notesHasTrigger) {
+            clinicContext = `Lead mencionou "${directTreatmentMention.name}". As ORIENTAÇÕES DA CLÍNICA definem uma sequência específica (TRIGGER) para este tratamento. Seguir o TRIGGER exatamente como descrito nas ORIENTAÇÕES — sem adicionar preços, sem pedir foto, sem oferecer agendamento antes de concluir a sequência.`;
+          } else {
+            clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null, experience);
+          }
         } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
           if (menuGeneralSubtype === "procedures") {
             const items = clinicTreatments.length > 0
@@ -1657,7 +1666,8 @@ export class ConversationOrchestrator {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
         } else {
-          clinicContext = `${clinic.name} — ${clinic.specialty}. ${editorial?.commercialPolicy ?? ""}`;
+          // Fallback: contexto mínimo — commercialPolicy já está no system prompt via buildSystemPrompt
+          clinicContext = `${clinic.name} — ${clinic.specialty}.`;
         }
         replyText = await compose({ type: "general_question", clinicContext });
         if ((menuGeneralSubtype === "procedures" || directProcedureCatalogRequested) && clinicTreatments.length > 0) {
