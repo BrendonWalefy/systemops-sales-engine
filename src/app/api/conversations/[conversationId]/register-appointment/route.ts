@@ -9,6 +9,7 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
+import { type TtsConfig, DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 
 export const dynamic = "force-dynamic";
 
@@ -142,7 +143,7 @@ export async function POST(
           postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
           defaultAppointmentDurationMinutes: clinic.defaultAppointmentDurationMinutes,
           voiceResponseEnabled: clinic.voiceResponseEnabled ?? false,
-          ttsConfig: (clinic.ttsConfig as { provider: "nova" | "dora"; speed: number } | null) ?? { provider: "nova", speed: 0.92 },
+          ttsConfig: (clinic.ttsConfig as TtsConfig | null) ?? DEFAULT_TTS_CONFIG,
           createdAt: clinic.createdAt,
           updatedAt: clinic.updatedAt,
         },

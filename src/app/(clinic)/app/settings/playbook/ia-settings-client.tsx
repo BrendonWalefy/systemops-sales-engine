@@ -621,8 +621,7 @@ function GeralTab({
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {([
                   { id: "nova" as TtsProvider, label: "Nova", description: "OpenAI · EN-native", badge: "Padrão" },
-                  { id: "dora" as TtsProvider, label: "Dora", description: "Kokoro · PT-BR nativa", badge: "Recomendada" },
-                  { id: "neural2" as TtsProvider, label: "Neural2", description: "Google · PT-BR Neural2", badge: "Lab" },
+                  { id: "neural2" as TtsProvider, label: "Neural2", description: "Google · PT-BR Neural2", badge: "Novo" },
                 ]).map((opt) => {
                   const selected = ttsConfig.provider === opt.id;
                   return (

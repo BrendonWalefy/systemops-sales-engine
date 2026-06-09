@@ -10,6 +10,7 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
+import { type TtsConfig, DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 
 export const dynamic = "force-dynamic";
 
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,
         defaultAppointmentDurationMinutes: clinicRow.defaultAppointmentDurationMinutes,
         voiceResponseEnabled: clinicRow.voiceResponseEnabled ?? false,
-        ttsConfig: (clinicRow.ttsConfig as { provider: "nova" | "dora"; speed: number } | null) ?? { provider: "nova", speed: 0.92 },
+        ttsConfig: (clinicRow.ttsConfig as TtsConfig | null) ?? DEFAULT_TTS_CONFIG,
         createdAt: clinicRow.createdAt,
         updatedAt: clinicRow.updatedAt,
       },
