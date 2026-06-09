@@ -377,12 +377,14 @@ export async function POST(req: NextRequest) {
           .then((r) => r[0] ?? null),
       ]);
 
-      // playbookText já é compilado por composePlaybookText e inclui differentials,
-      // objections e procedures. Não passar esses campos novamente para buildPlaybookText
-      // evita duplicação que tornava o system prompt enorme e confuso para o modelo.
+      // playbookText já é compilado por composePlaybookText e inclui notes +
+      // differentials + objections + procedures. Passá-lo como `notes` faz
+      // buildPlaybookText emiti-lo sem o label "SOBRE O PROCEDIMENTO:" —
+      // o LLM lê as regras de comportamento como orientação, não como descrição.
       playbook = {
         specialty: editorial?.specialty ?? clinicRow?.specialty ?? "Odontologia",
-        procedureDescription: editorial?.playbookText ?? "",
+        notes: editorial?.playbookText ?? undefined,
+        procedureDescription: "", // vazio: playbookText já compilou tudo
         toneOfVoice: "acolhedor", // ignorado — toneOfVoiceRaw tem prioridade
         toneOfVoiceRaw: editorial?.toneOfVoice ?? undefined,
         differentials: [],
