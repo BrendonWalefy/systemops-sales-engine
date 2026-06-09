@@ -156,7 +156,7 @@ describe("price_inquiry — preço de concorrente (cenário Tania Mara)", () => 
 // Esperado: modo concierge conduz para avaliação DEPOIS de responder a dúvida.
 
 describe("general_question — responder antes de oferecer agenda (cenário Bianca)", () => {
-  it("em concierge, context conduz para avaliação de forma natural (não forçada)", () => {
+  it("em concierge, context verifica playbook primeiro e só conduz para avaliação após cumprir passos", () => {
     const ctx = buildActionContext(
       {
         type: "general_question",
@@ -164,7 +164,9 @@ describe("general_question — responder antes de oferecer agenda (cenário Bian
       },
       "concierge",
     );
-    expect(ctx).toContain("conduza para avaliação de forma natural");
+    expect(ctx).toContain("PRIORIDADE DE PLAYBOOK");
+    expect(ctx).toContain("sequência COMPLETA");
+    expect(ctx).toContain("Só conduza para avaliação após cumprir eventuais passos do playbook");
     expect(ctx).not.toContain("digitar *menu*");
   });
 

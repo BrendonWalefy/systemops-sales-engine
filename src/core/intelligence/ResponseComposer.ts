@@ -230,7 +230,8 @@ ${isConcierge ? "Depois de responder, conduza para a avaliação com uma pergunt
     case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
-Responda de forma informativa e acolhedora. ${isConcierge ? "Se a dúvida indicar interesse comercial, conduza para avaliação de forma natural." : "Não reapresente menu quando a pergunta do lead for clara."}`;
+PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
+Responda de forma informativa e acolhedora. ${isConcierge ? "Só conduza para avaliação após cumprir eventuais passos do playbook ou quando não houver sequência definida para o assunto." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
     case "greeting":
