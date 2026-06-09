@@ -42,12 +42,11 @@ export class FalKokoroTtsGateway implements TtsGateway {
     let result: unknown;
     try {
       result = await fal.subscribe(FAL_MODEL, {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         input: {
           prompt: cleanText,
           voice: "pf_dora",
           speed: options?.speed ?? 1.05,
-        } as any,
+        } as Record<string, unknown>,
       });
     } finally {
       clearTimeout(timeout);
