@@ -120,9 +120,9 @@ ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}
 ${clinic.mediaLibrary && clinic.mediaLibrary.length > 0 ? `
 BIBLIOTECA DE MÍDIA DISPONÍVEL PARA ENVIAR AO LEAD:
 ${clinic.mediaLibrary.map((m) => `• [${m.type === "video" ? "VÍDEO" : "FOTO"}] id="${m.id}" — ${m.title}`).join("\n")}
-INSTRUÇÃO: Se enviar uma dessas mídias for genuinamente útil neste momento (lead pediu detalhes, quer ver como fica, perguntou sobre o procedimento específico), adicione exatamente ao final da sua resposta (sem espaço após o texto): [MEDIA:id_aqui]
-Exemplo: "...agende sua avaliação! [MEDIA:abc-123]"
-Envie no máximo 1 mídia por resposta. Não envie se não for diretamente relevante.` : ""}
+REGRA OBRIGATÓRIA DE MÍDIA: Se o lead perguntou sobre um procedimento específico e há na biblioteca uma mídia com título relacionado a esse procedimento, você DEVE incluir o id da mídia ao final da sua resposta, assim: [MEDIA:id_aqui] (sem espaço antes, colado ao fim do texto).
+Exemplo: "...qual seria o melhor momento para você? [MEDIA:abc-123]"
+Envie no máximo 1 mídia por resposta. Só omita se a mídia for claramente irrelevante para o assunto atual.` : ""}
 ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}`;
@@ -355,7 +355,7 @@ export class ResponseComposer {
     const response = await this.client.chat.completions.create({
       model: MODEL,
       temperature: 0.5,
-      max_tokens: 300,
+      max_tokens: 350,
       messages,
     });
 

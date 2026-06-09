@@ -524,9 +524,10 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
     nextStep,
   ].filter(Boolean);
 
-  const format = experience === "concierge"
-    ? "FORMATO: tópicos — apresente os destaques do tratamento em até 4 bullet points (•), um por linha. Depois de listar, faça a pergunta de próximo passo."
-    : "Formato: até 2 parágrafos curtos.";
+  // Não forçar bullet points aqui: o playbook de cada clínica define o formato
+  // (prosa TTS-friendly ou bullets), e a instrução do actionContext sobreporia
+  // as regras de voz das ORIENTAÇÕES DA CLÍNICA, causando bullets no áudio.
+  const format = "Formato: até 2 parágrafos curtos. Siga as orientações de formato da clínica.";
 
   return `${details.join("\n")}\n${format}`;
 }

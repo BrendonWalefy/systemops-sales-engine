@@ -15,6 +15,8 @@ export function sanitizeForTts(text: string): string {
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}]/gu, "")
     // Remove marcação WhatsApp: *negrito*, _itálico_, ~tachado~, `código`
     .replace(/[*_~`]/g, "")
+    // Remove bullet points (• e variantes) — lidos literalmente pelo TTS
+    .replace(/[•·–—]/g, "")
     // Transforma quebras de linha em pausa natural (vírgula ou ponto)
     .replace(/\n{2,}/g, ". ")
     .replace(/\n/g, ", ")
