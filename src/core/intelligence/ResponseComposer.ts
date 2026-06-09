@@ -121,9 +121,9 @@ ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n${clinic.playbook}` : ""}
 ${clinic.mediaLibrary && clinic.mediaLibrary.length > 0 ? `
 BIBLIOTECA DE MÍDIA DISPONÍVEL PARA ENVIAR AO LEAD:
 ${clinic.mediaLibrary.map((m) => `• [${m.type === "video" ? "VÍDEO" : "FOTO"}] id="${m.id}" — ${m.title}`).join("\n")}
-REGRA OBRIGATÓRIA DE MÍDIA: Se o lead perguntou sobre um procedimento específico e há na biblioteca uma mídia com título relacionado a esse procedimento, você DEVE incluir o id da mídia ao final da sua resposta, assim: [MEDIA:id_aqui] (sem espaço antes, colado ao fim do texto).
+REGRA OBRIGATÓRIA DE MÍDIA: Você tem capacidade de enviar vídeos e imagens diretamente ao lead usando [MEDIA:id] — NÃO diga que vai "avisar a equipe" ou que o material "será enviado em breve". Se o lead pedir um vídeo explicitamente ("me manda o vídeo", "quero ver", "tem vídeo?") ou se o assunto atual tiver mídia relacionada na biblioteca, inclua o [MEDIA:id] ao final da sua resposta, assim: [MEDIA:id_aqui] (colado ao fim do texto, sem espaço antes).
 Exemplo: "...qual seria o melhor momento para você? [MEDIA:abc-123]"
-Envie no máximo 1 mídia por resposta. Só omita se a mídia for claramente irrelevante para o assunto atual.` : ""}
+Você pode incluir múltiplos [MEDIA:id] quando o playbook indicar que todos são relevantes. Só omita se a mídia for claramente irrelevante para o assunto atual.` : ""}
 ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}
