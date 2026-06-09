@@ -520,6 +520,7 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
       : "Explique o procedimento com naturalidade.",
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
+    "MÍDIA: se houver vídeo ou imagem na BIBLIOTECA DE MÍDIA com título relacionado a este tratamento, inclua [MEDIA:id] ao final da resposta conforme a regra da biblioteca.",
     experience === "concierge" && isAestheticTreatment(treatment.name) ? buildPhotoInviteInstruction() : null,
     nextStep,
   ].filter(Boolean);
@@ -1747,6 +1748,20 @@ export class ConversationOrchestrator {
         try {
           await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig);
           console.log(`[Orchestrator] Mídia enviada: ${mediaItem.title} (${mediaItem.type})`);
+
+          // Registra o envio de mídia como mensagem do agente no inbox.
+          const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
+          await this.conversationRepo.appendMessage({
+            id: randomUUID(),
+            conversationId: conversation.id,
+            author: "agent",
+            body: `${mediaLabel} ${mediaItem.title}`,
+            sentAt: new Date(),
+            externalId: null,
+            intent: "general_question",
+            deliveryFormat: "text",
+          });
+
           // Agenda follow-up específico para leads que receberam vídeo e não responderam.
           if (mediaItem.type === "video") {
             await scheduleFollowUp({
