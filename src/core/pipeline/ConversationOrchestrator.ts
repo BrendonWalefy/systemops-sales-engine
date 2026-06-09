@@ -1645,7 +1645,7 @@ export class ConversationOrchestrator {
           // adicional (preços, pedido de foto, fechamento prematuro) — o LLM deve seguir
           // exclusivamente a sequência das notas.
           const treatmentKeyword = directTreatmentMention.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
-          const notesHasTrigger = !!(editorial?.notes && /TRIGGER/i.test(editorial.notes) && (treatmentKeyword === "" || editorial.notes.toLowerCase().includes(treatmentKeyword)));
+          const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
           if (notesHasTrigger) {
             clinicContext = `Lead mencionou "${directTreatmentMention.name}". As ORIENTAÇÕES DA CLÍNICA definem uma sequência específica (TRIGGER) para este tratamento. Seguir o TRIGGER exatamente como descrito nas ORIENTAÇÕES — sem adicionar preços, sem pedir foto, sem oferecer agendamento antes de concluir a sequência.`;
           } else {
