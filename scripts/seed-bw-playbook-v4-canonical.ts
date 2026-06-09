@@ -58,13 +58,15 @@ const CLINIC_ID = "5a2ce07d-cfa1-4108-9a3c-3d1fae017067";
 const NOTES = `ESPECIALIDADE DO DR. GREGORIE:
 O Dr. Gregorie é especialista em lentes de resina composta. Toda conversa sobre lentes tem prioridade máxima e segue a sequência abaixo sem exceção.
 
-TRIGGER DE LENTES — execute SEMPRE que o lead mencionar "lentes", "técnica", "simplificada", "estratificada", "lentes de contato dental", "faceta" ou pedir agendamento para lentes. NUNCA mostre horários antes de concluir os três passos, mesmo quando a ação for de agendamento.
+TRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: "lentes", "técnica", "simplificada", "estratificada", "lentes de contato dental", "faceta", "faceta de resina", "resina nos dentes", "lente no dente", "lentes de porcelana" ou pedir agendamento relacionado a lentes. NUNCA mostre horários antes de concluir os passos abaixo, mesmo quando a ação for de agendamento.
 
-Passo 1 — explique as duas técnicas em prosa corrida, sem listas: a Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e bonito, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo. A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez, a profundidade e o brilho natural dos dentes, para quem deseja o nível máximo de personalização e refinamento estético.
+Passo 1 — apresente cada técnica com o vídeo correspondente vindo ANTES da explicação. Dois blocos em sequência:
 
-Passo 2 — inclua o vídeo mais relevante da biblioteca de mídia: se houver vídeo com "lentes" no título, adicione [MEDIA:id] ao final da mensagem.
+Bloco A (Técnica Simplificada): escreva [MEDIA:id] usando o id do vídeo da Simplificada (encontre na biblioteca pelo título — deve conter "simplificada"). Imediatamente após, em prosa corrida: "A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo."
 
-Passo 3 — faça a pergunta de qualificação: "Você busca um resultado mais harmonioso e natural, ou prefere o nível máximo de personalização e detalhe?"
+Bloco B (Técnica Estratificada): escreva [MEDIA:id] usando o id do vídeo da Estratificada (encontre na biblioteca pelo título — deve conter "estratificada"). Imediatamente após, em prosa corrida: "A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético."
+
+Passo 2 — faça a pergunta de qualificação: "Qual dessas combina mais com o que você busca — um resultado harmonioso e natural, ou personalização máxima com cada detalhe?"
 
 Quando o lead responder: identifique a técnica ideal para o perfil dele e ofereça: "O Dr. Gregorie avalia pessoalmente o seu sorriso e mostra exatamente como ficaria. Posso verificar um horário para você essa semana?"
 

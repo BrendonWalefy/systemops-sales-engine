@@ -1120,6 +1120,7 @@ export class ConversationOrchestrator {
 
     // Helper para compor resposta
     let composedMediaIds: string[] = [];
+    let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
     ) => {
@@ -1147,6 +1148,7 @@ export class ConversationOrchestrator {
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
       composedMediaIds = composed.mediaIds;
+      composedParts = composed.parts;
       return composed.text;
     };
 
@@ -1737,8 +1739,74 @@ export class ConversationOrchestrator {
       deliveryFormat: null, // preenchido após envio
     });
 
-    // ── 9.1 Envia resposta, atualiza externalId e deliveryFormat ──
-    const { msgId: zapiMessageId, deliveryFormat } = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
+    // ── 9.1 Envia resposta — intercalada (texto→vídeo→texto) ou simples ──
+    let zapiMessageId: string | null = null;
+    let deliveryFormat: "audio" | "text" = "text";
+
+    const hasInterleavedMedia =
+      !clinic.voiceResponseEnabled && composedParts.some((p) => p.type === "media");
+
+    if (hasInterleavedMedia) {
+      let firstTextSent = false;
+      for (const part of composedParts) {
+        if (part.type === "text") {
+          const result = await sendReply(outboundAddress, part.content, channelConfig, false, clinic.ttsConfig);
+          if (!firstTextSent) {
+            zapiMessageId = result.msgId;
+            deliveryFormat = result.deliveryFormat;
+            firstTextSent = true;
+          } else {
+            await this.conversationRepo.appendMessage({
+              id: randomUUID(),
+              conversationId: conversation.id,
+              author: "agent",
+              body: part.content,
+              sentAt: new Date(),
+              externalId: result.msgId,
+              intent: intent ?? null,
+              deliveryFormat: result.deliveryFormat,
+            });
+          }
+        } else if (part.type === "media" && editorial?.mediaLibrary) {
+          const mediaItem = editorial.mediaLibrary.find((m) => m.id === part.id);
+          if (!mediaItem) {
+            console.warn(`[Orchestrator] mediaId "${part.id}" não encontrado na biblioteca`);
+            continue;
+          }
+          try {
+            await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig);
+            console.log(`[Orchestrator] Mídia intercalada enviada: ${mediaItem.title}`);
+            const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
+            await this.conversationRepo.appendMessage({
+              id: randomUUID(),
+              conversationId: conversation.id,
+              author: "agent",
+              body: `${mediaLabel} ${mediaItem.title}`,
+              sentAt: new Date(),
+              externalId: null,
+              intent: "general_question",
+              deliveryFormat: "text",
+            });
+            if (mediaItem.type === "video") {
+              await scheduleFollowUp({
+                clinicId,
+                leadId: lead.id,
+                trigger: "video_sent",
+                videoTitle: mediaItem.title,
+                followUpRepository: new DrizzleFollowUpRepository(),
+              }).catch((err) => console.warn("[Orchestrator] Falha ao agendar follow-up pós-vídeo:", err));
+            }
+          } catch (err) {
+            console.error(`[Orchestrator] Falha ao enviar mídia "${mediaItem.title}":`, err);
+          }
+        }
+      }
+    } else {
+      const result = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
+      zapiMessageId = result.msgId;
+      deliveryFormat = result.deliveryFormat;
+    }
+
     await db
       .update(messagesTable)
       .set({
@@ -1748,8 +1816,8 @@ export class ConversationOrchestrator {
       .where(eq(messagesTable.id, agentMessageId))
       .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
 
-    // ── 9.2 Envia mídias da biblioteca solicitadas pelo Composer (suporta múltiplas) ──
-    if (composedMediaIds.length > 0 && editorial?.mediaLibrary) {
+    // ── 9.2 Envia mídias no modo TTS (áudio primeiro, vídeos depois) ──
+    if (!hasInterleavedMedia && composedMediaIds.length > 0 && editorial?.mediaLibrary) {
       for (const mediaId of composedMediaIds) {
         const mediaItem = editorial.mediaLibrary.find((m) => m.id === mediaId);
         if (!mediaItem) {

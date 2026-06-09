@@ -68,9 +68,42 @@ export type ComposerInput = {
   voiceResponseEnabled?: boolean;
 };
 
+// Um bloco de entrega: texto puro ou mídia a ser enviada.
+// Preserva a ordem exata em que o LLM posicionou as tags [MEDIA:id] no texto,
+// permitindo entrega intercalada (texto → mídia → texto → mídia).
+export type ResponsePart =
+  | { type: "text"; content: string }
+  | { type: "media"; id: string };
+
+// Divide o output bruto do LLM em partes ordenadas de texto e mídia.
+// Texto antes da primeira tag, depois cada par (mídia, texto-seguinte), texto restante.
+export function parseIntoParts(raw: string): ResponsePart[] {
+  const parts: ResponsePart[] = [];
+  const regex = /\[MEDIA:([a-zA-Z0-9_-]+)\]/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(raw)) !== null) {
+    const textBefore = raw.slice(lastIndex, match.index).trim();
+    if (textBefore) parts.push({ type: "text", content: textBefore });
+    parts.push({ type: "media", id: match[1] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  const remaining = raw.slice(lastIndex).trim();
+  if (remaining) parts.push({ type: "text", content: remaining });
+
+  if (parts.length === 0 && raw.trim()) {
+    parts.push({ type: "text", content: raw.trim() });
+  }
+
+  return parts;
+}
+
 export type ComposedResponse = {
-  text: string;
-  mediaIds: string[];
+  parts: ResponsePart[];  // partes ordenadas para entrega intercalada
+  text: string;           // texto limpo (sem tags [MEDIA:id]) — usado no TTS e no DB
+  mediaIds: string[];     // IDs de mídia em ordem — mantido para compatibilidade
   model: string;
   promptVersion: string;
   inputTokens: number;
@@ -373,11 +406,12 @@ export class ResponseComposer {
 
     const raw = response.choices[0]?.message?.content?.trim() ?? "";
 
-    // Extrai todas as tags [MEDIA:id] que o LLM insere quando quer enviar mídia.
-    const mediaIds = [...raw.matchAll(/\[MEDIA:([a-zA-Z0-9_-]+)\]/g)].map((m) => m[1]);
-    const text = raw.replace(/\s*\[MEDIA:[a-zA-Z0-9_-]+\]/g, "").trim();
+    const parts = parseIntoParts(raw);
+    const mediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
+    const text = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join(" ").trim();
 
     return {
+      parts,
       text,
       mediaIds,
       model: MODEL,
