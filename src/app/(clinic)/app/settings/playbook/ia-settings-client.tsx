@@ -14,6 +14,8 @@ import {
 import { toggleAutoReply } from "./actions";
 import type { ConversationExperience, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import { CONCIERGE_MENU_ITEMS, DEFAULT_CONVERSATION_EXPERIENCE, DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
+import { TTS_SPEED_DEFAULTS } from "@/domain/entities/tts-config";
+import type { TtsProvider } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { AddTreatmentForm } from "../tratamentos/AddTreatmentForm";
@@ -37,7 +39,7 @@ type ClinicData = {
   receptionistPhone: string | null;
   installmentRates: { n: number; rate: number; active: boolean }[] | null;
   voiceResponseEnabled: boolean;
-  ttsVoice: string;
+  ttsConfig: { provider: string; speed: number };
 };
 
 const INTENT_LABELS: Record<MenuItemIntent, string> = {
@@ -437,8 +439,8 @@ function GeralTab({
   const [togglePending, startToggleTransition] = useTransition();
   const [voiceEnabled, setVoiceEnabled] = useState(clinic.voiceResponseEnabled);
   const [voiceTogglePending, startVoiceToggleTransition] = useTransition();
-  const [ttsVoice, setTtsVoice] = useState<string>(clinic.ttsVoice ?? "nova");
-  const [ttsVoicePending, startTtsVoiceTransition] = useTransition();
+  const [ttsConfig, setTtsConfig] = useState(clinic.ttsConfig ?? { provider: "nova", speed: TTS_SPEED_DEFAULTS.nova });
+  const [ttsConfigPending, startTtsConfigTransition] = useTransition();
 
   const initialExperience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const customMenuRef = useRef(clinic.menuItems !== null);
@@ -467,10 +469,19 @@ function GeralTab({
     });
   }
 
-  function handleTtsVoiceChange(voice: string) {
-    setTtsVoice(voice);
-    startTtsVoiceTransition(async () => {
-      await updateClinicOperationalSettings({ ttsVoice: voice });
+  function handleTtsProviderChange(provider: TtsProvider) {
+    const next = { provider, speed: TTS_SPEED_DEFAULTS[provider] };
+    setTtsConfig(next);
+    startTtsConfigTransition(async () => {
+      await updateClinicOperationalSettings({ ttsConfig: next });
+    });
+  }
+
+  function handleTtsSpeedChange(speed: number) {
+    const next = { ...ttsConfig, speed };
+    setTtsConfig(next);
+    startTtsConfigTransition(async () => {
+      await updateClinicOperationalSettings({ ttsConfig: next });
     });
   }
 
@@ -601,37 +612,65 @@ function GeralTab({
         </div>
 
         {voiceEnabled && (
-          <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#71717a", fontWeight: 500 }}>Voz da assistente</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-              {([
-                { id: "nova", label: "Nova", description: "OpenAI · EN-native", badge: "Padrão" },
-                { id: "dora", label: "Dora", description: "Kokoro · PT-BR nativa", badge: "Recomendada" },
-              ] as const).map((opt) => {
-                const selected = ttsVoice === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={ttsVoicePending}
-                    onClick={() => handleTtsVoiceChange(opt.id)}
-                    style={{
-                      display: "flex", flexDirection: "column", alignItems: "flex-start",
-                      gap: "3px", padding: "10px 12px", borderRadius: "8px", border: "none",
-                      cursor: ttsVoicePending ? "default" : "pointer", textAlign: "left",
-                      opacity: ttsVoicePending ? 0.7 : 1, transition: "background 150ms",
-                      background: selected ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.04)",
-                      outline: selected ? "1px solid rgba(16,185,129,0.35)" : "1px solid rgba(255,255,255,0.07)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: selected ? "#34d399" : "#fafafa" }}>{opt.label}</span>
-                      <span style={{ fontSize: "9px", fontWeight: 700, padding: "1px 6px", borderRadius: "4px", background: selected ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.07)", color: selected ? "#34d399" : "#71717a" }}>{opt.badge}</span>
-                    </div>
-                    <span style={{ fontSize: "11px", color: "#52525b" }}>{opt.description}</span>
-                  </button>
-                );
-              })}
+          <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "14px" }}>
+            {/* Seletor de provider */}
+            <div>
+              <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#71717a", fontWeight: 500 }}>Voz da assistente</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                {([
+                  { id: "nova" as TtsProvider, label: "Nova", description: "OpenAI · EN-native", badge: "Padrão" },
+                  { id: "dora" as TtsProvider, label: "Dora", description: "Kokoro · PT-BR nativa", badge: "Recomendada" },
+                ]).map((opt) => {
+                  const selected = ttsConfig.provider === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      disabled={ttsConfigPending}
+                      onClick={() => handleTtsProviderChange(opt.id)}
+                      style={{
+                        display: "flex", flexDirection: "column", alignItems: "flex-start",
+                        gap: "3px", padding: "10px 12px", borderRadius: "8px", border: "none",
+                        cursor: ttsConfigPending ? "default" : "pointer", textAlign: "left",
+                        opacity: ttsConfigPending ? 0.7 : 1, transition: "background 150ms",
+                        background: selected ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.04)",
+                        outline: selected ? "1px solid rgba(16,185,129,0.35)" : "1px solid rgba(255,255,255,0.07)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: selected ? "#34d399" : "#fafafa" }}>{opt.label}</span>
+                        <span style={{ fontSize: "9px", fontWeight: 700, padding: "1px 6px", borderRadius: "4px", background: selected ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.07)", color: selected ? "#34d399" : "#71717a" }}>{opt.badge}</span>
+                      </div>
+                      <span style={{ fontSize: "11px", color: "#52525b" }}>{opt.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Slider de velocidade */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <p style={{ margin: 0, fontSize: "12px", color: "#71717a", fontWeight: 500 }}>Velocidade da fala</p>
+                <span style={{ fontSize: "12px", fontWeight: 600, color: "#34d399", fontVariantNumeric: "tabular-nums" }}>
+                  {ttsConfig.speed.toFixed(2)}x
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.7}
+                max={1.3}
+                step={0.05}
+                value={ttsConfig.speed}
+                disabled={ttsConfigPending}
+                onChange={(e) => handleTtsSpeedChange(Number(e.target.value))}
+                onMouseUp={(e) => handleTtsSpeedChange(Number((e.target as HTMLInputElement).value))}
+                style={{ width: "100%", accentColor: "#10b981", cursor: ttsConfigPending ? "default" : "pointer" }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
+                <span style={{ fontSize: "10px", color: "#52525b" }}>0.7x — lento</span>
+                <span style={{ fontSize: "10px", color: "#52525b" }}>1.3x — rápido</span>
+              </div>
             </div>
           </div>
         )}

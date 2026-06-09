@@ -35,7 +35,7 @@ const clinic: Clinic = {
   postAppointmentBufferMinutes: 60,
   defaultAppointmentDurationMinutes: 60,
   voiceResponseEnabled: false,
-  ttsVoice: "nova",
+  ttsConfig: { provider: "nova" as const, speed: 0.92 },
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 };

@@ -32,6 +32,9 @@ export const CONCIERGE_MENU_ITEMS: MenuItem[] = [
   { number: 5, label: "Falar com a equipe", intent: "needs_human", enabled: true },
 ];
 
+export type { TtsConfig, TtsProvider } from "./tts-config";
+export { DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, ttsConfigFromVoice } from "./tts-config";
+
 export type Clinic = {
   id: string;
   name: string;
@@ -51,7 +54,7 @@ export type Clinic = {
   defaultAppointmentDurationMinutes: number;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
   voiceResponseEnabled: boolean;
-  ttsVoice: string;
+  ttsConfig: import("./tts-config").TtsConfig;
   createdAt: Date;
   updatedAt: Date;
 };

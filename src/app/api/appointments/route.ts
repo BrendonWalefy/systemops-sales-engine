@@ -165,7 +165,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,
         defaultAppointmentDurationMinutes: clinicRow.defaultAppointmentDurationMinutes,
         voiceResponseEnabled: clinicRow.voiceResponseEnabled ?? false,
-        ttsVoice: clinicRow.ttsVoice ?? "nova",
+        ttsConfig: (clinicRow.ttsConfig as { provider: "nova" | "dora"; speed: number } | null) ?? { provider: "nova", speed: 0.92 },
         createdAt: clinicRow.createdAt,
         updatedAt: clinicRow.updatedAt,
       },

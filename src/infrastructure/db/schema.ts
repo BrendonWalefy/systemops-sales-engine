@@ -127,6 +127,9 @@ export const clinics = pgTable("clinics", {
   installmentRates: jsonb("installment_rates").$type<{ n: number; rate: number; active: boolean }[]>(),
   voiceResponseEnabled: boolean("voice_response_enabled").notNull().default(false),
   ttsVoice: text("tts_voice").notNull().default("nova"),
+  // Configuração completa de TTS por clínica. Substitui ttsVoice logicamente.
+  // Null = derivar de ttsVoice para compatibilidade retroativa.
+  ttsConfig: jsonb("tts_config").$type<{ provider: string; speed: number }>(),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──

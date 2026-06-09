@@ -7,7 +7,8 @@ import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
-import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
+import { DEFAULT_CONVERSATION_EXPERIENCE, ttsConfigFromVoice, DEFAULT_TTS_CONFIG } from "@/domain/entities/clinic";
+import type { TtsConfig } from "@/domain/entities/tts-config";
 
 async function getData() {
   const clinicId = await requireSessionClinicId();
@@ -26,6 +27,7 @@ async function getData() {
         installmentRates: clinics.installmentRates,
         voiceResponseEnabled: clinics.voiceResponseEnabled,
         ttsVoice: clinics.ttsVoice,
+        ttsConfig: clinics.ttsConfig,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
@@ -63,7 +65,7 @@ export default async function PlaybookPage() {
         receptionistPhone: clinic?.receptionistPhone ?? null,
         installmentRates: (clinic?.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
         voiceResponseEnabled: clinic?.voiceResponseEnabled ?? false,
-        ttsVoice: clinic?.ttsVoice ?? "nova",
+        ttsConfig: (clinic?.ttsConfig as TtsConfig | null) ?? ttsConfigFromVoice(clinic?.ttsVoice ?? "nova") ?? DEFAULT_TTS_CONFIG,
       }}
       versions={versions.map((v) => ({
         id: v.id,

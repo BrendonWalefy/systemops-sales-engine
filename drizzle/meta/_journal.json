@@ -113,6 +113,13 @@
       "when": 1780977934458,
       "tag": "0015_wealthy_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780980769114,
+      "tag": "0016_polite_polaris",
+      "breakpoints": true
     }
   ]
 }

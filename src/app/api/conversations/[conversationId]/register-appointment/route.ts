@@ -142,7 +142,7 @@ export async function POST(
           postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
           defaultAppointmentDurationMinutes: clinic.defaultAppointmentDurationMinutes,
           voiceResponseEnabled: clinic.voiceResponseEnabled ?? false,
-          ttsVoice: clinic.ttsVoice ?? "nova",
+          ttsConfig: (clinic.ttsConfig as { provider: "nova" | "dora"; speed: number } | null) ?? { provider: "nova", speed: 0.92 },
           createdAt: clinic.createdAt,
           updatedAt: clinic.updatedAt,
         },

@@ -25,6 +25,7 @@ import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resol
 import { sendTextMessage, sendMediaMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
+import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, type TtsConfig } from "@/domain/entities/tts-config";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
@@ -555,7 +556,7 @@ function buildClinic(row: ClinicRow): Clinic {
     defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
     installmentRates: (row.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
     voiceResponseEnabled: row.voiceResponseEnabled ?? false,
-    ttsVoice: row.ttsVoice ?? "nova",
+    ttsConfig: (row.ttsConfig as TtsConfig | null) ?? ttsConfigFromVoice(row.ttsVoice ?? "nova"),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -602,14 +603,13 @@ async function sendReply(
   text: string,
   config: ClinicChannelConfig,
   voiceEnabled: boolean,
-  ttsVoice: string = "nova",
+  ttsConfig: TtsConfig = DEFAULT_TTS_CONFIG,
 ): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text" }> {
   if (voiceEnabled) {
     try {
-      console.log(`[TTS] provider=${ttsVoice} FAL_KEY_SET=${!!process.env.FAL_KEY}`);
-      const { gateway, format, contentType } = createTtsProvider(ttsVoice);
+      const { gateway, format, contentType, speed } = createTtsProvider(ttsConfig);
       const storage = new VercelBlobStorageGateway();
-      const audioBuffer = await gateway.synthesize(text, { format });
+      const audioBuffer = await gateway.synthesize(text, { format, speed });
       const blobUrl = await storage.upload(
         `tts/${randomUUID()}.${format}`,
         audioBuffer,
@@ -622,7 +622,7 @@ async function sendReply(
       return { msgId, deliveryFormat: "audio" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[TTS] Falhou (provider=${ttsVoice}): ${msg}`);
+      console.error(`[TTS] Falhou (provider=${ttsConfig.provider} speed=${ttsConfig.speed}): ${msg}`);
     }
   }
   const msgId = await sendTextMessage(to, text, config);
@@ -860,7 +860,7 @@ export class ConversationOrchestrator {
       }).where(eq(conversationsTable.id, conversation.id));
 
       const mediaAgentId = randomUUID();
-      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsVoice);
+      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
       await this.conversationRepo.appendMessage({
         id: mediaAgentId,
         conversationId: conversation.id,
@@ -1738,7 +1738,7 @@ export class ConversationOrchestrator {
     });
 
     // ── 9.1 Envia resposta, atualiza externalId e deliveryFormat ──
-    const { msgId: zapiMessageId, deliveryFormat } = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsVoice);
+    const { msgId: zapiMessageId, deliveryFormat } = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
     await db
       .update(messagesTable)
       .set({
