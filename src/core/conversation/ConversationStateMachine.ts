@@ -130,6 +130,7 @@ export class ConversationStateMachine {
     timezone: ClinicTimezone,
     treatmentName?: string,
     durationMinutes?: number,
+    ttlMinutes?: number,
   ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
@@ -138,7 +139,7 @@ export class ConversationStateMachine {
       label: timezone.formatForHuman(s.startsAt),
     }));
 
-    const expiresAt = new Date(Date.now() + SLOT_OFFER_TTL_MINUTES * 60_000);
+    const expiresAt = new Date(Date.now() + (ttlMinutes ?? SLOT_OFFER_TTL_MINUTES) * 60_000);
     const payload: SlotsOfferedPayload = {
       slots: formatted,
       expiresAt: expiresAt.toISOString(),

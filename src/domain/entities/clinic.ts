@@ -53,6 +53,14 @@ export type Clinic = {
   postAppointmentBufferMinutes: number;
   defaultAppointmentDurationMinutes: number;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
+  rateLimitPerHour: number;
+  unclearThreshold: number;
+  staleConversationHours: number;
+  slotOfferTtlMinutes: number;
+  maxSlotsToOffer: number;
+  slotLookaheadDays: number;
+  mediaTakeoverTtlHours: number | null;
+  rapidThrottleMs: number;
   voiceResponseEnabled: boolean;
   ttsConfig: import("./tts-config").TtsConfig;
   createdAt: Date;

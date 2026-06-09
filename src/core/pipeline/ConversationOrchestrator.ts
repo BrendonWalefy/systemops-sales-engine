@@ -54,8 +54,6 @@ import {
 } from "@/domain/entities/clinic";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 
-const SLOTS_LOOKAHEAD_DAYS = 14;
-
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
 type MenuResolution =
@@ -376,7 +374,7 @@ export function shouldThrottleRapidLeadMessage(params: {
     .at(-1);
   if (!previousLead) return false;
 
-  const windowMs = params.windowMs ?? RAPID_LEAD_MESSAGE_THROTTLE_MS;
+  const windowMs = params.windowMs ?? 4_000;
   return current.sentAt.getTime() - previousLead.sentAt.getTime() < windowMs;
 }
 
@@ -384,15 +382,8 @@ function getDayGreeting(timezone: ClinicTimezone): string {
   const { hour } = timezone.toLocalParts(new Date());
   return getTimeGreeting(hour);
 }
-const MAX_SLOTS_TO_OFFER = 5;
-const RATE_LIMIT_MESSAGES_PER_HOUR = 60; // aumentado para testes de lab IA
 const SLOTS_WITH_DATE_AND_TIME = 2;
-// Quantas classificações unclear consecutivas disparam notificação ao operador
-const UNCLEAR_THRESHOLD = 3;
 const SLOTS_WITH_DATE_ONLY = 3;
-// Gap de inatividade (horas) que sinaliza recomeço de conversa
-const CONVERSATION_RESTART_HOURS = 4;
-const RAPID_LEAD_MESSAGE_THROTTLE_MS = 4_000;
 
 const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
 
@@ -563,6 +554,14 @@ function buildClinic(row: ClinicRow): Clinic {
     postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
     defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
     installmentRates: (row.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
+    rateLimitPerHour: row.rateLimitPerHour,
+    unclearThreshold: row.unclearThreshold,
+    staleConversationHours: row.staleConversationHours,
+    slotOfferTtlMinutes: row.slotOfferTtlMinutes,
+    maxSlotsToOffer: row.maxSlotsToOffer,
+    slotLookaheadDays: row.slotLookaheadDays,
+    mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
+    rapidThrottleMs: row.rapidThrottleMs,
     voiceResponseEnabled: row.voiceResponseEnabled ?? false,
     ttsConfig: (row.ttsConfig as TtsConfig | null) ?? ttsConfigFromVoice(row.ttsVoice ?? "nova"),
     createdAt: row.createdAt,
@@ -859,9 +858,13 @@ export class ConversationOrchestrator {
 
       const attentionReason = `Lead enviou ${inboundMediaType === "image" ? "foto" : inboundMediaType} para avaliação`;
       const now = new Date();
+      const mediaTtl = clinic.mediaTakeoverTtlHours;
+      const mediaTakeoverExpiresAt = mediaTtl && mediaTtl > 0
+        ? new Date(Date.now() + mediaTtl * 3600_000)
+        : null;
       await db.update(conversationsTable).set({
         aiPaused: true,
-        takeoverExpiresAt: null,
+        takeoverExpiresAt: mediaTakeoverExpiresAt,
         needsAttention: true,
         attentionReason,
         updatedAt: now,
@@ -942,7 +945,7 @@ export class ConversationOrchestrator {
         ),
       );
     const msgCount = Number(rateRows[0]?.total ?? 0);
-    if (msgCount >= RATE_LIMIT_MESSAGES_PER_HOUR) {
+    if (msgCount >= clinic.rateLimitPerHour) {
       console.warn(`[Orchestrator] Rate limit: ${phone} atingiu ${msgCount} msgs/h na conversa ${conversation.id}`);
       return { replied: false };
     }
@@ -985,6 +988,7 @@ export class ConversationOrchestrator {
         isMenuActive,
         isProcedureListActive,
         treatments: clinicTreatments,
+        windowMs: clinic.rapidThrottleMs,
       })
     ) {
       console.log(`[Orchestrator] Mensagem rápida de baixa informação para ${phone} — resposta suprimida`);
@@ -1004,7 +1008,7 @@ export class ConversationOrchestrator {
       if (prevLeadMsgs.length >= 2) {
         const prev = prevLeadMsgs[prevLeadMsgs.length - 2];
         const gapHours = (timestamp.getTime() - new Date(prev.sentAt).getTime()) / (1000 * 60 * 60);
-        isStaleConversation = gapHours >= CONVERSATION_RESTART_HOURS;
+        isStaleConversation = gapHours >= clinic.staleConversationHours;
       }
     }
 
@@ -1709,7 +1713,7 @@ export class ConversationOrchestrator {
 
     if (isUnclear) {
       const newCount = (conversation.consecutiveUnclearCount ?? 0) + 1;
-      const hitThreshold = newCount === UNCLEAR_THRESHOLD;
+      const hitThreshold = newCount === clinic.unclearThreshold;
       await db
         .update(conversationsTable)
         .set({
@@ -1946,7 +1950,7 @@ export class ConversationOrchestrator {
     slotDurationMinutes?: number,
   ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean; outsideBookingWindow: boolean; outsideBusinessHours: boolean; preferredPeriodUnavailable: boolean }> {
     const from = this.slotWindowStart();
-    const to = new Date(from.getTime() + SLOTS_LOOKAHEAD_DAYS * 24 * 60 * 60_000);
+    const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
     const duration = slotDurationMinutes ?? clinic.defaultAppointmentDurationMinutes;
 
     let allSlots = await calendarGateway.listAvailableSlots({
@@ -2054,7 +2058,7 @@ export class ConversationOrchestrator {
       ? SLOTS_WITH_DATE_AND_TIME
       : filteredToDay
       ? SLOTS_WITH_DATE_ONLY
-      : MAX_SLOTS_TO_OFFER;
+      : clinic.maxSlotsToOffer;
 
     const best = selectBestSlots(allSlots, count, timezone);
     // Garante que a lista exibida e os índices salvos no banco estejam sempre em ordem
@@ -2074,7 +2078,7 @@ export class ConversationOrchestrator {
       return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
     }
 
-    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration);
+    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes);
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 
