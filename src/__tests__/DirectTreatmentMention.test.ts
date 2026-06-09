@@ -11,6 +11,10 @@ function treatment(name: string): Treatment {
     description: null,
     commonObjections: [],
     requiresEvaluationFirst: false,
+    triggerTemplate: null,
+    keywordMatchEnabled: true,
+    aliases: [],
+    isAesthetic: false,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   };

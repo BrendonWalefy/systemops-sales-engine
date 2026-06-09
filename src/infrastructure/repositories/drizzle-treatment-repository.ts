@@ -30,6 +30,10 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         description: data.description,
         commonObjections: data.commonObjections,
         requiresEvaluationFirst: data.requiresEvaluationFirst,
+        triggerTemplate: data.triggerTemplate,
+        keywordMatchEnabled: data.keywordMatchEnabled,
+        aliases: data.aliases,
+        isAesthetic: data.isAesthetic,
       })
       .returning();
     return mapRow(row);
@@ -37,7 +41,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "commonObjections" | "requiresEvaluationFirst">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "commonObjections" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -61,6 +65,10 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     description: row.description,
     commonObjections: row.commonObjections as string[],
     requiresEvaluationFirst: row.requiresEvaluationFirst,
+    triggerTemplate: row.triggerTemplate ?? null,
+    keywordMatchEnabled: row.keywordMatchEnabled,
+    aliases: row.aliases as string[],
+    isAesthetic: row.isAesthetic,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

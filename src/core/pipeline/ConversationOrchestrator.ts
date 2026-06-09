@@ -54,8 +54,6 @@ import {
 } from "@/domain/entities/clinic";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 
-const SLOTS_LOOKAHEAD_DAYS = 14;
-
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
 type MenuResolution =
@@ -328,11 +326,17 @@ export function resolveDirectTreatmentMention(
     .filter((token) => token.length >= 4 && !TREATMENT_MENTION_STOPWORDS.has(token));
 
   return treatments.find((treatment) => {
+    if (!treatment.keywordMatchEnabled) return false;
     const treatmentName = normalizeFreeText(treatment.name);
     if (treatmentName === normalized) return true;
     if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
     if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
     if (tokens.some((token) => treatmentName.includes(token))) return true;
+    const aliases = treatment.aliases ?? [];
+    if (aliases.some((alias) => {
+      const normalizedAlias = normalizeFreeText(alias);
+      return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
+    })) return true;
     return false;
   }) ?? null;
 }
@@ -376,7 +380,7 @@ export function shouldThrottleRapidLeadMessage(params: {
     .at(-1);
   if (!previousLead) return false;
 
-  const windowMs = params.windowMs ?? RAPID_LEAD_MESSAGE_THROTTLE_MS;
+  const windowMs = params.windowMs ?? 4_000;
   return current.sentAt.getTime() - previousLead.sentAt.getTime() < windowMs;
 }
 
@@ -384,15 +388,8 @@ function getDayGreeting(timezone: ClinicTimezone): string {
   const { hour } = timezone.toLocalParts(new Date());
   return getTimeGreeting(hour);
 }
-const MAX_SLOTS_TO_OFFER = 5;
-const RATE_LIMIT_MESSAGES_PER_HOUR = 60; // aumentado para testes de lab IA
 const SLOTS_WITH_DATE_AND_TIME = 2;
-// Quantas classificações unclear consecutivas disparam notificação ao operador
-const UNCLEAR_THRESHOLD = 3;
 const SLOTS_WITH_DATE_ONLY = 3;
-// Gap de inatividade (horas) que sinaliza recomeço de conversa
-const CONVERSATION_RESTART_HOURS = 4;
-const RAPID_LEAD_MESSAGE_THROTTLE_MS = 4_000;
 
 const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
 
@@ -530,7 +527,7 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
     "MÍDIA: se houver vídeo ou imagem na BIBLIOTECA DE MÍDIA com título relacionado a este tratamento, inclua [MEDIA:id] ao final da resposta conforme a regra da biblioteca.",
-    experience === "concierge" && isAestheticTreatment(treatment.name) ? buildPhotoInviteInstruction() : null,
+    experience === "concierge" && (treatment.isAesthetic || isAestheticTreatment(treatment.name)) ? buildPhotoInviteInstruction() : null,
     nextStep,
   ].filter(Boolean);
 
@@ -563,6 +560,14 @@ function buildClinic(row: ClinicRow): Clinic {
     postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
     defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
     installmentRates: (row.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
+    rateLimitPerHour: row.rateLimitPerHour,
+    unclearThreshold: row.unclearThreshold,
+    staleConversationHours: row.staleConversationHours,
+    slotOfferTtlMinutes: row.slotOfferTtlMinutes,
+    maxSlotsToOffer: row.maxSlotsToOffer,
+    slotLookaheadDays: row.slotLookaheadDays,
+    mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
+    rapidThrottleMs: row.rapidThrottleMs,
     voiceResponseEnabled: row.voiceResponseEnabled ?? false,
     ttsConfig: (row.ttsConfig as TtsConfig | null) ?? ttsConfigFromVoice(row.ttsVoice ?? "nova"),
     createdAt: row.createdAt,
@@ -859,9 +864,13 @@ export class ConversationOrchestrator {
 
       const attentionReason = `Lead enviou ${inboundMediaType === "image" ? "foto" : inboundMediaType} para avaliação`;
       const now = new Date();
+      const mediaTtl = clinic.mediaTakeoverTtlHours;
+      const mediaTakeoverExpiresAt = mediaTtl && mediaTtl > 0
+        ? new Date(Date.now() + mediaTtl * 3600_000)
+        : null;
       await db.update(conversationsTable).set({
         aiPaused: true,
-        takeoverExpiresAt: null,
+        takeoverExpiresAt: mediaTakeoverExpiresAt,
         needsAttention: true,
         attentionReason,
         updatedAt: now,
@@ -942,7 +951,7 @@ export class ConversationOrchestrator {
         ),
       );
     const msgCount = Number(rateRows[0]?.total ?? 0);
-    if (msgCount >= RATE_LIMIT_MESSAGES_PER_HOUR) {
+    if (msgCount >= clinic.rateLimitPerHour) {
       console.warn(`[Orchestrator] Rate limit: ${phone} atingiu ${msgCount} msgs/h na conversa ${conversation.id}`);
       return { replied: false };
     }
@@ -985,6 +994,7 @@ export class ConversationOrchestrator {
         isMenuActive,
         isProcedureListActive,
         treatments: clinicTreatments,
+        windowMs: clinic.rapidThrottleMs,
       })
     ) {
       console.log(`[Orchestrator] Mensagem rápida de baixa informação para ${phone} — resposta suprimida`);
@@ -1004,7 +1014,7 @@ export class ConversationOrchestrator {
       if (prevLeadMsgs.length >= 2) {
         const prev = prevLeadMsgs[prevLeadMsgs.length - 2];
         const gapHours = (timestamp.getTime() - new Date(prev.sentAt).getTime()) / (1000 * 60 * 60);
-        isStaleConversation = gapHours >= CONVERSATION_RESTART_HOURS;
+        isStaleConversation = gapHours >= clinic.staleConversationHours;
       }
     }
 
@@ -1044,31 +1054,11 @@ export class ConversationOrchestrator {
       /^\d+$/.test(nMsg) &&
       clinicMenuItems.some(i => i.enabled && nMsg === String(i.number));
 
-    const directTreatmentMention = !hasPendingOffer &&
-      !isMenuActive &&
-      menuResolution === null &&
-      procedureSelection === null &&
-      !resetRequested &&
-      !menuReRequested &&
-      !isStaleConversation &&
-      !isolatedGreeting
-        ? resolveDirectTreatmentMention(messageText, clinicTreatments, lastAgentMessage?.body ?? null)
-        : null;
-
     const skipLlm = procedureSelection !== null || menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
-    const classification = directTreatmentMention
-      ? {
-          intent: "general_question" as IntentType,
-          slotPreference: nullSlotPref,
-          confidence: 1,
-          shouldAskClarification: false,
-          clarificationQuestion: null as null,
-          handoffReason: null as null,
-        }
-      : procedureSelection
+    const classification = procedureSelection
       ? {
           intent: "general_question" as IntentType,
           slotPreference: nullSlotPref,
@@ -1649,15 +1639,12 @@ export class ConversationOrchestrator {
 
         if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
-        } else if (directTreatmentMention) {
-          const treatmentKeyword = directTreatmentMention.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
-          const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
-          if (notesHasTrigger) {
-            // Entrega determinística: extrai o FORMATO OBRIGATÓRIO das notas e monta as partes
-            // sem chamar o LLM — garante que [MEDIA:id] ficam na posição correta.
-            const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
-            if (template) {
-              triggerPartsOverride = parseIntoParts(template);
+        } else if (classification.slotPreference.identifiedTreatment) {
+          const matchedTreatment = clinicTreatments.find(t => t.name === classification.slotPreference.identifiedTreatment) ?? null;
+          if (matchedTreatment) {
+            if (matchedTreatment.triggerTemplate) {
+              // Campo estruturado — entrega determinística sem depender das notas do playbook
+              triggerPartsOverride = parseIntoParts(matchedTreatment.triggerTemplate);
               composedParts = triggerPartsOverride;
               composedMediaIds = triggerPartsOverride
                 .filter((p): p is { type: "media"; id: string } => p.type === "media")
@@ -1666,10 +1653,31 @@ export class ConversationOrchestrator {
                 .filter((p): p is { type: "text"; content: string } => p.type === "text")
                 .map((p) => p.content)
                 .join(" ");
+              clinicContext = "";
+            } else {
+              // Backward compat: TRIGGER FORMAT nas notas do playbook (remover após migrar todos os tratamentos)
+              const treatmentKeyword = matchedTreatment.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
+              const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
+              if (notesHasTrigger) {
+                const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
+                if (template) {
+                  triggerPartsOverride = parseIntoParts(template);
+                  composedParts = triggerPartsOverride;
+                  composedMediaIds = triggerPartsOverride
+                    .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                    .map((p) => p.id);
+                  replyText = triggerPartsOverride
+                    .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                    .map((p) => p.content)
+                    .join(" ");
+                }
+                clinicContext = "";
+              } else {
+                clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
+              }
             }
-            clinicContext = ""; // não usado quando triggerPartsOverride está ativo
           } else {
-            clinicContext = buildDirectTreatmentContext(directTreatmentMention, editorial?.commercialPolicy ?? null, experience);
+            clinicContext = "";
           }
         } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
           if (menuGeneralSubtype === "procedures") {
@@ -1726,7 +1734,7 @@ export class ConversationOrchestrator {
 
     if (isUnclear) {
       const newCount = (conversation.consecutiveUnclearCount ?? 0) + 1;
-      const hitThreshold = newCount === UNCLEAR_THRESHOLD;
+      const hitThreshold = newCount === clinic.unclearThreshold;
       await db
         .update(conversationsTable)
         .set({
@@ -1963,7 +1971,7 @@ export class ConversationOrchestrator {
     slotDurationMinutes?: number,
   ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean; outsideBookingWindow: boolean; outsideBusinessHours: boolean; preferredPeriodUnavailable: boolean }> {
     const from = this.slotWindowStart();
-    const to = new Date(from.getTime() + SLOTS_LOOKAHEAD_DAYS * 24 * 60 * 60_000);
+    const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
     const duration = slotDurationMinutes ?? clinic.defaultAppointmentDurationMinutes;
 
     let allSlots = await calendarGateway.listAvailableSlots({
@@ -2071,7 +2079,7 @@ export class ConversationOrchestrator {
       ? SLOTS_WITH_DATE_AND_TIME
       : filteredToDay
       ? SLOTS_WITH_DATE_ONLY
-      : MAX_SLOTS_TO_OFFER;
+      : clinic.maxSlotsToOffer;
 
     const best = selectBestSlots(allSlots, count, timezone);
     // Garante que a lista exibida e os índices salvos no banco estejam sempre em ordem
@@ -2091,7 +2099,7 @@ export class ConversationOrchestrator {
       return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
     }
 
-    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration);
+    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes);
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 

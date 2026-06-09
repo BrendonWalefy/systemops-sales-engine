@@ -6,6 +6,10 @@ export type Treatment = {
   description: string | null;
   commonObjections: string[];
   requiresEvaluationFirst: boolean;
+  triggerTemplate: string | null;
+  keywordMatchEnabled: boolean;
+  aliases: string[];
+  isAesthetic: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
