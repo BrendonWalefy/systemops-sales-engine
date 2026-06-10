@@ -30,6 +30,7 @@ type Props = {
   professionals: Professional[];
   initialFrom: string;
   initialTo: string;
+  openNew?: boolean;
 };
 
 function addDays(d: Date, n: number): Date {
@@ -57,7 +58,7 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
   };
 }
 
-export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
+export function AgendaClient({ professionals, initialFrom, initialTo, openNew }: Props) {
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
   const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +70,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo }: Props) {
     date?: string;
     time?: string;
     professionalId?: string;
-  }>({ open: false });
+  }>(() => ({ open: openNew === true }));
 
   const [blockModal, setBlockModal] = useState<{
     open: boolean;

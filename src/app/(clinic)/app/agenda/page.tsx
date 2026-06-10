@@ -5,7 +5,12 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { AgendaClient } from "./AgendaClient";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 
-export default async function AgendaPage() {
+export default async function AgendaPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string>>;
+}) {
+  const params = await searchParams;
   const clinicId = (await getSessionClinicId()) ?? "";
   const professionals = clinicId
     ? await new DrizzleProfessionalRepository().listByClinic(clinicId)
@@ -26,6 +31,7 @@ export default async function AgendaPage() {
       }))}
       initialFrom={from.toISOString()}
       initialTo={to.toISOString()}
+      openNew={params?.new === "1"}
     />
   );
 }

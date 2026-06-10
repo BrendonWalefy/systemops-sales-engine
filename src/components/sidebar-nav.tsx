@@ -2,12 +2,12 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutDashboard, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus } from "lucide-react";
+import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
 
 const NAV_PRIMARY = [
-  { href: "/app/dashboard", label: "Inicio", Icon: LayoutDashboard },
+  { href: "/app/dashboard", label: "Inicio", Icon: Home },
   { href: "/app/inbox", label: "Inbox", Icon: Inbox },
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
 ];
@@ -41,7 +41,7 @@ export function SidebarNav({ email, avatarUrl }: Props) {
             <span className="nav-label">{label}</span>
           </Link>
         ))}
-        <Link href="/app/agenda" className="mobile-novo-btn" aria-label="Novo agendamento">
+        <Link href="/app/agenda?new=1" className="mobile-novo-btn" aria-label="Novo agendamento">
           <Plus size={22} strokeWidth={2.5} />
           <span className="nav-label">Novo</span>
         </Link>
