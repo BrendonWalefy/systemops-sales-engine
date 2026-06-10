@@ -2951,8 +2951,9 @@ textarea:focus {
   }
 
   .chat-window {
-    min-height: 340px;
+    min-height: 0;
     max-height: none;
+    flex: 1;
   }
 
   .composer {
@@ -3197,7 +3198,9 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--line);
+  flex: 1;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
