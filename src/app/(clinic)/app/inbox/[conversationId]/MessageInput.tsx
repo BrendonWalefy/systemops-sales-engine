@@ -112,7 +112,7 @@ export function MessageInput({ conversationId }: Props) {
             borderRadius: 10,
             padding: "9px 13px",
             color: "var(--text)",
-            fontSize: 14,
+            fontSize: 16,
             lineHeight: 1.5,
             outline: "none",
             transition: "border-color 120ms ease",
