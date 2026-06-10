@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ChevronRight, Workflow, AlertCircle } from "lucide-react";
+import { ChevronRight, Workflow, AlertCircle, CheckCircle2 } from "lucide-react";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 
@@ -18,17 +18,65 @@ export default async function PipelinePage() {
   const clinicId = await requireSessionClinicId();
   const treatments = await new DrizzleTreatmentRepository().listByClinic(clinicId);
 
+  const configured = treatments.filter((t) => (t.pipelineSteps?.length ?? 0) > 0).length;
+  const total = treatments.length;
+
   return (
     <div className="page-wrapper">
       <div className="page-header">
-        <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Workflow size={22} strokeWidth={1.8} style={{ color: "var(--accent)" }} />
-            Pipeline de Conversa
-          </h1>
-          <p style={{ color: "var(--muted)", fontSize: "14px", marginTop: "4px" }}>
-            Configure a sequência de etapas que a IA conduz para cada procedimento
-          </p>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <Workflow size={20} strokeWidth={1.8} style={{ color: "var(--accent)", flexShrink: 0 }} />
+              Pipeline de Conversa
+            </h1>
+            <p>Configure a sequência de etapas que a IA conduz para cada procedimento</p>
+          </div>
+
+          {total > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "7px",
+                padding: "6px 12px",
+                borderRadius: "999px",
+                border: configured === total
+                  ? "1px solid rgba(16,185,129,0.3)"
+                  : "1px solid rgba(255,255,255,0.1)",
+                background: configured === total
+                  ? "rgba(16,185,129,0.08)"
+                  : "rgba(255,255,255,0.04)",
+                color: configured === total ? "var(--accent-strong)" : "var(--muted)",
+                fontSize: "12px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              {configured === total ? (
+                <CheckCircle2 size={13} strokeWidth={2} />
+              ) : (
+                <span style={{
+                  display: "inline-block",
+                  width: "13px",
+                  height: "13px",
+                  borderRadius: "999px",
+                  border: "2px solid currentColor",
+                  position: "relative",
+                }}>
+                  <span style={{
+                    position: "absolute",
+                    inset: "1px",
+                    borderRadius: "999px",
+                    background: "currentColor",
+                    clipPath: `inset(0 ${100 - Math.round((configured / total) * 100)}% 0 0)`,
+                  }} />
+                </span>
+              )}
+              {configured}/{total} configurados
+            </div>
+          )}
         </div>
       </div>
 
@@ -42,16 +90,22 @@ export default async function PipelinePage() {
             padding: "48px 24px",
             color: "var(--muted)",
             textAlign: "center",
+            border: "1px dashed rgba(255,255,255,0.1)",
+            borderRadius: "12px",
           }}
         >
           <AlertCircle size={32} strokeWidth={1.5} />
-          <p style={{ fontSize: "14px" }}>
-            Nenhum procedimento cadastrado.{" "}
-            <Link href="/app/settings/playbook" style={{ color: "var(--accent)" }}>
-              Adicione procedimentos
-            </Link>{" "}
-            primeiro.
-          </p>
+          <div>
+            <p style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-soft)", marginBottom: "4px" }}>
+              Nenhum procedimento cadastrado
+            </p>
+            <p style={{ fontSize: "13px", margin: 0 }}>
+              <Link href="/app/settings/playbook" style={{ color: "var(--accent)" }}>
+                Adicione procedimentos
+              </Link>{" "}
+              antes de configurar pipelines.
+            </p>
+          </div>
         </div>
       ) : (
         <div
@@ -63,14 +117,11 @@ export default async function PipelinePage() {
             border: "1px solid var(--line)",
             borderRadius: "12px",
             overflow: "hidden",
-            maxWidth: "640px",
           }}
         >
           {treatments.map((t) => {
             const stepCount = t.pipelineSteps?.length ?? 0;
-            const activeSteps = t.pipelineSteps?.filter(
-              (s) => s.type === "content" || s.type === "qa" || s.type === "photo",
-            );
+            const hasPipeline = stepCount > 0;
             return (
               <Link
                 key={t.id}
@@ -79,27 +130,47 @@ export default async function PipelinePage() {
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
-                  padding: "16px 20px",
+                  padding: "14px 18px",
                   background: "var(--surface)",
                   textDecoration: "none",
                   color: "inherit",
                   transition: "background 0.15s",
+                  borderLeft: hasPipeline
+                    ? "3px solid var(--accent)"
+                    : "3px solid transparent",
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: "14px", marginBottom: "4px" }}>{t.name}</div>
-                  {stepCount === 0 ? (
+                  <div style={{
+                    fontWeight: 600,
+                    fontSize: "14px",
+                    marginBottom: "5px",
+                    color: "var(--text)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}>
+                    {t.name}
+                  </div>
+                  {!hasPipeline ? (
                     <span
                       style={{
-                        fontSize: "12px",
+                        fontSize: "11.5px",
                         color: "var(--muted)",
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: "6px",
-                        padding: "2px 8px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
                       }}
                     >
-                      Sem pipeline
+                      <span style={{
+                        width: "5px",
+                        height: "5px",
+                        borderRadius: "999px",
+                        background: "rgba(255,255,255,0.15)",
+                        flexShrink: 0,
+                        display: "inline-block",
+                      }} />
+                      Sem pipeline — fluxo reativo padrão
                     </span>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
@@ -117,15 +188,13 @@ export default async function PipelinePage() {
                           {STEP_TYPE_LABELS[s.type] ?? s.type}
                         </span>
                       ))}
-                      {activeSteps && activeSteps.length > 0 && (
-                        <span style={{ fontSize: "12px", color: "var(--muted)", marginLeft: "4px" }}>
-                          · {stepCount} {stepCount === 1 ? "etapa" : "etapas"}
-                        </span>
-                      )}
+                      <span style={{ fontSize: "11.5px", color: "var(--muted)", marginLeft: "2px" }}>
+                        · {stepCount} {stepCount === 1 ? "etapa" : "etapas"}
+                      </span>
                     </div>
                   )}
                 </div>
-                <ChevronRight size={16} strokeWidth={2} style={{ color: "var(--muted)", flexShrink: 0 }} />
+                <ChevronRight size={15} strokeWidth={2} style={{ color: "var(--muted)", flexShrink: 0 }} />
               </Link>
             );
           })}

@@ -1,8 +1,10 @@
 "use client";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Inbox, LayoutDashboard, Settings2, CalendarDays, Zap, LogOut, Users, Workflow } from "lucide-react";
 import { logout } from "@/app/login/actions";
+import { MobileAvatarMenu } from "./mobile-avatar-menu";
 
 const NAV_PRIMARY = [
   { href: "/app/dashboard", label: "Dashboard", Icon: LayoutDashboard },
@@ -10,17 +12,20 @@ const NAV_PRIMARY = [
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
 ];
 
-const NAV_CONFIG = [
-  { href: "/app/settings/playbook", label: "Configurações", Icon: Settings2 },
-  { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users },
-  { href: "/app/settings/pipeline", label: "Pipeline", Icon: Workflow },
+const NAV_CONFIG: { href: string; label: string; Icon: React.ElementType; mobileHidden?: boolean }[] = [
+  { href: "/app/settings/playbook", label: "Configurações", Icon: Settings2, mobileHidden: true },
+  { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users, mobileHidden: true },
+  { href: "/app/settings/pipeline", label: "Pipeline", Icon: Workflow, mobileHidden: true },
 ];
 
-export function SidebarNav({ email }: { email?: string }) {
+type Props = { email?: string; avatarUrl?: string | null };
+
+export function SidebarNav({ email, avatarUrl }: Props) {
   const pathname = usePathname();
 
   return (
     <aside className="sidebar">
+      {/* Desktop only: brand mark */}
       <div className="brand-mark">
         <Zap size={18} strokeWidth={2.5} />
       </div>
@@ -36,12 +41,12 @@ export function SidebarNav({ email }: { email?: string }) {
             <span className="nav-label">{label}</span>
           </Link>
         ))}
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", margin: "6px 0" }} />
-        {NAV_CONFIG.map(({ href, label, Icon }) => (
+        <div className="nav-separator" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", margin: "6px 0" }} />
+        {NAV_CONFIG.map(({ href, label, Icon, mobileHidden }) => (
           <Link
             key={href}
             href={href}
-            className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}`}
+            className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}${mobileHidden ? " nav-mobile-hidden" : ""}`}
           >
             <Icon size={15} strokeWidth={2} />
             <span className="nav-label">{label}</span>
@@ -49,6 +54,7 @@ export function SidebarNav({ email }: { email?: string }) {
         ))}
       </nav>
 
+      {/* Desktop only: logout + email footer */}
       <div className="sidebar-bottom" style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
         <form action={logout}>
           <button
@@ -66,6 +72,9 @@ export function SidebarNav({ email }: { email?: string }) {
           <span className="footer-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={email}>{email ?? "SystemOps"}</span>
         </div>
       </div>
+
+      {/* Mobile only: avatar menu button (rendered last → far right in pill) */}
+      <MobileAvatarMenu email={email} avatarUrl={avatarUrl} />
     </aside>
   );
 }

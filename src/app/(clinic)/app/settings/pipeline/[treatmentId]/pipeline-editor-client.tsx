@@ -225,13 +225,13 @@ function StepCard({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "10px",
-          padding: "12px 16px",
+          gap: "8px",
+          padding: "10px 14px",
           borderBottom: isMarker ? undefined : "1px solid rgba(255,255,255,0.06)",
           background: "rgba(255,255,255,0.02)",
         }}
       >
-        <GripVertical size={14} strokeWidth={2} style={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+        <GripVertical size={13} strokeWidth={2} style={{ color: "rgba(255,255,255,0.18)", flexShrink: 0 }} />
         <StepBadge type={step.type} />
         <input
           type="text"
@@ -241,6 +241,7 @@ function StepCard({
           style={{
             flex: 1,
             margin: 0,
+            minWidth: 0,
             fontSize: "13px",
             fontWeight: 600,
             background: "transparent",
@@ -250,7 +251,7 @@ function StepCard({
             padding: "0",
           }}
         />
-        <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => onMove("up")}
@@ -258,7 +259,7 @@ function StepCard({
             title="Mover para cima"
             style={arrowBtnStyle(index === 0)}
           >
-            <ArrowUp size={13} strokeWidth={2} />
+            <ArrowUp size={12} strokeWidth={2} />
           </button>
           <button
             type="button"
@@ -267,7 +268,7 @@ function StepCard({
             title="Mover para baixo"
             style={arrowBtnStyle(index === total - 1)}
           >
-            <ArrowDown size={13} strokeWidth={2} />
+            <ArrowDown size={12} strokeWidth={2} />
           </button>
           <button
             type="button"
@@ -277,14 +278,14 @@ function StepCard({
               background: "transparent",
               border: "1px solid rgba(255,255,255,0.08)",
               borderRadius: "6px",
-              padding: "4px 6px",
+              padding: "3px 6px",
               cursor: "pointer",
               color: "#f87171",
               display: "flex",
               alignItems: "center",
             }}
           >
-            <Trash2 size={13} strokeWidth={2} />
+            <Trash2 size={12} strokeWidth={2} />
           </button>
         </div>
       </div>
@@ -431,12 +432,13 @@ function AddStepMenu({ onAdd }: { onAdd: (type: StepType) => void }) {
 
       {open && (
         <div
+          className="add-step-menu-dropdown"
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
             left: 0,
             right: 0,
-            background: "var(--surface-2, #1a1a1a)",
+            background: "var(--surface-2, #1c1c1e)",
             border: "1px solid rgba(255,255,255,0.1)",
             borderRadius: "12px",
             overflow: "hidden",
@@ -558,40 +560,37 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
   return (
     <div className="page-wrapper">
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          marginBottom: "24px",
-          flexWrap: "wrap",
-        }}
-      >
-        <Link
-          href="/app/settings/pipeline"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            color: "var(--muted)",
-            textDecoration: "none",
-            fontSize: "13px",
-            padding: "6px 10px",
-            borderRadius: "8px",
-            border: "1px solid rgba(255,255,255,0.08)",
-            background: "transparent",
-            flexShrink: 0,
-          }}
-        >
-          <ArrowLeft size={14} strokeWidth={2} />
-          Pipeline
-        </Link>
+      <div className="pipeline-editor-header">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <Link
+            href="/app/settings/pipeline"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              color: "var(--muted)",
+              textDecoration: "none",
+              fontSize: "13px",
+              padding: "5px 10px",
+              borderRadius: "8px",
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "transparent",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <ArrowLeft size={14} strokeWidth={2} />
+            Pipeline
+          </Link>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>{treatment.name}</h1>
-          <p style={{ fontSize: "13px", color: "var(--muted)", margin: "2px 0 0" }}>
-            {steps.length === 0 ? "Sem etapas configuradas" : `${steps.length} ${steps.length === 1 ? "etapa" : "etapas"}`}
-          </p>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ fontSize: "17px", fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {treatment.name}
+            </h1>
+            <p style={{ fontSize: "12px", color: "var(--muted)", margin: "1px 0 0" }}>
+              {steps.length === 0 ? "Sem etapas configuradas" : `${steps.length} ${steps.length === 1 ? "etapa" : "etapas"}`}
+            </p>
+          </div>
         </div>
 
         <button
@@ -599,7 +598,7 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
           onClick={handleSave}
           disabled={isPending}
           className="primary-button"
-          style={{ padding: "9px 18px", gap: "7px", fontSize: "13px", flexShrink: 0 }}
+          style={{ padding: "8px 16px", gap: "7px", fontSize: "13px", flexShrink: 0 }}
         >
           {isPending ? (
             <>
