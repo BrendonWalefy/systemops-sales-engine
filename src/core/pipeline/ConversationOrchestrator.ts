@@ -1958,7 +1958,7 @@ export class ConversationOrchestrator {
             continue;
           }
           try {
-            await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig);
+            await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig, part.caption);
             console.log(`[Orchestrator] Mídia intercalada enviada: ${mediaItem.title}`);
             const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
             await this.conversationRepo.appendMessage({
@@ -1971,23 +1971,6 @@ export class ConversationOrchestrator {
               intent: "general_question",
               deliveryFormat: "text",
             });
-            if (part.caption) {
-              const captionMsgId = randomUUID();
-              await this.conversationRepo.appendMessage({
-                id: captionMsgId,
-                conversationId: conversation.id,
-                author: "agent",
-                body: part.caption,
-                sentAt: new Date(),
-                externalId: null,
-                intent: "general_question",
-                deliveryFormat: "text",
-              });
-              const captionExternalId = await sendTextMessage(outboundAddress, part.caption, channelConfig);
-              if (captionExternalId) {
-                await db.update(messagesTable).set({ externalId: captionExternalId }).where(eq(messagesTable.id, captionMsgId));
-              }
-            }
             if (mediaItem.type === "video") {
               await scheduleFollowUp({
                 clinicId,
@@ -2026,7 +2009,8 @@ export class ConversationOrchestrator {
           continue;
         }
         try {
-          await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig);
+          const mediaPart = composedParts.find((p): p is { type: "media"; id: string; caption?: string } => p.type === "media" && p.id === mediaId);
+          await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig, mediaPart?.caption);
           console.log(`[Orchestrator] Mídia enviada: ${mediaItem.title} (${mediaItem.type})`);
 
           const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
@@ -2040,25 +2024,6 @@ export class ConversationOrchestrator {
             intent: "general_question",
             deliveryFormat: "text",
           });
-
-          const mediaPart = composedParts.find((p): p is { type: "media"; id: string; caption?: string } => p.type === "media" && p.id === mediaId);
-          if (mediaPart?.caption) {
-            const captionMsgId = randomUUID();
-            await this.conversationRepo.appendMessage({
-              id: captionMsgId,
-              conversationId: conversation.id,
-              author: "agent",
-              body: mediaPart.caption,
-              sentAt: new Date(),
-              externalId: null,
-              intent: "general_question",
-              deliveryFormat: "text",
-            });
-            const captionExternalId = await sendTextMessage(outboundAddress, mediaPart.caption, channelConfig);
-            if (captionExternalId) {
-              await db.update(messagesTable).set({ externalId: captionExternalId }).where(eq(messagesTable.id, captionMsgId));
-            }
-          }
 
           if (mediaItem.type === "video") {
             await scheduleFollowUp({
