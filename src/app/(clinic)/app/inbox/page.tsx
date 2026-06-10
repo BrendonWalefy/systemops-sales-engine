@@ -83,28 +83,10 @@ export default async function InboxPage() {
     }
   }
 
-  const withAppointment = (r: typeof rows[number]): ConvRow => ({
+  const allRows: ConvRow[] = rows.map((r) => ({
     ...r,
     appointmentStartsAt: appointmentMap[r.leadId] ?? null,
-  });
-
-  // Em Conversa: todos os leads ativos (inclui agendados) — scheduled leads aparecem
-  // aqui com o badge de data dentro do próprio card
-  const handoffRows: ConvRow[] = rows
-    .filter((r) => r.aiPaused && r.needsAttention)
-    .map(withAppointment);
-
-  const activeRows: ConvRow[] = rows
-    .filter((r) => !r.aiPaused && r.leadStatus !== "lost" && r.leadStatus !== "won")
-    .map(withAppointment);
-
-  const pausedRows: ConvRow[] = rows
-    .filter((r) => r.aiPaused && !r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won")
-    .map(withAppointment);
-
-  const closedRows: ConvRow[] = rows
-    .filter((r) => r.leadStatus === "won" || r.leadStatus === "lost")
-    .map(withAppointment);
+  }));
 
   return (
     <div className="inbox-shell">
@@ -113,10 +95,7 @@ export default async function InboxPage() {
         <EnableNotificationsButton />
       </div>
       <InboxClient
-        activeRows={activeRows}
-        handoffRows={handoffRows}
-        pausedRows={pausedRows}
-        closedRows={closedRows}
+        rows={allRows}
         lastMsgMap={lastMsgMap}
         autoReplyEnabled={autoReplyEnabled}
       />

@@ -11,6 +11,7 @@ import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
 import { ManualAppointmentForm } from "./ManualAppointmentForm";
 import { ConversationReadMarker } from "./ConversationReadMarker";
+import { tempLabel, statusLabel, channelLabel, relativeTime, avatarColor } from "../inbox-utils";
 
 const TZ = "America/Sao_Paulo";
 
@@ -20,51 +21,6 @@ function formatTime(date: Date): string {
 
 function formatDate(date: Date): string {
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: TZ });
-}
-
-function tempLabel(temp: string | null) {
-  if (temp === "hot") return { label: "Quente", cls: "hot" };
-  if (temp === "warm") return { label: "Morno", cls: "warm" };
-  return { label: "Frio", cls: "cold" };
-}
-
-function statusLabel(status: string): { label: string; handoff: boolean } {
-  const map: Record<string, { label: string; handoff: boolean }> = {
-    new: { label: "Novo", handoff: false },
-    waiting_response: { label: "Aguardando", handoff: false },
-    in_conversation: { label: "Em conversa", handoff: false },
-    follow_up_due: { label: "Follow-up", handoff: true },
-    appointment_scheduled: { label: "Agendado", handoff: false },
-    lost: { label: "Perdido", handoff: true },
-    won: { label: "Ganho", handoff: false },
-  };
-  return map[status] ?? { label: status, handoff: false };
-}
-
-function channelLabel(channel: string): string {
-  const map: Record<string, string> = {
-    whatsapp: "WhatsApp", instagram: "Instagram", landing_form: "Formulário",
-    google_ads: "Google Ads", meta_ads: "Meta Ads", phone: "Telefone",
-    referral: "Indicação", manual: "Manual",
-  };
-  return map[channel] ?? channel;
-}
-
-function relativeTime(date: Date): string {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const min = Math.floor(diff / 60_000);
-  if (min < 1) return "agora";
-  if (min < 60) return `há ${min}min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `há ${h}h`;
-  return `há ${Math.floor(h / 24)}d`;
-}
-
-function avatarColor(temp: string | null): string {
-  if (temp === "hot") return "var(--hot)";
-  if (temp === "warm") return "var(--warm)";
-  return "var(--cold)";
 }
 
 export default async function ConversationPage({

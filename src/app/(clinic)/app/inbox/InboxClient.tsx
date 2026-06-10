@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Search, Inbox } from "lucide-react";
 import { filterBySearch } from "./inbox-filter";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
+import { tempKey, tempLabel, avatarColor, relativeTime } from "./inbox-utils";
 
 export type ConvRow = {
   convId: string;
@@ -33,44 +34,6 @@ function pipelineIndex(status: string): number {
   if (status === "follow_up_due") return 2;
   if (status === "appointment_scheduled") return 3;
   return 4;
-}
-
-function tempKey(temp: string | null): "hot" | "warm" | "cold" {
-  if (temp === "hot") return "hot";
-  if (temp === "warm") return "warm";
-  return "cold";
-}
-
-function tempLabel(temp: string | null): string {
-  if (temp === "hot") return "Quente";
-  if (temp === "warm") return "Morno";
-  return "Frio";
-}
-
-function avatarColor(temp: string | null): string {
-  if (temp === "hot") return "var(--hot)";
-  if (temp === "warm") return "var(--warm)";
-  return "var(--cold)";
-}
-
-function relativeTime(date: Date): string {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const min = Math.floor(diff / 60_000);
-  if (min < 1) return "agora";
-  if (min < 60) return `${min}min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) {
-    const sameDay = date.toDateString() === now.toDateString();
-    if (sameDay)
-      return date.toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "America/Sao_Paulo",
-      });
-    return `${h}h`;
-  }
-  return `${Math.floor(h / 24)}d`;
 }
 
 function convStatusBadge(
@@ -109,6 +72,7 @@ function InboxCard({
     row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0]?.toUpperCase() ?? "?";
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
   const tk = tempKey(row.leadTemperature);
+  const { label: tLabel } = tempLabel(row.leadTemperature);
   const pipeStep = pipelineIndex(row.leadStatus);
   const hasUnread = isConversationUnreadByClinic({
     lastAuthor: lastMsg.author,
@@ -131,14 +95,11 @@ function InboxCard({
       <div
         className={`inbox-card-v2 conv-temp-${tk}${row.needsAttention ? " needs-attention" : ""}${hasUnread ? " has-unread" : ""}`}
       >
-        {/* temperature badge + time + unread dot */}
         <div className="inbox-card-v2-top">
           {row.needsAttention ? (
             <span className="temp-badge-v2 temp-badge-v2-attention">Atenção</span>
           ) : (
-            <span className={`temp-badge-v2 temp-badge-v2-${tk}`}>
-              {tempLabel(row.leadTemperature)}
-            </span>
+            <span className={`temp-badge-v2 temp-badge-v2-${tk}`}>{tLabel}</span>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -148,7 +109,6 @@ function InboxCard({
           </div>
         </div>
 
-        {/* avatar + name/treatment + score */}
         <div className="inbox-card-v2-body">
           {row.leadProfilePicUrl ? (
             <img
@@ -204,7 +164,6 @@ function InboxCard({
           </div>
         </div>
 
-        {/* pipeline steps */}
         <div className="pipeline-v2">
           {PIPELINE_STEPS.map((step, i) => {
             const isDone = i < pipeStep;
@@ -226,7 +185,6 @@ function InboxCard({
           })}
         </div>
 
-        {/* message preview + status badge */}
         <div className="inbox-card-v2-footer">
           <span className="inbox-card-v2-preview">
             {lastMsg.body ? lastMsg.body.slice(0, 52) : "Sem mensagens"}
@@ -240,27 +198,30 @@ function InboxCard({
   );
 }
 
+function segmentRows(rows: ConvRow[]) {
+  const handoff = rows.filter((r) => r.aiPaused && r.needsAttention);
+  const active  = rows.filter((r) => !r.aiPaused && r.leadStatus !== "lost" && r.leadStatus !== "won");
+  const paused  = rows.filter((r) => r.aiPaused && !r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won");
+  const closed  = rows.filter((r) => r.leadStatus === "won" || r.leadStatus === "lost");
+  return { handoff, active, paused, closed };
+}
+
 export function InboxClient({
-  activeRows,
-  handoffRows,
-  pausedRows,
-  closedRows,
+  rows,
   lastMsgMap,
   autoReplyEnabled,
 }: {
-  activeRows: ConvRow[];
-  handoffRows: ConvRow[];
-  pausedRows: ConvRow[];
-  closedRows: ConvRow[];
+  rows: ConvRow[];
   lastMsgMap: Record<string, { body: string; author: string }>;
   autoReplyEnabled: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<TabFilter>("all");
 
-  const allLive = [...handoffRows, ...activeRows, ...pausedRows];
-  const totalActive = handoffRows.length + activeRows.length;
-  const totalAll = allLive.length + closedRows.length;
+  const { handoff, active, paused, closed } = segmentRows(rows);
+  const allLive = [...handoff, ...active, ...paused];
+  const totalActive = handoff.length + active.length;
+  const totalAll = allLive.length + closed.length;
 
   if (totalAll === 0) {
     return (
@@ -279,21 +240,17 @@ export function InboxClient({
     );
   }
 
-  const hotCount = allLive.filter((r) => r.leadTemperature === "hot").length;
-  const attentionCount = allLive.filter((r) => r.needsAttention).length;
-  const coldCount = allLive.filter((r) => r.leadTemperature === "cold").length;
-
   const TABS: { key: TabFilter; label: string; count: number }[] = [
-    { key: "all", label: "Todas", count: allLive.length },
-    { key: "hot", label: "Quentes", count: hotCount },
-    { key: "attention", label: "Atenção", count: attentionCount },
-    { key: "cold", label: "Resfriadas", count: coldCount },
+    { key: "all",       label: "Todas",      count: allLive.length },
+    { key: "hot",       label: "Quentes",    count: allLive.filter((r) => r.leadTemperature === "hot").length },
+    { key: "attention", label: "Atenção",    count: allLive.filter((r) => r.needsAttention).length },
+    { key: "cold",      label: "Resfriadas", count: allLive.filter((r) => r.leadTemperature === "cold").length },
   ];
 
   const baseRows = (() => {
-    if (tab === "hot") return allLive.filter((r) => r.leadTemperature === "hot");
+    if (tab === "hot")       return allLive.filter((r) => r.leadTemperature === "hot");
     if (tab === "attention") return allLive.filter((r) => r.needsAttention);
-    if (tab === "cold") return allLive.filter((r) => r.leadTemperature === "cold");
+    if (tab === "cold")      return allLive.filter((r) => r.leadTemperature === "cold");
     return allLive;
   })();
 
@@ -306,17 +263,13 @@ export function InboxClient({
 
   return (
     <>
-      {/* topbar */}
       <div className="inbox-topbar">
         <div>
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
             Inbox IA
           </h1>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4 }}>
-            <span
-              className="live-dot"
-              style={{ width: 6, height: 6, flexShrink: 0 }}
-            />
+            <span className="live-dot" style={{ width: 6, height: 6, flexShrink: 0 }} />
             <span style={{ fontSize: 13, color: "var(--muted)" }}>
               {totalActive} conversa{totalActive !== 1 ? "s" : ""} ativa{totalActive !== 1 ? "s" : ""}
             </span>
@@ -329,7 +282,6 @@ export function InboxClient({
         </div>
       </div>
 
-      {/* tabs */}
       <div className="inbox-tabs-bar">
         {TABS.map(({ key, label, count }) => (
           <button
@@ -347,7 +299,6 @@ export function InboxClient({
         ))}
       </div>
 
-      {/* search */}
       <div className="inbox-search-bar">
         <Search size={13} style={{ color: "var(--muted)", flexShrink: 0 }} />
         <input
