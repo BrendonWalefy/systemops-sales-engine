@@ -14,6 +14,8 @@ import { ResourceDayView } from "./ResourceDayView";
 import { AppointmentModal } from "./AppointmentModal";
 import { BlockModal } from "./BlockModal";
 import { AppointmentDrawer } from "./AppointmentDrawer";
+import { AgendaSidebar } from "./AgendaSidebar";
+import { AgendaStatsHeader } from "./AgendaStatsHeader";
 import type { AppointmentEvent, BlockEvent, Professional } from "./types";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 
@@ -83,6 +85,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
   });
 
   const [range, setRange] = useState({ from: initialFrom, to: initialTo });
+  const [selectedProfessionalId, setSelectedProfessionalId] = useState<string | null>(null);
 
   const fetchEvents = useCallback(async (from: string, to: string) => {
     setLoading(true);
@@ -186,6 +189,13 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
     ...blocks.map(blockToEvent),
   ];
 
+  // Calendar grid shows only the selected professional's events (blocks always visible)
+  const filteredCalendarEvents = selectedProfessionalId
+    ? allCalendarEvents.filter(
+        (e) => e.status === "block" || e.professionalId === selectedProfessionalId,
+      )
+    : allCalendarEvents;
+
   return (
     <div className="agenda-v2">
       {/* ── Toolbar ── */}
@@ -254,32 +264,73 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
         </div>
       </div>
 
-      {/* ── Calendar area ── */}
-      <div className="agenda-v2-calendar">
-        {loading && events.length === 0 ? (
-          <div className="calendar-loading">Carregando agenda...</div>
-        ) : isScheduleView ? (
-          <CalendarView
-            currentView={SX_VIEW_NAMES[view as ScheduleView]}
-            initialEvents={allCalendarEvents}
-            onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
-            onEventClick={(event) => setDrawer({ open: true, event })}
-            onEventUpdate={handleEventUpdate}
-          />
-        ) : (
-          <ResourceDayView
-            professionals={professionals}
-            events={events}
-            selectedDate={resourceDate}
-            onPrevDay={() => setResourceDate((d) => addDays(d, -1))}
-            onNextDay={() => setResourceDate((d) => addDays(d, 1))}
-            onToday={() => setResourceDate(new Date())}
-            onSlotClick={(date, time, professionalId) =>
-              setAppointmentModal({ open: true, date, time, professionalId })
-            }
-            onEventClick={(event) => setDrawer({ open: true, event })}
-          />
-        )}
+      {/* ── Stats header (desktop only) ── */}
+      <AgendaStatsHeader events={events} />
+
+      {/* ── Mobile filter bar ── */}
+      {hasProfs && (
+        <div className="agenda-filter-bar-mobile">
+          <button
+            className={`agenda-filter-chip${!selectedProfessionalId ? " active" : ""}`}
+            onClick={() => setSelectedProfessionalId(null)}
+          >
+            Todos
+          </button>
+          {professionals.map((p) => (
+            <button
+              key={p.id}
+              className={`agenda-filter-chip${selectedProfessionalId === p.id ? " active" : ""}`}
+              onClick={() =>
+                setSelectedProfessionalId(selectedProfessionalId === p.id ? null : p.id)
+              }
+            >
+              <span className="agenda-filter-chip-dot" style={{ background: p.color }} />
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Body: calendar + sidebar ── */}
+      <div className="agenda-v2-body">
+        <div className="agenda-v2-calendar">
+          {loading && events.length === 0 ? (
+            <div className="calendar-loading">Carregando agenda...</div>
+          ) : isScheduleView ? (
+            <CalendarView
+              currentView={SX_VIEW_NAMES[view as ScheduleView]}
+              initialEvents={filteredCalendarEvents}
+              onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
+              onEventClick={(event) => setDrawer({ open: true, event })}
+              onEventUpdate={handleEventUpdate}
+            />
+          ) : (
+            <ResourceDayView
+              professionals={professionals}
+              events={
+                selectedProfessionalId
+                  ? events.filter((e) => e.professionalId === selectedProfessionalId)
+                  : events
+              }
+              selectedDate={resourceDate}
+              onPrevDay={() => setResourceDate((d) => addDays(d, -1))}
+              onNextDay={() => setResourceDate((d) => addDays(d, 1))}
+              onToday={() => setResourceDate(new Date())}
+              onSlotClick={(date, time, professionalId) =>
+                setAppointmentModal({ open: true, date, time, professionalId })
+              }
+              onEventClick={(event) => setDrawer({ open: true, event })}
+            />
+          )}
+        </div>
+
+        <AgendaSidebar
+          events={events}
+          professionals={professionals}
+          selectedProfessionalId={selectedProfessionalId}
+          onSelectProfessional={setSelectedProfessionalId}
+          onEventClick={(event) => setDrawer({ open: true, event })}
+        />
       </div>
 
       {/* ── Modals ── */}

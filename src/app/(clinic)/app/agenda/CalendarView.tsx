@@ -100,11 +100,13 @@ function toDateTimeParts(value: unknown): { date: string; time: string; value: s
 
 function toCalendarEvent(e: AppointmentEvent) {
   const isBlock = e.status === "block";
+  const leadLabel = e.leadName ?? e.leadPhone ?? "Paciente";
+  const title = isBlock
+    ? `🚫 ${e.leadName || "Bloqueado"}`
+    : [leadLabel, e.professionalName].filter(Boolean).join(" · ");
   return {
     id: e.id,
-    title: isBlock
-      ? `🚫 ${e.leadName || "Bloqueado"}`
-      : (e.leadName ?? e.leadPhone ?? "Paciente"),
+    title,
     start: toZonedDateTime(e.startsAt),
     end: toZonedDateTime(e.endsAt),
     calendarId: e.status,

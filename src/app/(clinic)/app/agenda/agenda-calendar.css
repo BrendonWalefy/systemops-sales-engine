@@ -97,8 +97,8 @@
   min-width: 0;
   min-height: 0;
   /* Fit 14 hours (07:00–21:00) in viewport without vertical scrolling.
-     Formula: (100dvh - outer_header - sx_sticky_header - date_axis) / 14 = (100dvh - 300px) / 14 */
-  --sx-week-grid-hour-height: clamp(36px, calc((100dvh - 300px) / 14), 52px);
+     Formula: (100dvh - outer_header - stats_header - sx_sticky_header - date_axis) / 14 = (100dvh - 346px) / 14 */
+  --sx-week-grid-hour-height: clamp(36px, calc((100dvh - 346px) / 14), 52px);
   --sx-week-grid-height: calc(var(--sx-week-grid-hour-height) * 14);
 }
 
@@ -2062,4 +2062,324 @@ select.field-input option {
   padding: 0 12px;
   font-size: 13px;
   font-weight: 700;
+}
+
+/* ── Stats header ─────────────────────────────────────────────── */
+
+.agenda-stats-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--agenda-panel);
+  border: 1px solid var(--agenda-border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.agenda-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.agenda-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--agenda-text);
+  line-height: 1;
+}
+
+.agenda-stat-value.agenda-stat--accent {
+  color: var(--agenda-accent);
+}
+
+.agenda-stat-value.agenda-stat--danger {
+  color: var(--agenda-danger);
+}
+
+.agenda-stat-label {
+  font-size: 11px;
+  color: var(--agenda-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.agenda-stats-period-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--agenda-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.agenda-stat-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--agenda-border);
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .agenda-stats-header {
+    display: none;
+  }
+}
+
+/* ── Body: 2-column layout (calendar + sidebar) ────────────────── */
+
+.agenda-v2-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+
+/* .agenda-v2-calendar already has flex:1 and min-height:0 — keep those */
+
+/* ── Sidebar ───────────────────────────────────────────────────── */
+
+.agenda-sidebar {
+  width: 248px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--agenda-border) transparent;
+}
+
+.agenda-sidebar-section {
+  background: var(--agenda-panel);
+  border: 1px solid var(--agenda-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.agenda-sidebar-heading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--agenda-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 10px;
+}
+
+.agenda-sidebar-empty {
+  font-size: 12px;
+  color: var(--agenda-muted);
+  margin: 0;
+  padding: 4px 0;
+}
+
+/* Próximos agendamentos list */
+
+.agenda-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agenda-sidebar-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 7px;
+  background: var(--agenda-panel-soft);
+  cursor: pointer;
+  transition: background 0.12s;
+  border: 1px solid transparent;
+}
+
+.agenda-sidebar-card:hover {
+  background: var(--agenda-panel-raised);
+  border-color: var(--agenda-border);
+}
+
+.agenda-sidebar-card:focus-visible {
+  outline: 2px solid var(--agenda-accent);
+  outline-offset: 1px;
+}
+
+.agenda-sidebar-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+
+.agenda-sidebar-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agenda-sidebar-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--agenda-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agenda-sidebar-card-meta {
+  font-size: 11px;
+  color: var(--agenda-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Profissionais list */
+
+.agenda-sidebar-prof-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agenda-sidebar-prof-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agenda-sidebar-prof-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.agenda-sidebar-prof-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--agenda-text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agenda-sidebar-prof-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--agenda-muted);
+  background: var(--agenda-panel-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* Hide sidebar on tablet/mobile */
+@media (max-width: 900px) {
+  .agenda-sidebar {
+    display: none;
+  }
+}
+
+/* ── Filter chips ──────────────────────────────────────────────── */
+
+.agenda-filter-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agenda-filter-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--agenda-border);
+  background: transparent;
+  color: var(--agenda-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  text-align: left;
+}
+
+.agenda-filter-chip:hover {
+  background: var(--agenda-panel-soft);
+  color: var(--agenda-text);
+}
+
+.agenda-filter-chip.active {
+  background: var(--agenda-accent-soft);
+  border-color: var(--agenda-accent);
+  color: var(--agenda-accent);
+}
+
+.agenda-filter-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.agenda-filter-chip-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--agenda-muted);
+  background: var(--agenda-panel-soft);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* ── Mobile filter bar (horizontal chips, above the calendar) ──── */
+
+.agenda-filter-bar-mobile {
+  display: none;
+  flex-direction: row;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0 2px 8px;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.agenda-filter-bar-mobile::-webkit-scrollbar {
+  display: none;
+}
+
+.agenda-filter-bar-mobile .agenda-filter-chip {
+  white-space: nowrap;
+  flex-shrink: 0;
+  flex-direction: row;
+}
+
+@media (max-width: 900px) {
+  .agenda-filter-bar-mobile {
+    display: flex;
+  }
+}
+
+/* ── SX event title: allow professional name to show ───────────── */
+
+.sx-calendar-wrapper .sx__event-title {
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 11px;
+  line-height: 1.3;
 }
