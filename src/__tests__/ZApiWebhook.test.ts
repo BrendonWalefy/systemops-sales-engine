@@ -380,8 +380,9 @@ describe("ZApi Webhook — handleOperatorMessageFromPhone (mocked DB)", () => {
 });
 
 // ─── Tests: content-based inbound dedup (Orchestrator step 1.5) ──────────────
-// Z-API pode entregar o mesmo webhook com messageIds distintos.
-// O Orchestrator verifica corpo+telefone+janela de 5s antes de processar.
+// Z-API pode entregar o mesmo webhook com messageIds distintos e até timestamps distintos
+// (o retry usa o horário de reentrega, não o da mensagem original).
+// O Orchestrator verifica corpo+telefone+janela de 2min (wall-clock) antes de processar.
 
 describe("Orchestrator — dedup por conteúdo de mensagem inbound", () => {
   type ContentDupeResult = { id: string } | null;
@@ -394,7 +395,7 @@ describe("Orchestrator — dedup por conteúdo de mensagem inbound", () => {
     expect(shouldSkipDueToDuplicate(null)).toBe(false);
   });
 
-  it("mesmo conteúdo já salvo nos últimos 5s → descarta webhook", () => {
+  it("mesmo conteúdo já salvo nos últimos 2min → descarta webhook", () => {
     expect(shouldSkipDueToDuplicate({ id: "existing-lead-msg" })).toBe(true);
   });
 
@@ -403,15 +404,24 @@ describe("Orchestrator — dedup por conteúdo de mensagem inbound", () => {
     expect(shouldSkipDueToDuplicate(null)).toBe(false);
   });
 
-  it("mensagem idêntica fora da janela de 5s (sentAt < fiveSecondsAgo) → processa", () => {
-    // A query usa gte(sentAt, fiveSecondsAgo), então mensagem antiga não é retornada
+  it("mensagem idêntica fora da janela de 2min → processa", () => {
+    // A query usa gte(sentAt, twoMinutesAgo); mensagem salva há mais de 2min não é retornada
     expect(shouldSkipDueToDuplicate(null)).toBe(false);
   });
 
-  it("Z-API entrega duplicata com ID diferente dentro de 5s → descarta segundo webhook", () => {
-    // Cenário real: Z-API entregou "Mais cedo" com messageId A e B em <3s
-    // Primeiro webhook salva a mensagem → segundo encontra o contentDupe → skip
+  it("Z-API entrega duplicata com ID diferente dentro de 2min → descarta segundo webhook", () => {
+    // Cenário real: Z-API retentou "Lentes" com messageId e timestamp novos ~5min depois.
+    // Primeiro webhook salva a mensagem → segundo encontra o contentDupe → skip.
     const contentDupe: ContentDupeResult = { id: "lead-msg-id-A" };
+    expect(shouldSkipDueToDuplicate(contentDupe)).toBe(true);
+  });
+
+  it("Z-API retry tardio com timestamp novo é bloqueado pela janela wall-clock", () => {
+    // Antes (janela baseada no timestamp da mensagem): o retry chegava com timestamp=now,
+    // fazendo a janela de 5s expirar → pipeline rodava de novo → vídeos duplicados.
+    // Agora (janela wall-clock de 2min): mesmo que o retry tenha timestamp novo,
+    // a query compara sentAt (quando salvamos) com Date.now()-2min → cobre o retry.
+    const contentDupe: ContentDupeResult = { id: "lead-msg-id-original" };
     expect(shouldSkipDueToDuplicate(contentDupe)).toBe(true);
   });
 });
