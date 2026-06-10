@@ -67,6 +67,11 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
   const [view, setView] = useState<View>("week");
   const [resourceDate, setResourceDate] = useState(() => new Date());
 
+  // Em telas estreitas a view semana é ilegível (7 colunas em ~390px) — troca para dia
+  useEffect(() => {
+    if (window.innerWidth < 640 && view === "week") setView("day");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [appointmentModal, setAppointmentModal] = useState<{
     open: boolean;
     date?: string;
@@ -238,7 +243,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
             Dia
           </button>
           <button
-            className={`agenda-view-tab${view === "week" ? " active" : ""}`}
+            className={`agenda-view-tab agenda-tab--week${view === "week" ? " active" : ""}`}
             onClick={() => setView("week")}
           >
             <CalendarDays size={12} />

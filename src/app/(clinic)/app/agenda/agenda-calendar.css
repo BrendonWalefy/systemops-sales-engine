@@ -1729,9 +1729,34 @@ select.field-input option {
     gap: 1px;
   }
 
+  /* Mês mobile: pills → strips coloridos — texto ilegível nessa escala,
+     a cor do status já comunica o essencial; toque ainda abre o drawer */
   .sx-calendar-wrapper .sx__month-grid-event {
-    font-size: 10px;
-    padding: 1px 4px;
+    height: 5px !important;
+    min-height: 0 !important;
+    font-size: 0 !important;
+    padding: 0 2px !important;
+    border-radius: 2px !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin-bottom: 2px !important;
+    line-height: 0 !important;
+  }
+
+  .sx-calendar-wrapper .sx__month-grid-event-title,
+  .sx-calendar-wrapper .sx__month-grid-event-time {
+    display: none !important;
+  }
+
+  /* Mais células visíveis por linha — menos padding por célula */
+  .sx-calendar-wrapper .sx__month-grid-day__events {
+    gap: 2px;
+    padding: 2px 3px 3px;
+  }
+
+  /* Tab Semana oculta no mobile — 7 colunas em 390px = ilegível */
+  .agenda-tab--week {
+    display: none !important;
   }
 
   /* Bugs 2+3: font-size 16px previne auto-zoom do iOS em inputs focados */
