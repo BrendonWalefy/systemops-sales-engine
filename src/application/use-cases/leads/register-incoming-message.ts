@@ -36,6 +36,7 @@ export class RegisterIncomingMessage {
       clinicId: input.clinicId,
       identifiers,
       name: input.message.name,
+      senderPhoto: input.message.senderPhoto,
       channel: input.message.channel,
       now,
       idGenerator: this.deps.idGenerator,

@@ -223,6 +223,7 @@ export const leads = pgTable(
     channel: channelEnum("channel").notNull(),
     campaignId: text("campaign_id"),
     treatmentInterest: text("treatment_interest"),
+    profilePicUrl: text("profile_pic_url"),
     status: leadStatusEnum("status").notNull().default("new"),
     temperature: leadTemperatureEnum("temperature"),
     assignedToUserId: uuid("assigned_to_user_id"),

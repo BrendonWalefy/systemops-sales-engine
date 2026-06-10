@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
 import { appointments, clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
-import { ArrowLeft, Phone, Calendar, ExternalLink, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Phone, Calendar, ExternalLink, MessageSquare, MoreHorizontal } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
 import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
@@ -43,16 +43,28 @@ function statusLabel(status: string): { label: string; handoff: boolean } {
 
 function channelLabel(channel: string): string {
   const map: Record<string, string> = {
-    whatsapp: "WhatsApp",
-    instagram: "Instagram",
-    landing_form: "Formulário",
-    google_ads: "Google Ads",
-    meta_ads: "Meta Ads",
-    phone: "Telefone",
-    referral: "Indicação",
-    manual: "Manual",
+    whatsapp: "WhatsApp", instagram: "Instagram", landing_form: "Formulário",
+    google_ads: "Google Ads", meta_ads: "Meta Ads", phone: "Telefone",
+    referral: "Indicação", manual: "Manual",
   };
   return map[channel] ?? channel;
+}
+
+function relativeTime(date: Date): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
+}
+
+function avatarColor(temp: string | null): string {
+  if (temp === "hot") return "var(--hot)";
+  if (temp === "warm") return "var(--warm)";
+  return "var(--cold)";
 }
 
 export default async function ConversationPage({
@@ -98,86 +110,97 @@ export default async function ConversationPage({
   const displayName = lead.name ?? lead.phone ?? "Lead";
   const initial = displayName[0]?.toUpperCase() ?? "?";
   const temp = tempLabel(lead.temperature ?? null);
-  const { label: sLabel, handoff } = statusLabel(lead.status);
+  const { label: sLabel } = statusLabel(lead.status);
+  const accentColor = avatarColor(lead.temperature ?? null);
+  const waPhone = lead.phone?.replace(/\D/g, "");
 
   return (
     <div className="conv-root">
       <ConversationReadMarker conversationId={conversationId} />
-      <div className="conv-header">
-        <Link
-          href="/app/inbox"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            color: "var(--muted)",
-            textDecoration: "none",
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          <ArrowLeft size={14} />
-          Inbox
-        </Link>
-        <span style={{ color: "var(--line-strong)", flexShrink: 0 }}>·</span>
-        <span className="conv-header-name">{displayName}</span>
-        <span className={`status-pill${handoff ? " status-handoff" : ""}`} style={{ fontSize: 11, padding: "3px 10px" }}>
-          <span className="status-dot" />
-          {sLabel}
-        </span>
-        <div className="ai-mobile-toggle">
-          <AiPauseButton
-            conversationId={conversationId}
-            leadId={lead.id}
-            aiPaused={conv.aiPaused}
-            compact
-          />
-        </div>
-      </div>
 
-      {/* ── Barra de status da IA — sticky, mobile only ── */}
-      <div className="conv-ai-bar">
-        <div className={`conv-ai-bar-status ${conv.aiPaused ? "paused" : "active"}`}>
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              flexShrink: 0,
-              background: conv.aiPaused ? "var(--warning)" : "var(--accent)",
-              boxShadow: conv.aiPaused ? "0 0 5px var(--warning)" : "0 0 5px var(--accent)",
-              display: "inline-block",
-            }}
+      {/* ── Header V2 ── */}
+      <div className="conv-header-v2">
+        <Link href="/app/inbox" className="conv-back-btn" aria-label="Voltar ao Inbox">
+          <ArrowLeft size={18} />
+        </Link>
+
+        {lead.profilePicUrl ? (
+          <img
+            src={lead.profilePicUrl}
+            alt={displayName}
+            className="conv-header-avatar"
+            style={{ objectFit: "cover", borderColor: accentColor }}
           />
-          {conv.aiPaused ? "IA pausada" : "IA respondendo"}
+        ) : (
+          <div
+            className="conv-header-avatar"
+            style={{
+              background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
+              borderColor: accentColor,
+              color: accentColor,
+            }}
+          >
+            {initial}
+          </div>
+        )}
+
+        <div className="conv-header-info">
+          <div className="conv-header-name">{displayName}</div>
+          <div className="conv-header-sub">
+            <span
+              className={`temp-badge-v2 temp-badge-v2-${temp.cls}`}
+              style={{ fontSize: 9, padding: "2px 7px" }}
+            >
+              {temp.label}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>{sLabel}</span>
+          </div>
         </div>
-        <AiPauseButton
-          conversationId={conversationId}
-          leadId={lead.id}
-          aiPaused={conv.aiPaused}
-          compact
-        />
+
+        <div className="conv-header-actions">
+          {waPhone && (
+            <a
+              href={`https://wa.me/${waPhone}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="conv-action-btn"
+              title="Abrir no WhatsApp"
+            >
+              <MessageSquare size={15} />
+            </a>
+          )}
+          {lead.phone && (
+            <a href={`tel:${lead.phone}`} className="conv-action-btn" title="Ligar">
+              <Phone size={15} />
+            </a>
+          )}
+          <Link href="/app/agenda" className="conv-action-btn" title="Agenda">
+            <Calendar size={15} />
+          </Link>
+          <div className="ai-mobile-toggle">
+            <AiPauseButton
+              conversationId={conversationId}
+              leadId={lead.id}
+              aiPaused={conv.aiPaused}
+              compact
+            />
+          </div>
+          <button className="conv-action-btn" title="Mais opções">
+            <MoreHorizontal size={15} />
+          </button>
+        </div>
       </div>
 
       {conv.needsAttention && (
         <div className="attention-banner-conv">
-          <AlertTriangle size={14} />
           <span>{conv.attentionReason ?? "Esta conversa precisa de atenção"}</span>
-          <span style={{ opacity: 0.6, fontSize: 11 }}>— Será limpo automaticamente quando você enviar uma mensagem</span>
+          <span style={{ opacity: 0.6, fontSize: 11 }}>— Será limpo ao enviar uma mensagem</span>
         </div>
       )}
 
       <div className="conv-body">
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            borderRight: "1px solid var(--line)",
-            minHeight: 0,
-            overflow: "hidden",
-          }}
-        >
-          {/* Área de mensagens — scrollável, com polling e auto-scroll */}
+        <div className="conv-message-col">
+          {/* Área de mensagens */}
           <ChatWindow
             initialMessages={msgs}
             conversationId={conversationId}
@@ -185,7 +208,7 @@ export default async function ConversationPage({
             leadPhone={lead.phone ?? null}
           />
 
-          {/* Ações rápidas — visível só no mobile (painel lateral oculto em telas pequenas) */}
+          {/* Ações rápidas — mobile only */}
           <div className="conv-mobile-actions">
             <ManualAppointmentForm
               conversationId={conversationId}
@@ -194,13 +217,24 @@ export default async function ConversationPage({
             />
           </div>
 
-          {/* Input fixo do operador */}
+          {/* Input do operador */}
           <MessageInput conversationId={conversationId} />
         </div>
 
+        {/* Painel lateral */}
         <div className="conv-lead-panel">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="avatar">{initial}</div>
+            <div
+              className="avatar-v2"
+              style={{
+                width: 44, height: 44, minWidth: 44, fontSize: 15,
+                background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
+                borderColor: accentColor,
+                color: accentColor,
+              }}
+            >
+              {initial}
+            </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{displayName}</div>
               {lead.phone && <div className="lead-phone">{lead.phone}</div>}
@@ -217,6 +251,12 @@ export default async function ConversationPage({
               <span>Status</span>
               <strong>{sLabel}</strong>
             </div>
+            {lead.treatmentInterest && (
+              <div className="signal">
+                <span>Interesse</span>
+                <strong style={{ fontSize: 12 }}>{lead.treatmentInterest}</strong>
+              </div>
+            )}
             <div className="signal">
               <span>Canal</span>
               <strong>{channelLabel(lead.channel)}</strong>
@@ -226,7 +266,7 @@ export default async function ConversationPage({
                 <span>Telefone</span>
                 <strong style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                   <Phone size={12} style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, letterSpacing: "0.01em" }}>{lead.phone}</span>
+                  <span style={{ fontSize: 12 }}>{lead.phone}</span>
                 </strong>
               </div>
             )}
@@ -243,7 +283,7 @@ export default async function ConversationPage({
             </div>
           </div>
 
-          {appointment && (appointment.status === "scheduled" || appointment.status === "confirmed") ? (
+          {appointment && (appointment.status === "scheduled" || appointment.status === "confirmed") && (
             <div style={{ display: "grid", gap: 8 }}>
               <p className="eyebrow" style={{ margin: 0 }}>Agendamento</p>
               <div className="signal">
@@ -273,7 +313,7 @@ export default async function ConversationPage({
                 </a>
               )}
             </div>
-          ) : null}
+          )}
 
           <ManualAppointmentForm
             conversationId={conversationId}

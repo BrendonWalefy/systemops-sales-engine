@@ -8,6 +8,7 @@ export type IncomingChannelMessage = {
   externalThreadId: string | null;
   externalMessageId: string;
   name: string | null;
+  senderPhoto?: string | null;
   phone: string | null;
   whatsappLid: string | null;
   email: string | null;

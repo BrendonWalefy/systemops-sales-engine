@@ -12,6 +12,7 @@ export type Lead = {
   channel: Channel;
   campaignId: string | null;
   treatmentInterest: string | null;
+  profilePicUrl: string | null;
   status: LeadStatus;
   temperature: LeadTemperature | null;
   assignedToUserId: string | null;

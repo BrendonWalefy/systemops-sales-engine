@@ -694,13 +694,14 @@ export class ConversationOrchestrator {
     messageText: string;
     messageId: string;
     senderName?: string;
+    senderPhoto?: string | null;
     timestamp: Date;
     replyEnabled?: boolean;
     channelClinicId?: string;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
   }): Promise<{ replied: boolean }> {
-    const { clinicId, phone, messageText, messageId, senderName, timestamp } = params;
+    const { clinicId, phone, messageText, messageId, senderName, senderPhoto, timestamp } = params;
     const replyEnabled = params.replyEnabled ?? true;
     const contactIdentifiers = buildContactIdentifiersFromWebhook({
       phone,
@@ -818,6 +819,7 @@ export class ConversationOrchestrator {
         phone,
         whatsappLid: params.whatsappLid ?? null,
         name: senderName ?? null,
+        senderPhoto: senderPhoto ?? null,
         email: null,
         campaignId: null,
         channel: "whatsapp",

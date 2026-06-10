@@ -58,6 +58,7 @@ const lead: Lead = {
   channel: "whatsapp",
   campaignId: null,
   treatmentInterest: null,
+  profilePicUrl: null,
   status: "in_conversation",
   temperature: null,
   assignedToUserId: null,

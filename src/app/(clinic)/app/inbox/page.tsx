@@ -30,6 +30,8 @@ export default async function InboxPage() {
         leadPhone: leads.phone,
         leadStatus: leads.status,
         leadTemperature: leads.temperature,
+        leadTreatmentInterest: leads.treatmentInterest,
+        leadProfilePicUrl: leads.profilePicUrl,
       })
       .from(conversations)
       .innerJoin(leads, eq(conversations.leadId, leads.id))

@@ -39,6 +39,7 @@ function makeLead(overrides: Partial<Lead> = {}): Lead {
     channel: "whatsapp",
     campaignId: null,
     treatmentInterest: null,
+    profilePicUrl: null,
     status: "appointment_scheduled",
     temperature: "warm",
     assignedToUserId: null,

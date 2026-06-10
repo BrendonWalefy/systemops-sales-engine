@@ -16,6 +16,8 @@ function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
     leadPhone: "5511999999999",
     leadStatus: "new",
     leadTemperature: "warm",
+    leadTreatmentInterest: null,
+    leadProfilePicUrl: null,
     ...overrides,
   };
 }

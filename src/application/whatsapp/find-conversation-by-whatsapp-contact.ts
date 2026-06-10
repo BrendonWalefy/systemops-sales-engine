@@ -10,6 +10,7 @@ export async function findConversationByWhatsAppContact(params: {
   clinicId: string;
   identifiers: WhatsAppContactIdentifiers;
   senderName?: string | null;
+  senderPhoto?: string | null;
   channel: Channel;
   leadRepository: LeadRepository;
   conversationRepository: ConversationRepository;
@@ -26,6 +27,7 @@ export async function findConversationByWhatsAppContact(params: {
       clinicId: params.clinicId,
       identifiers: params.identifiers,
       name: params.senderName,
+      senderPhoto: params.senderPhoto,
       channel: params.channel,
       now: params.now,
       idGenerator: params.idGenerator,

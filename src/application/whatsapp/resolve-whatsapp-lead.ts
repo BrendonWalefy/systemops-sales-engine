@@ -11,6 +11,7 @@ export type ResolveWhatsAppLeadInput = {
   clinicId: string;
   identifiers: WhatsAppContactIdentifiers;
   name?: string | null;
+  senderPhoto?: string | null;
   channel: Channel;
   now: Date;
   idGenerator: () => string;
@@ -20,6 +21,7 @@ function enrichLead(
   lead: Lead,
   identifiers: WhatsAppContactIdentifiers,
   name: string | null | undefined,
+  senderPhoto: string | null | undefined,
   now: Date,
 ): Lead {
   const mergedIds = mergeContactIdentifiers(
@@ -32,6 +34,7 @@ function enrichLead(
     phone: mergedIds.phone ?? lead.phone,
     whatsappLid: mergedIds.whatsappLid ?? lead.whatsappLid,
     name: name?.trim() ? name.trim() : lead.name,
+    profilePicUrl: senderPhoto ?? lead.profilePicUrl,
     updatedAt: now,
   };
 }
@@ -40,7 +43,8 @@ function needsPersist(before: Lead, after: Lead): boolean {
   return (
     before.phone !== after.phone ||
     before.whatsappLid !== after.whatsappLid ||
-    before.name !== after.name
+    before.name !== after.name ||
+    before.profilePicUrl !== after.profilePicUrl
   );
 }
 
@@ -74,7 +78,7 @@ export class ResolveWhatsAppLead {
         canonicalLeadId: byPhone.id,
         duplicateLeadId: lidMatch.id,
       });
-      const enriched = enrichLead(merged, input.identifiers, input.name, input.now);
+      const enriched = enrichLead(merged, input.identifiers, input.name, input.senderPhoto, input.now);
       if (needsPersist(merged, enriched)) {
         await this.leadRepository.save(enriched);
       }
@@ -83,7 +87,7 @@ export class ResolveWhatsAppLead {
 
     const existing = byPhone ?? lidMatch;
     if (existing) {
-      const enriched = enrichLead(existing, input.identifiers, input.name, input.now);
+      const enriched = enrichLead(existing, input.identifiers, input.name, input.senderPhoto, input.now);
       if (needsPersist(existing, enriched)) {
         await this.leadRepository.save(enriched);
       }
@@ -101,6 +105,7 @@ export class ResolveWhatsAppLead {
       channel: input.channel,
       campaignId: null,
       treatmentInterest: null,
+      profilePicUrl: input.senderPhoto ?? null,
       status: "new",
       temperature: null,
       assignedToUserId: null,
