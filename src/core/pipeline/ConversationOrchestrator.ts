@@ -1972,8 +1972,9 @@ export class ConversationOrchestrator {
               deliveryFormat: "text",
             });
             if (part.caption) {
+              const captionMsgId = randomUUID();
               await this.conversationRepo.appendMessage({
-                id: randomUUID(),
+                id: captionMsgId,
                 conversationId: conversation.id,
                 author: "agent",
                 body: part.caption,
@@ -1982,7 +1983,10 @@ export class ConversationOrchestrator {
                 intent: "general_question",
                 deliveryFormat: "text",
               });
-              await sendTextMessage(outboundAddress, part.caption, channelConfig);
+              const captionExternalId = await sendTextMessage(outboundAddress, part.caption, channelConfig);
+              if (captionExternalId) {
+                await db.update(messagesTable).set({ externalId: captionExternalId }).where(eq(messagesTable.id, captionMsgId));
+              }
             }
             if (mediaItem.type === "video") {
               await scheduleFollowUp({
@@ -2039,8 +2043,9 @@ export class ConversationOrchestrator {
 
           const mediaPart = composedParts.find((p): p is { type: "media"; id: string; caption?: string } => p.type === "media" && p.id === mediaId);
           if (mediaPart?.caption) {
+            const captionMsgId = randomUUID();
             await this.conversationRepo.appendMessage({
-              id: randomUUID(),
+              id: captionMsgId,
               conversationId: conversation.id,
               author: "agent",
               body: mediaPart.caption,
@@ -2049,7 +2054,10 @@ export class ConversationOrchestrator {
               intent: "general_question",
               deliveryFormat: "text",
             });
-            await sendTextMessage(outboundAddress, mediaPart.caption, channelConfig);
+            const captionExternalId = await sendTextMessage(outboundAddress, mediaPart.caption, channelConfig);
+            if (captionExternalId) {
+              await db.update(messagesTable).set({ externalId: captionExternalId }).where(eq(messagesTable.id, captionMsgId));
+            }
           }
 
           if (mediaItem.type === "video") {
