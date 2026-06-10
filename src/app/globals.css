@@ -281,6 +281,13 @@ button:disabled {
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
+.sidebar-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .sidebar-footer {
   display: flex;
   align-items: center;
@@ -1228,24 +1235,8 @@ button:disabled {
 
 @media (max-width: 640px) {
   .dashboard-shell {
-    padding: 16px max(14px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom))
-      max(14px, env(safe-area-inset-left));
-  }
-
-  .dashboard-topbar {
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-
-  .dashboard-title h1 {
-    font-size: 24px;
-  }
-
-  .dashboard-topbar-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
+    padding: calc(env(safe-area-inset-top) + 16px) max(14px, env(safe-area-inset-right))
+      calc(24px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   }
 
   .dashboard-sync-pill,
@@ -3195,6 +3186,21 @@ textarea:focus {
   display: none;
 }
 
+/* Novo(+) center button — visible only on mobile */
+.mobile-novo-btn {
+  display: none;
+}
+
+/* Ajustes button — visible only on mobile */
+.mobile-settings-btn {
+  display: none;
+}
+
+/* Dashboard mobile header — visible only on mobile */
+.dashboard-mobile-header {
+  display: none;
+}
+
 /* Sheet + overlay — hidden by default */
 .mobile-sheet-overlay,
 .mobile-sheet {
@@ -3249,8 +3255,8 @@ textarea:focus {
   .side-nav {
     display: flex;
     flex-direction: row;
-    flex: 1;
-    justify-content: space-around;
+    flex: 4;
+    justify-content: space-evenly;
     gap: 0;
   }
 
@@ -3301,7 +3307,6 @@ textarea:focus {
     cursor: pointer;
     overflow: hidden;
     transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-    margin-right: 6px;
   }
 
   .mobile-avatar-btn.active {
@@ -3319,6 +3324,132 @@ textarea:focus {
     color: var(--accent-strong);
     line-height: 1;
     user-select: none;
+  }
+
+  /* ── Novo(+) elevated center button ────────────────── */
+  .mobile-novo-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    flex: 0 0 56px;
+    position: relative;
+    bottom: 10px;
+    height: 52px;
+    border-radius: 16px;
+    background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #4ade80));
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    box-shadow:
+      0 4px 18px color-mix(in srgb, var(--accent) 55%, transparent),
+      0 2px 8px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+
+  .mobile-novo-btn:active {
+    transform: scale(0.91);
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  /* ── Ajustes button in pill ─────────────────────────── */
+  .mobile-settings-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-height: 50px;
+    height: 54px;
+    padding: 0 10px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 160ms ease, color 160ms ease;
+    text-align: center;
+  }
+
+  .mobile-settings-btn.active {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--accent-strong);
+  }
+
+  .mobile-settings-btn:active {
+    transform: scale(0.93);
+  }
+
+  /* ── Dashboard mobile header ────────────────────────── */
+  .dashboard-mobile-header {
+    display: flex;
+    flex-direction: column;
+    padding-top: calc(env(safe-area-inset-top) + 6px);
+    margin-bottom: 20px;
+  }
+
+  .dashboard-mobile-toprow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .dashboard-mobile-brand {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+
+  .dashboard-mobile-avatar-wrap {
+    flex-shrink: 0;
+  }
+
+  .dashboard-mobile-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    object-fit: cover;
+    border: 2px solid var(--accent);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent),
+      0 0 14px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  .dashboard-mobile-avatar-fallback {
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, var(--accent-soft), rgba(16, 185, 129, 0.2));
+    color: var(--accent-strong);
+    font-size: 15px;
+    font-weight: 800;
+  }
+
+  .dashboard-mobile-greeting {
+    margin: 0 0 3px;
+    font-size: 24px;
+    font-weight: 760;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .dashboard-mobile-date {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    text-transform: capitalize;
+  }
+
+  /* Hide desktop topbar on mobile */
+  .dashboard-topbar {
+    display: none;
   }
 
   /* ── Sheet overlay ──────────────────────────────────── */

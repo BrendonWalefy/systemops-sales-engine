@@ -2,12 +2,12 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutDashboard, Settings2, CalendarDays, Zap, LogOut, Users, Workflow } from "lucide-react";
+import { Inbox, LayoutDashboard, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
 
 const NAV_PRIMARY = [
-  { href: "/app/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/app/dashboard", label: "Inicio", Icon: LayoutDashboard },
   { href: "/app/inbox", label: "Inbox", Icon: Inbox },
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
 ];
@@ -31,7 +31,21 @@ export function SidebarNav({ email, avatarUrl }: Props) {
       </div>
 
       <nav className="side-nav">
-        {NAV_PRIMARY.map(({ href, label, Icon }) => (
+        {NAV_PRIMARY.slice(0, 2).map(({ href, label, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}`}
+          >
+            <Icon size={15} strokeWidth={2} />
+            <span className="nav-label">{label}</span>
+          </Link>
+        ))}
+        <Link href="/app/agenda" className="mobile-novo-btn" aria-label="Novo agendamento">
+          <Plus size={22} strokeWidth={2.5} />
+          <span className="nav-label">Novo</span>
+        </Link>
+        {NAV_PRIMARY.slice(2).map(({ href, label, Icon }) => (
           <Link
             key={href}
             href={href}
@@ -55,7 +69,7 @@ export function SidebarNav({ email, avatarUrl }: Props) {
       </nav>
 
       {/* Desktop only: logout + email footer */}
-      <div className="sidebar-bottom" style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="sidebar-bottom">
         <form action={logout}>
           <button
             type="submit"
@@ -73,8 +87,8 @@ export function SidebarNav({ email, avatarUrl }: Props) {
         </div>
       </div>
 
-      {/* Mobile only: avatar menu button (rendered last → far right in pill) */}
-      <MobileAvatarMenu email={email} avatarUrl={avatarUrl} />
+      {/* Mobile only: settings/avatar menu (rendered last → far right in pill) */}
+      <MobileAvatarMenu email={email} avatarUrl={avatarUrl} settingsMode />
     </aside>
   );
 }

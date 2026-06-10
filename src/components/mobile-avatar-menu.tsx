@@ -3,13 +3,14 @@
 import { useState, useTransition, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2 } from "lucide-react";
+import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2, SlidersHorizontal } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { uploadAvatar, removeAvatar } from "@/app/(clinic)/app/settings/profile/actions";
 
 type Props = {
   email?: string;
   avatarUrl?: string | null;
+  settingsMode?: boolean;
 };
 
 const SHEET_ITEMS = [
@@ -18,7 +19,7 @@ const SHEET_ITEMS = [
   { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users, desc: "Equipe da clínica" },
 ];
 
-export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl }: Props) {
+export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsMode }: Props) {
   const [open, setOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
   const [isPending, startTransition] = useTransition();
@@ -61,23 +62,35 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl }: Props) 
 
   return (
     <>
-      {/* Avatar button in the pill nav */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`mobile-avatar-btn${isActive ? " active" : ""}`}
-        aria-label="Abrir menu"
-      >
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt="Avatar"
-            style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "999px" }}
-          />
-        ) : (
-          <span className="mobile-avatar-initial">{initial}</span>
-        )}
-      </button>
+      {/* Pill nav trigger: settings mode = Ajustes icon; default = avatar circle */}
+      {settingsMode ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={`mobile-settings-btn${isActive ? " active" : ""}`}
+          aria-label="Ajustes"
+        >
+          <SlidersHorizontal size={18} strokeWidth={2} />
+          <span className="nav-label">Ajustes</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={`mobile-avatar-btn${isActive ? " active" : ""}`}
+          aria-label="Abrir menu"
+        >
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Avatar"
+              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "999px" }}
+            />
+          ) : (
+            <span className="mobile-avatar-initial">{initial}</span>
+          )}
+        </button>
+      )}
 
       {/* Sheet overlay */}
       {open && (

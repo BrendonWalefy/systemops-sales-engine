@@ -1,9 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import type { CSSProperties } from "react";
+import { cookies } from "next/headers";
+import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { db } from "@/infrastructure/db/client";
-import { leads, conversations, messages } from "@/infrastructure/db/schema";
+import { leads, conversations, messages, clinicMembers } from "@/infrastructure/db/schema";
 import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
 import Link from "next/link";
 import {
@@ -187,6 +189,12 @@ function trendLabel(current: number, previous: number): string {
   return `${value > 0 ? "+" : ""}${value}%`;
 }
 
+function emailToFirstName(email: string): string {
+  const local = email.split("@")[0];
+  const first = local.split(/[._\-0-9]/)[0];
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
 function trendTone(current: number, previous: number): string {
   if (previous === 0) return current > 0 ? "positive" : "neutral";
   if (current > previous) return "positive";
@@ -225,6 +233,11 @@ async function fetchDashboardData() {
   const flowStart = addDays(todayStart, -6);
   const previousStart = addDays(flowStart, -7);
 
+  const jar = await cookies();
+  const token = jar.get(COOKIE_NAME)?.value;
+  const session = token ? await verifyToken(token) : null;
+  const userEmail = session?.email ?? "";
+
   if (!CLINIC_ID) {
     return {
       totalLeads: 0,
@@ -239,6 +252,8 @@ async function fetchDashboardData() {
       recentLeads: [] as RecentLead[],
       flowSeries: buildFlowSeries([], flowStart),
       tempCounts: { hot: 0, warm: 0, cold: 0 },
+      userEmail,
+      avatarUrl: null as string | null,
     };
   }
 
@@ -256,6 +271,7 @@ async function fetchDashboardData() {
     afterHoursResult,
     currentFlowLeadsResult,
     previousLeadPeriodResult,
+    memberResult,
   ] = await Promise.all([
     db.select({ count: count() }).from(leads).where(eq(leads.clinicId, CLINIC_ID)),
     db
@@ -336,6 +352,13 @@ async function fetchDashboardData() {
           lt(leads.createdAt, flowStart),
         ),
       ),
+    userEmail
+      ? db
+          .select({ avatarUrl: clinicMembers.avatarUrl })
+          .from(clinicMembers)
+          .where(and(eq(clinicMembers.email, userEmail), eq(clinicMembers.clinicId, CLINIC_ID)))
+          .limit(1)
+      : Promise.resolve([] as Array<{ avatarUrl: string | null }>),
   ]);
 
   return {
@@ -355,11 +378,14 @@ async function fetchDashboardData() {
       warm: tempWarmResult[0]?.count ?? 0,
       cold: tempColdResult[0]?.count ?? 0,
     },
+    userEmail,
+    avatarUrl: memberResult[0]?.avatarUrl ?? null,
   };
 }
 
 export default async function DashboardPage() {
   const data = await fetchDashboardData();
+  const firstName = data.userEmail ? emailToFirstName(data.userEmail) : "você";
   const conversionRate = data.totalLeads > 0 ? (data.scheduledCount / data.totalLeads) * 100 : 0;
   const automationRate =
     data.totalConversations > 0
@@ -388,6 +414,28 @@ export default async function DashboardPage() {
 
   return (
     <div className="dashboard-shell">
+      {/* Mobile-only header: SystemOps brand + avatar + greeting */}
+      <div className="dashboard-mobile-header">
+        <div className="dashboard-mobile-toprow">
+          <span className="dashboard-mobile-brand">SystemOps</span>
+          <div className="dashboard-mobile-avatar-wrap">
+            {data.avatarUrl ? (
+              <img
+                src={data.avatarUrl}
+                alt="Avatar"
+                className="dashboard-mobile-avatar"
+              />
+            ) : (
+              <div className="dashboard-mobile-avatar dashboard-mobile-avatar-fallback">
+                {firstName[0]?.toUpperCase() ?? "?"}
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="dashboard-mobile-greeting">Olá, {firstName}!</p>
+        <p className="dashboard-mobile-date">{todayFormatted()}</p>
+      </div>
+
       <header className="dashboard-topbar">
         <div className="dashboard-title">
           <span className="dashboard-eyebrow">Command center</span>
