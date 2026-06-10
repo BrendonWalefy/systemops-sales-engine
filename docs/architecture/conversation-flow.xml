@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="2400" pageHeight="4400" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <!-- TITLE -->
+    <mxCell id="title" value="SystemOps Core — Fluxo Completo de Mensagem do Lead" style="text;html=1;strokeColor=#1e3a5f;fillColor=#1e3a5f;fontColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=18;" vertex="1" parent="1">
+      <mxGeometry x="150" y="20" width="1700" height="50" as="geometry" />
+    </mxCell>
+
+    <!-- ================================ -->
+    <!-- START                            -->
+    <!-- ================================ -->
+    <mxCell id="start" value="📱 MENSAGEM DO LEAD&#xa;(WhatsApp via Z-API)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="375" y="90" width="250" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- ================================ -->
+    <!-- 1. WEBHOOK                       -->
+    <!-- ================================ -->
+    <mxCell id="webhook" value="① WEBHOOK Z-API&#xa;src/app/api/whatsapp/zapi/route.ts&#xa;POST /api/whatsapp/zapi | Timeout: 55s&#xa;Resolve clinicId via zapiInstanceId → clinics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="350" y="170" width="300" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_start_wh" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="start" target="webhook" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: Filtrar -->
+    <mxCell id="d_filter" value="Filtrar?&#xa;grupo / statusReply / sticker" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="273" width="210" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_wh_f" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="webhook" target="d_filter" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="exit_filter" value="200 OK silencioso&#xa;Descarta" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="280" width="150" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e_f_exit" value="sim" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_filter" target="exit_filter" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: autoReplyEnabled -->
+    <mxCell id="d_autoreply" value="autoReplyEnabled?&#xa;⚙️ clinics.autoReplyEnabled" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="373" width="210" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_f_ar" value="não" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_filter" target="d_autoreply" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="exit_autoreply" value="Só notifica operador&#xa;Sem resposta automática" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="380" width="170" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="e_ar_exit" value="desligado" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_autoreply" target="exit_autoreply" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: fromMe -->
+    <mxCell id="d_fromme" value="fromMe = true?&#xa;(operador enviou)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="473" width="210" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_ar_fm" value="ligado" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_autoreply" target="d_fromme" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="op_path" value="OPERADOR ASSUMIU (fromMe)&#xa;① Dedup por messageId&#xa;② Se sem conversa ativa → ignora&#xa;③ Dedup por texto idêntico (10s)&#xa;④ Registra author=clinic_user&#xa;⑤ aiPaused=true&#xa;⑥ takeoverExpiresAt = now + TTL&#xa;⚙️ clinics.takeoverTtlHours (padrão 4h)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="450" width="260" height="130" as="geometry" />
+    </mxCell>
+    <mxCell id="e_fm_op" value="sim" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_fromme" target="op_path" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ================================ -->
+    <!-- 2. ORQUESTRADOR                  -->
+    <!-- ================================ -->
+    <mxCell id="orch_lbl" value="② ORQUESTRADOR — ConversationOrchestrator.ts" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="330" y="580" width="340" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="e_fm_orch" value="não (lead)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_fromme" target="orch_lbl" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DEDUP -->
+    <mxCell id="dedup" value="DEDUP (2 camadas)&#xa;① Por messageId → messages.externalId&#xa;② Por conteúdo + phone + janela 5s (race Z-API)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="350" y="635" width="300" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="e_orch_dd" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="orch_lbl" target="dedup" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="exit_dedup" value="Duplicata&#xa;{ replied: false }" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="740" y="643" width="140" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e_dd_exit" value="duplicado" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dedup" target="exit_dedup" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- LOAD CONTEXT -->
+    <mxCell id="load_ctx" value="CARREGA CONTEXTO&#xa;🗄️ clinics: timezone, businessHours, voiceResponseEnabled,&#xa;  menuItems, greetingMessage, conversationExperience, ttsConfig&#xa;🗄️ resolveActiveEditorialConfig()&#xa;  → playbook_versions (ativa) + treatments + mediaLibrary&#xa;📅 CalendarGateway (Google Calendar ou local)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="350" y="720" width="300" height="95" as="geometry" />
+    </mxCell>
+    <mxCell id="e_dd_ctx" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dedup" target="load_ctx" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- REGISTER MESSAGE -->
+    <mxCell id="reg_msg" value="REGISTRA — RegisterIncomingMessage&#xa;🗄️ Resolve/cria lead (phone + whatsappLid)&#xa;🗄️ Cria/atualiza conversa&#xa;🗄️ Salva mensagem author=lead&#xa;🎵 Áudio: Whisper transcreve (timeout 5s)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="350" y="835" width="300" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="e_ctx_reg" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="load_ctx" target="reg_msg" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: Mídia Visual -->
+    <mxCell id="d_media" value="Mídia Visual?&#xa;image / video / document" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="940" width="210" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_reg_med" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="reg_msg" target="d_media" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="media_path" value="FLUXO DE MÍDIA VISUAL&#xa;① Rehost URL → Vercel Blob (async)&#xa;② Encaminha para doutor (receptionistPhone)&#xa;③ Push notification: &quot;Enviou foto/vídeo/doc&quot;&#xa;④ Resposta: media_received&#xa;⑤ aiPaused=true (sem TTL)&#xa;⑥ needsAttention=true&#xa;⚙️ clinics.receptionistPhone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="920" width="260" height="140" as="geometry" />
+    </mxCell>
+    <mxCell id="e_med_path" value="sim" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_media" target="media_path" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: IA Pausada -->
+    <mxCell id="d_paused" value="IA Pausada?&#xa;(aiPaused = true)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="1040" width="210" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_med_pause" value="não" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_media" target="d_paused" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: TTL expirou -->
+    <mxCell id="d_ttl" value="TTL expirou?&#xa;takeoverExpiresAt &lt; now" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="710" y="1040" width="210" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_pause_ttl" value="sim" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_paused" target="d_ttl" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="exit_paused" value="Ignora mensagem&#xa;Notifica operador:&#xa;&quot;lead respondeu&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="1010" y="1045" width="170" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="e_ttl_exit" value="não expirou" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_ttl" target="exit_paused" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="resume_ai" value="Retoma IA&#xa;resumedFromHumanTakeover=true" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="1140" width="210" height="45" as="geometry" />
+    </mxCell>
+    <mxCell id="e_ttl_resume" value="expirou" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_ttl" target="resume_ai" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: Rate Limit -->
+    <mxCell id="d_rate" value="Rate Limit?&#xa;msgs lead &gt;= 60/h&#xa;🔒 hardcoded" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="1135" width="210" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="e_pause_rate" value="não" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_paused" target="d_rate" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e_resume_rate" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="resume_ai" target="d_rate" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="exit_rate" value="Ignora&#xa;(anti-spam)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="1010" y="1143" width="130" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e_rate_exit" value="sim" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_rate" target="exit_rate" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- LOAD HISTORY -->
+    <mxCell id="load_hist" value="CARREGA HISTÓRICO&#xa;Últimas 8 mensagens (excluindo author=system)&#xa;Detecta lastAgentMessage para contexto de menção" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="350" y="1240" width="300" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="e_rate_hist" value="não" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_rate" target="load_hist" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ================================ -->
+    <!-- 3. CLASSIFICAÇÃO                 -->
+    <!-- ================================ -->
+    <mxCell id="class_lbl" value="③ CLASSIFICAÇÃO DE INTENÇÃO" style="text;html=1;strokeColor=#d79b00;fillColor=#ffe6cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="330" y="1330" width="340" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="e_hist_class" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="load_hist" target="class_lbl" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="class_det" value="DETERMINÍSTICO (sem LLM — prioridade máxima)&#xa;&#xa;① Menu ativo? (state=menu_offered)&#xa;   Número → MenuItem.intent&#xa;   Rótulo / palavra-chave universal&#xa;② Lista de procedimentos? (procedure_list_offered)&#xa;   Número → treatment (por índice)&#xa;③ Menção direta de tratamento?&#xa;   Keyword match (sem stopwords, ≤8 palavras)&#xa;   Ignora se agent acabou de perguntar &quot;qual proc.?&quot;&#xa;④ Comandos: /reset, menu, voltar&#xa;⑤ Saudação isolada mid-conversa&#xa;⑥ Gap ≥ 4h → conversa stale → reinicia&#xa;⑦ Throttle rápido (&lt;4s, msg não-negocial)&#xa;⑧ Número sem menu ativo → reapresenta menu&#xa;⚙️ clinics.menuItems, clinics.conversationExperience" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="350" y="1385" width="300" height="230" as="geometry" />
+    </mxCell>
+    <mxCell id="e_class_det" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="class_lbl" target="class_det" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: Skip LLM -->
+    <mxCell id="d_skip" value="Resolveu&#xa;deterministicamente?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="1635" width="210" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="e_det_skip" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="class_det" target="d_skip" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="intent_llm" value="🤖 IntentClassifier — LLM&#xa;src/core/intelligence/IntentClassifier.ts&#xa;Modelo: gpt-4o-mini | Timeout: 30s | strict JSON&#xa;&#xa;16 intents:&#xa;book_appointment, check_availability,&#xa;confirm_slot, reject_slots,&#xa;cancel_appointment, reschedule_appointment,&#xa;list_appointments, price_inquiry,&#xa;clinical_urgency, needs_human,&#xa;patient_arrived, general_question,&#xa;greeting, acknowledgment, farewell, unclear&#xa;&#xa;Output: intent + slotPreference +&#xa;confidence + shouldAskClarification&#xa;+ handoffReason (se needs_human)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="1610" width="280" height="220" as="geometry" />
+    </mxCell>
+    <mxCell id="e_skip_llm" value="não&#xa;(chama LLM)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_skip" target="intent_llm" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="unify" value="INTENT FINAL UNIFICADO&#xa;Determinístico tem prioridade (confidence=1)&#xa;LLM preenche quando não há resolução determinística" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="350" y="1740" width="300" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="e_skip_unify" value="sim" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_skip" target="unify" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e_llm_unify" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="intent_llm" target="unify" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ================================ -->
+    <!-- 4. DISPATCH                      -->
+    <!-- ================================ -->
+    <mxCell id="dispatch_lbl" value="④ DISPATCH POR INTENT + EXECUÇÃO DE AÇÃO" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="330" y="1828" width="340" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="e_unify_disp" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="unify" target="dispatch_lbl" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="dispatch" value="📅 book_appointment / check_availability&#xa;→ Resolve tratamento (ou pede clarificação)&#xa;→ requiresEvaluationFirst? → redireciona avaliação&#xa;→ fetchAndOfferSlots(): janela +2h/+14 dias&#xa;   filtra por preferência (data, período, hora)&#xa;   remove conflitos locais + buffer pós-evento&#xa;   5 slots salvos c/ TTL 15min (state=slots_offered)&#xa;⚙️ treatments.requiresEvaluationFirst&#xa;⚙️ clinics.defaultAppointmentDurationMinutes&#xa;⚙️ clinics.postAppointmentBufferMinutes&#xa;&#xa;✅ confirm_slot → SAGA BookingService.book()&#xa;→ lock otimista (slot_reservations)&#xa;→ overlap check em appointments&#xa;→ re-valida CalendarGateway.isSlotFree()&#xa;→ cria evento Google Calendar&#xa;→ confirma reserva + salva appointment&#xa;→ scheduleFollowUp (reengagement, 2h após)&#xa;⚠️ slot_taken: libera reserva, reoferta&#xa;&#xa;❌ reject_slots → busca alternativa por preferência&#xa;&#xa;🚫 cancel_appointment → BookingService.cancel()&#xa;&#xa;🔄 reschedule_appointment → cancel + fetchAndOfferSlots&#xa;&#xa;📋 list_appointments → busca appointments ativos&#xa;&#xa;💰 price_inquiry → commercialPolicy + installmentTable&#xa;⚙️ playbook_versions.commercialPolicy&#xa;⚙️ clinics.installmentRates&#xa;&#xa;❓ general_question&#xa;→ Menção de tratamento? buildDirectTreatmentContext&#xa;  TRIGGER FORMAT no notes? entrega determinística&#xa;→ Seleção da lista? buildSelectedTreatmentContext&#xa;→ Localização? endereço + horários (sem agendar)&#xa;⚙️ treatments.*, playbook_versions.notes&#xa;⚙️ clinics.address&#xa;&#xa;👋 greeting&#xa;→ menu_first: saudação temporal + menu&#xa;→ concierge: pergunta aberta&#xa;⚙️ clinics.conversationExperience&#xa;⚙️ clinics.greetingMessage&#xa;&#xa;👍 acknowledgment → resposta curta calorosa&#xa;&#xa;👋 farewell → despedida breve&#xa;&#xa;🆘 needs_human&#xa;→ aiPaused=true (sem TTL)&#xa;→ needsAttention=true + notifica operador e doutor&#xa;&#xa;🚑 clinical_urgency → needsAttention + notifica&#xa;&#xa;🏥 patient_arrived&#xa;→ aiPaused=true (sem TTL)&#xa;→ needsAttention=true + notifica operador e doutor&#xa;&#xa;❓ unclear&#xa;→ Menu ativo? reapresenta menu&#xa;→ shouldAskClarification? usa pergunta do LLM&#xa;→ 3 consecutivos → needsAttention (escalação)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="350" y="1883" width="340" height="680" as="geometry" />
+    </mxCell>
+    <mxCell id="e_disp_box" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dispatch_lbl" target="dispatch" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ================================ -->
+    <!-- 5. RESPONSE COMPOSER             -->
+    <!-- ================================ -->
+    <mxCell id="composer_lbl" value="⑤ COMPÕE RESPOSTA" style="text;html=1;strokeColor=#d79b00;fillColor=#ffe6cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="330" y="2585" width="340" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="e_disp_comp" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dispatch" target="composer_lbl" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- DECISION: TRIGGER FORMAT -->
+    <mxCell id="d_trigger" value="TRIGGER FORMAT&#xa;no playbook notes?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="2640" width="210" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="e_comp_trig" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="composer_lbl" target="d_trigger" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="det_resp" value="ENTREGA DETERMINÍSTICA&#xa;(zero LLM)&#xa;Extrai template do notes&#xa;parseIntoParts([MEDIA:id])&#xa;⚙️ playbook_versions.notes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="2645" width="220" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_trig_det" value="sim" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_trigger" target="det_resp" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="composer_llm" value="🤖 ResponseComposer — LLM&#xa;src/core/intelligence/ResponseComposer.ts&#xa;Modelo: gpt-4o-mini | Temp: 0.5 | Max: 350 tokens&#xa;&#xa;Input:&#xa;• actionResult (resultado da ação)&#xa;• Histórico (8 msgs)&#xa;• clinics.name, specialty&#xa;• playbook_versions.toneOfVoice&#xa;• playbook_versions.playbook&#xa;• playbook_versions.commercialPolicy&#xa;• clinics.installmentRates (tabela pré-calculada)&#xa;• playbook_versions.mediaLibrary&#xa;• Hora/data no timezone da clínica&#xa;&#xa;Output:&#xa;• text (limpo, sem tags)&#xa;• parts (text | media intercalados)&#xa;• mediaIds em ordem&#xa;&#xa;Regras do system prompt:&#xa;• Anti-repetição (não repete info já dita)&#xa;• Máx 2 parágrafos curtos&#xa;• Tom: toneOfVoice da clínica&#xa;• Saudação temporal se lead usou&#xa;• [MEDIA:id] só se playbook indicar&#xa;• Sem inventar dados (fidelidade editorial)&#xa;⚙️ playbook_versions.*, clinics.timezone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="350" y="2745" width="300" height="310" as="geometry" />
+    </mxCell>
+    <mxCell id="e_trig_llm" value="não&#xa;(chama LLM)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_trigger" target="composer_llm" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="resp_ready" value="RESPOSTA PRONTA&#xa;text + parts resolvidos&#xa;🗄️ Salva agentMessage (author=agent) ANTES do envio" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="350" y="3075" width="300" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="e_llm_ready" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="composer_llm" target="resp_ready" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e_det_ready" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="det_resp" target="resp_ready" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ================================ -->
+    <!-- 6. ENVIO                         -->
+    <!-- ================================ -->
+    <mxCell id="send_lbl" value="⑥ ENVIO VIA Z-API" style="text;html=1;strokeColor=#9673a6;fillColor=#e1d5e7;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="330" y="3160" width="340" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="e_ready_send" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="resp_ready" target="send_lbl" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="d_sendmode" value="Modo de envio?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="395" y="3215" width="210" height="75" as="geometry" />
+    </mxCell>
+    <mxCell id="e_send_mode" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="send_lbl" target="d_sendmode" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="tts_mode" value="TTS (VOZ)&#xa;⚙️ clinics.voiceResponseEnabled&#xa;⚙️ clinics.ttsConfig (provider, voice)&#xa;① Sintetiza (Google/ElevenLabs)&#xa;② Upload Vercel Blob&#xa;③ Envia áudio WhatsApp&#xa;④ Deleta Blob (cleanup)&#xa;⑤ Fallback silencioso → texto" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="710" y="3200" width="240" height="115" as="geometry" />
+    </mxCell>
+    <mxCell id="e_mode_tts" value="TTS&#xa;habilitado" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_sendmode" target="tts_mode" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="interc_mode" value="MÍDIA INTERCALADA&#xa;parts = [text, media, text, ...]&#xa;Para cada part em ordem:&#xa;• text → sendTextMessage&#xa;• media → sendMediaMessage&#xa;• vídeo → scheduleFollowUp&#xa;  (video_sent, 2h depois)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="60" y="3200" width="230" height="115" as="geometry" />
+    </mxCell>
+    <mxCell id="e_mode_int" value="Mídia&#xa;intercalada" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_sendmode" target="interc_mode" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="text_mode" value="TEXTO SIMPLES&#xa;sendTextMessage(text, config)&#xa;via Z-API REST" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="365" y="3340" width="270" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="e_mode_txt" value="texto" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="d_sendmode" target="text_mode" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ================================ -->
+    <!-- 7. PÓS-ENVIO                     -->
+    <!-- ================================ -->
+    <mxCell id="post_send" value="⑦ PÓS-ENVIO&#xa;🗄️ Atualiza messages.externalId (zapiMessageId)&#xa;🗄️ Atualiza messages.deliveryFormat (audio|text)&#xa;📳 Push notification → operadores&#xa;💲 Rastreia custo LLM (usageCostTracker)&#xa;🗄️ unclear consecutivo ≥ 3 → needsAttention&#xa;🗄️ Atualiza lead.temperature (nunca rebaixa)&#xa;   cold → warm → hot&#xa;   inferido do intent (hot: booking/confirm/cancel)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="350" y="3420" width="300" height="130" as="geometry" />
+    </mxCell>
+    <mxCell id="e_txt_post" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="text_mode" target="post_send" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e_tts_post" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="tts_mode" target="post_send" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    <mxCell id="e_int_post" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="interc_mode" target="post_send" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- FALLBACK ERROR -->
+    <mxCell id="fallback" value="FALLBACK DE ERRO&#xa;&quot;Ops, tive um problema técnico...&quot;&#xa;Registra mensagem no BD mesmo assim" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="720" y="3450" width="220" height="65" as="geometry" />
+    </mxCell>
+
+    <!-- END -->
+    <mxCell id="end_ok" value="{ replied: true }&#xa;Lead respondido ✅" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="385" y="3575" width="230" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="e_post_end" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="post_send" target="end_ok" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ================================ -->
+    <!-- PAINEL DIREITO: CONFIG SOURCES   -->
+    <!-- ================================ -->
+    <mxCell id="panel_title" value="ONDE ESTÁ CADA CONFIGURAÇÃO" style="text;html=1;strokeColor=#1e3a5f;fillColor=#1e3a5f;fontColor=#ffffff;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=15;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="90" width="350" height="40" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cfg_ops" value="🗄️ TABLE: clinics (operacional por clínica)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;autoReplyEnabled → liga/desliga IA inteira&#xa;conversationExperience → menu_first | concierge&#xa;menuItems[] → itens do menu (label, intent, enabled)&#xa;greetingMessage → primeira saudação da IA&#xa;takeoverTtlHours → TTL do takeover humano (padrão 4h)&#xa;voiceResponseEnabled → ativa envio de áudio (TTS)&#xa;ttsConfig → provider TTS + voz&#xa;receptionistPhone → quem recebe mídia do lead&#xa;installmentRates → tabela de parcelamento&#xa;defaultAppointmentDurationMinutes&#xa;postAppointmentBufferMinutes → buffer após consulta&#xa;address → aparece na confirmação de agendamento&#xa;timezone → formata datas para o LLM e UI&#xa;businessHours → bloqueia slots fora do expediente&#xa;zapiInstanceId → identifica canal para roteamento" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="150" width="350" height="310" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cfg_editorial" value="🗄️ TABLE: playbook_versions (editorial por clínica)&#xa;Fonte única: resolveActiveEditorialConfig()&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;specialty → especialidade (contexto do LLM)&#xa;toneOfVoice → tom da recepcionista&#xa;receptionistName → nome da IA (padrão &quot;Mariana&quot;)&#xa;commercialPolicy → política de preços e condições&#xa;notes → orientações livres + TRIGGER FORMAT&#xa;  → TRIGGER FORMAT: entrega determinística (sem LLM)&#xa;  → Format: TRIGGER [nome] ... template ...&#xa;differentials → diferenciais da clínica&#xa;objections → objeções e como responder&#xa;mediaLibrary[] → vídeos/imagens disponíveis&#xa;  → LLM usa [MEDIA:id] para referenciar&#xa;procedureDescription → desc. geral dos procedimentos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="480" width="350" height="260" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cfg_treatments" value="🗄️ TABLE: treatments (procedimentos por clínica)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;name → keyword para match automático&#xa;description → texto exibido no general_question&#xa;durationMinutes → duração do slot no calendário&#xa;requiresEvaluationFirst → força avaliação antes&#xa;  do agendamento do procedimento principal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="760" width="350" height="115" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cfg_hard" value="🔒 HARDCODED (constantes no Orchestrator.ts)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;RATE_LIMIT = 60 msgs/hora por conversa&#xa;UNCLEAR_THRESHOLD = 3 → escalação needsAttention&#xa;CONVERSATION_RESTART_HOURS = 4h → stale&#xa;RAPID_THROTTLE_MS = 4.000ms&#xa;SLOT_OFFER_TTL_MINUTES = 15 → oferta expira&#xa;SLOTS_LOOKAHEAD_DAYS = 14 → janela de agenda&#xa;HISTORY_LIMIT = 8 mensagens para o LLM&#xa;DEDUP_WINDOW_MS = 5.000ms (race Z-API)&#xa;&#xa;⚠️ Para alterar: editar src/core/pipeline/&#xa;   ConversationOrchestrator.ts diretamente" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="895" width="350" height="195" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cfg_env" value="🌐 ENV VARS (vercel / .env)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;OPENAI_API_KEY → IntentClassifier + ResponseComposer&#xa;CRON_SECRET → autenticação dos cron jobs&#xa;E2E_MODE, E2E_CLINIC_ID → modo de teste&#xa;VERCEL_BLOB_TOKEN → upload mídia / TTS&#xa;GOOGLE_CALENDAR_* → credenciais Calendar" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1110" width="350" height="120" as="geometry" />
+    </mxCell>
+
+    <!-- CRON JOBS -->
+    <mxCell id="cron_title" value="CRON JOBS (background)" style="text;html=1;strokeColor=#9673a6;fillColor=#e1d5e7;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1260" width="350" height="38" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cron1" value="📅 appointment-reminder (1x/h)&#xa;/api/cron/appointment-reminder&#xa;Appointments em +20h/+32h → envia lembrete&#xa;Idempotente via reminderSentAt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1318" width="350" height="75" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cron2" value="🔄 follow-up-dispatcher (5min)&#xa;/api/cron/follow-up-dispatcher&#xa;followUps com status=pending + dueAt &lt;= now&#xa;• video_sent: &quot;Viu o vídeo?&quot; (2h após envio)&#xa;• reengagement: convite de retorno&#xa;→ lead.status = in_conversation após envio" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1413" width="350" height="90" as="geometry" />
+    </mxCell>
+
+    <mxCell id="cron3" value="🧹 stale-conversations (1x/dia)&#xa;/api/cron/stale-conversations&#xa;Leads sem msg há X dias → status=stale" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1523" width="350" height="60" as="geometry" />
+    </mxCell>
+
+    <!-- QUANDO IA É PAUSADA -->
+    <mxCell id="pause_title" value="QUANDO A IA É PAUSADA (aiPaused=true)" style="text;html=1;strokeColor=#d79b00;fillColor=#ffe6cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1615" width="350" height="38" as="geometry" />
+    </mxCell>
+
+    <mxCell id="pause_tab" value="Evento                    | TTL          | Auto-retoma?&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;Operador envia msg        | takeoverTtl  | Sim&#xa;Lead envia mídia          | null (perm.)  | Não&#xa;needs_human               | null (perm.)  | Não&#xa;patient_arrived           | null (perm.)  | Não&#xa;Pausado no UI             | config        | Sim (TTL)&#xa;&#xa;Retomada: takeoverExpiresAt &lt; now&#xa;→ resumedFromHumanTakeover=true&#xa;→ ResponseComposer ciente da retomada" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1673" width="350" height="170" as="geometry" />
+    </mxCell>
+
+    <!-- NEEDS ATTENTION -->
+    <mxCell id="attn_title" value="QUANDO needsAttention = true" style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1873" width="350" height="38" as="geometry" />
+    </mxCell>
+
+    <mxCell id="attn_tab" value="Motivo                    | Notificação&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;Lead enviou mídia         | Push + WhatsApp doutor&#xa;needs_human               | Push + WhatsApp doutor&#xa;clinical_urgency          | Push + WhatsApp doutor&#xa;patient_arrived           | Push + WhatsApp doutor&#xa;unclear ≥ 3x              | Push operador" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="1931" width="350" height="110" as="geometry" />
+    </mxCell>
+
+    <!-- TEMPERATURA -->
+    <mxCell id="temp_title" value="TEMPERATURA DO LEAD (lead.temperature)" style="text;html=1;strokeColor=#82b366;fillColor=#d5e8d4;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="2070" width="350" height="38" as="geometry" />
+    </mxCell>
+
+    <mxCell id="temp_tab" value="hot → book_appointment, check_availability,&#xa;      confirm_slot, reject_slots,&#xa;      reschedule, cancel, list_appointments&#xa;&#xa;warm → price_inquiry, general_question,&#xa;       clinical_urgency, needs_human,&#xa;       patient_arrived&#xa;&#xa;cold → greeting, acknowledgment, farewell,&#xa;       unclear&#xa;&#xa;Regra: NUNCA rebaixa (só sobe)&#xa;cold → warm → hot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="2128" width="350" height="185" as="geometry" />
+    </mxCell>
+
+    <!-- LEGENDA DE CORES -->
+    <mxCell id="leg_title" value="LEGENDA DE CORES" style="text;html=1;strokeColor=#666;fillColor=#f5f5f5;fontColor=#333;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="2340" width="350" height="35" as="geometry" />
+    </mxCell>
+
+    <mxCell id="leg1" value="🔵 AZUL — Pipeline / Orchestrator" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;" vertex="1" parent="1"><mxGeometry x="1120" y="2385" width="350" height="28" as="geometry" /></mxCell>
+    <mxCell id="leg2" value="🟡 AMARELO — Decisão (diamond)" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;" vertex="1" parent="1"><mxGeometry x="1120" y="2423" width="350" height="28" as="geometry" /></mxCell>
+    <mxCell id="leg3" value="🔴 VERMELHO — Exit / Erro / Pausa / Bloqueio" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=left;" vertex="1" parent="1"><mxGeometry x="1120" y="2461" width="350" height="28" as="geometry" /></mxCell>
+    <mxCell id="leg4" value="🟢 VERDE — DB / Config / Sucesso" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=left;" vertex="1" parent="1"><mxGeometry x="1120" y="2499" width="350" height="28" as="geometry" /></mxCell>
+    <mxCell id="leg5" value="🟠 LARANJA — LLM (chamadas OpenAI)" style="rounded=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;align=left;" vertex="1" parent="1"><mxGeometry x="1120" y="2537" width="350" height="28" as="geometry" /></mxCell>
+    <mxCell id="leg6" value="🟣 ROXO — Serviços externos (Z-API, TTS, Blob, Calendar)" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="1"><mxGeometry x="1120" y="2575" width="350" height="28" as="geometry" /></mxCell>
+
+    <!-- ARQUIVO MAP -->
+    <mxCell id="files_title" value="MAPA DE ARQUIVOS → RESPONSABILIDADE" style="text;html=1;strokeColor=#1e3a5f;fillColor=#1e3a5f;fontColor=#ffffff;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="2630" width="350" height="38" as="geometry" />
+    </mxCell>
+
+    <mxCell id="files_box" value="src/app/api/whatsapp/zapi/route.ts&#xa;  → Entry point, filtros, fromMe, mídia, áudio&#xa;&#xa;src/core/pipeline/ConversationOrchestrator.ts&#xa;  → Coordena TODO o pipeline&#xa;  → Dedup, estado, rate limit, dispatch, pós-envio&#xa;&#xa;src/core/intelligence/IntentClassifier.ts&#xa;  → LLM gpt-4o-mini → 16 intents&#xa;  → Só chamado se resolução determinística falhar&#xa;&#xa;src/core/intelligence/ResponseComposer.ts&#xa;  → LLM gpt-4o-mini → humaniza resposta&#xa;  → Recebe actionResult, produz texto + mídia&#xa;&#xa;src/core/booking/BookingService.ts&#xa;  → SAGA: reserva, Calendar, appointment&#xa;&#xa;src/core/booking/SlotFetchingService.ts&#xa;  → fetchAndOfferSlots: busca e filtra slots&#xa;&#xa;src/core/state/ConversationStateMachine.ts&#xa;  → Gerencia state (menu, slots, procedure_list)&#xa;  → TTL das ofertas&#xa;&#xa;src/core/editorial/resolveActiveEditorialConfig.ts&#xa;  → Fonte única do playbook ativo&#xa;&#xa;src/app/api/cron/*/route.ts&#xa;  → Reminder, follow-up, stale, calendar renew&#xa;&#xa;src/lib/zapi/ ou src/lib/channel/&#xa;  → sendTextMessage, sendMediaMessage&#xa;&#xa;src/lib/tts/ ou src/core/tts/&#xa;  → Síntese de áudio (TTS gateway)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666;fontSize=10;align=left;" vertex="1" parent="1">
+      <mxGeometry x="1120" y="2688" width="350" height="440" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>

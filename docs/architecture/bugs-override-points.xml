@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="2000" pageHeight="1900" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <!-- TITLE -->
+    <mxCell id="title" value="Pontos onde uma decisão sobrescreve outra — Bugs e Config faltando" style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;fontColor=#b85450;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=18;" vertex="1" parent="1">
+      <mxGeometry x="80" y="20" width="1820" height="50" as="geometry" />
+    </mxCell>
+
+    <mxCell id="sub" value="🔴 BUG REAL = o sistema faz algo errado  |  🟡 CONFIG FALTANDO = o sistema funciona mas não deixa a clínica escolher  |  ⚙️ = deveria estar na tabela clinics" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="75" width="1820" height="30" as="geometry" />
+    </mxCell>
+
+    <!-- ======================== -->
+    <!-- FLUXO SIMPLIFICADO       -->
+    <!-- ======================== -->
+
+    <mxCell id="f_start" value="📱 Mensagem do Lead" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="120" width="240" height="50" as="geometry" />
+    </mxCell>
+
+    <mxCell id="f_webhook" value="WEBHOOK Z-API&#xa;route.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="200" width="240" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_start" target="f_webhook" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_fromme" value="fromMe? autoReply?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="100" y="280" width="200" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_webhook" target="f_fromme" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_orch" value="ORQUESTRADOR" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="80" y="378" width="240" height="32" as="geometry" />
+    </mxCell>
+    <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_fromme" target="f_orch" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_register" value="Dedup + Contexto + Registra" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="430" width="240" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_orch" target="f_register" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- MARK 4: Mídia -->
+    <mxCell id="f_media" value="Mídia recebida? ④" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="100" y="510" width="200" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_register" target="f_media" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_paused" value="IA pausada?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="100" y="610" width="200" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_media" target="f_paused" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- MARK 1: Rate limit -->
+    <mxCell id="f_rate" value="Rate limit? ①" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="100" y="710" width="200" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_paused" target="f_rate" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_class_hdr" value="CLASSIFICAÇÃO DE INTENÇÃO" style="text;html=1;strokeColor=#d79b00;fillColor=#ffe6cc;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="80" y="808" width="240" height="32" as="geometry" />
+    </mxCell>
+    <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_rate" target="f_class_hdr" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- MARK 2 + 3: Determinística -->
+    <mxCell id="f_det" value="Determinística:&#xa;menu, lista, tratamento ②, gap ③" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="860" width="240" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_class_hdr" target="f_det" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_llm" value="LLM — IntentClassifier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="955" width="240" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_det" target="f_llm" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_dispatch" value="Dispatch por intent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="1035" width="240" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_llm" target="f_dispatch" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- MARK 5: TRIGGER FORMAT -->
+    <mxCell id="f_comp" value="Composição ⑤&#xa;TRIGGER FORMAT? → LLM?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="1115" width="240" height="60" as="geometry" />
+    </mxCell>
+    <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_dispatch" target="f_comp" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_send" value="Envio via Z-API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="1205" width="240" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_comp" target="f_send" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- MARK 6: Pós-envio constantes -->
+    <mxCell id="f_post" value="Pós-envio ⑥" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="1285" width="240" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_send" target="f_post" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <mxCell id="f_end" value="Lead respondido ✅" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="80" y="1365" width="240" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="f_post" target="f_end" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- ======================== -->
+    <!-- BUG CARDS                -->
+    <!-- ======================== -->
+
+    <!-- CARD 1: Rate limit hardcoded -->
+    <mxCell id="c1_hdr" value="🟡 ① CONFIGURAÇÃO FALTANDO — Rate Limit" style="text;html=1;strokeColor=#d6b656;fillColor=#fff2cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="430" y="120" width="440" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="c1_body" value="O que acontece hoje:&#xa;O sistema bloqueia o lead automaticamente quando ele manda mais de 60 mensagens por hora.&#xa;&#xa;O problema:&#xa;Esse número (60) está fixo no código. Nenhuma clínica pode mudar.&#xa;Uma clínica pequena pode querer bloquear com 10. Uma com campanha pode precisar de 200.&#xa;O lead é ignorado silenciosamente — sem aviso.&#xa;&#xa;Onde está no código: Orchestrator.ts → RATE_LIMIT_MESSAGES_PER_HOUR = 60&#xa;⚙️ Deveria estar em: clinics.rateLimitPerHour" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+      <mxGeometry x="430" y="160" width="440" height="155" as="geometry" />
+    </mxCell>
+    <mxCell id="c1_line" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="f_rate" target="c1_hdr" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- CARD 2: BUG CRÍTICO directTreatmentMention -->
+    <mxCell id="c2_hdr" value="🔴 ② BUG REAL — Keyword sobrescreve a intenção do lead" style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="430" y="340" width="440" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="c2_body" value="O que acontece hoje:&#xa;Se a mensagem do lead contém o nome de um procedimento (ex: &quot;implante&quot;),&#xa;o sistema FORÇA a intenção para general_question — mesmo que o lead queira agendar.&#xa;&#xa;Exemplo concreto:&#xa;Lead escreve: &quot;Quero agendar um implante para amanhã às 14h&quot;&#xa;→ Sistema detecta &quot;implante&quot; (keyword)&#xa;→ Ignora o &quot;agendar&quot;, &quot;amanhã&quot; e &quot;14h&quot;&#xa;→ Responde descrevendo o procedimento&#xa;→ Lead NUNCA vê os horários disponíveis&#xa;→ O LLM nem é chamado para classificar o contexto real&#xa;&#xa;Onde está no código: Orchestrator.ts linha 1062&#xa;  if (directTreatmentMention) classification = { intent: &quot;general_question&quot; }&#xa;&#xa;O correto seria: chamar o LLM primeiro e só usar keyword como fallback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe8e6;strokeColor=#b85450;fontSize=11;align=left;" vertex="1" parent="1">
+      <mxGeometry x="430" y="380" width="440" height="230" as="geometry" />
+    </mxCell>
+    <mxCell id="c2_line" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#b85450;strokeWidth=2;" edge="1" source="f_det" target="c2_hdr" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- CARD 3: Gap stale hardcoded -->
+    <mxCell id="c3_hdr" value="🟡 ③ CONFIGURAÇÃO FALTANDO — Tempo de conversa parada" style="text;html=1;strokeColor=#d6b656;fillColor=#fff2cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="430" y="640" width="440" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="c3_body" value="O que acontece hoje:&#xa;Se o lead não respondeu há mais de 4 horas, a conversa é considerada &quot;velha&quot;&#xa;e o sistema reinicia com uma saudação nova.&#xa;&#xa;O problema:&#xa;Esse limite (4h) está fixo no código. Clínicas com perfis diferentes não podem mudar.&#xa;Exemplo: clínica de alto padrão onde o paciente demora 1 dia para responder.&#xa;A IA vai sempre reiniciar e perder o contexto da conversa.&#xa;&#xa;Onde está no código: Orchestrator.ts → CONVERSATION_RESTART_HOURS = 4&#xa;⚙️ Deveria estar em: clinics.staleConversationHours" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+      <mxGeometry x="430" y="680" width="440" height="160" as="geometry" />
+    </mxCell>
+    <mxCell id="c3_line" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="f_det" target="c3_hdr" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- CARD 4: Mídia pausa permanente -->
+    <mxCell id="c4_hdr" value="🟡 ④ CONFIGURAÇÃO FALTANDO — Pausa permanente por mídia" style="text;html=1;strokeColor=#d6b656;fillColor=#fff2cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="960" y="120" width="450" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="c4_body" value="O que acontece hoje:&#xa;Quando o lead manda uma foto, vídeo ou documento,&#xa;a IA pausa PERMANENTEMENTE. Só retoma quando um operador humano liberar manualmente.&#xa;&#xa;O problema:&#xa;Não há TTL (tempo limite) para essa pausa.&#xa;Uma clínica pode querer: &quot;se ninguém responder em 2 horas, retoma a IA&quot;.&#xa;Hoje isso é impossível.&#xa;&#xa;Código confirmado: Orchestrator.ts linha 863&#xa;  aiPaused: true,&#xa;  takeoverExpiresAt: null  ← permanente, nunca expira&#xa;&#xa;⚙️ Deveria estar em: clinics.mediaTakeoverTtlHours&#xa;  null = permanente (comportamento atual)&#xa;  2 = retoma após 2h se ninguém responder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+      <mxGeometry x="960" y="160" width="450" height="215" as="geometry" />
+    </mxCell>
+    <mxCell id="c4_line" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="f_media" target="c4_hdr" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- CARD 5: TRIGGER FORMAT misturado -->
+    <mxCell id="c5_hdr" value="🟠 ⑤ PROBLEMA DE DESIGN — Config editorial controlando o fluxo" style="text;html=1;strokeColor=#d79b00;fillColor=#ffe6cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="960" y="410" width="450" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="c5_body" value="O que acontece hoje:&#xa;O campo playbook_versions.notes é um campo de texto livre (editorial).&#xa;Mas dentro dele existe uma palavra mágica: TRIGGER.&#xa;Se o texto das notas contém &quot;TRIGGER [nome do tratamento]&quot;,&#xa;o sistema muda completamente o comportamento e entrega o texto sem chamar o LLM.&#xa;&#xa;O problema:&#xa;Um editor de conteúdo que não conhece essa regra pode:&#xa;  → Editar as notas e quebrar o fluxo sem querer&#xa;  → Criar um TRIGGER com formatação errada = comportamento imprevisível&#xa;  → Não ter como saber que aquele texto controla o roteamento do sistema&#xa;&#xa;Analogia: é como esconder um interruptor de energia dentro de um livro de receitas.&#xa;&#xa;Onde deveria estar: Um campo separado estruturado,&#xa;ex: treatments.triggerTemplate (texto predefinido por procedimento)&#xa;ou playbook_versions.triggers[] (array estruturado)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=11;align=left;" vertex="1" parent="1">
+      <mxGeometry x="960" y="450" width="450" height="260" as="geometry" />
+    </mxCell>
+    <mxCell id="c5_line" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d79b00;strokeWidth=2;" edge="1" source="f_comp" target="c5_hdr" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- CARD 6: Outras constantes -->
+    <mxCell id="c6_hdr" value="🟡 ⑥ CONFIGURAÇÕES FALTANDO — Outros limites hardcoded" style="text;html=1;strokeColor=#d6b656;fillColor=#fff2cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+      <mxGeometry x="960" y="745" width="450" height="35" as="geometry" />
+    </mxCell>
+    <mxCell id="c6_body" value="Constante no código | Valor atual | Deveria ser config em&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;SLOT_OFFER_TTL_MINUTES    | 15 min    | clinics.slotOfferTtlMinutes&#xa;  → Quanto tempo o lead tem para confirmar um horário oferecido&#xa;  → Clínica premium pode querer 30min ou 60min&#xa;&#xa;UNCLEAR_THRESHOLD          | 3 msgs    | clinics.unclearThreshold&#xa;  → Quantas mensagens sem sentido até escalar para humano&#xa;  → Clínica de alto valor pode querer 2; outra pode querer 5&#xa;&#xa;RAPID_LEAD_THROTTLE_MS     | 4 segundos | clinics.rapidThrottleSeconds&#xa;  → Tempo mínimo entre mensagens do lead para a IA responder&#xa;  → Útil para evitar duplo-envio acidental&#xa;&#xa;Todos estão em Orchestrator.ts como constantes no topo do arquivo." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+      <mxGeometry x="960" y="785" width="450" height="230" as="geometry" />
+    </mxCell>
+    <mxCell id="c6_line" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="f_post" target="c6_hdr" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+    <!-- SUMMARY BOX -->
+    <mxCell id="summary_hdr" value="RESUMO: O que corrigir (por prioridade)" style="text;html=1;strokeColor=#1e3a5f;fillColor=#1e3a5f;fontColor=#ffffff;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+      <mxGeometry x="430" y="1060" width="980" height="38" as="geometry" />
+    </mxCell>
+    <mxCell id="summary_body" value="🔴 PRIORIDADE 1 — Corrigir agora (bug real):&#xa;② directTreatmentMention sobrescreve intenção de agendamento&#xa;   → Lead que menciona tratamento E quer agendar nunca vê os slots&#xa;   → Fix: só usar keyword detection como fallback quando LLM não identifica booking intent&#xa;&#xa;🟡 PRIORIDADE 2 — Adicionar à tabela clinics (config faltando):&#xa;④ clinics.mediaTakeoverTtlHours  — controla se/quando IA retoma após lead enviar mídia&#xa;③ clinics.staleConversationHours — quantas horas de silêncio antes de reiniciar conversa&#xa;① clinics.rateLimitPerHour        — limite de mensagens por hora por lead&#xa;⑥ clinics.slotOfferTtlMinutes     — quanto tempo o lead tem para confirmar um slot&#xa;⑥ clinics.unclearThreshold        — quantas mensagens confusas antes de escalar&#xa;&#xa;🟠 PRIORIDADE 3 — Refatorar estrutura (design problem):&#xa;⑤ Separar TRIGGER FORMAT para fora do campo notes&#xa;   → Mover para um campo estruturado em treatments ou playbook_versions&#xa;   → Evita que editor de conteúdo quebre o roteamento sem querer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666;fontSize=11;align=left;" vertex="1" parent="1">
+      <mxGeometry x="430" y="1105" width="980" height="270" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>
