@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
@@ -7,7 +8,7 @@ import {
   listAllClinicIds,
   resolveWhatsappChannelClinicForOutbound,
 } from "@/application/tenancy/resolve-clinic";
-import { clinics } from "@/infrastructure/db/schema";
+import { clinics, conversations, messages } from "@/infrastructure/db/schema";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
@@ -100,7 +101,27 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         isFirstMessage: true,
       });
 
-      await sendTextMessage(channelAddress, composed.text, channelConfig);
+      const zapiMessageId = await sendTextMessage(channelAddress, composed.text, channelConfig);
+
+      // Salva a mensagem enviada como "agent" para que o echo Z-API (fromMe ou não)
+      // seja reconhecido como já processado e não dispare o Orchestrator novamente.
+      const [conv] = await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(eq(conversations.leadId, followUp.leadId))
+        .limit(1);
+      if (conv) {
+        await db.insert(messages).values({
+          id: randomUUID(),
+          conversationId: conv.id,
+          author: "agent",
+          body: composed.text,
+          sentAt: now,
+          externalId: zapiMessageId ?? null,
+          intent: "reengagement" as const,
+          deliveryFormat: "text",
+        }).onConflictDoNothing();
+      }
 
       await followUpRepository.save({ ...followUp, status: "done", completedAt: now, updatedAt: now });
       await leadRepository.save({ ...lead, status: "in_conversation", updatedAt: now });

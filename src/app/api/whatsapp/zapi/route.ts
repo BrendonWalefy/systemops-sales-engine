@@ -230,6 +230,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const replyEnabled = clinicRow?.autoReplyEnabled !== false;
 
+  // Dedup: messageId já registrado no banco (ex: echo de mensagem enviada pelo dispatcher)
+  if (body.messageId) {
+    const [dup] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(eq(messages.externalId, body.messageId))
+      .limit(1);
+    if (dup) return new NextResponse("OK", { status: 200 });
+  }
+
   // Mensagem inbound do lead: texto digitado, áudio transcrito, ou mídia (imagem/vídeo/documento).
   let messageText: string | null = null;
   let inboundMediaUrl: string | null = null;

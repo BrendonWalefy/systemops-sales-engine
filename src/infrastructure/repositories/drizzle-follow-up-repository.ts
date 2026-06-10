@@ -1,4 +1,4 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, lte, desc } from "drizzle-orm";
 import type { FollowUp } from "@/domain/entities/follow-up";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import { db } from "@/infrastructure/db/client";
@@ -29,6 +29,16 @@ export class DrizzleFollowUpRepository implements FollowUpRepository {
           updatedAt: followUp.updatedAt,
         },
       });
+  }
+
+  async findPendingByReason(input: { leadId: string; reason: string }): Promise<FollowUp | null> {
+    const rows = await db
+      .select()
+      .from(followUps)
+      .where(and(eq(followUps.leadId, input.leadId), eq(followUps.reason, input.reason), eq(followUps.status, "pending")))
+      .orderBy(desc(followUps.createdAt))
+      .limit(1);
+    return rows.length > 0 ? mapRow(rows[0]) : null;
   }
 
   async listDue(input: { clinicId: string; now: Date }): Promise<FollowUp[]> {

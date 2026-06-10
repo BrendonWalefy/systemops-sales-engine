@@ -207,6 +207,13 @@ export class InMemoryDemoStore
     );
   }
 
+  async findPendingByReason(input: { leadId: string; reason: string }): Promise<FollowUp | null> {
+    const found = Array.from(this.followUps.values()).find(
+      (f) => f.leadId === input.leadId && f.reason === input.reason && f.status === "pending",
+    );
+    return found ?? null;
+  }
+
   async recordAiUsage(cost: AiUsageCost): Promise<void> {
     this.aiUsageCosts.push(cost);
   }
