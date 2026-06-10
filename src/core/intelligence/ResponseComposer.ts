@@ -73,7 +73,7 @@ export type ComposerInput = {
 // permitindo entrega intercalada (texto → mídia → texto → mídia).
 export type ResponsePart =
   | { type: "text"; content: string }
-  | { type: "media"; id: string };
+  | { type: "media"; id: string; caption?: string };
 
 // Divide o output bruto do LLM em partes ordenadas de texto e mídia.
 // Texto antes da primeira tag, depois cada par (mídia, texto-seguinte), texto restante.

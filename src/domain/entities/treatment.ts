@@ -29,7 +29,7 @@
 
 export type ContentBlock =
   | { kind: "text"; content: string }
-  | { kind: "media"; mediaId: string };
+  | { kind: "media"; mediaId: string; caption?: string };
 
 export type PipelineStep =
   | {

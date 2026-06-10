@@ -98,6 +98,35 @@ Before adding a new constant, config, or rule, identify which category it fits. 
 - Do not use different context-window sizes in `IntentClassifier` and `ResponseComposer`. Both must use the same `.slice(-N)` value so classification and composition see the same conversation history.
 - The full audit of what is and is not configurable per clinic lives in [`docs/architecture/sources-of-truth.md`](docs/architecture/sources-of-truth.md).
 
+## Content Ownership — Cada dado tem um único dono
+
+Every piece of information that flows through the system has exactly one owner. Adding it anywhere else creates a Frankenstein.
+
+| What | Owner | Never put it in |
+|------|-------|-----------------|
+| What text to say | `ContentBlock.content` (pipeline) or LLM output | Orchestrator conditionals |
+| What caption to show after a media | `ContentBlock.caption` → `ResponsePart.caption` | Orchestrator `if (voiceEnabled)` |
+| When to show a caption | Presence of `caption` on the block — always shown if set | Channel-specific flags |
+| Delivery format (audio/text) | `clinic.voiceResponseEnabled` in `sendReply()` | Business logic elsewhere |
+| Clinic-specific behavior | `clinics` table field + code default | Hardcoded strings or prompt text |
+| Prices and commercial rules | `commercialPolicy` field in `playbook_versions` | `notes`, `differentials`, treatment descriptions |
+| Conversation flow triggers | `pipelineSteps` on `treatments` | `notes` inline triggers or Orchestrator conditionals |
+
+**The rule**: if you find yourself writing `if (clinic.someFlag)` inside a content-delivery loop to change *what* is sent, the content definition is in the wrong place. Move the decision to the data (pipeline, ContentBlock, entity field) — not to the delivery layer.
+
+Concrete example of what NOT to do:
+```typescript
+// ❌ Frankenstein: delivery layer deciding content based on channel flag
+if (clinic.voiceResponseEnabled && mediaItem.type === "video") {
+  await sendTextMessage(outboundAddress, mediaItem.title, channelConfig);
+}
+
+// ✅ Correct: content defines its own caption; delivery layer just executes
+if (part.caption) {
+  await sendTextMessage(outboundAddress, part.caption, channelConfig);
+}
+```
+
 ## Architecture Guardrails
 
 The core rule is:

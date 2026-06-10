@@ -1,19 +1,21 @@
 /**
- * Ximendes Odontologia — migração para arquitetura de pipeline declarativo
+ * BW Odontologia — migração para arquitetura de pipeline declarativo
  *
- * O que este script faz:
- *  1. Atualiza os 13 treatments com isAesthetic, keywordMatchEnabled, aliases
+ * Replica a mesma arquitetura que seed-ximendes-pipeline.ts fez para a Ximendes:
+ *
+ *  1. Atualiza os 5 treatments com isAesthetic, keywordMatchEnabled, aliases
  *  2. Configura pipelineSteps para "Lentes de resina composta"
  *     (content com 2 vídeos da biblioteca + qa guiado + photo opcional)
- *  3. Simplifica o NOTES do playbook ativo: remove TRIGGER DE LENTES
+ *  3. Simplifica o NOTES do playbook ativo: remove TRIGGER DE LENTES inline
  *     (coberto agora pelo pipeline declarativo — redundante no notes)
  *
- * Pré-requisito: seed-ximendes-playbook-v5-canonical.ts já executado e
- *               os dois vídeos de lentes já carregados na Biblioteca de Mídia.
+ * Pré-requisito: seed-bw-playbook-v4-canonical.ts já executado e
+ *               os dois vídeos de lentes carregados na Biblioteca de Mídia
+ *               com "simplificada" e "estratificada" no título.
  *
  * Idempotente: pode ser rodado múltiplas vezes sem efeito colateral.
  *
- * Run: npx dotenv -e .env.local -- tsx scripts/seed-ximendes-pipeline.ts
+ * Run: npx dotenv -e .env.local -- tsx scripts/seed-bw-pipeline.ts
  */
 
 import "dotenv/config";
@@ -31,79 +33,45 @@ if (!connectionString) { console.error("❌ DATABASE_URL not set"); process.exit
 const sql = postgres(connectionString, { max: 1 });
 const db = drizzle(sql, { schema });
 
-const CLINIC_ID = "c9137774-e783-4461-ac2b-e2f01be739a6";
+const CLINIC_ID = "5a2ce07d-cfa1-4108-9a3c-3d1fae017067";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTES simplificado — sem TRIGGER DE LENTES (coberto pelo pipeline)
 //
 // O que saiu:
 //   • "TRIGGER DE LENTES — execute SEMPRE..." (3 passos) → pipelineSteps
-//   • "Passo 1, Bloco A, Bloco B..." → content step do pipeline
+//   • "Bloco A, Bloco B..." → content step do pipeline
 //   • "Passo 2 — ficou com mais alguma dúvida..." → qa step do pipeline
+//   • "PROIBIÇÕES ABSOLUTAS" → gerenciado pelo Orchestrator via pipelineSteps
 //
 // O que ficou:
 //   • Identidade do especialista (referência contextual para o LLM)
 //   • Conduta específica da clínica (endereço, abordagem)
 // ─────────────────────────────────────────────────────────────────────────────
 const NOTES_SIMPLIFICADO = `ESPECIALIDADE DO DR. GREGORIE:
-O Dr. Gregorie Ximendes é especialista em lentes de resina composta, o procedimento de referência da clínica. Toda conversa sobre lentes tem prioridade máxima.
+O Dr. Gregorie é especialista em lentes de resina composta. Toda conversa sobre lentes tem prioridade máxima.
 
 CONDUTA ESPECÍFICA DA CLÍNICA:
-Só ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço (Rua Guararapes, 1894, Brooklin Novo, São Paulo) só ao confirmar agendamento ou se o lead perguntar diretamente.`;
+Só ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço só ao confirmar agendamento ou se o lead perguntar diretamente.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mapa de tratamentos: campos novos da arquitetura 4 fases
+// Mapa de tratamentos: campos da arquitetura de pipeline declarativo
 //
-// isAesthetic    → true para procedimentos estéticos visuais
-// keywordMatchEnabled → false para nomes genéricos (Avaliação, Limpeza)
-// aliases        → variações que o lead usa no WhatsApp
-// pipeline       → "sim" = configurar pipelineSteps (ver abaixo)
+// isAesthetic         → true para procedimentos estéticos visuais
+// keywordMatchEnabled → false para nomes genéricos
+// aliases             → variações que o lead usa no WhatsApp
+// pipeline            → "lentes" = configurar pipelineSteps
 // ─────────────────────────────────────────────────────────────────────────────
 const TREATMENT_CONFIG: Record<string, {
   isAesthetic: boolean;
   keywordMatchEnabled: boolean;
   aliases: string[];
-  pipeline?: "lentes"; // referência ao bloco de pipeline abaixo
+  pipeline?: "lentes";
 }> = {
-  "Avaliação": {
+  "Avaliação odontológica": {
     isAesthetic: false,
-    keywordMatchEnabled: false, // nome genérico demais — match via LLM, não keyword
-    aliases: ["avaliação gratuita", "consulta", "consulta inicial", "avaliação inicial"],
-  },
-  "Limpeza dental": {
-    isAesthetic: false,
-    keywordMatchEnabled: true,
-    aliases: ["limpeza", "profilaxia", "raspagem", "tártaro"],
-  },
-  "Clareamento dental": {
-    isAesthetic: true,
-    keywordMatchEnabled: true,
-    aliases: ["clareamento", "clarear", "branquear", "dentes brancos", "dentes amarelos"],
-  },
-  "Restauração em resina": {
-    isAesthetic: false,
-    keywordMatchEnabled: true,
-    aliases: ["restauração", "obturação", "cárie", "dente trincado", "dente lascado"],
-  },
-  "Exodontia (extração)": {
-    isAesthetic: false,
-    keywordMatchEnabled: true,
-    aliases: ["extração", "arrancar dente", "siso", "dente do siso", "dente juízo"],
-  },
-  "Implante dentário": {
-    isAesthetic: false,
-    keywordMatchEnabled: true,
-    aliases: ["implante", "dente perdido", "pino no dente", "osseointegração"],
-  },
-  "Tratamento de canal": {
-    isAesthetic: false,
-    keywordMatchEnabled: true,
-    aliases: ["canal", "endodontia", "nervinho", "matar o nervo"],
-  },
-  "Prótese dentária": {
-    isAesthetic: false,
-    keywordMatchEnabled: true,
-    aliases: ["prótese", "dentadura", "all on 4", "protocolo", "coroa"],
+    keywordMatchEnabled: false, // nome genérico — match via LLM, não keyword
+    aliases: ["avaliação", "consulta", "consulta inicial", "avaliação inicial", "avaliação gratuita"],
   },
   "Lentes de resina composta": {
     isAesthetic: true,
@@ -115,31 +83,20 @@ const TREATMENT_CONFIG: Record<string, {
     ],
     pipeline: "lentes",
   },
-  "Lentes de porcelana (facetas)": {
-    isAesthetic: true,
+  "Limpeza dental": {
+    isAesthetic: false,
     keywordMatchEnabled: true,
-    aliases: [
-      "porcelana", "faceta de porcelana", "lente de porcelana",
-      "cerâmica", "faceta cerâmica",
-    ],
+    aliases: ["limpeza", "profilaxia", "raspagem", "tártaro"],
   },
-  "Gengivoplastia": {
+  "Clareamento dental": {
     isAesthetic: true,
     keywordMatchEnabled: true,
-    aliases: ["gengiva", "gengival", "sorriso gengival", "gummy smile", "excesso de gengiva"],
+    aliases: ["clareamento", "clarear", "branquear", "dentes brancos", "dentes amarelos"],
   },
-  "Botox odontológico": {
-    isAesthetic: true,
+  "Implante dentário": {
+    isAesthetic: false,
     keywordMatchEnabled: true,
-    aliases: ["botox", "toxina botulínica", "bruxismo", "apertar dente", "ranger dente", "dtm"],
-  },
-  "Harmonização orofacial": {
-    isAesthetic: true,
-    keywordMatchEnabled: true,
-    aliases: [
-      "harmonização", "preenchimento", "lábio", "bichectomia",
-      "bioestimulador", "harmonização facial", "preenchimento labial",
-    ],
+    aliases: ["implante", "dente perdido", "pino no dente", "osseointegração"],
   },
 };
 
@@ -195,9 +152,9 @@ function buildLentesPipeline(videoSimplificadaId: string | null, videoEstratific
 
 // ─────────────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log("🚀 Ximendes — migração para pipeline declarativo\n");
+  console.log("🚀 BW Odontologia — migração para pipeline declarativo\n");
 
-  // 1. Carrega biblioteca de mídia do playbook ativo para pegar IDs dos vídeos
+  // 1. Carrega playbook ativo para pegar IDs dos vídeos na biblioteca de mídia
   const activePlaybook = await db.query.playbookVersions.findFirst({
     where: and(
       eq(playbookVersions.clinicId, CLINIC_ID),
@@ -207,7 +164,7 @@ async function main() {
   });
 
   if (!activePlaybook) {
-    console.error("❌ Playbook ativo não encontrado. Rode seed-ximendes-playbook-v5-canonical.ts primeiro.");
+    console.error("❌ Playbook ativo não encontrado. Rode seed-bw-playbook-v4-canonical.ts primeiro.");
     process.exit(1);
   }
 
@@ -215,6 +172,12 @@ async function main() {
 
   type MediaItem = { id: string; title: string; url: string; type: string };
   const mediaLibrary = (activePlaybook.mediaLibrary ?? []) as MediaItem[];
+
+  console.log(`📚 Biblioteca de mídia: ${mediaLibrary.length} item(s)`);
+  if (mediaLibrary.length > 0) {
+    mediaLibrary.forEach(m => console.log(`   • ${m.title} (${m.id})`));
+  }
+  console.log("");
 
   const videoSimplificada = mediaLibrary.find((m) =>
     m.title.toLowerCase().includes("simplificada"),
@@ -264,17 +227,15 @@ async function main() {
       );
     }
 
-    const setValues = {
-      isAesthetic: cfg.isAesthetic,
-      keywordMatchEnabled: cfg.keywordMatchEnabled,
-      aliases: cfg.aliases,
-      pipelineSteps: pipelineSteps as PipelineStep[] | null,
-      updatedAt: new Date(),
-    };
-
     await db
       .update(treatments)
-      .set(setValues)
+      .set({
+        isAesthetic: cfg.isAesthetic,
+        keywordMatchEnabled: cfg.keywordMatchEnabled,
+        aliases: cfg.aliases,
+        pipelineSteps: pipelineSteps as PipelineStep[] | null,
+        updatedAt: new Date(),
+      })
       .where(eq(treatments.id, id));
 
     const pipelineTag = pipelineSteps ? ` [pipeline: ${pipelineSteps.length} etapas]` : "";
@@ -296,22 +257,22 @@ async function main() {
   console.log("\n─────────────────────────────────────────────────────");
   console.log("Migração concluída. Nova arquitetura:");
   console.log("  • pipelineSteps   — Lentes de resina: content→qa→photo→slots→book");
-  console.log("  • isAesthetic     — 7 tratamentos marcados");
-  console.log("  • aliases         — todos os 13 tratamentos com aliases");
-  console.log("  • keywordMatch    — 'Avaliação' desabilitado (nome genérico)");
+  console.log("  • isAesthetic     — 2 tratamentos marcados (lentes, clareamento)");
+  console.log("  • aliases         — todos os 5 tratamentos com aliases");
+  console.log("  • keywordMatch    — 'Avaliação odontológica' desabilitado (nome genérico)");
   console.log("  • notes           — trigger inline removido (pipeline declarativo assume)");
 
   if (!videoSimplificada || !videoEstratificada) {
-    console.log("\n⚠️  AÇÃO NECESSÁRIA: faça upload dos vídeos faltantes e rode este script novamente");
-    console.log("   para que os blocos de mídia sejam preenchidos com os IDs corretos.");
+    console.log("\n⚠️  AÇÃO NECESSÁRIA: faça upload dos vídeos faltantes na Biblioteca de Mídia");
+    console.log("   e rode este script novamente para preencher os blocos de mídia no pipeline.");
   }
 
-  console.log("\n📋 PROTOCOLO DE TESTE — simulador: /playbook/simulate → Produção → Ximendes");
+  console.log("\n📋 PROTOCOLO DE TESTE — simulador: /playbook/simulate → Produção → BW Odontologia");
   console.log("  A: 'quero saber sobre lentes'  → pipeline inicia: textos + vídeos + qa");
   console.log("  B: 'quero agendar lentes'      → booking direto (pipeline não bloqueia intenção real)");
   console.log("  C: 'quanto custa a avaliação?' → R$ 100 + abatimento (da política comercial)");
   console.log("  D: 'resina é pior que porcelana?' → objeção em prosa (das objections[])");
-  console.log("  E: 'harmonização' ou 'botox'   → modo reativo (sem pipeline — fluxo normal)");
+  console.log("  E: 'clareamento' ou 'implante'  → modo reativo (sem pipeline — fluxo normal)");
 
   await sql.end();
 }

@@ -163,6 +163,13 @@ function ContentBlockEditor({
                 style={{ width: "100%", margin: 0, fontSize: "13px" }}
               />
             )}
+            <input
+              type="text"
+              value={block.caption ?? ""}
+              onChange={(e) => onChange({ ...block, caption: e.target.value || undefined })}
+              placeholder="Legenda (opcional) — enviada como texto após o vídeo"
+              style={{ width: "100%", margin: "6px 0 0", fontSize: "12px" }}
+            />
             <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>
               Mídias são gerenciadas na{" "}
               <Link href="/app/settings/playbook" style={{ color: "var(--accent)" }}>

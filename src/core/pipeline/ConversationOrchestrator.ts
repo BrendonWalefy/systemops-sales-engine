@@ -650,7 +650,7 @@ function buildPipelineContentParts(blocks: ContentBlock[]): ResponsePart[] {
   return blocks.map((b) =>
     b.kind === "text"
       ? { type: "text" as const, content: b.content }
-      : { type: "media" as const, id: b.mediaId },
+      : { type: "media" as const, id: b.mediaId, caption: b.caption },
   );
 }
 
@@ -1971,6 +1971,9 @@ export class ConversationOrchestrator {
               intent: "general_question",
               deliveryFormat: "text",
             });
+            if (part.caption) {
+              await sendTextMessage(outboundAddress, part.caption, channelConfig);
+            }
             if (mediaItem.type === "video") {
               await scheduleFollowUp({
                 clinicId,
@@ -2023,6 +2026,11 @@ export class ConversationOrchestrator {
             intent: "general_question",
             deliveryFormat: "text",
           });
+
+          const mediaPart = composedParts.find((p): p is { type: "media"; id: string; caption?: string } => p.type === "media" && p.id === mediaId);
+          if (mediaPart?.caption) {
+            await sendTextMessage(outboundAddress, mediaPart.caption, channelConfig);
+          }
 
           if (mediaItem.type === "video") {
             await scheduleFollowUp({
