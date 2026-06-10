@@ -2336,7 +2336,7 @@ textarea:focus {
 .chat-window {
   min-height: 430px;
   max-height: 620px;
-  overflow: auto;
+  overflow: visible;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -2347,7 +2347,6 @@ textarea:focus {
     linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 70%, transparent), transparent),
     color-mix(in srgb, var(--surface-raised) 34%, transparent);
   padding: 22px;
-  scroll-behavior: smooth;
 }
 
 /* ─── Empty State ────────────────────────────────────────────── */
@@ -3349,6 +3348,9 @@ textarea:focus {
 .conv-messages {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 24px;
 }
 
@@ -4222,6 +4224,10 @@ textarea:focus {
 
   .conv-messages {
     padding: 12px;
+  }
+
+  .conv-message-input textarea {
+    font-size: 16px;
   }
 
   /* Inbox */
