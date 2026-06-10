@@ -8,6 +8,7 @@ import { db } from "@/infrastructure/db/client";
 import { leads, conversations, messages, clinicMembers } from "@/infrastructure/db/schema";
 import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
 import Link from "next/link";
+import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
 import {
   Activity,
   AlertTriangle,
@@ -418,19 +419,10 @@ export default async function DashboardPage() {
       <div className="dashboard-mobile-header">
         <div className="dashboard-mobile-toprow">
           <span className="dashboard-mobile-brand">SystemOps</span>
-          <div className="dashboard-mobile-avatar-wrap">
-            {data.avatarUrl ? (
-              <img
-                src={data.avatarUrl}
-                alt="Avatar"
-                className="dashboard-mobile-avatar"
-              />
-            ) : (
-              <div className="dashboard-mobile-avatar dashboard-mobile-avatar-fallback">
-                {firstName[0]?.toUpperCase() ?? "?"}
-              </div>
-            )}
-          </div>
+          <MobileDashboardAvatar
+            avatarUrl={data.avatarUrl}
+            initial={firstName[0]?.toUpperCase() ?? "?"}
+          />
         </div>
         <p className="dashboard-mobile-greeting">Olá, {firstName}!</p>
         <p className="dashboard-mobile-date">{todayFormatted()}</p>
