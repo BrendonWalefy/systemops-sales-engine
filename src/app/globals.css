@@ -818,11 +818,11 @@ button:disabled {
 .dashboard-grid {
   display: grid;
   grid-template-areas:
-    "flow leads"
-    "flow temp";
-  grid-template-columns: minmax(0, 1.12fr) minmax(380px, 0.88fr);
+    "flow flow"
+    "temp leads";
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .dashboard-panel {
@@ -846,7 +846,7 @@ button:disabled {
   display: flex;
   grid-area: flow;
   flex-direction: column;
-  min-height: 462px;
+  min-height: 380px;
 }
 
 .dashboard-leads-panel {
@@ -1216,15 +1216,11 @@ button:disabled {
 }
 
 @media (max-width: 1180px) {
-  .dashboard-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .dashboard-grid {
     grid-template-areas:
       "flow"
-      "leads"
-      "temp";
+      "temp"
+      "leads";
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1247,26 +1243,53 @@ button:disabled {
     padding: 6px 9px;
   }
 
+  /* ── 4 cards side by side ── */
   .dashboard-kpis {
-    gap: 8px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
   }
 
   .dashboard-kpi-card {
-    padding: 11px;
+    padding: 9px 8px 8px;
   }
 
   .dashboard-kpi-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 7px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 6px;
   }
 
+  .dashboard-kpi-icon {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    border-radius: 6px;
+  }
+
+  .dashboard-kpi-header > span:nth-child(2) {
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* trend hidden on compact mobile — fits in 4-col */
   .dashboard-trend {
-    margin-left: 0;
+    display: none;
   }
 
   .dashboard-kpi-card strong {
-    font-size: 25px;
+    font-size: 20px;
+    margin-bottom: 2px;
+  }
+
+  .dashboard-kpi-card small {
+    font-size: 9.5px;
+    line-height: 1.2;
   }
 
   .dashboard-panel-header {
@@ -1339,10 +1362,11 @@ button:disabled {
 
 @media (max-width: 440px) {
   .dashboard-topbar-actions,
-  .dashboard-kpis,
   .dashboard-temp-content {
     grid-template-columns: 1fr;
   }
+
+  /* kpis mantém 4 colunas mesmo em telas pequenas */
 
   .dashboard-donut {
     justify-self: center;
