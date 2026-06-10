@@ -3279,28 +3279,47 @@ textarea:focus {
     display: flex;
     flex-direction: row;
     flex: 4;
+    align-self: stretch;
+    align-items: stretch;
     justify-content: space-evenly;
     gap: 0;
   }
 
   .side-nav-item {
+    position: relative;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     gap: 4px;
-    min-height: 50px;
-    height: 54px;
+    height: 100%;
+    min-height: unset;
     padding: 0 10px;
-    border-radius: 14px;
+    border-radius: 0;
     border-color: transparent;
     flex: 1;
     text-align: center;
   }
 
+  /* Active: pill arredondado só em volta do ícone */
   .side-nav-item.active {
-    background: rgba(16, 185, 129, 0.12);
+    background: none;
     border-color: transparent;
     box-shadow: none;
+    color: var(--accent-strong);
+  }
+
+  .side-nav-item.active::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 44px;
+    height: 26px;
+    background: rgba(16, 185, 129, 0.18);
+    border-radius: 999px;
+    border: 1px solid rgba(16, 185, 129, 0.18);
+    pointer-events: none;
   }
 
   .nav-label {
@@ -3381,27 +3400,43 @@ textarea:focus {
 
   /* ── Ajustes button in pill ─────────────────────────── */
   .mobile-settings-btn {
+    position: relative;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     gap: 4px;
     flex: 1;
-    min-height: 50px;
-    height: 54px;
+    align-self: stretch;
+    height: auto;
+    min-height: unset;
     padding: 0 10px;
-    border-radius: 14px;
+    border-radius: 0;
     border: 1px solid transparent;
     background: transparent;
     color: var(--muted);
     cursor: pointer;
-    transition: background 160ms ease, color 160ms ease;
+    transition: color 160ms ease;
     text-align: center;
   }
 
   .mobile-settings-btn.active {
-    background: rgba(16, 185, 129, 0.12);
+    background: none;
     color: var(--accent-strong);
+  }
+
+  .mobile-settings-btn.active::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 44px;
+    height: 26px;
+    background: rgba(16, 185, 129, 0.18);
+    border-radius: 999px;
+    border: 1px solid rgba(16, 185, 129, 0.18);
+    pointer-events: none;
   }
 
   .mobile-settings-btn:active {

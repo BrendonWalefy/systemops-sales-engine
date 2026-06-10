@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2, SlidersHorizontal } from "lucide-react";
+import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2 } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { uploadAvatar, removeAvatar } from "@/app/(clinic)/app/settings/profile/actions";
 
@@ -70,7 +70,7 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
           className={`mobile-settings-btn${isActive ? " active" : ""}`}
           aria-label="Ajustes"
         >
-          <SlidersHorizontal size={18} strokeWidth={2} />
+          <Settings2 size={18} strokeWidth={2} />
           <span className="nav-label">Ajustes</span>
         </button>
       ) : (
