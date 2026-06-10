@@ -61,6 +61,7 @@ export type Clinic = {
   slotLookaheadDays: number;
   mediaTakeoverTtlHours: number | null;
   rapidThrottleMs: number;
+  messageDebounceMs: number | null;
   voiceResponseEnabled: boolean;
   ttsConfig: import("./tts-config").TtsConfig;
   createdAt: Date;

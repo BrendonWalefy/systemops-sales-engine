@@ -133,6 +133,7 @@ export const clinics = pgTable("clinics", {
   slotLookaheadDays: integer("slot_lookahead_days").notNull().default(14),
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
+  messageDebounceMs: integer("message_debounce_ms"),
   voiceResponseEnabled: boolean("voice_response_enabled").notNull().default(false),
   ttsVoice: text("tts_voice").notNull().default("nova"),
   // Configuração completa de TTS por clínica. Substitui ttsVoice logicamente.

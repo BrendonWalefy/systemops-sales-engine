@@ -569,6 +569,7 @@ function buildClinic(row: ClinicRow): Clinic {
     slotLookaheadDays: row.slotLookaheadDays,
     mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
     rapidThrottleMs: row.rapidThrottleMs,
+    messageDebounceMs: row.messageDebounceMs ?? null,
     voiceResponseEnabled: row.voiceResponseEnabled ?? false,
     ttsConfig: (row.ttsConfig as TtsConfig | null) ?? ttsConfigFromVoice(row.ttsVoice ?? "nova"),
     createdAt: row.createdAt,
@@ -934,6 +935,20 @@ export class ConversationOrchestrator {
         })
         .catch((err) => console.error("[Orchestrator] Push falhou:", err));
       return { replied: false };
+    }
+
+    // ── 3.7. Debounce — aguarda burst de mensagens do lead ──
+    // Após registrar, espera N ms e verifica se chegou mensagem mais recente.
+    // Se sim, esta mensagem não gera resposta — a última do burst responde
+    // com o histórico completo (que já inclui todas as anteriores).
+    const debounceMs = clinic.messageDebounceMs ?? 3000;
+    if (debounceMs > 0) {
+      await new Promise((r) => setTimeout(r, debounceMs));
+      const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+      if (latest && latest.id !== incomingMessage.id) {
+        console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} ignorada — ${latest.id} é mais recente`);
+        return { replied: false };
+      }
     }
 
     // ── 4–11. Processamento principal — erros aqui enviam fallback ao lead ──

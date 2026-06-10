@@ -1,4 +1,4 @@
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, desc } from "drizzle-orm";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import { db } from "@/infrastructure/db/client";
@@ -87,6 +87,17 @@ export class DrizzleConversationRepository implements ConversationRepository {
       .where(eq(messages.conversationId, conversationId))
       .orderBy(asc(messages.sentAt));
     return rows.map(mapMessageRow);
+  }
+
+  async findLatestLeadMessage(conversationId: string): Promise<Message | null> {
+    const rows = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(desc(messages.sentAt))
+      .limit(10);
+    const row = rows.find((r) => r.author === "lead");
+    return row ? mapMessageRow(row) : null;
   }
 }
 
