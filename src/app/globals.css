@@ -3239,13 +3239,13 @@ textarea:focus {
 
   /* Espaço para o pill + safe-area */
   .clinic-layout > main {
-    padding-bottom: calc(62px + env(safe-area-inset-bottom) + 8px);
+    padding-bottom: calc(62px + env(safe-area-inset-bottom) + 4px);
   }
 
   /* Sidebar → pill glassmorphism flutuante próximo ao fundo */
   .sidebar {
     position: fixed;
-    bottom: calc(env(safe-area-inset-bottom) + 6px);
+    bottom: env(safe-area-inset-bottom);
     left: 14px;
     right: 14px;
     top: auto;
