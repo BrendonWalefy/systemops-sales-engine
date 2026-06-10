@@ -1,7 +1,7 @@
 // Thin adapter: normaliza payload Z-API e delega ao ConversationOrchestrator.
 // Toda a lógica de negócio, agenda e IA está no Orchestrator.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { db } from "@/infrastructure/db/client";
@@ -283,35 +283,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const WEBHOOK_TIMEOUT_MS = 55_000;
+  // Retorna 200 imediatamente para o Z-API não retentar (timeout curto de resposta).
+  // `after` garante que o pipeline complete dentro do mesmo invocation serverless.
+  after(
+    getOrchestrator().handle({
+      clinicId,
+      phone: body.phone,
+      whatsappLid: body.chatLid ?? null,
+      messageText,
+      messageId: body.messageId,
+      senderName: body.senderName || undefined,
+      senderPhoto: body.senderPhoto ?? null,
+      timestamp: body.momment ? new Date(body.momment) : new Date(),
+      replyEnabled,
+      channelClinicId: resolution.channelClinicId,
+      mediaUrl: inboundMediaUrl ?? undefined,
+      mediaType: inboundMediaType ?? undefined,
+    }).catch((error) => console.error("[ZApi] Webhook error:", error)),
+  );
 
-  try {
-    await Promise.race([
-      getOrchestrator().handle({
-        clinicId,
-        phone: body.phone,
-        whatsappLid: body.chatLid ?? null,
-        messageText,
-        messageId: body.messageId,
-        senderName: body.senderName || undefined,
-        senderPhoto: body.senderPhoto ?? null,
-        timestamp: body.momment ? new Date(body.momment) : new Date(),
-        replyEnabled,
-        channelClinicId: resolution.channelClinicId,
-        mediaUrl: inboundMediaUrl ?? undefined,
-        mediaType: inboundMediaType ?? undefined,
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`Webhook timeout após ${WEBHOOK_TIMEOUT_MS / 1000}s`)),
-          WEBHOOK_TIMEOUT_MS,
-        ),
-      ),
-    ]);
-
-    return new NextResponse("OK", { status: 200 });
-  } catch (error) {
-    console.error("[ZApi] Webhook error:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
-  }
+  return new NextResponse("OK", { status: 200 });
 }
