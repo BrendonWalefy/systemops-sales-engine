@@ -15,7 +15,7 @@ import {
   agentRecommendations,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
-import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake, FlaskConical, Building2, KeyRound, UserPlus } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake, FlaskConical, Building2, KeyRound, UserPlus, Workflow } from "lucide-react";
 import { hashPassword } from "@/lib/password";
 
 async function toggleIsTest(clinicId: string, currentValue: boolean) {
@@ -256,6 +256,24 @@ export default async function ClinicDetailPage({
               <span className="status-dot" /> IA Pausada
             </span>
           )}
+          <Link
+            href={`/owner/onboarding/${clinic.id}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--muted)",
+              textDecoration: "none",
+              padding: "6px 12px",
+              borderRadius: "8px",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+          >
+            <Workflow size={13} />
+            Onboarding
+          </Link>
           <Link
             href="/app/inbox"
             style={{
