@@ -3027,12 +3027,13 @@ textarea:focus {
 .conv-header-v2 {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 20px;
+  gap: 8px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
   flex-shrink: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .conv-back-btn {
@@ -3086,7 +3087,9 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .conv-header-actions {
@@ -4152,13 +4155,13 @@ textarea:focus {
   }
 
   .conv-header-v2 {
-    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left));
+    padding: max(10px, env(safe-area-inset-top)) 12px 10px 12px;
     gap: 8px;
   }
 
   .conv-action-btn {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
   }
 
   .next-step-body {

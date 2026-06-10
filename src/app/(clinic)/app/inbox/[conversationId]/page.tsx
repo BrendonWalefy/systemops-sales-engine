@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
 import { appointments, clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
-import { ArrowLeft, Phone, Calendar, ExternalLink, MessageSquare, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
 import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
@@ -103,36 +103,16 @@ export default async function ConversationPage({
         <div className="conv-header-info">
           <div className="conv-header-name">{displayName}</div>
           <div className="conv-header-sub">
-            <span
-              className={`temp-badge-v2 temp-badge-v2-${temp.cls}`}
-              style={{ fontSize: 9, padding: "2px 7px" }}
-            >
-              {temp.label}
-            </span>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>{sLabel}</span>
           </div>
         </div>
 
         <div className="conv-header-actions">
-          {waPhone && (
-            <a
-              href={`https://wa.me/${waPhone}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="conv-action-btn"
-              title="Abrir no WhatsApp"
-            >
-              <MessageSquare size={15} />
-            </a>
-          )}
           {lead.phone && (
             <a href={`tel:${lead.phone}`} className="conv-action-btn" title="Ligar">
               <Phone size={15} />
             </a>
           )}
-          <Link href="/app/agenda" className="conv-action-btn" title="Agenda">
-            <Calendar size={15} />
-          </Link>
           <div className="ai-mobile-toggle">
             <AiPauseButton
               conversationId={conversationId}
@@ -141,9 +121,6 @@ export default async function ConversationPage({
               compact
             />
           </div>
-          <button className="conv-action-btn" title="Mais opções">
-            <MoreHorizontal size={15} />
-          </button>
         </div>
       </div>
 
