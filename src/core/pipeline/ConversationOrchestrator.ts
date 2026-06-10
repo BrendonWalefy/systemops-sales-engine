@@ -722,8 +722,10 @@ export class ConversationOrchestrator {
     }
 
     // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
-    // Janela de 5s: suficiente para cobrir o lag do Z-API sem bloquear mensagens legítimas iguais.
-    const fiveSecondsAgo = new Date(timestamp.getTime() - 5_000);
+    // Janela de 2min baseada no wall-clock (não no timestamp da mensagem): retries tardios do
+    // Z-API chegam com timestamp novo, o que fazia a janela de 5s original expirar. 2min cobre
+    // o intervalo de retry sem bloquear mensagens legítimas repetidas além desse prazo.
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
     const identityMatch = contactIdentifiers.phone
       ? contactIdentifiers.whatsappLid
         ? or(
@@ -750,7 +752,7 @@ export class ConversationOrchestrator {
           identityMatch,
           eq(messagesTable.author, "lead"),
           eq(messagesTable.body, messageText),
-          gte(messagesTable.sentAt, fiveSecondsAgo),
+          gte(messagesTable.sentAt, twoMinutesAgo),
         ),
       )
       .limit(1);
