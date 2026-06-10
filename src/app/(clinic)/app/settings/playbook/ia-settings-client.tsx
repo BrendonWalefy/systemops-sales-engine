@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef, useEffect, useCallback } from "react";
+import { useState, useOptimistic, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone, Sparkles, ListChecks, Mic } from "lucide-react";
 import {
@@ -437,8 +437,11 @@ function GeralTab({
 }) {
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
-  const [voiceEnabled, setVoiceEnabled] = useState(clinic.voiceResponseEnabled);
   const [voiceTogglePending, startVoiceToggleTransition] = useTransition();
+  const [optimisticVoiceEnabled, setOptimisticVoiceEnabled] = useOptimistic(
+    clinic.voiceResponseEnabled,
+    (_state: boolean, next: boolean) => next,
+  );
   const [ttsConfig, setTtsConfig] = useState(clinic.ttsConfig ?? { provider: "nova", speed: TTS_SPEED_DEFAULTS.nova });
   const [ttsConfigPending, startTtsConfigTransition] = useTransition();
 
@@ -462,9 +465,9 @@ function GeralTab({
   const bufferInputRef = useRef<HTMLInputElement>(null);
 
   function handleVoiceToggle() {
-    const next = !voiceEnabled;
-    setVoiceEnabled(next);
+    const next = !optimisticVoiceEnabled;
     startVoiceToggleTransition(async () => {
+      setOptimisticVoiceEnabled(next);
       await updateClinicOperationalSettings({ voiceResponseEnabled: next });
     });
   }
@@ -601,19 +604,19 @@ function GeralTab({
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Resposta por Voz</strong>
-                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(voiceEnabled ? { background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
-                  {voiceEnabled ? "Ativa" : "Desativada"}
+                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(optimisticVoiceEnabled ? { background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
+                  {optimisticVoiceEnabled ? "Ativa" : "Desativada"}
                 </span>
               </div>
               <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>IA envia áudios de voz em vez de texto</p>
             </div>
           </div>
-          <button onClick={handleVoiceToggle} disabled={voiceTogglePending} style={{ width: "44px", height: "24px", borderRadius: "12px", border: "none", background: voiceEnabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: voiceTogglePending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: voiceTogglePending ? 0.7 : 1 }}>
-            <span style={{ position: "absolute", top: "3px", left: voiceEnabled ? "23px" : "3px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
+          <button onClick={handleVoiceToggle} disabled={voiceTogglePending} style={{ width: "44px", height: "24px", borderRadius: "12px", border: "none", background: optimisticVoiceEnabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: voiceTogglePending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: voiceTogglePending ? 0.7 : 1 }}>
+            <span style={{ position: "absolute", top: "3px", left: optimisticVoiceEnabled ? "23px" : "3px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
           </button>
         </div>
 
-        {voiceEnabled && (
+        {optimisticVoiceEnabled && (
           <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "12px" }}>
             {/* Seletor de provider — empilhado, funciona em qualquer largura */}
             <div>
