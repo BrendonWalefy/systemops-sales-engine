@@ -1181,6 +1181,10 @@ export class ConversationOrchestrator {
     // Helper para compor resposta
     let composedMediaIds: string[] = [];
     let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
+    // Avanço de pipeline adiado: executado APÓS todo o conteúdo ser enviado para evitar
+    // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
+    // dos blocos e injeta o texto de comparação no meio da sequência.
+    let pendingPipelineAdvance: (() => Promise<void>) | null = null;
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
     ) => {
@@ -1778,13 +1782,15 @@ export class ConversationOrchestrator {
                     .map((p) => p.content)
                     .join(" ");
                   clinicContext = "";
-                  // Avança pipeline para o próximo step após entregar o conteúdo
-                  const nextActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, firstActive.index + 1);
-                  if (nextActive) {
-                    await this.stateMachine.advancePipelineStep(conversation.id, nextActive.index);
-                  } else {
-                    await this.stateMachine.exitTreatmentPipeline(conversation.id);
-                  }
+                  // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
+                  pendingPipelineAdvance = async () => {
+                    const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1);
+                    if (next) {
+                      await this.stateMachine.advancePipelineStep(conversation.id, next.index);
+                    } else {
+                      await this.stateMachine.exitTreatmentPipeline(conversation.id);
+                    }
+                  };
                   break;
                 } else if (firstActive.step.type === "qa") {
                   clinicContext = [
@@ -2076,7 +2082,14 @@ export class ConversationOrchestrator {
       }
     }
 
-    // ── 9.3 Push notification — avisa operadores que um lead enviou mensagem ──
+    // ── 9.3 Avança pipeline para o próximo step (somente após todo o conteúdo ser entregue) ──
+    if (pendingPipelineAdvance) {
+      await pendingPipelineAdvance().catch((err) =>
+        console.warn("[Orchestrator] Falha ao avançar pipeline:", err),
+      );
+    }
+
+    // ── 9.4 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;
     await this.notifier
       .execute(clinicId, {
