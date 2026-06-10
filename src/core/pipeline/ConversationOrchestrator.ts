@@ -1972,6 +1972,16 @@ export class ConversationOrchestrator {
               deliveryFormat: "text",
             });
             if (part.caption) {
+              await this.conversationRepo.appendMessage({
+                id: randomUUID(),
+                conversationId: conversation.id,
+                author: "agent",
+                body: part.caption,
+                sentAt: new Date(),
+                externalId: null,
+                intent: "general_question",
+                deliveryFormat: "text",
+              });
               await sendTextMessage(outboundAddress, part.caption, channelConfig);
             }
             if (mediaItem.type === "video") {
@@ -2029,6 +2039,16 @@ export class ConversationOrchestrator {
 
           const mediaPart = composedParts.find((p): p is { type: "media"; id: string; caption?: string } => p.type === "media" && p.id === mediaId);
           if (mediaPart?.caption) {
+            await this.conversationRepo.appendMessage({
+              id: randomUUID(),
+              conversationId: conversation.id,
+              author: "agent",
+              body: mediaPart.caption,
+              sentAt: new Date(),
+              externalId: null,
+              intent: "general_question",
+              deliveryFormat: "text",
+            });
             await sendTextMessage(outboundAddress, mediaPart.caption, channelConfig);
           }
 
