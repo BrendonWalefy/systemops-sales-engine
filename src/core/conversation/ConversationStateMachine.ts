@@ -121,6 +121,18 @@ export class ConversationStateMachine {
     });
   }
 
+  // Invalida o estado e registra o momento do reset para que a próxima mensagem
+  // receba apenas o histórico pós-reset (evita que o LLM reutilize mídias já enviadas).
+  // TTL de 2h: após isso getCurrentState retorna null e o Orchestrator usa allMessages normalmente.
+  async markResetBoundary(conversationId: string): Promise<void> {
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "idle",
+      payload: { lastResetAt: new Date().toISOString() },
+      expiresAt: new Date(Date.now() + 2 * 3600_000),
+    });
+  }
+
   // Retorna slots da oferta vigente, ou null se não há oferta ativa
   async getPendingSlotOffer(conversationId: string): Promise<FormattedSlot[] | null> {
     const state = await this.getCurrentState(conversationId);

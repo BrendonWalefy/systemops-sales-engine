@@ -1006,6 +1006,16 @@ export class ConversationOrchestrator {
     const experience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
 
     const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
+
+    // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
+    // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
+    // isFirstMessage e demais checagens determinísticas continuam usando allMessages.
+    const lastResetAt = currentConversationState?.state === "idle"
+      ? (currentConversationState.payload as { lastResetAt?: string } | null)?.lastResetAt
+      : undefined;
+    const allMessagesForContext = lastResetAt
+      ? allMessages.filter((m) => m.sentAt >= new Date(lastResetAt))
+      : allMessages;
     const isMenuActive = currentConversationState?.state === "menu_offered";
     const isProcedureListActive = currentConversationState?.state === "procedure_list_offered";
     const clinicMenuItems = getMenuItemsForExperience(clinic, experience);
@@ -1122,7 +1132,7 @@ export class ConversationOrchestrator {
         }
       : await this.intentClassifier.classify(
           messageText,
-          allMessages,
+          allMessagesForContext,
           hasPendingOffer,
           clinicTreatments.map((t) => t.name),
         );
@@ -1159,7 +1169,7 @@ export class ConversationOrchestrator {
     ) => {
       const composed = await this.responseComposer.compose({
         actionResult,
-        conversationHistory: allMessages,
+        conversationHistory: allMessagesForContext,
         clinic: {
           name: clinic.name,
             specialty: editorial?.specialty ?? clinic.specialty,
@@ -1193,8 +1203,8 @@ export class ConversationOrchestrator {
     } else if (isFirstMessage && shouldSendConciergeStarter(experience, intent)) {
       replyText = buildConciergeStarter(clinic, timezone, lead.name);
     } else if (resetRequested) {
-      // Zera estado e reinicia como se fosse primeiro contato
-      await this.stateMachine.invalidate(conversation.id);
+      // Zera estado e marca boundary para que a próxima mensagem receba histórico pós-reset
+      await this.stateMachine.markResetBoundary(conversation.id);
       if (experience === "menu_first") {
         const salutation = getDayGreeting(timezone);
         const nameGreeting = lead.name ? `, ${lead.name}` : "";
@@ -1934,9 +1944,13 @@ export class ConversationOrchestrator {
 
     if (hasInterleavedMedia) {
       let firstTextSent = false;
+      let lastSentAt = 0;
       for (const part of composedParts) {
         if (part.type === "text") {
+          const gap = Date.now() - lastSentAt;
+          if (gap < 1200) await new Promise((r) => setTimeout(r, 1200 - gap));
           const result = await sendReply(outboundAddress, part.content, channelConfig, false, clinic.ttsConfig);
+          lastSentAt = Date.now();
           if (!firstTextSent) {
             zapiMessageId = result.msgId;
             deliveryFormat = result.deliveryFormat;
@@ -1960,7 +1974,10 @@ export class ConversationOrchestrator {
             continue;
           }
           try {
+            const gap = Date.now() - lastSentAt;
+            if (gap < 1200) await new Promise((r) => setTimeout(r, 1200 - gap));
             await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig, part.caption);
+            lastSentAt = Date.now();
             console.log(`[Orchestrator] Mídia intercalada enviada: ${mediaItem.title}`);
             const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
             await this.conversationRepo.appendMessage({
