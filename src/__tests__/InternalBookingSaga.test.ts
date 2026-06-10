@@ -42,6 +42,7 @@ const clinic: Clinic = {
   slotLookaheadDays: 14,
   mediaTakeoverTtlHours: null,
   rapidThrottleMs: 4000,
+  messageDebounceMs: null,
   voiceResponseEnabled: false,
   ttsConfig: { provider: "nova" as const, speed: 0.92 },
   createdAt: new Date("2026-01-01T00:00:00.000Z"),

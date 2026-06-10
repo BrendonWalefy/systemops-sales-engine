@@ -236,7 +236,7 @@ async function main() {
       .update(playbookVersions)
       .set({ mediaLibrary: previousMedia[0].media_library, updatedAt: new Date() })
       .where(eq(playbookVersions.id, newVersion[0].id));
-    console.log(`✅ Biblioteca de mídia copiada: ${(previousMedia[0].media_library as any[]).map((m: any) => m.title).join(", ")}`);
+    console.log(`✅ Biblioteca de mídia copiada: ${(previousMedia[0].media_library as { title: string }[]).map((m) => m.title).join(", ")}`);
   } else {
     console.log("⚠️  Sem mídia anterior para copiar — faça upload dos vídeos de lentes no editor");
   }

@@ -17,7 +17,7 @@ const rows = await sql`
 for (const r of rows) {
   console.log(`\n"${r.name}" [${r.status}] — ${r.media_count} item(s) de mídia`);
   if (r.media_library && Array.isArray(r.media_library) && r.media_library.length > 0) {
-    for (const m of r.media_library as any[]) {
+    for (const m of r.media_library as { type: string; id: string; title: string; url?: string }[]) {
       console.log(`  • [${m.type}] id="${m.id}" title="${m.title}"`);
       console.log(`    url: ${m.url ? m.url.slice(0, 90) + "..." : "❌ VAZIO"}`);
     }

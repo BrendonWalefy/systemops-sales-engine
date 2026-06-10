@@ -173,6 +173,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         slotLookaheadDays: clinicRow.slotLookaheadDays,
         mediaTakeoverTtlHours: clinicRow.mediaTakeoverTtlHours ?? null,
         rapidThrottleMs: clinicRow.rapidThrottleMs,
+        messageDebounceMs: clinicRow.messageDebounceMs ?? null,
         voiceResponseEnabled: clinicRow.voiceResponseEnabled ?? false,
         ttsConfig: (clinicRow.ttsConfig as TtsConfig | null) ?? DEFAULT_TTS_CONFIG,
         createdAt: clinicRow.createdAt,

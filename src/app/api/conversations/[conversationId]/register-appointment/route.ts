@@ -150,6 +150,7 @@ export async function POST(
           slotLookaheadDays: clinic.slotLookaheadDays,
           mediaTakeoverTtlHours: clinic.mediaTakeoverTtlHours ?? null,
           rapidThrottleMs: clinic.rapidThrottleMs,
+          messageDebounceMs: clinic.messageDebounceMs ?? null,
           voiceResponseEnabled: clinic.voiceResponseEnabled ?? false,
           ttsConfig: (clinic.ttsConfig as TtsConfig | null) ?? DEFAULT_TTS_CONFIG,
           createdAt: clinic.createdAt,

@@ -64,13 +64,10 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
   const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<View>("week");
+  const [view, setView] = useState<View>(() =>
+    typeof window !== "undefined" && window.innerWidth < 640 ? "day" : "week"
+  );
   const [resourceDate, setResourceDate] = useState(() => new Date());
-
-  // Em telas estreitas a view semana é ilegível (7 colunas em ~390px) — troca para dia
-  useEffect(() => {
-    if (window.innerWidth < 640 && view === "week") setView("day");
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [appointmentModal, setAppointmentModal] = useState<{
     open: boolean;
