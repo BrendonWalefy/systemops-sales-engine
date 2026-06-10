@@ -3232,38 +3232,39 @@ textarea:focus {
 }
 
 @media (max-width: 640px) {
-  /* Layout: sidebar vira floating pill */
+  /* Layout: sidebar vira bottom tab bar nativo */
   .clinic-layout {
     grid-template-columns: 1fr;
   }
 
-  /* Espaço para o pill + sua margem + safe-area */
+  /* Espaço para a tab bar + safe-area */
   .clinic-layout > main {
-    padding-bottom: calc(64px + 10px + env(safe-area-inset-bottom));
+    padding-bottom: calc(58px + env(safe-area-inset-bottom));
   }
 
-  /* Sidebar → pill flutuante glassmorphism */
+  /* Sidebar → tab bar colada no fundo */
   .sidebar {
     position: fixed;
-    bottom: calc(6px + env(safe-area-inset-bottom));
-    left: 20px;
-    right: 20px;
+    bottom: 0;
+    left: 0;
+    right: 0;
     top: auto;
-    height: 62px;
-    border-radius: 22px;
-    background: rgba(14, 14, 16, 0.82);
-    backdrop-filter: blur(32px) saturate(200%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.13);
+    height: calc(58px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: 16px 16px 0 0;
+    background: rgba(12, 12, 14, 0.94);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-bottom: none;
     box-shadow:
-      0 16px 48px rgba(0, 0, 0, 0.55),
-      0 4px 12px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+      0 -4px 24px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
     flex-direction: row;
     align-items: center;
     justify-content: space-around;
-    padding: 0 6px;
+    padding-left: 4px;
+    padding-right: 4px;
     gap: 0;
     border-right: 0;
     z-index: 200;
