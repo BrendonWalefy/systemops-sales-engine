@@ -355,13 +355,17 @@ That future direction is already aligned with:
 ## How To Resume In The Next Session
 
 1. Read this document first
-2. Confirm branch is still `fix/whatsapp-incident-stability`
+2. If resuming pre-merge work, confirm branch is still `fix/whatsapp-incident-stability`
 3. Re-open the files listed in "Key Code Findings"
-4. Start with Phase 1, not with architecture redesign
+4. Continue from Phase 4 replay validation, not from architecture redesign
 5. After each phase:
    - run the focused tests for the touched area
    - then run `npm run verify`
    - update this incident document with what was changed and what remains
+
+Suggested resume prompt for a clean Codex session:
+
+`Continue from docs/operations/incidents/2026-06-11-whatsapp-pipeline-stability.md on branch/main state after commit 97ce569 and proceed with Phase 4 replay validation.`
 
 ## Evidence Snapshot
 
@@ -380,6 +384,7 @@ Production evidence already confirmed during this diagnosis:
 ## Last Verified Repository State
 
 - branch: `fix/whatsapp-incident-stability`
+- hotfix commit: `97ce569` (`fix(whatsapp): contain incident regressions`)
 - implementation status:
   - Phase 1 complete locally
   - Phase 2 complete locally
