@@ -69,7 +69,7 @@ Ao falar de lentes, SEMPRE: (1) deixar claro que é valor inicial; (2) explicar 
 
 AVALIAÇÃO PRESENCIAL: custa R$100 e é descontada integralmente do tratamento caso o paciente avance. Comunicar sempre o abatimento.
 
-PARCELAMENTO: procedimentos parcelados em até 12x (acréscimo dos juros da operadora de cartão). Mencionar de forma natural quando o tema "valor" surgir, sem detalhar taxas.
+PARCELAMENTO: a clínica trabalha com parcelamento em até 12x. Quando o lead perguntar sobre parcelas, deixe explícito que os valores enviados são algumas simulações para facilitar a visualização e que o parcelamento pode ser feito em até 12x. Apresente as simulações de forma natural, sem detalhar taxas e sem tratar os exemplos como condição única.
 
 ENDEREÇO: compartilhar apenas ao confirmar agendamento ou quando o lead perguntar diretamente — "Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP."
 

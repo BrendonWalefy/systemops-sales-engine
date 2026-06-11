@@ -39,6 +39,7 @@ import { ConversationStateMachine } from "@/core/conversation/ConversationStateM
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer, parseIntoParts } from "@/core/intelligence/ResponseComposer";
 import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
+import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
@@ -157,8 +158,12 @@ function buildConciergeStarter(clinic: Clinic, timezone: ClinicTimezone, leadNam
   const specialtyHint = clinic.specialty.toLowerCase().includes("estética")
     ? "lentes, avaliação, valores ou algum tratamento específico"
     : "avaliação, valores ou algum tratamento específico";
+  const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage);
+  const intro = receptionistName
+    ? `Sou a ${receptionistName}, assistente virtual da ${clinic.name}.`
+    : `Sou a assistente virtual da ${clinic.name}.`;
 
-  return `${salutation}${nameGreeting}. Tudo bem?\n\nMe conta o que você gostaria de ver hoje: ${specialtyHint}?`;
+  return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: ${specialtyHint}?`;
 }
 
 function isMenuRerequest(message: string): boolean {
@@ -701,9 +706,13 @@ function buildPipelineContentParts(blocks: ContentBlock[]): ResponsePart[] {
 function nextActivePipelineStep(
   steps: PipelineStep[],
   fromIndex: number,
+  options?: { skipOptionalPhoto?: boolean },
 ): { step: PipelineStep; index: number } | null {
   for (let i = fromIndex; i < steps.length; i++) {
     const s = steps[i];
+    if (s.type === "photo" && options?.skipOptionalPhoto && !s.required) {
+      continue;
+    }
     if (s.type === "content" || s.type === "qa" || s.type === "photo") {
       return { step: s, index: i };
     }
@@ -936,6 +945,7 @@ export class ConversationOrchestrator {
           playbook: editorial?.playbookText ?? null,
           commercialPolicy: editorial?.commercialPolicy ?? null,
           installmentTable: null,
+          receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
         },
         leadName: lead.name,
         timezone,
@@ -1249,6 +1259,7 @@ export class ConversationOrchestrator {
               ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
               : null,
             mediaLibrary: editorial?.mediaLibrary ?? [],
+            receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
           leadName: lead.name,
           timezone,
@@ -1778,15 +1789,26 @@ export class ConversationOrchestrator {
 
           if (currentStep?.type === "qa" && pipelineTreatment) {
             const maxTurns = currentStep.maxTurns ?? 10;
+            const optionalPhotoStep = pipelineTreatment.pipelineSteps?.find(
+              (step, index): step is Extract<PipelineStep, { type: "photo" }> =>
+                index > pipelineState.stepIndex && step.type === "photo" && !step.required,
+            );
             await this.stateMachine.incrementPipelineQaTurns(conversation.id);
             if (pipelineState.qaTurns + 1 >= maxTurns) {
-              const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
+              const next = nextActivePipelineStep(
+                pipelineTreatment.pipelineSteps!,
+                pipelineState.stepIndex + 1,
+                { skipOptionalPhoto: true },
+              );
               if (next) await this.stateMachine.advancePipelineStep(conversation.id, next.index);
               else await this.stateMachine.exitTreatmentPipeline(conversation.id);
             }
             clinicContext = [
               `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
               currentStep.instruction ?? null,
+              optionalPhotoStep
+                ? `CONVITE OPCIONAL: se fizer sentido dentro da dúvida atual ou se o lead demonstrar abertura, convide de forma leve e não obrigatória usando esta mensagem como base: "${optionalPhotoStep.message}". Faça esse convite no máximo uma vez e nunca como exigência para continuar.`
+                : null,
               pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
               editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
             ].filter(Boolean).join("\n");
@@ -1795,6 +1817,18 @@ export class ConversationOrchestrator {
           }
 
           if (currentStep?.type === "photo") {
+            if (!currentStep.required && pipelineTreatment) {
+              await this.stateMachine.exitTreatmentPipeline(conversation.id);
+              clinicContext = [
+                `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
+                "A etapa opcional de foto já deve ser considerada embutida no Q&A. Não peça foto novamente agora.",
+                "Se o lead já demonstrou interesse, conduza de forma natural para disponibilidade da avaliação.",
+                pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
+                editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
+              ].filter(Boolean).join("\n");
+              replyText = await compose({ type: "general_question", clinicContext });
+              break;
+            }
             replyText = currentStep.message;
             break;
           }
@@ -1828,7 +1862,7 @@ export class ConversationOrchestrator {
                   replyText = parts
                     .filter((p): p is { type: "text"; content: string } => p.type === "text")
                     .map((p) => p.content)
-                    .join(" ");
+                    .join("\n\n");
                   clinicContext = "";
                   // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
                   pendingPipelineAdvance = async () => {
@@ -1864,7 +1898,7 @@ export class ConversationOrchestrator {
               replyText = triggerPartsOverride
                 .filter((p): p is { type: "text"; content: string } => p.type === "text")
                 .map((p) => p.content)
-                .join(" ");
+                .join("\n\n");
               clinicContext = "";
             } else {
               // Backward compat: TRIGGER FORMAT nas notas do playbook (remover após migrar todos os tratamentos)
@@ -1881,7 +1915,7 @@ export class ConversationOrchestrator {
                   replyText = triggerPartsOverride
                     .filter((p): p is { type: "text"; content: string } => p.type === "text")
                     .map((p) => p.content)
-                    .join(" ");
+                    .join("\n\n");
                 }
                 clinicContext = "";
               } else {

@@ -37,6 +37,9 @@ type ClinicData = {
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;
   receptionistPhone: string | null;
+  staleConversationHours: number | null;
+  slotLookaheadDays: number | null;
+  mediaTakeoverTtlHours: number | null;
   installmentRates: { n: number; rate: number; active: boolean }[] | null;
   voiceResponseEnabled: boolean;
   ttsConfig: { provider: string; speed: number };
@@ -454,6 +457,9 @@ function GeralTab({
   const [receptionistPhone, setReceptionistPhone] = useState(clinic.receptionistPhone ?? "");
   const [takeoverTtlHours, setTakeoverTtlHours] = useState(clinic.takeoverTtlHours ?? 4);
   const [postAppointmentBufferMinutes, setPostAppointmentBufferMinutes] = useState(clinic.postAppointmentBufferMinutes ?? 60);
+  const [staleConversationHours, setStaleConversationHours] = useState(clinic.staleConversationHours ?? 4);
+  const [slotLookaheadDays, setSlotLookaheadDays] = useState(clinic.slotLookaheadDays ?? 14);
+  const [mediaTakeoverTtlHours, setMediaTakeoverTtlHours] = useState(clinic.mediaTakeoverTtlHours ?? 0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -496,6 +502,9 @@ function GeralTab({
     takeoverTtlHours?: number;
     postAppointmentBufferMinutes?: number;
     receptionistPhone?: string;
+    staleConversationHours?: number;
+    slotLookaheadDays?: number;
+    mediaTakeoverTtlHours?: number;
   }) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaved(false);
@@ -509,11 +518,17 @@ function GeralTab({
         takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
         postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
         receptionistPhone: (patch.receptionistPhone ?? receptionistPhone) || null,
+        staleConversationHours: patch.staleConversationHours ?? staleConversationHours,
+        slotLookaheadDays: patch.slotLookaheadDays ?? slotLookaheadDays,
+        mediaTakeoverTtlHours: (() => {
+          const value = patch.mediaTakeoverTtlHours ?? mediaTakeoverTtlHours;
+          return value > 0 ? value : null;
+        })(),
       });
       setSaving(false);
       setSaved(true);
     }, 1200);
-  }, [greetingMessage, menuItems, conversationExperience, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, receptionistPhone]);
+  }, [greetingMessage, menuItems, conversationExperience, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, receptionistPhone, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours]);
 
   function handleToggle() {
     const next = !enabled;
@@ -859,6 +874,60 @@ function GeralTab({
                 style={{ ...geralInputStyle, width: "80px" }}
               />
               <span style={{ fontSize: "13px", color: "#52525b" }}>min</span>
+            </div>
+          </div>
+          <div className="ia-number-card" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+            <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Janela de agenda</p>
+            <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Quantos dias à frente a IA pode oferecer horários</p>
+            <div className="ia-number-row" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="number"
+                value={slotLookaheadDays}
+                min={1} max={90}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value) || 1;
+                  setSlotLookaheadDays(v);
+                  triggerSave({ slotLookaheadDays: v });
+                }}
+                style={{ ...geralInputStyle, width: "80px" }}
+              />
+              <span style={{ fontSize: "13px", color: "#52525b" }}>dias</span>
+            </div>
+          </div>
+          <div className="ia-number-card" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+            <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Conversa parada</p>
+            <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Após esse tempo sem resposta do lead, a IA retoma como conversa nova</p>
+            <div className="ia-number-row" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="number"
+                value={staleConversationHours}
+                min={1} max={72}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value) || 1;
+                  setStaleConversationHours(v);
+                  triggerSave({ staleConversationHours: v });
+                }}
+                style={{ ...geralInputStyle, width: "80px" }}
+              />
+              <span style={{ fontSize: "13px", color: "#52525b" }}>horas</span>
+            </div>
+          </div>
+          <div className="ia-number-card" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", padding: "14px 16px" }}>
+            <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "#a1a1aa" }}>Retorno após mídia</p>
+            <p style={{ margin: "0 0 10px", fontSize: "11px", color: "#52525b" }}>Horas até a IA retomar após foto, vídeo ou documento. Use 0 para deixar só no humano.</p>
+            <div className="ia-number-row" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="number"
+                value={mediaTakeoverTtlHours}
+                min={0} max={72}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value) || 0;
+                  setMediaTakeoverTtlHours(v);
+                  triggerSave({ mediaTakeoverTtlHours: v });
+                }}
+                style={{ ...geralInputStyle, width: "80px" }}
+              />
+              <span style={{ fontSize: "13px", color: "#52525b" }}>horas</span>
             </div>
           </div>
         </div>

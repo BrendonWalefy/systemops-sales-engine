@@ -8,6 +8,7 @@ import { clinics } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
+import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
@@ -75,6 +76,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
           toneOfVoice: editorial?.toneOfVoice ?? null,
           playbook: editorial?.playbookText ?? null,
           commercialPolicy: editorial?.commercialPolicy ?? null,
+          receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
         },
         leadName: lead.name,
         timezone,

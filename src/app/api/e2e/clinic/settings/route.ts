@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH /api/e2e/clinic/settings
-// Body: Partial<{ greetingMessage, menuItems, conversationExperience, businessHours, takeoverTtlHours, postAppointmentBufferMinutes }>
+// Body: Partial<{ greetingMessage, menuItems, conversationExperience, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours }>
 export async function PATCH(req: NextRequest) {
   const guard = e2eGuard(req);
   if (guard) return guard;
@@ -47,7 +47,17 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const allowed = ["greetingMessage", "menuItems", "conversationExperience", "businessHours", "takeoverTtlHours", "postAppointmentBufferMinutes"];
+  const allowed = [
+    "greetingMessage",
+    "menuItems",
+    "conversationExperience",
+    "businessHours",
+    "takeoverTtlHours",
+    "postAppointmentBufferMinutes",
+    "staleConversationHours",
+    "slotLookaheadDays",
+    "mediaTakeoverTtlHours",
+  ];
   const patch = Object.fromEntries(
     Object.entries(body).filter(([k]) => allowed.includes(k)),
   );

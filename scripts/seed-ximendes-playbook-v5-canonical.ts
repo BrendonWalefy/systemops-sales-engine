@@ -92,7 +92,7 @@ const COMMERCIAL_POLICY = `A avaliação inicial com o Dr. Gregorie custa R$ 100
 
 Para lentes de resina, único procedimento com valor autorizado por mensagem: Técnica Simplificada a partir de R$ 2.500 para vinte elementos, e Técnica Estratificada a partir de R$ 5.000 para vinte elementos. Sempre diga "a partir de" e que o valor exato depende da avaliação presencial.
 
-Parcelamento em até 12 vezes com juros da operadora de cartão. Mencione de forma natural quando o tema parcelas surgir, sem detalhar taxas. Nunca invente valor de parcela — se perguntarem "em 10x quanto fica?", responda que os valores são apresentados na avaliação com o plano personalizado.
+Parcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos de referência e deixe explícito que a clínica pode parcelar em até 12 vezes. Use uma formulação natural, como "Aqui estão algumas simulações de valores", sem mencionar taxa adicional nem tratar os exemplos como condição única.
 
 Para todos os outros procedimentos: não informe valores por mensagem. Oriente que os valores são definidos na avaliação.`;
 

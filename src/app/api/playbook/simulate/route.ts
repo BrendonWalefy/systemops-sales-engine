@@ -18,6 +18,7 @@ import {
 } from "@/domain/entities/clinic";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
 const SIMULATE_API_KEY = process.env.SIMULATE_API_KEY;
@@ -112,9 +113,17 @@ function stripGreetingPrefix(text: string): string {
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
 
-function buildConciergeStarter(timezone: ClinicTimezone): string {
+function buildConciergeStarter(
+  timezone: ClinicTimezone,
+  clinicName: string,
+  greetingMessage?: string | null,
+): string {
   const salutation = getDayGreeting(timezone);
-  return `${salutation}. Tudo bem?\n\nMe conta o que você gostaria de ver hoje: avaliação, lentes, valores ou algum tratamento específico?`;
+  const receptionistName = inferReceptionistNameFromGreeting(greetingMessage);
+  const intro = receptionistName
+    ? `Sou a ${receptionistName}, assistente virtual da ${clinicName}.`
+    : `Sou a assistente virtual da ${clinicName}.`;
+  return `${salutation}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: avaliação, lentes, valores ou algum tratamento específico?`;
 }
 
 // ── Slots: reais (QA Calendar) ou simulados ──────────────────────────────────
@@ -514,7 +523,7 @@ export async function POST(req: NextRequest) {
           : `${salutation}! Como posso ajudá-lo?`;
         return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
       }
-      return NextResponse.json({ text: buildConciergeStarter(timezone), intent: "greeting" });
+      return NextResponse.json({ text: buildConciergeStarter(timezone, clinicName, playbook.greetingMessage), intent: "greeting" });
     }
 
     // Detecção de oferta de slots pendente via intent do histórico (espelho da state machine)
@@ -576,7 +585,7 @@ export async function POST(req: NextRequest) {
       conversationExperience === "concierge" &&
       (classification.intent === "greeting" || classification.intent === "acknowledgment" || classification.intent === "unclear")
     ) {
-      return NextResponse.json({ text: buildConciergeStarter(timezone), intent: "greeting" });
+      return NextResponse.json({ text: buildConciergeStarter(timezone, clinicName, playbook.greetingMessage), intent: "greeting" });
     }
 
     // greeting via LLM → retorna menu ou starter conforme experiência
@@ -588,7 +597,7 @@ export async function POST(req: NextRequest) {
           : `${salutation}! Como posso ajudá-lo?`;
         return NextResponse.json({ text: buildGreeting(intro), intent: "greeting" });
       }
-      return NextResponse.json({ text: buildConciergeStarter(timezone), intent: "greeting" });
+      return NextResponse.json({ text: buildConciergeStarter(timezone, clinicName, playbook.greetingMessage), intent: "greeting" });
     }
 
     // ── Slots: busca real (QA Calendar) ou simulada ───────────────────────
@@ -623,6 +632,7 @@ export async function POST(req: NextRequest) {
             playbook: buildPlaybookText(playbook),
             commercialPolicy: playbook.commercialPolicy || null,
             mediaLibrary: playbook.mediaLibrary ?? [],
+            receptionistName: inferReceptionistNameFromGreeting(playbook.greetingMessage) ?? undefined,
           },
           leadName: null,
           timezone,

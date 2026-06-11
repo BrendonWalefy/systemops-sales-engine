@@ -100,6 +100,35 @@ export function parseIntoParts(raw: string): ResponsePart[] {
   return parts;
 }
 
+function normalizeTextReplyContent(content: string): string {
+  return content
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeResponseParts(parts: ResponsePart[]): ResponsePart[] {
+  const normalized: ResponsePart[] = [];
+
+  for (const part of parts) {
+    if (part.type === "media") {
+      normalized.push(part);
+      continue;
+    }
+
+    const content = normalizeTextReplyContent(part.content);
+    if (content) {
+      normalized.push({ type: "text", content });
+    }
+  }
+
+  return normalized;
+}
+
 export type ComposedResponse = {
   parts: ResponsePart[];  // partes ordenadas para entrega intercalada
   text: string;           // texto limpo (sem tags [MEDIA:id]) — usado no TTS e no DB
@@ -150,6 +179,12 @@ REGRAS ABSOLUTAS:
 7. FIDELIDADE EDITORIAL: se a política comercial ou as orientações da clínica exigirem valores, condições, nomes de técnicas ou limites explícitos para o assunto perguntado, preserve esses dados na resposta. Não resuma removendo preços, quantidades ou condições autorizadas.
 
 ${experienceRules}
+
+${voiceResponseEnabled ? "" : `FORMATAÇÃO VISUAL PARA WHATSAPP:
+- Prefira blocos curtos e escaneáveis: 1 ou 2 frases por parágrafo.
+- Separe assunto principal, condição importante e próximo passo com uma linha em branco quando isso deixar a leitura mais clara.
+- Se houver múltiplas opções, comparações, horários ou exemplos, coloque cada item em sua própria linha.
+- Evite parede de texto: não entregue tudo em um único bloco longo quando houver mais de uma ideia importante.`}
 
 ESCOPO ESTRITO: Você responde SOMENTE sobre assuntos da ${clinic.name} — agendamentos, especialidades, localização, preços e tratamentos. Para perguntas completamente fora do escopo da clínica (política, outros serviços, programação, etc.), responda gentilmente que você é a recepcionista virtual e pode ajudar apenas com assuntos da clínica.
 ${clinic.commercialPolicy || clinic.playbook ? `
@@ -427,9 +462,13 @@ export class ResponseComposer {
         : new Error("[ResponseComposer] Resposta vazia da API após retry");
     }
 
-    const parts = parseIntoParts(raw);
+    const parts = normalizeResponseParts(parseIntoParts(raw));
     const mediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
-    const text = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join(" ").trim();
+    const text = parts
+      .filter((p): p is { type: "text"; content: string } => p.type === "text")
+      .map((p) => p.content)
+      .join("\n\n")
+      .trim();
 
     return {
       parts,
