@@ -120,7 +120,9 @@ Pontos levantados em revisão de código das fases do passe de contenção. Veri
 
 ### Achado pós-deploy (2026-06-11, URGENTE — vai para o executor)
 
-9. **`autoReplyEnabled` não é respeitado pelos crons:** o follow-up-dispatcher processa toda clínica com follow-up vencido, sem checar o flag. Com a Ximendes desligada pelo dono, havia follow-up pendente (Bianca, "não compareceu") que sairia no run das 10h UTC — **cancelado manualmente no banco em 11/06 (id 4d3503a3)** como contenção. Fix necessário: o kill switch da clínica deve cobrir TODO outbound automatizado (follow-ups; decidir com o dono se inclui lembrete D-1). Sem isso, "desligar a IA" não desliga a IA.
+9. ✅ **RESOLVIDO em `b7e2c5a`** — `autoReplyEnabled` agora é respeitado pelos crons de follow-up e lembrete D-1 via `clinic-automation-policy.ts` (o follow-up pendente da Bianca havia sido cancelado manualmente como contenção, id 4d3503a3). Duas consequências operacionais registradas:
+   - **Lembrete D-1 da Ximendes está DESLIGADO** junto com a IA (modo seguro assumido). A recepção precisa saber que os lembretes de consulta agora são manuais até a reativação.
+   - **Follow-ups ficam pendentes (não cancelados) enquanto a clínica está off.** Com a IA desligada nada novo é criado, mas adicionar ao gate de reativação: revisar/cancelar pendentes antigos antes de religar.
 
 ### Baseline pós-deploy do passe de contenção (2026-06-11 ~04:15 BRT, commit 97ce569)
 
