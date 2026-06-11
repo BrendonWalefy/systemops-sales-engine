@@ -2,7 +2,7 @@
 
 Date: 2026-06-11
 Branch: `fix/whatsapp-incident-stability`
-Status: diagnosis complete, implementation not started yet
+Status: Phases 1, 2 and 3 implemented locally and verified, awaiting commit/replay validation
 Owner context: clinic operation degraded for about 2 weeks; AI was manually paused by clinic owner due to poor replies, delayed replies, duplicated behavior and context failures.
 
 ## Goal
@@ -20,9 +20,141 @@ Before preparing this incident plan, the current source of truth was re-read:
 ## Current Checkpoint
 
 - Branch already created: `fix/whatsapp-incident-stability`
-- No implementation changes were applied yet on this branch
+- Phase 1 webhook containment was implemented locally
+- Incident document must be updated after each completed phase and after each commit on this branch
 - `update_plan` already created for the incident execution sequence
 - This document is the authoritative handoff for the next clean session
+
+## Phase Log
+
+### Phase 1 - Webhook containment
+
+Status: implemented locally on 2026-06-11
+
+Changes applied:
+
+- added `isInternalOperationalWhatsAppMessage()` in `src/core/whatsapp/InternalWhatsAppOperationalMessage.ts`
+- added normalized phone equivalence helper in `src/core/whatsapp/WhatsAppContactIdentity.ts` so `5511...` and `(11) ...` match safely
+- moved clinic resolution + clinic config fetch earlier in `src/app/api/whatsapp/zapi/route.ts`
+- blocked internal operational messages before they enter either the `fromMe` branch or the lead pipeline
+- current operational filters cover:
+  - attention alerts containing `precisa de voce` + `Acesse o Inbox para responder`
+  - media-forward context containing `Responda neste chat` + `sera encaminhada automaticamente ao lead`
+
+Why this is safe:
+
+- it only blocks text when both conditions are true:
+  - sender phone matches the clinic receptionist phone after normalization/equivalence
+  - the body matches known operational message patterns sent by the system itself
+- real operator takeover messages from the receptionist number still pass through if they do not match those internal templates
+
+Local validation completed:
+
+- `npm test -- src/__tests__/InternalWhatsAppOperationalMessage.test.ts src/__tests__/ZApiWebhook.test.ts`
+- `npx eslint src/app/api/whatsapp/zapi/route.ts src/core/whatsapp/InternalWhatsAppOperationalMessage.ts src/core/whatsapp/WhatsAppContactIdentity.ts src/__tests__/InternalWhatsAppOperationalMessage.test.ts`
+- `npx tsc --noEmit`
+
+Files touched in Phase 1:
+
+- `src/app/api/whatsapp/zapi/route.ts`
+- `src/core/whatsapp/InternalWhatsAppOperationalMessage.ts`
+- `src/core/whatsapp/WhatsAppContactIdentity.ts`
+- `src/__tests__/InternalWhatsAppOperationalMessage.test.ts`
+
+Next exact action:
+
+- start Phase 2 follow-up lifecycle control in:
+  - `src/domain/repositories/follow-up-repository.ts`
+  - `src/infrastructure/repositories/drizzle-follow-up-repository.ts`
+  - `src/application/use-cases/leads/schedule-follow-up.ts`
+  - `src/app/api/cron/follow-up-dispatcher/route.ts`
+
+### Phase 2 - Follow-up lifecycle control
+
+Status: implemented locally on 2026-06-11
+
+Changes applied:
+
+- added `cancelPendingByReason()` to the follow-up repository contract
+- implemented cancellation + ordered due listing in `DrizzleFollowUpRepository`
+- updated the in-memory repository to keep parity with the contract
+- changed `scheduleFollowUp()` to replace an older pending record for the same `lead + reason` instead of silently keeping backlog
+- added `selectOneFollowUpPerLead()` so the dispatcher handles at most one due follow-up per lead per run
+- after a successful send, the dispatcher now cancels deferred duplicate `video_sent:*` follow-ups for the same lead in that run
+
+Why this is safe:
+
+- no schema change or migration was needed
+- the replacement behavior preserves history by cancelling old pending rows instead of deleting them
+- the dispatcher cap is run-local and deterministic: it reduces burst risk without rewriting the larger cron architecture
+- duplicate video follow-ups are only cancelled after one successful outbound follow-up for that lead in the same run
+
+Local validation completed:
+
+- `npm test -- src/__tests__/StaleConversations.test.ts src/__tests__/FollowUpReengagement.test.ts src/__tests__/FollowUpClaimBeforeSend.test.ts src/__tests__/FollowUpDispatchPolicy.test.ts src/__tests__/UpdateAppointment.test.ts`
+- `npm run verify`
+
+Files touched in Phase 2:
+
+- `src/domain/repositories/follow-up-repository.ts`
+- `src/infrastructure/repositories/drizzle-follow-up-repository.ts`
+- `src/infrastructure/repositories/in-memory-demo-repositories.ts`
+- `src/application/use-cases/leads/schedule-follow-up.ts`
+- `src/application/use-cases/leads/follow-up-dispatch-policy.ts`
+- `src/app/api/cron/follow-up-dispatcher/route.ts`
+- `src/__tests__/FollowUpReengagement.test.ts`
+- `src/__tests__/FollowUpDispatchPolicy.test.ts`
+- `src/__tests__/UpdateAppointment.test.ts`
+- `src/__tests__/StaleConversations.test.ts`
+
+Next exact action:
+
+- start Phase 3 exact outbound persistence in `src/core/pipeline/ConversationOrchestrator.ts`
+
+### Phase 3 - Exact outbound persistence for echo defense
+
+Status: implemented locally on 2026-06-11
+
+Changes applied:
+
+- added `buildInitialAgentMessage()` and `buildAgentMessageFromOutboundPart()` in `src/core/pipeline/outbound-message-persistence.ts`
+- in interleaved deliveries, the initial persisted agent message now matches the first real outbound part instead of the combined `replyText`
+- media outbound rows now persist:
+  - exact `body = part.title`
+  - `mediaUrl`
+  - `mediaType`
+  - `externalId` from the provider when available
+- extended `OutboundDeliveryService` so media callbacks know when the first actual outbound part is a media item
+- updated `ConversationOrchestrator` to patch the pre-saved first row when the first sent part is text or media, instead of leaving a non-deduplicable placeholder
+
+Why this is safe:
+
+- it keeps the existing "persist before send" protection for inbox visibility
+- it does not change routing, intent selection, or scheduling behavior
+- it narrows the stored outbound message shape so it resembles the provider echo more closely, which improves deterministic suppression at the webhook boundary
+- media rows now carry richer structured data for the inbox instead of a synthetic emoji-prefixed text body
+
+Local validation completed:
+
+- `npm test -- src/__tests__/OutboundMessagePersistence.test.ts src/__tests__/OutboundDeliveryOrdering.test.ts src/__tests__/InternalWhatsAppOperationalMessage.test.ts src/__tests__/ZApiWebhook.test.ts src/__tests__/FollowUpDispatchPolicy.test.ts src/__tests__/FollowUpReengagement.test.ts`
+- `npx tsc --noEmit`
+- `npx eslint src/core/pipeline/ConversationOrchestrator.ts src/core/pipeline/outbound-message-persistence.ts src/infrastructure/adapters/channels/whatsapp/outbound-delivery-service.ts src/__tests__/OutboundMessagePersistence.test.ts`
+- `npm run verify`
+
+Files touched in Phase 3:
+
+- `src/core/pipeline/ConversationOrchestrator.ts`
+- `src/core/pipeline/outbound-message-persistence.ts`
+- `src/infrastructure/adapters/channels/whatsapp/outbound-delivery-service.ts`
+- `src/__tests__/OutboundMessagePersistence.test.ts`
+
+Next exact action:
+
+- start Phase 4 replay validation against the BW patterns already captured in this document
+- specifically re-run QA route scenarios for:
+  - internal attention alert suppression
+  - duplicate video follow-up suppression
+  - echo suppression for interleaved text/video outbound parts
 
 ## Confirmed Production Findings
 
@@ -248,6 +380,10 @@ Production evidence already confirmed during this diagnosis:
 ## Last Verified Repository State
 
 - branch: `fix/whatsapp-incident-stability`
-- implementation status: not started
+- implementation status:
+  - Phase 1 complete locally
+  - Phase 2 complete locally
+  - Phase 3 complete locally
+  - Phase 4 not started
 - incident diagnosis: completed
-- next action: start Phase 1 containment changes
+- next action: replay BW patterns through QA route before re-enabling broader production automation

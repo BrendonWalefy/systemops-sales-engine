@@ -97,6 +97,27 @@ LEFT JOIN messages m ON m.conversation_id = cv.id
 GROUP BY cl.slug;
 ```
 
+## Checklist de verificação final (pós-implementação)
+
+Pontos levantados em revisão de código das fases do passe de contenção. Verificar todos antes do gate de reativação da Ximendes.
+
+### Da Fase 1 — bloqueio de alertas internos (revisada e aprovada, 561 testes verdes)
+
+1. **Acoplamento por texto:** os padrões de `InternalWhatsAppOperationalMessage.ts` estão acoplados aos templates do Orchestrator (linhas ~919 e ~2441). Se alguém editar o template do alerta, o filtro para de funcionar em silêncio. Verificar: extrair templates para fonte única compartilhada com o matcher, ou teste que valida o template real contra o filtro.
+2. **Mudança sutil:** `fromMe` de instância não mapeada agora retorna 500 (antes 200 silencioso) → Z-API retenta. Confirmar ausência de retries ruidosos nos logs.
+
+### Da Fase 2 — ciclo de vida de follow-up (revisada, 563 testes verdes)
+
+3. **Cap por run pressupõe cron diário:** "1 follow-up por lead por run" funciona hoje (dispatcher 1x/dia). Quando o sweep de ~5 min entrar (Passe 2), converter para cap por lead por dia, campo por clínica com default no schema.
+4. **GAP — cancelamento por re-engajamento NÃO implementado:** lead que respondeu/agendou depois do vídeo ainda recebe "conseguiu assistir?" no dia seguinte (não há cancel de pendentes no fluxo inbound do Orchestrator). Estava no plano dos dois documentos. Decidir se entra antes da reativação da Ximendes.
+5. **cancel+insert não atômico no scheduleFollowUp:** bursts simultâneos podem deixar 2 pendings (mitigado pelo cap do dispatcher). Garantia estrutural: unique index parcial `(lead_id, reason) WHERE status = 'pending'`.
+
+### Da Fase 3 — persistência exata de outbound (revisada, 563 testes verdes)
+
+6. **Janela de corrida residual:** echo chega 0,2-4s após o envio; se o insert da parte ainda não commitou quando o echo chega, reingere como lead. Correção estrutural só com outbox pré-persistido antes do send (Passe 2). Monitorar com a query de auto-conversa por 48h na BW após deploy.
+7. **Corpo de mídia mudou** de `🎥 título` para `título` + `mediaUrl`/`mediaType` preenchidos. Verificado por grep que nada depende do prefixo fora dos arquivos alterados; confirmar renderização no Inbox após deploy.
+8. **Echo dedup por ID por parte:** validar em produção com replay QA — fluxo com vídeo intercalado deve gerar zero reingestão (query de auto-conversa zerada).
+
 ## Estimativa e limites conhecidos
 
 - Prazo: 8,5-10 dias úteis (contenção ~2-3; durabilidade ~4-5; comportamento+painel ~2).
