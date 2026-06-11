@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, leads } from "@/infrastructure/db/schema";
-import { verifyToken, COOKIE_NAME } from "@/lib/session";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -17,10 +16,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
 ): Promise<NextResponse> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  const session = token ? await verifyToken(token) : null;
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionClinicId = await getSessionClinicId();
+  if (!sessionClinicId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { conversationId } = await params;
 
@@ -43,10 +40,11 @@ export async function POST(
   }
 
   try {
+    // Tenancy: a conversa precisa pertencer à clínica da sessão.
     const [conv] = await db
       .select({ leadId: conversations.leadId, clinicId: conversations.clinicId })
       .from(conversations)
-      .where(eq(conversations.id, conversationId))
+      .where(and(eq(conversations.id, conversationId), eq(conversations.clinicId, sessionClinicId)))
       .limit(1);
 
     if (!conv) return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
