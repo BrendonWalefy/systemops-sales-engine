@@ -166,6 +166,51 @@ export async function sendZApiMediaMessage(
   }
 }
 
+// Status de entrega de uma mensagem já aceita pela Z-API.
+// O ACK do POST de envio significa "na fila" — mídia enviada por URL ainda será
+// baixada pela Z-API antes de chegar ao WhatsApp. Este endpoint permite saber
+// quando a mensagem realmente saiu, viabilizando entrega ordenada.
+//
+// "delivered"   → SENT/RECEIVED/READ/PLAYED — já saiu da fila, próxima parte pode ir
+// "pending"     → ainda na fila da Z-API — aguardar
+// "unsupported" → endpoint indisponível ou resposta irreconhecível — não insistir
+export type ZApiDeliveryStatus = "delivered" | "pending" | "unsupported";
+
+const ZAPI_DELIVERED_STATUSES = new Set(["SENT", "RECEIVED", "READ", "PLAYED", "DELIVERED", "VIEWED"]);
+const ZAPI_PENDING_STATUSES = new Set(["PENDING", "QUEUED", "WAITING", "PROCESSING"]);
+
+export async function getZApiMessageDeliveryStatus(
+  messageId: string,
+  creds: { instanceId: string; token: string; clientToken?: string },
+): Promise<ZApiDeliveryStatus> {
+  const { instanceId, token } = creds;
+  const rawClientToken = creds.clientToken;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http") ? rawClientToken : undefined;
+  if (!instanceId || !token) return "unsupported";
+
+  const headers: Record<string, string> = {};
+  if (clientToken) headers["Client-Token"] = clientToken;
+
+  try {
+    const response = await fetch(
+      `https://api.z-api.io/instances/${instanceId}/token/${token}/message-status/${encodeURIComponent(messageId)}`,
+      { method: "GET", headers, signal: AbortSignal.timeout(5_000) },
+    );
+    if (!response.ok) return "unsupported";
+
+    const data = (await response.json()) as { status?: unknown } | { status?: unknown }[] | null;
+    const rawStatus = Array.isArray(data) ? data.at(-1)?.status : data?.status;
+    if (typeof rawStatus !== "string") return "unsupported";
+
+    const status = rawStatus.toUpperCase();
+    if (ZAPI_DELIVERED_STATUSES.has(status)) return "delivered";
+    if (ZAPI_PENDING_STATUSES.has(status)) return "pending";
+    return "unsupported";
+  } catch {
+    return "unsupported";
+  }
+}
+
 function resolveZApiMedia(data: ZApiInboundPayload): { mediaUrl: string | null; mediaType: MediaType | null } {
   if (data.audio) return { mediaUrl: data.audio.audioUrl, mediaType: "audio" };
   if (data.image) return { mediaUrl: data.image.imageUrl, mediaType: "image" };

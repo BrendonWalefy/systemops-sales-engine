@@ -1,4 +1,4 @@
-import { and, eq, lte, desc } from "drizzle-orm";
+import { and, eq, lte, lt, desc } from "drizzle-orm";
 import type { FollowUp } from "@/domain/entities/follow-up";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import { db } from "@/infrastructure/db/client";
@@ -50,6 +50,32 @@ export class DrizzleFollowUpRepository implements FollowUpRepository {
       ),
     });
     return rows.map(mapRow);
+  }
+
+  // CAS de single-statement: só um run do dispatcher consegue a transição
+  // pending → sending. Atômico no Postgres mesmo com neon-http.
+  async claimForSending(id: string): Promise<boolean> {
+    const rows = await db
+      .update(followUps)
+      .set({ status: "sending", updatedAt: new Date() })
+      .where(and(eq(followUps.id, id), eq(followUps.status, "pending")))
+      .returning({ id: followUps.id });
+    return rows.length > 0;
+  }
+
+  async recoverStaleSending(input: { clinicId: string; olderThan: Date }): Promise<number> {
+    const rows = await db
+      .update(followUps)
+      .set({ status: "pending", updatedAt: new Date() })
+      .where(
+        and(
+          eq(followUps.clinicId, input.clinicId),
+          eq(followUps.status, "sending"),
+          lt(followUps.updatedAt, input.olderThan),
+        ),
+      )
+      .returning({ id: followUps.id });
+    return rows.length;
   }
 }
 

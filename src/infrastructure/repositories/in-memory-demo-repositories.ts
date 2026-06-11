@@ -214,6 +214,24 @@ export class InMemoryDemoStore
     return found ?? null;
   }
 
+  async claimForSending(id: string): Promise<boolean> {
+    const followUp = this.followUps.get(id);
+    if (!followUp || followUp.status !== "pending") return false;
+    this.followUps.set(id, { ...followUp, status: "sending", updatedAt: new Date() });
+    return true;
+  }
+
+  async recoverStaleSending(input: { clinicId: string; olderThan: Date }): Promise<number> {
+    let recovered = 0;
+    for (const [id, followUp] of this.followUps) {
+      if (followUp.clinicId === input.clinicId && followUp.status === "sending" && followUp.updatedAt < input.olderThan) {
+        this.followUps.set(id, { ...followUp, status: "pending", updatedAt: new Date() });
+        recovered++;
+      }
+    }
+    return recovered;
+  }
+
   async recordAiUsage(cost: AiUsageCost): Promise<void> {
     this.aiUsageCosts.push(cost);
   }

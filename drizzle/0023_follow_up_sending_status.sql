@@ -1,0 +1,1 @@
+ALTER TYPE "public"."follow_up_status" ADD VALUE 'sending' BEFORE 'done';

@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
-import { eq, and, or, count, gte, lt } from "drizzle-orm";
+import { eq, and, or, count, gte, lt, isNull } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
   resolveWhatsAppChannelAddress,
@@ -23,7 +23,13 @@ import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzl
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { sendTextMessage, sendMediaMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import {
+  OutboundDeliveryService,
+  type OutboundPart,
+  type OutboundMediaPart,
+} from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { createLogger, type Logger } from "@/infrastructure/logging/logger";
 import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
 import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, type TtsConfig } from "@/domain/entities/tts-config";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
@@ -644,6 +650,36 @@ async function sendReply(
   return { msgId, deliveryFormat: "text" };
 }
 
+// Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
+// produzindo partes prontas para entrega. IDs ausentes são logados e pulados.
+function resolveOutboundParts(
+  parts: ResponsePart[],
+  mediaLibrary: { id: string; title: string; type: "video" | "image"; url: string }[] | undefined,
+  log: Logger,
+): OutboundPart[] {
+  const out: OutboundPart[] = [];
+  for (const part of parts) {
+    if (part.type === "text") {
+      out.push({ type: "text", content: part.content });
+      continue;
+    }
+    const item = mediaLibrary?.find((m) => m.id === part.id);
+    if (!item) {
+      log.warn("mediaId não encontrado na biblioteca", { mediaId: part.id });
+      continue;
+    }
+    out.push({
+      type: "media",
+      mediaId: item.id,
+      url: item.url,
+      mediaType: item.type,
+      title: item.title,
+      caption: part.caption,
+    });
+  }
+  return out;
+}
+
 // ─── Pipeline helpers ─────────────────────────────────────────────────────────
 
 // Converte os blocos de um step "content" em ResponseParts prontas para envio.
@@ -677,6 +713,8 @@ export class ConversationOrchestrator {
   private stateMachine = new ConversationStateMachine();
   private intentClassifier = new IntentClassifier();
   private responseComposer = new ResponseComposer();
+
+  private outboundDelivery = new OutboundDeliveryService();
 
   private leadRepo = new DrizzleLeadRepository();
   private conversationRepo = new DrizzleConversationRepository();
@@ -837,6 +875,29 @@ export class ConversationOrchestrator {
     const outboundAddress =
       resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
       channelAddress;
+
+    // ── 3.2. Claim de processamento por conversa ──
+    // Serializa webhooks concorrentes da mesma conversa: sem isso, dois handlers
+    // processam em paralelo e as respostas saem intercaladas/duplicadas (o check
+    // de debounce sozinho tem janela TOCTOU). CAS via UPDATE condicional — único
+    // statement, atômico no Postgres mesmo com o driver neon-http.
+    const claimed = await this.acquireConversationClaim(conversation.id);
+    if (!claimed) {
+      const acquired = await this.waitForConversationClaim(conversation.id);
+      if (!acquired) {
+        console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
+        return { replied: false };
+      }
+      // Adquiriu após espera: outro handler terminou. Se chegou mensagem mais
+      // recente do lead nesse meio tempo, ela (ou seu handler) cobre a resposta.
+      const latestAfterWait = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+      if (latestAfterWait && latestAfterWait.id !== incomingMessage.id) {
+        await this.releaseConversationClaim(conversation.id);
+        return { replied: false };
+      }
+    }
+
+    try {
 
     // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
     // Rehospeda no Blob (persistência), encaminha para o doutor no WhatsApp e pausa a IA.
@@ -1943,6 +2004,13 @@ export class ConversationOrchestrator {
       await this.leadRepo.save({ ...lead, temperature: inferredTemp, updatedAt: new Date() });
     }
 
+    // Guard: nenhum branch montou resposta e não há mídia a entregar. Sem isso,
+    // uma mensagem vazia seria salva e enviada silenciosamente (Z-API rejeita e
+    // o lead fica sem resposta). O throw aciona o fallback determinístico do catch.
+    if (!replyText.trim() && !composedParts.some((p) => p.type === "media")) {
+      throw new Error(`replyText vazio para intent=${intent} — nenhum branch montou resposta`);
+    }
+
     // ── 9. Salva mensagem do agente ANTES de enviar — garante inbox mesmo se envio falhar ──
     // deliveryFormat será atualizado após envio com o formato real (audio ou text).
     const agentMessageId = randomUUID();
@@ -1965,68 +2033,65 @@ export class ConversationOrchestrator {
     const hasInterleavedMedia =
       !clinic.voiceResponseEnabled && composedParts.some((p) => p.type === "media");
 
-    if (hasInterleavedMedia) {
-      let firstTextSent = false;
-      let lastSentAt = 0;
-      for (const part of composedParts) {
-        if (part.type === "text") {
-          const gap = Date.now() - lastSentAt;
-          if (gap < 1200) await new Promise((r) => setTimeout(r, 1200 - gap));
-          const result = await sendReply(outboundAddress, part.content, channelConfig, false, clinic.ttsConfig);
-          lastSentAt = Date.now();
-          if (!firstTextSent) {
-            zapiMessageId = result.msgId;
-            deliveryFormat = result.deliveryFormat;
-            firstTextSent = true;
-          } else {
-            await this.conversationRepo.appendMessage({
-              id: randomUUID(),
-              conversationId: conversation.id,
-              author: "agent",
-              body: part.content,
-              sentAt: new Date(),
-              externalId: result.msgId,
-              intent: intent ?? null,
-              deliveryFormat: result.deliveryFormat,
-            });
-          }
-        } else if (part.type === "media" && editorial?.mediaLibrary) {
-          const mediaItem = editorial.mediaLibrary.find((m) => m.id === part.id);
-          if (!mediaItem) {
-            console.warn(`[Orchestrator] mediaId "${part.id}" não encontrado na biblioteca`);
-            continue;
-          }
-          try {
-            const gap = Date.now() - lastSentAt;
-            if (gap < 1200) await new Promise((r) => setTimeout(r, 1200 - gap));
-            await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig, part.caption);
-            lastSentAt = Date.now();
-            console.log(`[Orchestrator] Mídia intercalada enviada: ${mediaItem.title}`);
-            const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
-            await this.conversationRepo.appendMessage({
-              id: randomUUID(),
-              conversationId: conversation.id,
-              author: "agent",
-              body: `${mediaLabel} ${mediaItem.title}`,
-              sentAt: new Date(),
-              externalId: null,
-              intent: "general_question",
-              deliveryFormat: "text",
-            });
-            if (mediaItem.type === "video") {
-              await scheduleFollowUp({
-                clinicId,
-                leadId: lead.id,
-                trigger: "video_sent",
-                videoTitle: mediaItem.title,
-                followUpRepository: new DrizzleFollowUpRepository(),
-              }).catch((err) => console.warn("[Orchestrator] Falha ao agendar follow-up pós-vídeo:", err));
-            }
-          } catch (err) {
-            console.error(`[Orchestrator] Falha ao enviar mídia "${mediaItem.title}":`, err);
-          }
-        }
+    const deliveryLog = createLogger({
+      scope: "OutboundDelivery",
+      correlationId: messageId,
+      clinicId,
+      conversationId: conversation.id,
+    });
+
+    // Persistência de mídia enviada + follow-up pós-vídeo — compartilhado entre
+    // o modo intercalado (9.1) e o modo TTS (9.2).
+    const persistSentMedia = async ({ part }: { part: OutboundMediaPart; msgId: string | null }) => {
+      const mediaLabel = part.mediaType === "video" ? "🎥" : "🖼️";
+      await this.conversationRepo.appendMessage({
+        id: randomUUID(),
+        conversationId: conversation.id,
+        author: "agent",
+        body: `${mediaLabel} ${part.title}`,
+        sentAt: new Date(),
+        externalId: null,
+        intent: "general_question",
+        deliveryFormat: "text",
+      });
+      if (part.mediaType === "video") {
+        await scheduleFollowUp({
+          clinicId,
+          leadId: lead.id,
+          trigger: "video_sent",
+          videoTitle: part.title,
+          followUpRepository: new DrizzleFollowUpRepository(),
+        }).catch((err) => deliveryLog.warn("falha ao agendar follow-up pós-vídeo", { error: String(err) }));
       }
+    };
+
+    if (hasInterleavedMedia) {
+      const outboundParts = resolveOutboundParts(composedParts, editorial?.mediaLibrary, deliveryLog);
+      await this.outboundDelivery.deliver({
+        to: outboundAddress,
+        parts: outboundParts,
+        config: channelConfig,
+        log: deliveryLog,
+        sendText: (content) => sendReply(outboundAddress, content, channelConfig, false, clinic.ttsConfig),
+        onTextSent: async ({ content, msgId, deliveryFormat: partFormat, isFirst }) => {
+          if (isFirst) {
+            zapiMessageId = msgId;
+            deliveryFormat = partFormat;
+            return;
+          }
+          await this.conversationRepo.appendMessage({
+            id: randomUUID(),
+            conversationId: conversation.id,
+            author: "agent",
+            body: content,
+            sentAt: new Date(),
+            externalId: msgId,
+            intent: intent ?? null,
+            deliveryFormat: partFormat,
+          });
+        },
+        onMediaSent: persistSentMedia,
+      });
     } else {
       const result = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
       zapiMessageId = result.msgId;
@@ -2044,42 +2109,21 @@ export class ConversationOrchestrator {
 
     // ── 9.2 Envia mídias no modo TTS (áudio primeiro, vídeos depois) ──
     if (!hasInterleavedMedia && composedMediaIds.length > 0 && editorial?.mediaLibrary) {
-      for (const mediaId of composedMediaIds) {
-        const mediaItem = editorial.mediaLibrary.find((m) => m.id === mediaId);
-        if (!mediaItem) {
-          console.warn(`[Orchestrator] mediaId "${mediaId}" não encontrado na biblioteca`);
-          continue;
-        }
-        try {
-          const mediaPart = composedParts.find((p): p is { type: "media"; id: string; caption?: string } => p.type === "media" && p.id === mediaId);
-          await sendMediaMessage(outboundAddress, mediaItem.url, mediaItem.type, channelConfig, mediaPart?.caption);
-          console.log(`[Orchestrator] Mídia enviada: ${mediaItem.title} (${mediaItem.type})`);
-
-          const mediaLabel = mediaItem.type === "video" ? "🎥" : "🖼️";
-          await this.conversationRepo.appendMessage({
-            id: randomUUID(),
-            conversationId: conversation.id,
-            author: "agent",
-            body: `${mediaLabel} ${mediaItem.title}`,
-            sentAt: new Date(),
-            externalId: null,
-            intent: "general_question",
-            deliveryFormat: "text",
-          });
-
-          if (mediaItem.type === "video") {
-            await scheduleFollowUp({
-              clinicId,
-              leadId: lead.id,
-              trigger: "video_sent",
-              videoTitle: mediaItem.title,
-              followUpRepository: new DrizzleFollowUpRepository(),
-            }).catch((err) => console.warn("[Orchestrator] Falha ao agendar follow-up pós-vídeo:", err));
-          }
-        } catch (err) {
-          console.error(`[Orchestrator] Falha ao enviar mídia "${mediaItem.title}":`, err);
-        }
-      }
+      const mediaOnlyParts = resolveOutboundParts(
+        composedParts.filter((p) => p.type === "media"),
+        editorial.mediaLibrary,
+        deliveryLog,
+      );
+      await this.outboundDelivery.deliver({
+        to: outboundAddress,
+        parts: mediaOnlyParts,
+        config: channelConfig,
+        log: deliveryLog,
+        // Sem partes de texto neste modo — o áudio já foi enviado em 9.1.
+        sendText: () => Promise.resolve({ msgId: null, deliveryFormat: "text" as const }),
+        onTextSent: async () => {},
+        onMediaSent: persistSentMedia,
+      });
     }
 
     // ── 9.3 Avança pipeline para o próximo step (somente após todo o conteúdo ser entregue) ──
@@ -2132,6 +2176,56 @@ export class ConversationOrchestrator {
         console.error("[Orchestrator] Fallback também falhou:", fallbackErr);
       }
       return { replied: false };
+    }
+
+    } finally {
+      await this.releaseConversationClaim(conversation.id);
+    }
+  }
+
+  // ── Claim de processamento por conversa (CAS single-statement) ──────────────
+
+  private async acquireConversationClaim(conversationId: string, ttlMs = 90_000): Promise<boolean> {
+    const now = new Date();
+    const rows = await db
+      .update(conversationsTable)
+      .set({ processingUntil: new Date(now.getTime() + ttlMs) })
+      .where(
+        and(
+          eq(conversationsTable.id, conversationId),
+          or(
+            isNull(conversationsTable.processingUntil),
+            lt(conversationsTable.processingUntil, now),
+          ),
+        ),
+      )
+      .returning({ id: conversationsTable.id });
+    return rows.length > 0;
+  }
+
+  // Espera o detentor atual liberar (ou o TTL de 90s expirar em caso de crash).
+  private async waitForConversationClaim(
+    conversationId: string,
+    maxWaitMs = 45_000,
+    pollMs = 2_000,
+  ): Promise<boolean> {
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, pollMs));
+      if (await this.acquireConversationClaim(conversationId)) return true;
+    }
+    return false;
+  }
+
+  private async releaseConversationClaim(conversationId: string): Promise<void> {
+    try {
+      await db
+        .update(conversationsTable)
+        .set({ processingUntil: null })
+        .where(eq(conversationsTable.id, conversationId));
+    } catch (err) {
+      // Não-crítico: o TTL de 90s expira o claim sozinho.
+      console.warn(`[Orchestrator] Falha ao liberar claim de ${conversationId}:`, err);
     }
   }
 

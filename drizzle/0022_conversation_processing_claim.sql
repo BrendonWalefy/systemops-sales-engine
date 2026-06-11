@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "processing_until" timestamp with time zone;

@@ -92,9 +92,18 @@ export class BookingService {
         endsAt,
       });
     } catch (err) {
-      // Gateway indisponível — assume slot livre e prossegue.
-      // A reserva no DB (Passo 1) e o overlap check (Passo 1.5) são proteção suficiente.
-      console.error("[BookingService] CalendarGateway isSlotFree failed — assumindo slot livre:", err);
+      // Gateway indisponível — fail-open consciente: assume slot livre e prossegue.
+      // A reserva no DB (Passo 1, com exclusion constraint de overlap) e o check
+      // de appointments (Passo 1.5) protegem contra double-booking interno; o que
+      // fica descoberto são eventos criados MANUALMENTE no calendar externo.
+      console.warn(JSON.stringify({
+        level: "warn",
+        scope: "BookingService",
+        msg: "isSlotFree falhou — prosseguindo fail-open (verificar conflitos manuais no calendar)",
+        clinicId: clinic.id,
+        startsAt: startsAt.toISOString(),
+        errorMessage: err instanceof Error ? err.message : String(err),
+      }));
       slotStillFree = true;
     }
 

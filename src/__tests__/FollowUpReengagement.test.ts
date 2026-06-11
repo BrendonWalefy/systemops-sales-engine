@@ -20,6 +20,8 @@ vi.mock("@/infrastructure/repositories/drizzle-follow-up-repository", () => ({
     save: mockFollowUpSave,
     listDue: mockFollowUpListDue,
     findPendingByReason: mockFollowUpFindPendingByReason,
+    claimForSending: vi.fn().mockResolvedValue(true),
+    recoverStaleSending: vi.fn().mockResolvedValue(0),
   })),
 }));
 
@@ -69,6 +71,8 @@ function makeFollowUpRepository() {
     save: vi.fn<(fu: FollowUp) => Promise<void>>().mockResolvedValue(undefined),
     listDue: vi.fn<(input: { clinicId: string; now: Date }) => Promise<FollowUp[]>>().mockResolvedValue([]),
     findPendingByReason: vi.fn<(input: { leadId: string; reason: string }) => Promise<FollowUp | null>>().mockResolvedValue(null),
+    claimForSending: vi.fn<(id: string) => Promise<boolean>>().mockResolvedValue(true),
+    recoverStaleSending: vi.fn<(input: { clinicId: string; olderThan: Date }) => Promise<number>>().mockResolvedValue(0),
   };
 }
 
