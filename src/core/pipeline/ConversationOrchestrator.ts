@@ -1045,9 +1045,9 @@ export class ConversationOrchestrator {
         return { replied: false };
       }
 
-      // Pipeline photo intercept: foto enviada enquanto pipeline aguarda step "photo" →
+      // Pipeline photo intercept: foto ou vídeo enviado enquanto pipeline aguarda step "photo" →
       // retoma automaticamente sem pausar a IA. Doutor já foi notificado acima.
-      if (inboundMediaType === "image") {
+      if (inboundMediaType === "image" || inboundMediaType === "video") {
         const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
         if (activePipelineState) {
           const pipelineTreatments = await this.treatmentRepo.listByClinic(clinicId);

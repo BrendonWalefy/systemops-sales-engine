@@ -23,7 +23,7 @@ function shouldResumePipeline(
   pipelineState: PipelineState | null,
   treatments: Treatment[],
 ): boolean {
-  if (inboundMediaType !== "image") return false;
+  if (inboundMediaType !== "image" && inboundMediaType !== "video") return false;
   if (!pipelineState) return false;
   const treatment = treatments.find(t => t.id === pipelineState.treatmentId);
   const currentStep = treatment?.pipelineSteps?.[pipelineState.stepIndex];
@@ -66,9 +66,14 @@ describe("Pipeline photo intercept — decisão de retomada automática", () => 
     expect(shouldResumePipeline("image", state, [TREATMENT])).toBe(true);
   });
 
-  it("NÃO retoma se mídia não é imagem (vídeo enviado pelo lead)", () => {
+  it("retoma pipeline quando vídeo chega e step atual é 'photo'", () => {
     const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 2, photoReceived: false };
-    expect(shouldResumePipeline("video", state, [TREATMENT])).toBe(false);
+    expect(shouldResumePipeline("video", state, [TREATMENT])).toBe(true);
+  });
+
+  it("NÃO retoma se mídia é documento", () => {
+    const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 2, photoReceived: false };
+    expect(shouldResumePipeline("document", state, [TREATMENT])).toBe(false);
   });
 
   it("NÃO retoma se não há pipeline ativo", () => {
