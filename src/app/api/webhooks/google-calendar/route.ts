@@ -58,12 +58,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       clinic.calendarSyncToken ?? null,
     );
 
-    // Persiste o novo syncToken antes de processar para não perder eventos em caso de falha
-    await db
-      .update(clinics)
-      .set({ calendarSyncToken: nextSyncToken })
-      .where(eq(clinics.id, clinic.id));
-
+    // Processa os cancelamentos ANTES de avançar o syncToken: se algo falhar
+    // aqui, o token antigo continua no banco e o próximo sync re-entrega os
+    // mesmos eventos (marcar cancelado é idempotente). Avançar o token antes
+    // perderia esses cancelamentos para sempre.
     if (cancelledIds.length > 0) {
       const apptRepo = new DrizzleAppointmentRepository();
       for (const calendarEventId of cancelledIds) {
@@ -79,6 +77,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
     }
+
+    await db
+      .update(clinics)
+      .set({ calendarSyncToken: nextSyncToken })
+      .where(eq(clinics.id, clinic.id));
 
     return new NextResponse(null, { status: 200 });
   } catch (err) {

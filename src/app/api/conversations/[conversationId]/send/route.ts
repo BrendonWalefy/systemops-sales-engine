@@ -2,15 +2,13 @@
 // Toda chamada desta rota pausa a IA automaticamente — operador assumiu o atendimento.
 
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
-import { verifyToken, COOKIE_NAME } from "@/lib/session";
+import { and, eq } from "drizzle-orm";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { resolveWhatsappChannelClinicForOutbound } from "@/application/tenancy/resolve-clinic";
+import { getSessionClinicId, resolveWhatsappChannelClinicForOutbound } from "@/application/tenancy/resolve-clinic";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const dynamic = "force-dynamic";
@@ -19,11 +17,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
 ): Promise<NextResponse> {
-  // ── 1. Auth ──
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  const session = token ? await verifyToken(token) : null;
-  if (!session) {
+  // ── 1. Auth + tenancy ──
+  const sessionClinicId = await getSessionClinicId();
+  if (!sessionClinicId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -42,11 +38,12 @@ export async function POST(
     return NextResponse.json({ error: "Message is required" }, { status: 400 });
   }
 
-  // ── 3. Busca conversa ──
+  // ── 3. Busca conversa — escopada pela clínica da sessão. Sem este filtro,
+  // um usuário de outra clínica enviava mensagem ao lead E pausava a IA daqui. ──
   const [conv] = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.id, conversationId))
+    .where(and(eq(conversations.id, conversationId), eq(conversations.clinicId, sessionClinicId)))
     .limit(1);
 
   if (!conv) {

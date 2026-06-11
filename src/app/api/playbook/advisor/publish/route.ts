@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { playbookVersions } from "@/infrastructure/db/schema";
 import { publishablePlaybookSchema } from "@/application/config/editorial-config";
 import type { ProposedPlaybook } from "@/core/intelligence/PlaybookAdvisor";
@@ -13,6 +14,13 @@ export const dynamic = "force-dynamic";
 // Nunca auto-publica: esta rota só é chamada após aprovação explícita do admin.
 export async function POST(req: NextRequest) {
   try {
+    // Esta rota REESCREVE o playbook ativo (comportamento da IA em produção).
+    // Sessão obrigatória + clinicId precisa ser o da sessão.
+    const sessionClinicId = await getSessionClinicId();
+    if (!sessionClinicId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json()) as {
       clinicId: string;
       proposedPlaybook: ProposedPlaybook;
@@ -20,6 +28,10 @@ export async function POST(req: NextRequest) {
 
     if (!body.clinicId || !body.proposedPlaybook) {
       return NextResponse.json({ error: "clinicId and proposedPlaybook required" }, { status: 400 });
+    }
+
+    if (body.clinicId !== sessionClinicId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // GATE DE VALIDAÇÃO — bloqueia publicar config incompleta.

@@ -56,6 +56,28 @@ preservada**, e evolução de arquitetura **incremental** — 1 clínica hoje, 1
 - Config editorial versionada em `playbook_versions` com schema de validação.
 - `ClinicTimezone` centralizado; suite de testes ampla (49 arquivos).
 
+## Rodada 2 — auditoria de segurança e calendário (corrigida em 11/06)
+
+Segunda varredura (4 frentes: calendário, onboarding, IA, API/crons) com
+verificação manual. Tema dominante: **autenticação/tenancy**, não concorrência.
+
+| # | Defeito | Onde | Correção aplicada |
+|---|---------|------|-------------------|
+| 8 | `advisor/publish` e `advisor/analyze` SEM autenticação — qualquer um na internet reescrevia o playbook ativo (comportamento da IA) de qualquer clínica | `api/playbook/advisor/*` | Sessão obrigatória + `clinicId` do body precisa ser o da sessão (403 se divergir) |
+| 9 | Rotas de conversa autenticavam mas não filtravam por clínica da sessão: usuário da clínica B lia mensagens (PII), enviava WhatsApp e pausava a IA da clínica A | `conversations/[id]/messages`, `/send`, `/register-appointment` | Escopo por `clinicId` da sessão no lookup da conversa (mesmo padrão da rota `/read`, que já fazia certo) |
+| 10 | Webhook Z-API aceitava POST de qualquer origem (Z-API não assina webhooks) — spoof de leads, custo OpenAI | `api/whatsapp/zapi` | Secret compartilhado na URL (`?secret=`) validado quando `ZAPI_WEBHOOK_SECRET` estiver definida — rollout em 2 passos sem downtime |
+| 11 | Sync token 410 Gone congelava a sincronização GCal para sempre (webhook engolia com 200, cron só logava, ninguém resetava) | `google-calendar-gateway.syncCancelledEventIds` | Auto-recuperação: 410 + token → refaz sync inicial (timeMin 180d) e devolve token novo |
+| 12 | Webhook GCal persistia o syncToken ANTES de processar cancelamentos — falha no meio perdia os eventos para sempre | `webhooks/google-calendar` | Inverte a ordem: processa primeiro (idempotente), token avança só no fim; falha = re-entrega no próximo sync |
+
+**Operacional (rollout do item 10):** 1) adicionar `?secret=<valor>` na URL do
+webhook no painel Z-API; 2) definir `ZAPI_WEBHOOK_SECRET` no Vercel. Enquanto a
+env não existir, o comportamento é o atual (sem validação).
+
+**Achados de agente descartados na verificação manual desta rodada:** "clock
+skew no estado de conversa", "playbook inválido derruba o Composer" (tolera
+null — vira bot genérico), fail-open do `isSlotFree` (decisão consciente já
+documentada na rodada 1).
+
 ## Backlog priorizado (não corrigido nesta rodada)
 
 ### Antes da clínica 2
@@ -63,11 +85,16 @@ preservada**, e evolução de arquitetura **incremental** — 1 clínica hoje, 1
    piloto. Mudança editorial deve ir pela UI de playbook
    (`/app/settings/playbook`). Mapear o que ainda NÃO é editável pela UI
    (trigger templates? mediaLibrary? installment rates?) e fechar esses gaps.
-2. **Google Calendar sync token 410 Gone**: `calendar-watch-renew` não trata token
-   stale — entra em loop de falha e a sincronização morre em silêncio. Resetar o
-   token (full resync) ao receber 410.
+2. **Flag `isActive` em `clinics`**: crons processam clínica cancelada para
+   sempre; webhook aceita clínica com cadastro incompleto. Adicionar flag +
+   filtro em `listAllClinicIds`.
 3. **`addMonths` naive** no follow-up de 6 meses (`schedule-follow-up.ts`):
    fim de mês/DST deslocam a data. Usar aritmética via `ClinicTimezone`.
+4. **`activatePlaybookVersion` (UI) sem gate de validação**: a rota do advisor
+   valida com `publishablePlaybookSchema`, mas a ativação manual na UI não —
+   dá para ativar versão incompleta (IA vira bot genérico, não quebra).
+5. **`max_tokens: 350` no composer pode truncar tag `[MEDIA:` no meio** —
+   mídia some da resposta. Detectar tag incompleta no fim do texto e remover.
 
 ### Antes de 10 clínicas
 4. **Credenciais Z-API/Meta em plaintext** na tabela `clinics` — mover para

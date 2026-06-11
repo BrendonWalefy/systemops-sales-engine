@@ -413,6 +413,9 @@ export class GoogleCalendarGateway implements CalendarGateway {
 
   // Retorna IDs de eventos cancelados desde o último sync e o novo syncToken.
   // Se syncToken for null, faz sync inicial (retorna todos os eventos deletados).
+  // Um syncToken pode ser invalidado pelo Google (HTTP 410 Gone, ex.: mais de
+  // ~1 semana sem sincronizar) — nesse caso o método se auto-recupera refazendo
+  // o sync inicial, em vez de congelar a sincronização para sempre.
   async syncCancelledEventIds(syncToken: string | null): Promise<{
     cancelledIds: string[];
     nextSyncToken: string;
@@ -434,6 +437,16 @@ export class GoogleCalendarGateway implements CalendarGateway {
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
+
+    if (res.status === 410 && syncToken) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        scope: "GoogleCalendarGateway",
+        msg: "syncToken invalidado pelo Google (410 Gone) — refazendo sync inicial",
+        calendarId,
+      }));
+      return this.syncCancelledEventIds(null);
+    }
 
     if (!res.ok) {
       const err = await res.text();
