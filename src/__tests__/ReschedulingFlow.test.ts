@@ -20,7 +20,7 @@ import { BookingService, type BookingReservationService } from "@/core/schedulin
 
 const clinic: Clinic = {
   id: "clinic-1",
-  name: "BW Odontologia",
+  name: "Clinic Test",
   specialty: "odontologia",
   city: null,
   address: null,

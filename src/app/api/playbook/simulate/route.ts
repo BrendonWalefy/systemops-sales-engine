@@ -335,7 +335,7 @@ function mockCompose(actionResult: ActionResult): ComposedResponse {
 
 export async function POST(req: NextRequest) {
   // ── Autenticação ──────────────────────────────────────────────────────────────
-  // Aceita: (1) session cookie válido (sandbox interno), (2) x-simulate-key (omniQA / externo)
+  // Aceita: (1) session cookie válido (sandbox interno), (2) x-simulate-key (integração externa)
   const sessionToken = req.cookies.get(COOKIE_NAME)?.value;
   const hasValidSession = sessionToken ? !!(await verifyToken(sessionToken)) : false;
   const hasValidApiKey = !!SIMULATE_API_KEY && req.headers.get("x-simulate-key") === SIMULATE_API_KEY;

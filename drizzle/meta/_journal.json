@@ -148,6 +148,13 @@
       "when": 1781137411200,
       "tag": "0024_slot_reservation_overlap_exclusion",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781166079891,
+      "tag": "0025_remove_whatsapp_qa_routes",
+      "breakpoints": true
     }
   ]
 }

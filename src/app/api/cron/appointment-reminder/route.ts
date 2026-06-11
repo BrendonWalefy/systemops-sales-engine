@@ -3,10 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import {
-  listAllClinicIds,
-  resolveWhatsappChannelClinicForOutbound,
-} from "@/application/tenancy/resolve-clinic";
+import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { clinics } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -58,16 +55,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         whatsappLid: lead.whatsappLid,
       });
       if (!channelAddress) continue;
-      let channelConfig = defaultChannelConfig;
-      const channelClinicId = await resolveWhatsappChannelClinicForOutbound({
-        clinicId,
-        phone: lead.phone,
-      });
-      if (channelClinicId !== clinicId) {
-        const channelClinic = await db.query.clinics.findFirst({ where: eq(clinics.id, channelClinicId) });
-        if (!channelClinic) throw new Error(`Channel clinic not found: ${channelClinicId}`);
-        channelConfig = resolveChannelConfig(channelClinic);
-      }
+      const channelConfig = defaultChannelConfig;
 
       const appointmentLabel = new Intl.DateTimeFormat("pt-BR", {
         timeZone: clinic.timezone,

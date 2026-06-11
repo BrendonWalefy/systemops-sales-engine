@@ -64,9 +64,7 @@ flowchart TD
 
     D -- sim --> E{Echo já conhecido?}
     E -- sim --> X2[Ignora]
-    E -- não --> F{É QA route?}
-    F -- sim --> G[Trata como lead]
-    F -- não --> H[Registra clinic_user<br/>pausa IA com takeover TTL]
+    E -- não --> H[Registra clinic_user<br/>pausa IA com takeover TTL]
 
     D -- não --> G
 

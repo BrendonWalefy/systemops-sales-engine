@@ -158,37 +158,6 @@ export const clinics = pgTable("clinics", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Rotas de QA para reaproveitar uma instância WhatsApp real sem misturar dados
-// da clínica dona do canal. sourceClinicId possui as credenciais Z-API; targetClinicId
-// recebe leads, conversas, agenda e custos. phone é E.164 só com dígitos.
-export const whatsappQaRoutes = pgTable(
-  "whatsapp_qa_routes",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    sourceClinicId: uuid("source_clinic_id")
-      .notNull()
-      .references(() => clinics.id),
-    targetClinicId: uuid("target_clinic_id")
-      .notNull()
-      .references(() => clinics.id),
-    phone: text("phone").notNull(),
-    label: text("label"),
-    enabled: boolean("enabled").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    sourcePhoneIdx: uniqueIndex("whatsapp_qa_routes_source_phone_idx").on(
-      table.sourceClinicId,
-      table.phone,
-    ),
-    targetPhoneIdx: index("whatsapp_qa_routes_target_phone_idx").on(
-      table.targetClinicId,
-      table.phone,
-    ),
-  }),
-);
-
 export const treatments = pgTable(
   "treatments",
   {

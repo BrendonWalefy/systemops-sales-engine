@@ -56,20 +56,6 @@ decide disponibilidade nesse modo.
 No modo `google_calendar`, Google Calendar continua como fonte opt-in/legado para
 disponibilidade e eventos externos. O banco mantém os `appointments` do produto.
 
-### 2.2. Rotas WhatsApp de QA
-
-**Dono:** tabela `whatsapp_qa_routes`
-
-**Porta de acesso:** `resolveClinicByZapiInbound()` e
-`resolveWhatsappChannelClinicForOutbound()` em
-`src/application/tenancy/resolve-clinic.ts`
-
-Essa tabela permite testar uma segunda clinica com WhatsApp real sem criar nova
-instancia Z-API. A chave de entrada e `source_clinic_id + phone`: a instancia
-continua pertencendo a clinica fonte, mas telefones allowlistados passam a
-registrar leads, conversas, agenda e custos na clinica alvo. Sem rota ativa, o
-tenant e o canal permanecem na clinica fonte.
-
 **Campos no banco que NÃO são lidos em runtime (dead code de schema):**
 
 | Campo | Status |

@@ -1,0 +1,1 @@
+DROP TABLE "whatsapp_qa_routes" CASCADE;

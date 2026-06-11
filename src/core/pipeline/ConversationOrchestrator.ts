@@ -740,7 +740,6 @@ export class ConversationOrchestrator {
     senderPhoto?: string | null;
     timestamp: Date;
     replyEnabled?: boolean;
-    channelClinicId?: string;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
   }): Promise<{ replied: boolean }> {
@@ -822,24 +821,7 @@ export class ConversationOrchestrator {
 
     // FONTE ÚNICA EDITORIAL: versão ativa de playbook_versions via resolveActiveEditorialConfig.
     const editorial = await resolveActiveEditorialConfig(clinicId);
-    // Credenciais de canal podem vir de uma clínica fonte de QA, mantendo dados
-    // e decisões na clínica lógica acima.
-    let channelClinicRow = clinicRows[0];
-    if (params.channelClinicId && params.channelClinicId !== clinicId) {
-      const channelClinicRows = await db
-        .select()
-        .from(clinics)
-        .where(eq(clinics.id, params.channelClinicId))
-        .limit(1);
-
-      if (channelClinicRows.length === 0) {
-        console.error(`[Orchestrator] Channel clinic not found: ${params.channelClinicId}`);
-        return { replied: false };
-      }
-
-      channelClinicRow = channelClinicRows[0];
-    }
-    const channelConfig = resolveChannelConfig(channelClinicRow);
+    const channelConfig = resolveChannelConfig(clinicRows[0]);
 
     // ── 3. Registra lead, conversa e mensagem ──
     const usageCostTracker = new DefaultUsageCostTracker({

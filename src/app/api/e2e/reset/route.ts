@@ -13,7 +13,7 @@ import {
 import { e2eGuard, E2E_CLINIC_ID } from "../_guard";
 
 // POST /api/e2e/reset
-// Body: { runId: string } — aceito para compatibilidade de contrato com omniQA.
+// Body: { runId: string } — aceito para compatibilidade de contrato com o runner externo.
 // Schema não tem coluna runId: limpa todos os dados de E2E_CLINIC_ID.
 // Isolamento paralelo requer migration futura.
 export async function POST(req: NextRequest) {
