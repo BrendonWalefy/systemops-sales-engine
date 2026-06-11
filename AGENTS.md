@@ -14,16 +14,17 @@ Historical prompts, handoffs, notes, or deleted roadmap files must not be treate
 
 ## Stable Production Rule
 
-`main` is treated as production-ready. Do not push directly to `main` for new work unless the user explicitly asks for an emergency hotfix and accepts the risk.
+`main` is production. `develop` is the integration branch. Never push directly to `main` except for emergency hotfixes explicitly approved by the user.
 
 Default workflow:
 
-1. Create a focused branch from updated `main`.
+1. Create a focused branch from updated `develop`.
 2. Keep the change scoped to one feature, fix, or operational concern.
 3. Use small commits with clear messages.
-4. Run `npm run verify` before asking for review or deploy.
-5. Push the branch and use a PR or preview deployment for validation.
-6. Merge to `main` only after checks pass and the user approves.
+4. Run `npm run verify` before opening a PR.
+5. Push the branch and open a PR targeting `develop`.
+6. Merge to `develop` after checks pass and the user approves.
+7. Promote `develop` → `main` only after full validation (manual QA + CI green).
 
 ## Branch Names
 
