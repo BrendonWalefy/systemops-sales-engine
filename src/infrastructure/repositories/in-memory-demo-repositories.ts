@@ -214,6 +214,17 @@ export class InMemoryDemoStore
     return found ?? null;
   }
 
+  async cancelPendingByReason(input: { leadId: string; reason: string }): Promise<number> {
+    let cancelled = 0;
+    for (const [id, followUp] of this.followUps) {
+      if (followUp.leadId === input.leadId && followUp.reason === input.reason && followUp.status === "pending") {
+        this.followUps.set(id, { ...followUp, status: "cancelled", updatedAt: new Date() });
+        cancelled++;
+      }
+    }
+    return cancelled;
+  }
+
   async claimForSending(id: string): Promise<boolean> {
     const followUp = this.followUps.get(id);
     if (!followUp || followUp.status !== "pending") return false;

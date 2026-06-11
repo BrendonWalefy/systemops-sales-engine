@@ -16,6 +16,7 @@ import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { selectOneFollowUpPerLead } from "@/application/use-cases/leads/follow-up-dispatch-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +47,12 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   }
 
   const dueFollowUps = await followUpRepository.listDue({ clinicId, now });
+  const dispatchPlan = selectOneFollowUpPerLead(dueFollowUps);
 
   let dispatched = 0;
   let failed = 0;
 
-  for (const followUp of dueFollowUps) {
+  for (const followUp of dispatchPlan.selected) {
     try {
       // Claim-before-send: transição atômica pending → sending. Se outro run
       // (cron duplicado, redeploy) já reivindicou, pular — evita mensagem dupla.
@@ -140,6 +142,19 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
 
       await followUpRepository.save({ ...followUp, status: "done", completedAt: now, updatedAt: now });
       await leadRepository.save({ ...lead, status: "in_conversation", updatedAt: now });
+
+      const duplicateVideoFollowUps = dispatchPlan.deferred.filter(
+        (deferredFollowUp) =>
+          deferredFollowUp.leadId === followUp.leadId &&
+          deferredFollowUp.reason.startsWith("video_sent:"),
+      );
+      for (const duplicateVideoFollowUp of duplicateVideoFollowUps) {
+        await followUpRepository.save({
+          ...duplicateVideoFollowUp,
+          status: "cancelled",
+          updatedAt: now,
+        });
+      }
 
       dispatched++;
     } catch (err) {

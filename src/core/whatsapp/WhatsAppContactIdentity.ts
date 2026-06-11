@@ -21,6 +21,19 @@ export function normalizeWhatsAppPhone(raw: string): string | null {
   return digits.length >= 10 ? digits : null;
 }
 
+export function areEquivalentWhatsAppPhones(
+  leftRaw: string | null | undefined,
+  rightRaw: string | null | undefined,
+): boolean {
+  const left = normalizeWhatsAppPhone(leftRaw ?? "");
+  const right = normalizeWhatsAppPhone(rightRaw ?? "");
+
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  return left.endsWith(right) || right.endsWith(left);
+}
+
 export function parseWhatsAppContactField(
   raw: string | null | undefined,
 ): Partial<WhatsAppContactIdentifiers> {

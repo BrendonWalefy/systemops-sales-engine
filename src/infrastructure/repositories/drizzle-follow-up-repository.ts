@@ -1,4 +1,4 @@
-import { and, eq, lte, lt, desc } from "drizzle-orm";
+import { and, asc, desc, eq, lt, lte } from "drizzle-orm";
 import type { FollowUp } from "@/domain/entities/follow-up";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import { db } from "@/infrastructure/db/client";
@@ -41,14 +41,33 @@ export class DrizzleFollowUpRepository implements FollowUpRepository {
     return rows.length > 0 ? mapRow(rows[0]) : null;
   }
 
+  async cancelPendingByReason(input: { leadId: string; reason: string }): Promise<number> {
+    const rows = await db
+      .update(followUps)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(
+        and(
+          eq(followUps.leadId, input.leadId),
+          eq(followUps.reason, input.reason),
+          eq(followUps.status, "pending"),
+        ),
+      )
+      .returning({ id: followUps.id });
+    return rows.length;
+  }
+
   async listDue(input: { clinicId: string; now: Date }): Promise<FollowUp[]> {
-    const rows = await db.query.followUps.findMany({
-      where: and(
+    const rows = await db
+      .select()
+      .from(followUps)
+      .where(
+        and(
         eq(followUps.clinicId, input.clinicId),
         eq(followUps.status, "pending"),
         lte(followUps.dueAt, input.now),
-      ),
-    });
+        ),
+      )
+      .orderBy(asc(followUps.dueAt), asc(followUps.createdAt));
     return rows.map(mapRow);
   }
 

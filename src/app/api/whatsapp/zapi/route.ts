@@ -14,6 +14,7 @@ import {
 } from "@/application/tenancy/resolve-clinic";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 import { buildContactIdentifiersFromWebhook } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { isInternalOperationalWhatsAppMessage } from "@/core/whatsapp/InternalWhatsAppOperationalMessage";
 import { findConversationByWhatsAppContact } from "@/application/whatsapp/find-conversation-by-whatsapp-contact";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
@@ -123,6 +124,43 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
+  const resolution = await resolveWebhookClinic(body, clinicIdOverride);
+  if (!resolution) {
+    console.error("[ZApi] Nenhuma clínica resolvida para a instância");
+    return new NextResponse("Server misconfigured", { status: 500 });
+  }
+  logQaRoute(resolution, body.phone);
+
+  const clinicId = resolution.clinicId;
+
+  const [clinicRow] = await db
+    .select({
+      autoReplyEnabled: clinics.autoReplyEnabled,
+      receptionistPhone: clinics.receptionistPhone,
+      takeoverTtlHours: clinics.takeoverTtlHours,
+    })
+    .from(clinics)
+    .where(eq(clinics.id, clinicId))
+    .limit(1);
+
+  if (!clinicRow) {
+    console.error("[ZApi] Clínica de destino não encontrada");
+    return new NextResponse("Server misconfigured", { status: 500 });
+  }
+
+  if (
+    isInternalOperationalWhatsAppMessage({
+      senderPhone: body.phone,
+      receptionistPhone: clinicRow.receptionistPhone,
+      messageText: body.text?.message ?? null,
+    })
+  ) {
+    console.log(
+      `[ZApi] Mensagem operacional interna ignorada (clinicId=${clinicId}, phone=${body.phone})`,
+    );
+    return new NextResponse("OK", { status: 200 });
+  }
+
   // Mensagem enviada pela instância Z-API (fromMe: true)
   // Pode ser: (a) echo da IA enviando via API ou (b) operador digitando no celular
   // QA routes são excluídas: o testador envia do próprio número (fromMe=true) mas
@@ -131,14 +169,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Sem texto → mídia, sticker, reação — ignora
     if (!body.text?.message) return new NextResponse("OK", { status: 200 });
 
-    const resolution = await resolveWebhookClinic(body, clinicIdOverride);
-    if (!resolution) return new NextResponse("OK", { status: 200 });
-    logQaRoute(resolution, body.phone);
-
     // QA route: não trata como operador — cai no fluxo de lead abaixo
     if (!resolution.isQaRoute) {
-      const clinicId = resolution.clinicId;
-
       try {
         // 1ª verificação: messageId já está no banco → echo já registrado → ignora
         const [existing] = await db
@@ -206,11 +238,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
 
         // Nenhuma verificação bateu → é o operador enviando do celular
-        const [clinicRow] = await db
-          .select({ takeoverTtlHours: clinics.takeoverTtlHours })
-          .from(clinics)
-          .where(eq(clinics.id, clinicId))
-          .limit(1);
         const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
         await handleOperatorMessageFromPhone(body, conv.id, ttlHours);
       } catch (err) {
@@ -219,28 +246,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       return new NextResponse("OK", { status: 200 });
     }
-  }
-
-  const resolution = await resolveWebhookClinic(body, clinicIdOverride);
-  if (!resolution) {
-    console.error("[ZApi] Nenhuma clínica resolvida para a instância");
-    return new NextResponse("Server misconfigured", { status: 500 });
-  }
-  logQaRoute(resolution, body.phone);
-
-  const clinicId = resolution.clinicId;
-
-  const [clinicRow] = await db
-    .select({
-      autoReplyEnabled: clinics.autoReplyEnabled,
-    })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
-    .limit(1);
-
-  if (!clinicRow) {
-    console.error("[ZApi] Clínica de destino não encontrada");
-    return new NextResponse("Server misconfigured", { status: 500 });
   }
 
   const replyEnabled = clinicRow?.autoReplyEnabled !== false;

@@ -94,6 +94,7 @@ function makeFollowUpRepo(): FollowUpRepository {
     save: vi.fn().mockResolvedValue(undefined),
     listDue: vi.fn().mockResolvedValue([]),
     findPendingByReason: vi.fn().mockResolvedValue(null),
+    cancelPendingByReason: vi.fn().mockResolvedValue(0),
     claimForSending: vi.fn().mockResolvedValue(true),
     recoverStaleSending: vi.fn().mockResolvedValue(0),
   };

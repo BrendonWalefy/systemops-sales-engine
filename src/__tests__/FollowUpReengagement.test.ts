@@ -14,12 +14,14 @@ const mockLeadSave = vi.fn();
 const mockLeadFindInactiveLeads = vi.fn();
 
 const mockFollowUpFindPendingByReason = vi.fn().mockResolvedValue(null);
+const mockFollowUpCancelPendingByReason = vi.fn().mockResolvedValue(0);
 
 vi.mock("@/infrastructure/repositories/drizzle-follow-up-repository", () => ({
   DrizzleFollowUpRepository: vi.fn().mockImplementation(() => ({
     save: mockFollowUpSave,
     listDue: mockFollowUpListDue,
     findPendingByReason: mockFollowUpFindPendingByReason,
+    cancelPendingByReason: mockFollowUpCancelPendingByReason,
     claimForSending: vi.fn().mockResolvedValue(true),
     recoverStaleSending: vi.fn().mockResolvedValue(0),
   })),
@@ -71,6 +73,7 @@ function makeFollowUpRepository() {
     save: vi.fn<(fu: FollowUp) => Promise<void>>().mockResolvedValue(undefined),
     listDue: vi.fn<(input: { clinicId: string; now: Date }) => Promise<FollowUp[]>>().mockResolvedValue([]),
     findPendingByReason: vi.fn<(input: { leadId: string; reason: string }) => Promise<FollowUp | null>>().mockResolvedValue(null),
+    cancelPendingByReason: vi.fn<(input: { leadId: string; reason: string }) => Promise<number>>().mockResolvedValue(0),
     claimForSending: vi.fn<(id: string) => Promise<boolean>>().mockResolvedValue(true),
     recoverStaleSending: vi.fn<(input: { clinicId: string; olderThan: Date }) => Promise<number>>().mockResolvedValue(0),
   };
@@ -114,6 +117,10 @@ describe("scheduleFollowUp", () => {
       followUpRepository: repo,
     });
 
+    expect(repo.cancelPendingByReason).toHaveBeenCalledWith({
+      leadId: "lead-1",
+      reason: "Lead inativo — segunda chance",
+    });
     expect(repo.save).toHaveBeenCalledOnce();
     const saved = repo.save.mock.calls[0][0];
     expect(saved.clinicId).toBe("clinic-1");
@@ -181,6 +188,25 @@ describe("scheduleFollowUp", () => {
 
     const [first, second] = repo.save.mock.calls.map((c) => c[0].id);
     expect(first).not.toBe(second);
+  });
+
+  it("substitui pending anterior do mesmo lead+reason em vez de manter backlog", async () => {
+    const repo = makeFollowUpRepository();
+
+    await scheduleFollowUp({
+      clinicId: "clinic-1",
+      leadId: "lead-1",
+      trigger: "video_sent",
+      videoTitle: "Antes e Depois",
+      referenceDate: new Date("2026-06-11T10:00:00Z"),
+      followUpRepository: repo,
+    });
+
+    expect(repo.cancelPendingByReason).toHaveBeenCalledWith({
+      leadId: "lead-1",
+      reason: "video_sent:Antes e Depois",
+    });
+    expect(repo.save).toHaveBeenCalledOnce();
   });
 });
 

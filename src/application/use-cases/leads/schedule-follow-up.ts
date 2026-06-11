@@ -55,10 +55,9 @@ export async function scheduleFollowUp(params: {
       ? `video_sent:${videoTitle}`
       : FOLLOW_UP_REASONS[trigger];
 
-  // Idempotência: se já existe um follow-up pending para este lead+reason, não cria outro.
-  // Evita acúmulo durante sessões repetidas de teste (ex: reset → vídeo → reset → vídeo).
-  const existing = await followUpRepository.findPendingByReason({ leadId, reason });
-  if (existing) return;
+  // Mantém só um pending por lead+reason. Se houver um antigo, cancela e substitui
+  // pelo novo dueAt para evitar acúmulo silencioso de follow-ups de teste/replay.
+  await followUpRepository.cancelPendingByReason({ leadId, reason });
 
   await followUpRepository.save({
     id: randomUUID(),

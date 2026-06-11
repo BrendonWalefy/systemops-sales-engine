@@ -20,6 +20,7 @@ vi.mock("@/infrastructure/repositories/drizzle-lead-repository", () => ({
 vi.mock("@/infrastructure/repositories/drizzle-follow-up-repository", () => ({
   DrizzleFollowUpRepository: vi.fn().mockImplementation(() => ({
     save: vi.fn().mockResolvedValue(undefined),
+    cancelPendingByReason: vi.fn().mockResolvedValue(0),
   })),
 }));
 

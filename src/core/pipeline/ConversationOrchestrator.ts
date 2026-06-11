@@ -60,6 +60,10 @@ import {
   DEFAULT_MENU_ITEMS,
 } from "@/domain/entities/clinic";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
+import {
+  buildAgentMessageFromOutboundPart,
+  buildInitialAgentMessage,
+} from "./outbound-message-persistence";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -2011,25 +2015,6 @@ export class ConversationOrchestrator {
       throw new Error(`replyText vazio para intent=${intent} — nenhum branch montou resposta`);
     }
 
-    // ── 9. Salva mensagem do agente ANTES de enviar — garante inbox mesmo se envio falhar ──
-    // deliveryFormat será atualizado após envio com o formato real (audio ou text).
-    const agentMessageId = randomUUID();
-    const agentSentAt = new Date();
-    await this.conversationRepo.appendMessage({
-      id: agentMessageId,
-      conversationId: conversation.id,
-      author: "agent",
-      body: replyText,
-      sentAt: agentSentAt,
-      externalId: null, // preenchido após envio
-      intent: intent ?? null,
-      deliveryFormat: null, // preenchido após envio
-    });
-
-    // ── 9.1 Envia resposta — intercalada (texto→vídeo→texto) ou simples ──
-    let zapiMessageId: string | null = null;
-    let deliveryFormat: "audio" | "text" = "text";
-
     const hasInterleavedMedia =
       !clinic.voiceResponseEnabled && composedParts.some((p) => p.type === "media");
 
@@ -2039,21 +2024,64 @@ export class ConversationOrchestrator {
       clinicId,
       conversationId: conversation.id,
     });
+    const outboundParts = hasInterleavedMedia
+      ? resolveOutboundParts(composedParts, editorial?.mediaLibrary, deliveryLog)
+      : [];
+
+    // ── 9. Salva mensagem do agente ANTES de enviar — garante inbox mesmo se envio falhar ──
+    // deliveryFormat será atualizado após envio com o formato real (audio ou text).
+    const agentMessageId = randomUUID();
+    const agentSentAt = new Date();
+    await this.conversationRepo.appendMessage(
+      buildInitialAgentMessage({
+        id: agentMessageId,
+        conversationId: conversation.id,
+        replyText,
+        sentAt: agentSentAt,
+        intent: intent ?? null,
+        hasInterleavedMedia,
+        outboundParts,
+      }),
+    );
+
+    // ── 9.1 Envia resposta — intercalada (texto→vídeo→texto) ou simples ──
+    let zapiMessageId: string | null = null;
+    let deliveryFormat: "audio" | "text" = "text";
 
     // Persistência de mídia enviada + follow-up pós-vídeo — compartilhado entre
     // o modo intercalado (9.1) e o modo TTS (9.2).
-    const persistSentMedia = async ({ part }: { part: OutboundMediaPart; msgId: string | null }) => {
-      const mediaLabel = part.mediaType === "video" ? "🎥" : "🖼️";
-      await this.conversationRepo.appendMessage({
-        id: randomUUID(),
-        conversationId: conversation.id,
-        author: "agent",
-        body: `${mediaLabel} ${part.title}`,
-        sentAt: new Date(),
-        externalId: null,
-        intent: "general_question",
-        deliveryFormat: "text",
-      });
+    const persistSentMedia = async (
+      {
+        part,
+        msgId,
+        isFirst = false,
+      }: { part: OutboundMediaPart; msgId: string | null; isFirst?: boolean },
+    ) => {
+      const sentAt = new Date();
+      if (isFirst && hasInterleavedMedia) {
+        await db
+          .update(messagesTable)
+          .set({
+            body: part.title,
+            mediaUrl: part.url,
+            mediaType: part.mediaType,
+            ...(msgId ? { externalId: msgId } : {}),
+            deliveryFormat: "text",
+          })
+          .where(eq(messagesTable.id, agentMessageId));
+      } else {
+        await this.conversationRepo.appendMessage(
+          buildAgentMessageFromOutboundPart({
+            id: randomUUID(),
+            conversationId: conversation.id,
+            part,
+            sentAt,
+            intent: intent ?? null,
+            externalId: msgId,
+            deliveryFormat: "text",
+          }),
+        );
+      }
       if (part.mediaType === "video") {
         await scheduleFollowUp({
           clinicId,
@@ -2066,7 +2094,6 @@ export class ConversationOrchestrator {
     };
 
     if (hasInterleavedMedia) {
-      const outboundParts = resolveOutboundParts(composedParts, editorial?.mediaLibrary, deliveryLog);
       await this.outboundDelivery.deliver({
         to: outboundAddress,
         parts: outboundParts,
@@ -2077,18 +2104,26 @@ export class ConversationOrchestrator {
           if (isFirst) {
             zapiMessageId = msgId;
             deliveryFormat = partFormat;
-            return;
+            await db
+              .update(messagesTable)
+              .set({
+                body: content,
+                ...(msgId ? { externalId: msgId } : {}),
+                deliveryFormat: partFormat,
+              })
+              .where(eq(messagesTable.id, agentMessageId));
+          } else {
+            await this.conversationRepo.appendMessage({
+              id: randomUUID(),
+              conversationId: conversation.id,
+              author: "agent",
+              body: content,
+              sentAt: new Date(),
+              externalId: msgId,
+              intent: intent ?? null,
+              deliveryFormat: partFormat,
+            });
           }
-          await this.conversationRepo.appendMessage({
-            id: randomUUID(),
-            conversationId: conversation.id,
-            author: "agent",
-            body: content,
-            sentAt: new Date(),
-            externalId: msgId,
-            intent: intent ?? null,
-            deliveryFormat: partFormat,
-          });
         },
         onMediaSent: persistSentMedia,
       });
@@ -2098,14 +2133,16 @@ export class ConversationOrchestrator {
       deliveryFormat = result.deliveryFormat;
     }
 
-    await db
-      .update(messagesTable)
-      .set({
-        ...(zapiMessageId ? { externalId: zapiMessageId } : {}),
-        deliveryFormat,
-      })
-      .where(eq(messagesTable.id, agentMessageId))
-      .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
+    if (!hasInterleavedMedia) {
+      await db
+        .update(messagesTable)
+        .set({
+          ...(zapiMessageId ? { externalId: zapiMessageId } : {}),
+          deliveryFormat,
+        })
+        .where(eq(messagesTable.id, agentMessageId))
+        .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
+    }
 
     // ── 9.2 Envia mídias no modo TTS (áudio primeiro, vídeos depois) ──
     if (!hasInterleavedMedia && composedMediaIds.length > 0 && editorial?.mediaLibrary) {
@@ -2122,7 +2159,7 @@ export class ConversationOrchestrator {
         // Sem partes de texto neste modo — o áudio já foi enviado em 9.1.
         sendText: () => Promise.resolve({ msgId: null, deliveryFormat: "text" as const }),
         onTextSent: async () => {},
-        onMediaSent: persistSentMedia,
+        onMediaSent: async ({ part, msgId }) => persistSentMedia({ part, msgId }),
       });
     }
 
