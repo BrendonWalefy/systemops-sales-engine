@@ -214,6 +214,7 @@ function makeFollowUpRepository(): FollowUpRepository {
   return {
     save: async () => {},
     listDue: async () => [],
+    listPendingByLead: async () => [],
     findPendingByReason: async () => null,
     cancelPendingByReason: async () => 0,
     cancelPendingByLead: async () => 0,
@@ -283,8 +284,35 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     const leadRepository = new SimpleLeadRepository();
     const conversationRepository = new SimpleConversationRepository();
     const followUpRepository = makeFollowUpRepository();
-    const cancelPendingByLead = vi.fn(followUpRepository.cancelPendingByLead);
-    followUpRepository.cancelPendingByLead = cancelPendingByLead;
+    const listPendingByLead = vi.fn(async () => [
+      {
+        id: "fu-video",
+        clinicId: "ximendes",
+        leadId: "pending-lead-id",
+        dueAt: new Date("2026-06-11T18:00:00.000Z"),
+        status: "pending" as const,
+        reason: "video_sent:Lentes",
+        suggestedMessage: null,
+        completedAt: null,
+        createdAt: new Date("2026-06-11T12:00:00.000Z"),
+        updatedAt: new Date("2026-06-11T12:00:00.000Z"),
+      },
+      {
+        id: "fu-routine",
+        clinicId: "ximendes",
+        leadId: "pending-lead-id",
+        dueAt: new Date("2026-12-11T18:00:00.000Z"),
+        status: "pending" as const,
+        reason: "Retorno de rotina",
+        suggestedMessage: null,
+        completedAt: null,
+        createdAt: new Date("2026-06-11T12:00:00.000Z"),
+        updatedAt: new Date("2026-06-11T12:00:00.000Z"),
+      },
+    ]);
+    const cancelPendingByReason = vi.fn(async () => 1);
+    followUpRepository.listPendingByLead = listPendingByLead;
+    followUpRepository.cancelPendingByReason = cancelPendingByReason;
 
     const useCase = new RegisterIncomingMessage({
       leadRepository,
@@ -300,6 +328,40 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
       message: makeMessage("Oi, vi o vídeo e quero agendar", "zapi-reengage-1", new Date("2026-06-11T11:59:00.000Z")),
     });
 
-    expect(cancelPendingByLead).toHaveBeenCalledWith({ leadId: result.lead.id });
+    expect(listPendingByLead).toHaveBeenCalledWith({ leadId: result.lead.id });
+    expect(cancelPendingByReason).toHaveBeenCalledWith({
+      leadId: result.lead.id,
+      reason: "video_sent:Lentes",
+    });
+    expect(cancelPendingByReason).not.toHaveBeenCalledWith({
+      leadId: result.lead.id,
+      reason: "Retorno de rotina",
+    });
+  });
+
+  it("falha ao cancelar follow-up nao interrompe o registro da mensagem inbound", async () => {
+    const leadRepository = new SimpleLeadRepository();
+    const conversationRepository = new SimpleConversationRepository();
+    const followUpRepository = makeFollowUpRepository();
+    followUpRepository.listPendingByLead = vi.fn(async () => {
+      throw new Error("follow-up db unavailable");
+    });
+
+    const useCase = new RegisterIncomingMessage({
+      leadRepository,
+      conversationRepository,
+      usageCostTracker,
+      followUpRepository,
+      idGenerator: () => crypto.randomUUID(),
+      now: () => new Date("2026-06-11T12:00:00.000Z"),
+    });
+
+    const result = await useCase.execute({
+      clinicId: "ximendes",
+      message: makeMessage("Oi, quero falar com vocês", "zapi-inbound-2", new Date("2026-06-11T11:59:30.000Z")),
+    });
+
+    expect(result.message.author).toBe("lead");
+    expect(conversationRepository.messages.get(result.conversation.id)).toHaveLength(1);
   });
 });

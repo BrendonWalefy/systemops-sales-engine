@@ -14,7 +14,7 @@ Remover este documento da árvore quando o programa for concluído, conforme pol
 
 - O dono da Ximendes **desligou a IA** (~04/06; última mensagem de agent em 2026-06-04 13:18 UTC) por respostas ruins, erradas, duplicadas, sem sentido e atropelando o atendimento. Não foi pane técnica — foi perda de confiança do cliente pagante.
 - Desde então a recepção atende 100% manual (108 mensagens entre 08-09/06, zero de agent).
-- ⚠️ Em 2026-06-11 00:06 UTC a linha da clínica foi atualizada e `auto_reply_enabled` estava **true**. Decidir conscientemente: manter desligado até o gate de reativação, ou assumir o risco de um lead novo cair na IA sem as correções.
+- ⚠️ Em 2026-06-11 00:06 UTC a linha da clínica foi atualizada e `auto_reply_enabled` estava **true**. Decidir conscientemente: manter desligado até o gate de reativação, ou assumir o risco de um lead novo cair na IA sem as correções. → **Decidido em 2026-06-11**: religação antecipada texto-only com autorização do dono — ver "Exceção operacional" na seção do Gate.
 - Restrição do programa: **custo recorrente adicional R$ 0** (Vercel Hobby + Neon Free + pinger externo gratuito tipo cron-job.org).
 
 ## Mapa queixa → causa confirmada → correção
@@ -128,13 +128,13 @@ Pontos levantados em revisão de código das fases do passe de contenção. Veri
 ### Achado pós-deploy (2026-06-11, URGENTE — vai para o executor)
 
 9. ✅ **RESOLVIDO em `b7e2c5a`** — `autoReplyEnabled` agora é respeitado pelos crons de follow-up e lembrete D-1 via `clinic-automation-policy.ts` (o follow-up pendente da Bianca havia sido cancelado manualmente como contenção, id 4d3503a3). Duas consequências operacionais registradas:
-   - **Lembrete D-1 da Ximendes está DESLIGADO** junto com a IA (modo seguro assumido). A recepção precisa saber que os lembretes de consulta agora são manuais até a reativação.
+   - **Lembrete D-1 da Ximendes está DESLIGADO** junto com a IA (modo seguro assumido). A recepção precisa saber que os lembretes de consulta agora são manuais até a reativação. → **Revertido em 2026-06-11 com a religação (`1d083cf`)**: lembretes D-1 voltam a ser automáticos a partir do cron das 13h UTC. Avisar a recepção para NÃO duplicar lembrete manual. Em 11/06: 0 consultas elegíveis na janela, cron será no-op.
    - **Follow-ups ficam pendentes (não cancelados) enquanto a clínica está off.** Com a IA desligada nada novo é criado, mas adicionar ao gate de reativação: revisar/cancelar pendentes antigos antes de religar.
 
 ### Da etapa "cancelamento no reengajamento" (commits `1b92a15`..`082cc53`, revisada em 2026-06-11, 569 testes verdes)
 
-10. **[ALTA] Inbound cancela o "Retorno de rotina" de 6 meses:** `RegisterIncomingMessage` chama `cancelPendingByLead()` em **todo** inbound, sem filtro por reason. Como o booking acontece no meio da conversa, o lead quase sempre manda mais uma mensagem depois ("obrigada!", "qual o endereço?") — e essa mensagem cancela o follow-up `appointment_completed` ("Retorno de rotina", due +6 meses) que o `BookingService` acabou de criar no Passo 7. O recall de rotina fica efetivamente morto para quase todo lead que agenda. Corrigir antes do gate: cancelar por reason no inbound (só `video_sent:*`, "Lead inativo — segunda chance" e avaliar "Lead não compareceu"), preservando "Retorno de rotina"; ou mover o agendamento do retorno para a transição `appointment → completed`.
-11. **[MÉDIA] Cancel sem try/catch no caminho quente de ingestão:** em `register-incoming-message.ts` o `cancelPendingFollowUps()` não tem try/catch — falha no UPDATE de `follow_ups` derruba o registro da mensagem inbound inteira. Todos os outros call sites tratam como efeito não-crítico com try/catch + log. Aplicar o mesmo padrão.
+10. ✅ **RESOLVIDO em `main` (2026-06-11)** — o inbound agora cancela apenas follow-ups de reengajamento (`video_sent:*`, "Lead inativo — segunda chance" e "Lead não compareceu à consulta"), preservando "Retorno de rotina" de 6 meses. Coberto por teste em `RegisterIncomingMessageRace.test.ts`.
+11. ✅ **RESOLVIDO em `main` (2026-06-11)** — o cancel de follow-up no inbound virou efeito não-crítico com `try/catch` + `warn`; falha no UPDATE não derruba mais o registro da mensagem inbound. Coberto por teste em `RegisterIncomingMessageRace.test.ts`.
 12. **[MÉDIA] Call sites do BookingService sem followUpRepo:** `appointments/[id]/route.ts` (linhas ~76 e ~159) constrói `BookingService` sem o repositório de follow-up — rebooking/edição por essa rota não cancela pendentes nem agenda o retorno. Verificar se a rota deve injetar `DrizzleFollowUpRepository` como as demais.
 13. **[BAIXA] `cancelPendingByLead` não cobre status `sending`:** se o dispatcher já fez o claim (pending→sending) quando o lead reengaja, aquele follow-up sai mesmo assim. Janela pequena (cron 1x/dia hoje), CAS evita duplo envio; reavaliar quando o sweep de ~5 min entrar.
 14. **[BAIXA] Replay QA roda contra produção e deixa resíduo:** `bw-incident-replay` usa o banco de produção (via `.env.local`); `cleanPhoneState()` limpa no INÍCIO de cada cenário, então o último cenário deixa lead/conversa/mensagens QA no banco (ex.: lead "BW Replay Echo", conv `be4704c6`, extIds `echo-*`, criados às 07:16 UTC de 11/06). Risco: cron de stale-conversations pode agir sobre esse resíduo, e as queries de monitoramento ficam poluídas. Adicionar cleanup no FINAL do replay ou rodar `cleanPhoneState` manualmente após cada execução.
@@ -152,6 +152,18 @@ Pontos levantados em revisão de código das fases do passe de contenção. Veri
 - Ressalva: ainda **sem tráfego orgânico pós-deploy** na BW (última inbound real 03:03 UTC, anterior ao deploy ~07:15 UTC) — o relógio das 48h só conta de verdade a partir do primeiro tráfego real.
 - Ximendes: `autoReplyEnabled=false` confirmado, zero follow-ups pendentes (Bianca `4d3503a3` cancelado).
 - Resíduo QA em produção: lead "BW Replay Echo" (fone 5511953628848), conv `be4704c6`, 2 mensagens agent com extId `echo-*` — ver item 14 do checklist.
+
+### Checkpoint pós-religação texto-only (2026-06-11 ~08:05 UTC)
+
+- Confirmado no banco: BW e Ximendes com `autoReplyEnabled=true` + `voiceResponseEnabled=false`; zero follow-ups pendentes em todas as clínicas.
+- Ximendes ainda **sem tráfego** desde 09/06 23:24 UTC — a avaliação real começa no primeiro inbound pós-religação.
+- Lembrete D-1 de hoje (13h UTC): 0 consultas Ximendes na janela +20h/+32h → no-op. A partir de amanhã os lembretes saem automáticos (avisar recepção).
+- **Riscos conscientemente abertos com a religação antecipada** (aceitos pela exceção operacional, monitorar de perto):
+  - janela de corrida do echo pré-commit (item 6) — só fecha com outbox do Passe 2;
+  - debounce fixo de 3s perde bursts de 4-6s (causa confirmada de resposta duplicada) — só fecha no Passe 2;
+  - item 10 (inbound cancela "Retorno de rotina") agora vale para tráfego real das duas clínicas.
+- Observação: existe uma terceira linha em `clinics` com slug `null` e `autoReplyEnabled=true` (provável demo). Sem pendentes/tráfego, mas com o kill switch agora honrado vale dar slug ou desligar a flag para não entrar nos crons por acidente.
+- Monitor automático armado para os crons de 10h UTC (follow-up dispatcher) e 13h UTC (lembrete D-1) cobrindo as duas clínicas + query de auto-conversa.
 
 Query de auto-conversa melhorada (pega eco de parte truncada, não só match exato):
 

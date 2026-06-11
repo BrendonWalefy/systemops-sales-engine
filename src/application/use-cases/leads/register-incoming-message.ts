@@ -55,10 +55,15 @@ export class RegisterIncomingMessage {
     });
 
     if (this.deps.followUpRepository) {
-      await cancelPendingFollowUps({
-        leadId: resolvedLead.id,
-        followUpRepository: this.deps.followUpRepository,
-      });
+      try {
+        await cancelPendingFollowUps({
+          leadId: resolvedLead.id,
+          followUpRepository: this.deps.followUpRepository,
+          mode: "reengagement",
+        });
+      } catch (err) {
+        console.warn("[RegisterIncomingMessage] Failed to cancel reengagement follow-ups:", err);
+      }
     }
 
     const lead =

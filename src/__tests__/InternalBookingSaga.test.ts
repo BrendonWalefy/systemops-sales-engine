@@ -182,6 +182,9 @@ function followUpRepo() {
       async listDue() {
         return [];
       },
+      async listPendingByLead() {
+        return [];
+      },
       async findPendingByReason() {
         return null;
       },

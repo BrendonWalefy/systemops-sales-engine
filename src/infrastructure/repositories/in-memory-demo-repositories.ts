@@ -214,6 +214,12 @@ export class InMemoryDemoStore
     return found ?? null;
   }
 
+  async listPendingByLead(input: { leadId: string }): Promise<FollowUp[]> {
+    return Array.from(this.followUps.values()).filter(
+      (followUp) => followUp.leadId === input.leadId && followUp.status === "pending",
+    );
+  }
+
   async cancelPendingByReason(input: { leadId: string; reason: string }): Promise<number> {
     let cancelled = 0;
     for (const [id, followUp] of this.followUps) {
