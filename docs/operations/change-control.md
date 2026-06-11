@@ -98,8 +98,8 @@ WhatsApp webhooks:
 - idempotency and retry-safe behavior.
 
 For regressions observed in real WhatsApp conversations, replay the lead
-messages in `BW odontologia` through the allowlisted QA phones before enabling
-the change for production leads.
+messages in a controlled production-safe clinic flow before enabling the change
+for production leads.
 
 Conversation and AI:
 

@@ -2,8 +2,8 @@
  * Ximendes Odontologia — Playbook v5 "Canônico" (Dr. Gregorie Ximendes — especialista em lentes)
  *
  * Versão profissional com arquitetura limpa: cada tipo de regra tem UM único dono.
- * Construída a partir do modelo BW v4 canônico, adaptada para a Ximendes com
- * 13 tratamentos e objeções específicas do portfólio completo da clínica.
+ * Adaptada para a Ximendes com 13 tratamentos e objeções específicas do
+ * portfólio completo da clínica.
  *
  * Conflitos corrigidos vs versões anteriores:
  *
