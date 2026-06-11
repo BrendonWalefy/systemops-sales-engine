@@ -261,6 +261,10 @@ export const conversations = pgTable(
     needsAttention: boolean("needs_attention").notNull().default(false),
     attentionReason: text("attention_reason"),
     consecutiveUnclearCount: integer("consecutive_unclear_count").notNull().default(0),
+    // Claim de processamento: serializa webhooks concorrentes da mesma conversa.
+    // Adquirido via UPDATE condicional (CAS de single-statement — neon-http não
+    // suporta transações interativas). NULL ou passado = livre.
+    processingUntil: timestamp("processing_until", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

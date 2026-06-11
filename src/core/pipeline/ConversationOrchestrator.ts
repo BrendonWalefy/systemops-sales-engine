@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
-import { eq, and, or, count, gte, lt } from "drizzle-orm";
+import { eq, and, or, count, gte, lt, isNull } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
   resolveWhatsAppChannelAddress,
@@ -875,6 +875,29 @@ export class ConversationOrchestrator {
     const outboundAddress =
       resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
       channelAddress;
+
+    // ── 3.2. Claim de processamento por conversa ──
+    // Serializa webhooks concorrentes da mesma conversa: sem isso, dois handlers
+    // processam em paralelo e as respostas saem intercaladas/duplicadas (o check
+    // de debounce sozinho tem janela TOCTOU). CAS via UPDATE condicional — único
+    // statement, atômico no Postgres mesmo com o driver neon-http.
+    const claimed = await this.acquireConversationClaim(conversation.id);
+    if (!claimed) {
+      const acquired = await this.waitForConversationClaim(conversation.id);
+      if (!acquired) {
+        console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
+        return { replied: false };
+      }
+      // Adquiriu após espera: outro handler terminou. Se chegou mensagem mais
+      // recente do lead nesse meio tempo, ela (ou seu handler) cobre a resposta.
+      const latestAfterWait = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+      if (latestAfterWait && latestAfterWait.id !== incomingMessage.id) {
+        await this.releaseConversationClaim(conversation.id);
+        return { replied: false };
+      }
+    }
+
+    try {
 
     // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
     // Rehospeda no Blob (persistência), encaminha para o doutor no WhatsApp e pausa a IA.
@@ -2146,6 +2169,56 @@ export class ConversationOrchestrator {
         console.error("[Orchestrator] Fallback também falhou:", fallbackErr);
       }
       return { replied: false };
+    }
+
+    } finally {
+      await this.releaseConversationClaim(conversation.id);
+    }
+  }
+
+  // ── Claim de processamento por conversa (CAS single-statement) ──────────────
+
+  private async acquireConversationClaim(conversationId: string, ttlMs = 90_000): Promise<boolean> {
+    const now = new Date();
+    const rows = await db
+      .update(conversationsTable)
+      .set({ processingUntil: new Date(now.getTime() + ttlMs) })
+      .where(
+        and(
+          eq(conversationsTable.id, conversationId),
+          or(
+            isNull(conversationsTable.processingUntil),
+            lt(conversationsTable.processingUntil, now),
+          ),
+        ),
+      )
+      .returning({ id: conversationsTable.id });
+    return rows.length > 0;
+  }
+
+  // Espera o detentor atual liberar (ou o TTL de 90s expirar em caso de crash).
+  private async waitForConversationClaim(
+    conversationId: string,
+    maxWaitMs = 45_000,
+    pollMs = 2_000,
+  ): Promise<boolean> {
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, pollMs));
+      if (await this.acquireConversationClaim(conversationId)) return true;
+    }
+    return false;
+  }
+
+  private async releaseConversationClaim(conversationId: string): Promise<void> {
+    try {
+      await db
+        .update(conversationsTable)
+        .set({ processingUntil: null })
+        .where(eq(conversationsTable.id, conversationId));
+    } catch (err) {
+      // Não-crítico: o TTL de 90s expira o claim sozinho.
+      console.warn(`[Orchestrator] Falha ao liberar claim de ${conversationId}:`, err);
     }
   }
 
