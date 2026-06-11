@@ -88,6 +88,21 @@ async function handleOperatorMessageFromPhone(
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Validação de origem: a Z-API não assina webhooks, então o contrato é um
+  // secret compartilhado embutido na URL configurada no painel
+  // (.../api/whatsapp/zapi?secret=<ZAPI_WEBHOOK_SECRET>). Só é exigido quando
+  // a env está definida — permite rollout sem derrubar o webhook atual:
+  // 1) adiciona ?secret= na URL do painel Z-API, 2) define a env no Vercel.
+  const webhookSecret = process.env.ZAPI_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const provided =
+      new URL(request.url).searchParams.get("secret") ??
+      request.headers.get("x-webhook-secret");
+    if (provided !== webhookSecret) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   const body = (await request.json().catch(() => null)) as ZApiInboundPayload | null;
   if (!body) return new NextResponse("Bad Request", { status: 400 });
 
