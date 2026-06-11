@@ -392,14 +392,32 @@ export class ResponseComposer {
       },
     ];
 
-    const response = await this.client.chat.completions.create({
-      model: MODEL,
-      temperature: 0.5,
-      max_tokens: 350,
-      messages,
-    });
+    // Timeout/flake da API ou choices vazio produziam resposta vazia silenciosa
+    // enviada ao lead. Retry único e, persistindo vazio, throw — o Orchestrator
+    // tem fallback determinístico próprio.
+    let response: OpenAI.Chat.ChatCompletion | null = null;
+    let raw = "";
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 2 && !raw; attempt++) {
+      try {
+        response = await this.client.chat.completions.create({
+          model: MODEL,
+          temperature: 0.5,
+          max_tokens: 350,
+          messages,
+        });
+        raw = response.choices[0]?.message?.content?.trim() ?? "";
+      } catch (err) {
+        lastError = err;
+        console.warn(`[ResponseComposer] Tentativa ${attempt + 1} falhou:`, err instanceof Error ? err.message : err);
+      }
+    }
 
-    const raw = response.choices[0]?.message?.content?.trim() ?? "";
+    if (!raw || !response) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("[ResponseComposer] Resposta vazia da API após retry");
+    }
 
     const parts = parseIntoParts(raw);
     const mediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);

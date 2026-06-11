@@ -2004,6 +2004,13 @@ export class ConversationOrchestrator {
       await this.leadRepo.save({ ...lead, temperature: inferredTemp, updatedAt: new Date() });
     }
 
+    // Guard: nenhum branch montou resposta e não há mídia a entregar. Sem isso,
+    // uma mensagem vazia seria salva e enviada silenciosamente (Z-API rejeita e
+    // o lead fica sem resposta). O throw aciona o fallback determinístico do catch.
+    if (!replyText.trim() && !composedParts.some((p) => p.type === "media")) {
+      throw new Error(`replyText vazio para intent=${intent} — nenhum branch montou resposta`);
+    }
+
     // ── 9. Salva mensagem do agente ANTES de enviar — garante inbox mesmo se envio falhar ──
     // deliveryFormat será atualizado após envio com o formato real (audio ou text).
     const agentMessageId = randomUUID();
