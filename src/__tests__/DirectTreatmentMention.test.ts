@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveDirectTreatmentMention } from "@/core/pipeline/ConversationOrchestrator";
+import {
+  resolveDirectTreatmentMention,
+  resolveInformationalTreatmentTarget,
+  resolveSchedulingTreatmentTarget,
+} from "@/core/pipeline/ConversationOrchestrator";
+import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 import type { Treatment } from "@/domain/entities/treatment";
 
 function treatment(name: string): Treatment {
@@ -26,6 +31,15 @@ const treatments = [
   treatment("Lentes de resina composta"),
   treatment("Clareamento dental"),
 ];
+
+const selectedLenses: ProcedureListItem = {
+  index: 2,
+  treatmentId: "lentes-de-resina-composta",
+  name: "Lentes de resina composta",
+  description: null,
+  durationMinutes: 60,
+  requiresEvaluationFirst: false,
+};
 
 describe("resolveDirectTreatmentMention", () => {
   it("trata palavra isolada de tratamento como menção informativa direta", () => {
@@ -59,5 +73,67 @@ describe("resolveDirectTreatmentMention", () => {
 
   it("ignora seleções numéricas de menu ou lista", () => {
     expect(resolveDirectTreatmentMention("8", treatments)).toBeNull();
+  });
+});
+
+describe("resolveInformationalTreatmentTarget", () => {
+  it("resolve a seleção de tratamento vinda da lista de procedimentos", () => {
+    const result = resolveInformationalTreatmentTarget({
+      message: "2",
+      treatments,
+      procedureSelection: selectedLenses,
+    });
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("resolve menção informativa curta sem depender do classificador", () => {
+    const result = resolveInformationalTreatmentTarget({
+      message: "Lentes",
+      treatments,
+    });
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("prioriza tratamento identificado pelo classificador quando disponível", () => {
+    const result = resolveInformationalTreatmentTarget({
+      message: "quero saber mais",
+      treatments,
+      identifiedTreatment: "Lentes de resina composta",
+    });
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+});
+
+describe("resolveSchedulingTreatmentTarget", () => {
+  it("resolve pedido explícito de agendamento de lentes", () => {
+    const result = resolveSchedulingTreatmentTarget({
+      message: "quero agendar lentes",
+      treatments,
+    });
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("resolve pedido de horário para lentes", () => {
+    const result = resolveSchedulingTreatmentTarget({
+      message: "tem horario para lentes?",
+      treatments,
+    });
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("não transforma pergunta informativa em agendamento", () => {
+    const result = resolveSchedulingTreatmentTarget({
+      message: "Lentes",
+      treatments,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("não transforma pergunta de preço em agendamento", () => {
+    const result = resolveSchedulingTreatmentTarget({
+      message: "qual o valor das lentes?",
+      treatments,
+    });
+    expect(result).toBeNull();
   });
 });

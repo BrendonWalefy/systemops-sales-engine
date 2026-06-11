@@ -327,6 +327,80 @@ const TREATMENT_MENTION_STOPWORDS = new Set([
   "explica",
 ]);
 
+const TREATMENT_SCHEDULING_STOPWORDS = new Set([
+  "quero",
+  "queria",
+  "agendar",
+  "agenda",
+  "marcar",
+  "horario",
+  "horarios",
+  "consulta",
+  "avaliacao",
+  "fazer",
+  "realizar",
+  "ver",
+  "vaga",
+  "vagas",
+  "disponibilidade",
+  "disponivel",
+  "tenho",
+  "preciso",
+  "para",
+  "de",
+  "das",
+  "dos",
+  "da",
+  "do",
+]);
+
+function findTreatmentByIdOrName(
+  treatments: Treatment[],
+  params: { treatmentId?: string | null; treatmentName?: string | null },
+): Treatment | null {
+  if (params.treatmentId) {
+    const byId = treatments.find((t) => t.id === params.treatmentId);
+    if (byId) return byId;
+  }
+
+  const normalizedName = params.treatmentName ? normalizeFreeText(params.treatmentName) : null;
+  if (!normalizedName) return null;
+
+  return (
+    treatments.find((t) => normalizeFreeText(t.name) === normalizedName) ??
+    null
+  );
+}
+
+function matchTreatmentByNormalizedMessage(
+  normalized: string,
+  treatments: Treatment[],
+  stopwords: Set<string>,
+): Treatment | null {
+  const tokens = normalized
+    .split(/\s+/)
+    .filter((token) => token.length >= 4 && !stopwords.has(token));
+
+  return (
+    treatments.find((treatment) => {
+      if (!treatment.keywordMatchEnabled) return false;
+
+      const treatmentName = normalizeFreeText(treatment.name);
+      if (treatmentName === normalized) return true;
+      if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
+      if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
+      if (tokens.some((token) => treatmentName.includes(token))) return true;
+
+      const aliases = treatment.aliases ?? [];
+      return aliases.some((alias) => {
+        const normalizedAlias = normalizeFreeText(alias);
+        return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
+      });
+    }) ??
+    null
+  );
+}
+
 export function resolveDirectTreatmentMention(
   message: string,
   treatments: Treatment[],
@@ -337,24 +411,54 @@ export function resolveDirectTreatmentMention(
   if (normalized.split(/\s+/).length > 8) return null;
   if (isSchedulingRequestText(normalized) || isPriceRequestText(normalized)) return null;
   if (didAgentAskForProcedure(lastAgentMessage)) return null;
-  const tokens = normalized
-    .split(/\s+/)
-    .filter((token) => token.length >= 4 && !TREATMENT_MENTION_STOPWORDS.has(token));
+  return matchTreatmentByNormalizedMessage(normalized, treatments, TREATMENT_MENTION_STOPWORDS);
+}
 
-  return treatments.find((treatment) => {
-    if (!treatment.keywordMatchEnabled) return false;
-    const treatmentName = normalizeFreeText(treatment.name);
-    if (treatmentName === normalized) return true;
-    if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
-    if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
-    if (tokens.some((token) => treatmentName.includes(token))) return true;
-    const aliases = treatment.aliases ?? [];
-    if (aliases.some((alias) => {
-      const normalizedAlias = normalizeFreeText(alias);
-      return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
-    })) return true;
-    return false;
-  }) ?? null;
+export function resolveInformationalTreatmentTarget(params: {
+  message: string;
+  treatments: Treatment[];
+  lastAgentMessage?: string | null;
+  procedureSelection?: ProcedureListItem | null;
+  identifiedTreatment?: string | null;
+}): Treatment | null {
+  const selectedTreatment = params.procedureSelection
+    ? findTreatmentByIdOrName(params.treatments, {
+        treatmentId: params.procedureSelection.treatmentId,
+        treatmentName: params.procedureSelection.name,
+      })
+    : null;
+  if (selectedTreatment) return selectedTreatment;
+
+  const classifiedTreatment = findTreatmentByIdOrName(params.treatments, {
+    treatmentName: params.identifiedTreatment ?? null,
+  });
+  if (classifiedTreatment) return classifiedTreatment;
+
+  return resolveDirectTreatmentMention(
+    params.message,
+    params.treatments,
+    params.lastAgentMessage,
+  );
+}
+
+export function resolveSchedulingTreatmentTarget(params: {
+  message: string;
+  treatments: Treatment[];
+  identifiedTreatment?: string | null;
+}): Treatment | null {
+  const classifiedTreatment = findTreatmentByIdOrName(params.treatments, {
+    treatmentName: params.identifiedTreatment ?? null,
+  });
+  if (classifiedTreatment) return classifiedTreatment;
+
+  const normalized = normalizeFreeText(params.message);
+  if (!normalized || !isSchedulingRequestText(normalized)) return null;
+
+  return matchTreatmentByNormalizedMessage(
+    normalized,
+    params.treatments,
+    TREATMENT_SCHEDULING_STOPWORDS,
+  );
 }
 
 function isLikelyBusinessMessage(message: string, treatments: Treatment[]): boolean {
@@ -1499,9 +1603,15 @@ export class ConversationOrchestrator {
           await this.stateMachine.invalidate(conversation.id);
         }
 
+        const schedulingTreatment = resolveSchedulingTreatmentTarget({
+          message: messageText,
+          treatments: clinicTreatments,
+          identifiedTreatment: slotPreference.identifiedTreatment ?? null,
+        });
+
         // Resolve tratamento e duração do slot
         const resolution = resolveTreatmentDuration(
-          slotPreference.identifiedTreatment ?? null,
+          schedulingTreatment?.name ?? slotPreference.identifiedTreatment ?? null,
           clinicTreatments,
           clinic.defaultAppointmentDurationMinutes,
           classification.shouldAskClarification,
@@ -1835,96 +1945,109 @@ export class ConversationOrchestrator {
         }
         // ── Fim pipeline continuação ──
 
-        if (procedureSelection) {
-          clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
-        } else if (classification.slotPreference.identifiedTreatment) {
-          const matchedTreatment = clinicTreatments.find(t => t.name === classification.slotPreference.identifiedTreatment) ?? null;
-          if (matchedTreatment) {
-            // ── Pipeline start ──
-            // Tratamento com pipeline configurado: inicia o pipeline pelo step "content".
-            // Se o primeiro step ativo não for content (ex: começa com qa), entrega diretamente.
-            if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
-              const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0);
-              if (firstActive) {
-                await this.stateMachine.startTreatmentPipeline(
-                  conversation.id,
-                  matchedTreatment.id,
-                  matchedTreatment.name,
-                  clinic.staleConversationHours * 60,
-                );
-                if (firstActive.step.type === "content") {
-                  const parts = buildPipelineContentParts(firstActive.step.blocks);
-                  triggerPartsOverride = parts;
-                  composedParts = parts;
-                  composedMediaIds = parts
-                    .filter((p): p is { type: "media"; id: string } => p.type === "media")
-                    .map((p) => p.id);
-                  replyText = parts
-                    .filter((p): p is { type: "text"; content: string } => p.type === "text")
-                    .map((p) => p.content)
-                    .join("\n\n");
-                  clinicContext = "";
-                  // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
-                  pendingPipelineAdvance = async () => {
-                    const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1);
-                    if (next) {
-                      await this.stateMachine.advancePipelineStep(conversation.id, next.index);
-                    } else {
-                      await this.stateMachine.exitTreatmentPipeline(conversation.id);
-                    }
-                  };
-                  break;
-                } else if (firstActive.step.type === "qa") {
-                  clinicContext = [
-                    `Lead está em conversa consultiva sobre "${matchedTreatment.name}".`,
-                    firstActive.step.instruction ?? null,
-                    matchedTreatment.description ? `Descrição do tratamento: ${matchedTreatment.description}` : null,
-                    editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
-                  ].filter(Boolean).join("\n");
-                  replyText = await compose({ type: "general_question", clinicContext });
-                  break;
-                }
+        const informationalTreatment = resolveInformationalTreatmentTarget({
+          message: messageText,
+          treatments: clinicTreatments,
+          lastAgentMessage: lastAgentMessage?.body ?? null,
+          procedureSelection,
+          identifiedTreatment: classification.slotPreference.identifiedTreatment ?? null,
+        });
+
+        if (informationalTreatment) {
+          const matchedTreatment = informationalTreatment;
+          const selectedTreatment = procedureSelection
+            ? findTreatmentByIdOrName(clinicTreatments, {
+                treatmentId: procedureSelection.treatmentId,
+                treatmentName: procedureSelection.name,
+              })
+            : null;
+
+          // ── Pipeline start ──
+          // Tratamento com pipeline configurado: inicia o pipeline pelo step "content".
+          // Se o primeiro step ativo não for content (ex: começa com qa), entrega diretamente.
+          if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
+            const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0);
+            if (firstActive) {
+              await this.stateMachine.startTreatmentPipeline(
+                conversation.id,
+                matchedTreatment.id,
+                matchedTreatment.name,
+                clinic.staleConversationHours * 60,
+              );
+              if (firstActive.step.type === "content") {
+                const parts = buildPipelineContentParts(firstActive.step.blocks);
+                triggerPartsOverride = parts;
+                composedParts = parts;
+                composedMediaIds = parts
+                  .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                  .map((p) => p.id);
+                replyText = parts
+                  .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                  .map((p) => p.content)
+                  .join("\n\n");
+                clinicContext = "";
+                // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
+                pendingPipelineAdvance = async () => {
+                  const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1);
+                  if (next) {
+                    await this.stateMachine.advancePipelineStep(conversation.id, next.index);
+                  } else {
+                    await this.stateMachine.exitTreatmentPipeline(conversation.id);
+                  }
+                };
+                break;
+              } else if (firstActive.step.type === "qa") {
+                clinicContext = [
+                  `Lead está em conversa consultiva sobre "${matchedTreatment.name}".`,
+                  firstActive.step.instruction ?? null,
+                  matchedTreatment.description ? `Descrição do tratamento: ${matchedTreatment.description}` : null,
+                  editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
+                ].filter(Boolean).join("\n");
+                replyText = await compose({ type: "general_question", clinicContext });
+                break;
               }
             }
-            // ── Fim pipeline start ──
+          }
+          // ── Fim pipeline start ──
 
-            if (matchedTreatment.triggerTemplate) {
-              // Campo estruturado — entrega determinística sem depender das notas do playbook
-              triggerPartsOverride = parseIntoParts(matchedTreatment.triggerTemplate);
-              composedParts = triggerPartsOverride;
-              composedMediaIds = triggerPartsOverride
-                .filter((p): p is { type: "media"; id: string } => p.type === "media")
-                .map((p) => p.id);
-              replyText = triggerPartsOverride
-                .filter((p): p is { type: "text"; content: string } => p.type === "text")
-                .map((p) => p.content)
-                .join("\n\n");
+          if (selectedTreatment && procedureSelection) {
+            clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
+          } else if (matchedTreatment.triggerTemplate) {
+            // Campo estruturado — entrega determinística sem depender das notas do playbook
+            triggerPartsOverride = parseIntoParts(matchedTreatment.triggerTemplate);
+            composedParts = triggerPartsOverride;
+            composedMediaIds = triggerPartsOverride
+              .filter((p): p is { type: "media"; id: string } => p.type === "media")
+              .map((p) => p.id);
+            replyText = triggerPartsOverride
+              .filter((p): p is { type: "text"; content: string } => p.type === "text")
+              .map((p) => p.content)
+              .join("\n\n");
+            clinicContext = "";
+          } else {
+            // Backward compat: TRIGGER FORMAT nas notas do playbook (remover após migrar todos os tratamentos)
+            const treatmentKeyword = matchedTreatment.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
+            const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
+            if (notesHasTrigger) {
+              const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
+              if (template) {
+                triggerPartsOverride = parseIntoParts(template);
+                composedParts = triggerPartsOverride;
+                composedMediaIds = triggerPartsOverride
+                  .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                  .map((p) => p.id);
+                replyText = triggerPartsOverride
+                  .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                  .map((p) => p.content)
+                  .join("\n\n");
+              }
               clinicContext = "";
             } else {
-              // Backward compat: TRIGGER FORMAT nas notas do playbook (remover após migrar todos os tratamentos)
-              const treatmentKeyword = matchedTreatment.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
-              const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
-              if (notesHasTrigger) {
-                const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
-                if (template) {
-                  triggerPartsOverride = parseIntoParts(template);
-                  composedParts = triggerPartsOverride;
-                  composedMediaIds = triggerPartsOverride
-                    .filter((p): p is { type: "media"; id: string } => p.type === "media")
-                    .map((p) => p.id);
-                  replyText = triggerPartsOverride
-                    .filter((p): p is { type: "text"; content: string } => p.type === "text")
-                    .map((p) => p.content)
-                    .join("\n\n");
-                }
-                clinicContext = "";
-              } else {
-                clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
-              }
+              clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
             }
-          } else {
-            clinicContext = "";
           }
+        } else if (procedureSelection) {
+          clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
         } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
           if (menuGeneralSubtype === "procedures") {
             const items = clinicTreatments.length > 0
