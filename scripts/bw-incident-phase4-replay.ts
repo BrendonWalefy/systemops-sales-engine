@@ -350,8 +350,71 @@ async function scenarioDuplicateVideoFollowUpSuppression(): Promise<void> {
   ok(agentMessages.length === 1, "dispatcher envia uma unica mensagem do agente", `agent=${agentMessages.length}`);
 }
 
+async function scenarioReengagementCancelsPendingFollowUp(): Promise<void> {
+  section("Scenario 3 - Reengagement cancels pending follow-up");
+  await cleanPhoneState(TEST_PHONE);
+
+  const { leadId, conversationId } = await createLeadConversation({
+    phone: TEST_PHONE,
+    name: "BW Replay Reengagement",
+  });
+
+  const now = new Date();
+  await insertFollowUp({
+    leadId,
+    reason: "video_sent:Lentes - Tecnica Simplificada",
+    dueAt: new Date(now.getTime() + 6 * 60 * 60 * 1000),
+    createdAt: now,
+  });
+
+  await postWebhook({
+    phone: TEST_PHONE,
+    text: "Oi, vi o vídeo e quero agendar",
+    fromMe: false,
+    messageId: `bw-reengage-${msgCounter++}`,
+  });
+
+  await wait(500);
+
+  const afterInbound = await sql`
+    SELECT reason, status
+    FROM follow_ups
+    WHERE lead_id = ${leadId}
+    ORDER BY created_at ASC
+  `;
+  const messagesBeforeDispatcher = await listMessages(conversationId);
+  const agentBeforeDispatcher = messagesBeforeDispatcher.filter((message) => message.author === "agent").length;
+
+  const dispatcher = await triggerFollowUpDispatcher();
+  const afterDispatcher = await sql`
+    SELECT reason, status
+    FROM follow_ups
+    WHERE lead_id = ${leadId}
+    ORDER BY created_at ASC
+  `;
+  const messagesAfterDispatcher = await listMessages(conversationId);
+  const agentAfterDispatcher = messagesAfterDispatcher.filter((message) => message.author === "agent").length;
+
+  ok(
+    afterInbound.length === 1 && String(afterInbound[0]?.status) === "cancelled",
+    "reengajamento cancela o follow-up pendente antes do cron",
+    JSON.stringify(afterInbound),
+  );
+  ok(dispatcher.failed === 0, "dispatcher continua sem falhas apos reengajamento", JSON.stringify(dispatcher));
+  ok(
+    afterDispatcher.every((followUp) => String(followUp.status) === "cancelled"),
+    "dispatcher nao reativa follow-up cancelado por reengajamento",
+    JSON.stringify(afterDispatcher),
+  );
+  ok(
+    agentAfterDispatcher === agentBeforeDispatcher,
+    "dispatcher nao envia follow-up apos o lead responder",
+    `antes=${agentBeforeDispatcher} depois=${agentAfterDispatcher}`,
+  );
+}
+
 async function scenarioInterleavedEchoSuppression(): Promise<void> {
-  section("Scenario 3 - Echo suppression for interleaved text/video parts");
+  section("Scenario 4 - Echo suppression for interleaved text/video parts");
   await cleanPhoneState(TEST_PHONE);
 
   const { conversationId } = await createLeadConversation({
@@ -412,6 +475,7 @@ console.log(`Phone:    ${TEST_PHONE}`);
 await ensureServer();
 await scenarioInternalAlertSuppression();
 await scenarioDuplicateVideoFollowUpSuppression();
+await scenarioReengagementCancelsPendingFollowUp();
 await scenarioInterleavedEchoSuppression();
 
 console.log(`\n${"=".repeat(64)}`);

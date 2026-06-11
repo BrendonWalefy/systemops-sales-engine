@@ -178,6 +178,10 @@ Replay scenarios executed:
   - seeds two due `video_sent:*` follow-ups for the same BW QA lead
   - runs `GET /api/cron/follow-up-dispatcher`
   - verifies one follow-up becomes `done`, the deferred duplicate becomes `cancelled`, and only one agent message is persisted
+- reengagement cancels pending follow-up:
+  - seeds one pending `video_sent:*` follow-up for the BW QA lead
+  - replays a fresh inbound from the same lead before the follow-up is due
+  - verifies the pending row becomes `cancelled` before cron dispatch and no new follow-up message is sent afterward
 - interleaved echo suppression:
   - seeds exact outbound-like agent rows for a text part and a video title part, each with provider `externalId`
   - replays matching webhook payloads and verifies no extra lead/operator messages are created and the conversation stays unpaused
@@ -190,8 +194,8 @@ Local validation completed:
 
 Replay result:
 
-- `12/12` checks passed in `npm run bw:incident-replay`
-- full suite remained green: `563` tests passed under `npm run verify`
+- `16/16` checks passed in `npm run bw:incident-replay`
+- full suite remained green: `569` tests passed under `npm run verify`
 
 Why this is safe:
 
