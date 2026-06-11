@@ -98,12 +98,12 @@ describe("buildSelectedTreatmentContext — photo hook (concierge + estético)",
   it("inclui convite à foto para tratamento estético em modo concierge", () => {
     const ctx = buildSelectedTreatmentContext(lentes, policy, "concierge");
     expect(ctx).toContain("foto do seu sorriso");
-    expect(ctx).toContain("quando quiser");
+    expect(ctx).toContain("se sentir à vontade");
   });
 
   it("photo hook é posicionado como benefício ao lead (não como exigência)", () => {
     const ctx = buildSelectedTreatmentContext(lentes, policy, "concierge");
-    expect(ctx).toContain("personalizada");
+    expect(ctx).toContain("orientação mais personalizada");
     // Confirma que a instrução é explicitamente opcional
     expect(ctx).toContain("completamente opcional");
     expect(ctx).toContain("nunca pressione");
@@ -115,6 +115,12 @@ describe("buildSelectedTreatmentContext — photo hook (concierge + estético)",
   it("instrui a solicitar foto apenas UMA vez por conversa", () => {
     const ctx = buildSelectedTreatmentContext(lentes, policy, "concierge");
     expect(ctx).toContain("UMA vez por conversa");
+  });
+
+  it("proíbe misturar convite da foto com pergunta de agenda no mesmo turno", () => {
+    const ctx = buildSelectedTreatmentContext(lentes, policy, "concierge");
+    expect(ctx).toContain("NÃO misture o convite da foto com pergunta de agenda no mesmo turno");
+    expect(ctx).toContain("NÃO misture explicação técnica, convite de foto e pergunta de agenda");
   });
 
   it("NÃO inclui photo hook para tratamento não-estético (canal) mesmo em concierge", () => {
@@ -147,6 +153,7 @@ describe("buildDirectTreatmentContext — photo hook (concierge + estético)", (
   it("inclui convite à foto para tratamento estético direto em concierge", () => {
     const ctx = buildDirectTreatmentContext(clareamento, null, "concierge");
     expect(ctx).toContain("foto do seu sorriso");
+    expect(ctx).toContain("se sentir à vontade");
   });
 
   it("NÃO inclui photo hook para implante (não-estético) em concierge", () => {

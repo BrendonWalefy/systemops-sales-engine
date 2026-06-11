@@ -47,7 +47,7 @@ const NOTES = `COMO CONDUZIR A CONVERSA:
 - Quando o lead mencionar um procedimento, confirme o interesse, explique em 1-2 frases e conduza para a avaliação — é nela que o Dr. Gregorie monta o plano personalizado.
 - Frases curtas. Uma ideia por mensagem. Caloroso, mas direto.
 - O endereço (Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP) só ao confirmar agendamento ou se o lead perguntar diretamente.
-- LENTES EM RESINA é o foco da clínica. Quando o lead perguntar sobre lentes, preço ou a diferença entre as opções: explique as duas técnicas, informe os valores "a partir de" (R$2.500 nacional / R$5.000 importada, 20 elementos), deixe claro que o valor final depende da avaliação e ofereça agendar. Uma ideia por mensagem.
+- LENTES EM RESINA é o foco da clínica. Quando o lead perguntar sobre lentes, preço ou a diferença entre as opções: explique as duas técnicas, informe os valores "a partir de" (R$2.500 nacional / R$5.000 importada, 20 elementos), deixe claro que o valor final depende da avaliação e responda primeiro a dúvida principal. Só conduza para avaliação quando houver interesse real ou quando o lead pedir disponibilidade. Uma ideia por mensagem.
 - Valor "a partir de" só para lentes. Para qualquer outro procedimento, não informe preço.`;
 
 const DIFFERENTIALS = [
@@ -65,7 +65,7 @@ const COMMERCIAL_POLICY = `PREÇO — REGRA GERAL: não informar valores de proc
 PREÇO — EXCEÇÃO (LENTES EM RESINA, foco da clínica): pode informar os valores DE PARTIDA, sempre como "a partir de" e sempre seguidos da ressalva de que o valor final depende da avaliação:
 - Técnica Simplificada (resina nacional): a partir de R$2.500 — 20 elementos.
 - Técnica Estratificada (resina importada): a partir de R$5.000 — 20 elementos.
-Ao falar de lentes, SEMPRE: (1) deixar claro que é valor inicial; (2) explicar que cada caso é avaliado individualmente para indicação e valor final; (3) oferecer o agendamento da avaliação. NÃO aplicar essa exceção a nenhum outro procedimento.
+Ao falar de lentes, SEMPRE: (1) deixar claro que é valor inicial; (2) explicar que cada caso é avaliado individualmente para indicação e valor final; (3) responder primeiro a dúvida principal do lead. Só conduza para avaliação quando houver interesse real ou quando o lead pedir disponibilidade. NÃO pule direto para horários no mesmo turno em que estiver explicando técnica, valor ou comparação. NÃO aplicar essa exceção a nenhum outro procedimento.
 
 AVALIAÇÃO PRESENCIAL: custa R$100 e é descontada integralmente do tratamento caso o paciente avance. Comunicar sempre o abatimento.
 
@@ -165,7 +165,7 @@ const OBJECTIONS = [
   {
     objection: "Quanto custam as lentes? / Qual a diferença entre as lentes?",
     response:
-      "Trabalhamos com duas técnicas de lentes em resina:\n\nSimplificada (resina nacional): resina de alta qualidade para um sorriso harmonioso e natural — a opção mais acessível. A partir de R$2.500 para 20 elementos.\n\nEstratificada (resina importada): resina premium em múltiplas camadas, com translucidez, profundidade e brilho — resultado mais refinado e personalizado. A partir de R$5.000 para 20 elementos.\n\nEsses são valores iniciais. A indicação ideal e o valor do seu caso o Dr. Gregorie define na avaliação. Quer que eu veja um horário para você?",
+      "Trabalhamos com duas técnicas de lentes em resina:\n\nSimplificada (resina nacional): resina de alta qualidade para um sorriso harmonioso e natural — a opção mais acessível. A partir de R$2.500 para 20 elementos.\n\nEstratificada (resina importada): resina premium em múltiplas camadas, com translucidez, profundidade e brilho — resultado mais refinado e personalizado. A partir de R$5.000 para 20 elementos.\n\nEsses são valores iniciais. A indicação ideal e o valor do seu caso o Dr. Gregorie define na avaliação. Se quiser, posso te explicar melhor qual costuma fazer mais sentido em cada caso — e, quando preferir, também te ajudo com a avaliação.",
   },
 ];
 

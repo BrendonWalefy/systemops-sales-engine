@@ -171,6 +171,8 @@ describe("general_question — responder antes de oferecer agenda (cenário Bian
     );
     expect(ctx).toContain("PRIORIDADE DE PLAYBOOK");
     expect(ctx).toContain("sequência COMPLETA");
+    expect(ctx).toContain("NÃO compacte etapas");
+    expect(ctx).toContain("NÃO misture explicação técnica, pedido de foto e pergunta de agendamento");
     expect(ctx).toContain("Só conduza para avaliação após cumprir eventuais passos do playbook");
     expect(ctx).not.toContain("digitar *menu*");
   });

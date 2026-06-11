@@ -177,14 +177,14 @@ function buildLentesPipeline(videoSimplificadaId: string | null, videoEstratific
       type: "qa",
       label: "Tirar dúvidas sobre as técnicas",
       instruction:
-        "Responda dúvidas sobre as técnicas com naturalidade. Não mencione preços além do que está na política comercial. Se o lead demonstrar preferência por uma técnica, confirme a escolha com entusiasmo consultivo antes de seguir para agendamento.",
+        "Responda dúvidas sobre as técnicas com naturalidade. Não mencione preços além do que está na política comercial. Se o lead demonstrar preferência por uma técnica, confirme a escolha com entusiasmo consultivo. Não avance para horários enquanto o lead ainda estiver tirando dúvidas, e não misture explicação técnica, convite de foto e agenda no mesmo turno.",
       maxTurns: 10,
     },
     {
       type: "photo",
       label: "Convidar foto do sorriso",
       message:
-        "Para que o Dr. Gregorie possa te dar uma recomendação mais personalizada sobre qual técnica combina melhor com o seu sorriso, você poderia nos enviar uma foto?",
+        "Se quiser, e só se se sentir à vontade, você pode nos mandar uma foto do seu sorriso. Assim o Dr. Gregorie consegue te orientar de forma mais personalizada sobre qual técnica pode combinar melhor com você.",
       required: false,
     },
     { type: "ask_availability", label: "Perguntar disponibilidade" },

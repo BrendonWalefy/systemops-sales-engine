@@ -599,7 +599,7 @@ export function isAestheticTreatment(treatmentName: string): boolean {
 // Instrução de convite à foto — posicionada como benefício ao paciente, nunca obrigatória.
 // Usada apenas em modo concierge e apenas para tratamentos estéticos visuais.
 function buildPhotoInviteInstruction(): string {
-  return `SE O LEAD AINDA NÃO ENVIOU FOTO DO SORRISO e demonstrou interesse neste procedimento: APÓS apresentar os benefícios e valores (mas ANTES da pergunta de agendamento), convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Me manda uma foto do seu sorriso quando quiser — assim consigo te dar uma ideia mais personalizada de como ficaria 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use "quando quiser" ou "se quiser"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita.`;
+  return `SE O LEAD AINDA NÃO ENVIOU FOTO DO SORRISO e demonstrou interesse neste procedimento: se fizer sentido depois de esclarecer a dúvida principal, convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Se quiser, e só se se sentir à vontade, você pode me mandar uma foto do seu sorriso. Assim consigo te passar uma orientação mais personalizada de como poderia ficar 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use linguagem leve como "se quiser" ou "se se sentir à vontade"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita; (4) NÃO misture o convite da foto com pergunta de agenda no mesmo turno.`;
 }
 
 // Extrai o bloco "FORMATO OBRIGATÓRIO" das notas para entrega determinística.
@@ -610,7 +610,10 @@ export function extractTriggerFormatTemplate(playbookText: string): string | nul
 }
 
 export function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
-  const nextStep = item.requiresEvaluationFirst
+  const shouldDelayScheduling = experience === "concierge" && isAestheticTreatment(item.name);
+  const nextStep = shouldDelayScheduling
+    ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver entendendo o tratamento, prefira encerrar com uma pergunta consultiva sobre a técnica ou a dúvida dele. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
+    : item.requiresEvaluationFirst
     ? "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você fazer a avaliação?' ou 'Quando você teria disponibilidade?'. Nunca pergunte 'Quer verificar?' (fechado). Pressuposto de avanço, não pedido de permissão."
     : "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você?' ou 'Que dia fica melhor para você?'. Nunca pergunte 'Quer agendar?' (fechado). Pressuposto de avanço, não pedido de permissão.";
 
@@ -634,7 +637,12 @@ export function buildSelectedTreatmentContext(item: ProcedureListItem, commercia
 }
 
 export function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
-  const nextStep = treatment.requiresEvaluationFirst
+  const shouldDelayScheduling =
+    experience === "concierge" &&
+    (treatment.isAesthetic || isAestheticTreatment(treatment.name));
+  const nextStep = shouldDelayScheduling
+    ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver conhecendo o tratamento, prefira encerrar com uma pergunta consultiva sobre técnicas, resultado ou expectativas. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
+    : treatment.requiresEvaluationFirst
     ? "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você fazer a avaliação?' ou 'Quando você teria disponibilidade?'. Nunca pergunte 'Quer verificar?' (fechado). Pressuposto de avanço, não pedido de permissão."
     : "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você?' ou 'Que dia fica melhor para você?'. Nunca pergunte 'Quer agendar?' (fechado). Pressuposto de avanço, não pedido de permissão.";
 

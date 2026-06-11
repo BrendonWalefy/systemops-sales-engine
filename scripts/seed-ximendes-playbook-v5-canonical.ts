@@ -77,7 +77,7 @@ Bloco A — Técnica Simplificada: escreva em prosa corrida "A Técnica Simplifi
 
 Bloco B — Técnica Estratificada: escreva em prosa corrida "A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético." Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Estratificada (busque na biblioteca pelo título — deve conter "estratificada").
 
-Passo 2 — após os dois blocos, pergunte: "Ficou com mais alguma dúvida sobre as técnicas?" Se o lead tiver dúvidas, responda de forma consultiva antes de seguir. Se não houver dúvidas, pergunte qual o melhor período para ele e ofereça os horários disponíveis com o Dr. Gregorie.
+Passo 2 — após os dois blocos, pergunte: "Ficou com mais alguma dúvida sobre as técnicas?" Se o lead tiver dúvidas, responda de forma consultiva antes de seguir. Não compacte explicação técnica, convite de foto e agenda no mesmo turno. Se não houver dúvidas, você pode conduzir para a avaliação e só então oferecer horários disponíveis com o Dr. Gregorie.
 
 CONDUTA ESPECÍFICA DA CLÍNICA:
 Só ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço (Rua Guararapes, 1894, Brooklin Novo, São Paulo) só ao confirmar agendamento ou se o lead perguntar diretamente.`;
@@ -90,7 +90,7 @@ Só ofereça agendamento quando o lead demonstrar interesse real. Toda jornada c
 // ─────────────────────────────────────────────────────────────────────────────
 const COMMERCIAL_POLICY = `A avaliação inicial com o Dr. Gregorie custa R$ 100 e esse valor é integralmente abatido do tratamento se o paciente decidir avançar. Sempre mencione esse abatimento ao falar da avaliação.
 
-Para lentes de resina, único procedimento com valor autorizado por mensagem: Técnica Simplificada a partir de R$ 2.500 para vinte elementos, e Técnica Estratificada a partir de R$ 5.000 para vinte elementos. Sempre diga "a partir de" e que o valor exato depende da avaliação presencial.
+Para lentes de resina, único procedimento com valor autorizado por mensagem: Técnica Simplificada a partir de R$ 2.500 para vinte elementos, e Técnica Estratificada a partir de R$ 5.000 para vinte elementos. Sempre diga "a partir de" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade.
 
 Parcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos de referência e deixe explícito que a clínica pode parcelar em até 12 vezes. Use uma formulação natural, como "Aqui estão algumas simulações de valores", sem mencionar taxa adicional nem tratar os exemplos como condição única.
 

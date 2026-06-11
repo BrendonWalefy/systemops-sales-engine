@@ -112,21 +112,16 @@ function normalizeTextReplyContent(content: string): string {
 }
 
 function normalizeResponseParts(parts: ResponsePart[]): ResponsePart[] {
-  const normalized: ResponsePart[] = [];
-
-  for (const part of parts) {
+  return parts.reduce<ResponsePart[]>((acc, part) => {
     if (part.type === "media") {
-      normalized.push(part);
-      continue;
+      acc.push(part);
+      return acc;
     }
 
     const content = normalizeTextReplyContent(part.content);
-    if (content) {
-      normalized.push({ type: "text", content });
-    }
-  }
-
-  return normalized;
+    if (content) acc.push({ type: "text", content });
+    return acc;
+  }, []);
 }
 
 export type ComposedResponse = {
@@ -138,6 +133,85 @@ export type ComposedResponse = {
   inputTokens: number;
   outputTokens: number;
 };
+
+function normalizeScheduleGuardText(content: string): string {
+  return content
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+function isSchedulingOutputAllowed(type: ActionResult["type"]): boolean {
+  return [
+    "slots_found",
+    "appointment_confirmed",
+    "appointment_rescheduled",
+    "no_slots_available",
+    "appointments_listed",
+    "slots_expired",
+    "slot_taken_reoffered",
+    "evaluation_redirect",
+    "appointment_reminder",
+  ].includes(type);
+}
+
+function hasForbiddenScheduleConfirmation(content: string): boolean {
+  const normalized = normalizeScheduleGuardText(content);
+  return [
+    "esta agendado",
+    "ta agendado",
+    "ficou agendado",
+    "agendamento confirmado",
+    "horario confirmado",
+    "consulta sera",
+    "avaliacao sera",
+    "sua avaliacao sera",
+    "sua consulta sera",
+    "esta marcado",
+    "ta marcado",
+  ].some((pattern) => normalized.includes(pattern));
+}
+
+function isScheduleLikeLine(content: string): boolean {
+  const normalized = normalizeScheduleGuardText(content);
+  const hasTime = /\b\d{1,2}:\d{2}\b/.test(normalized) || /\b\d{1,2}\s*h\b/.test(normalized);
+  const hasDate = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(normalized)
+    || /\b\d{1,2}\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/.test(normalized);
+  const hasWeekday = /\b(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)(?:\s*feira)?\b/.test(normalized);
+  const isEnumerated = /^\s*\d+\./.test(content);
+  const hasAvailabilityLanguage = /\b(horario|horarios|vaga|vagas|disponiv|agenda)\b/.test(normalized);
+  return hasTime && (hasDate || hasWeekday || isEnumerated || hasAvailabilityLanguage);
+}
+
+function guardAgainstSchedulingLeak(parts: ResponsePart[], actionResult: ActionResult): ResponsePart[] {
+  if (isSchedulingOutputAllowed(actionResult.type)) return parts;
+
+  let removedScheduleLines = false;
+  const sanitized = parts.flatMap<ResponsePart>((part) => {
+    if (part.type === "media") return [part];
+
+    if (hasForbiddenScheduleConfirmation(part.content)) {
+      throw new Error(`[ResponseComposer] confirmação de agenda vazou em action=${actionResult.type}`);
+    }
+
+    const keptLines = part.content
+      .split("\n")
+      .filter((line) => {
+        const shouldKeep = !isScheduleLikeLine(line);
+        if (!shouldKeep) removedScheduleLines = true;
+        return shouldKeep;
+      });
+
+    const content = keptLines.join("\n").trim();
+    return content ? [{ type: "text", content }] : [];
+  });
+
+  if (removedScheduleLines && !sanitized.some((part) => part.type === "text")) {
+    throw new Error(`[ResponseComposer] oferta de agenda vazou em action=${actionResult.type}`);
+  }
+
+  return sanitized;
+}
 
 // Remove tentativas de fechar o fence por dentro do conteúdo editorial —
 // defesa contra injeção de prompt via playbook/política cadastrados.
@@ -298,10 +372,11 @@ SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha 
 ${isConcierge ? "Depois de responder, conduza para a avaliação com uma pergunta leve quando houver interesse real." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
     }
 
-    case "general_question":
+case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
+REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
 Responda de forma informativa e acolhedora. ${isConcierge ? "Só conduza para avaliação após cumprir eventuais passos do playbook ou quando não houver sequência definida para o assunto." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
@@ -462,7 +537,12 @@ export class ResponseComposer {
         : new Error("[ResponseComposer] Resposta vazia da API após retry");
     }
 
-    const parts = normalizeResponseParts(parseIntoParts(raw));
+    const parts = normalizeResponseParts(
+      guardAgainstSchedulingLeak(
+        parseIntoParts(raw),
+        input.actionResult,
+      ),
+    );
     const mediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
     const text = parts
       .filter((p): p is { type: "text"; content: string } => p.type === "text")
