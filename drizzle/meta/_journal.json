@@ -141,6 +141,13 @@
       "when": 1781137247067,
       "tag": "0023_follow_up_sending_status",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1781137411200,
+      "tag": "0024_slot_reservation_overlap_exclusion",
+      "breakpoints": true
     }
   ]
 }

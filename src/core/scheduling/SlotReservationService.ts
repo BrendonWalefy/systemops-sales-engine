@@ -56,23 +56,31 @@ export class SlotReservationService {
 
     const expiresAt = new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000);
 
-    const [reused] = await db
-      .update(slotReservations)
-      .set({
-        leadId,
-        endsAt,
-        status: "pending",
-        calendarEventId: null,
-        expiresAt,
-      })
-      .where(
-        and(
-          eq(slotReservations.clinicId, clinicId),
-          eq(slotReservations.startsAt, startsAt),
-          eq(slotReservations.status, "released"),
-        ),
-      )
-      .returning();
+    // Reuso de linha released: a exclusion constraint (clinic_id, tstzrange)
+    // valida o overlap atomicamente no UPDATE — violação = slot tomado.
+    let reused: typeof slotReservations.$inferSelect | undefined;
+    try {
+      [reused] = await db
+        .update(slotReservations)
+        .set({
+          leadId,
+          endsAt,
+          status: "pending",
+          calendarEventId: null,
+          expiresAt,
+        })
+        .where(
+          and(
+            eq(slotReservations.clinicId, clinicId),
+            eq(slotReservations.startsAt, startsAt),
+            eq(slotReservations.status, "released"),
+          ),
+        )
+        .returning();
+    } catch {
+      // Violação da exclusion constraint — outra reserva sobreposta venceu a corrida
+      return null;
+    }
 
     if (reused) {
       return {
@@ -112,7 +120,8 @@ export class SlotReservationService {
         expiresAt,
       };
     } catch {
-      // INSERT falhou por race condition (outra requisição ganhou)
+      // INSERT falhou por race condition (outra requisição ganhou) — cobre
+      // tanto a unique (clinic_id, starts_at) quanto a exclusion de overlap.
       return null;
     }
   }
