@@ -11,7 +11,7 @@ import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
 import { ManualAppointmentForm } from "./ManualAppointmentForm";
 import { ConversationReadMarker } from "./ConversationReadMarker";
-import { tempLabel, statusLabel, channelLabel, relativeTime, avatarColor } from "../inbox-utils";
+import { tempLabel, statusLabel, channelLabel, avatarColor } from "../inbox-utils";
 
 const TZ = "America/Sao_Paulo";
 
@@ -68,7 +68,6 @@ export default async function ConversationPage({
   const temp = tempLabel(lead.temperature ?? null);
   const { label: sLabel } = statusLabel(lead.status);
   const accentColor = avatarColor(lead.temperature ?? null);
-  const waPhone = lead.phone?.replace(/\D/g, "");
 
   return (
     <div className="conv-root">
@@ -81,6 +80,7 @@ export default async function ConversationPage({
         </Link>
 
         {lead.profilePicUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={lead.profilePicUrl}
             alt={displayName}
@@ -157,17 +157,27 @@ export default async function ConversationPage({
         {/* Painel lateral */}
         <div className="conv-lead-panel">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div
-              className="avatar-v2"
-              style={{
-                width: 44, height: 44, minWidth: 44, fontSize: 15,
-                background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
-                borderColor: accentColor,
-                color: accentColor,
-              }}
-            >
-              {initial}
-            </div>
+            {lead.profilePicUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={lead.profilePicUrl}
+                alt={displayName}
+                className="avatar-v2"
+                style={{ width: 44, height: 44, minWidth: 44, objectFit: "cover", borderColor: accentColor }}
+              />
+            ) : (
+              <div
+                className="avatar-v2"
+                style={{
+                  width: 44, height: 44, minWidth: 44, fontSize: 15,
+                  background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
+                  borderColor: accentColor,
+                  color: accentColor,
+                }}
+              >
+                {initial}
+              </div>
+            )}
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{displayName}</div>
               {lead.phone && <div className="lead-phone">{lead.phone}</div>}

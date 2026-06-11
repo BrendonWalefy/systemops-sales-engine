@@ -4604,7 +4604,7 @@ textarea:focus {
 .conversation-grid {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 /* Card ativo (em conversa) */
@@ -4777,10 +4777,42 @@ textarea:focus {
 
   .inbox-tabs-bar {
     padding: 0 max(16px, env(safe-area-inset-left)) 0;
+    gap: 4px;
   }
 
   .inbox-search-bar {
     padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+  }
+
+  .conversation-grid {
+    gap: 4px;
+  }
+
+  .inbox-card-v2 {
+    gap: 7px;
+    padding: 9px 10px;
+    border-radius: 11px;
+  }
+
+  .inbox-card-v2-body {
+    gap: 7px;
+  }
+
+  .inbox-card-v2-preview {
+    font-size: 10.5px;
+  }
+
+  .avatar-v2 {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    font-size: 13px;
+  }
+
+  .temp-badge-v2,
+  .status-badge-v2 {
+    font-size: 8.5px;
+    padding: 2px 7px;
   }
 
   .pipeline-v2-label {
@@ -4886,12 +4918,12 @@ textarea:focus {
 .inbox-card-v2 {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--line);
   border-left-width: 3px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--surface-raised) 80%, transparent);
-  padding: 12px 14px;
+  padding: 10px 12px;
   text-decoration: none;
   color: var(--text);
   transition: background 120ms ease, border-color 120ms ease, transform 100ms ease;
@@ -4920,14 +4952,14 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* Body row: avatar + name + score */
 .inbox-card-v2-body {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* Footer row: preview + status badge */
@@ -4935,12 +4967,13 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .inbox-card-v2-preview {
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.35;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4954,9 +4987,9 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
-  padding: 3px 9px;
+  padding: 3px 8px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -4987,15 +5020,15 @@ textarea:focus {
 
 /* Avatar v2 */
 .avatar-v2 {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
   border-radius: 50%;
   border: 2px solid;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   flex-shrink: 0;
   overflow: hidden;
@@ -5047,7 +5080,7 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex: 1;
   position: relative;
 }
@@ -5056,7 +5089,7 @@ textarea:focus {
 .pipeline-v2-step:not(:last-child)::after {
   content: '';
   position: absolute;
-  top: 4px;
+  top: 3px;
   left: calc(50% + 7px);
   right: calc(-50% + 7px);
   height: 1.5px;
@@ -5069,8 +5102,8 @@ textarea:focus {
 }
 
 .pipeline-v2-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--surface-raised);
   border: 2px solid var(--line-strong);
@@ -5087,13 +5120,13 @@ textarea:focus {
 .pipeline-v2-step.active .pipeline-v2-dot {
   background: var(--step-color, var(--accent));
   border-color: var(--step-color, var(--accent));
-  width: 12px;
-  height: 12px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-color, var(--accent)) 25%, transparent);
+  width: 10px;
+  height: 10px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--step-color, var(--accent)) 25%, transparent);
 }
 
 .pipeline-v2-label {
-  font-size: 9px;
+  font-size: 8px;
   color: var(--muted);
   font-weight: 600;
   white-space: nowrap;
@@ -5110,9 +5143,9 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 3px 9px;
+  padding: 2px 8px;
   white-space: nowrap;
   flex-shrink: 0;
 }

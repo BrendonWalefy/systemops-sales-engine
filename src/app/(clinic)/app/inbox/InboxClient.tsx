@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Search, Inbox } from "lucide-react";
-import { filterBySearch } from "./inbox-filter";
+import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
 import { tempKey, tempLabel, avatarColor, relativeTime } from "./inbox-utils";
 
@@ -24,8 +24,6 @@ export type ConvRow = {
   appointmentStartsAt?: Date | null;
 };
 
-type TabFilter = "all" | "hot" | "attention" | "cold";
-
 const PIPELINE_STEPS = ["Novo", "Qualific.", "Proposta", "Agendar", "Fechado"] as const;
 
 function pipelineIndex(status: string): number {
@@ -45,13 +43,6 @@ function convStatusBadge(
   if (lastAuthor === "agent") return { label: "IA respondendo", variant: "accent" };
   if (lastAuthor === "lead") return { label: "Aguardando resposta", variant: "warm" };
   return { label: "Em conversa", variant: "muted" };
-}
-
-function tempSortWeight(temp: string | null, needsAttention: boolean): number {
-  if (needsAttention) return 0;
-  if (temp === "hot") return 1;
-  if (temp === "warm") return 2;
-  return 3;
 }
 
 function markConversationRead(conversationId: string): void {
@@ -111,6 +102,7 @@ function InboxCard({
 
         <div className="inbox-card-v2-body">
           {row.leadProfilePicUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={row.leadProfilePicUrl}
               alt={displayName}
@@ -216,7 +208,7 @@ export function InboxClient({
   autoReplyEnabled: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<TabFilter>("all");
+  const [tab, setTab] = useState<LiveInboxTabFilter>("all");
 
   const { handoff, active, paused, closed } = segmentRows(rows);
   const allLive = [...handoff, ...active, ...paused];
@@ -240,26 +232,17 @@ export function InboxClient({
     );
   }
 
-  const TABS: { key: TabFilter; label: string; count: number }[] = [
+  const TABS: { key: LiveInboxTabFilter; label: string; count: number }[] = [
     { key: "all",       label: "Todas",      count: allLive.length },
     { key: "hot",       label: "Quentes",    count: allLive.filter((r) => r.leadTemperature === "hot").length },
     { key: "attention", label: "Atenção",    count: allLive.filter((r) => r.needsAttention).length },
+    { key: "paused",    label: "Pausados",   count: paused.length },
     { key: "cold",      label: "Resfriadas", count: allLive.filter((r) => r.leadTemperature === "cold").length },
   ];
 
-  const baseRows = (() => {
-    if (tab === "hot")       return allLive.filter((r) => r.leadTemperature === "hot");
-    if (tab === "attention") return allLive.filter((r) => r.needsAttention);
-    if (tab === "cold")      return allLive.filter((r) => r.leadTemperature === "cold");
-    return allLive;
-  })();
+  const baseRows = filterLiveRowsByTab(allLive, tab);
 
-  const sortedRows = filterBySearch(baseRows, search).sort((a, b) => {
-    const wa = tempSortWeight(a.leadTemperature, a.needsAttention);
-    const wb = tempSortWeight(b.leadTemperature, b.needsAttention);
-    if (wa !== wb) return wa - wb;
-    return (b.lastMessageAt?.getTime() ?? 0) - (a.lastMessageAt?.getTime() ?? 0);
-  });
+  const sortedRows = sortInboxRowsByRecency(filterBySearch(baseRows, search));
 
   return (
     <>

@@ -1,7 +1,7 @@
 // Tests for inbox filter logic — pure functions, no DOM needed.
 
 import { describe, it, expect } from "vitest";
-import { filterBySearch, resolveEmConversa } from "@/app/(clinic)/app/inbox/inbox-filter";
+import { filterBySearch, filterLiveRowsByTab, resolveEmConversa, sortInboxRowsByRecency } from "@/app/(clinic)/app/inbox/inbox-filter";
 import type { ConvRow } from "@/app/(clinic)/app/inbox/InboxClient";
 
 function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
@@ -52,10 +52,20 @@ describe("filterBySearch", () => {
 });
 
 describe("resolveEmConversa", () => {
-  it("filter=all → handoff primeiro, depois ativos", () => {
-    const result = resolveEmConversa([handoff], [active], "all", "");
-    expect(result[0].convId).toBe("h1");
-    expect(result[1].convId).toBe("a1");
+  it("filter=all → ordena por mensagem mais recente primeiro", () => {
+    const recent = row({ convId: "recent", leadName: "Recente", lastMessageAt: new Date("2026-06-11T12:00:00.000Z") });
+    const older = row({
+      convId: "older",
+      leadName: "Antigo",
+      aiPaused: true,
+      needsAttention: true,
+      lastMessageAt: new Date("2026-06-11T10:00:00.000Z"),
+    });
+
+    const result = resolveEmConversa([older], [recent], "all", "");
+
+    expect(result[0].convId).toBe("recent");
+    expect(result[1].convId).toBe("older");
   });
 
   it("filter=all → inclui leads agendados passados como ativos", () => {
@@ -80,5 +90,38 @@ describe("resolveEmConversa", () => {
     const result = resolveEmConversa([], [active, scheduled], "all", "agendado");
     expect(result).toHaveLength(1);
     expect(result[0].convId).toBe("s1");
+  });
+});
+
+describe("sortInboxRowsByRecency", () => {
+  it("ordena as conversas pela mensagem mais recente primeiro", () => {
+    const older = row({ convId: "older", lastMessageAt: new Date("2026-06-11T10:00:00.000Z") });
+    const newest = row({ convId: "newest", lastMessageAt: new Date("2026-06-11T12:00:00.000Z"), leadTemperature: "cold" });
+    const middle = row({ convId: "middle", lastMessageAt: new Date("2026-06-11T11:00:00.000Z"), needsAttention: true });
+
+    const result = sortInboxRowsByRecency([older, newest, middle]);
+
+    expect(result.map((item) => item.convId)).toEqual(["newest", "middle", "older"]);
+  });
+
+  it("mantém conversa sem timestamp por último", () => {
+    const noTimestamp = row({ convId: "no-ts", lastMessageAt: null });
+    const recent = row({ convId: "recent", lastMessageAt: new Date("2026-06-11T12:00:00.000Z") });
+
+    const result = sortInboxRowsByRecency([noTimestamp, recent]);
+
+    expect(result.map((item) => item.convId)).toEqual(["recent", "no-ts"]);
+  });
+});
+
+describe("filterLiveRowsByTab", () => {
+  it("retorna apenas conversas em pausa manual na aba pausados", () => {
+    const paused = row({ convId: "paused", aiPaused: true, needsAttention: false });
+    const attention = row({ convId: "attention", aiPaused: true, needsAttention: true });
+    const activeRow = row({ convId: "active", aiPaused: false, needsAttention: false });
+
+    const result = filterLiveRowsByTab([paused, attention, activeRow], "paused");
+
+    expect(result.map((item) => item.convId)).toEqual(["paused"]);
   });
 });
