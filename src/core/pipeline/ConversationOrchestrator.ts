@@ -1045,7 +1045,60 @@ export class ConversationOrchestrator {
         return { replied: false };
       }
 
-      // IA ativa: responde ao lead com mensagem específica e pausa
+      // Pipeline photo intercept: foto enviada enquanto pipeline aguarda step "photo" →
+      // retoma automaticamente sem pausar a IA. Doutor já foi notificado acima.
+      if (inboundMediaType === "image") {
+        const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
+        if (activePipelineState) {
+          const pipelineTreatments = await this.treatmentRepo.listByClinic(clinicId);
+          const pipelineTreatment = pipelineTreatments.find(t => t.id === activePipelineState.treatmentId);
+          const currentStep = pipelineTreatment?.pipelineSteps?.[activePipelineState.stepIndex];
+          if (currentStep?.type === "photo") {
+            await this.stateMachine.markPipelinePhotoReceived(conversation.id);
+            const next = nextActivePipelineStep(pipelineTreatment!.pipelineSteps!, activePipelineState.stepIndex + 1);
+            const photoHistory = await this.conversationRepo.listMessages(conversation.id);
+            const photoComposed = await this.responseComposer.compose({
+              actionResult: { type: "pipeline_photo_received" },
+              conversationHistory: photoHistory,
+              clinic: {
+                name: clinic.name,
+                specialty: editorial?.specialty ?? clinic.specialty,
+                toneOfVoice: editorial?.toneOfVoice ?? null,
+                playbook: editorial?.playbookText ?? null,
+                commercialPolicy: editorial?.commercialPolicy ?? null,
+                installmentTable: null,
+                receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+              },
+              leadName: lead.name,
+              timezone,
+              isFirstMessage: false,
+              conversationExperience: clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
+              resumedFromHumanTakeover: false,
+            });
+            const photoNow = new Date();
+            const photoAgentId = randomUUID();
+            const { msgId: photoMsgId, deliveryFormat: photoDeliveryFormat } = await sendReply(outboundAddress, photoComposed.text, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
+            await this.conversationRepo.appendMessage({
+              id: photoAgentId,
+              conversationId: conversation.id,
+              author: "agent",
+              body: photoComposed.text,
+              sentAt: photoNow,
+              externalId: photoMsgId ?? null,
+              intent: "check_availability",
+              deliveryFormat: photoDeliveryFormat,
+            });
+            if (next) {
+              await this.stateMachine.advancePipelineStep(conversation.id, next.index);
+            } else {
+              await this.stateMachine.exitTreatmentPipeline(conversation.id);
+            }
+            return { replied: true };
+          }
+        }
+      }
+
+      // IA ativa: foto/vídeo/documento fora de pipeline → responde e pausa para o doutor avaliar
       const mediaHistory = await this.conversationRepo.listMessages(conversation.id);
       const mediaComposed = await this.responseComposer.compose({
         actionResult: { type: "media_received", mediaType: inboundMediaType },

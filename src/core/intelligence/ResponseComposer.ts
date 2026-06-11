@@ -45,6 +45,7 @@ export type ActionResult =
   | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] }
   | { type: "patient_arrived"; appointmentTime: Date | null }
   | { type: "media_received"; mediaType: "image" | "video" | "document" }
+  | { type: "pipeline_photo_received" }
   | { type: "video_sent_followup"; videoTitle: string };
 
 export type ComposerInput = {
@@ -448,6 +449,10 @@ Exemplo de tom: "Olá! Já avisamos a equipe sobre sua chegada — em instantes 
       return `AÇÃO EXECUTADA: Lead enviou ${artigo} para avaliação pelo especialista.
 ${recebido}! Informe acolhedoramente que ${artigo} foi recebido(a) e que o especialista irá avaliar o caso pessoalmente. Diga que a equipe retorna em breve com orientações. Máximo 2 frases. Tom caloroso e profissional. NÃO peça mais fotos. NÃO dê diagnóstico. NÃO mencione prazo específico que não possa cumprir.`;
     }
+
+    case "pipeline_photo_received":
+      return `AÇÃO EXECUTADA: Lead enviou foto do sorriso durante o pipeline de avaliação.
+Acuse o recebimento da foto de forma calorosa e breve (1 frase). Em seguida, de forma natural, pergunte sobre a disponibilidade do lead para a avaliação presencial. Máximo 2 frases no total. NÃO peça mais fotos. NÃO dê diagnóstico. NÃO mencione que a foto será analisada antes — apenas siga para o próximo passo com naturalidade.`;
 
     case "video_sent_followup":
       return `AÇÃO EXECUTADA: Re-engajamento específico para lead que recebeu um vídeo e não respondeu.
