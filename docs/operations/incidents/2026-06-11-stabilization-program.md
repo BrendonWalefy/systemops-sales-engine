@@ -64,6 +64,13 @@ A IA da Ximendes só religa quando **todos** os itens abaixo forem verdadeiros:
 3. Conversa com o dono ANTES de religar: mostrar o que foi corrigido e combinar rollout controlado (ex.: IA só em leads novos na 1ª semana, recepção observando, relatório diário).
 4. Pós-reativação: 14 dias estáveis = programa concluído.
 
+#### Exceção operacional registrada em 2026-06-11
+
+- com autorização explícita da Ximendes para avaliar comportamento real, a clínica foi religada antes do gate completo
+- BW Odontologia e Ximendes Odontologia ficaram com `autoReplyEnabled = true` e `voiceResponseEnabled = false`
+- não havia follow-ups pendentes em nenhuma das duas clínicas no momento da religação
+- esta decisão não substitui o Passe 2; apenas antecipa a observação real em produção texto-only
+
 ## Guardrails de execução
 
 - Migrations só via `npm run db:generate` + `npm run db:migrate`. Nunca `drizzle-kit push` em produção.
@@ -109,7 +116,7 @@ Pontos levantados em revisão de código das fases do passe de contenção. Veri
 ### Da Fase 2 — ciclo de vida de follow-up (revisada, 563 testes verdes)
 
 3. **Cap por run pressupõe cron diário:** "1 follow-up por lead por run" funciona hoje (dispatcher 1x/dia). Quando o sweep de ~5 min entrar (Passe 2), converter para cap por lead por dia, campo por clínica com default no schema.
-4. ✅ **RESOLVIDO localmente em 2026-06-11** — follow-ups pendentes agora são cancelados quando o lead reengaja por inbound e quando entra novamente em fluxo de agendamento/appointment `scheduled|confirmed`. A regra foi centralizada no repositório/use case de follow-up e conectada ao `RegisterIncomingMessage`, `BookingService` e `updateAppointment`.
+4. ✅ **RESOLVIDO em `1b92a15`** (commits `1b92a15` + `12dd1dc` + `082cc53`, pushed em 2026-06-11) — follow-ups pendentes agora são cancelados quando o lead reengaja por inbound e quando entra novamente em fluxo de agendamento/appointment `scheduled|confirmed`. A regra foi centralizada no repositório/use case de follow-up e conectada ao `RegisterIncomingMessage`, `BookingService` e `updateAppointment`. ⚠️ Pontos de atenção da revisão desta etapa: itens 10-14 abaixo.
 5. **cancel+insert não atômico no scheduleFollowUp:** bursts simultâneos podem deixar 2 pendings (mitigado pelo cap do dispatcher). Garantia estrutural: unique index parcial `(lead_id, reason) WHERE status = 'pending'`.
 
 ### Da Fase 3 — persistência exata de outbound (revisada, 563 testes verdes)
@@ -124,11 +131,27 @@ Pontos levantados em revisão de código das fases do passe de contenção. Veri
    - **Lembrete D-1 da Ximendes está DESLIGADO** junto com a IA (modo seguro assumido). A recepção precisa saber que os lembretes de consulta agora são manuais até a reativação.
    - **Follow-ups ficam pendentes (não cancelados) enquanto a clínica está off.** Com a IA desligada nada novo é criado, mas adicionar ao gate de reativação: revisar/cancelar pendentes antigos antes de religar.
 
+### Da etapa "cancelamento no reengajamento" (commits `1b92a15`..`082cc53`, revisada em 2026-06-11, 569 testes verdes)
+
+10. **[ALTA] Inbound cancela o "Retorno de rotina" de 6 meses:** `RegisterIncomingMessage` chama `cancelPendingByLead()` em **todo** inbound, sem filtro por reason. Como o booking acontece no meio da conversa, o lead quase sempre manda mais uma mensagem depois ("obrigada!", "qual o endereço?") — e essa mensagem cancela o follow-up `appointment_completed` ("Retorno de rotina", due +6 meses) que o `BookingService` acabou de criar no Passo 7. O recall de rotina fica efetivamente morto para quase todo lead que agenda. Corrigir antes do gate: cancelar por reason no inbound (só `video_sent:*`, "Lead inativo — segunda chance" e avaliar "Lead não compareceu"), preservando "Retorno de rotina"; ou mover o agendamento do retorno para a transição `appointment → completed`.
+11. **[MÉDIA] Cancel sem try/catch no caminho quente de ingestão:** em `register-incoming-message.ts` o `cancelPendingFollowUps()` não tem try/catch — falha no UPDATE de `follow_ups` derruba o registro da mensagem inbound inteira. Todos os outros call sites tratam como efeito não-crítico com try/catch + log. Aplicar o mesmo padrão.
+12. **[MÉDIA] Call sites do BookingService sem followUpRepo:** `appointments/[id]/route.ts` (linhas ~76 e ~159) constrói `BookingService` sem o repositório de follow-up — rebooking/edição por essa rota não cancela pendentes nem agenda o retorno. Verificar se a rota deve injetar `DrizzleFollowUpRepository` como as demais.
+13. **[BAIXA] `cancelPendingByLead` não cobre status `sending`:** se o dispatcher já fez o claim (pending→sending) quando o lead reengaja, aquele follow-up sai mesmo assim. Janela pequena (cron 1x/dia hoje), CAS evita duplo envio; reavaliar quando o sweep de ~5 min entrar.
+14. **[BAIXA] Replay QA roda contra produção e deixa resíduo:** `bw-incident-replay` usa o banco de produção (via `.env.local`); `cleanPhoneState()` limpa no INÍCIO de cada cenário, então o último cenário deixa lead/conversa/mensagens QA no banco (ex.: lead "BW Replay Echo", conv `be4704c6`, extIds `echo-*`, criados às 07:16 UTC de 11/06). Risco: cron de stale-conversations pode agir sobre esse resíduo, e as queries de monitoramento ficam poluídas. Adicionar cleanup no FINAL do replay ou rodar `cleanPhoneState` manualmente após cada execução.
+
 ### Baseline pós-deploy do passe de contenção (2026-06-11 ~04:15 BRT, commit 97ce569)
 
 - Query auto-conversa (24h): zero casos por match exato — ressalva: pré-fix os corpos das partes não coincidiam (era o próprio bug), então a query só é conclusiva DEPOIS do fix. Usar a versão com prefixo abaixo.
 - Flood histórico confirmado: lead 13e7f557 com 18 follow-ups "done" em 10/06 (o burst das 07:01). Pós-fix, cap = 1/lead/run.
 - Pendentes após limpeza: apenas 1 (BW, video_sent — vai validar o caminho novo no run das 10h UTC).
+  - ⚠️ **Invalidado às 07:16 UTC:** o run do `bw:incident-replay` contra produção deletou o lead QA via `cleanPhoneState()` — levou junto o pendente `video_sent` e os 18 "done" do flood histórico (a tabela `follow_ups` da BW ficou vazia). O cron das 10h UTC de 11/06 será um no-op (zero pendentes due em todas as clínicas); a validação orgânica do caminho novo fica para o próximo follow-up real criado na BW.
+
+### Checkpoint de monitoramento 48h (2026-06-11 07:45 UTC)
+
+- `npm run bw:stability -- 48`: auto-conversa 0 casos (exato e prefixo), flood 0, BW `autoReplyEnabled=true`.
+- Ressalva: ainda **sem tráfego orgânico pós-deploy** na BW (última inbound real 03:03 UTC, anterior ao deploy ~07:15 UTC) — o relógio das 48h só conta de verdade a partir do primeiro tráfego real.
+- Ximendes: `autoReplyEnabled=false` confirmado, zero follow-ups pendentes (Bianca `4d3503a3` cancelado).
+- Resíduo QA em produção: lead "BW Replay Echo" (fone 5511953628848), conv `be4704c6`, 2 mensagens agent com extId `echo-*` — ver item 14 do checklist.
 
 Query de auto-conversa melhorada (pega eco de parte truncada, não só match exato):
 

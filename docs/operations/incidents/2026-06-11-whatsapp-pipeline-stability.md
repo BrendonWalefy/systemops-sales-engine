@@ -271,6 +271,29 @@ Local validation completed:
 - `npm test -- src/__tests__/RegisterIncomingMessageRace.test.ts src/__tests__/InternalBookingSaga.test.ts src/__tests__/UpdateAppointment.test.ts src/__tests__/FollowUpReengagement.test.ts`
 - `npm run verify`
 
+### Operational checkpoint - BW and Ximendes text-only live evaluation
+
+Status: enabled on 2026-06-11 with explicit clinic authorization
+
+Changes applied:
+
+- confirmed `voiceResponseEnabled = false` for both BW Odontologia and Ximendes Odontologia
+- confirmed `autoReplyEnabled = true` for BW Odontologia
+- re-enabled `autoReplyEnabled = true` for Ximendes Odontologia
+- confirmed `follow_ups.status = 'pending'` backlog was `0` for both clinics before the re-enable
+
+Why this is safe enough for the live evaluation:
+
+- the rollout stays text-only, avoiding TTS behavior while real-message evaluation resumes
+- no pending follow-up backlog exists to surprise either clinic immediately after the religa
+- BW remains the QA/live monitoring canary while Ximendes resumes under explicit owner approval
+
+Immediate monitoring focus:
+
+- first real inbound/outbound cycle in Ximendes after religa
+- auto-conversa exact/prefix queries in BW and Ximendes
+- unexpected follow-up or reminder dispatch in the next cron windows
+
 ## Confirmed Production Findings
 
 ### 1. BW Odontologia shows self-conversation / echo loop
