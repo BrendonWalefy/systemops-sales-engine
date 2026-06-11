@@ -56,6 +56,15 @@ export class DrizzleFollowUpRepository implements FollowUpRepository {
     return rows.length;
   }
 
+  async cancelPendingByLead(input: { leadId: string }): Promise<number> {
+    const rows = await db
+      .update(followUps)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(and(eq(followUps.leadId, input.leadId), eq(followUps.status, "pending")))
+      .returning({ id: followUps.id });
+    return rows.length;
+  }
+
   async listDue(input: { clinicId: string; now: Date }): Promise<FollowUp[]> {
     const rows = await db
       .select()

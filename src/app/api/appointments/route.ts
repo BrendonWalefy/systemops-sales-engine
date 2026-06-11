@@ -7,6 +7,7 @@ import { appointments, clinics, conversations, leads, professionals } from "@/in
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
+import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -137,6 +138,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
     const apptRepo = new DrizzleAppointmentRepository();
+    const followUpRepo = new DrizzleFollowUpRepository();
     const gateway = resolveCalendarGateway({
       clinicId: clinicRow.id,
       calendarMode: clinicRow.calendarMode,
@@ -146,7 +148,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       postAppointmentBufferMinutes: clinicRow.postAppointmentBufferMinutes,
     });
 
-    const bookingService = new BookingService(gateway, apptRepo, leadRepo);
+    const bookingService = new BookingService(gateway, apptRepo, leadRepo, undefined, followUpRepo);
     const result = await bookingService.book({
       clinic: {
         id: clinicRow.id,

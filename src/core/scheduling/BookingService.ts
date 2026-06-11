@@ -19,6 +19,7 @@ import type { Clinic } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import { SlotReservationService, type SlotReservation } from "./SlotReservationService";
+import { cancelPendingFollowUps } from "@/application/use-cases/leads/cancel-pending-follow-ups";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 
 export type BookingResult =
@@ -169,9 +170,14 @@ export class BookingService {
       console.error("[BookingService] Failed to update lead status:", err);
     }
 
-    // Passo 7: Agenda follow-up de retorno 6 meses após a consulta
+    // Passo 7: lead acabou de reengajar e/ou agendar — follow-ups pendentes
+    // anteriores ficam obsoletos e não devem disparar depois do booking.
     if (this.followUpRepository) {
       try {
+        await cancelPendingFollowUps({
+          leadId: lead.id,
+          followUpRepository: this.followUpRepository,
+        });
         await scheduleFollowUp({
           clinicId: clinic.id,
           leadId: lead.id,

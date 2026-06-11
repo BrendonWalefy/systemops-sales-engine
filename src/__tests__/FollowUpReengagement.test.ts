@@ -15,6 +15,7 @@ const mockLeadFindInactiveLeads = vi.fn();
 
 const mockFollowUpFindPendingByReason = vi.fn().mockResolvedValue(null);
 const mockFollowUpCancelPendingByReason = vi.fn().mockResolvedValue(0);
+const mockFollowUpCancelPendingByLead = vi.fn().mockResolvedValue(0);
 
 vi.mock("@/infrastructure/repositories/drizzle-follow-up-repository", () => ({
   DrizzleFollowUpRepository: vi.fn().mockImplementation(() => ({
@@ -22,6 +23,7 @@ vi.mock("@/infrastructure/repositories/drizzle-follow-up-repository", () => ({
     listDue: mockFollowUpListDue,
     findPendingByReason: mockFollowUpFindPendingByReason,
     cancelPendingByReason: mockFollowUpCancelPendingByReason,
+    cancelPendingByLead: mockFollowUpCancelPendingByLead,
     claimForSending: vi.fn().mockResolvedValue(true),
     recoverStaleSending: vi.fn().mockResolvedValue(0),
   })),
@@ -74,6 +76,7 @@ function makeFollowUpRepository() {
     listDue: vi.fn<(input: { clinicId: string; now: Date }) => Promise<FollowUp[]>>().mockResolvedValue([]),
     findPendingByReason: vi.fn<(input: { leadId: string; reason: string }) => Promise<FollowUp | null>>().mockResolvedValue(null),
     cancelPendingByReason: vi.fn<(input: { leadId: string; reason: string }) => Promise<number>>().mockResolvedValue(0),
+    cancelPendingByLead: vi.fn<(input: { leadId: string }) => Promise<number>>().mockResolvedValue(0),
     claimForSending: vi.fn<(id: string) => Promise<boolean>>().mockResolvedValue(true),
     recoverStaleSending: vi.fn<(input: { clinicId: string; olderThan: Date }) => Promise<number>>().mockResolvedValue(0),
   };

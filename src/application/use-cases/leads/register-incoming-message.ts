@@ -1,10 +1,12 @@
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import type { UsageCostTracker } from "@/application/ports/usage-cost-tracker";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
+import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import type { IncomingChannelMessage } from "@/application/ports/channel-adapter";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import { ResolveWhatsAppLead } from "@/application/whatsapp/resolve-whatsapp-lead";
+import { cancelPendingFollowUps } from "./cancel-pending-follow-ups";
 import {
   buildContactIdentifiersFromWebhook,
   resolveWhatsAppThreadId,
@@ -14,6 +16,7 @@ export type RegisterIncomingMessageDependencies = {
   leadRepository: LeadRepository;
   conversationRepository: ConversationRepository;
   usageCostTracker: UsageCostTracker;
+  followUpRepository?: FollowUpRepository;
   idGenerator: () => string;
   now: () => Date;
 };
@@ -50,6 +53,13 @@ export class RegisterIncomingMessage {
       status: leadStatus,
       updatedAt: now,
     });
+
+    if (this.deps.followUpRepository) {
+      await cancelPendingFollowUps({
+        leadId: resolvedLead.id,
+        followUpRepository: this.deps.followUpRepository,
+      });
+    }
 
     const lead =
       (identifiers.phone

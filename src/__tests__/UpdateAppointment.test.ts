@@ -95,6 +95,7 @@ function makeFollowUpRepo(): FollowUpRepository {
     listDue: vi.fn().mockResolvedValue([]),
     findPendingByReason: vi.fn().mockResolvedValue(null),
     cancelPendingByReason: vi.fn().mockResolvedValue(0),
+    cancelPendingByLead: vi.fn().mockResolvedValue(0),
     claimForSending: vi.fn().mockResolvedValue(true),
     recoverStaleSending: vi.fn().mockResolvedValue(0),
   };
@@ -293,6 +294,19 @@ describe("updateAppointment", () => {
   });
 
   describe("status: confirmed", () => {
+    it("cancela follow-ups pendentes ao confirmar appointment", async () => {
+      const followUpRepo = makeFollowUpRepo();
+      await updateAppointment(
+        { appointmentId: "appt-1", clinicId: "clinic-1", status: "confirmed" },
+        {
+          appointmentRepository: makeApptRepo(),
+          calendarGateway: makeGateway(),
+          followUpRepository: followUpRepo,
+        },
+      );
+      expect(followUpRepo.cancelPendingByLead).toHaveBeenCalledWith({ leadId: "lead-1" });
+    });
+
     it("does not update lead status on confirmed (already appointment_scheduled)", async () => {
       const leadRepo = makeLeadRepo();
       await updateAppointment(
@@ -304,6 +318,21 @@ describe("updateAppointment", () => {
         },
       );
       expect(leadRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("status: scheduled", () => {
+    it("cancela follow-ups pendentes ao voltar para scheduled", async () => {
+      const followUpRepo = makeFollowUpRepo();
+      await updateAppointment(
+        { appointmentId: "appt-1", clinicId: "clinic-1", status: "scheduled" },
+        {
+          appointmentRepository: makeApptRepo(),
+          calendarGateway: makeGateway(),
+          followUpRepository: followUpRepo,
+        },
+      );
+      expect(followUpRepo.cancelPendingByLead).toHaveBeenCalledWith({ leadId: "lead-1" });
     });
   });
 

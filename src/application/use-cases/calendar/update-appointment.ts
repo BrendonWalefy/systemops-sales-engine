@@ -1,6 +1,7 @@
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
+import { cancelPendingFollowUps } from "@/application/use-cases/leads/cancel-pending-follow-ups";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 
@@ -64,6 +65,17 @@ export async function updateAppointment(
     ...(input.roomId !== undefined && { roomId: input.roomId }),
     updatedAt: new Date(),
   });
+
+  if ((input.status === "scheduled" || input.status === "confirmed") && deps.followUpRepository) {
+    try {
+      await cancelPendingFollowUps({
+        leadId: existing.leadId,
+        followUpRepository: deps.followUpRepository,
+      });
+    } catch (err) {
+      console.error("[updateAppointment] Failed to cancel pending follow-ups:", err);
+    }
+  }
 
   // Efeitos de status: atualizar lead + agendar follow-up
   if (input.status && deps.leadRepository) {

@@ -245,6 +245,28 @@ Operational support added:
   - auto-conversa por prefixo
   - flood de follow-up
 
+### Follow-up after Phase 4 - Cancelamento de pendentes no reengajamento/agendamento
+
+Status: implemented locally on 2026-06-11 after commit `b7e2c5a`
+
+Changes applied:
+
+- added `cancelPendingByLead()` to the follow-up repository contract and implementations
+- inbound lead registration now cancels pending follow-ups as soon as the lead reengages
+- booking flows now cancel stale pending follow-ups before leaving the lead as `appointment_scheduled`
+- `updateAppointment()` now cancels pending follow-ups when an appointment is moved back into `scheduled`/`confirmed`
+
+Why this is safe:
+
+- the rule is deterministic and centralized around real lead activity, not prompt text
+- follow-up history is preserved by marking rows as `cancelled`, not deleting them
+- the new booking behavior cancels stale pending rows first and then schedules the fresh long-tail return follow-up, so the post-consultation reminder still exists
+
+Local validation completed:
+
+- `npm test -- src/__tests__/RegisterIncomingMessageRace.test.ts src/__tests__/InternalBookingSaga.test.ts src/__tests__/UpdateAppointment.test.ts src/__tests__/FollowUpReengagement.test.ts`
+- `npm run verify`
+
 ## Confirmed Production Findings
 
 ### 1. BW Odontologia shows self-conversation / echo loop

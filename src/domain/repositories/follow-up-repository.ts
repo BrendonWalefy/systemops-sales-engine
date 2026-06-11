@@ -5,6 +5,7 @@ export type FollowUpRepository = {
   listDue(input: { clinicId: string; now: Date }): Promise<FollowUp[]>;
   findPendingByReason(input: { leadId: string; reason: string }): Promise<FollowUp | null>;
   cancelPendingByReason(input: { leadId: string; reason: string }): Promise<number>;
+  cancelPendingByLead(input: { leadId: string }): Promise<number>;
   /**
    * Claim atômico antes do envio (CAS): pending → sending. Retorna false se
    * outro run do dispatcher já reivindicou este follow-up — não reenviar.

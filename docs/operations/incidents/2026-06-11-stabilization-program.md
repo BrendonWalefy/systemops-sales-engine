@@ -109,7 +109,7 @@ Pontos levantados em revisão de código das fases do passe de contenção. Veri
 ### Da Fase 2 — ciclo de vida de follow-up (revisada, 563 testes verdes)
 
 3. **Cap por run pressupõe cron diário:** "1 follow-up por lead por run" funciona hoje (dispatcher 1x/dia). Quando o sweep de ~5 min entrar (Passe 2), converter para cap por lead por dia, campo por clínica com default no schema.
-4. **GAP — cancelamento por re-engajamento NÃO implementado:** lead que respondeu/agendou depois do vídeo ainda recebe "conseguiu assistir?" no dia seguinte (não há cancel de pendentes no fluxo inbound do Orchestrator). Estava no plano dos dois documentos. Decidir se entra antes da reativação da Ximendes.
+4. ✅ **RESOLVIDO localmente em 2026-06-11** — follow-ups pendentes agora são cancelados quando o lead reengaja por inbound e quando entra novamente em fluxo de agendamento/appointment `scheduled|confirmed`. A regra foi centralizada no repositório/use case de follow-up e conectada ao `RegisterIncomingMessage`, `BookingService` e `updateAppointment`.
 5. **cancel+insert não atômico no scheduleFollowUp:** bursts simultâneos podem deixar 2 pendings (mitigado pelo cap do dispatcher). Garantia estrutural: unique index parcial `(lead_id, reason) WHERE status = 'pending'`.
 
 ### Da Fase 3 — persistência exata de outbound (revisada, 563 testes verdes)

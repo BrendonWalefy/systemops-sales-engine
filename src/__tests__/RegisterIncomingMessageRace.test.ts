@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import type { IncomingChannelMessage } from "@/application/ports/channel-adapter";
 import type { UsageCostTracker } from "@/application/ports/usage-cost-tracker";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
+import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
 
 class TwoPartyBarrier {
@@ -138,10 +139,88 @@ class RacyConversationRepository implements ConversationRepository {
   }
 }
 
+class SimpleLeadRepository implements LeadRepository {
+  readonly leads = new Map<string, Lead>();
+
+  async findById(id: string): Promise<Lead | null> {
+    return this.leads.get(id) ?? null;
+  }
+
+  async findByPhone(clinicId: string, phone: string): Promise<Lead | null> {
+    return (
+      Array.from(this.leads.values()).find(
+        (lead) => lead.clinicId === clinicId && lead.phone === phone,
+      ) ?? null
+    );
+  }
+
+  async findByWhatsAppLid(clinicId: string, whatsappLid: string): Promise<Lead | null> {
+    return (
+      Array.from(this.leads.values()).find(
+        (lead) => lead.clinicId === clinicId && lead.whatsappLid === whatsappLid,
+      ) ?? null
+    );
+  }
+
+  async findInactiveLeads(): Promise<Lead[]> {
+    return [];
+  }
+
+  async mergeDuplicateLeads(): Promise<Lead> {
+    throw new Error("not implemented");
+  }
+
+  async save(lead: Lead): Promise<void> {
+    this.leads.set(lead.id, lead);
+  }
+}
+
+class SimpleConversationRepository implements ConversationRepository {
+  readonly conversations = new Map<string, Conversation>();
+  readonly messages = new Map<string, Message[]>();
+
+  async findByLeadId(leadId: string): Promise<Conversation | null> {
+    return (
+      Array.from(this.conversations.values()).find(
+        (conversation) => conversation.leadId === leadId,
+      ) ?? null
+    );
+  }
+
+  async saveConversation(conversation: Conversation): Promise<void> {
+    this.conversations.set(conversation.id, conversation);
+  }
+
+  async setAiPaused(): Promise<void> {}
+
+  async setTakeover(): Promise<void> {}
+
+  async appendMessage(message: Message): Promise<void> {
+    const messages = this.messages.get(message.conversationId) ?? [];
+    this.messages.set(message.conversationId, [...messages, message]);
+  }
+
+  async listMessages(conversationId: string): Promise<Message[]> {
+    return this.messages.get(conversationId) ?? [];
+  }
+}
+
 const usageCostTracker: UsageCostTracker = {
   async trackAiUsage() {},
   async trackWhatsAppCost() {},
 };
+
+function makeFollowUpRepository(): FollowUpRepository {
+  return {
+    save: async () => {},
+    listDue: async () => [],
+    findPendingByReason: async () => null,
+    cancelPendingByReason: async () => 0,
+    cancelPendingByLead: async () => 0,
+    claimForSending: async () => true,
+    recoverStaleSending: async () => 0,
+  };
+}
 
 function makeMessage(body: string, externalMessageId: string, receivedAt: Date): IncomingChannelMessage {
   return {
@@ -198,5 +277,29 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     const [conversation] = Array.from(conversationRepository.conversations.values());
     expect(conversation.leadId).toBe(first.lead.id);
     expect(conversationRepository.messages.get(conversation.id)).toHaveLength(2);
+  });
+
+  it("cancela follow-ups pendentes quando o lead reengaja por inbound", async () => {
+    const leadRepository = new SimpleLeadRepository();
+    const conversationRepository = new SimpleConversationRepository();
+    const followUpRepository = makeFollowUpRepository();
+    const cancelPendingByLead = vi.fn(followUpRepository.cancelPendingByLead);
+    followUpRepository.cancelPendingByLead = cancelPendingByLead;
+
+    const useCase = new RegisterIncomingMessage({
+      leadRepository,
+      conversationRepository,
+      usageCostTracker,
+      followUpRepository,
+      idGenerator: () => crypto.randomUUID(),
+      now: () => new Date("2026-06-11T12:00:00.000Z"),
+    });
+
+    const result = await useCase.execute({
+      clinicId: "ximendes",
+      message: makeMessage("Oi, vi o vídeo e quero agendar", "zapi-reengage-1", new Date("2026-06-11T11:59:00.000Z")),
+    });
+
+    expect(cancelPendingByLead).toHaveBeenCalledWith({ leadId: result.lead.id });
   });
 });

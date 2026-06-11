@@ -852,6 +852,7 @@ export class ConversationOrchestrator {
       leadRepository: this.leadRepo,
       conversationRepository: this.conversationRepo,
       usageCostTracker,
+      followUpRepository: new DrizzleFollowUpRepository(),
       idGenerator: randomUUID,
       now: () => new Date(),
     });

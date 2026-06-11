@@ -8,6 +8,8 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
+import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
+import { cancelPendingFollowUps } from "@/application/use-cases/leads/cancel-pending-follow-ups";
 import { type TtsConfig, DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +77,7 @@ export async function POST(
 
     const apptRepo = new DrizzleAppointmentRepository();
     const leadRepo = new DrizzleLeadRepository();
+    const followUpRepo = new DrizzleFollowUpRepository();
     const gateway = resolveCalendarGateway({
       clinicId: clinic.id,
       calendarMode: clinic.calendarMode,
@@ -83,7 +86,7 @@ export async function POST(
       businessHours: clinic.businessHours,
       postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
     });
-    const bookingService = new BookingService(gateway, apptRepo, leadRepo);
+    const bookingService = new BookingService(gateway, apptRepo, leadRepo, undefined, followUpRepo);
 
     const conflicts = await apptRepo.findByPeriod(clinic.id, startsAt, endsAt);
     const hasConflict = conflicts.some(
@@ -120,6 +123,10 @@ export async function POST(
         reminderSentAt: null,
         createdAt: now,
         updatedAt: now,
+      });
+      await cancelPendingFollowUps({
+        leadId: lead.id,
+        followUpRepository: followUpRepo,
       });
     } else {
       const result = await bookingService.book({

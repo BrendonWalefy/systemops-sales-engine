@@ -11,6 +11,7 @@ import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { Clinic } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { Appointment } from "@/domain/entities/calendar-slot";
+import type { FollowUp } from "@/domain/entities/follow-up";
 import type { SlotReservation } from "@/core/scheduling/SlotReservationService";
 import { BookingService, type BookingReservationService } from "@/core/scheduling/BookingService";
 
@@ -170,6 +171,39 @@ function leadRepo() {
   return { repo, saved };
 }
 
+function followUpRepo() {
+  const saved: FollowUp[] = [];
+  const cancelledLeadIds: string[] = [];
+  return {
+    repo: {
+      async save(followUp: FollowUp) {
+        saved.push(followUp);
+      },
+      async listDue() {
+        return [];
+      },
+      async findPendingByReason() {
+        return null;
+      },
+      async cancelPendingByReason() {
+        return 0;
+      },
+      async cancelPendingByLead(input: { leadId: string }) {
+        cancelledLeadIds.push(input.leadId);
+        return 1;
+      },
+      async claimForSending() {
+        return true;
+      },
+      async recoverStaleSending() {
+        return 0;
+      },
+    },
+    saved,
+    cancelledLeadIds,
+  };
+}
+
 const aReservation: SlotReservation = {
   id: "res-1",
   clinicId: clinic.id,
@@ -200,6 +234,21 @@ describe("BookingService — modo interno", () => {
     expect(appts.saved[0].calendarEventId).toBeNull();
     expect(appts.saved[0].source).toBe("app");
     expect(leads.saved[0].status).toBe("appointment_scheduled");
+  });
+
+  it("cancela follow-ups pendentes do lead antes de agendar o retorno de rotina", async () => {
+    const { gateway } = internalGateway({ isSlotFree: true });
+    const { svc } = reservationService(aReservation);
+    const appts = apptRepo([]);
+    const followUps = followUpRepo();
+
+    const service = new BookingService(gateway, appts.repo, leads.repo, svc, followUps.repo);
+    const result = await service.book({ clinic, lead, startsAt, endsAt });
+
+    expect(result.success).toBe(true);
+    expect(followUps.cancelledLeadIds).toEqual([lead.id]);
+    expect(followUps.saved).toHaveLength(1);
+    expect(followUps.saved[0].reason).toBe("Retorno de rotina");
   });
 
   it("double booking: reserva negada (slot já travado) retorna slot_taken sem salvar", async () => {
