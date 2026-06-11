@@ -4,10 +4,7 @@ import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import {
-  listAllClinicIds,
-  resolveWhatsappChannelClinicForOutbound,
-} from "@/application/tenancy/resolve-clinic";
+import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { clinics, conversations, messages } from "@/infrastructure/db/schema";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -77,16 +74,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
         continue;
       }
-      let channelConfig = defaultChannelConfig;
-      const channelClinicId = await resolveWhatsappChannelClinicForOutbound({
-        clinicId,
-        phone: lead.phone,
-      });
-      if (channelClinicId !== clinicId) {
-        const channelClinic = await db.query.clinics.findFirst({ where: eq(clinics.id, channelClinicId) });
-        if (!channelClinic) throw new Error(`Channel clinic not found: ${channelClinicId}`);
-        channelConfig = resolveChannelConfig(channelClinic);
-      }
+      const channelConfig = defaultChannelConfig;
 
       const isVideoFollowUp = followUp.reason.startsWith("video_sent:");
       const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;

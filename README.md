@@ -7,7 +7,7 @@ Producao: https://systemops-core.vercel.app
 ## Estado Atual
 
 - Multi-clinica: configuracao operacional vive no banco, por clinica.
-- WhatsApp atual: Z-API por clinica, resolvida por `zapiInstanceId`; QA real pode rotear telefones allowlistados via `whatsapp_qa_routes`.
+- WhatsApp atual: Z-API por clinica, resolvida por `zapiInstanceId`.
 - Agenda atual: `clinics.calendarMode` define a fonte de verdade. No modo `internal`, slots, agendamentos e bloqueios vivem no banco; no modo `google_calendar`, Google Calendar segue como opt-in legado.
 - Login de clinica: usuarios em `clinic_members.password_hash`.
 - Login owner: `OWNER_EMAIL` e `OWNER_PASSWORD` via env.
@@ -125,8 +125,6 @@ Documentos mais usados:
 - [Arquitetura atual](docs/architecture/current.md)
 - [Change control e deploy safety](docs/operations/change-control.md)
 - [Onboarding de clinica](docs/operations/onboarding-clinica.md)
-- [Sandbox omniQA](docs/testing/omniqa-simulate-integration.md)
-- [omniQA WhatsApp real](docs/testing/omniqa-real-whatsapp.md)
 - [Posicionamento do produto](docs/product/positioning.md)
 - [Guia de UX para agentes](docs/agent-guides/saas-ux-strategy.md)
 

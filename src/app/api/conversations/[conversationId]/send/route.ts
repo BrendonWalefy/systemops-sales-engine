@@ -8,7 +8,7 @@ import { clinics, conversations, leads, messages } from "@/infrastructure/db/sch
 import { and, eq } from "drizzle-orm";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { getSessionClinicId, resolveWhatsappChannelClinicForOutbound } from "@/application/tenancy/resolve-clinic";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const dynamic = "force-dynamic";
@@ -79,11 +79,6 @@ export async function POST(
     return NextResponse.json({ error: "Lead WhatsApp identity not found" }, { status: 422 });
   }
 
-  const channelClinicId = await resolveWhatsappChannelClinicForOutbound({
-    clinicId: conv.clinicId,
-    phone: lead?.phone ?? channelAddress,
-  });
-
   const [channelClinicRow] = await db
     .select({
       channelProvider: clinics.channelProvider,
@@ -94,7 +89,7 @@ export async function POST(
       metaAccessToken: clinics.metaAccessToken,
     })
     .from(clinics)
-    .where(eq(clinics.id, channelClinicId))
+    .where(eq(clinics.id, conv.clinicId))
     .limit(1);
 
   if (!channelClinicRow) {

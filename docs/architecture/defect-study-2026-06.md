@@ -81,8 +81,8 @@ documentada na rodada 1).
 ## Backlog priorizado (não corrigido nesta rodada)
 
 ### Antes da clínica 2
-1. **Onboarding sem scripts**: os `scripts/seed-bw-*`/`patch-bw-*` são legado da
-   piloto. Mudança editorial deve ir pela UI de playbook
+1. **Onboarding sem scripts**: seeds editoriais manuais são legado do piloto.
+   Mudança editorial deve ir pela UI de playbook
    (`/app/settings/playbook`). Mapear o que ainda NÃO é editável pela UI
    (trigger templates? mediaLibrary? installment rates?) e fechar esses gaps.
 2. **Flag `isActive` em `clinics`**: crons processam clínica cancelada para
