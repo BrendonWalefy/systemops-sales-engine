@@ -118,6 +118,29 @@ Pontos levantados em revisão de código das fases do passe de contenção. Veri
 7. **Corpo de mídia mudou** de `🎥 título` para `título` + `mediaUrl`/`mediaType` preenchidos. Verificado por grep que nada depende do prefixo fora dos arquivos alterados; confirmar renderização no Inbox após deploy.
 8. **Echo dedup por ID por parte:** validar em produção com replay QA — fluxo com vídeo intercalado deve gerar zero reingestão (query de auto-conversa zerada).
 
+### Achado pós-deploy (2026-06-11, URGENTE — vai para o executor)
+
+9. **`autoReplyEnabled` não é respeitado pelos crons:** o follow-up-dispatcher processa toda clínica com follow-up vencido, sem checar o flag. Com a Ximendes desligada pelo dono, havia follow-up pendente (Bianca, "não compareceu") que sairia no run das 10h UTC — **cancelado manualmente no banco em 11/06 (id 4d3503a3)** como contenção. Fix necessário: o kill switch da clínica deve cobrir TODO outbound automatizado (follow-ups; decidir com o dono se inclui lembrete D-1). Sem isso, "desligar a IA" não desliga a IA.
+
+### Baseline pós-deploy do passe de contenção (2026-06-11 ~04:15 BRT, commit 97ce569)
+
+- Query auto-conversa (24h): zero casos por match exato — ressalva: pré-fix os corpos das partes não coincidiam (era o próprio bug), então a query só é conclusiva DEPOIS do fix. Usar a versão com prefixo abaixo.
+- Flood histórico confirmado: lead 13e7f557 com 18 follow-ups "done" em 10/06 (o burst das 07:01). Pós-fix, cap = 1/lead/run.
+- Pendentes após limpeza: apenas 1 (BW, video_sent — vai validar o caminho novo no run das 10h UTC).
+
+Query de auto-conversa melhorada (pega eco de parte truncada, não só match exato):
+
+```sql
+SELECT m2.conversation_id, m1.sent_at, m2.sent_at, left(m2.body, 50)
+FROM messages m1 JOIN messages m2
+  ON m2.conversation_id = m1.conversation_id
+ AND m1.author = 'agent' AND m2.author = 'lead'
+ AND length(m2.body) >= 20
+ AND left(m1.body, length(m2.body)) = m2.body
+ AND m2.sent_at BETWEEN m1.sent_at AND m1.sent_at + interval '10 seconds'
+WHERE m1.sent_at > now() - interval '24 hours';
+```
+
 ## Estimativa e limites conhecidos
 
 - Prazo: 8,5-10 dias úteis (contenção ~2-3; durabilidade ~4-5; comportamento+painel ~2).
