@@ -14,6 +14,7 @@ import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,10 @@ type ClinicResult = { clinicId: string; sent: number; failed: number; total: num
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
   if (!clinic) return null;
+  if (!shouldSendAutomatedClinicOutbound(clinic)) {
+    console.log(`[AppointmentReminder] outbound automatizado pausado para clinic=${clinicId}`);
+    return { clinicId, sent: 0, failed: 0, total: 0 };
+  }
 
   const editorial = await resolveActiveEditorialConfig(clinicId);
   const defaultChannelConfig = resolveChannelConfig(clinic);

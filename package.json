@@ -19,7 +19,9 @@
     "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
     "bw:dump": "dotenv -e .env.local -- tsx scripts/dump-bw-transcripts.ts",
-    "bw:e2e": "dotenv -e .env.local -- tsx scripts/bw-e2e-runner.ts"
+    "bw:e2e": "dotenv -e .env.local -- tsx scripts/bw-e2e-runner.ts",
+    "bw:incident-replay": "dotenv -e .env.local -- tsx scripts/bw-incident-phase4-replay.ts",
+    "bw:stability": "dotenv -e .env.local -- tsx scripts/check-bw-stability.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

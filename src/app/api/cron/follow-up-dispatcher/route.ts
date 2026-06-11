@@ -17,6 +17,7 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { selectOneFollowUpPerLead } from "@/application/use-cases/leads/follow-up-dispatch-policy";
+import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,10 @@ type ClinicResult = { clinicId: string; dispatched: number; failed: number; tota
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
   if (!clinic) return null;
+  if (!shouldSendAutomatedClinicOutbound(clinic)) {
+    console.log(`[FollowUpDispatcher] outbound automatizado pausado para clinic=${clinicId}`);
+    return { clinicId, dispatched: 0, failed: 0, total: 0 };
+  }
 
   const editorial = await resolveActiveEditorialConfig(clinicId);
   const defaultChannelConfig = resolveChannelConfig(clinic);

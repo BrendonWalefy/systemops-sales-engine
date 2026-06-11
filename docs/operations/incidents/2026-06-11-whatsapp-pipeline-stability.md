@@ -1,8 +1,8 @@
 # Incident Handoff - WhatsApp Pipeline Stability
 
 Date: 2026-06-11
-Branch: `fix/whatsapp-incident-stability`
-Status: Phases 1, 2 and 3 implemented locally and verified, awaiting commit/replay validation
+Branch: `main` (Phase 4 continuation executed from clean `main` at `4dbf92e`; original hotfix branch was `fix/whatsapp-incident-stability`)
+Status: Phases 1, 2, 3 and 4 validated locally; ready for controlled BW/live monitoring before broader re-enable
 Owner context: clinic operation degraded for about 2 weeks; AI was manually paused by clinic owner due to poor replies, delayed replies, duplicated behavior and context failures.
 
 ## Goal
@@ -19,11 +19,14 @@ Before preparing this incident plan, the current source of truth was re-read:
 
 ## Current Checkpoint
 
-- Branch already created: `fix/whatsapp-incident-stability`
-- Phase 1 webhook containment was implemented locally
-- Incident document must be updated after each completed phase and after each commit on this branch
-- `update_plan` already created for the incident execution sequence
-- This document is the authoritative handoff for the next clean session
+- Original implementation branch was `fix/whatsapp-incident-stability`; Phase 4 continuation in this session was executed from clean `main`
+- `main` checkpoint used for this continuation: `4dbf92e`
+- Local replay evidence now exists for the three confirmed BW loops:
+  - internal attention alert suppression
+  - duplicate video follow-up suppression
+  - interleaved text/video echo suppression once the outbound row exists with the provider `externalId`
+- Incident document should still be updated after each new validation pass or deploy checkpoint
+- This document remains the authoritative handoff for the next clean session
 
 ## Phase Log
 
@@ -155,6 +158,92 @@ Next exact action:
   - internal attention alert suppression
   - duplicate video follow-up suppression
   - echo suppression for interleaved text/video outbound parts
+
+### Phase 4 - Replay validation
+
+Status: completed locally on 2026-06-11 from `main` at `4dbf92e`
+
+Changes applied:
+
+- added `scripts/bw-incident-phase4-replay.ts` to codify the three BW incident loops against the local webhook and cron routes
+- added `npm run bw:incident-replay` so the replay can be repeated without reconstructing the setup
+- executed the replay with local app running under `DISABLE_REAL_WHATSAPP_SEND=true` to avoid real outbound WhatsApp sends during validation
+
+Replay scenarios executed:
+
+- internal attention alert suppression:
+  - posts the known `precisa de voce` / `Acesse o Inbox para responder` pattern from the BW receptionist number
+  - verifies no BW lead, conversation or message is created
+- duplicate video follow-up suppression:
+  - seeds two due `video_sent:*` follow-ups for the same BW QA lead
+  - runs `GET /api/cron/follow-up-dispatcher`
+  - verifies one follow-up becomes `done`, the deferred duplicate becomes `cancelled`, and only one agent message is persisted
+- interleaved echo suppression:
+  - seeds exact outbound-like agent rows for a text part and a video title part, each with provider `externalId`
+  - replays matching webhook payloads and verifies no extra lead/operator messages are created and the conversation stays unpaused
+
+Local validation completed:
+
+- `npm test -- src/__tests__/InternalWhatsAppOperationalMessage.test.ts src/__tests__/ZApiWebhook.test.ts src/__tests__/FollowUpDispatchPolicy.test.ts src/__tests__/FollowUpReengagement.test.ts src/__tests__/FollowUpClaimBeforeSend.test.ts src/__tests__/OutboundMessagePersistence.test.ts src/__tests__/OutboundDeliveryOrdering.test.ts`
+- `npm run bw:incident-replay`
+- `npm run verify`
+
+Replay result:
+
+- `12/12` checks passed in `npm run bw:incident-replay`
+- full suite remained green: `563` tests passed under `npm run verify`
+
+Why this is safe:
+
+- the replay exercises the real local route handlers instead of helper-only logic
+- it uses the BW QA phone and clinic ids already documented for incident reproduction
+- outbound send is disabled during the replay, so verification does not contact real leads
+
+Residual risk that still needs production monitoring:
+
+- the replay validates the deterministic suppression path once the outbound part row already exists with the matching `externalId`
+- it does **not** eliminate the narrower pre-commit race window where a provider echo could arrive before the part row is persisted; this still needs 48h BW monitoring after deploy
+
+Next exact action:
+
+- deploy the contained fix set in a controlled rollout
+- keep BW on close watch for 48h using the self-conversation / duplicate follow-up queries from the stabilization program
+- only then broaden production re-enable
+
+### Follow-up after Phase 4 - Clinic kill switch for automated outbound
+
+Status: implemented locally on 2026-06-11 after the replay pass
+
+Changes applied:
+
+- added `shouldSendAutomatedClinicOutbound()` in `src/application/automation/clinic-automation-policy.ts`
+- `src/app/api/cron/follow-up-dispatcher/route.ts` now stops before dispatch when `clinic.autoReplyEnabled = false`
+- `src/app/api/cron/appointment-reminder/route.ts` now follows the same fail-safe behavior
+
+Why this is safe:
+
+- it matches the operational expectation that "desligar a IA" must also stop automated outbound
+- it prevents surprise follow-ups/reminders from leaving the system while the clinic believes automation is paused
+- it is reversible and centralized behind one small policy helper
+
+Local validation completed:
+
+- `npm test -- src/__tests__/ClinicAutomationPolicy.test.ts src/__tests__/FollowUpReengagement.test.ts src/__tests__/AppointmentReminder.test.ts`
+- `npm run bw:stability -- 48`
+- `npm run verify`
+
+Assumption taken in this pass:
+
+- reminder D-1 was treated as part of automated outbound and therefore respects the same clinic kill switch
+- if the product later wants reminders to remain active while conversational AI is paused, split that into a dedicated clinic flag instead of bypassing `autoReplyEnabled` ad hoc
+
+Operational support added:
+
+- `npm run bw:stability -- 48` now consolidates the BW post-deploy checks for:
+  - health da clínica (`autoReplyEnabled`, última inbound/outbound)
+  - auto-conversa por match exato
+  - auto-conversa por prefixo
+  - flood de follow-up
 
 ## Confirmed Production Findings
 
@@ -351,13 +440,14 @@ That future direction is already aligned with:
 - Over-blocking `fromMe` or internal numbers could hide legitimate operator behavior if the filter is too broad
 - Follow-up suppression must not break genuine reengagement journeys
 - Outbound persistence changes can affect existing tests around message ordering and UI rendering
+- QA-route replay does not cover the tiny race window before an outbound part row is committed with `externalId`
 
 ## How To Resume In The Next Session
 
 1. Read this document first
-2. If resuming pre-merge work, confirm branch is still `fix/whatsapp-incident-stability`
+2. Confirm whether you are continuing from `main` after `4dbf92e` or from a later deploy/monitoring checkpoint
 3. Re-open the files listed in "Key Code Findings"
-4. Continue from Phase 4 replay validation, not from architecture redesign
+4. Continue from BW deploy/monitoring, not from architecture redesign
 5. After each phase:
    - run the focused tests for the touched area
    - then run `npm run verify`
@@ -365,7 +455,7 @@ That future direction is already aligned with:
 
 Suggested resume prompt for a clean Codex session:
 
-`Continue from docs/operations/incidents/2026-06-11-whatsapp-pipeline-stability.md on branch/main state after commit 97ce569 and proceed with Phase 4 replay validation.`
+`Continue from docs/operations/incidents/2026-06-11-whatsapp-pipeline-stability.md on main after commit 4dbf92e and continue with BW rollout monitoring after Phase 4 replay validation.`
 
 ## Evidence Snapshot
 
@@ -383,12 +473,12 @@ Production evidence already confirmed during this diagnosis:
 
 ## Last Verified Repository State
 
-- branch: `fix/whatsapp-incident-stability`
-- hotfix commit: `97ce569` (`fix(whatsapp): contain incident regressions`)
+- branch: `main`
+- repository commit for this continuation: `4dbf92e`
 - implementation status:
   - Phase 1 complete locally
   - Phase 2 complete locally
   - Phase 3 complete locally
-  - Phase 4 not started
+  - Phase 4 complete locally
 - incident diagnosis: completed
-- next action: replay BW patterns through QA route before re-enabling broader production automation
+- next action: controlled deploy + 48h BW monitoring before re-enabling broader production automation
