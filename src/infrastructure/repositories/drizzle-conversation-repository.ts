@@ -2,6 +2,7 @@ import { eq, asc, desc } from "drizzle-orm";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import { db } from "@/infrastructure/db/client";
+import { isPostgresErrorCode } from "@/infrastructure/db/is-postgres-error-code";
 import { conversations, messages } from "@/infrastructure/db/schema";
 
 export class DrizzleConversationRepository implements ConversationRepository {
@@ -72,7 +73,7 @@ export class DrizzleConversationRepository implements ConversationRepository {
       // Código 23503 = foreign_key_violation no PostgreSQL.
       // Ocorre quando a conversa foi deletada concorrentemente (ex: reset E2E)
       // enquanto o Orchestrator ainda estava processando. Ignorar é seguro aqui.
-      if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "23503") {
+      if (isPostgresErrorCode(err, "23503")) {
         console.warn("[appendMessage] FK violation — conversa deletada concorrentemente:", message.conversationId);
         return;
       }

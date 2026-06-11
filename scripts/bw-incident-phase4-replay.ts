@@ -255,6 +255,34 @@ async function listMessages(conversationId: string): Promise<Array<{
   }));
 }
 
+async function waitForConversationToSettle(
+  conversationId: string,
+  input: { quietMs?: number; timeoutMs?: number; requireAgentMessage?: boolean } = {},
+): Promise<void> {
+  const quietMs = input.quietMs ?? 800;
+  const timeoutMs = input.timeoutMs ?? 8000;
+  const requireAgentMessage = input.requireAgentMessage ?? false;
+  const start = Date.now();
+  let lastCount = -1;
+  let stableSince = Date.now();
+  let sawAgentMessage = false;
+
+  while (Date.now() - start < timeoutMs) {
+    const messages = await listMessages(conversationId);
+    const count = messages.length;
+    sawAgentMessage ||= messages.some((message) => message.author === "agent");
+
+    if (count !== lastCount) {
+      lastCount = count;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= quietMs && (!requireAgentMessage || sawAgentMessage)) {
+      return;
+    }
+
+    await wait(200);
+  }
+}
+
 async function getConversationFlags(conversationId: string): Promise<{
   aiPaused: boolean;
   needsAttention: boolean;
@@ -374,7 +402,7 @@ async function scenarioReengagementCancelsPendingFollowUp(): Promise<void> {
     messageId: `bw-reengage-${msgCounter++}`,
   });
 
-  await wait(500);
+  await waitForConversationToSettle(conversationId, { requireAgentMessage: true });
 
   const afterInbound = await sql`
     SELECT reason, status
