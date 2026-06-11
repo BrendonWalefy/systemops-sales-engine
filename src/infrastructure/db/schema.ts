@@ -52,6 +52,10 @@ export const appointmentStatusEnum = pgEnum("appointment_status", [
 
 export const followUpStatusEnum = pgEnum("follow_up_status", [
   "pending",
+  // Claim do dispatcher: marcado antes do envio (claim-before-send) para que
+  // um segundo run do cron não reenvie a mesma mensagem. Stale "sending"
+  // (> 30min) é recuperado para "pending" no início de cada run.
+  "sending",
   "done",
   "cancelled",
   "expired",

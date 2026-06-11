@@ -35,6 +35,16 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const timezone = new ClinicTimezone(clinic.timezone);
 
   const now = new Date();
+
+  // Recupera follow-ups presos em "sending" por um run anterior que morreu
+  // (crash entre o claim e a conclusão). 30min de margem evita colidir com
+  // um run lento ainda em andamento.
+  const staleCutoff = new Date(now.getTime() - 30 * 60_000);
+  const recovered = await followUpRepository.recoverStaleSending({ clinicId, olderThan: staleCutoff });
+  if (recovered > 0) {
+    console.warn(`[FollowUpDispatcher] ${recovered} follow-up(s) recuperado(s) de "sending" stale (clinic=${clinicId})`);
+  }
+
   const dueFollowUps = await followUpRepository.listDue({ clinicId, now });
 
   let dispatched = 0;
@@ -42,6 +52,11 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
 
   for (const followUp of dueFollowUps) {
     try {
+      // Claim-before-send: transição atômica pending → sending. Se outro run
+      // (cron duplicado, redeploy) já reivindicou, pular — evita mensagem dupla.
+      const claimed = await followUpRepository.claimForSending(followUp.id);
+      if (!claimed) continue;
+
       const lead = await leadRepository.findById(followUp.leadId);
       if (!lead) {
         await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });

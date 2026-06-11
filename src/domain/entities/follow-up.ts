@@ -3,7 +3,7 @@ export type FollowUp = {
   clinicId: string;
   leadId: string;
   dueAt: Date;
-  status: "pending" | "done" | "cancelled" | "expired";
+  status: "pending" | "sending" | "done" | "cancelled" | "expired";
   reason: string;
   suggestedMessage: string | null;
   completedAt: Date | null;
