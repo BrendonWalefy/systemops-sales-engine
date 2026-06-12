@@ -177,7 +177,7 @@ function buildLentesPipeline(videoSimplificadaId: string | null, videoEstratific
       type: "qa",
       label: "Tirar dúvidas sobre as técnicas",
       instruction:
-        "Responda dúvidas sobre as técnicas com naturalidade. Não mencione preços além do que está na política comercial. Se o lead demonstrar preferência por uma técnica, confirme a escolha com entusiasmo consultivo. Não avance para horários enquanto o lead ainda estiver tirando dúvidas, e não misture explicação técnica, convite de foto e agenda no mesmo turno.",
+        "Responda dúvidas sobre as técnicas com naturalidade. Não mencione preços além do que está na política comercial. Se o lead demonstrar preferência por uma técnica, confirme a escolha com entusiasmo consultivo. Não avance para horários enquanto o lead ainda estiver tirando dúvidas. IMPORTANTE: NÃO convide o lead a enviar foto neste momento — o convite de foto acontece em etapa separada da conversa. Foque exclusivamente em responder a dúvida técnica feita.",
       maxTurns: 10,
     },
     {
