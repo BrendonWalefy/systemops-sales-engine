@@ -323,7 +323,7 @@ ${slotList}`;
 
     case "no_slots_available": {
       const altSection = result.alternativeSlots?.length
-        ? `\nALTERNATIVAS DE OUTROS DIAS:\n${result.alternativeSlots.map((s) => `- ${s.label}`).join("\n")}\nApresente estas opções SOMENTE se o lead demonstrar abertura para outros dias, listando cada uma em linha separada (exceção permitida à regra geral). Se insistir no dia original, informe com empatia que não há disponibilidade e diga que a equipe entrará em contato.`
+        ? `\nALTERNATIVAS DE OUTROS DIAS:\nREGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias da semana.\n${result.alternativeSlots.map((s) => `${s.index}. ${s.label}`).join("\n")}\nApresente estas opções listando cada uma em linha separada, numerada. Se insistir no dia original, informe com empatia que não há disponibilidade e diga que a equipe entrará em contato.`
         : "Ofereça alternativas ou peça para o lead sugerir outro período.";
       return `AÇÃO EXECUTADA: O dia/horário solicitado não tem disponibilidade.
 ${result.nextAvailableDate ? `Próximo horário disponível: ${result.nextAvailableDate}` : ""}

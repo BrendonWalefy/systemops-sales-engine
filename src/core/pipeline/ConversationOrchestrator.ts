@@ -72,11 +72,12 @@ type MenuResolution =
   | { intent: "book_appointment" }
   | { intent: "price_inquiry" }
   | { intent: "needs_human" }
-  | { intent: "general_question"; subtype: "procedures" | "location" };
+  | { intent: "general_question"; subtype: "procedures"; treatmentKeyword?: string }
+  | { intent: "general_question"; subtype: "location" };
 
-function intentToMenuResolution(intent: MenuItemIntent): MenuResolution {
+function intentToMenuResolution(intent: MenuItemIntent, treatmentKeyword?: string): MenuResolution {
   switch (intent) {
-    case "procedures": return { intent: "general_question", subtype: "procedures" };
+    case "procedures": return { intent: "general_question", subtype: "procedures", treatmentKeyword };
     case "location": return { intent: "general_question", subtype: "location" };
     case "book_appointment": return { intent: "book_appointment" };
     case "price_inquiry": return { intent: "price_inquiry" };
@@ -209,12 +210,12 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
 
   // Número digitado → mapeia pelo item correspondente na configuração da clínica
   const byNumber = items.find(i => i.enabled && n === String(i.number));
-  if (byNumber) return intentToMenuResolution(byNumber.intent);
+  if (byNumber) return intentToMenuResolution(byNumber.intent, byNumber.treatmentKeyword);
 
   // Rótulo textual de item ativo → determinístico, sem depender do LLM
   const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   const byLabel = items.find(i => i.enabled && n === norm(i.label));
-  if (byLabel) return intentToMenuResolution(byLabel.intent);
+  if (byLabel) return intentToMenuResolution(byLabel.intent, byLabel.treatmentKeyword);
 
   // "remarcar" e "desmarcar" contêm "marcar" como substring — retornam null para o
   // LLM classificar como reschedule_appointment / cancel_appointment corretamente.
@@ -381,22 +382,25 @@ function matchTreatmentByNormalizedMessage(
     .split(/\s+/)
     .filter((token) => token.length >= 4 && !stopwords.has(token));
 
+  const matches = (treatment: Treatment): boolean => {
+    if (!treatment.keywordMatchEnabled) return false;
+
+    const treatmentName = normalizeFreeText(treatment.name);
+    if (treatmentName === normalized) return true;
+    if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
+    if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
+    if (tokens.some((token) => treatmentName.includes(token))) return true;
+
+    const aliases = treatment.aliases ?? [];
+    return aliases.some((alias) => {
+      const normalizedAlias = normalizeFreeText(alias);
+      return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
+    });
+  };
+
   return (
-    treatments.find((treatment) => {
-      if (!treatment.keywordMatchEnabled) return false;
-
-      const treatmentName = normalizeFreeText(treatment.name);
-      if (treatmentName === normalized) return true;
-      if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
-      if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
-      if (tokens.some((token) => treatmentName.includes(token))) return true;
-
-      const aliases = treatment.aliases ?? [];
-      return aliases.some((alias) => {
-        const normalizedAlias = normalizeFreeText(alias);
-        return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
-      });
-    }) ??
+    treatments.find((t) => matches(t) && t.pipelineSteps !== null) ??
+    treatments.find((t) => matches(t)) ??
     null
   );
 }
@@ -1045,7 +1049,8 @@ export class ConversationOrchestrator {
         return { replied: false };
       }
 
-      // Pipeline photo intercept: foto ou vídeo enviado enquanto pipeline aguarda step "photo" →
+      // Pipeline photo intercept: foto ou vídeo enviado enquanto pipeline aguarda step "photo"
+      // OU enquanto está em Q&A com step de foto adiante (convite já foi feito no Q&A) →
       // retoma automaticamente sem pausar a IA. Doutor já foi notificado acima.
       if (inboundMediaType === "image" || inboundMediaType === "video") {
         const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
@@ -1053,9 +1058,19 @@ export class ConversationOrchestrator {
           const pipelineTreatments = await this.treatmentRepo.listByClinic(clinicId);
           const pipelineTreatment = pipelineTreatments.find(t => t.id === activePipelineState.treatmentId);
           const currentStep = pipelineTreatment?.pipelineSteps?.[activePipelineState.stepIndex];
-          if (currentStep?.type === "photo") {
+          const hasPhotoStepAhead = pipelineTreatment?.pipelineSteps?.some(
+            (step, idx) => idx > activePipelineState.stepIndex && step.type === "photo",
+          ) ?? false;
+          const isPhotoContext = currentStep?.type === "photo" ||
+            (currentStep?.type === "qa" && hasPhotoStepAhead);
+          if (isPhotoContext) {
             await this.stateMachine.markPipelinePhotoReceived(conversation.id);
-            const next = nextActivePipelineStep(pipelineTreatment!.pipelineSteps!, activePipelineState.stepIndex + 1);
+            // Se veio de Q&A, pula o photo step (foto já recebida antes de chegar lá)
+            const next = nextActivePipelineStep(
+              pipelineTreatment!.pipelineSteps!,
+              activePipelineState.stepIndex + 1,
+              { skipOptionalPhoto: currentStep?.type === "qa" },
+            );
             const photoHistory = await this.conversationRepo.listMessages(conversation.id);
             const photoComposed = await this.responseComposer.compose({
               actionResult: { type: "pipeline_photo_received" },
@@ -1989,15 +2004,11 @@ export class ConversationOrchestrator {
 
           if (currentStep?.type === "photo") {
             if (!currentStep.required && pipelineTreatment) {
-              await this.stateMachine.exitTreatmentPipeline(conversation.id);
-              clinicContext = [
-                `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
-                "A etapa opcional de foto já deve ser considerada embutida no Q&A. Não peça foto novamente agora.",
-                "Se o lead já demonstrou interesse, conduza de forma natural para disponibilidade da avaliação.",
-                pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
-                editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
-              ].filter(Boolean).join("\n");
-              replyText = await compose({ type: "general_question", clinicContext });
+              // Lead enviou texto em vez de foto (foto é opcional) → avança para disponibilidade
+              const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
+              if (next) await this.stateMachine.advancePipelineStep(conversation.id, next.index);
+              else await this.stateMachine.exitTreatmentPipeline(conversation.id);
+              // Deixa o fluxo normal de intent assumir a resposta para este turno
               break;
             }
             replyText = currentStep.message;
@@ -2111,6 +2122,40 @@ export class ConversationOrchestrator {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
         } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
           if (menuGeneralSubtype === "procedures") {
+            // Menu item com treatmentKeyword → tenta disparar pipeline do tratamento
+            const menuTreatmentKeyword = menuResolution?.intent === "general_question" && menuResolution.subtype === "procedures"
+              ? menuResolution.treatmentKeyword
+              : undefined;
+            if (menuTreatmentKeyword && !pipelineState) {
+              const keywordNorm = normalizeFreeText(menuTreatmentKeyword);
+              const keywordTreatment = clinicTreatments.find((t) => {
+                const tNorm = normalizeFreeText(t.name);
+                return tNorm.includes(keywordNorm) || keywordNorm.includes(tNorm) ||
+                  (t.aliases ?? []).some((a) => normalizeFreeText(a).includes(keywordNorm));
+              });
+              if (keywordTreatment?.pipelineSteps?.length) {
+                const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0);
+                if (firstActive) {
+                  await this.stateMachine.startTreatmentPipeline(
+                    conversation.id, keywordTreatment.id, keywordTreatment.name, clinic.staleConversationHours * 60,
+                  );
+                  if (firstActive.step.type === "content") {
+                    const parts = buildPipelineContentParts(firstActive.step.blocks);
+                    triggerPartsOverride = parts;
+                    composedParts = parts;
+                    composedMediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
+                    replyText = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
+                    clinicContext = "";
+                    pendingPipelineAdvance = async () => {
+                      const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1);
+                      if (next) await this.stateMachine.advancePipelineStep(conversation.id, next.index);
+                      else await this.stateMachine.exitTreatmentPipeline(conversation.id);
+                    };
+                    break;
+                  }
+                }
+              }
+            }
             const items = clinicTreatments.length > 0
               ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
               : "";
