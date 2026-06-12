@@ -86,7 +86,9 @@ Use "patient_arrived" quando o paciente indica presença física na clínica ou 
 
 REGRA PARA needs_human (PRIORIDADE ALTA — avalie antes de unclear):
 Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou decidir. Exemplos:
-- Mídia/arquivos: "me manda as fotos", "pode enviar o orçamento por escrito", "me manda o comprovante", "quero ver o antes e depois", "me envia o resultado do exame"
+- Documentos/comprovantes clínicos: "pode enviar o orçamento por escrito", "me manda o comprovante", "me envia o resultado do exame"
+- Fotos/vídeos PESSOAIS do resultado do paciente específico: "quero ver o antes e depois do meu caso", "tem foto de como vai ficar no meu sorriso"
+- EXCEÇÃO IMPORTANTE — pedido de fotos/vídeos DOS TRATAMENTOS DA CLÍNICA (material de marketing já disponível): "tem foto das lentes?", "tem vídeo do tratamento?", "pode me mostrar como fica?", "tem algum exemplo de resultado?", "tem foto ou vídeo das lentes?" → NÃO é needs_human → classifique como "general_question" (a IA tem acesso à biblioteca de mídia e pode enviar diretamente)
 - Falar com humano: "quero falar com o dentista", "preciso falar com alguém", "pode me ligar?", "me passa o número do doutor"
 - Negociação/exceção: "preciso de um desconto", "tem como parcelar diferente?", "tenho uma situação especial", "consigo condição especial?"
 - Acordo/troca informal: lead propõe permuta de serviços, menciona combinado anterior com o doutor ou situação negociada fora do fluxo padrão. Exemplos: "a gente combinou que eu faria a tatuagem de vocês e vocês fariam minhas lentes", "o doutor falou que me daria desconto por indicação", "tínhamos combinado antes que você faria X e eu faria Y", "caso queira vir fazer sua tattoo, depois marcamos as lentes" — qualquer proposta de troca ou referência a acordo pessoal com a clínica/doutor.

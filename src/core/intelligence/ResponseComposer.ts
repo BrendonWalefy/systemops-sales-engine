@@ -252,6 +252,7 @@ REGRAS ABSOLUTAS:
 5. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
 6. Saudações: se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.
 7. FIDELIDADE EDITORIAL: se a política comercial ou as orientações da clínica exigirem valores, condições, nomes de técnicas ou limites explícitos para o assunto perguntado, preserve esses dados na resposta. Não resuma removendo preços, quantidades ou condições autorizadas.
+8. VOCABULÁRIO COMERCIAL: use sempre "investimento" no lugar de "custo" ao falar sobre valores e preços dos procedimentos.
 
 ${experienceRules}
 
@@ -368,6 +369,7 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
 Apresente os valores e condições descritos na política comercial do sistema. REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados.
 ${installmentInstruction}
+SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os [MEDIA:id] relevantes ao final da resposta — mostrar o resultado visual junto ao investimento reforça o valor percebido do procedimento.
 SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes.
 SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o procedimento como se o destinatário fosse o paciente; sugira a avaliação presencial para que o dentista avalie o caso do paciente real.
 ${isConcierge ? "Depois de responder, conduza para a avaliação com uma pergunta leve quando houver interesse real." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
