@@ -2396,23 +2396,23 @@ textarea:focus {
 
 .chat-message {
   width: min(78%, 620px);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 18px;
-  background: var(--surface-raised);
+  background: #1c1f2e;
   padding: 17px 20px;
 }
 
 .chat-message.lead {
   align-self: flex-start;
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .chat-message.agent {
   align-self: flex-end;
-  border-color: color-mix(in srgb, var(--text) 8%, transparent);
-  background:
-    linear-gradient(135deg, #17171a, #3a3a3e);
+  border-color: transparent;
+  background: linear-gradient(135deg, #00c896, #00a87a);
   color: #ffffff;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 8px 28px rgba(0, 200, 150, 0.22);
 }
 
 .message-meta {
