@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
-import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
 import { and, eq, desc, inArray, between } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
@@ -10,7 +10,7 @@ import { InboxClient, type ConvRow } from "./InboxClient";
 import { getAppointmentBadgeWindow } from "./inbox-visibility";
 
 export default async function InboxPage() {
-  const clinicId = (await getSessionClinicId()) ?? "";
+  const clinicId = await requireSessionClinicId();
 
   const [clinicRows, rows] = await Promise.all([
     db.select({ autoReplyEnabled: clinics.autoReplyEnabled })

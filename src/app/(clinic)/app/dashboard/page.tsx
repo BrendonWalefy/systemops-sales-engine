@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import type { CSSProperties } from "react";
 import { cookies } from "next/headers";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
-import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { db } from "@/infrastructure/db/client";
 import { leads, conversations, messages, clinicMembers } from "@/infrastructure/db/schema";
 import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
@@ -229,7 +229,7 @@ function chartGeometry(series: FlowPoint[]) {
 }
 
 async function fetchDashboardData() {
-  const CLINIC_ID = (await getSessionClinicId()) ?? "";
+  const CLINIC_ID = await requireSessionClinicId();
   const todayStart = startOfDay(new Date());
   const flowStart = addDays(todayStart, -6);
   const previousStart = addDays(flowStart, -7);

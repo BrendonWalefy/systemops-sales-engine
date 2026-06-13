@@ -442,7 +442,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Dados da clínica (timezone, nome, businessHours, menuItems, address) ──
-    const clinicLookupId = body.clinicId ?? (await getSessionClinicId()) ?? "";
+    const clinicLookupId = body.clinicId ?? (await getSessionClinicId());
+    if (!clinicLookupId) return NextResponse.json({ error: "clinicId required" }, { status: 400 });
     const clinic = await db
       .select({
         name: clinics.name,
