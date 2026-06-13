@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import "./agenda-calendar.css";
-import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { redirect } from "next/navigation";
 import { AgendaClient } from "./AgendaClient";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 
@@ -11,7 +12,8 @@ export default async function AgendaPage({
   searchParams?: Promise<Record<string, string>>;
 }) {
   const params = await searchParams;
-  const clinicId = await requireSessionClinicId();
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) redirect("/login");
   const professionals = await new DrizzleProfessionalRepository().listByClinic(clinicId);
 
   const now = new Date();
