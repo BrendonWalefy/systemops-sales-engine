@@ -1931,7 +1931,10 @@ export class ConversationOrchestrator {
 
       // ── Preço ──
       case "price_inquiry": {
-        replyText = await compose({ type: "price_inquiry" });
+        replyText = await compose({
+          type: "price_inquiry",
+          identifiedTreatment: classification.slotPreference.identifiedTreatment ?? null,
+        });
         break;
       }
 

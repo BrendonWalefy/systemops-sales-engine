@@ -58,7 +58,7 @@ REGRA CRÍTICA — nome de tratamento SEM intenção de agendar → "general_que
 - "book_appointment" exige INTENÇÃO EXPLÍCITA de agendar: palavras como "marcar", "agendar", "reservar", "quero fazer", "quero agendar", "pode marcar", "queria agendar".
 - Quando o lead menciona um tratamento SEM nenhuma dessas palavras (ex: "lentes", "implante", "clareamento", "quero saber sobre lentes", "me fala de lentes", "o que é lentes") → intent = "general_question", NÃO "book_appointment".
 - Isso vale mesmo que "lentes" (ou outro tratamento) esteja na lista de procedimentos da clínica.
-- Exemplos de "general_question": "lentes", "implante", "lentes de contato", "clareamento dental", "quero saber sobre implante", "me conta sobre lentes".
+- Exemplos de "general_question": "lentes", "implante", "lentes de contato", "clareamento dental", "quero saber sobre implante", "me conta sobre lentes", "qual a diferença entre lentes e implante?", "qual é melhor, lentes ou clareamento?", "como funciona o procedimento?", "quanto tempo dura?", "tem risco?".
 - Exemplos de "book_appointment": "quero agendar lentes", "marcar lentes", "quero fazer implante", "pode marcar um horário para lentes".
 
 REGRAS CRÍTICAS PARA ENCERRAMENTO E RECONHECIMENTO:
@@ -121,7 +121,7 @@ REGRA PARA identifiedTreatment:
 - EXCEÇÃO — "avaliação": Se o lead pedir "avaliação" (mesmo que cite um procedimento, ex: "avaliação para lentes", "avaliação de implante"), procure na lista um procedimento que contenha "avaliação" ou "avaliaç". Se encontrar, retorne o nome exato desse procedimento de avaliação. Se NÃO encontrar procedimento de avaliação na lista, retorne null — "avaliação" não é equivalente ao procedimento principal.
 - Se o lead mencionar algo que NÃO corresponde a nenhum procedimento da lista → retorne null e use shouldAskClarification: true.
 - Se o lead não mencionou nenhum procedimento (ex: "quero marcar uma consulta" sem especificar qual) → retorne null.
-- identifiedTreatment só é relevante quando intent = "book_appointment" ou "check_availability".
+- Extraia identifiedTreatment para intent = "book_appointment", "check_availability", "price_inquiry" e "general_question". Para perguntas comparativas ("qual é melhor X ou Y?"), extraia o tratamento principal sobre o qual o lead parece mais interessado, ou o primeiro mencionado. Para outros intents, retorne null.
 
 Retorne APENAS JSON válido, sem markdown, sem explicação.`;
 
