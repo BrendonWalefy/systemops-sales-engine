@@ -20,7 +20,7 @@ describe("Conversation experience routing", () => {
   });
 
   it("concierge menu labels are patient-intent oriented", () => {
-    expect(CONCIERGE_MENU_ITEMS[0]?.label).toContain("Transformar");
+    expect(CONCIERGE_MENU_ITEMS[0]?.label).toContain("serviços");
     expect(DEFAULT_MENU_ITEMS[0]?.label).toBe("Procedimentos");
   });
 });

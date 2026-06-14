@@ -124,12 +124,12 @@ describe("price_inquiry — compra para terceiro (cenário Karen)", () => {
   it("action context inclui instrução para compra para terceiro", () => {
     const ctx = buildActionContext({ type: "price_inquiry" }, "concierge");
     expect(ctx).toContain("COMPRANDO PARA OUTRA PESSOA");
-    expect(ctx).toContain("avaliação presencial");
+    expect(ctx).toContain("visita presencial");
   });
 
-  it("action context instrui a falar do procedimento como se destinatário fosse o paciente", () => {
+  it("action context instrui a falar do procedimento como se destinatário fosse o cliente", () => {
     const ctx = buildActionContext({ type: "price_inquiry" }, "menu_first");
-    expect(ctx).toContain("destinatário fosse o paciente");
+    expect(ctx).toContain("destinatário fosse o cliente");
   });
 });
 

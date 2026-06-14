@@ -156,15 +156,12 @@ function shouldSendConciergeStarter(experience: ConversationExperience, intent: 
 function buildConciergeStarter(clinic: Clinic, timezone: ClinicTimezone, leadName?: string | null): string {
   const salutation = getDayGreeting(timezone);
   const nameGreeting = leadName ? `, ${leadName}` : "";
-  const specialtyHint = clinic.specialty.toLowerCase().includes("estética")
-    ? "lentes, avaliação, valores ou algum tratamento específico"
-    : "avaliação, valores ou algum tratamento específico";
   const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage);
   const intro = receptionistName
     ? `Sou a ${receptionistName}, assistente virtual da ${clinic.name}.`
     : `Sou a assistente virtual da ${clinic.name}.`;
 
-  return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: ${specialtyHint}?`;
+  return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?`;
 }
 
 function isMenuRerequest(message: string): boolean {
@@ -232,7 +229,7 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
     return { intent: "price_inquiry" };
   if (n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
     return { intent: "general_question", subtype: "location" };
-  if (n.includes("especialista") || n.includes("dentista") || n.includes("doutor") || n === "dr")
+  if (n.includes("especialista") || n.includes("dentista") || n.includes("doutor") || n.includes("medico") || n.includes("medica") || n === "dr")
     return { intent: "needs_human" };
 
   return null;
@@ -291,7 +288,7 @@ function isUrgencyRequestText(normalized: string): boolean {
 }
 
 function isHumanRequestText(normalized: string): boolean {
-  return hasAnyKeyword(normalized, ["dentista", "doutor", "atendente", "humano", "ligar", "desconto", "especial"]);
+  return hasAnyKeyword(normalized, ["dentista", "doutor", "medico", "medica", "veterinario", "especialista", "atendente", "humano", "ligar", "desconto", "especial"]);
 }
 
 function isPeriodPreferenceText(normalized: string): boolean {
@@ -588,22 +585,24 @@ ${rows.join("\n")}
 Se o lead pedir faixa não listada, indique a mais próxima. NUNCA diga "+ taxa" — a taxa já está nos valores acima.`;
 }
 
-// Tratamentos estéticos visíveis onde o contexto visual do sorriso ajuda a
-// personalizar a resposta. Chave: nome normalizado do tratamento.
-const AESTHETIC_TREATMENT_KEYWORDS = [
+// Keywords padrão para segmentos de saúde/estética onde enviar uma foto ajuda a personalizar a resposta.
+// Clínicas de outros segmentos podem sobrescrever via Treatment.isAesthetic = true (campo no banco).
+const DEFAULT_AESTHETIC_TREATMENT_KEYWORDS = [
   "lente", "faceta", "clareamento", "harmonização", "harmonizacao",
   "gengivoplastia", "botox", "sorriso",
+  "coloracao", "coloração", "mechas", "penteado",
 ];
 
-export function isAestheticTreatment(treatmentName: string): boolean {
+export function isAestheticTreatment(treatmentName: string, extraKeywords?: string[]): boolean {
   const normalized = treatmentName.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  return AESTHETIC_TREATMENT_KEYWORDS.some((kw) => normalized.includes(kw));
+  const keywords = extraKeywords?.length ? extraKeywords : DEFAULT_AESTHETIC_TREATMENT_KEYWORDS;
+  return keywords.some((kw) => normalized.includes(kw));
 }
 
-// Instrução de convite à foto — posicionada como benefício ao paciente, nunca obrigatória.
-// Usada apenas em modo concierge e apenas para tratamentos estéticos visuais.
+// Instrução de convite à foto — posicionada como benefício ao cliente, nunca obrigatória.
+// Usada apenas em modo concierge e apenas para serviços estéticos visuais.
 function buildPhotoInviteInstruction(): string {
-  return `SE O LEAD AINDA NÃO ENVIOU FOTO DO SORRISO e demonstrou interesse neste procedimento: se fizer sentido depois de esclarecer a dúvida principal, convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Se quiser, e só se se sentir à vontade, você pode me mandar uma foto do seu sorriso. Assim consigo te passar uma orientação mais personalizada de como poderia ficar 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use linguagem leve como "se quiser" ou "se se sentir à vontade"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita; (4) NÃO misture o convite da foto com pergunta de agenda no mesmo turno.`;
+  return `SE O LEAD AINDA NÃO ENVIOU FOTO e demonstrou interesse neste serviço: se fizer sentido depois de esclarecer a dúvida principal, convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Se quiser, e só se se sentir à vontade, você pode me mandar uma foto. Assim consigo te passar uma orientação mais personalizada de como poderia ficar 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use linguagem leve como "se quiser" ou "se se sentir à vontade"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita; (4) NÃO misture o convite da foto com pergunta de agenda no mesmo turno.`;
 }
 
 // Extrai o bloco "FORMATO OBRIGATÓRIO" das notas para entrega determinística.
@@ -1396,6 +1395,7 @@ export class ConversationOrchestrator {
           allMessagesForContext,
           hasPendingOffer,
           clinicTreatments.map((t) => t.name),
+          editorial?.specialty ?? clinic.specialty,
         );
 
     const { intent, slotPreference } = classification;

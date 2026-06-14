@@ -98,7 +98,7 @@ async function composeRecoveryMessage(leadName: string | null, convId: string): 
     .map((m) => `${m.author === "lead" ? "LEAD" : "CLÍNICA"}: ${m.body?.slice(0, 200)}`)
     .join("\n");
 
-  const prompt = `Você é ${receptionistName}, recepcionista virtual da ${clinic.name}, uma clínica especializada em ${editorial?.specialty ?? "odontologia estética"}.
+  const prompt = `Você é ${receptionistName}, recepcionista virtual da ${clinic!.name}, uma clínica especializada em ${editorial?.specialty ?? "nosso serviço"}.
 
 HISTÓRICO DA CONVERSA:
 ${historyText}

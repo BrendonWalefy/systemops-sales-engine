@@ -7,7 +7,7 @@ describe("ResponseComposer — conversation experience", () => {
 
     expect(ctx).not.toContain("digitar *menu*");
     expect(ctx).not.toContain("digite menu");
-    expect(ctx).toContain("conduza ativamente para a avaliação");
+    expect(ctx).toContain("conduza ativamente para o próximo passo");
   });
 
   it("general question context does not reoffer menu for clear questions", () => {

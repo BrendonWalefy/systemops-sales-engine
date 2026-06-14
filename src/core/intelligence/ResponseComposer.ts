@@ -237,7 +237,7 @@ function buildSystemPrompt(input: ComposerInput): string {
     ? `MODO DE EXPERIÊNCIA: concierge.
 - Responda primeiro ao que o lead escreveu; menu é fallback, não ponto de partida.
 - Não encerre com "digite menu" ou variações, a menos que o lead tenha pedido o menu.
-- Se o lead perguntou preço, pagamento, lentes ou tratamento, responda a dúvida e conduza para avaliação apenas quando fizer sentido.
+- Se o lead perguntou preço, pagamento ou serviço, responda a dúvida e conduza para o próximo passo apenas quando fizer sentido.
 - Máximo 1 pergunta no final. A pergunta deve ter objetivo claro.`
     : `MODO DE EXPERIÊNCIA: menu-first.
 - O menu pode ser usado para saudações genéricas, pedidos de menu ou entradas confusas.
@@ -245,7 +245,7 @@ function buildSystemPrompt(input: ComposerInput): string {
 - Não repita o menu depois de responder preço, pagamento, endereço ou tratamento.
 - Máximo 1 pergunta no final.`;
 
-  return `Você é a ${clinic.receptionistName ?? "Mariana"}, recepcionista virtual da ${clinic.name}, uma clínica de ${clinic.specialty}.
+  return `Você é a ${clinic.receptionistName ?? "Marina"}, recepcionista virtual da ${clinic.name}, uma clínica de ${clinic.specialty}.
 
 IDENTIDADE:
 - Tom de voz: ${clinic.toneOfVoice ?? "informal e acolhedor"}
@@ -383,8 +383,8 @@ Apresente os valores e condições descritos na política comercial do sistema. 
 ${installmentInstruction}
 ${treatmentMediaInstruction}
 SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes.
-SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o procedimento como se o destinatário fosse o paciente; sugira a avaliação presencial para que o dentista avalie o caso do paciente real.
-${isConcierge ? "Depois de responder o investimento, conduza ativamente para a avaliação — não espere o lead pedir. Exemplo: 'O Dr. Gregorie tem agenda disponível essa semana — posso verificar os horários para você?'" : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
+SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o serviço como se o destinatário fosse o cliente; sugira uma visita presencial para que a equipe avalie o caso da pessoa real.
+${isConcierge ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Exemplo: 'Nossa equipe tem agenda disponível essa semana — posso verificar os horários para você?'" : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
     }
 
 case "general_question":
@@ -466,7 +466,7 @@ ${recebido}! Informe acolhedoramente que ${artigo} foi recebido(a) e que o espec
     }
 
     case "pipeline_photo_received":
-      return `AÇÃO EXECUTADA: Lead enviou foto do sorriso durante o pipeline de avaliação.
+      return `AÇÃO EXECUTADA: Lead enviou foto durante o pipeline de avaliação.
 Acuse o recebimento da foto de forma calorosa e breve (1 frase). Em seguida, de forma natural, pergunte sobre a disponibilidade do lead para a avaliação presencial. Máximo 2 frases no total. NÃO peça mais fotos. NÃO dê diagnóstico. NÃO mencione que a foto será analisada antes — apenas siga para o próximo passo com naturalidade.`;
 
     case "video_sent_followup":
@@ -480,8 +480,8 @@ REGRAS OBRIGATÓRIAS:
 5. Termine com uma pergunta simples e direta que o lead possa responder com uma palavra (ex: "quer que eu verifique?").
 6. Não use emojis.
 Exemplos de tom:
-- "Oi! Conseguiu dar uma olhada no vídeo? O Dr. Gregorie tem horários essa semana — quer que eu verifique um para você?"
-- "Passou a ver o vídeo sobre as lentes? Ainda temos agenda disponível para avaliação — posso checar o horário que fica melhor para você."`;
+- "Oi! Conseguiu dar uma olhada no vídeo? Temos horários disponíveis essa semana — quer que eu verifique um para você?"
+- "Passou a ver o vídeo? Ainda temos agenda disponível — posso checar o horário que fica melhor para você."`;
 
     case "appointment_reminder":
       return `AÇÃO EXECUTADA: Lembrete de consulta agendada para amanhã.

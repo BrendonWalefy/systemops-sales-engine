@@ -97,7 +97,7 @@ describe("buildSelectedTreatmentContext — photo hook (concierge + estético)",
 
   it("inclui convite à foto para tratamento estético em modo concierge", () => {
     const ctx = buildSelectedTreatmentContext(lentes, policy, "concierge");
-    expect(ctx).toContain("foto do seu sorriso");
+    expect(ctx).toContain("NÃO ENVIOU FOTO");
     expect(ctx).toContain("se sentir à vontade");
   });
 
@@ -125,12 +125,12 @@ describe("buildSelectedTreatmentContext — photo hook (concierge + estético)",
 
   it("NÃO inclui photo hook para tratamento não-estético (canal) mesmo em concierge", () => {
     const ctx = buildSelectedTreatmentContext(canal, null, "concierge");
-    expect(ctx).not.toContain("foto do seu sorriso");
+    expect(ctx).not.toContain("NÃO ENVIOU FOTO");
   });
 
   it("NÃO inclui photo hook em modo menu_first (só concierge)", () => {
     const ctx = buildSelectedTreatmentContext(lentes, policy, "menu_first");
-    expect(ctx).not.toContain("foto do seu sorriso");
+    expect(ctx).not.toContain("NÃO ENVIOU FOTO");
   });
 
   it("em menu_first ainda menciona o comando *menu* para voltar", () => {
@@ -152,18 +152,18 @@ describe("buildDirectTreatmentContext — photo hook (concierge + estético)", (
 
   it("inclui convite à foto para tratamento estético direto em concierge", () => {
     const ctx = buildDirectTreatmentContext(clareamento, null, "concierge");
-    expect(ctx).toContain("foto do seu sorriso");
+    expect(ctx).toContain("NÃO ENVIOU FOTO");
     expect(ctx).toContain("se sentir à vontade");
   });
 
   it("NÃO inclui photo hook para implante (não-estético) em concierge", () => {
     const ctx = buildDirectTreatmentContext(implante, null, "concierge");
-    expect(ctx).not.toContain("foto do seu sorriso");
+    expect(ctx).not.toContain("NÃO ENVIOU FOTO");
   });
 
   it("NÃO inclui photo hook em menu_first mesmo para tratamento estético", () => {
     const ctx = buildDirectTreatmentContext(clareamento, null, "menu_first");
-    expect(ctx).not.toContain("foto do seu sorriso");
+    expect(ctx).not.toContain("NÃO ENVIOU FOTO");
   });
 });
 

@@ -26,8 +26,8 @@ export const DEFAULT_MENU_ITEMS: MenuItem[] = [
 ];
 
 export const CONCIERGE_MENU_ITEMS: MenuItem[] = [
-  { number: 1, label: "Transformar meu sorriso / lentes", intent: "procedures", treatmentKeyword: "lentes", enabled: true },
-  { number: 2, label: "Agendar avaliação", intent: "book_appointment", enabled: true },
+  { number: 1, label: "Conhecer nossos serviços", intent: "procedures", enabled: true },
+  { number: 2, label: "Agendar horário", intent: "book_appointment", enabled: true },
   { number: 3, label: "Valores e formas de pagamento", intent: "price_inquiry", enabled: true },
   { number: 4, label: "Endereço e horários", intent: "location", enabled: true },
   { number: 5, label: "Falar com a equipe", intent: "needs_human", enabled: true },
