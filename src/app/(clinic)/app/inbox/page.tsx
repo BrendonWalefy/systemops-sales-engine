@@ -4,7 +4,7 @@ import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
 import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
-import { and, eq, desc, inArray, between } from "drizzle-orm";
+import { and, eq, desc, inArray, between, isNotNull, lt } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
@@ -27,6 +27,7 @@ export default async function InboxPage() {
         needsAttention: conversations.needsAttention,
         attentionReason: conversations.attentionReason,
         aiPaused: conversations.aiPaused,
+        takeoverExpiresAt: conversations.takeoverExpiresAt,
         lastReadAt: conversations.lastReadAt,
         leadName: leads.name,
         leadPhone: leads.phone,
@@ -85,9 +86,13 @@ export default async function InboxPage() {
     }
   }
 
+  const now = new Date();
   const allRows: ConvRow[] = rows.map((r) => ({
     ...r,
     appointmentStartsAt: appointmentMap[r.leadId] ?? null,
+    hoursWaiting: r.lastMessageAt
+      ? (now.getTime() - new Date(r.lastMessageAt).getTime()) / 3_600_000
+      : 0,
   }));
 
   return (

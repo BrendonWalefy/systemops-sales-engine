@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Search, Inbox } from "lucide-react";
+import { Search, Inbox, RefreshCw, Send, X } from "lucide-react";
+import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recovery-actions";
 import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
 import { tempKey, tempLabel, avatarColor, relativeTime } from "./inbox-utils";
@@ -15,6 +16,7 @@ export type ConvRow = {
   needsAttention: boolean;
   attentionReason: string | null;
   aiPaused: boolean;
+  takeoverExpiresAt?: Date | null;
   leadName: string | null;
   leadPhone: string | null;
   leadStatus: string;
@@ -22,9 +24,333 @@ export type ConvRow = {
   leadTreatmentInterest: string | null;
   leadProfilePicUrl: string | null;
   appointmentStartsAt?: Date | null;
+  hoursWaiting?: number;
 };
 
 const PIPELINE_STEPS = ["Novo", "Qualific.", "Proposta", "Agendar", "Fechado"] as const;
+
+const RECOVERY_WAIT_HOURS = 2;
+
+function isRecoveryCandidate(
+  row: ConvRow,
+  lastMsg: { author: string } | undefined,
+): boolean {
+  if (row.leadStatus === "lost" || row.leadStatus === "won") return false;
+  const hours = row.hoursWaiting ?? 0;
+  // Takeover expirado mas cron ainda não rodou (até 1h de gap)
+  if (row.aiPaused && row.takeoverExpiresAt && new Date(row.takeoverExpiresAt) < new Date()) return true;
+  // IA ativa mas lead esperando 2h+ sem resposta do agente
+  if (!row.aiPaused && lastMsg?.author === "lead" && hours >= RECOVERY_WAIT_HOURS) return true;
+  return false;
+}
+
+function formatWaitTime(hours: number): string {
+  if (hours < 1) return "< 1h";
+  if (hours < 24) return `${Math.floor(hours)}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function RecoveryModal({
+  row,
+  lastMsg,
+  onClose,
+}: {
+  row: ConvRow;
+  lastMsg: { body: string; author: string };
+  onClose: () => void;
+}) {
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const displayName = row.leadName ?? row.leadPhone ?? "Lead";
+
+  function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    startTransition(async () => {
+      const result = await composeRecoveryMessageAction(row.convId);
+      setLoading(false);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setMessage(result.message ?? "");
+      }
+    });
+  }
+
+  function handleSend() {
+    if (!message.trim()) return;
+    setSending(true);
+    setError(null);
+    startTransition(async () => {
+      const result = await sendRecoveryMessageAction(row.convId, message.trim());
+      setSending(false);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setSent(true);
+        setTimeout(onClose, 1200);
+      }
+    });
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          width: "100%",
+          maxWidth: 480,
+          padding: 24,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>
+              Retomada — {displayName}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+              Esperando há {formatWaitTime(row.hoursWaiting ?? 0)} · última msg: &ldquo;{lastMsg.body.slice(0, 60)}{lastMsg.body.length > 60 ? "…" : ""}&rdquo;
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "var(--muted)" }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {!message && !loading && (
+          <button
+            onClick={handleGenerate}
+            style={{
+              background: "var(--surface-raised)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "10px 16px",
+              cursor: "pointer",
+              fontSize: 13,
+              color: "var(--text)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <RefreshCw size={14} />
+            Gerar mensagem com IA
+          </button>
+        )}
+
+        {loading && (
+          <div style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "12px 0" }}>
+            Gerando mensagem…
+          </div>
+        )}
+
+        {message && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+              MENSAGEM (edite se necessário)
+            </label>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={4}
+              style={{
+                background: "var(--surface-raised)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: "10px 12px",
+                color: "var(--text)",
+                fontSize: 14,
+                resize: "vertical",
+                fontFamily: "inherit",
+                lineHeight: 1.5,
+              }}
+            />
+            <button
+              onClick={handleGenerate}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontSize: 12,
+                color: "var(--muted)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: 0,
+                alignSelf: "flex-start",
+              }}
+            >
+              <RefreshCw size={12} />
+              Gerar novamente
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ fontSize: 12, color: "#ef4444", padding: "8px 12px", background: "rgba(239,68,68,0.08)", borderRadius: 6 }}>
+            {error}
+          </div>
+        )}
+
+        {sent && (
+          <div style={{ fontSize: 13, color: "#10b981", textAlign: "center", fontWeight: 600 }}>
+            Mensagem enviada ✓
+          </div>
+        )}
+
+        {message && !sent && (
+          <button
+            onClick={handleSend}
+            disabled={sending || !message.trim()}
+            style={{
+              background: "#059669",
+              border: "none",
+              borderRadius: 8,
+              padding: "11px 16px",
+              cursor: sending ? "not-allowed" : "pointer",
+              fontSize: 14,
+              fontWeight: 600,
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              opacity: sending ? 0.6 : 1,
+            }}
+          >
+            <Send size={14} />
+            {sending ? "Enviando…" : "Enviar"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecoveryCard({
+  row,
+  lastMsg,
+}: {
+  row: ConvRow;
+  lastMsg: { body: string; author: string };
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const displayName = row.leadName ?? row.leadPhone ?? "Lead";
+  const accentColor = avatarColor(row.leadTemperature);
+  const initial = displayName[0]?.toUpperCase() ?? "?";
+  const hours = row.hoursWaiting ?? 0;
+  const waitLabel = formatWaitTime(hours);
+  const reason = row.aiPaused ? "Takeover expirado" : `Sem resposta há ${waitLabel}`;
+
+  return (
+    <>
+      {modalOpen && (
+        <RecoveryModal
+          row={row}
+          lastMsg={lastMsg}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+      <div
+        className="inbox-card-v2"
+        style={{ borderLeft: "3px solid #f59e0b" }}
+      >
+        <div className="inbox-card-v2-top">
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b" }}>{reason}</span>
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+            {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
+          </span>
+        </div>
+
+        <div className="inbox-card-v2-body">
+          <div
+            className="avatar-v2"
+            style={{
+              background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
+              borderColor: accentColor,
+              color: accentColor,
+            }}
+          >
+            {initial}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {displayName}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {lastMsg.body ? `"${lastMsg.body.slice(0, 48)}${lastMsg.body.length > 48 ? "…" : ""}"` : "Sem mensagens"}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <Link
+            href={`/app/inbox/${row.convId}`}
+            style={{
+              flex: 1,
+              textAlign: "center",
+              padding: "7px 0",
+              background: "var(--surface-raised)",
+              border: "1px solid var(--border)",
+              borderRadius: 7,
+              fontSize: 12,
+              color: "var(--text)",
+              textDecoration: "none",
+            }}
+          >
+            Ver conversa
+          </Link>
+          <button
+            onClick={() => setModalOpen(true)}
+            style={{
+              flex: 1,
+              padding: "7px 0",
+              background: "#059669",
+              border: "none",
+              borderRadius: 7,
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#fff",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <Send size={12} />
+            Enviar retomada
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
 
 function pipelineIndex(status: string): number {
   if (status === "new") return 0;
@@ -190,12 +516,13 @@ function InboxCard({
   );
 }
 
-function segmentRows(rows: ConvRow[]) {
-  const handoff = rows.filter((r) => r.aiPaused && r.needsAttention);
-  const active  = rows.filter((r) => !r.aiPaused && r.leadStatus !== "lost" && r.leadStatus !== "won");
-  const paused  = rows.filter((r) => r.aiPaused && !r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won");
-  const closed  = rows.filter((r) => r.leadStatus === "won" || r.leadStatus === "lost");
-  return { handoff, active, paused, closed };
+function segmentRows(rows: ConvRow[], lastMsgMap: Record<string, { body: string; author: string }>) {
+  const handoff  = rows.filter((r) => r.aiPaused && r.needsAttention);
+  const active   = rows.filter((r) => !r.aiPaused && r.leadStatus !== "lost" && r.leadStatus !== "won");
+  const paused   = rows.filter((r) => r.aiPaused && !r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won");
+  const closed   = rows.filter((r) => r.leadStatus === "won" || r.leadStatus === "lost");
+  const recovery = rows.filter((r) => isRecoveryCandidate(r, lastMsgMap[r.convId]));
+  return { handoff, active, paused, closed, recovery };
 }
 
 export function InboxClient({
@@ -208,9 +535,9 @@ export function InboxClient({
   autoReplyEnabled: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<LiveInboxTabFilter>("all");
+  const [tab, setTab] = useState<LiveInboxTabFilter | "recovery">("all");
 
-  const { handoff, active, paused, closed } = segmentRows(rows);
+  const { handoff, active, paused, closed, recovery } = segmentRows(rows, lastMsgMap);
   const allLive = [...handoff, ...active, ...paused];
   const totalActive = handoff.length + active.length;
   const totalAll = allLive.length + closed.length;
@@ -232,17 +559,18 @@ export function InboxClient({
     );
   }
 
-  const TABS: { key: LiveInboxTabFilter; label: string; count: number }[] = [
-    { key: "all",       label: "Todas",      count: allLive.length },
-    { key: "hot",       label: "Quentes",    count: allLive.filter((r) => r.leadTemperature === "hot").length },
-    { key: "attention", label: "Atenção",    count: allLive.filter((r) => r.needsAttention).length },
-    { key: "paused",    label: "Pausados",   count: paused.length },
-    { key: "cold",      label: "Resfriadas", count: allLive.filter((r) => r.leadTemperature === "cold").length },
+  const TABS: { key: LiveInboxTabFilter | "recovery"; label: string; count: number }[] = [
+    { key: "all",       label: "Todas",       count: allLive.length },
+    { key: "hot",       label: "Quentes",     count: allLive.filter((r) => r.leadTemperature === "hot").length },
+    { key: "attention", label: "Atenção",     count: allLive.filter((r) => r.needsAttention).length },
+    { key: "paused",    label: "Pausados",    count: paused.length },
+    { key: "cold",      label: "Resfriadas",  count: allLive.filter((r) => r.leadTemperature === "cold").length },
+    { key: "recovery",  label: "Recuperação", count: recovery.length },
   ];
 
-  const baseRows = filterLiveRowsByTab(allLive, tab);
-
-  const sortedRows = sortInboxRowsByRecency(filterBySearch(baseRows, search));
+  const isRecoveryTab = tab === "recovery";
+  const baseRows = isRecoveryTab ? [] : filterLiveRowsByTab(allLive, tab as LiveInboxTabFilter);
+  const sortedRows = isRecoveryTab ? [] : sortInboxRowsByRecency(filterBySearch(baseRows, search));
 
   return (
     <>
@@ -294,7 +622,30 @@ export function InboxClient({
       </div>
 
       <div className="inbox-content">
-        {sortedRows.length === 0 ? (
+        {isRecoveryTab ? (
+          recovery.length === 0 ? (
+            <div className="empty-state">
+              <RefreshCw
+                size={28}
+                style={{ margin: "0 auto 12px", display: "block", opacity: 0.3 }}
+              />
+              <p style={{ margin: 0 }}>Nenhum lead precisa de recuperação.</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12 }}>
+                Leads sem resposta há 2h+ ou com takeover expirado aparecem aqui.
+              </p>
+            </div>
+          ) : (
+            <div className="conversation-grid">
+              {recovery.map((row) => (
+                <RecoveryCard
+                  key={row.convId}
+                  row={row}
+                  lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "" }}
+                />
+              ))}
+            </div>
+          )
+        ) : sortedRows.length === 0 ? (
           <div className="empty-state">
             <Search
               size={28}
