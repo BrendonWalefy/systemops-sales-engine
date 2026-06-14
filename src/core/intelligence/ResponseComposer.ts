@@ -33,7 +33,7 @@ export type ActionResult =
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
   | { type: "handoff_requested"; handoffReason?: string | null }
-  | { type: "price_inquiry" }
+  | { type: "price_inquiry"; identifiedTreatment?: string | null }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
   | { type: "acknowledgment" }
@@ -375,13 +375,16 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       const installmentInstruction = installmentTable
         ? `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO: use a TABELA DE PARCELAMENTO abaixo — os valores já incluem a taxa da operadora, apresente-os diretamente sem mencionar taxa adicional.\n${installmentTable}`
         : `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO (ex: "12x quanto fica?", "parcela em quantas vezes?"): calcule a parcela base (valor ÷ número de parcelas), apresente como "Nx de R$X — a taxa da maquininha fica com a operadora, não entra no valor da clínica 😊". NÃO invente uma porcentagem de taxa.`;
-      return `AÇÃO EXECUTADA: Lead perguntou sobre preço.
+      const treatmentMediaInstruction = result.identifiedTreatment
+        ? `VÍDEOS PARA ESTE PROCEDIMENTO: se a Biblioteca de Mídia contiver vídeos relacionados a "${result.identifiedTreatment}", inclua TODOS os [MEDIA:id] correspondentes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido e aumenta a conversão. Coloque os [MEDIA:id] antes do próximo passo.`
+        : `SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os [MEDIA:id] relevantes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido do procedimento.`;
+      return `AÇÃO EXECUTADA: Lead perguntou sobre preço${result.identifiedTreatment ? ` de "${result.identifiedTreatment}"` : ""}.
 Apresente os valores e condições descritos na política comercial do sistema. REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados.
 ${installmentInstruction}
-SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os [MEDIA:id] relevantes ao final da resposta — mostrar o resultado visual junto ao investimento reforça o valor percebido do procedimento.
+${treatmentMediaInstruction}
 SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes.
 SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o procedimento como se o destinatário fosse o paciente; sugira a avaliação presencial para que o dentista avalie o caso do paciente real.
-${isConcierge ? "Depois de responder, conduza para a avaliação com uma pergunta leve quando houver interesse real." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
+${isConcierge ? "Depois de responder o investimento, conduza ativamente para a avaliação — não espere o lead pedir. Exemplo: 'O Dr. Gregorie tem agenda disponível essa semana — posso verificar os horários para você?'" : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
     }
 
 case "general_question":
@@ -389,6 +392,7 @@ case "general_question":
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
+MÍDIA CONTEXTUAL: se a Biblioteca de Mídia contiver vídeos ou fotos diretamente relacionados ao assunto desta pergunta, inclua os [MEDIA:id] correspondentes no momento certo da resposta — depois de explicar o procedimento e antes de qualquer pergunta de qualificação. NÃO agrupe todas as mídias no final se o playbook indicar um posicionamento específico.
 Responda de forma informativa e acolhedora. ${isConcierge ? "Só conduza para avaliação após cumprir eventuais passos do playbook ou quando não houver sequência definida para o assunto." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
@@ -467,15 +471,18 @@ ${recebido}! Informe acolhedoramente que ${artigo} foi recebido(a) e que o espec
 Acuse o recebimento da foto de forma calorosa e breve (1 frase). Em seguida, de forma natural, pergunte sobre a disponibilidade do lead para a avaliação presencial. Máximo 2 frases no total. NÃO peça mais fotos. NÃO dê diagnóstico. NÃO mencione que a foto será analisada antes — apenas siga para o próximo passo com naturalidade.`;
 
     case "video_sent_followup":
-      return `AÇÃO EXECUTADA: Re-engajamento específico para lead que recebeu um vídeo e não respondeu.
+      return `AÇÃO EXECUTADA: Re-engajamento para lead que recebeu vídeo e não respondeu.
 VÍDEO ENVIADO: ${result.videoTitle}
 REGRAS OBRIGATÓRIAS:
 1. Não mencione que é uma mensagem automática.
-2. Seja breve, caloroso e curiosa — máximo 2 frases.
-3. Pergunte o que o lead achou do vídeo de forma natural.
-4. Ofereça verificar horários disponíveis para o lead conhecer pessoalmente o resultado.
-5. Não use emojis. Escreva em prosa, como se estivesse falando.
-Exemplo de tom: "Oi! Conseguiu ver o vídeo sobre as lentes? O Dr. Gregorie tem horários disponíveis essa semana — posso verificar um para você."`;
+2. Máximo 2 frases curtas. Prosa natural, sem listas.
+3. Mencione o vídeo pelo assunto (não pelo título técnico) de forma casual.
+4. Crie senso de oportunidade: mencione que há agenda disponível essa semana sem soar pressivo — o lead deve sentir que é um bom momento, não que está sendo empurrado.
+5. Termine com uma pergunta simples e direta que o lead possa responder com uma palavra (ex: "quer que eu verifique?").
+6. Não use emojis.
+Exemplos de tom:
+- "Oi! Conseguiu dar uma olhada no vídeo? O Dr. Gregorie tem horários essa semana — quer que eu verifique um para você?"
+- "Passou a ver o vídeo sobre as lentes? Ainda temos agenda disponível para avaliação — posso checar o horário que fica melhor para você."`;
 
     case "appointment_reminder":
       return `AÇÃO EXECUTADA: Lembrete de consulta agendada para amanhã.
