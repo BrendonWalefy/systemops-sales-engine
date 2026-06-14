@@ -54,6 +54,14 @@ if (!webhookUrl) {
 
 const waitMs = parseInt(process.env.E2E_WAIT_MS ?? "12000", 10);
 
+// Gera telefone E2E puro em dígitos com prefixo inválido (55 + área 00000).
+// normalizeWhatsAppPhone() extrai só dígitos, então o phone do payload precisa
+// ser dígito-only para coincidir com o que é armazenado no banco.
+function makeE2ePhone(suffix: number): string {
+  const ts = suffix.toString().slice(-7).padStart(7, "0");
+  return `5500000${ts}`; // 14 dígitos — prefixo 5500000 nunca é número real
+}
+
 // ── DB ────────────────────────────────────────────────────────────────────────
 
 const connectionString = process.env.DATABASE_URL;
@@ -200,7 +208,7 @@ async function cleanupE2eLeads(): Promise<void> {
   const e2eLeads = await db
     .select({ id: leads.id, phone: leads.phone })
     .from(leads)
-    .where(and(eq(leads.clinicId, clinicId!), like(leads.phone, "e2e-%")));
+    .where(and(eq(leads.clinicId, clinicId!), like(leads.phone, "5500000%")));
 
   if (e2eLeads.length === 0) return;
 
@@ -258,7 +266,7 @@ await cleanupE2eLeads();
 
 console.log("📋 Grupo A — Fluxo básico concierge");
 
-const phoneA = `e2e-${Date.now()}`;
+const phoneA = makeE2ePhone(Date.now());
 
 await test("A1: saudação cria lead + conversa no DB com resposta do agente", async () => {
   await postWebhook(textPayload(instanceId, phoneA, "oi"));
@@ -318,7 +326,7 @@ await test("A4: needs_human pausa a IA (aiPaused=true)", async () => {
 
 console.log("\n📋 Grupo B — Pipeline keyword");
 
-const phoneB = `e2e-${Date.now() + 1}`;
+const phoneB = makeE2ePhone(Date.now() + 1);
 
 await test("B1: nova conversa criada para lead B", async () => {
   await postWebhook(textPayload(instanceId, phoneB, "oi, interesse em lentes"));
@@ -350,7 +358,7 @@ await test("B2: imagem enviada pelo lead é registrada no DB", async () => {
 
 console.log("\n📋 Grupo C — Resiliência");
 
-const phoneC = `e2e-${Date.now() + 2}`;
+const phoneC = makeE2ePhone(Date.now() + 2);
 
 await test("C1: 3 mensagens unclear consecutivas disparam takeover automático", async () => {
   // Mensagens deliberadamente confusas/fora de contexto
