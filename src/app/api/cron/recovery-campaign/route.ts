@@ -228,8 +228,8 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
 
       console.log(`[RecoveryCampaign] SENT lead=${lead.lead_id} name="${lead.name}" hours=${Number(lead.hours_silent).toFixed(0)}h`);
       sent++;
-    } catch (err: any) {
-      console.error(`[RecoveryCampaign] ERRO lead=${lead.lead_id}:`, err.message);
+    } catch (err: unknown) {
+      console.error(`[RecoveryCampaign] ERRO lead=${lead.lead_id}:`, err instanceof Error ? err.message : String(err));
       failed++;
     }
   }

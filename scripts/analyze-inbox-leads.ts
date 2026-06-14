@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Analisa conversas dos leads visíveis no Inbox para mapear oportunidades e problemas.
 
 import { neon } from "@neondatabase/serverless";

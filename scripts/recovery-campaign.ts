@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Campanha de recuperação de leads que ficaram sem atendimento.
 // Uso: npx dotenv -e .env.local -- npx tsx scripts/recovery-campaign.ts [--send]
 //
@@ -23,7 +24,9 @@ const DRY_RUN = !process.argv.includes("--send");
 if (DRY_RUN) console.log("DRY-RUN: nenhuma mensagem será enviada. Use --send para enviar.\n");
 
 const env = readFileSync(new URL("../.env.local", import.meta.url).pathname, "utf-8");
-const dbUrl = env.match(/DATABASE_URL="([^"]+)"/)?.[1]!;
+const dbUrlMatch = env.match(/DATABASE_URL="([^"]+)"/);
+if (!dbUrlMatch) throw new Error("DATABASE_URL não encontrado em .env.local");
+const dbUrl = dbUrlMatch[1];;
 
 // 1. Buscar clínica Ximendes
 const clinic = await db.query.clinics.findFirst({
@@ -223,9 +226,10 @@ for (const row of unattended.rows) {
     }
 
     results.push({ name: display, status: "ok", msg: message });
-  } catch (err: any) {
-    console.error(`   → ERRO: ${err.message}`);
-    results.push({ name: display, status: "error", reason: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`   → ERRO: ${msg}`);
+    results.push({ name: display, status: "error", reason: msg });
   }
 }
 
