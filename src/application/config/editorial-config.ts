@@ -63,7 +63,7 @@ export const publishablePlaybookSchema = z.object({
     .trim()
     .min(1, "descrição de procedimentos não pode ser vazia"),
   toneOfVoice: z.string().trim().min(1).default("acolhedor"),
-  receptionistName: z.string().trim().min(1).default("Mariana"),
+  receptionistName: z.string().trim().min(1).default("Marina"),
   differentials: z.array(z.string()).default([]),
   objections: z
     .array(z.object({ objection: z.string(), response: z.string() }))
@@ -165,7 +165,7 @@ export async function resolveActiveEditorialConfig(
     toneOfVoice: activeVersion.toneOfVoice,
     commercialPolicy: activeVersion.commercialPolicy,
     receptionistName:
-      (activeVersion as unknown as { receptionistName?: string }).receptionistName ?? "Mariana",
+      (activeVersion as unknown as { receptionistName?: string }).receptionistName ?? "Marina",
     procedures,
     differentials,
     objections,
