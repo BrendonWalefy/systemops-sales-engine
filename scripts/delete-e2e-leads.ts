@@ -1,12 +1,16 @@
 /**
  * Remove leads/conversations E2E que vazaram para o banco de produção.
+ * Cobre todos os identificadores usados ao longo do tempo:
+ *   - phone "e2e-*"    — formato legado (prefixo textual)
+ *   - phone "5500000*" — formato atual (dígitos E.164-like com prefixo inválido)
+ *   - name  "E2E*"     — leads criados quando o phone foi normalizado sem prefixo reconhecível
  * Uso: npx tsx scripts/delete-e2e-leads.ts
  */
 import { config } from "dotenv";
 config({ path: ".env.local" });
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { inArray, like } from "drizzle-orm";
+import { inArray, like, or } from "drizzle-orm";
 import {
   leads,
   conversations,
@@ -29,7 +33,13 @@ const db = drizzle(client);
 const e2eLeads = await db
   .select({ id: leads.id, phone: leads.phone, name: leads.name })
   .from(leads)
-  .where(like(leads.phone, "e2e-%"));
+  .where(
+    or(
+      like(leads.phone, "e2e-%"),
+      like(leads.phone, "5500000%"),
+      like(leads.name, "E2E%"),
+    ),
+  );
 
 if (e2eLeads.length === 0) {
   console.log("Nenhum lead E2E encontrado.");
