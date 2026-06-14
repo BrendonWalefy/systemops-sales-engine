@@ -25,7 +25,7 @@ export type IntentType =
   | "list_appointments"       // quer ver seus agendamentos
   | "price_inquiry"           // perguntou sobre preço/valor
   | "clinical_urgency"        // menciona dor, urgência, sangramento
-  | "needs_human"             // requer ação humana: pede mídia, negociação, falar com dentista, situação especial
+  | "needs_human"             // requer ação humana: pede mídia, negociação, falar com especialista, situação especial
   | "patient_arrived"         // paciente avisa que chegou à clínica ou que vai se atrasar para consulta agendada
   | "general_question"        // pergunta geral sobre a clínica
   | "greeting"                // primeiro contato genuíno, sem histórico relevante
@@ -42,7 +42,8 @@ export type IntentClassification = {
   handoffReason?: string | null;
 };
 
-const BASE_SYSTEM_PROMPT = `Você é um classificador de intenções para uma recepcionista virtual de clínica odontológica.
+function buildBaseSystemPrompt(specialty: string): string {
+  return `Você é um classificador de intenções para uma recepcionista virtual de ${specialty}.
 
 Sua única função é analisar a última mensagem do lead e retornar um JSON estruturado com a intenção detectada.
 
@@ -52,14 +53,14 @@ REGRAS GERAIS:
 - Se o lead disse "pode ser", "esse", "quero esse", "tá bom" após oferta → intent = "confirm_slot"
 - "nenhum desses", "outro horário", "não tenho disponibilidade" → intent = "reject_slots"
 - "quanto custa", "qual o valor", "tem plano" → intent = "price_inquiry"
-- "dor", "urgência", "sangramento", "emergência", "urgente" → intent = "clinical_urgency"
+- "dor", "urgência", "emergência", "urgente" → intent = "clinical_urgency"
 
-REGRA CRÍTICA — nome de tratamento SEM intenção de agendar → "general_question":
+REGRA CRÍTICA — nome de serviço SEM intenção de agendar → "general_question":
 - "book_appointment" exige INTENÇÃO EXPLÍCITA de agendar: palavras como "marcar", "agendar", "reservar", "quero fazer", "quero agendar", "pode marcar", "queria agendar".
-- Quando o lead menciona um tratamento SEM nenhuma dessas palavras (ex: "lentes", "implante", "clareamento", "quero saber sobre lentes", "me fala de lentes", "o que é lentes") → intent = "general_question", NÃO "book_appointment".
-- Isso vale mesmo que "lentes" (ou outro tratamento) esteja na lista de procedimentos da clínica.
-- Exemplos de "general_question": "lentes", "implante", "lentes de contato", "clareamento dental", "quero saber sobre implante", "me conta sobre lentes", "qual a diferença entre lentes e implante?", "qual é melhor, lentes ou clareamento?", "como funciona o procedimento?", "quanto tempo dura?", "tem risco?".
-- Exemplos de "book_appointment": "quero agendar lentes", "marcar lentes", "quero fazer implante", "pode marcar um horário para lentes".
+- Quando o lead menciona um serviço SEM nenhuma dessas palavras (ex: "quero saber sobre X", "me fala de Y", "o que é Z") → intent = "general_question", NÃO "book_appointment".
+- Isso vale mesmo que o serviço esteja na lista de procedimentos da clínica.
+- Exemplos de "general_question": mencionar nome de um serviço sem intenção de agendar, "como funciona?", "quanto tempo dura?", "tem risco?", "qual a diferença entre X e Y?".
+- Exemplos de "book_appointment": "quero agendar X", "pode marcar um horário para Y", "quero fazer Z".
 
 REGRAS CRÍTICAS PARA ENCERRAMENTO E RECONHECIMENTO:
 - "opa blz", "blz", "ok", "entendi", "certo", "tá", "tá bom", "legal", "bacana", "perfeito", "combinado", "show" quando há histórico de conversa → intent = "acknowledgment"
@@ -86,13 +87,13 @@ Use "patient_arrived" quando o paciente indica presença física na clínica ou 
 
 REGRA PARA needs_human (PRIORIDADE ALTA — avalie antes de unclear):
 Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou decidir. Exemplos:
-- Documentos/comprovantes clínicos: "pode enviar o orçamento por escrito", "me manda o comprovante", "me envia o resultado do exame"
-- Fotos/vídeos PESSOAIS do resultado do paciente específico: "quero ver o antes e depois do meu caso", "tem foto de como vai ficar no meu sorriso"
-- EXCEÇÃO IMPORTANTE — pedido de fotos/vídeos DOS TRATAMENTOS DA CLÍNICA (material de marketing já disponível): "tem foto das lentes?", "tem vídeo do tratamento?", "pode me mostrar como fica?", "tem algum exemplo de resultado?", "tem foto ou vídeo das lentes?" → NÃO é needs_human → classifique como "general_question" (a IA tem acesso à biblioteca de mídia e pode enviar diretamente)
-- Falar com humano: "quero falar com o dentista", "preciso falar com alguém", "pode me ligar?", "me passa o número do doutor"
+- Documentos/comprovantes: "pode enviar o orçamento por escrito", "me manda o comprovante", "me envia o resultado"
+- Fotos/vídeos PESSOAIS do resultado do cliente específico: "quero ver o antes e depois do meu caso", "tem foto de como vai ficar no meu caso"
+- EXCEÇÃO IMPORTANTE — pedido de fotos/vídeos DOS SERVIÇOS DA CLÍNICA (material de marketing já disponível): "tem foto do serviço?", "tem vídeo do tratamento?", "pode me mostrar como fica?", "tem algum exemplo de resultado?" → NÃO é needs_human → classifique como "general_question" (a IA tem acesso à biblioteca de mídia e pode enviar diretamente)
+- Falar com humano: "quero falar com um especialista", "preciso falar com alguém", "pode me ligar?", "me passa o número do responsável"
 - Negociação/exceção: "preciso de um desconto", "tem como parcelar diferente?", "tenho uma situação especial", "consigo condição especial?"
-- Acordo/troca informal: lead propõe permuta de serviços, menciona combinado anterior com o doutor ou situação negociada fora do fluxo padrão. Exemplos: "a gente combinou que eu faria a tatuagem de vocês e vocês fariam minhas lentes", "o doutor falou que me daria desconto por indicação", "tínhamos combinado antes que você faria X e eu faria Y", "caso queira vir fazer sua tattoo, depois marcamos as lentes" — qualquer proposta de troca ou referência a acordo pessoal com a clínica/doutor.
-- Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do procedimento realizado", "Lead quer falar com o dentista", "Lead pediu condição especial de pagamento", "Lead propôs acordo de troca de serviços"). Máximo 60 caracteres.
+- Acordo/troca informal: lead propõe permuta de serviços, menciona combinado anterior com a equipe ou situação negociada fora do fluxo padrão — qualquer proposta de troca ou referência a acordo pessoal com a clínica.
+- Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do resultado pessoal", "Lead quer falar com especialista", "Lead pediu condição especial de pagamento", "Lead propôs acordo de troca de serviços"). Máximo 60 caracteres.
 
 REGRA PARA unclear:
 - Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.
@@ -124,11 +125,13 @@ REGRA PARA identifiedTreatment:
 - Extraia identifiedTreatment para intent = "book_appointment", "check_availability", "price_inquiry" e "general_question". Para perguntas comparativas ("qual é melhor X ou Y?"), extraia o tratamento principal sobre o qual o lead parece mais interessado, ou o primeiro mencionado. Para outros intents, retorne null.
 
 Retorne APENAS JSON válido, sem markdown, sem explicação.`;
+}
 
-function buildSystemPrompt(treatmentNames: string[]): string {
-  if (treatmentNames.length === 0) return BASE_SYSTEM_PROMPT;
+function buildSystemPrompt(treatmentNames: string[], specialty: string): string {
+  const base = buildBaseSystemPrompt(specialty);
+  if (treatmentNames.length === 0) return base;
   const list = treatmentNames.map((n) => `  - ${n}`).join("\n");
-  return `${BASE_SYSTEM_PROMPT}\n\nPROCEDIMENTOS DISPONÍVEIS NESTA CLÍNICA:\n${list}`;
+  return `${base}\n\nSERVIÇOS DISPONÍVEIS NESTA CLÍNICA:\n${list}`;
 }
 
 // strict: true exige que todo campo em properties conste em required.
@@ -194,6 +197,7 @@ export class IntentClassifier {
     conversationHistory: Message[],
     hasPendingSlotOffer: boolean,
     treatmentNames: string[] = [],
+    specialty = "clínica",
   ): Promise<IntentClassification> {
     // Contexto resumido da conversa (últimas 8 mensagens para economizar tokens)
     const recentHistory = conversationHistory.slice(-8);
@@ -226,7 +230,7 @@ export class IntentClassifier {
         },
       },
       messages: [
-        { role: "system", content: buildSystemPrompt(treatmentNames) },
+        { role: "system", content: buildSystemPrompt(treatmentNames, specialty) },
         { role: "user", content: userContent },
       ],
     });

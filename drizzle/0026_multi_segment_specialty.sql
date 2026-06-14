@@ -1,0 +1,1 @@
+ALTER TABLE "clinics" ALTER COLUMN "specialty" DROP DEFAULT;

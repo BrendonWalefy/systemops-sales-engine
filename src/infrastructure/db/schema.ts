@@ -104,7 +104,7 @@ export const clinics = pgTable("clinics", {
   name: text("name").notNull(),
   // Identificador legível e único — usado em URLs e no onboarding.
   slug: text("slug"),
-  specialty: text("specialty").notNull().default("odontology"),
+  specialty: text("specialty").notNull(),
   city: text("city"),
   address: text("address"),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
