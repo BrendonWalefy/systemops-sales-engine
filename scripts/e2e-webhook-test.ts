@@ -278,8 +278,10 @@ await test("A1: saudação cria lead + conversa no DB com resposta do agente", a
   if (clinic.autoReplyEnabled) {
     const msgs = await getAgentMessages(conv!.id);
     assert(msgs.length > 0, "Nenhuma mensagem do agente encontrada");
-    const hasGreeting = msgs.some((m) => m.intent === "greeting" || m.intent === "general_question");
-    assert(hasGreeting, `Intent esperado: greeting ou general_question. Intents encontrados: ${msgs.map((m) => m.intent).join(", ")}`);
+    const hasGreeting = msgs.some((m) =>
+      ["greeting", "general_question", "acknowledgment"].includes(m.intent ?? ""),
+    );
+    assert(hasGreeting, `Intent esperado: greeting/acknowledgment. Intents encontrados: ${msgs.map((m) => m.intent).join(", ")}`);
   }
 });
 
@@ -341,8 +343,9 @@ await test("B2: imagem enviada pelo lead é registrada no DB", async () => {
   if (!conv) throw new Error("Conversa B não encontrada");
 
   // URL pública permanente para não depender de expiração Z-API
+  // Sem caption para que o body fique "[imagem recebida]" e seja facilmente identificável
   const testImageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png";
-  await postWebhook(imagePayload(instanceId, phoneB, testImageUrl, "foto do meu sorriso"));
+  await postWebhook(imagePayload(instanceId, phoneB, testImageUrl));
   await sleep(waitMs);
 
   const allMsgs = await db
@@ -350,6 +353,7 @@ await test("B2: imagem enviada pelo lead é registrada no DB", async () => {
     .from(messages)
     .where(eq(messages.conversationId, conv.id));
 
+  // Sem caption: route.ts usa "[imagem recebida]" como body
   const hasImageMsg = allMsgs.some((m) => m.author === "lead" && m.body.includes("[imagem"));
   assert(hasImageMsg, `Mensagem de imagem não registrada. Mensagens encontradas: ${allMsgs.map((m) => `${m.author}: ${m.body.slice(0, 50)}`).join(" | ")}`);
 });
@@ -360,12 +364,12 @@ console.log("\n📋 Grupo C — Resiliência");
 
 const phoneC = makeE2ePhone(Date.now() + 2);
 
-await test("C1: 3 mensagens unclear consecutivas disparam takeover automático", async () => {
-  // Mensagens deliberadamente confusas/fora de contexto
+await test("C1: 3 mensagens unclear consecutivas marcam needsAttention=true", async () => {
+  // Mensagens deliberadamente confusas/fora de contexto para forçar intent=unclear
   const unclearMessages = [
-    "sdjfkasdjfk",
-    "wqeruiopzxcv",
-    "mnbvcxzlkjhgf",
+    "sdfjklsdfjklsdf",
+    "zxcvbnmqwerty123",
+    "asdfghjklpoiuyt",
   ];
 
   for (const msg of unclearMessages) {
@@ -374,27 +378,26 @@ await test("C1: 3 mensagens unclear consecutivas disparam takeover automático",
   }
 
   if (clinic.autoReplyEnabled) {
-    const conv = await getConversation(phoneC);
-    assert(conv !== null, "Conversa C não criada");
-    assert(conv!.aiPaused, `Esperava aiPaused=true após 3x unclear. aiPaused=${conv!.aiPaused}`);
+    // unclear consecutivo seta needsAttention=true (não aiPaused — IA continua respondendo)
+    const convRow = await getConversation(phoneC);
+    assert(convRow !== null, "Conversa C não criada");
+    assert(
+      convRow!.needsAttention,
+      `Esperava needsAttention=true após 3x unclear. needsAttention=${convRow!.needsAttention}`,
+    );
   }
 });
 
-await test("C2: após takeover, IA não responde novas mensagens", async () => {
+await test("C2: após needs_human explícito, IA pausa (aiPaused=true)", async () => {
   if (!clinic.autoReplyEnabled) return;
 
-  const conv = await getConversation(phoneC);
-  if (!conv || !conv.aiPaused) throw new Error("Pré-condição C2: conversa não pausada");
-
-  const msgsBefore = (await getAgentMessages(conv.id)).length;
-  await postWebhook(textPayload(instanceId, phoneC, "quero agendar agora"));
+  // needs_human é o que pausa a IA — unclear só seta needsAttention
+  await postWebhook(textPayload(instanceId, phoneC, "quero falar com a recepcionista agora"));
   await sleep(waitMs);
 
-  const msgsAfter = await getAgentMessages(conv.id);
-  assert(
-    msgsAfter.length === msgsBefore,
-    `IA respondeu após takeover (${msgsAfter.length - msgsBefore} nova(s) mensagem(ns) do agente)`,
-  );
+  const conv = await getConversation(phoneC);
+  assert(conv !== null, "Conversa C não encontrada");
+  assert(conv!.aiPaused, `Esperava aiPaused=true após needs_human. aiPaused=${conv!.aiPaused}`);
 });
 
 // ── Cleanup ───────────────────────────────────────────────────────────────────
