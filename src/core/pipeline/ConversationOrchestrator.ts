@@ -1186,9 +1186,15 @@ export class ConversationOrchestrator {
       await new Promise((r) => setTimeout(r, debounceMs));
       const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
       if (latest && latest.id !== incomingMessage.id) {
-        console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} ignorada — ${latest.id} é mais recente`);
+        console.log(
+          `[Orchestrator] Debounce: msg ${incomingMessage.id} descartada` +
+          ` (body="${incomingMessage.body?.slice(0, 60)}")` +
+          ` — msg mais recente: ${latest.id} (body="${latest.body?.slice(0, 60)}")` +
+          ` conv=${conversation.id} lead=${lead.id}`,
+        );
         return { replied: false };
       }
+      console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} é a mais recente — prosseguindo (conv=${conversation.id})`);
     }
 
     // ── 4–11. Processamento principal — erros aqui enviam fallback ao lead ──
@@ -2329,13 +2335,16 @@ export class ConversationOrchestrator {
         );
       }
       if (part.mediaType === "video") {
-        await scheduleFollowUp({
-          clinicId,
-          leadId: lead.id,
-          trigger: "video_sent",
-          videoTitle: part.title,
-          followUpRepository: new DrizzleFollowUpRepository(),
-        }).catch((err) => deliveryLog.warn("falha ao agendar follow-up pós-vídeo", { error: String(err) }));
+        const activeAppt = await this.appointmentRepo.findActiveByLeadId(lead.id).catch(() => null);
+        if (!activeAppt) {
+          await scheduleFollowUp({
+            clinicId,
+            leadId: lead.id,
+            trigger: "video_sent",
+            videoTitle: part.title,
+            followUpRepository: new DrizzleFollowUpRepository(),
+          }).catch((err) => deliveryLog.warn("falha ao agendar follow-up pós-vídeo", { error: String(err) }));
+        }
       }
     };
 

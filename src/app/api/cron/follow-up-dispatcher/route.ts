@@ -77,6 +77,14 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
       }
       const channelConfig = defaultChannelConfig;
 
+      // Não disparar follow-up se o lead já tem consulta futura agendada.
+      const upcomingAppt = await appointmentRepository.findActiveByLeadId(followUp.leadId);
+      if (upcomingAppt && upcomingAppt.startsAt > now) {
+        await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+        console.log(`[FollowUpDispatcher] follow-up ${followUp.id} cancelado — lead tem consulta em ${upcomingAppt.startsAt.toISOString()}`);
+        continue;
+      }
+
       const isVideoFollowUp = followUp.reason.startsWith("video_sent:");
       const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;
 

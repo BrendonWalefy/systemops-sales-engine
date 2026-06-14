@@ -170,6 +170,15 @@ function hasForbiddenScheduleConfirmation(content: string): boolean {
     "sua consulta sera",
     "esta marcado",
     "ta marcado",
+    "agendei sua",
+    "marquei sua",
+    "confirmei seu",
+    "confirmei sua",
+    "seu horario foi",
+    "sua consulta foi",
+    "sua avaliacao foi",
+    "confirmamos seu",
+    "confirmamos sua",
   ].some((pattern) => normalized.includes(pattern));
 }
 
@@ -390,7 +399,8 @@ Use a saudação temporal correta com base no HORÁRIO ATUAL indicado no sistema
     case "acknowledgment":
       return `AÇÃO EXECUTADA: Lead enviou reconhecimento mid-conversa ("ok", "blz", "entendi", "certo", "obrigado" após info) ou saudação isolada com histórico ativo.
 REGRA PRIORITÁRIA: se a última mensagem do lead for EXATAMENTE uma saudação temporal ("bom dia", "boa tarde", "boa noite"), OBRIGATORIAMENTE comece a resposta com a mesma saudação (ex: "Boa tarde! Estarei por aqui."). Saudações genéricas como "oi", "olá", "ei", "hey" NÃO são saudações temporais — não adicione "Bom dia/Boa tarde/Boa noite" nesse caso.
-Nos demais casos, responda com UMA frase curta e calorosa SEM saudação temporal. NÃO faça perguntas. NÃO use "Como posso ajudar?". NÃO reinicie a conversa.`;
+Nos demais casos, responda com UMA frase curta e calorosa SEM saudação temporal. NÃO faça perguntas. NÃO use "Como posso ajudar?". NÃO reinicie a conversa.
+PROIBIDO ABSOLUTO: NÃO mencione agendamentos, horários, datas ou confirmações de consulta — independente do histórico da conversa. Confirmações de agendamento só ocorrem via ação dedicada do sistema.`;
 
     case "farewell":
       return `AÇÃO EXECUTADA: Lead está encerrando a conversa ("obrigado tchau", "até mais", "valeu", "certo obrigado").
