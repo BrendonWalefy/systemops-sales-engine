@@ -33,6 +33,7 @@ type Props = {
   initialFrom: string;
   initialTo: string;
   openNew?: boolean;
+  timezone?: string;
 };
 
 function addDays(d: Date, n: number): Date {
@@ -60,7 +61,7 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
   };
 }
 
-export function AgendaClient({ professionals, initialFrom, initialTo, openNew }: Props) {
+export function AgendaClient({ professionals, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
   const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -302,13 +303,18 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
             <CalendarView
               currentView={SX_VIEW_NAMES[view as ScheduleView]}
               initialEvents={filteredCalendarEvents}
+              timezone={timezone}
               onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
               onEventClick={(event) => setDrawer({ open: true, event })}
               onEventUpdate={handleEventUpdate}
             />
           ) : (
             <ResourceDayView
-              professionals={professionals}
+              professionals={
+                selectedProfessionalId
+                  ? professionals.filter((p) => p.id === selectedProfessionalId)
+                  : professionals
+              }
               events={
                 selectedProfessionalId
                   ? events.filter((e) => e.professionalId === selectedProfessionalId)
@@ -332,6 +338,7 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew }:
           selectedProfessionalId={selectedProfessionalId}
           onSelectProfessional={setSelectedProfessionalId}
           onEventClick={(event) => setDrawer({ open: true, event })}
+          timezone={timezone}
         />
       </div>
 
