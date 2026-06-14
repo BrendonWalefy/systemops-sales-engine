@@ -20,6 +20,18 @@
     {
       "path": "/api/cron/calendar-watch-renew",
       "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/cron/resume-expired-takeovers",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/recovery-campaign",
+      "schedule": "0 12 * * 1-6"
+    },
+    {
+      "path": "/api/cron/recovery-campaign",
+      "schedule": "0 21 * * 1-5"
     }
   ]
 }
