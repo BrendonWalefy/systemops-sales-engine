@@ -1,0 +1,44 @@
+name: E2E Webhook Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      clinicId:
+        description: "Clinic ID to test against"
+        required: false
+        default: "c9137774-e783-4461-ac2b-e2f01be739a6"
+      waitMs:
+        description: "Wait ms after each POST (default 15000)"
+        required: false
+        default: "15000"
+  schedule:
+    # 7h UTC = 4h BRT — fora do horário comercial da clínica
+    - cron: "0 7 * * *"
+
+jobs:
+  e2e:
+    name: E2E Webhook
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run E2E tests
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          E2E_WEBHOOK_URL: ${{ secrets.E2E_WEBHOOK_URL }}
+          E2E_WAIT_MS: ${{ github.event.inputs.waitMs || '15000' }}
+        run: |
+          CLINIC_ID="${{ github.event.inputs.clinicId || 'c9137774-e783-4461-ac2b-e2f01be739a6' }}"
+          npx tsx scripts/e2e-webhook-test.ts --clinicId "$CLINIC_ID"
