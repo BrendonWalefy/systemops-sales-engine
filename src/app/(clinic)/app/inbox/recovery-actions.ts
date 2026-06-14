@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, messages } from "@/infrastructure/db/schema";
+import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
@@ -23,7 +23,7 @@ export async function composeRecoveryMessageAction(
 
   const editorial = await resolveActiveEditorialConfig(clinicId);
   const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? "Marina";
-  const specialty = editorial?.specialty ?? clinic.specialty ?? "odontologia estética";
+  const specialty = editorial?.specialty ?? clinic.specialty ?? "nosso serviço";
 
   const history = await db.execute(sql`
     SELECT author, body, sent_at
@@ -89,12 +89,12 @@ export async function sendRecoveryMessageAction(
 
   const conv = await db.query.conversations.findFirst({
     where: eq(conversations.id, convId),
-    with: { lead: true } as any,
-  }) as any;
-
+  });
   if (!conv) return { ok: false, error: "Conversa não encontrada" };
 
-  const lead = conv.lead;
+  const lead = await db.query.leads.findFirst({
+    where: eq(leads.id, conv.leadId),
+  });
   if (!lead) return { ok: false, error: "Lead não encontrado" };
 
   const channelAddress = resolveWhatsAppChannelAddress({
@@ -136,7 +136,7 @@ export async function sendRecoveryMessageAction(
 
     revalidatePath("/app/inbox");
     return { ok: true };
-  } catch (err: any) {
-    return { ok: false, error: err.message };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
