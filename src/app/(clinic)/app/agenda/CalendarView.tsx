@@ -1,7 +1,7 @@
 "use client";
 
 import "temporal-polyfill/global";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useCalendarApp, ScheduleXCalendar } from "@schedule-x/react";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 import { createEventsServicePlugin } from "@schedule-x/events-service";
@@ -9,7 +9,7 @@ import { createDragAndDropPlugin } from "@schedule-x/drag-and-drop";
 import "@schedule-x/theme-default/dist/index.css";
 import type { AppointmentEvent } from "./types";
 
-const CALENDAR_TIMEZONE = "America/Sao_Paulo";
+const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
 const CALENDAR_STATUS_COLORS = {
   scheduled: {
@@ -47,21 +47,22 @@ const CALENDAR_STATUS_COLORS = {
 type Props = {
   initialEvents: AppointmentEvent[];
   currentView?: string;
+  timezone?: string;
   onSlotClick?: (date: string, time: string) => void;
   onEventClick?: (event: AppointmentEvent) => void;
   onEventUpdate?: (id: string, startsAt: string, endsAt: string) => void;
 };
 
-function toZonedDateTime(iso: string): Temporal.ZonedDateTime {
+function toZonedDateTime(iso: string, timezone: string): Temporal.ZonedDateTime {
   try {
-    return Temporal.Instant.from(iso).toZonedDateTimeISO(CALENDAR_TIMEZONE);
+    return Temporal.Instant.from(iso).toZonedDateTimeISO(timezone);
   } catch {
     const localDateTime = iso.slice(0, 16).replace(" ", "T");
-    return Temporal.ZonedDateTime.from(`${localDateTime}:00[${CALENDAR_TIMEZONE}]`);
+    return Temporal.ZonedDateTime.from(`${localDateTime}:00[${timezone}]`);
   }
 }
 
-function toDateTimeParts(value: unknown): { date: string; time: string; value: string } | null {
+function toDateTimeParts(value: unknown, timezone: string): { date: string; time: string; value: string } | null {
   let raw: string;
 
   if (typeof value === "string") {
@@ -84,7 +85,7 @@ function toDateTimeParts(value: unknown): { date: string; time: string; value: s
   if (Number.isNaN(parsed.getTime())) return null;
 
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: CALENDAR_TIMEZONE,
+    timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -98,31 +99,31 @@ function toDateTimeParts(value: unknown): { date: string; time: string; value: s
   return { date, time, value: `${date} ${time}` };
 }
 
-function toCalendarEvent(e: AppointmentEvent) {
-  const isBlock = e.status === "block";
-  const leadLabel = e.leadName ?? e.leadPhone ?? "Paciente";
-  const title = isBlock
-    ? `🚫 ${e.leadName || "Bloqueado"}`
-    : [leadLabel, e.professionalName].filter(Boolean).join(" · ");
-  return {
-    id: e.id,
-    title,
-    start: toZonedDateTime(e.startsAt),
-    end: toZonedDateTime(e.endsAt),
-    calendarId: e.status,
-    _meta: e,
-    ...(isBlock && { options: { disableDND: true, disableResize: true } }),
-  };
-}
-
-export function CalendarView({ initialEvents, currentView, onSlotClick, onEventClick, onEventUpdate }: Props) {
+export function CalendarView({ initialEvents, currentView, timezone = DEFAULT_TIMEZONE, onSlotClick, onEventClick, onEventUpdate }: Props) {
   const eventsService = useMemo(() => createEventsServicePlugin(), []);
+
+  const toCalendarEvent = useCallback((e: AppointmentEvent) => {
+    const isBlock = e.status === "block";
+    const leadLabel = e.leadName ?? e.leadPhone ?? "Paciente";
+    const title = isBlock
+      ? `🚫 ${e.leadName || "Bloqueado"}`
+      : [leadLabel, e.professionalName].filter(Boolean).join(" · ");
+    return {
+      id: e.id,
+      title,
+      start: toZonedDateTime(e.startsAt, timezone),
+      end: toZonedDateTime(e.endsAt, timezone),
+      calendarId: e.status,
+      _meta: e,
+      ...(isBlock && { options: { disableDND: true, disableResize: true } }),
+    };
+  }, [timezone]);
 
   const calendar = useCalendarApp({
     locale: "pt-BR",
     isDark: true,
     isResponsive: false,
-    timezone: CALENDAR_TIMEZONE,
+    timezone,
     dayBoundaries: { start: "07:00", end: "21:00" },
     views: [createViewWeek(), createViewDay(), createViewMonthGrid()],
     defaultView: createViewWeek().name,
@@ -140,7 +141,7 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
       },
       onClickDateTime(dateTime) {
         if (onSlotClick) {
-          const parts = toDateTimeParts(dateTime);
+          const parts = toDateTimeParts(dateTime, timezone);
           if (!parts) return;
           // Não abre modal para datas passadas
           if (parts.date < Temporal.Now.plainDateISO().toString()) return;
@@ -148,8 +149,8 @@ export function CalendarView({ initialEvents, currentView, onSlotClick, onEventC
         }
       },
       onEventUpdate(updatedEvent) {
-        const startsAt = toDateTimeParts(updatedEvent.start);
-        const endsAt = toDateTimeParts(updatedEvent.end);
+        const startsAt = toDateTimeParts(updatedEvent.start, timezone);
+        const endsAt = toDateTimeParts(updatedEvent.end, timezone);
         if (!startsAt || !endsAt) return;
 
         if (onEventUpdate) {

@@ -2,8 +2,6 @@
 
 import type { AppointmentEvent, Professional } from "./types";
 
-const CALENDAR_TIMEZONE = "America/Sao_Paulo";
-
 const STATUS_COLORS: Record<string, string> = {
   scheduled: "#60a5fa",
   confirmed: "#00d4aa",
@@ -12,10 +10,10 @@ const STATUS_COLORS: Record<string, string> = {
   no_show: "#fb7185",
 };
 
-function formatLocalTime(iso: string): string {
+function formatLocalTime(iso: string, timezone: string): string {
   try {
     return new Intl.DateTimeFormat("pt-BR", {
-      timeZone: CALENDAR_TIMEZONE,
+      timeZone: timezone,
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -31,6 +29,7 @@ type Props = {
   selectedProfessionalId: string | null;
   onSelectProfessional: (id: string | null) => void;
   onEventClick: (event: AppointmentEvent) => void;
+  timezone?: string;
 };
 
 export function AgendaSidebar({
@@ -39,6 +38,7 @@ export function AgendaSidebar({
   selectedProfessionalId,
   onSelectProfessional,
   onEventClick,
+  timezone = "America/Sao_Paulo",
 }: Props) {
   const now = new Date();
 
@@ -118,7 +118,7 @@ export function AgendaSidebar({
                     {event.leadName ?? event.leadPhone ?? "Paciente"}
                   </span>
                   <span className="agenda-sidebar-card-meta">
-                    {formatLocalTime(event.startsAt)}
+                    {formatLocalTime(event.startsAt, timezone)}
                     {event.professionalName && ` · ${event.professionalName}`}
                   </span>
                 </div>
