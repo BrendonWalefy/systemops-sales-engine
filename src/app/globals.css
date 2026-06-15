@@ -1215,6 +1215,148 @@ button:disabled {
   margin: 14px;
 }
 
+/* ── Period toggle ────────────────────────────────────── */
+.dashboard-period-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 3px;
+  width: fit-content;
+}
+
+.dashboard-period-btn {
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+  white-space: nowrap;
+}
+
+.dashboard-period-btn:hover {
+  color: var(--text-soft);
+}
+
+.dashboard-period-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+/* ── Ring Chart (autonomia IA) ────────────────────────── */
+.dashboard-ring-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px 10px;
+  margin-top: 10px;
+}
+
+.dashboard-ring-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.dashboard-ring-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+}
+
+.dashboard-ring-wrap svg {
+  width: 52px;
+  height: 52px;
+  transform: rotate(-90deg);
+}
+
+.dashboard-ring-wrap .ring-bg {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 5;
+}
+
+.dashboard-ring-wrap .ring-fg {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 600ms ease;
+}
+
+.dashboard-ring-value {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--text);
+}
+
+.dashboard-ring-label {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.dashboard-ring-highlight {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 20px;
+  font-weight: 780;
+  color: var(--text);
+}
+
+.dashboard-ring-highlight.warm {
+  background: var(--warm-soft);
+  color: var(--warm);
+}
+
+.dashboard-ring-highlight.accent {
+  color: var(--accent-strong);
+}
+
+@media (max-width: 640px) {
+  .dashboard-period-toggle {
+    margin-bottom: 4px;
+  }
+
+  .dashboard-ring-metrics {
+    margin-top: 8px;
+  }
+
+  .dashboard-ring-wrap {
+    width: 46px;
+    height: 46px;
+  }
+
+  .dashboard-ring-wrap svg {
+    width: 46px;
+    height: 46px;
+  }
+
+  .dashboard-ring-value {
+    font-size: 11px;
+  }
+}
+
 @media (max-width: 1180px) {
   .dashboard-grid {
     grid-template-areas:
@@ -1243,22 +1385,22 @@ button:disabled {
     padding: 6px 9px;
   }
 
-  /* ── 4 cards side by side ── */
+  /* ── 2x2 compact grid ── */
   .dashboard-kpis {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    margin-bottom: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
   }
 
   .dashboard-kpi-card {
-    padding: 9px 8px 8px;
+    padding: 10px 10px 9px;
   }
 
   .dashboard-kpi-header {
     flex-wrap: nowrap;
     align-items: center;
-    gap: 5px;
-    margin-bottom: 6px;
+    gap: 6px;
+    margin-bottom: 4px;
   }
 
   .dashboard-kpi-icon {
@@ -1269,7 +1411,7 @@ button:disabled {
   }
 
   .dashboard-kpi-header > span:nth-child(2) {
-    font-size: 9px;
+    font-size: 10.5px;
     font-weight: 600;
     line-height: 1.2;
     white-space: nowrap;
@@ -1277,19 +1419,20 @@ button:disabled {
     text-overflow: ellipsis;
   }
 
-  /* trend hidden on compact mobile — fits in 4-col */
   .dashboard-trend {
-    display: none;
+    display: inline-flex;
+    font-size: 9.5px;
+    padding: 2px 6px;
   }
 
   .dashboard-kpi-card strong {
-    font-size: 20px;
-    margin-bottom: 2px;
+    font-size: 22px;
+    margin-bottom: 1px;
   }
 
   .dashboard-kpi-card small {
-    font-size: 9.5px;
-    line-height: 1.2;
+    font-size: 10px;
+    line-height: 1.25;
   }
 
   .dashboard-panel-header {
@@ -1365,8 +1508,6 @@ button:disabled {
   .dashboard-temp-content {
     grid-template-columns: 1fr;
   }
-
-  /* kpis mantém 4 colunas mesmo em telas pequenas */
 
   .dashboard-donut {
     justify-self: center;

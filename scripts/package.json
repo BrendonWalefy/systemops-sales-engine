@@ -1,0 +1,9 @@
+{
+  "name": "systemops-video-generator",
+  "version": "1.0.0",
+  "description": "Scripts para geração de vídeo e narração com Vertex AI e GCP TTS",
+  "type": "module",
+  "dependencies": {
+    "google-auth-library": "^9.15.0"
+  }
+}
