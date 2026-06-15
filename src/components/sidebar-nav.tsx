@@ -48,9 +48,7 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
         >
           <span className="nav-icon-wrap">
             <Inbox size={15} strokeWidth={2} />
-            {inboxBadge > 0 && (
-              <span className="nav-inbox-badge">{inboxBadge > 99 ? "99+" : inboxBadge}</span>
-            )}
+            {inboxBadge > 0 && <span className="nav-inbox-dot" />}
           </span>
           <span className="nav-label">Inbox</span>
         </Link>

@@ -277,22 +277,14 @@ button:disabled {
   justify-content: center;
 }
 
-.nav-inbox-badge {
+.nav-inbox-dot {
   position: absolute;
-  top: -5px;
-  right: -9px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
+  top: -3px;
+  right: -4px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
-  background: #ff9f2e;
-  color: #1a0900;
-  font-size: 9px;
-  font-weight: 900;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #ff6b5f;
   box-shadow: 0 0 0 2px var(--surface-muted, #161b27);
 }
 
@@ -1272,9 +1264,10 @@ button:disabled {
 }
 
 .dashboard-period-btn.active {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  background: rgba(0, 212, 170, 0.11);
+  color: var(--accent-strong);
+  border: 1px solid rgba(0, 212, 170, 0.22);
+  box-shadow: none;
 }
 
 /* ── Ring Chart (autonomia IA) ────────────────────────── */
@@ -3798,29 +3791,21 @@ textarea:focus {
     justify-content: center;
   }
 
-  .nav-inbox-badge {
+  .nav-inbox-dot {
     position: absolute;
-    top: -6px;
-    right: -10px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    top: -3px;
+    right: -4px;
+    width: 7px;
+    height: 7px;
     border-radius: 999px;
     background: #ff6b5f;
-    color: #1a0400;
-    font-size: 9px;
-    font-weight: 900;
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     box-shadow: 0 0 0 2px rgba(8, 10, 14, 0.9);
-    animation: badge-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation: dot-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   }
 
-  @keyframes badge-in {
-    from { transform: scale(0) rotate(-15deg); opacity: 0; }
-    to   { transform: scale(1) rotate(0deg);   opacity: 1; }
+  @keyframes dot-in {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
   }
 
   /* Itens de config ficam no sheet — só acessíveis via avatar */
@@ -3884,10 +3869,10 @@ textarea:focus {
     text-decoration: none;
     box-shadow:
       0 0 0 3px rgba(8, 10, 14, 0.9),
-      0 0 22px rgba(0, 212, 170, 0.6),
-      0 0 48px rgba(0, 212, 170, 0.28),
-      0 6px 20px rgba(0, 0, 0, 0.55),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      0 0 12px rgba(0, 212, 170, 0.3),
+      0 0 28px rgba(0, 212, 170, 0.12),
+      0 4px 14px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
     transition: transform 150ms ease, box-shadow 150ms ease;
   }
 
@@ -3895,8 +3880,8 @@ textarea:focus {
     transform: scale(0.91);
     box-shadow:
       0 0 0 3px rgba(8, 10, 14, 0.9),
-      0 0 14px rgba(0, 212, 170, 0.5),
-      0 3px 10px rgba(0, 0, 0, 0.45);
+      0 0 8px rgba(0, 212, 170, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.4);
   }
 
   /* ── Ajustes button in pill ─────────────────────────── */
