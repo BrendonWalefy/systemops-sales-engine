@@ -4,10 +4,18 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, treatments, playbookVersions, clinicMembers } from "@/infrastructure/db/schema";
+import {
+  clinics,
+  treatments,
+  playbookVersions,
+  clinicMembers,
+} from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { onboardingConfigSchema } from "@/application/onboarding/onboarding-config";
 import { hashPassword } from "@/lib/password";
+import { resolveClinicCommercialSettings } from "@/application/onboarding/clinic-commercial-settings";
+import { resolveInitialClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
+import { encryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 
 export type OnboardingState = {
   ok: boolean;
@@ -32,7 +40,10 @@ export async function onboardClinic(
   }
 
   // Monta o objeto a partir do form e valida pelo schema único.
-  const provider = (formData.get("provider") as string) === "meta_cloud_api" ? "meta_cloud_api" : "z_api";
+  const provider =
+    (formData.get("provider") as string) === "meta_cloud_api"
+      ? "meta_cloud_api"
+      : "z_api";
   const raw = {
     name: formData.get("name"),
     slug: formData.get("slug"),
@@ -40,6 +51,28 @@ export async function onboardClinic(
     timezone: (formData.get("timezone") as string) || "America/Sao_Paulo",
     businessHours: (formData.get("businessHours") as string) || undefined,
     greetingMessage: (formData.get("greetingMessage") as string) || undefined,
+    receptionistPhone:
+      (formData.get("receptionistPhone") as string) || undefined,
+    calendarMode:
+      (formData.get("calendarMode") as string) === "google_calendar"
+        ? "google_calendar"
+        : "internal",
+    googleCalendarId: (formData.get("googleCalendarId") as string) || undefined,
+    isTest: formData.get("isTest") === "on",
+    plan: ((formData.get("plan") as string) || "custom") as
+      | "essencial"
+      | "clinica"
+      | "rede"
+      | "custom",
+    billingActive: formData.get("billingActive") === "on",
+    monthlyRevenueBrl: (() => {
+      const rawValue = formData.get("monthlyRevenueBrl");
+      if (typeof rawValue !== "string" || rawValue.trim() === "")
+        return undefined;
+      const parsedValue = Number(rawValue);
+      return Number.isFinite(parsedValue) ? parsedValue : undefined;
+    })(),
+    billingStartedAt: (formData.get("billingStartedAt") as string) || undefined,
     channel: {
       provider,
       zapi:
@@ -47,13 +80,15 @@ export async function onboardClinic(
           ? {
               instanceId: (formData.get("zapiInstanceId") as string) || "",
               token: (formData.get("zapiToken") as string) || "",
-              clientToken: (formData.get("zapiClientToken") as string) || undefined,
+              clientToken:
+                (formData.get("zapiClientToken") as string) || undefined,
             }
           : undefined,
       meta:
         provider === "meta_cloud_api"
           ? {
-              phoneNumberId: (formData.get("metaPhoneNumberId") as string) || "",
+              phoneNumberId:
+                (formData.get("metaPhoneNumberId") as string) || "",
               accessToken: (formData.get("metaAccessToken") as string) || "",
             }
           : undefined,
@@ -63,22 +98,34 @@ export async function onboardClinic(
       toneOfVoice: (formData.get("toneOfVoice") as string) || "acolhedor",
       notes: (formData.get("notes") as string) || undefined,
     },
-    admins: [{
-      email: (formData.get("adminEmail") as string) || "",
-      password: (formData.get("adminPassword") as string) || "",
-      role: "clinic_admin" as const,
-    }],
+    admins: [
+      {
+        email: (formData.get("adminEmail") as string) || "",
+        password: (formData.get("adminPassword") as string) || "",
+        role: "clinic_admin" as const,
+      },
+    ],
   };
 
   const parsed = onboardingConfigSchema.safeParse(raw);
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })),
+      errors: parsed.error.issues.map((i) => ({
+        field: i.path.join("."),
+        message: i.message,
+      })),
     };
   }
   const cfg = parsed.data;
   const now = new Date();
+  const commercialSettings = resolveClinicCommercialSettings({
+    plan: cfg.plan,
+    billingActive: cfg.billingActive,
+    monthlyRevenueBrl: cfg.monthlyRevenueBrl,
+    billingStartedAt: cfg.billingStartedAt,
+    isTest: cfg.isTest,
+  });
 
   // Slug único
   const slugTaken = await db
@@ -88,7 +135,12 @@ export async function onboardClinic(
     .limit(1)
     .then((r) => r[0] ?? null);
   if (slugTaken) {
-    return { ok: false, errors: [{ field: "slug", message: "já existe uma clínica com esse slug" }] };
+    return {
+      ok: false,
+      errors: [
+        { field: "slug", message: "já existe uma clínica com esse slug" },
+      ],
+    };
   }
 
   const inserted = await db
@@ -100,12 +152,22 @@ export async function onboardClinic(
       timezone: cfg.timezone,
       businessHours: cfg.businessHours ?? null,
       greetingMessage: cfg.greetingMessage ?? null,
+      receptionistPhone: cfg.receptionistPhone ?? null,
+      calendarMode: cfg.calendarMode,
+      googleCalendarId: cfg.googleCalendarId ?? null,
+      plan: commercialSettings.plan,
+      operationalStatus: resolveInitialClinicOperationalStatus({
+        isTest: commercialSettings.isTest,
+      }),
+      monthlyRevenueBrl: commercialSettings.monthlyRevenueBrl,
+      billingStartedAt: commercialSettings.billingStartedAt,
+      isTest: commercialSettings.isTest,
       channelProvider: cfg.channel.provider,
       zapiInstanceId: cfg.channel.zapi?.instanceId ?? null,
-      zapiToken: cfg.channel.zapi?.token ?? null,
-      zapiClientToken: cfg.channel.zapi?.clientToken ?? null,
+      zapiToken: encryptCredentialNullable(cfg.channel.zapi?.token),
+      zapiClientToken: encryptCredentialNullable(cfg.channel.zapi?.clientToken),
       metaPhoneNumberId: cfg.channel.meta?.phoneNumberId ?? null,
-      metaAccessToken: cfg.channel.meta?.accessToken ?? null,
+      metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
       updatedAt: now,
     })
     .returning({ id: clinics.id });
@@ -141,11 +203,18 @@ export async function onboardClinic(
     const exists = await db
       .select({ id: clinicMembers.id })
       .from(clinicMembers)
-      .where(and(eq(clinicMembers.email, email), eq(clinicMembers.clinicId, clinicId)))
+      .where(
+        and(
+          eq(clinicMembers.email, email),
+          eq(clinicMembers.clinicId, clinicId),
+        ),
+      )
       .limit(1)
       .then((r) => r[0] ?? null);
     if (!exists) {
-      await db.insert(clinicMembers).values({ clinicId, email, role: a.role, passwordHash });
+      await db
+        .insert(clinicMembers)
+        .values({ clinicId, email, role: a.role, passwordHash });
     }
   }
 

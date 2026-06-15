@@ -40,6 +40,7 @@ export default async function PlaybookEditorPage({
         specialty: version.specialty ?? "",
         procedureDescription: version.procedureDescription ?? "",
         toneOfVoice: version.toneOfVoice,
+        receptionistName: version.receptionistName,
         differentials: version.differentials.length > 0 ? version.differentials : [""],
         commercialPolicy: version.commercialPolicy ?? "",
         objections: version.objections.length > 0 ? version.objections : [],

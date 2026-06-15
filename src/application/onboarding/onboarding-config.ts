@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ClinicPlan } from "./clinic-commercial-settings";
 
 /**
  * VALIDAÇÃO ÚNICA DE ONBOARDING.
@@ -61,6 +62,14 @@ export const onboardingConfigSchema = z.object({
   timezone: z.string().trim().default("America/Sao_Paulo"),
   businessHours: z.string().trim().optional(),
   greetingMessage: z.string().trim().optional(),
+  receptionistPhone: z.string().trim().optional(),
+  calendarMode: z.enum(["internal", "google_calendar"]).default("internal"),
+  googleCalendarId: z.string().trim().optional(),
+  isTest: z.boolean().default(true),
+  plan: z.enum(["essencial", "clinica", "rede", "custom"] satisfies [ClinicPlan, ...ClinicPlan[]]).default("custom"),
+  billingActive: z.boolean().default(false),
+  monthlyRevenueBrl: z.number().nonnegative().optional(),
+  billingStartedAt: z.string().trim().optional(),
   channel: channelSchema,
   // O gate editorial: política comercial não pode ser vazia.
   playbook: onboardingPlaybookSchema,
@@ -83,6 +92,14 @@ export const onboardingConfigSchema = z.object({
       }),
     )
     .min(1, "ao menos um admin é obrigatório"),
+}).superRefine((cfg, ctx) => {
+  if (cfg.calendarMode === "google_calendar" && !cfg.googleCalendarId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["googleCalendarId"],
+      message: "calendar ID é obrigatório quando o modo é Google Calendar",
+    });
+  }
 });
 
 export type OnboardingConfig = z.infer<typeof onboardingConfigSchema>;

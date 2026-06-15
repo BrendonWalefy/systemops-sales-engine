@@ -7,12 +7,14 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
+import { publishablePlaybookSchema } from "@/application/config/editorial-config";
 
 
 type PlaybookVersionData = {
   specialty?: string | null;
   procedureDescription?: string | null;
   toneOfVoice?: string;
+  receptionistName?: string;
   differentials?: string[];
   commercialPolicy?: string | null;
   objections?: { objection: string; response: string }[];
@@ -86,6 +88,22 @@ export async function activatePlaybookVersion(id: string) {
 
   if (!version) return;
 
+  const validation = publishablePlaybookSchema.safeParse({
+    specialty: version.specialty ?? "",
+    procedureDescription: version.procedureDescription ?? "",
+    toneOfVoice: version.toneOfVoice ?? "acolhedor",
+    receptionistName: version.receptionistName,
+    differentials: version.differentials ?? [],
+    commercialPolicy: version.commercialPolicy ?? "",
+  });
+
+  if (!validation.success) {
+    const issues = validation.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Playbook inválido para ativação: ${issues}`);
+  }
+
   await db
     .update(playbookVersions)
     .set({ status: "historical", updatedAt: new Date() })
@@ -146,6 +164,7 @@ export async function duplicatePlaybookVersion(id: string) {
     specialty: original.specialty,
     procedureDescription: original.procedureDescription,
     toneOfVoice: original.toneOfVoice,
+    receptionistName: original.receptionistName,
     differentials: original.differentials,
     commercialPolicy: original.commercialPolicy,
     objections: original.objections,

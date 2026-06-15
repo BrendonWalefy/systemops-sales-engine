@@ -10,7 +10,10 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
+import type {
+  ConversationExperience,
+  MenuItem,
+} from "@/domain/entities/clinic";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -33,7 +36,11 @@ export const leadStatusEnum = pgEnum("lead_status", [
   "won",
 ]);
 
-export const leadTemperatureEnum = pgEnum("lead_temperature", ["cold", "warm", "hot"]);
+export const leadTemperatureEnum = pgEnum("lead_temperature", [
+  "cold",
+  "warm",
+  "hot",
+]);
 
 export const messageAuthorEnum = pgEnum("message_author", [
   "lead",
@@ -70,9 +77,15 @@ export const aiOperationEnum = pgEnum("ai_operation", [
   "manual_analysis",
 ]);
 
-export const whatsappProviderEnum = pgEnum("whatsapp_provider", ["meta_cloud_api", "z_api"]);
+export const whatsappProviderEnum = pgEnum("whatsapp_provider", [
+  "meta_cloud_api",
+  "z_api",
+]);
 
-export const messageDirectionEnum = pgEnum("message_direction", ["inbound", "outbound"]);
+export const messageDirectionEnum = pgEnum("message_direction", [
+  "inbound",
+  "outbound",
+]);
 
 export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
   "service",
@@ -82,7 +95,19 @@ export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
   "unknown",
 ]);
 
-export const clinicPlanEnum = pgEnum("clinic_plan", ["essencial", "clinica", "rede", "custom"]);
+export const clinicPlanEnum = pgEnum("clinic_plan", [
+  "essencial",
+  "clinica",
+  "rede",
+  "custom",
+]);
+export const clinicOperationalStatusEnum = pgEnum("clinic_operational_status", [
+  "prospect",
+  "test",
+  "active",
+  "paused",
+  "cancelled",
+]);
 
 export const playbookVersionStatusEnum = pgEnum("playbook_version_status", [
   "active",
@@ -90,14 +115,20 @@ export const playbookVersionStatusEnum = pgEnum("playbook_version_status", [
   "historical",
 ]);
 
-export const appointmentSourceEnum = pgEnum("appointment_source", ["app", "gcal_import"]);
+export const appointmentSourceEnum = pgEnum("appointment_source", [
+  "app",
+  "gcal_import",
+]);
 
 // Fonte de verdade da DISPONIBILIDADE da clínica.
 //   "internal"        → banco (appointments + calendar_blocks) é a fonte de verdade
 //   "google_calendar" → legado/opt-in: GCal é a fonte de verdade para slots
 // Nullable de propósito: quando null, o resolver deriva o modo a partir de
 // googleCalendarId. Garante zero mudança para clínicas existentes na migração.
-export const calendarModeEnum = pgEnum("calendar_mode", ["internal", "google_calendar"]);
+export const calendarModeEnum = pgEnum("calendar_mode", [
+  "internal",
+  "google_calendar",
+]);
 
 export const clinics = pgTable("clinics", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -120,25 +151,41 @@ export const clinics = pgTable("clinics", {
   calendarMode: calendarModeEnum("calendar_mode"),
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
   takeoverTtlHours: integer("takeover_ttl_hours").notNull().default(4),
-  postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes").notNull().default(60),
-  defaultAppointmentDurationMinutes: integer("default_appointment_duration_minutes").notNull().default(60),
+  postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes")
+    .notNull()
+    .default(60),
+  defaultAppointmentDurationMinutes: integer(
+    "default_appointment_duration_minutes",
+  )
+    .notNull()
+    .default(60),
   plan: clinicPlanEnum("plan").notNull().default("essencial"),
+  operationalStatus: clinicOperationalStatusEnum("operational_status")
+    .notNull()
+    .default("prospect"),
   monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
   billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
   isTest: boolean("is_test").notNull().default(false),
   receptionistPhone: text("receptionist_phone"),
   // Taxa flat por faixa de parcela { n, rate (%), active }. Null = fallback "taxa da maquininha".
-  installmentRates: jsonb("installment_rates").$type<{ n: number; rate: number; active: boolean }[]>(),
+  installmentRates:
+    jsonb("installment_rates").$type<
+      { n: number; rate: number; active: boolean }[]
+    >(),
   rateLimitPerHour: integer("rate_limit_per_hour").notNull().default(60),
   unclearThreshold: integer("unclear_threshold").notNull().default(3),
-  staleConversationHours: integer("stale_conversation_hours").notNull().default(4),
+  staleConversationHours: integer("stale_conversation_hours")
+    .notNull()
+    .default(4),
   slotOfferTtlMinutes: integer("slot_offer_ttl_minutes").notNull().default(15),
   maxSlotsToOffer: integer("max_slots_to_offer").notNull().default(5),
   slotLookaheadDays: integer("slot_lookahead_days").notNull().default(14),
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
   messageDebounceMs: integer("message_debounce_ms"),
-  voiceResponseEnabled: boolean("voice_response_enabled").notNull().default(false),
+  voiceResponseEnabled: boolean("voice_response_enabled")
+    .notNull()
+    .default(false),
   ttsVoice: text("tts_voice").notNull().default("nova"),
   // Configuração completa de TTS por clínica. Substitui ttsVoice logicamente.
   // Null = derivar de ttsVoice para compatibilidade retroativa.
@@ -154,8 +201,12 @@ export const clinics = pgTable("clinics", {
   zapiClientToken: text("zapi_client_token"),
   metaPhoneNumberId: text("meta_phone_number_id"),
   metaAccessToken: text("meta_access_token"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 export const treatments = pgTable(
@@ -168,18 +219,35 @@ export const treatments = pgTable(
     name: text("name").notNull(),
     durationMinutes: integer("duration_minutes").notNull().default(60),
     description: text("description"),
-    commonObjections: jsonb("common_objections").$type<string[]>().notNull().default([]),
-    requiresEvaluationFirst: boolean("requires_evaluation_first").notNull().default(false),
+    commonObjections: jsonb("common_objections")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    requiresEvaluationFirst: boolean("requires_evaluation_first")
+      .notNull()
+      .default(false),
     triggerTemplate: text("trigger_template"),
-    keywordMatchEnabled: boolean("keyword_match_enabled").notNull().default(true),
+    keywordMatchEnabled: boolean("keyword_match_enabled")
+      .notNull()
+      .default(true),
     aliases: text("aliases").array().notNull().default([]),
     isAesthetic: boolean("is_aesthetic").notNull().default(false),
-    pipelineSteps: jsonb("pipeline_steps").$type<import("@/domain/entities/treatment").PipelineStep[]>(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    pipelineSteps:
+      jsonb("pipeline_steps").$type<
+        import("@/domain/entities/treatment").PipelineStep[]
+      >(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    clinicNameIdx: uniqueIndex("treatments_clinic_name_idx").on(table.clinicId, table.name),
+    clinicNameIdx: uniqueIndex("treatments_clinic_name_idx").on(
+      table.clinicId,
+      table.name,
+    ),
   }),
 );
 
@@ -203,12 +271,22 @@ export const leads = pgTable(
     assignedToUserId: uuid("assigned_to_user_id"),
     nextActionAt: timestamp("next_action_at", { withTimezone: true }),
     lostReason: text("lost_reason"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    clinicStatusIdx: index("leads_clinic_status_idx").on(table.clinicId, table.status),
-    clinicPhoneIdx: uniqueIndex("leads_clinic_phone_idx").on(table.clinicId, table.phone),
+    clinicStatusIdx: index("leads_clinic_status_idx").on(
+      table.clinicId,
+      table.status,
+    ),
+    clinicPhoneIdx: uniqueIndex("leads_clinic_phone_idx").on(
+      table.clinicId,
+      table.phone,
+    ),
     clinicWhatsappLidIdx: uniqueIndex("leads_clinic_whatsapp_lid_idx").on(
       table.clinicId,
       table.whatsappLid,
@@ -233,19 +311,27 @@ export const conversations = pgTable(
     takeoverExpiresAt: timestamp("takeover_expires_at", { withTimezone: true }),
     needsAttention: boolean("needs_attention").notNull().default(false),
     attentionReason: text("attention_reason"),
-    consecutiveUnclearCount: integer("consecutive_unclear_count").notNull().default(0),
+    consecutiveUnclearCount: integer("consecutive_unclear_count")
+      .notNull()
+      .default(0),
     // Claim de processamento: serializa webhooks concorrentes da mesma conversa.
     // Adquirido via UPDATE condicional (CAS de single-statement — neon-http não
     // suporta transações interativas). NULL ou passado = livre.
     processingUntil: timestamp("processing_until", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     leadIdx: uniqueIndex("conversations_lead_idx").on(table.leadId),
-    externalThreadIdx: index("conversations_external_thread_idx").on(table.externalThreadId),
+    externalThreadIdx: index("conversations_external_thread_idx").on(
+      table.externalThreadId,
+    ),
   }),
 );
 
@@ -259,12 +345,16 @@ export const messages = pgTable(
     author: messageAuthorEnum("author").notNull(),
     body: text("body").notNull(),
     mediaUrl: text("media_url"),
-    mediaType: text("media_type").$type<"image" | "video" | "audio" | "document">(),
+    mediaType: text("media_type").$type<
+      "image" | "video" | "audio" | "document"
+    >(),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
     externalId: text("external_id"),
     intent: text("intent"),
     deliveryFormat: text("delivery_format").$type<"text" | "audio">(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     conversationSentAtIdx: index("messages_conversation_sent_at_idx").on(
@@ -301,7 +391,9 @@ export const agentRecommendations = pgTable(
     promptVersion: text("prompt_version").notNull(),
     humanDecision: text("human_decision"),
     finalReply: text("final_reply"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     leadCreatedAtIdx: index("agent_recommendations_lead_created_at_idx").on(
@@ -326,11 +418,18 @@ export const followUps = pgTable(
     reason: text("reason").notNull(),
     suggestedMessage: text("suggested_message"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    clinicDueAtIdx: index("follow_ups_clinic_due_at_idx").on(table.clinicId, table.dueAt),
+    clinicDueAtIdx: index("follow_ups_clinic_due_at_idx").on(
+      table.clinicId,
+      table.dueAt,
+    ),
     leadReasonDueAtIdx: uniqueIndex("follow_ups_lead_reason_due_at_idx").on(
       table.clinicId,
       table.leadId,
@@ -353,8 +452,12 @@ export const professionals = pgTable(
     workSchedule: jsonb("work_schedule"),
     googleCalendarId: text("google_calendar_id"),
     isActive: boolean("is_active").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     clinicIdx: index("professionals_clinic_idx").on(table.clinicId),
@@ -371,8 +474,12 @@ export const rooms = pgTable(
     name: text("name").notNull(),
     capacity: integer("capacity").notNull().default(1),
     isActive: boolean("is_active").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     clinicIdx: index("rooms_clinic_idx").on(table.clinicId),
@@ -398,8 +505,12 @@ export const appointments = pgTable(
     status: appointmentStatusEnum("status").notNull().default("scheduled"),
     source: appointmentSourceEnum("source").notNull().default("app"),
     reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     clinicStartsAtIdx: index("appointments_clinic_starts_at_idx").on(
@@ -428,7 +539,9 @@ export const calendarBlocks = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     reason: text("reason").notNull().default(""),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     clinicStartsAtIdx: index("calendar_blocks_clinic_starts_at_idx").on(
@@ -451,7 +564,9 @@ export const aiUsageCosts = pgTable(
     inputTokens: integer("input_tokens").notNull(),
     outputTokens: integer("output_tokens").notNull(),
     estimatedCostUsdMicros: integer("estimated_cost_usd_micros").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     clinicCreatedAtIdx: index("ai_usage_costs_clinic_created_at_idx").on(
@@ -473,13 +588,14 @@ export const whatsappMessageCosts = pgTable(
     direction: messageDirectionEnum("direction").notNull(),
     category: whatsappCategoryEnum("category").notNull(),
     estimatedCostUsdMicros: integer("estimated_cost_usd_micros").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    clinicCreatedAtIdx: index("whatsapp_message_costs_clinic_created_at_idx").on(
-      table.clinicId,
-      table.createdAt,
-    ),
+    clinicCreatedAtIdx: index(
+      "whatsapp_message_costs_clinic_created_at_idx",
+    ).on(table.clinicId, table.createdAt),
   }),
 );
 
@@ -494,14 +610,15 @@ export const conversationStates = pgTable(
     // idle | slots_offered | awaiting_confirmation | booking_pending | menu_offered | procedure_list_offered
     state: text("state").notNull(),
     payload: jsonb("payload"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => ({
-    conversationCreatedAtIdx: index("conversation_states_conversation_created_at_idx").on(
-      table.conversationId,
-      table.createdAt,
-    ),
+    conversationCreatedAtIdx: index(
+      "conversation_states_conversation_created_at_idx",
+    ).on(table.conversationId, table.createdAt),
   }),
 );
 
@@ -517,10 +634,14 @@ export const pushSubscriptions = pgTable(
     endpoint: text("endpoint").notNull(),
     p256dh: text("p256dh").notNull(),
     auth: text("auth").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    endpointIdx: uniqueIndex("push_subscriptions_endpoint_idx").on(table.endpoint),
+    endpointIdx: uniqueIndex("push_subscriptions_endpoint_idx").on(
+      table.endpoint,
+    ),
     clinicIdx: index("push_subscriptions_clinic_idx").on(table.clinicId),
   }),
 );
@@ -537,35 +658,52 @@ export const playbookVersions = pgTable(
     specialty: text("specialty"),
     procedureDescription: text("procedure_description"),
     toneOfVoice: text("tone_of_voice").notNull().default("acolhedor"),
-    differentials: jsonb("differentials").$type<string[]>().notNull().default([]),
+    differentials: jsonb("differentials")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     commercialPolicy: text("commercial_policy"),
     // Orientação livre editada pela tela de settings. Vive aqui (e não em
     // clinics) para que settings e advisor alimentem a MESMA versão ativa.
     notes: text("notes"),
+    receptionistName: text("receptionist_name").notNull().default("Marina"),
     objections: jsonb("objections")
       .$type<{ objection: string; response: string }[]>()
       .notNull()
       .default([]),
     mediaLibrary: jsonb("media_library")
-      .$type<{ id: string; title: string; url: string; type: "video" | "image" }[]>()
+      .$type<
+        { id: string; title: string; url: string; type: "video" | "image" }[]
+      >()
       .notNull()
       .default([]),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    clinicStatusIdx: index("playbook_versions_clinic_status_idx").on(table.clinicId, table.status),
+    clinicStatusIdx: index("playbook_versions_clinic_status_idx").on(
+      table.clinicId,
+      table.status,
+    ),
   }),
 );
 
 // Lock otimista de slots — previne double-booking
 export const clinicMetrics = pgTable("clinic_metrics", {
   id: uuid("id").primaryKey().defaultRandom(),
-  clinicId: uuid("clinic_id").notNull().references(() => clinics.id),
+  clinicId: uuid("clinic_id")
+    .notNull()
+    .references(() => clinics.id),
   periodFrom: timestamp("period_from", { withTimezone: true }).notNull(),
   periodTo: timestamp("period_to", { withTimezone: true }).notNull(),
   data: jsonb("data").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 export const slotReservations = pgTable(
@@ -584,18 +722,22 @@ export const slotReservations = pgTable(
     status: text("status").notNull().default("pending"),
     calendarEventId: text("calendar_event_id"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     clinicStartsAtIdx: index("slot_reservations_clinic_starts_at_idx").on(
       table.clinicId,
       table.startsAt,
     ),
-    clinicLeadIdx: index("slot_reservations_clinic_lead_idx").on(table.clinicId, table.leadId),
-    clinicStartsAtUnique: uniqueIndex("slot_reservations_clinic_starts_at_unique").on(
+    clinicLeadIdx: index("slot_reservations_clinic_lead_idx").on(
       table.clinicId,
-      table.startsAt,
+      table.leadId,
     ),
+    clinicStartsAtUnique: uniqueIndex(
+      "slot_reservations_clinic_starts_at_unique",
+    ).on(table.clinicId, table.startsAt),
   }),
 );
 
@@ -614,10 +756,15 @@ export const clinicMembers = pgTable(
     role: memberRoleEnum("role").notNull().default("clinic_admin"),
     passwordHash: text("password_hash"),
     avatarUrl: text("avatar_url"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    emailClinicIdx: uniqueIndex("clinic_members_email_clinic_idx").on(table.email, table.clinicId),
+    emailClinicIdx: uniqueIndex("clinic_members_email_clinic_idx").on(
+      table.email,
+      table.clinicId,
+    ),
     emailIdx: index("clinic_members_email_idx").on(table.email),
   }),
 );

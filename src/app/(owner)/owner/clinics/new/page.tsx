@@ -102,6 +102,55 @@ export default function NewClinicPage() {
         </section>
 
         <section className="panel" style={{ marginBottom: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Operação e cobrança</h2>
+          <div className="form-stack">
+            <label>
+              Telefone da recepção humana
+              <input name="receptionistPhone" placeholder="+55 11 99999-9999" />
+            </label>
+            <label>
+              Modo de agenda
+              <select name="calendarMode" defaultValue="internal">
+                <option value="internal">Agenda interna</option>
+                <option value="google_calendar">Google Calendar</option>
+              </select>
+            </label>
+            <label>
+              Google Calendar ID
+              <input name="googleCalendarId" placeholder="obrigatório se usar Google Calendar" />
+              {errorFor("googleCalendarId") && (
+                <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("googleCalendarId")}</small>
+              )}
+            </label>
+            <label>
+              Plano comercial
+              <select name="plan" defaultValue="custom">
+                <option value="custom">Customizado / ainda definindo</option>
+                <option value="essencial">Essencial</option>
+                <option value="clinica">Clínica</option>
+                <option value="rede">Rede</option>
+              </select>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input name="billingActive" type="checkbox" />
+              Cobrança ativa desde a criação
+            </label>
+            <label>
+              Receita mensal contratada (R$)
+              <input name="monthlyRevenueBrl" type="number" min="0" step="1" placeholder="Ex: 1497" />
+            </label>
+            <label>
+              Início da cobrança
+              <input name="billingStartedAt" type="date" />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input name="isTest" type="checkbox" defaultChecked />
+              Ambiente de testes / não contabilizar como produção
+            </label>
+          </div>
+        </section>
+
+        <section className="panel" style={{ marginBottom: 16 }}>
           <h2 style={{ marginTop: 0 }}>Playbook inicial</h2>
           <div className="form-stack">
             <label>

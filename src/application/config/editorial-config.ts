@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
+export { lintPlaybookNotes } from "./playbook-lint";
 
 /**
  * FONTE ÚNICA DA VERDADE EDITORIAL.
@@ -63,7 +64,7 @@ export const publishablePlaybookSchema = z.object({
     .trim()
     .min(1, "descrição de procedimentos não pode ser vazia"),
   toneOfVoice: z.string().trim().min(1).default("acolhedor"),
-  receptionistName: z.string().trim().min(1).default("Marina"),
+  receptionistName: z.string().trim().min(1, "nome da recepcionista é obrigatório").default("Marina"),
   differentials: z.array(z.string()).default([]),
   objections: z
     .array(z.object({ objection: z.string(), response: z.string() }))
@@ -164,8 +165,7 @@ export async function resolveActiveEditorialConfig(
     specialty: activeVersion.specialty,
     toneOfVoice: activeVersion.toneOfVoice,
     commercialPolicy: activeVersion.commercialPolicy,
-    receptionistName:
-      (activeVersion as unknown as { receptionistName?: string }).receptionistName ?? "Marina",
+    receptionistName: activeVersion.receptionistName,
     procedures,
     differentials,
     objections,

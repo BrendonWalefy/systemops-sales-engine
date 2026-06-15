@@ -8,15 +8,28 @@ import {
   whatsappMessageCosts,
 } from "@/infrastructure/db/schema";
 import { eq, sum, and, gte } from "drizzle-orm";
-import { TrendingUp, DollarSign, Percent, AlertCircle, ArrowLeft, FlaskConical, Activity } from "lucide-react";
+import {
+  TrendingUp,
+  DollarSign,
+  Percent,
+  AlertCircle,
+  ArrowLeft,
+  FlaskConical,
+  Activity,
+} from "lucide-react";
+import {
+  getClinicOperationalStatusLabel,
+  isBillableOperationalStatus,
+} from "@/application/clinics/clinic-operational-status-presentation";
+import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 
 // Custos de infra mensais em BRL (centavos) — auditados em jun/2026
 // Vercel: Hobby plan (gratuito). Neon: Free tier (gratuito, DB < 30 MB).
 // Z-API: R$79,99/instância (fatura 24/05/2026, plano "Meu número").
 // Estes valores devem ser revisados ao migrar de plano.
 const INFRA_FIXED_BRL = {
-  vercel: 0,            // Hobby (gratuito até ~20 clínicas)
-  neon: 0,              // Free tier (gratuito até 512 MB / 100 CU-hrs)
+  vercel: 0, // Hobby (gratuito até ~20 clínicas)
+  neon: 0, // Free tier (gratuito até 512 MB / 100 CU-hrs)
   zapi_per_clinic: 7999, // R$ 79,99 por instância (confirmado fatura jun/2026)
 };
 
@@ -63,6 +76,7 @@ type ClinicFinancial = {
   id: string;
   name: string;
   plan: string;
+  operationalStatus: ClinicOperationalStatus;
   monthlyRevenueBrl: number;
   billingStartedAt: Date | null;
   aiCostMicros: number;
@@ -78,6 +92,7 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
       id: clinics.id,
       name: clinics.name,
       plan: clinics.plan,
+      operationalStatus: clinics.operationalStatus,
       monthlyRevenueBrl: clinics.monthlyRevenueBrl,
       billingStartedAt: clinics.billingStartedAt,
       isTest: clinics.isTest,
@@ -91,7 +106,12 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
         db
           .select({ total: sum(aiUsageCosts.estimatedCostUsdMicros) })
           .from(aiUsageCosts)
-          .where(and(eq(aiUsageCosts.clinicId, clinic.id), gte(aiUsageCosts.createdAt, monthStart))),
+          .where(
+            and(
+              eq(aiUsageCosts.clinicId, clinic.id),
+              gte(aiUsageCosts.createdAt, monthStart),
+            ),
+          ),
 
         db
           .select({ total: sum(whatsappMessageCosts.estimatedCostUsdMicros) })
@@ -108,8 +128,11 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
         id: clinic.id,
         name: clinic.name,
         plan: clinic.plan,
+        operationalStatus: clinic.operationalStatus,
         monthlyRevenueBrl: clinic.monthlyRevenueBrl,
-        billingStartedAt: clinic.billingStartedAt ? new Date(clinic.billingStartedAt) : null,
+        billingStartedAt: clinic.billingStartedAt
+          ? new Date(clinic.billingStartedAt)
+          : null,
         aiCostMicros: Number(aiResult[0]?.total ?? 0),
         waCostMicros: Number(waResult[0]?.total ?? 0),
         isTest: clinic.isTest,
@@ -121,14 +144,28 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
 export default async function FinanceiroPage() {
   const allClinics = await fetchClinicFinancials();
 
-  const prodClinics = allClinics.filter((c) => !c.isTest);
-  const testClinics = allClinics.filter((c) => c.isTest);
+  const billableClinics = allClinics.filter((c) =>
+    isBillableOperationalStatus(c.operationalStatus),
+  );
+  const activeClinics = allClinics.filter(
+    (c) => c.operationalStatus === "active",
+  );
+  const pausedClinics = allClinics.filter(
+    (c) => c.operationalStatus === "paused",
+  );
+  const testClinics = allClinics.filter((c) => c.operationalStatus === "test");
+  const prospectClinics = allClinics.filter(
+    (c) => c.operationalStatus === "prospect",
+  );
+  const cancelledClinics = allClinics.filter(
+    (c) => c.operationalStatus === "cancelled",
+  );
 
-  const nProdClinics = prodClinics.length;
+  const nProdClinics = billableClinics.length;
   const nTestClinics = testClinics.length;
 
   // MRR de produção (centavos)
-  const mrr = prodClinics.reduce((s, c) => s + c.monthlyRevenueBrl, 0);
+  const mrr = billableClinics.reduce((s, c) => s + c.monthlyRevenueBrl, 0);
 
   // Custos de infra de produção este mês (BRL centavos)
   const infraFixed = INFRA_FIXED_BRL.vercel + INFRA_FIXED_BRL.neon;
@@ -136,7 +173,7 @@ export default async function FinanceiroPage() {
   const infraTotal = infraFixed + infraVar;
 
   // Custos variáveis de IA+WA de produção
-  const aiWaTotal = prodClinics.reduce(
+  const aiWaTotal = billableClinics.reduce(
     (s, c) => s + microsBrlCents(c.aiCostMicros + c.waCostMicros),
     0,
   );
@@ -153,12 +190,17 @@ export default async function FinanceiroPage() {
   );
   const totalTestCost = testZapiCost + testAiWaCost;
 
-  const unconfiguredClinics = prodClinics.filter((c) => c.plan === "custom" && c.monthlyRevenueBrl === 0);
+  const unconfiguredClinics = billableClinics.filter(
+    (c) => c.plan === "custom" && c.monthlyRevenueBrl === 0,
+  );
 
   return (
     <div>
       <div className="product-topbar">
-        <div className="owner-page-header" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div
+          className="owner-page-header"
+          style={{ display: "flex", alignItems: "center", gap: 14 }}
+        >
           <Link
             href="/owner"
             style={{
@@ -175,17 +217,88 @@ export default async function FinanceiroPage() {
             <ArrowLeft size={14} />
             Visão geral
           </Link>
-          <span className="owner-page-header-sep" style={{ color: "var(--line-strong)" }}>·</span>
+          <span
+            className="owner-page-header-sep"
+            style={{ color: "var(--line-strong)" }}
+          >
+            ·
+          </span>
           <div className="owner-page-header-title">
             <h1 style={{ margin: 0 }}>Financeiro</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
-              Mês atual · Receita, custos e margens
+            <p
+              style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}
+            >
+              Mês atual · {activeClinics.length} ativa
+              {activeClinics.length !== 1 ? "s" : ""}
+              {pausedClinics.length > 0 &&
+                ` · ${pausedClinics.length} pausada${pausedClinics.length !== 1 ? "s" : ""}`}
+              {prospectClinics.length > 0 &&
+                ` · ${prospectClinics.length} prospect${prospectClinics.length !== 1 ? "s" : ""}`}
+              {testClinics.length > 0 &&
+                ` · ${testClinics.length} teste${testClinics.length !== 1 ? "s" : ""}`}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="page-content" style={{ paddingBottom: 60, display: "grid", gap: 32 }}>
+      <div
+        className="page-content"
+        style={{ paddingBottom: 60, display: "grid", gap: 32 }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            gap: 10,
+          }}
+        >
+          {[
+            { label: "Ativas", value: activeClinics.length, color: "#34d399" },
+            {
+              label: "Pausadas",
+              value: pausedClinics.length,
+              color: "#f59e0b",
+            },
+            {
+              label: "Prospects",
+              value: prospectClinics.length,
+              color: "#60a5fa",
+            },
+            { label: "Testes", value: testClinics.length, color: "#818cf8" },
+          ].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                border: `1px solid ${item.color}33`,
+                borderRadius: 12,
+                padding: "14px 16px",
+                background: `${item.color}10`,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: item.color,
+                }}
+              >
+                {item.label}
+              </div>
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 24,
+                  fontWeight: 800,
+                  color: item.color,
+                }}
+              >
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
 
         {/* Alerta de clínicas sem valor configurado */}
         {unconfiguredClinics.length > 0 && (
@@ -200,10 +313,14 @@ export default async function FinanceiroPage() {
               padding: "14px 18px",
             }}
           >
-            <AlertCircle size={16} style={{ color: "var(--warning)", flexShrink: 0 }} />
+            <AlertCircle
+              size={16}
+              style={{ color: "var(--warning)", flexShrink: 0 }}
+            />
             <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)" }}>
-              <strong>{unconfiguredClinics.length} clínica(s)</strong> sem plano configurado:{" "}
-              {unconfiguredClinics.map((c) => c.name).join(", ")}. Configure o plano na tabela abaixo.
+              <strong>{unconfiguredClinics.length} clínica(s)</strong> sem plano
+              configurado: {unconfiguredClinics.map((c) => c.name).join(", ")}.
+              Configure o plano na tabela abaixo.
             </p>
           </div>
         )}
@@ -212,18 +329,27 @@ export default async function FinanceiroPage() {
         <div className="kpi-strip">
           <div className="metric metric-highlight">
             <div className="metric-header">
-              <span className="metric-icon"><DollarSign size={14} /></span>
+              <span className="metric-icon">
+                <DollarSign size={14} />
+              </span>
               <span className="metric-label">MRR</span>
             </div>
-            <span className="metric-value" style={{ fontSize: 22, letterSpacing: "-0.03em" }}>
+            <span
+              className="metric-value"
+              style={{ fontSize: 22, letterSpacing: "-0.03em" }}
+            >
               {formatBrl(mrr)}
             </span>
-            <span className="metric-context">{nProdClinics} clínica{nProdClinics !== 1 ? "s" : ""} ativas</span>
+            <span className="metric-context">
+              {nProdClinics} clínica{nProdClinics !== 1 ? "s" : ""} ativas
+            </span>
           </div>
 
           <div className="metric">
             <div className="metric-header">
-              <span className="metric-icon"><TrendingUp size={14} /></span>
+              <span className="metric-icon">
+                <TrendingUp size={14} />
+              </span>
               <span className="metric-label">Lucro bruto</span>
             </div>
             <span
@@ -231,7 +357,8 @@ export default async function FinanceiroPage() {
               style={{
                 fontSize: 20,
                 letterSpacing: "-0.03em",
-                color: grossProfit >= 0 ? "var(--accent-strong)" : "var(--danger)",
+                color:
+                  grossProfit >= 0 ? "var(--accent-strong)" : "var(--danger)",
               }}
             >
               {formatBrl(grossProfit)}
@@ -241,7 +368,9 @@ export default async function FinanceiroPage() {
 
           <div className="metric">
             <div className="metric-header">
-              <span className="metric-icon"><Percent size={14} /></span>
+              <span className="metric-icon">
+                <Percent size={14} />
+              </span>
               <span className="metric-label">Margem bruta</span>
             </div>
             <span
@@ -262,10 +391,15 @@ export default async function FinanceiroPage() {
 
           <div className="metric">
             <div className="metric-header">
-              <span className="metric-icon"><DollarSign size={14} /></span>
+              <span className="metric-icon">
+                <DollarSign size={14} />
+              </span>
               <span className="metric-label">Custo infra</span>
             </div>
-            <span className="metric-value" style={{ fontSize: 18, letterSpacing: "-0.02em" }}>
+            <span
+              className="metric-value"
+              style={{ fontSize: 18, letterSpacing: "-0.02em" }}
+            >
               {formatBrl(infraTotal)}
             </span>
             <span className="metric-context">Vercel + Neon + Z-API</span>
@@ -273,10 +407,15 @@ export default async function FinanceiroPage() {
 
           <div className="metric">
             <div className="metric-header">
-              <span className="metric-icon"><DollarSign size={14} /></span>
+              <span className="metric-icon">
+                <DollarSign size={14} />
+              </span>
               <span className="metric-label">Custo IA + WA</span>
             </div>
-            <span className="metric-value" style={{ fontSize: 18, letterSpacing: "-0.02em" }}>
+            <span
+              className="metric-value"
+              style={{ fontSize: 18, letterSpacing: "-0.02em" }}
+            >
               {formatBrl(aiWaTotal)}
             </span>
             <span className="metric-context">OpenAI + mensagens</span>
@@ -284,7 +423,13 @@ export default async function FinanceiroPage() {
         </div>
 
         {/* Breakdown de custos */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+        <div
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               padding: "14px 18px 12px",
@@ -292,14 +437,24 @@ export default async function FinanceiroPage() {
               background: "var(--surface-soft)",
             }}
           >
-            <p className="eyebrow" style={{ margin: 0 }}>Breakdown de custos — mês atual</p>
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Breakdown de custos — mês atual
+            </p>
           </div>
 
           {/* Layout mobile: lista de linhas com valor visível */}
           <div style={{ display: "flex", flexDirection: "column" }}>
             {[
-              { label: "Vercel", note: "Hobby — gratuito", value: INFRA_FIXED_BRL.vercel },
-              { label: "Neon (PostgreSQL)", note: "Free tier — gratuito", value: INFRA_FIXED_BRL.neon },
+              {
+                label: "Vercel",
+                note: "Hobby — gratuito",
+                value: INFRA_FIXED_BRL.vercel,
+              },
+              {
+                label: "Neon (PostgreSQL)",
+                note: "Free tier — gratuito",
+                value: INFRA_FIXED_BRL.neon,
+              },
               {
                 label: `Z-API (${nProdClinics} instância${nProdClinics !== 1 ? "s" : ""})`,
                 note: `${nProdClinics} × R$79,99`,
@@ -308,12 +463,16 @@ export default async function FinanceiroPage() {
               {
                 label: "OpenAI API",
                 note: "variável",
-                value: microsBrlCents(prodClinics.reduce((s, c) => s + c.aiCostMicros, 0)),
+                value: microsBrlCents(
+                  billableClinics.reduce((s, c) => s + c.aiCostMicros, 0),
+                ),
               },
               {
                 label: "WhatsApp (Meta msgs)",
                 note: "variável",
-                value: microsBrlCents(prodClinics.reduce((s, c) => s + c.waCostMicros, 0)),
+                value: microsBrlCents(
+                  billableClinics.reduce((s, c) => s + c.waCostMicros, 0),
+                ),
               },
             ].map((row, i) => (
               <div
@@ -325,14 +484,28 @@ export default async function FinanceiroPage() {
                   gap: 12,
                   padding: "12px 18px",
                   borderBottom: "1px solid var(--line)",
-                  background: i % 2 === 1 ? "var(--surface-soft)" : "transparent",
+                  background:
+                    i % 2 === 1 ? "var(--surface-soft)" : "transparent",
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, display: "block" }}>{row.label}</span>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{row.note}</span>
+                  <span
+                    style={{ fontSize: 13, fontWeight: 600, display: "block" }}
+                  >
+                    {row.label}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {row.note}
+                  </span>
                 </div>
-                <span style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 13, flexShrink: 0 }}>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontFamily: "monospace",
+                    fontSize: 13,
+                    flexShrink: 0,
+                  }}
+                >
                   {formatBrl(row.value)}
                 </span>
               </div>
@@ -351,18 +524,44 @@ export default async function FinanceiroPage() {
                   background: "rgba(99,102,241,0.05)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <FlaskConical size={13} style={{ color: "#818cf8", flexShrink: 0 }} />
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    minWidth: 0,
+                  }}
+                >
+                  <FlaskConical
+                    size={13}
+                    style={{ color: "#818cf8", flexShrink: 0 }}
+                  />
                   <div>
-                    <span style={{ fontSize: 13, fontWeight: 600, display: "block", color: "#818cf8" }}>
-                      Infra de testes ({nTestClinics} clínica{nTestClinics !== 1 ? "s" : ""})
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        display: "block",
+                        color: "#818cf8",
+                      }}
+                    >
+                      Infra de testes ({nTestClinics} clínica
+                      {nTestClinics !== 1 ? "s" : ""})
                     </span>
                     <span style={{ fontSize: 11, color: "var(--muted)" }}>
                       Z-API + IA · não entra no MRR
                     </span>
                   </div>
                 </div>
-                <span style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 13, flexShrink: 0, color: "#818cf8" }}>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontFamily: "monospace",
+                    fontSize: 13,
+                    flexShrink: 0,
+                    color: "#818cf8",
+                  }}
+                >
                   {formatBrl(totalTestCost)}
                 </span>
               </div>
@@ -380,10 +579,23 @@ export default async function FinanceiroPage() {
                 borderTop: "2px solid var(--accent)",
               }}
             >
-              <span style={{ fontWeight: 800, color: "var(--accent-strong)", fontSize: 13 }}>
+              <span
+                style={{
+                  fontWeight: 800,
+                  color: "var(--accent-strong)",
+                  fontSize: 13,
+                }}
+              >
                 Total custos produção
               </span>
-              <span style={{ fontWeight: 800, fontFamily: "monospace", fontSize: 14, color: "var(--accent-strong)" }}>
+              <span
+                style={{
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  fontSize: 14,
+                  color: "var(--accent-strong)",
+                }}
+              >
                 {formatBrl(totalCosts)}
               </span>
             </div>
@@ -391,8 +603,14 @@ export default async function FinanceiroPage() {
         </div>
 
         {/* Receita por clínica — produção */}
-        {prodClinics.length > 0 && (
-          <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+        {billableClinics.length > 0 && (
+          <div
+            style={{
+              border: "1px solid var(--line)",
+              borderRadius: 12,
+              overflow: "hidden",
+            }}
+          >
             <div
               style={{
                 padding: "14px 18px 12px",
@@ -400,14 +618,20 @@ export default async function FinanceiroPage() {
                 background: "var(--surface-soft)",
               }}
             >
-              <p className="eyebrow" style={{ margin: 0 }}>Receita por clínica</p>
+              <p className="eyebrow" style={{ margin: 0 }}>
+                Receita por clínica operacional
+              </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
-              {prodClinics.map((clinic, i) => {
-                const aiWaBrl = microsBrlCents(clinic.aiCostMicros + clinic.waCostMicros);
+              {billableClinics.map((clinic, i) => {
+                const aiWaBrl = microsBrlCents(
+                  clinic.aiCostMicros + clinic.waCostMicros,
+                );
                 const planLabel = PLAN_LABEL[clinic.plan] ?? clinic.plan;
                 const planDefault = PLAN_PRICE_BRL[clinic.plan] ?? 0;
-                const revenueMismatch = clinic.plan !== "custom" && clinic.monthlyRevenueBrl !== planDefault;
+                const revenueMismatch =
+                  clinic.plan !== "custom" &&
+                  clinic.monthlyRevenueBrl !== planDefault;
 
                 return (
                   <div
@@ -418,13 +642,37 @@ export default async function FinanceiroPage() {
                       justifyContent: "space-between",
                       gap: 12,
                       padding: "13px 18px",
-                      borderBottom: i < prodClinics.length - 1 ? "1px solid var(--line)" : "none",
-                      background: i % 2 === 1 ? "var(--surface-soft)" : "transparent",
+                      borderBottom:
+                        i < billableClinics.length - 1
+                          ? "1px solid var(--line)"
+                          : "none",
+                      background:
+                        i % 2 === 1 ? "var(--surface-soft)" : "transparent",
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                        <span style={{ fontWeight: 700, fontSize: 13 }}>{clinic.name}</span>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: 3,
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>
+                          {clinic.name}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: "var(--muted)",
+                          }}
+                        >
+                          {getClinicOperationalStatusLabel(
+                            clinic.operationalStatus,
+                          )}
+                        </span>
                         <span
                           style={{
                             display: "inline-block",
@@ -445,28 +693,124 @@ export default async function FinanceiroPage() {
                           {planLabel}
                         </span>
                       </div>
-                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "monospace" }}>
-                        IA+WA: {formatUsd(clinic.aiCostMicros + clinic.waCostMicros)} · {formatBrl(aiWaBrl)}
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--muted)",
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        IA+WA:{" "}
+                        {formatUsd(clinic.aiCostMicros + clinic.waCostMicros)} ·{" "}
+                        {formatBrl(aiWaBrl)}
                       </span>
                       {clinic.billingStartedAt && (
-                        <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "var(--muted)",
+                            marginLeft: 8,
+                          }}
+                        >
                           desde{" "}
-                          {clinic.billingStartedAt.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}
+                          {clinic.billingStartedAt.toLocaleDateString("pt-BR", {
+                            month: "short",
+                            year: "numeric",
+                          })}
                         </span>
                       )}
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, display: "block" }}>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 14,
+                          display: "block",
+                        }}
+                      >
                         {formatBrl(clinic.monthlyRevenueBrl)}
                         {revenueMismatch && (
-                          <span style={{ marginLeft: 5, fontSize: 11, color: "var(--warning)" }} title="Valor diverge do preço padrão do plano">⚠</span>
+                          <span
+                            style={{
+                              marginLeft: 5,
+                              fontSize: 11,
+                              color: "var(--warning)",
+                            }}
+                            title="Valor diverge do preço padrão do plano"
+                          >
+                            ⚠
+                          </span>
                         )}
                       </span>
-                      <span style={{ fontSize: 10, color: "var(--muted)" }}>/ mês</span>
+                      <span style={{ fontSize: 10, color: "var(--muted)" }}>
+                        / mês
+                      </span>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {prospectClinics.length > 0 && (
+          <div
+            style={{
+              border: "1px solid rgba(59,130,246,0.24)",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "rgba(59,130,246,0.03)",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px 18px 12px",
+                borderBottom: "1px solid rgba(59,130,246,0.16)",
+                background: "rgba(59,130,246,0.06)",
+              }}
+            >
+              <p className="eyebrow" style={{ margin: 0, color: "#60a5fa" }}>
+                Prospects fora do MRR
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {prospectClinics.map((clinic, i) => (
+                <div
+                  key={clinic.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "13px 18px",
+                    borderBottom:
+                      i < prospectClinics.length - 1
+                        ? "1px solid rgba(59,130,246,0.1)"
+                        : "none",
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 13,
+                        display: "block",
+                        color: "#60a5fa",
+                      }}
+                    >
+                      {clinic.name}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                      Ainda não entra no MRR nem na margem operacional
+                    </span>
+                  </div>
+                  <span
+                    style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa" }}
+                  >
+                    {getClinicOperationalStatusLabel(clinic.operationalStatus)}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -498,7 +842,9 @@ export default async function FinanceiroPage() {
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {testClinics.map((clinic, i) => {
-                const aiWaBrl = microsBrlCents(clinic.aiCostMicros + clinic.waCostMicros);
+                const aiWaBrl = microsBrlCents(
+                  clinic.aiCostMicros + clinic.waCostMicros,
+                );
                 const clinicTotal = INFRA_FIXED_BRL.zapi_per_clinic + aiWaBrl;
 
                 return (
@@ -510,22 +856,42 @@ export default async function FinanceiroPage() {
                       justifyContent: "space-between",
                       gap: 12,
                       padding: "13px 18px",
-                      borderBottom: i < testClinics.length - 1 ? "1px solid rgba(99,102,241,0.15)" : "none",
+                      borderBottom:
+                        i < testClinics.length - 1
+                          ? "1px solid rgba(99,102,241,0.15)"
+                          : "none",
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13, display: "block", marginBottom: 3 }}>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 13,
+                          display: "block",
+                          marginBottom: 3,
+                        }}
+                      >
                         {clinic.name}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                        Z-API {formatBrl(INFRA_FIXED_BRL.zapi_per_clinic)} + IA {formatBrl(aiWaBrl)}
+                        Z-API {formatBrl(INFRA_FIXED_BRL.zapi_per_clinic)} + IA{" "}
+                        {formatBrl(aiWaBrl)}
                       </span>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, display: "block", color: "#818cf8" }}>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 14,
+                          display: "block",
+                          color: "#818cf8",
+                        }}
+                      >
                         {formatBrl(clinicTotal)}
                       </span>
-                      <span style={{ fontSize: 10, color: "var(--muted)" }}>/ mês</span>
+                      <span style={{ fontSize: 10, color: "var(--muted)" }}>
+                        / mês
+                      </span>
                     </div>
                   </div>
                 );
@@ -534,8 +900,66 @@ export default async function FinanceiroPage() {
           </div>
         )}
 
+        {cancelledClinics.length > 0 && (
+          <div
+            style={{
+              border: "1px solid rgba(239,68,68,0.2)",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "rgba(239,68,68,0.03)",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px 18px 12px",
+                borderBottom: "1px solid rgba(239,68,68,0.14)",
+                background: "rgba(239,68,68,0.06)",
+              }}
+            >
+              <p className="eyebrow" style={{ margin: 0, color: "#f87171" }}>
+                Clínicas canceladas
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {cancelledClinics.map((clinic, i) => (
+                <div
+                  key={clinic.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "13px 18px",
+                    borderBottom:
+                      i < cancelledClinics.length - 1
+                        ? "1px solid rgba(239,68,68,0.1)"
+                        : "none",
+                  }}
+                >
+                  <span
+                    style={{ fontWeight: 700, fontSize: 13, color: "#f87171" }}
+                  >
+                    {clinic.name}
+                  </span>
+                  <span
+                    style={{ fontSize: 11, fontWeight: 700, color: "#f87171" }}
+                  >
+                    {getClinicOperationalStatusLabel(clinic.operationalStatus)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Benchmark do piloto — dados reais auditados jun/2026 */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+        <div
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               padding: "14px 18px 12px",
@@ -547,7 +971,9 @@ export default async function FinanceiroPage() {
             }}
           >
             <Activity size={13} style={{ color: "var(--accent-strong)" }} />
-            <p className="eyebrow" style={{ margin: 0 }}>Benchmark do piloto — Ximendes Odontologia (jun/2026)</p>
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Benchmark do piloto — Ximendes Odontologia (jun/2026)
+            </p>
           </div>
           <div
             style={{
@@ -557,13 +983,38 @@ export default async function FinanceiroPage() {
             }}
           >
             {[
-              { label: "Custo total/mês", value: "R$ 82,49", note: "Z-API R$79,99 + OpenAI R$2,50" },
-              { label: "Receita (Starter)", value: "R$ 897,00", note: "plano confirmado" },
-              { label: "Margem bruta", value: "91%", note: "R$ 814/mês de lucro bruto", highlight: true },
-              { label: "Custo por lead", value: "R$ 2,29", note: "36 leads no período" },
-              { label: "Custo por agendamento", value: "R$ 6,87", note: "12 agendamentos" },
-              { label: "Custo OpenAI (IA)", value: "R$ 2,11", note: "$0.41 em 12 dias de piloto" },
-            ].map((item, i) => (
+              {
+                label: "Custo total/mês",
+                value: "R$ 82,49",
+                note: "Z-API R$79,99 + OpenAI R$2,50",
+              },
+              {
+                label: "Receita (Starter)",
+                value: "R$ 897,00",
+                note: "plano confirmado",
+              },
+              {
+                label: "Margem bruta",
+                value: "91%",
+                note: "R$ 814/mês de lucro bruto",
+                highlight: true,
+              },
+              {
+                label: "Custo por lead",
+                value: "R$ 2,29",
+                note: "36 leads no período",
+              },
+              {
+                label: "Custo por agendamento",
+                value: "R$ 6,87",
+                note: "12 agendamentos",
+              },
+              {
+                label: "Custo OpenAI (IA)",
+                value: "R$ 2,11",
+                note: "$0.41 em 12 dias de piloto",
+              },
+            ].map((item) => (
               <div
                 key={item.label}
                 style={{
@@ -572,35 +1023,58 @@ export default async function FinanceiroPage() {
                   borderBottom: "1px solid var(--line)",
                 }}
               >
-                <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 4 }}>{item.label}</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    display: "block",
+                    marginBottom: 4,
+                  }}
+                >
+                  {item.label}
+                </span>
                 <span
                   style={{
                     fontSize: 18,
                     fontWeight: 800,
                     letterSpacing: "-0.03em",
-                    color: item.highlight ? "var(--accent-strong)" : "var(--text)",
+                    color: item.highlight
+                      ? "var(--accent-strong)"
+                      : "var(--text)",
                     display: "block",
                   }}
                 >
                   {item.value}
                 </span>
-                <span style={{ fontSize: 11, color: "var(--muted)" }}>{item.note}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {item.note}
+                </span>
               </div>
             ))}
           </div>
-          <div style={{ padding: "10px 18px", background: "var(--surface-soft)", borderTop: "1px solid var(--line)" }}>
+          <div
+            style={{
+              padding: "10px 18px",
+              background: "var(--surface-soft)",
+              borderTop: "1px solid var(--line)",
+            }}
+          >
             <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-              Projeção para 5 clínicas: ~R$415/mês de custo · ~R$4.485/mês MRR · margem ~91%.
-              Vercel e Neon permanecem gratuitos até ~15 clínicas ativas.
+              Projeção para 5 clínicas: ~R$415/mês de custo · ~R$4.485/mês MRR ·
+              margem ~91%. Vercel e Neon permanecem gratuitos até ~15 clínicas
+              ativas.
             </p>
           </div>
         </div>
 
         {/* Nota de cotação */}
         <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
-          Cotação USD/BRL utilizada: R${USD_TO_BRL.toFixed(2)} (estimativa estática). Custos de IA em USD são convertidos apenas para referência.
-          {nTestClinics > 0 && " Clínicas de teste excluídas do MRR e da margem."}
-          {" "}Custos de infra auditados em jun/2026: Vercel Hobby (R$0), Neon Free (R$0), Z-API R$79,99/instância.
+          Cotação USD/BRL utilizada: R${USD_TO_BRL.toFixed(2)} (estimativa
+          estática). Custos de IA em USD são convertidos apenas para referência.
+          {(nTestClinics > 0 || prospectClinics.length > 0) &&
+            " Clínicas de teste e prospect são excluídas do MRR e da margem."}{" "}
+          Custos de infra auditados em jun/2026: Vercel Hobby (R$0), Neon Free
+          (R$0), Z-API R$79,99/instância.
         </p>
       </div>
     </div>

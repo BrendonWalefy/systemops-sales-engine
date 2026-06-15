@@ -3,9 +3,24 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Building2, Bot, Clock, Stethoscope, Workflow, DollarSign, CheckCircle2,
-  Plus, Trash2, ChevronRight, ChevronLeft, Loader2, Sparkles, Check,
-  AlertCircle, Film, MessageSquare, Camera,
+  Building2,
+  Bot,
+  Clock,
+  Stethoscope,
+  Workflow,
+  DollarSign,
+  CheckCircle2,
+  Plus,
+  Trash2,
+  ChevronRight,
+  ChevronLeft,
+  Loader2,
+  Sparkles,
+  Check,
+  AlertCircle,
+  Film,
+  MessageSquare,
+  Camera,
 } from "lucide-react";
 import {
   saveWizardIdentity,
@@ -16,10 +31,20 @@ import {
   saveWizardPolicy,
 } from "./actions";
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
+import {
+  buildClinicBlueprint,
+  type ClinicBlueprint,
+} from "@/application/onboarding/clinic-blueprint";
+import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
+type MediaItem = {
+  id: string;
+  title: string;
+  url: string;
+  type: "video" | "image";
+};
 
 type WizardTreatment = {
   id?: string;
@@ -47,12 +72,42 @@ type PipelineConfig = {
 };
 
 type WizardInitial = {
-  identity: { specialty: string; city: string; address: string; greetingMessage: string };
+  identity: {
+    specialty: string;
+    city: string;
+    address: string;
+    greetingMessage: string;
+  };
   receptionist: { toneOfVoice: string; differentials: string[] };
-  schedule: { businessHours: string; defaultDurationMinutes: number; bufferMinutes: number; takeoverTtlHours: number };
+  schedule: {
+    businessHours: string;
+    calendarMode: "internal" | "google_calendar";
+    googleCalendarId: string;
+    receptionistPhone: string;
+    defaultDurationMinutes: number;
+    bufferMinutes: number;
+    takeoverTtlHours: number;
+  };
+  channel: {
+    provider: "z_api" | "meta_cloud_api";
+    zapiInstanceId: string;
+    zapiToken: string;
+    zapiClientToken: string;
+    metaPhoneNumberId: string;
+    metaAccessToken: string;
+  };
   treatments: WizardTreatment[];
-  policy: { commercialPolicy: string; notes: string };
+  policy: {
+    commercialPolicy: string;
+    notes: string;
+    plan: ClinicPlan;
+    billingActive: boolean;
+    monthlyRevenueBrl: string;
+    billingStartedAt: string;
+    isTest: boolean;
+  };
   mediaLibrary: MediaItem[];
+  autoReplyEnabled: boolean;
 };
 
 type Props = {
@@ -67,11 +122,22 @@ function toPipelineSteps(config: PipelineConfig): PipelineStep[] {
   if (!config.enabled) return [];
   const steps: PipelineStep[] = [];
 
-  if (config.sendContent && (config.contentIntroText.trim() || config.contentMediaIds.length > 0)) {
+  if (
+    config.sendContent &&
+    (config.contentIntroText.trim() || config.contentMediaIds.length > 0)
+  ) {
     const blocks: ContentBlock[] = [];
-    if (config.contentIntroText.trim()) blocks.push({ kind: "text", content: config.contentIntroText.trim() });
-    config.contentMediaIds.forEach((id) => blocks.push({ kind: "media", mediaId: id }));
-    if (blocks.length > 0) steps.push({ type: "content", label: "Apresentação do procedimento", blocks });
+    if (config.contentIntroText.trim())
+      blocks.push({ kind: "text", content: config.contentIntroText.trim() });
+    config.contentMediaIds.forEach((id) =>
+      blocks.push({ kind: "media", mediaId: id }),
+    );
+    if (blocks.length > 0)
+      steps.push({
+        type: "content",
+        label: "Apresentação do procedimento",
+        blocks,
+      });
   }
   if (config.runQA) {
     steps.push({
@@ -85,7 +151,9 @@ function toPipelineSteps(config: PipelineConfig): PipelineStep[] {
     steps.push({
       type: "photo",
       label: "Solicitar foto",
-      message: config.photoMessage || "Você poderia nos enviar uma foto para personalizar sua avaliação?",
+      message:
+        config.photoMessage ||
+        "Você poderia nos enviar uma foto para personalizar sua avaliação?",
       required: config.photoRequired,
     });
   }
@@ -107,37 +175,96 @@ function initPipelineConfig(t: WizardTreatment): PipelineConfig {
     enabled: steps.length > 0,
     sendContent: !!contentStep,
     contentMediaIds: contentStep
-      ? contentStep.blocks.filter((b) => b.kind === "media").map((b) => (b as { kind: "media"; mediaId: string }).mediaId)
+      ? contentStep.blocks
+          .filter((b) => b.kind === "media")
+          .map((b) => (b as { kind: "media"; mediaId: string }).mediaId)
       : [],
     contentIntroText: contentStep
-      ? ((contentStep.blocks.find((b) => b.kind === "text") as { kind: "text"; content: string } | undefined)?.content ?? "")
+      ? ((
+          contentStep.blocks.find((b) => b.kind === "text") as
+            | { kind: "text"; content: string }
+            | undefined
+        )?.content ?? "")
       : "",
     runQA: !!qaStep,
-    qaInstruction: qaStep && "instruction" in qaStep ? (qaStep.instruction ?? "") : "",
+    qaInstruction:
+      qaStep && "instruction" in qaStep ? (qaStep.instruction ?? "") : "",
     qaMaxTurns: qaStep && "maxTurns" in qaStep ? (qaStep.maxTurns ?? 10) : 10,
     requestPhoto: !!photoStep,
     photoMessage: photoStep && "message" in photoStep ? photoStep.message : "",
-    photoRequired: photoStep && "required" in photoStep ? photoStep.required : false,
+    photoRequired:
+      photoStep && "required" in photoStep ? photoStep.required : false,
   };
 }
 
 // ─── Step config ──────────────────────────────────────────────────────────────
 
 const STEPS = [
-  { id: 1, title: "Identidade da clínica", subtitle: "Nome, especialidade e localização", Icon: Building2 },
-  { id: 2, title: "Recepcionista virtual", subtitle: "Tom de voz e diferenciais", Icon: Bot },
-  { id: 3, title: "Horários e agenda", subtitle: "Funcionamento e atendimento", Icon: Clock },
-  { id: 4, title: "Procedimentos", subtitle: "O que a clínica oferece", Icon: Stethoscope },
-  { id: 5, title: "Jornada do lead", subtitle: "Como a IA conduz conversas estéticas", Icon: Workflow },
-  { id: 6, title: "Valores e política", subtitle: "Preços, pagamento e regras da IA", Icon: DollarSign },
-  { id: 7, title: "Revisão final", subtitle: "Confirme e conclua o onboarding", Icon: CheckCircle2 },
+  {
+    id: 1,
+    title: "Identidade da clínica",
+    subtitle: "Nome, especialidade, localização e canal",
+    Icon: Building2,
+  },
+  {
+    id: 2,
+    title: "Recepcionista virtual",
+    subtitle: "Tom de voz e diferenciais",
+    Icon: Bot,
+  },
+  {
+    id: 3,
+    title: "Horários e agenda",
+    subtitle: "Funcionamento, handoff e fonte da agenda",
+    Icon: Clock,
+  },
+  {
+    id: 4,
+    title: "Procedimentos",
+    subtitle: "O que a clínica oferece",
+    Icon: Stethoscope,
+  },
+  {
+    id: 5,
+    title: "Jornada do lead",
+    subtitle: "Como a IA conduz conversas estéticas",
+    Icon: Workflow,
+  },
+  {
+    id: 6,
+    title: "Valores e política",
+    subtitle: "Cobrança, plano comercial e regras da IA",
+    Icon: DollarSign,
+  },
+  {
+    id: 7,
+    title: "Revisão final",
+    subtitle: "Confirme e conclua o onboarding",
+    Icon: CheckCircle2,
+  },
 ];
 
 const TONE_OPTIONS = [
-  { value: "acolhedor", label: "Acolhedor", desc: "Empático e próximo, faz o paciente sentir acolhido" },
-  { value: "profissional", label: "Profissional", desc: "Formal, transmite confiança e expertise" },
-  { value: "sofisticado", label: "Sofisticado", desc: "Refinado, para clínicas premium e de luxo" },
-  { value: "descontraido", label: "Descontraído", desc: "Casual e amigável, comunicação leve" },
+  {
+    value: "acolhedor",
+    label: "Acolhedor",
+    desc: "Empático e próximo, faz o paciente sentir acolhido",
+  },
+  {
+    value: "profissional",
+    label: "Profissional",
+    desc: "Formal, transmite confiança e expertise",
+  },
+  {
+    value: "sofisticado",
+    label: "Sofisticado",
+    desc: "Refinado, para clínicas premium e de luxo",
+  },
+  {
+    value: "descontraido",
+    label: "Descontraído",
+    desc: "Casual e amigável, comunicação leve",
+  },
 ];
 
 const HOURS_PRESETS = [
@@ -153,7 +280,16 @@ const HOURS_PRESETS = [
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)", marginBottom: "10px" }}>
+    <p
+      style={{
+        fontSize: "11px",
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: "var(--muted)",
+        marginBottom: "10px",
+      }}
+    >
       {children}
     </p>
   );
@@ -218,14 +354,41 @@ function ToggleCard({
         >
           {checked && <Check size={12} strokeWidth={3} color="#000" />}
         </div>
-        {Icon && <Icon size={16} strokeWidth={2} style={{ color: checked ? (color ?? "var(--accent)") : "var(--muted)", flexShrink: 0 }} />}
+        {Icon && (
+          <Icon
+            size={16}
+            strokeWidth={2}
+            style={{
+              color: checked ? (color ?? "var(--accent)") : "var(--muted)",
+              flexShrink: 0,
+            }}
+          />
+        )}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: "14px", fontWeight: 600 }}>{label}</div>
-          {desc && <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>{desc}</div>}
+          {desc && (
+            <div
+              style={{
+                fontSize: "12px",
+                color: "var(--muted)",
+                marginTop: "2px",
+              }}
+            >
+              {desc}
+            </div>
+          )}
         </div>
       </button>
       {checked && children && (
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div
+          style={{
+            padding: "12px 16px",
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
           {children}
         </div>
       )}
@@ -234,28 +397,66 @@ function ToggleCard({
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label style={{ fontSize: "13px", color: "var(--muted)", marginBottom: "4px", display: "block" }}>{children}</label>;
+  return (
+    <label
+      style={{
+        fontSize: "13px",
+        color: "var(--muted)",
+        marginBottom: "4px",
+        display: "block",
+      }}
+    >
+      {children}
+    </label>
+  );
 }
 
 // ─── Step components ──────────────────────────────────────────────────────────
 
-function StepIdentidade({ data, onChange }: { data: WizardInitial["identity"]; onChange: (d: WizardInitial["identity"]) => void }) {
-  const f = (field: keyof typeof data) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    onChange({ ...data, [field]: e.target.value });
+function StepIdentidade({
+  data,
+  channel,
+  onChange,
+  onChannelChange,
+}: {
+  data: WizardInitial["identity"];
+  channel: WizardInitial["channel"];
+  onChange: (d: WizardInitial["identity"]) => void;
+  onChannelChange: (d: WizardInitial["channel"]) => void;
+}) {
+  const f =
+    (field: keyof typeof data) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      onChange({ ...data, [field]: e.target.value });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div>
         <FieldLabel>Especialidade principal</FieldLabel>
-        <input value={data.specialty} onChange={f("specialty")} placeholder="Ex: odontologia, dermatologia..." style={inputStyle} />
+        <input
+          value={data.specialty}
+          onChange={f("specialty")}
+          placeholder="Ex: odontologia, dermatologia..."
+          style={inputStyle}
+        />
       </div>
       <div>
         <FieldLabel>Cidade</FieldLabel>
-        <input value={data.city} onChange={f("city")} placeholder="Ex: São Paulo" style={inputStyle} />
+        <input
+          value={data.city}
+          onChange={f("city")}
+          placeholder="Ex: São Paulo"
+          style={inputStyle}
+        />
       </div>
       <div>
         <FieldLabel>Endereço completo</FieldLabel>
-        <input value={data.address} onChange={f("address")} placeholder="Rua, número, bairro — aparece na confirmação de agendamento" style={inputStyle} />
+        <input
+          value={data.address}
+          onChange={f("address")}
+          placeholder="Rua, número, bairro — aparece na confirmação de agendamento"
+          style={inputStyle}
+        />
       </div>
       <div>
         <FieldLabel>Mensagem de boas-vindas da IA</FieldLabel>
@@ -267,11 +468,115 @@ function StepIdentidade({ data, onChange }: { data: WizardInitial["identity"]; o
           style={{ ...inputStyle, resize: "vertical" }}
         />
       </div>
+
+      <div>
+        <SectionTitle>Canal de atendimento</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <FieldLabel>Provedor do WhatsApp</FieldLabel>
+            <select
+              value={channel.provider}
+              onChange={(e) =>
+                onChannelChange({
+                  ...channel,
+                  provider: e.target
+                    .value as WizardInitial["channel"]["provider"],
+                })
+              }
+              style={inputStyle}
+            >
+              <option value="z_api">Z-API</option>
+              <option value="meta_cloud_api">Meta Cloud API</option>
+            </select>
+          </div>
+
+          {channel.provider === "z_api" ? (
+            <>
+              <div>
+                <FieldLabel>Z-API Instance ID</FieldLabel>
+                <input
+                  value={channel.zapiInstanceId}
+                  onChange={(e) =>
+                    onChannelChange({
+                      ...channel,
+                      zapiInstanceId: e.target.value,
+                    })
+                  }
+                  placeholder="Instância da clínica"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <FieldLabel>Z-API Token</FieldLabel>
+                <input
+                  value={channel.zapiToken}
+                  onChange={(e) =>
+                    onChannelChange({ ...channel, zapiToken: e.target.value })
+                  }
+                  placeholder="Token principal"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <FieldLabel>Z-API Client Token</FieldLabel>
+                <input
+                  value={channel.zapiClientToken}
+                  onChange={(e) =>
+                    onChannelChange({
+                      ...channel,
+                      zapiClientToken: e.target.value,
+                    })
+                  }
+                  placeholder="Opcional"
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <FieldLabel>Meta Phone Number ID</FieldLabel>
+                <input
+                  value={channel.metaPhoneNumberId}
+                  onChange={(e) =>
+                    onChannelChange({
+                      ...channel,
+                      metaPhoneNumberId: e.target.value,
+                    })
+                  }
+                  placeholder="ID do número"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <FieldLabel>Meta Access Token</FieldLabel>
+                <input
+                  value={channel.metaAccessToken}
+                  onChange={(e) =>
+                    onChannelChange({
+                      ...channel,
+                      metaAccessToken: e.target.value,
+                    })
+                  }
+                  placeholder="Token de acesso"
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function StepRecepcionista({ data, onChange }: { data: WizardInitial["receptionist"]; onChange: (d: WizardInitial["receptionist"]) => void }) {
+function StepRecepcionista({
+  data,
+  onChange,
+}: {
+  data: WizardInitial["receptionist"];
+  onChange: (d: WizardInitial["receptionist"]) => void;
+}) {
   function addDifferential() {
     if (data.differentials.length >= 6) return;
     onChange({ ...data, differentials: [...data.differentials, ""] });
@@ -282,7 +587,10 @@ function StepRecepcionista({ data, onChange }: { data: WizardInitial["receptioni
     onChange({ ...data, differentials: next });
   }
   function removeDiff(i: number) {
-    onChange({ ...data, differentials: data.differentials.filter((_, idx) => idx !== i) });
+    onChange({
+      ...data,
+      differentials: data.differentials.filter((_, idx) => idx !== i),
+    });
   }
 
   return (
@@ -302,7 +610,10 @@ function StepRecepcionista({ data, onChange }: { data: WizardInitial["receptioni
                 padding: "14px 16px",
                 borderRadius: "12px",
                 border: `2px solid ${data.toneOfVoice === opt.value ? "var(--accent)" : "rgba(255,255,255,0.08)"}`,
-                background: data.toneOfVoice === opt.value ? "rgba(0,212,170,0.06)" : "transparent",
+                background:
+                  data.toneOfVoice === opt.value
+                    ? "rgba(0,212,170,0.06)"
+                    : "transparent",
                 cursor: "pointer",
                 textAlign: "left",
                 color: "inherit",
@@ -315,18 +626,34 @@ function StepRecepcionista({ data, onChange }: { data: WizardInitial["receptioni
                   height: "18px",
                   borderRadius: "50%",
                   border: `2px solid ${data.toneOfVoice === opt.value ? "var(--accent)" : "rgba(255,255,255,0.2)"}`,
-                  background: data.toneOfVoice === opt.value ? "var(--accent)" : "transparent",
+                  background:
+                    data.toneOfVoice === opt.value
+                      ? "var(--accent)"
+                      : "transparent",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
                 }}
               >
-                {data.toneOfVoice === opt.value && <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#000" }} />}
+                {data.toneOfVoice === opt.value && (
+                  <div
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      background: "#000",
+                    }}
+                  />
+                )}
               </div>
               <div>
-                <div style={{ fontWeight: 600, fontSize: "14px" }}>{opt.label}</div>
-                <div style={{ fontSize: "12px", color: "var(--muted)" }}>{opt.desc}</div>
+                <div style={{ fontWeight: 600, fontSize: "14px" }}>
+                  {opt.label}
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--muted)" }}>
+                  {opt.desc}
+                </div>
               </div>
             </button>
           ))}
@@ -334,21 +661,48 @@ function StepRecepcionista({ data, onChange }: { data: WizardInitial["receptioni
       </div>
 
       <div>
-        <SectionTitle>Diferenciais da clínica ({data.differentials.length}/6)</SectionTitle>
-        <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "12px" }}>
-          O que faz esta clínica se destacar? A IA menciona esses pontos nas conversas.
+        <SectionTitle>
+          Diferenciais da clínica ({data.differentials.length}/6)
+        </SectionTitle>
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--muted)",
+            marginBottom: "12px",
+          }}
+        >
+          O que faz esta clínica se destacar? A IA menciona esses pontos nas
+          conversas.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {data.differentials.map((d, i) => (
-            <div key={i} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <span style={{ color: "var(--accent)", fontSize: "12px", fontWeight: 700, minWidth: "18px" }}>{i + 1}.</span>
+            <div
+              key={i}
+              style={{ display: "flex", gap: "8px", alignItems: "center" }}
+            >
+              <span
+                style={{
+                  color: "var(--accent)",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  minWidth: "18px",
+                }}
+              >
+                {i + 1}.
+              </span>
               <input
                 value={d}
                 onChange={(e) => updateDiff(i, e.target.value)}
                 placeholder={`Ex: ${["Mais de 15 anos de experiência", "Tecnologia de ponta para diagnóstico", "Atendimento humanizado e sem dor", "Avaliação gratuita"][i] ?? "Diferencial da clínica"}`}
                 style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
               />
-              <button type="button" onClick={() => removeDiff(i)} style={iconBtnStyle}><Trash2 size={13} strokeWidth={2} /></button>
+              <button
+                type="button"
+                onClick={() => removeDiff(i)}
+                style={iconBtnStyle}
+              >
+                <Trash2 size={13} strokeWidth={2} />
+              </button>
             </div>
           ))}
           {data.differentials.length < 6 && (
@@ -362,31 +716,57 @@ function StepRecepcionista({ data, onChange }: { data: WizardInitial["receptioni
   );
 }
 
-function StepHorarios({ data, onChange }: { data: WizardInitial["schedule"]; onChange: (d: WizardInitial["schedule"]) => void }) {
+function StepHorarios({
+  data,
+  onChange,
+}: {
+  data: WizardInitial["schedule"];
+  onChange: (d: WizardInitial["schedule"]) => void;
+}) {
   const isCustom = !HOURS_PRESETS.slice(0, -1).includes(data.businessHours);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div>
         <SectionTitle>Horários de funcionamento</SectionTitle>
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+            marginBottom: "10px",
+          }}
+        >
           {HOURS_PRESETS.map((preset) => (
             <button
               key={preset}
               type="button"
               onClick={() => {
-                if (preset !== "Personalizado") onChange({ ...data, businessHours: preset });
+                if (preset !== "Personalizado")
+                  onChange({ ...data, businessHours: preset });
               }}
               style={{
                 padding: "10px 14px",
                 borderRadius: "10px",
                 border: `1px solid ${(preset === "Personalizado" ? isCustom : data.businessHours === preset) ? "var(--accent)" : "rgba(255,255,255,0.08)"}`,
-                background: (preset === "Personalizado" ? isCustom : data.businessHours === preset) ? "rgba(0,212,170,0.06)" : "transparent",
+                background: (
+                  preset === "Personalizado"
+                    ? isCustom
+                    : data.businessHours === preset
+                )
+                  ? "rgba(0,212,170,0.06)"
+                  : "transparent",
                 cursor: "pointer",
                 textAlign: "left",
                 color: "inherit",
                 fontSize: "13px",
-                fontWeight: (preset === "Personalizado" ? isCustom : data.businessHours === preset) ? 600 : 400,
+                fontWeight: (
+                  preset === "Personalizado"
+                    ? isCustom
+                    : data.businessHours === preset
+                )
+                  ? 600
+                  : 400,
               }}
             >
               {preset === "Personalizado" ? "Personalizado..." : preset}
@@ -396,23 +776,34 @@ function StepHorarios({ data, onChange }: { data: WizardInitial["schedule"]; onC
         {isCustom && (
           <input
             value={data.businessHours}
-            onChange={(e) => onChange({ ...data, businessHours: e.target.value })}
+            onChange={(e) =>
+              onChange({ ...data, businessHours: e.target.value })
+            }
             placeholder="Ex: Ter-Sáb 9h-18h, Dom 10h-14h"
             style={inputStyle}
           />
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
+      >
         <div>
           <FieldLabel>Duração padrão da consulta</FieldLabel>
           <select
             value={data.defaultDurationMinutes}
-            onChange={(e) => onChange({ ...data, defaultDurationMinutes: Number(e.target.value) })}
+            onChange={(e) =>
+              onChange({
+                ...data,
+                defaultDurationMinutes: Number(e.target.value),
+              })
+            }
             style={inputStyle}
           >
             {[30, 45, 60, 90, 120].map((n) => (
-              <option key={n} value={n}>{n} min{n >= 60 ? ` (${n / 60}h)` : ""}</option>
+              <option key={n} value={n}>
+                {n} min{n >= 60 ? ` (${n / 60}h)` : ""}
+              </option>
             ))}
           </select>
         </div>
@@ -420,28 +811,94 @@ function StepHorarios({ data, onChange }: { data: WizardInitial["schedule"]; onC
           <FieldLabel>Intervalo entre consultas</FieldLabel>
           <select
             value={data.bufferMinutes}
-            onChange={(e) => onChange({ ...data, bufferMinutes: Number(e.target.value) })}
+            onChange={(e) =>
+              onChange({ ...data, bufferMinutes: Number(e.target.value) })
+            }
             style={inputStyle}
           >
             {[0, 15, 30, 45, 60].map((n) => (
-              <option key={n} value={n}>{n === 0 ? "Sem intervalo" : `${n} min`}</option>
+              <option key={n} value={n}>
+                {n === 0 ? "Sem intervalo" : `${n} min`}
+              </option>
             ))}
           </select>
         </div>
       </div>
 
       <div>
+        <SectionTitle>Agenda e handoff</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <FieldLabel>Telefone da recepção humana</FieldLabel>
+            <input
+              value={data.receptionistPhone}
+              onChange={(e) =>
+                onChange({ ...data, receptionistPhone: e.target.value })
+              }
+              placeholder="+55 11 99999-9999"
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <FieldLabel>Fonte da agenda</FieldLabel>
+            <select
+              value={data.calendarMode}
+              onChange={(e) =>
+                onChange({
+                  ...data,
+                  calendarMode: e.target
+                    .value as WizardInitial["schedule"]["calendarMode"],
+                })
+              }
+              style={inputStyle}
+            >
+              <option value="internal">Agenda interna</option>
+              <option value="google_calendar">Google Calendar</option>
+            </select>
+          </div>
+          {data.calendarMode === "google_calendar" && (
+            <div>
+              <FieldLabel>Google Calendar ID</FieldLabel>
+              <input
+                value={data.googleCalendarId}
+                onChange={(e) =>
+                  onChange({ ...data, googleCalendarId: e.target.value })
+                }
+                placeholder="Obrigatório para usar Google Calendar"
+                style={inputStyle}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
         <FieldLabel>Tempo até a IA retomar após pausa humana</FieldLabel>
-        <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "8px" }}>
-          Quando a equipe pausa a IA para atender manualmente, após quanto tempo a IA volta sozinha?
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--muted)",
+            marginBottom: "8px",
+          }}
+        >
+          Quando a equipe pausa a IA para atender manualmente, após quanto tempo
+          a IA volta sozinha?
         </p>
         <select
           value={data.takeoverTtlHours}
-          onChange={(e) => onChange({ ...data, takeoverTtlHours: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...data, takeoverTtlHours: Number(e.target.value) })
+          }
           style={inputStyle}
         >
           {[1, 2, 4, 8, 24].map((n) => (
-            <option key={n} value={n}>{n === 1 ? "1 hora" : n === 24 ? "24 horas (1 dia)" : `${n} horas`}</option>
+            <option key={n} value={n}>
+              {n === 1
+                ? "1 hora"
+                : n === 24
+                  ? "24 horas (1 dia)"
+                  : `${n} horas`}
+            </option>
           ))}
         </select>
       </div>
@@ -457,7 +914,16 @@ function StepProcedimentos({
   onChange: (d: WizardTreatment[]) => void;
 }) {
   function add() {
-    onChange([...data, { name: "", durationMinutes: 60, requiresEvaluationFirst: false, isAesthetic: false, aliases: "" }]);
+    onChange([
+      ...data,
+      {
+        name: "",
+        durationMinutes: 60,
+        requiresEvaluationFirst: false,
+        isAesthetic: false,
+        aliases: "",
+      },
+    ]);
   }
   function update(i: number, patch: Partial<WizardTreatment>) {
     onChange(data.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
@@ -468,28 +934,50 @@ function StepProcedimentos({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      <p style={{ fontSize: "13px", color: "var(--muted)", marginBottom: "4px" }}>
-        Liste todos os procedimentos que a clínica oferece. A IA usará essas informações para responder perguntas e sugerir agendamentos.
+      <p
+        style={{ fontSize: "13px", color: "var(--muted)", marginBottom: "4px" }}
+      >
+        Liste todos os procedimentos que a clínica oferece. A IA usará essas
+        informações para responder perguntas e sugerir agendamentos.
       </p>
 
       {data.map((t, i) => (
         <div
           key={i}
-          style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", padding: "14px", display: "flex", flexDirection: "column", gap: "10px" }}
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "12px",
+            padding: "14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
         >
-          <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+          <div
+            style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}
+          >
             <input
               value={t.name}
               onChange={(e) => update(i, { name: e.target.value })}
               placeholder="Nome do procedimento"
               style={{ ...inputStyle, flex: 1, fontWeight: 600 }}
             />
-            <button type="button" onClick={() => remove(i)} style={{ ...iconBtnStyle, color: "#f87171", marginTop: "2px" }}>
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              style={{ ...iconBtnStyle, color: "#f87171", marginTop: "2px" }}
+            >
               <Trash2 size={14} strokeWidth={2} />
             </button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "10px",
+            }}
+          >
             <div>
               <FieldLabel>Duração (min)</FieldLabel>
               <input
@@ -498,7 +986,9 @@ function StepProcedimentos({
                 min={10}
                 max={480}
                 step={5}
-                onChange={(e) => update(i, { durationMinutes: Number(e.target.value) })}
+                onChange={(e) =>
+                  update(i, { durationMinutes: Number(e.target.value) })
+                }
                 style={inputStyle}
               />
             </div>
@@ -514,24 +1004,48 @@ function StepProcedimentos({
           </div>
 
           <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={t.requiresEvaluationFirst}
-                onChange={(e) => update(i, { requiresEvaluationFirst: e.target.checked })}
+                onChange={(e) =>
+                  update(i, { requiresEvaluationFirst: e.target.checked })
+                }
                 style={{ width: "16px", height: "16px" }}
               />
               Exige avaliação antes do agendamento
             </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={t.isAesthetic}
                 onChange={(e) => update(i, { isAesthetic: e.target.checked })}
                 style={{ width: "16px", height: "16px" }}
               />
-              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                <Sparkles size={13} strokeWidth={2} style={{ color: "#a78bfa" }} />
+              <span
+                style={{ display: "flex", alignItems: "center", gap: "4px" }}
+              >
+                <Sparkles
+                  size={13}
+                  strokeWidth={2}
+                  style={{ color: "#a78bfa" }}
+                />
                 Procedimento estético
               </span>
             </label>
@@ -544,8 +1058,21 @@ function StepProcedimentos({
       </button>
 
       {data.filter((t) => t.isAesthetic).length > 0 && (
-        <div style={{ padding: "10px 14px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: "10px", fontSize: "12px", color: "#a78bfa" }}>
-          <strong>{data.filter((t) => t.isAesthetic).length} procedimento(s) estético(s)</strong> — no próximo passo você configurará a jornada da IA para cada um.
+        <div
+          style={{
+            padding: "10px 14px",
+            background: "rgba(139,92,246,0.08)",
+            border: "1px solid rgba(139,92,246,0.2)",
+            borderRadius: "10px",
+            fontSize: "12px",
+            color: "#a78bfa",
+          }}
+        >
+          <strong>
+            {data.filter((t) => t.isAesthetic).length} procedimento(s)
+            estético(s)
+          </strong>{" "}
+          — no próximo passo você configurará a jornada da IA para cada um.
         </div>
       )}
     </div>
@@ -567,16 +1094,34 @@ function StepJornada({
 
   if (aesthetic.length === 0) {
     return (
-      <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--muted)" }}>
-        <Workflow size={32} strokeWidth={1.5} style={{ marginBottom: "12px", opacity: 0.4 }} />
-        <p style={{ fontSize: "14px", marginBottom: "4px" }}>Nenhum procedimento estético configurado</p>
-        <p style={{ fontSize: "12px" }}>Volte ao passo anterior e marque os procedimentos estéticos.</p>
+      <div
+        style={{
+          textAlign: "center",
+          padding: "32px 16px",
+          color: "var(--muted)",
+        }}
+      >
+        <Workflow
+          size={32}
+          strokeWidth={1.5}
+          style={{ marginBottom: "12px", opacity: 0.4 }}
+        />
+        <p style={{ fontSize: "14px", marginBottom: "4px" }}>
+          Nenhum procedimento estético configurado
+        </p>
+        <p style={{ fontSize: "12px" }}>
+          Volte ao passo anterior e marque os procedimentos estéticos.
+        </p>
       </div>
     );
   }
 
   function updatePipeline(treatmentId: string, patch: Partial<PipelineConfig>) {
-    onChange(pipelines.map((p) => (p.treatmentId === treatmentId ? { ...p, ...patch } : p)));
+    onChange(
+      pipelines.map((p) =>
+        p.treatmentId === treatmentId ? { ...p, ...patch } : p,
+      ),
+    );
   }
 
   function toggleMedia(treatmentId: string, mediaId: string) {
@@ -591,52 +1136,114 @@ function StepJornada({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <p style={{ fontSize: "13px", color: "var(--muted)" }}>
-        Para procedimentos estéticos, você pode configurar uma <strong style={{ color: "var(--foreground)" }}>sequência de conversa</strong> — a IA apresenta vídeos, tira dúvidas e solicita foto antes de oferecer horários.
+        Para procedimentos estéticos, você pode configurar uma{" "}
+        <strong style={{ color: "var(--foreground)" }}>
+          sequência de conversa
+        </strong>{" "}
+        — a IA apresenta vídeos, tira dúvidas e solicita foto antes de oferecer
+        horários.
       </p>
 
       {aesthetic.map((t) => {
         const cfg = pipelines.find((p) => p.treatmentId === t.id) ?? {
-          treatmentId: t.id!, treatmentName: t.name, enabled: false,
-          sendContent: false, contentMediaIds: [], contentIntroText: "",
-          runQA: false, qaInstruction: "", qaMaxTurns: 10,
-          requestPhoto: false, photoMessage: "", photoRequired: false,
+          treatmentId: t.id!,
+          treatmentName: t.name,
+          enabled: false,
+          sendContent: false,
+          contentMediaIds: [],
+          contentIntroText: "",
+          runQA: false,
+          qaInstruction: "",
+          qaMaxTurns: 10,
+          requestPhoto: false,
+          photoMessage: "",
+          photoRequired: false,
         };
 
         return (
-          <div key={t.id} style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: "14px", overflow: "hidden" }}>
+          <div
+            key={t.id}
+            style={{
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "14px",
+              overflow: "hidden",
+            }}
+          >
             {/* Treatment header */}
-            <div style={{ padding: "14px 16px", background: "rgba(139,92,246,0.06)", display: "flex", alignItems: "center", gap: "10px" }}>
-              <Sparkles size={15} strokeWidth={2} style={{ color: "#a78bfa", flexShrink: 0 }} />
-              <span style={{ fontWeight: 700, fontSize: "15px", flex: 1 }}>{t.name}</span>
+            <div
+              style={{
+                padding: "14px 16px",
+                background: "rgba(139,92,246,0.06)",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <Sparkles
+                size={15}
+                strokeWidth={2}
+                style={{ color: "#a78bfa", flexShrink: 0 }}
+              />
+              <span style={{ fontWeight: 700, fontSize: "15px", flex: 1 }}>
+                {t.name}
+              </span>
             </div>
 
-            <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div
+              style={{
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
               {/* Enable toggle */}
               <div style={{ display: "flex", gap: "12px" }}>
                 {(["disabled", "enabled"] as const).map((opt) => (
                   <button
                     key={opt}
                     type="button"
-                    onClick={() => updatePipeline(t.id!, { enabled: opt === "enabled" })}
+                    onClick={() =>
+                      updatePipeline(t.id!, { enabled: opt === "enabled" })
+                    }
                     style={{
                       flex: 1,
                       padding: "10px",
                       borderRadius: "10px",
-                      border: `2px solid ${((opt === "enabled") === cfg.enabled) ? (opt === "enabled" ? "#a78bfa" : "rgba(255,255,255,0.2)") : "rgba(255,255,255,0.08)"}`,
-                      background: ((opt === "enabled") === cfg.enabled) ? (opt === "enabled" ? "rgba(139,92,246,0.1)" : "rgba(255,255,255,0.04)") : "transparent",
+                      border: `2px solid ${(opt === "enabled") === cfg.enabled ? (opt === "enabled" ? "#a78bfa" : "rgba(255,255,255,0.2)") : "rgba(255,255,255,0.08)"}`,
+                      background:
+                        (opt === "enabled") === cfg.enabled
+                          ? opt === "enabled"
+                            ? "rgba(139,92,246,0.1)"
+                            : "rgba(255,255,255,0.04)"
+                          : "transparent",
                       cursor: "pointer",
                       fontSize: "13px",
                       fontWeight: 600,
-                      color: ((opt === "enabled") === cfg.enabled) ? (opt === "enabled" ? "#a78bfa" : "var(--foreground)") : "var(--muted)",
+                      color:
+                        (opt === "enabled") === cfg.enabled
+                          ? opt === "enabled"
+                            ? "#a78bfa"
+                            : "var(--foreground)"
+                          : "var(--muted)",
                     }}
                   >
-                    {opt === "enabled" ? "Configurar jornada" : "Resposta livre"}
+                    {opt === "enabled"
+                      ? "Configurar jornada"
+                      : "Resposta livre"}
                   </button>
                 ))}
               </div>
 
               {cfg.enabled && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingTop: "4px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                    paddingTop: "4px",
+                  }}
+                >
                   {/* Content */}
                   <ToggleCard
                     checked={cfg.sendContent}
@@ -650,7 +1257,11 @@ function StepJornada({
                       <FieldLabel>Texto de introdução (opcional)</FieldLabel>
                       <textarea
                         value={cfg.contentIntroText}
-                        onChange={(e) => updatePipeline(t.id!, { contentIntroText: e.target.value })}
+                        onChange={(e) =>
+                          updatePipeline(t.id!, {
+                            contentIntroText: e.target.value,
+                          })
+                        }
                         placeholder="Ex: Trabalhamos com duas técnicas de lentes de resina:"
                         rows={2}
                         style={{ ...inputStyle, resize: "vertical" }}
@@ -659,24 +1270,52 @@ function StepJornada({
                     {mediaLibrary.length > 0 && (
                       <div>
                         <FieldLabel>Selecionar vídeos</FieldLabel>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                          {mediaLibrary.filter((m) => m.type === "video").map((m) => (
-                            <label key={m.id} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "13px", padding: "8px 10px", borderRadius: "8px", background: "rgba(255,255,255,0.03)" }}>
-                              <input
-                                type="checkbox"
-                                checked={cfg.contentMediaIds.includes(m.id)}
-                                onChange={() => toggleMedia(t.id!, m.id)}
-                                style={{ width: "16px", height: "16px" }}
-                              />
-                              <Film size={13} strokeWidth={2} style={{ color: "#60a5fa", flexShrink: 0 }} />
-                              {m.title || m.url}
-                            </label>
-                          ))}
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                          }}
+                        >
+                          {mediaLibrary
+                            .filter((m) => m.type === "video")
+                            .map((m) => (
+                              <label
+                                key={m.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  cursor: "pointer",
+                                  fontSize: "13px",
+                                  padding: "8px 10px",
+                                  borderRadius: "8px",
+                                  background: "rgba(255,255,255,0.03)",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={cfg.contentMediaIds.includes(m.id)}
+                                  onChange={() => toggleMedia(t.id!, m.id)}
+                                  style={{ width: "16px", height: "16px" }}
+                                />
+                                <Film
+                                  size={13}
+                                  strokeWidth={2}
+                                  style={{ color: "#60a5fa", flexShrink: 0 }}
+                                />
+                                {m.title || m.url}
+                              </label>
+                            ))}
                         </div>
                       </div>
                     )}
-                    {mediaLibrary.filter((m) => m.type === "video").length === 0 && (
-                      <p style={{ fontSize: "12px", color: "var(--muted)" }}>Nenhum vídeo na biblioteca. Adicione em Configurações → Biblioteca de Mídia.</p>
+                    {mediaLibrary.filter((m) => m.type === "video").length ===
+                      0 && (
+                      <p style={{ fontSize: "12px", color: "var(--muted)" }}>
+                        Nenhum vídeo na biblioteca. Adicione em Configurações →
+                        Biblioteca de Mídia.
+                      </p>
                     )}
                   </ToggleCard>
 
@@ -693,20 +1332,40 @@ function StepJornada({
                       <FieldLabel>Orientação para a IA (opcional)</FieldLabel>
                       <textarea
                         value={cfg.qaInstruction}
-                        onChange={(e) => updatePipeline(t.id!, { qaInstruction: e.target.value })}
+                        onChange={(e) =>
+                          updatePipeline(t.id!, {
+                            qaInstruction: e.target.value,
+                          })
+                        }
                         placeholder="Ex: Responda dúvidas sobre as técnicas. Não mencione preços além da política comercial."
                         rows={2}
                         style={{ ...inputStyle, resize: "vertical" }}
                       />
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <FieldLabel>Máx. trocas antes de sugerir agendamento:</FieldLabel>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                      }}
+                    >
+                      <FieldLabel>
+                        Máx. trocas antes de sugerir agendamento:
+                      </FieldLabel>
                       <select
                         value={cfg.qaMaxTurns}
-                        onChange={(e) => updatePipeline(t.id!, { qaMaxTurns: Number(e.target.value) })}
+                        onChange={(e) =>
+                          updatePipeline(t.id!, {
+                            qaMaxTurns: Number(e.target.value),
+                          })
+                        }
                         style={{ ...inputStyle, width: "80px", margin: 0 }}
                       >
-                        {[5, 8, 10, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
+                        {[5, 8, 10, 15, 20].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </ToggleCard>
@@ -724,17 +1383,33 @@ function StepJornada({
                       <FieldLabel>Mensagem enviada ao paciente</FieldLabel>
                       <textarea
                         value={cfg.photoMessage}
-                        onChange={(e) => updatePipeline(t.id!, { photoMessage: e.target.value })}
+                        onChange={(e) =>
+                          updatePipeline(t.id!, {
+                            photoMessage: e.target.value,
+                          })
+                        }
                         placeholder="Ex: Para que o Dr. possa te dar uma recomendação personalizada, você poderia nos enviar uma foto do seu sorriso?"
                         rows={2}
                         style={{ ...inputStyle, resize: "vertical" }}
                       />
                     </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "13px" }}>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={cfg.photoRequired}
-                        onChange={(e) => updatePipeline(t.id!, { photoRequired: e.target.checked })}
+                        onChange={(e) =>
+                          updatePipeline(t.id!, {
+                            photoRequired: e.target.checked,
+                          })
+                        }
                         style={{ width: "16px", height: "16px" }}
                       />
                       Foto obrigatória — bloqueia agendamento até receber
@@ -750,7 +1425,13 @@ function StepJornada({
   );
 }
 
-function StepPolitica({ data, onChange }: { data: WizardInitial["policy"]; onChange: (d: WizardInitial["policy"]) => void }) {
+function StepPolitica({
+  data,
+  onChange,
+}: {
+  data: WizardInitial["policy"];
+  onChange: (d: WizardInitial["policy"]) => void;
+}) {
   const RULE_PROMPTS = [
     "O que a IA deve SEMPRE fazer que uma recepcionista humana sempre faria?",
     "O que a IA NUNCA deve fazer ou prometer?",
@@ -760,27 +1441,151 @@ function StepPolitica({ data, onChange }: { data: WizardInitial["policy"]; onCha
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div>
+        <SectionTitle>Comercial e cobrança</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <FieldLabel>Plano comercial</FieldLabel>
+            <select
+              value={data.plan}
+              onChange={(e) =>
+                onChange({ ...data, plan: e.target.value as ClinicPlan })
+              }
+              style={inputStyle}
+            >
+              <option value="custom">Customizado / ainda definindo</option>
+              <option value="essencial">Essencial</option>
+              <option value="clinica">Clínica</option>
+              <option value="rede">Rede</option>
+            </select>
+          </div>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={data.billingActive}
+              onChange={(e) =>
+                onChange({ ...data, billingActive: e.target.checked })
+              }
+              style={{ width: "16px", height: "16px" }}
+            />
+            Cobrança ativa nesta clínica
+          </label>
+          {data.billingActive && (
+            <>
+              <div>
+                <FieldLabel>Valor mensal contratado (R$)</FieldLabel>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={data.monthlyRevenueBrl}
+                  onChange={(e) =>
+                    onChange({ ...data, monthlyRevenueBrl: e.target.value })
+                  }
+                  placeholder="1497"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <FieldLabel>Início da cobrança</FieldLabel>
+                <input
+                  type="date"
+                  value={data.billingStartedAt}
+                  onChange={(e) =>
+                    onChange({ ...data, billingStartedAt: e.target.value })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={data.isTest}
+              onChange={(e) => onChange({ ...data, isTest: e.target.checked })}
+              style={{ width: "16px", height: "16px" }}
+            />
+            Clínica em ambiente de testes
+          </label>
+        </div>
+      </div>
+
+      <div>
         <SectionTitle>Política comercial</SectionTitle>
-        <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "10px" }}>
-          Valores, formas de pagamento, planos de saúde, promoções. A IA usa este texto para responder perguntas sobre preços.
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--muted)",
+            marginBottom: "10px",
+          }}
+        >
+          Valores, formas de pagamento, planos de saúde, promoções. A IA usa
+          este texto para responder perguntas sobre preços.
         </p>
         <textarea
           value={data.commercialPolicy}
-          onChange={(e) => onChange({ ...data, commercialPolicy: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...data, commercialPolicy: e.target.value })
+          }
           placeholder={`Avaliação inicial: gratuita.\nLentes de resina: a partir de R$2.800 o sorriso completo.\nImplante unitário: a partir de R$3.500.\nParcelamento: até 12x no cartão.\nPlanos aceitos: Amil, Bradesco Saúde.`}
           rows={7}
-          style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: "13px" }}
+          style={{
+            ...inputStyle,
+            resize: "vertical",
+            fontFamily: "monospace",
+            fontSize: "13px",
+          }}
         />
       </div>
 
       <div>
         <SectionTitle>Regras de comportamento da IA</SectionTitle>
-        <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "8px" }}>
-          Use os formatos <strong>SEMPRE</strong>, <strong>NUNCA</strong> e <strong>SE...ENTÃO</strong>.
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--muted)",
+            marginBottom: "8px",
+          }}
+        >
+          Use os formatos <strong>SEMPRE</strong>, <strong>NUNCA</strong> e{" "}
+          <strong>SE...ENTÃO</strong>.
         </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            marginBottom: "10px",
+          }}
+        >
           {RULE_PROMPTS.map((prompt, i) => (
-            <div key={i} style={{ padding: "10px 14px", background: "rgba(0,212,170,0.04)", border: "1px solid rgba(0,212,170,0.12)", borderRadius: "8px", fontSize: "12px", color: "var(--muted)" }}>
+            <div
+              key={i}
+              style={{
+                padding: "10px 14px",
+                background: "rgba(0,212,170,0.04)",
+                border: "1px solid rgba(0,212,170,0.12)",
+                borderRadius: "8px",
+                fontSize: "12px",
+                color: "var(--muted)",
+              }}
+            >
               💡 {prompt}
             </div>
           ))}
@@ -790,9 +1595,84 @@ function StepPolitica({ data, onChange }: { data: WizardInitial["policy"]; onCha
           onChange={(e) => onChange({ ...data, notes: e.target.value })}
           placeholder={`SEMPRE mencione que a avaliação inicial é gratuita.\nSEMPRE informe o endereço ao confirmar agendamento.\nNUNCA prometa desconto sem confirmar com a equipe.\nSE o lead mencionar medo de dor, ENTÃO explique a técnica de anestesia sem dor.`}
           rows={6}
-          style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: "13px" }}
+          style={{
+            ...inputStyle,
+            resize: "vertical",
+            fontFamily: "monospace",
+            fontSize: "13px",
+          }}
         />
       </div>
+    </div>
+  );
+}
+
+function BlueprintPreviewCard({ blueprint }: { blueprint: ClinicBlueprint }) {
+  const accent =
+    blueprint.status === "complete"
+      ? "#34d399"
+      : blueprint.status === "attention"
+        ? "#f59e0b"
+        : "#818cf8";
+
+  return (
+    <div
+      style={{
+        marginBottom: "20px",
+        padding: "14px 16px",
+        borderRadius: "12px",
+        border: `1px solid ${accent}33`,
+        background: `${accent}0d`,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "11px",
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: accent,
+            }}
+          >
+            Clinic Blueprint
+          </p>
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: "13px",
+              color: "var(--muted)",
+            }}
+          >
+            Prontidão atual para implantação e go-live.
+          </p>
+        </div>
+        <div style={{ fontSize: "24px", fontWeight: 700, color: accent }}>
+          {blueprint.readinessPercent}%
+        </div>
+      </div>
+      {blueprint.criticalMissing.length > 0 && (
+        <div style={{ marginTop: "12px", display: "grid", gap: "6px" }}>
+          {blueprint.criticalMissing.slice(0, 3).map((item) => (
+            <span
+              key={item}
+              style={{ fontSize: "12px", color: "var(--muted)" }}
+            >
+              • {item}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -800,32 +1680,106 @@ function StepPolitica({ data, onChange }: { data: WizardInitial["policy"]; onCha
 function StepRevisao({
   clinicName,
   identity,
+  channel,
   receptionist,
   schedule,
   treatments,
   pipelines,
   policy,
+  blueprint,
 }: {
   clinicName: string;
   identity: WizardInitial["identity"];
+  channel: WizardInitial["channel"];
   receptionist: WizardInitial["receptionist"];
   schedule: WizardInitial["schedule"];
   treatments: WizardTreatment[];
   pipelines: PipelineConfig[];
   policy: WizardInitial["policy"];
+  blueprint: ClinicBlueprint;
 }) {
   const items: { label: string; value: string; ok: boolean }[] = [
     { label: "Clínica", value: clinicName, ok: true },
-    { label: "Especialidade", value: identity.specialty, ok: !!identity.specialty },
+    {
+      label: "Especialidade",
+      value: identity.specialty,
+      ok: !!identity.specialty,
+    },
+    { label: "Cidade", value: identity.city || "—", ok: !!identity.city },
     { label: "Endereço", value: identity.address, ok: !!identity.address },
-    { label: "Boas-vindas", value: identity.greetingMessage ? "✓ Configurada" : "—", ok: !!identity.greetingMessage },
+    {
+      label: "Canal",
+      value: channel.provider === "z_api" ? "Z-API" : "Meta Cloud API",
+      ok:
+        channel.provider === "z_api"
+          ? !!channel.zapiInstanceId && !!channel.zapiToken
+          : !!channel.metaPhoneNumberId && !!channel.metaAccessToken,
+    },
+    {
+      label: "Boas-vindas",
+      value: identity.greetingMessage ? "✓ Configurada" : "—",
+      ok: !!identity.greetingMessage,
+    },
     { label: "Tom de voz", value: receptionist.toneOfVoice, ok: true },
-    { label: "Diferenciais", value: `${receptionist.differentials.filter(Boolean).length} configurados`, ok: receptionist.differentials.filter(Boolean).length > 0 },
-    { label: "Horários", value: schedule.businessHours, ok: !!schedule.businessHours },
-    { label: "Procedimentos", value: `${treatments.length} cadastrados`, ok: treatments.length > 0 },
-    { label: "Jornadas ativas", value: `${pipelines.filter((p) => p.enabled).length} de ${pipelines.length}`, ok: true },
-    { label: "Política comercial", value: policy.commercialPolicy ? "✓ Preenchida" : "⚠ Vazia", ok: !!policy.commercialPolicy },
-    { label: "Regras da IA", value: policy.notes ? "✓ Preenchidas" : "— Não configuradas", ok: !!policy.notes },
+    {
+      label: "Diferenciais",
+      value: `${receptionist.differentials.filter(Boolean).length} configurados`,
+      ok: receptionist.differentials.filter(Boolean).length > 0,
+    },
+    {
+      label: "Horários",
+      value: schedule.businessHours,
+      ok: !!schedule.businessHours,
+    },
+    {
+      label: "Recepção humana",
+      value: schedule.receptionistPhone || "—",
+      ok: !!schedule.receptionistPhone,
+    },
+    {
+      label: "Agenda",
+      value:
+        schedule.calendarMode === "google_calendar"
+          ? "Google Calendar"
+          : "Agenda interna",
+      ok:
+        schedule.calendarMode === "google_calendar"
+          ? !!schedule.googleCalendarId
+          : true,
+    },
+    {
+      label: "Procedimentos",
+      value: `${treatments.length} cadastrados`,
+      ok: treatments.length > 0,
+    },
+    {
+      label: "Jornadas ativas",
+      value: `${pipelines.filter((p) => p.enabled).length} de ${pipelines.length}`,
+      ok: true,
+    },
+    { label: "Plano", value: policy.plan, ok: policy.plan !== "custom" },
+    {
+      label: "Cobrança",
+      value: policy.billingActive
+        ? `R$ ${policy.monthlyRevenueBrl || "0"}/mês`
+        : "Ainda não ativada",
+      ok: !policy.billingActive || !!policy.monthlyRevenueBrl,
+    },
+    {
+      label: "Ambiente",
+      value: policy.isTest ? "Teste" : "Produção",
+      ok: true,
+    },
+    {
+      label: "Política comercial",
+      value: policy.commercialPolicy ? "✓ Preenchida" : "⚠ Vazia",
+      ok: !!policy.commercialPolicy,
+    },
+    {
+      label: "Regras da IA",
+      value: policy.notes ? "✓ Preenchidas" : "— Não configuradas",
+      ok: !!policy.notes,
+    },
   ];
 
   const issues = items.filter((item) => !item.ok);
@@ -833,18 +1787,84 @@ function StepRevisao({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       {issues.length > 0 && (
-        <div style={{ padding: "12px 16px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: "10px", display: "flex", gap: "10px" }}>
-          <AlertCircle size={16} strokeWidth={2} style={{ color: "#fbbf24", flexShrink: 0, marginTop: "2px" }} />
+        <div
+          style={{
+            padding: "12px 16px",
+            background: "rgba(251,191,36,0.08)",
+            border: "1px solid rgba(251,191,36,0.2)",
+            borderRadius: "10px",
+            display: "flex",
+            gap: "10px",
+          }}
+        >
+          <AlertCircle
+            size={16}
+            strokeWidth={2}
+            style={{ color: "#fbbf24", flexShrink: 0, marginTop: "2px" }}
+          />
           <div>
-            <p style={{ fontSize: "13px", fontWeight: 600, color: "#fbbf24", marginBottom: "4px" }}>Campos incompletos</p>
+            <p
+              style={{
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#fbbf24",
+                marginBottom: "4px",
+              }}
+            >
+              Campos incompletos
+            </p>
             <p style={{ fontSize: "12px", color: "var(--muted)" }}>
-              {issues.map((i) => i.label).join(", ")} — você pode completar depois em Configurações.
+              {issues.map((i) => i.label).join(", ")} — você pode completar
+              depois em Configurações.
             </p>
           </div>
         </div>
       )}
 
-      <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
+      <div
+        style={{
+          padding: "14px 16px",
+          background: "rgba(0,212,170,0.05)",
+          border: "1px solid rgba(0,212,170,0.16)",
+          borderRadius: "12px",
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            fontSize: "12px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--accent)",
+          }}
+        >
+          Blueprint de implantação
+        </p>
+        <div style={{ marginTop: "8px", fontSize: "24px", fontWeight: 700 }}>
+          {blueprint.readinessPercent}%
+        </div>
+        <p
+          style={{
+            margin: "6px 0 0",
+            fontSize: "13px",
+            color: "var(--muted)",
+            lineHeight: 1.5,
+          }}
+        >
+          {blueprint.criticalMissing.length === 0
+            ? "Todos os blocos críticos já estão preenchidos."
+            : `Ainda faltam ${blueprint.criticalMissing.length} ponto(s) críticos para fechar o go-live.`}
+        </p>
+      </div>
+
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "12px",
+          overflow: "hidden",
+        }}
+      >
         {items.map((item, i) => (
           <div
             key={i}
@@ -853,22 +1873,56 @@ function StepRevisao({
               alignItems: "center",
               justifyContent: "space-between",
               padding: "11px 16px",
-              borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
-              background: i % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent",
+              borderBottom:
+                i < items.length - 1
+                  ? "1px solid rgba(255,255,255,0.05)"
+                  : "none",
+              background:
+                i % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent",
             }}
           >
-            <span style={{ fontSize: "13px", color: "var(--muted)" }}>{item.label}</span>
-            <span style={{ fontSize: "13px", fontWeight: 500, color: item.ok ? "var(--foreground)" : "#fbbf24", textAlign: "right", maxWidth: "60%" }}>
+            <span style={{ fontSize: "13px", color: "var(--muted)" }}>
+              {item.label}
+            </span>
+            <span
+              style={{
+                fontSize: "13px",
+                fontWeight: 500,
+                color: item.ok ? "var(--foreground)" : "#fbbf24",
+                textAlign: "right",
+                maxWidth: "60%",
+              }}
+            >
               {item.value}
             </span>
           </div>
         ))}
       </div>
 
-      <div style={{ padding: "14px 16px", background: "rgba(0,212,170,0.06)", border: "1px solid rgba(0,212,170,0.2)", borderRadius: "12px", fontSize: "13px" }}>
-        <p style={{ fontWeight: 600, color: "var(--accent)", marginBottom: "4px" }}>Pronto para ativar</p>
+      <div
+        style={{
+          padding: "14px 16px",
+          background: "rgba(0,212,170,0.06)",
+          border: "1px solid rgba(0,212,170,0.2)",
+          borderRadius: "12px",
+          fontSize: "13px",
+        }}
+      >
+        <p
+          style={{
+            fontWeight: 600,
+            color: "var(--accent)",
+            marginBottom: "4px",
+          }}
+        >
+          Pronto para ativar
+        </p>
         <p style={{ color: "var(--muted)", lineHeight: 1.6 }}>
-          Ao concluir, todas as configurações entrarão em produção imediatamente. Você pode ajustar qualquer detalhe a qualquer momento em <strong style={{ color: "var(--foreground)" }}>Configurações</strong> e <strong style={{ color: "var(--foreground)" }}>Pipeline</strong>.
+          Ao concluir, o resumo do blueprint ficará disponível no painel owner.
+          Você pode ajustar qualquer detalhe a qualquer momento em{" "}
+          <strong style={{ color: "var(--foreground)" }}>Configurações</strong>,{" "}
+          <strong style={{ color: "var(--foreground)" }}>Onboarding</strong> e{" "}
+          <strong style={{ color: "var(--foreground)" }}>Pipeline</strong>.
         </p>
       </div>
     </div>
@@ -877,7 +1931,11 @@ function StepRevisao({
 
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
-export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props) {
+export function OnboardingWizardClient({
+  clinicId,
+  clinicName,
+  initial,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -888,11 +1946,64 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
   const [identity, setIdentity] = useState(initial.identity);
   const [receptionist, setReceptionist] = useState(initial.receptionist);
   const [schedule, setSchedule] = useState(initial.schedule);
-  const [treatmentList, setTreatmentList] = useState<WizardTreatment[]>(initial.treatments);
+  const [channel, setChannel] = useState(initial.channel);
+  const [treatmentList, setTreatmentList] = useState<WizardTreatment[]>(
+    initial.treatments,
+  );
   const [pipelines, setPipelines] = useState<PipelineConfig[]>(
-    initial.treatments.filter((t) => t.isAesthetic && t.id).map(initPipelineConfig),
+    initial.treatments
+      .filter((t) => t.isAesthetic && t.id)
+      .map(initPipelineConfig),
   );
   const [policy, setPolicy] = useState(initial.policy);
+
+  const blueprint = buildClinicBlueprint({
+    clinic: {
+      specialty: identity.specialty,
+      city: identity.city,
+      address: identity.address,
+      greetingMessage: identity.greetingMessage,
+      businessHours: schedule.businessHours,
+      calendarMode: schedule.calendarMode,
+      googleCalendarId: schedule.googleCalendarId,
+      receptionistPhone: schedule.receptionistPhone,
+      autoReplyEnabled: initial.autoReplyEnabled,
+      isTest: policy.isTest,
+      plan: policy.plan,
+      monthlyRevenueBrl:
+        policy.billingActive && policy.monthlyRevenueBrl
+          ? Number(policy.monthlyRevenueBrl) * 100
+          : 0,
+      billingStartedAt: policy.billingStartedAt
+        ? new Date(policy.billingStartedAt)
+        : null,
+      defaultAppointmentDurationMinutes: schedule.defaultDurationMinutes,
+      postAppointmentBufferMinutes: schedule.bufferMinutes,
+      takeoverTtlHours: schedule.takeoverTtlHours,
+      channelProvider: channel.provider,
+      zapiInstanceId: channel.zapiInstanceId,
+      zapiToken: channel.zapiToken,
+      metaPhoneNumberId: channel.metaPhoneNumberId,
+      metaAccessToken: channel.metaAccessToken,
+    },
+    playbook: {
+      toneOfVoice: receptionist.toneOfVoice,
+      commercialPolicy: policy.commercialPolicy,
+      notes: policy.notes,
+      differentialsCount: receptionist.differentials.filter(Boolean).length,
+      mediaLibraryCount: initial.mediaLibrary.length,
+      objectionsCount: 0,
+    },
+    treatments: treatmentList.map((t) => ({
+      pipelineStepsCount: pipelines.find(
+        (pipeline) => pipeline.treatmentId === t.id,
+      )?.enabled
+        ? toPipelineSteps(
+            pipelines.find((pipeline) => pipeline.treatmentId === t.id)!,
+          ).length
+        : (t.pipelineSteps?.length ?? 0),
+    })),
+  });
 
   // Keep pipelines in sync when aesthetic treatments change
   function syncPipelines(newTreatments: WizardTreatment[]) {
@@ -912,7 +2023,15 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
       startTransition(async () => {
         switch (step) {
           case 1:
-            result = await saveWizardIdentity(clinicId, identity);
+            result = await saveWizardIdentity(clinicId, {
+              ...identity,
+              channelProvider: channel.provider,
+              zapiInstanceId: channel.zapiInstanceId,
+              zapiToken: channel.zapiToken,
+              zapiClientToken: channel.zapiClientToken,
+              metaPhoneNumberId: channel.metaPhoneNumberId,
+              metaAccessToken: channel.metaAccessToken,
+            });
             break;
           case 2:
             result = await saveWizardReceptionist(clinicId, receptionist);
@@ -920,7 +2039,11 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
           case 3:
             result = await saveWizardSchedule(clinicId, {
               businessHours: schedule.businessHours,
-              defaultAppointmentDurationMinutes: schedule.defaultDurationMinutes,
+              calendarMode: schedule.calendarMode,
+              googleCalendarId: schedule.googleCalendarId,
+              receptionistPhone: schedule.receptionistPhone,
+              defaultAppointmentDurationMinutes:
+                schedule.defaultDurationMinutes,
               postAppointmentBufferMinutes: schedule.bufferMinutes,
               takeoverTtlHours: schedule.takeoverTtlHours,
             });
@@ -947,7 +2070,17 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
             break;
           }
           case 6:
-            result = await saveWizardPolicy(clinicId, policy);
+            result = await saveWizardPolicy(clinicId, {
+              commercialPolicy: policy.commercialPolicy,
+              notes: policy.notes,
+              plan: policy.plan,
+              billingActive: policy.billingActive,
+              monthlyRevenueBrl: policy.monthlyRevenueBrl
+                ? Number(policy.monthlyRevenueBrl)
+                : undefined,
+              billingStartedAt: policy.billingStartedAt || undefined,
+              isTest: policy.isTest,
+            });
             break;
           case 7:
             setDone(true);
@@ -969,24 +2102,82 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
   const progress = ((step - 1) / (STEPS.length - 1)) * 100;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--background)" }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--background)",
+      }}
+    >
       {/* Header */}
-      <div style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--background)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "0" }}>
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "var(--background)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          padding: "0",
+        }}
+      >
         {/* Progress bar */}
         <div style={{ height: "3px", background: "rgba(255,255,255,0.06)" }}>
-          <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", transition: "width 0.4s ease" }} />
+          <div
+            style={{
+              height: "100%",
+              width: `${progress}%`,
+              background: "var(--accent)",
+              transition: "width 0.4s ease",
+            }}
+          />
         </div>
 
-        <div style={{ padding: "16px 20px", maxWidth: "680px", margin: "0 auto", width: "100%" }}>
+        <div
+          style={{
+            padding: "16px 20px",
+            maxWidth: "680px",
+            margin: "0 auto",
+            width: "100%",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "rgba(0,212,170,0.1)", border: "1px solid rgba(0,212,170,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <currentStep.Icon size={16} strokeWidth={2} style={{ color: "var(--accent)" }} />
+            <div
+              style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "10px",
+                background: "rgba(0,212,170,0.1)",
+                border: "1px solid rgba(0,212,170,0.2)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <currentStep.Icon
+                size={16}
+                strokeWidth={2}
+                style={{ color: "var(--accent)" }}
+              />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "11px", color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600 }}>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--muted)",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                }}
+              >
                 Passo {step} de {STEPS.length} · {clinicName}
               </div>
-              <div style={{ fontSize: "16px", fontWeight: 700, marginTop: "1px" }}>{currentStep.title}</div>
+              <div
+                style={{ fontSize: "16px", fontWeight: 700, marginTop: "1px" }}
+              >
+                {currentStep.title}
+              </div>
             </div>
             {/* Step dots */}
             <div style={{ display: "flex", gap: "5px", flexShrink: 0 }}>
@@ -997,7 +2188,12 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
                     width: s.id === step ? "18px" : "6px",
                     height: "6px",
                     borderRadius: "3px",
-                    background: s.id < step ? "var(--accent)" : s.id === step ? "var(--accent)" : "rgba(255,255,255,0.15)",
+                    background:
+                      s.id < step
+                        ? "var(--accent)"
+                        : s.id === step
+                          ? "var(--accent)"
+                          : "rgba(255,255,255,0.15)",
                     transition: "all 0.3s",
                   }}
                 />
@@ -1008,13 +2204,42 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "24px 20px", maxWidth: "680px", margin: "0 auto", width: "100%" }}>
-        <p style={{ fontSize: "13px", color: "var(--muted)", marginBottom: "24px" }}>{currentStep.subtitle}</p>
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "24px 20px",
+          maxWidth: "680px",
+          margin: "0 auto",
+          width: "100%",
+        }}
+      >
+        <p
+          style={{
+            fontSize: "13px",
+            color: "var(--muted)",
+            marginBottom: "24px",
+          }}
+        >
+          {currentStep.subtitle}
+        </p>
+        <BlueprintPreviewCard blueprint={blueprint} />
 
-        {step === 1 && <StepIdentidade data={identity} onChange={setIdentity} />}
-        {step === 2 && <StepRecepcionista data={receptionist} onChange={setReceptionist} />}
+        {step === 1 && (
+          <StepIdentidade
+            data={identity}
+            channel={channel}
+            onChange={setIdentity}
+            onChannelChange={setChannel}
+          />
+        )}
+        {step === 2 && (
+          <StepRecepcionista data={receptionist} onChange={setReceptionist} />
+        )}
         {step === 3 && <StepHorarios data={schedule} onChange={setSchedule} />}
-        {step === 4 && <StepProcedimentos data={treatmentList} onChange={setTreatmentList} />}
+        {step === 4 && (
+          <StepProcedimentos data={treatmentList} onChange={syncPipelines} />
+        )}
         {step === 5 && (
           <StepJornada
             treatments={treatmentList}
@@ -1025,19 +2250,58 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
         )}
         {step === 6 && <StepPolitica data={policy} onChange={setPolicy} />}
         {step === 7 && (
-          <StepRevisao
-            clinicName={clinicName}
-            identity={identity}
-            receptionist={receptionist}
-            schedule={schedule}
-            treatments={treatmentList}
-            pipelines={pipelines}
-            policy={policy}
-          />
+          <>
+            <StepRevisao
+              clinicName={clinicName}
+              identity={identity}
+              channel={channel}
+              receptionist={receptionist}
+              schedule={schedule}
+              treatments={treatmentList}
+              pipelines={pipelines}
+              policy={policy}
+              blueprint={blueprint}
+            />
+            <a
+              href={`/owner/clinics/${clinicId}/blueprint`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: 16,
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: "1px solid rgba(16,185,129,0.22)",
+                background: "rgba(16,185,129,0.05)",
+                textDecoration: "none",
+                color: "#10b981",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              <span>Ver Blueprint completo em modo apresentação</span>
+              <ChevronRight size={16} />
+            </a>
+          </>
         )}
 
         {error && (
-          <div style={{ marginTop: "16px", padding: "10px 14px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: "8px", color: "#f87171", fontSize: "13px", display: "flex", gap: "8px", alignItems: "center" }}>
+          <div
+            style={{
+              marginTop: "16px",
+              padding: "10px 14px",
+              background: "rgba(248,113,113,0.1)",
+              border: "1px solid rgba(248,113,113,0.25)",
+              borderRadius: "8px",
+              color: "#f87171",
+              fontSize: "13px",
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+            }}
+          >
             <AlertCircle size={14} strokeWidth={2} />
             {error}
           </div>
@@ -1048,14 +2312,44 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
       </div>
 
       {/* Footer nav */}
-      <div style={{ position: "sticky", bottom: 0, background: "var(--background)", borderTop: "1px solid rgba(255,255,255,0.06)", padding: "16px 20px" }}>
-        <div style={{ maxWidth: "680px", margin: "0 auto", display: "flex", gap: "10px" }}>
+      <div
+        style={{
+          position: "sticky",
+          bottom: 0,
+          background: "var(--background)",
+          borderTop: "1px solid rgba(255,255,255,0.06)",
+          padding: "16px 20px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: "680px",
+            margin: "0 auto",
+            display: "flex",
+            gap: "10px",
+          }}
+        >
           {step > 1 && (
             <button
               type="button"
-              onClick={() => { setError(null); setStep((s) => s - 1); }}
+              onClick={() => {
+                setError(null);
+                setStep((s) => s - 1);
+              }}
               disabled={isPending}
-              style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 20px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "var(--muted)", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "14px 20px",
+                borderRadius: "12px",
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: "transparent",
+                color: "var(--muted)",
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: 600,
+              }}
             >
               <ChevronLeft size={16} strokeWidth={2.5} />
               Voltar
@@ -1066,16 +2360,45 @@ export function OnboardingWizardClient({ clinicId, clinicName, initial }: Props)
             type="button"
             onClick={handleNext}
             disabled={isPending || done}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "14px 20px", borderRadius: "12px", border: "none", background: done ? "rgba(0,212,170,0.8)" : "var(--accent)", color: "#000", cursor: isPending || done ? "not-allowed" : "pointer", fontSize: "15px", fontWeight: 700, transition: "all 0.15s", opacity: isPending ? 0.8 : 1 }}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              padding: "14px 20px",
+              borderRadius: "12px",
+              border: "none",
+              background: done ? "rgba(0,212,170,0.8)" : "var(--accent)",
+              color: "#000",
+              cursor: isPending || done ? "not-allowed" : "pointer",
+              fontSize: "15px",
+              fontWeight: 700,
+              transition: "all 0.15s",
+              opacity: isPending ? 0.8 : 1,
+            }}
           >
             {isPending ? (
-              <><Loader2 size={16} strokeWidth={2.5} style={{ animation: "spin 1s linear infinite" }} /> Salvando...</>
+              <>
+                <Loader2
+                  size={16}
+                  strokeWidth={2.5}
+                  style={{ animation: "spin 1s linear infinite" }}
+                />{" "}
+                Salvando...
+              </>
             ) : done ? (
-              <><CheckCircle2 size={16} strokeWidth={2.5} /> Concluído!</>
+              <>
+                <CheckCircle2 size={16} strokeWidth={2.5} /> Concluído!
+              </>
             ) : step === 7 ? (
-              <><CheckCircle2 size={16} strokeWidth={2.5} /> Concluir onboarding</>
+              <>
+                <CheckCircle2 size={16} strokeWidth={2.5} /> Concluir onboarding
+              </>
             ) : (
-              <>Próximo <ChevronRight size={16} strokeWidth={2.5} /></>
+              <>
+                Próximo <ChevronRight size={16} strokeWidth={2.5} />
+              </>
             )}
           </button>
         </div>

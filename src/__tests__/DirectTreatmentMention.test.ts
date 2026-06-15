@@ -74,6 +74,16 @@ describe("resolveDirectTreatmentMention", () => {
   it("ignora seleções numéricas de menu ou lista", () => {
     expect(resolveDirectTreatmentMention("8", treatments)).toBeNull();
   });
+
+  it("detecta tratamento em mensagem de saudação com menção — suporta greeting+pipeline em uma msg", () => {
+    const result = resolveDirectTreatmentMention("oi, interesse em lentes", treatments);
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("detecta tratamento em saudação composta de várias palavras", () => {
+    const result = resolveDirectTreatmentMention("boa tarde, gostaria de saber sobre lentes", treatments);
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
 });
 
 describe("resolveInformationalTreatmentTarget", () => {

@@ -1947,7 +1947,50 @@ export class ConversationOrchestrator {
           replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer", experience)}`;
           await this.stateMachine.offerMenu(conversation.id);
         } else {
-          replyText = buildConciergeStarter(clinic, timezone, lead.name);
+          const greetingText = buildConciergeStarter(clinic, timezone, lead.name);
+
+          // Se a saudação também menciona um tratamento com pipeline, inicia o
+          // pipeline imediatamente e entrega saudação + primeiro step juntos.
+          const greetingTreatment = !pipelineState
+            ? resolveDirectTreatmentMention(messageText, clinicTreatments)
+            : null;
+
+          if (greetingTreatment?.pipelineSteps?.length) {
+            const firstActive = nextActivePipelineStep(greetingTreatment.pipelineSteps, 0);
+            if (firstActive) {
+              await this.stateMachine.startTreatmentPipeline(
+                conversation.id,
+                greetingTreatment.id,
+                greetingTreatment.name,
+                clinic.staleConversationHours * 60,
+              );
+              if (firstActive.step.type === "content") {
+                const pipelineParts = buildPipelineContentParts(firstActive.step.blocks);
+                const pipelineText = pipelineParts
+                  .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                  .map((p) => p.content)
+                  .join("\n\n");
+                // Saudação como primeiro bloco de texto, seguido do conteúdo do pipeline
+                composedParts = [{ type: "text", content: greetingText }, ...pipelineParts];
+                composedMediaIds = pipelineParts
+                  .filter((p): p is { type: "media"; id: string } => p.type === "media")
+                  .map((p) => p.id);
+                replyText = pipelineText ? `${greetingText}\n\n${pipelineText}` : greetingText;
+                pendingPipelineAdvance = async () => {
+                  const next = nextActivePipelineStep(greetingTreatment.pipelineSteps!, firstActive.index + 1);
+                  if (next) {
+                    await this.stateMachine.advancePipelineStep(conversation.id, next.index);
+                  } else {
+                    await this.stateMachine.exitTreatmentPipeline(conversation.id);
+                  }
+                };
+                break;
+              }
+              // Para step type "qa": saudação normal — pipeline ativo aguarda próxima msg
+            }
+          }
+
+          replyText = greetingText;
         }
         break;
       }

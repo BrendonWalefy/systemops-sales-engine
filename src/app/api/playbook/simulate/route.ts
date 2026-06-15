@@ -37,6 +37,7 @@ type PlaybookInput = {
   procedureDescription: string;
   toneOfVoice: string;
   toneOfVoiceRaw?: string; // bypassa TONE_MAP — usado no modo produção
+  receptionistName?: string;
   differentials: string[];
   commercialPolicy: string;
   objections?: { objection: string; response: string }[];
@@ -428,6 +429,7 @@ export async function POST(req: NextRequest) {
         specialty: activeVersion.specialty ?? "",
         procedureDescription: activeVersion.procedureDescription ?? "",
         toneOfVoice: activeVersion.toneOfVoice ?? "acolhedor",
+        receptionistName: activeVersion.receptionistName,
         differentials: (activeVersion.differentials as string[] | null) ?? [],
         commercialPolicy: activeVersion.commercialPolicy ?? "",
         objections: (activeVersion.objections as { objection: string; response: string }[] | null) ?? [],
@@ -633,7 +635,7 @@ export async function POST(req: NextRequest) {
             playbook: buildPlaybookText(playbook),
             commercialPolicy: playbook.commercialPolicy || null,
             mediaLibrary: playbook.mediaLibrary ?? [],
-            receptionistName: inferReceptionistNameFromGreeting(playbook.greetingMessage) ?? undefined,
+            receptionistName: playbook.receptionistName ?? inferReceptionistNameFromGreeting(playbook.greetingMessage) ?? undefined,
           },
           leadName: null,
           timezone,
