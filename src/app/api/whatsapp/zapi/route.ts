@@ -8,15 +8,14 @@ import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, messages } from "@/infrastructure/db/schema";
 import { and, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
-import {
-  resolveClinicByZapiInstance,
-} from "@/application/tenancy/resolve-clinic";
+import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 import { buildContactIdentifiersFromWebhook } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { isInternalOperationalWhatsAppMessage } from "@/core/whatsapp/InternalWhatsAppOperationalMessage";
 import { findConversationByWhatsAppContact } from "@/application/whatsapp/find-conversation-by-whatsapp-contact";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
+import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -58,16 +57,25 @@ async function handleOperatorMessageFromPhone(
     externalId: body.messageId,
   });
 
-  const takeoverExpiresAt = ttlHours > 0
-    ? new Date(now.getTime() + ttlHours * 60 * 60_000)
-    : null;
+  const takeoverExpiresAt =
+    ttlHours > 0 ? new Date(now.getTime() + ttlHours * 60 * 60_000) : null;
 
   await db
     .update(conversations)
-    .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
+    .set({
+      aiPaused: true,
+      takeoverExpiresAt,
+      needsAttention: false,
+      attentionReason: null,
+      consecutiveUnclearCount: 0,
+      lastMessageAt: now,
+      updatedAt: now,
+    })
     .where(eq(conversations.id, convId));
 
-  console.log(`[ZApi] Operador enviou mensagem pelo celular (conv=${convId}) — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`);
+  console.log(
+    `[ZApi] Operador enviou mensagem pelo celular (conv=${convId}) — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`,
+  );
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -86,7 +94,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  const body = (await request.json().catch(() => null)) as ZApiInboundPayload | null;
+  const body = (await request
+    .json()
+    .catch(() => null)) as ZApiInboundPayload | null;
   if (!body) return new NextResponse("Bad Request", { status: 400 });
 
   // Roteamento E2E via query param ?clinicId=<id>
@@ -116,6 +126,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const [clinicRow] = await db
     .select({
       autoReplyEnabled: clinics.autoReplyEnabled,
+      operationalStatus: clinics.operationalStatus,
       receptionistPhone: clinics.receptionistPhone,
       takeoverTtlHours: clinics.takeoverTtlHours,
     })
@@ -223,7 +234,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const replyEnabled = clinicRow?.autoReplyEnabled !== false;
+  const replyEnabled = shouldSendAutomatedClinicOutbound(clinicRow);
 
   // Dedup: messageId já registrado no banco (ex: echo de mensagem enviada pelo dispatcher)
   if (body.messageId) {
@@ -252,13 +263,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const audioRes = await fetch(body.audio.audioUrl, {
           signal: AbortSignal.timeout(5_000),
         });
-        if (!audioRes.ok) throw new Error(`Audio download failed (${audioRes.status})`);
+        if (!audioRes.ok)
+          throw new Error(`Audio download failed (${audioRes.status})`);
         const audioBuffer = await audioRes.arrayBuffer();
-        const transcription = await getWhisperGateway().transcribe(audioBuffer, body.audio.mimeType);
+        const transcription = await getWhisperGateway().transcribe(
+          audioBuffer,
+          body.audio.mimeType,
+        );
         messageText = `[áudio] ${transcription}`;
       } catch (err) {
         console.error("[ZApi] Falha ao transcrever áudio:", err);
-        messageText = "[áudio] Transcrição automática indisponível. O lead enviou um áudio, mas não foi possível baixar ou transcrever. Peça para ele escrever a mensagem.";
+        messageText =
+          "[áudio] Transcrição automática indisponível. O lead enviou um áudio, mas não foi possível baixar ou transcrever. Peça para ele escrever a mensagem.";
       }
     }
   } else if (body.image?.imageUrl) {
@@ -281,19 +297,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Retorna 200 imediatamente para o Z-API não retentar (timeout curto de resposta).
   // `after` garante que o pipeline complete dentro do mesmo invocation serverless.
   after(
-    getOrchestrator().handle({
-      clinicId,
-      phone: body.phone,
-      whatsappLid: body.chatLid ?? null,
-      messageText,
-      messageId: body.messageId,
-      senderName: body.senderName || undefined,
-      senderPhoto: body.senderPhoto ?? null,
-      timestamp: body.momment ? new Date(body.momment) : new Date(),
-      replyEnabled,
-      mediaUrl: inboundMediaUrl ?? undefined,
-      mediaType: inboundMediaType ?? undefined,
-    }).catch((error) => console.error("[ZApi] Webhook error:", error)),
+    getOrchestrator()
+      .handle({
+        clinicId,
+        phone: body.phone,
+        whatsappLid: body.chatLid ?? null,
+        messageText,
+        messageId: body.messageId,
+        senderName: body.senderName || undefined,
+        senderPhoto: body.senderPhoto ?? null,
+        timestamp: body.momment ? new Date(body.momment) : new Date(),
+        replyEnabled,
+        mediaUrl: inboundMediaUrl ?? undefined,
+        mediaType: inboundMediaType ?? undefined,
+      })
+      .catch((error) => console.error("[ZApi] Webhook error:", error)),
   );
 
   return new NextResponse("OK", { status: 200 });

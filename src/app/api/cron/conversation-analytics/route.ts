@@ -10,9 +10,9 @@ import { MetricsAggregator } from "@/core/intelligence/MetricsAggregator";
 export const dynamic = "force-dynamic";
 
 // Limites para alertas — ajustáveis sem migration
-const ALERT_UNCLEAR_RATE = 0.20;    // >20% de respostas unclear
-const ALERT_TAKEOVER_RATE = 0.30;   // >30% de conversas com needs_human
-const ALERT_MIN_CONVERSATIONS = 1;   // 0 conversas em 24h = possível outage Z-API
+const ALERT_UNCLEAR_RATE = 0.2; // >20% de respostas unclear
+const ALERT_TAKEOVER_RATE = 0.3; // >30% de conversas com needs_human
+const ALERT_MIN_CONVERSATIONS = 1; // 0 conversas em 24h = possível outage Z-API
 
 type AlertLevel = "warn" | "critical";
 
@@ -33,18 +33,39 @@ function detectAlerts(
   const alerts: DailyAlert[] = [];
 
   if (totalConversations < ALERT_MIN_CONVERSATIONS) {
-    alerts.push({ metric: "total_conversations", value: totalConversations, threshold: ALERT_MIN_CONVERSATIONS, level: "critical" });
-    console.warn(`[analytics] 🚨 CRITICAL clinicId=${clinicIdArg} name="${clinicName}" total_conversations=0 — possível outage Z-API`);
+    alerts.push({
+      metric: "total_conversations",
+      value: totalConversations,
+      threshold: ALERT_MIN_CONVERSATIONS,
+      level: "critical",
+    });
+    console.warn(
+      `[analytics] 🚨 CRITICAL clinicId=${clinicIdArg} name="${clinicName}" total_conversations=0 — possível outage Z-API`,
+    );
   }
 
   if (unclearRate > ALERT_UNCLEAR_RATE) {
-    alerts.push({ metric: "unclear_rate", value: unclearRate, threshold: ALERT_UNCLEAR_RATE, level: "warn" });
-    console.warn(`[analytics] ⚠️  WARN clinicId=${clinicIdArg} name="${clinicName}" unclear_rate=${(unclearRate * 100).toFixed(1)}% (limite: ${ALERT_UNCLEAR_RATE * 100}%)`);
+    alerts.push({
+      metric: "unclear_rate",
+      value: unclearRate,
+      threshold: ALERT_UNCLEAR_RATE,
+      level: "warn",
+    });
+    console.warn(
+      `[analytics] ⚠️  WARN clinicId=${clinicIdArg} name="${clinicName}" unclear_rate=${(unclearRate * 100).toFixed(1)}% (limite: ${ALERT_UNCLEAR_RATE * 100}%)`,
+    );
   }
 
   if (needsHumanRate > ALERT_TAKEOVER_RATE) {
-    alerts.push({ metric: "needs_human_rate", value: needsHumanRate, threshold: ALERT_TAKEOVER_RATE, level: "warn" });
-    console.warn(`[analytics] ⚠️  WARN clinicId=${clinicIdArg} name="${clinicName}" needs_human_rate=${(needsHumanRate * 100).toFixed(1)}% (limite: ${ALERT_TAKEOVER_RATE * 100}%)`);
+    alerts.push({
+      metric: "needs_human_rate",
+      value: needsHumanRate,
+      threshold: ALERT_TAKEOVER_RATE,
+      level: "warn",
+    });
+    console.warn(
+      `[analytics] ⚠️  WARN clinicId=${clinicIdArg} name="${clinicName}" needs_human_rate=${(needsHumanRate * 100).toFixed(1)}% (limite: ${ALERT_TAKEOVER_RATE * 100}%)`,
+    );
   }
 
   return alerts;
@@ -59,7 +80,7 @@ export async function GET(req: NextRequest) {
   const activeClinics = await db
     .select({ id: clinics.id, name: clinics.name })
     .from(clinics)
-    .where(eq(clinics.autoReplyEnabled, true));
+    .where(eq(clinics.operationalStatus, "active"));
 
   const aggregator = new MetricsAggregator();
   const results: Array<{
@@ -91,7 +112,7 @@ export async function GET(req: NextRequest) {
         periodFrom: metrics.period.from,
         periodTo: metrics.period.to,
         data: {
-          ...metrics as unknown as Record<string, unknown>,
+          ...(metrics as unknown as Record<string, unknown>),
           periodDays: 1,
           alerts,
         },
@@ -113,12 +134,19 @@ export async function GET(req: NextRequest) {
       );
     } catch (err) {
       console.error(`[analytics] ERRO clinicId=${clinic.id}`, err);
-      results.push({ clinicId: clinic.id, name: clinic.name, status: "error", error: String(err) });
+      results.push({
+        clinicId: clinic.id,
+        name: clinic.name,
+        status: "error",
+        error: String(err),
+      });
     }
   }
 
   const totalAlerts = results.flatMap((r) => r.alerts ?? []).length;
-  console.log(`[analytics] Concluído: ${activeClinics.length} clínica(s), ${totalAlerts} alerta(s)`);
+  console.log(
+    `[analytics] Concluído: ${activeClinics.length} clínica(s), ${totalAlerts} alerta(s)`,
+  );
 
   return NextResponse.json({
     processed: results.length,

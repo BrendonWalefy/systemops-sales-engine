@@ -15,10 +15,14 @@ export async function GET(req: NextRequest) {
   const activeClinics = await db
     .select({ id: clinics.id })
     .from(clinics)
-    .where(eq(clinics.autoReplyEnabled, true));
+    .where(eq(clinics.operationalStatus, "active"));
 
   const aggregator = new MetricsAggregator();
-  const results: Array<{ clinicId: string; status: "ok" | "error"; error?: string }> = [];
+  const results: Array<{
+    clinicId: string;
+    status: "ok" | "error";
+    error?: string;
+  }> = [];
 
   for (const clinic of activeClinics) {
     try {
@@ -34,7 +38,11 @@ export async function GET(req: NextRequest) {
       results.push({ clinicId: clinic.id, status: "ok" });
     } catch (err) {
       console.error(`[metrics-aggregate] clinicId=${clinic.id}`, err);
-      results.push({ clinicId: clinic.id, status: "error", error: String(err) });
+      results.push({
+        clinicId: clinic.id,
+        status: "error",
+        error: String(err),
+      });
     }
   }
 

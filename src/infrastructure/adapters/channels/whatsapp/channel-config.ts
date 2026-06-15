@@ -4,6 +4,7 @@
  * É isto que garante que a resposta de cada clínica saia pelo número/instância
  * dela — e não pelo de outra clínica.
  */
+import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 
 export type ZapiCreds = {
   instanceId: string;
@@ -40,14 +41,17 @@ export function resolveChannelConfig(clinic: ClinicChannelFields): ClinicChannel
     clinic.zapiInstanceId && clinic.zapiToken
       ? {
           instanceId: clinic.zapiInstanceId,
-          token: clinic.zapiToken,
-          clientToken: clinic.zapiClientToken ?? undefined,
+          token: decryptCredentialNullable(clinic.zapiToken) ?? "",
+          clientToken: decryptCredentialNullable(clinic.zapiClientToken) ?? undefined,
         }
       : null;
 
   const meta: MetaCreds | null =
     clinic.metaPhoneNumberId && clinic.metaAccessToken
-      ? { phoneNumberId: clinic.metaPhoneNumberId, accessToken: clinic.metaAccessToken }
+      ? {
+          phoneNumberId: clinic.metaPhoneNumberId,
+          accessToken: decryptCredentialNullable(clinic.metaAccessToken) ?? "",
+        }
       : null;
 
   return { provider, zapi, meta };

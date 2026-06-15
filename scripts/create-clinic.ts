@@ -26,6 +26,9 @@ import {
   clinicMembers,
 } from "../src/infrastructure/db/schema";
 import { hashPassword } from "../src/lib/password";
+import { resolveClinicCommercialSettings } from "../src/application/onboarding/clinic-commercial-settings";
+import { resolveInitialClinicOperationalStatus } from "../src/application/clinics/clinic-operational-status";
+import { encryptCredentialNullable } from "../src/infrastructure/crypto/credential-vault";
 
 type NewClinicConfig = {
   name: string;
@@ -34,6 +37,14 @@ type NewClinicConfig = {
   timezone?: string;
   businessHours?: string;
   greetingMessage?: string;
+  receptionistPhone?: string;
+  calendarMode?: "internal" | "google_calendar";
+  googleCalendarId?: string;
+  isTest?: boolean;
+  plan?: "essencial" | "clinica" | "rede" | "custom";
+  billingActive?: boolean;
+  monthlyRevenueBrl?: number;
+  billingStartedAt?: string;
   channel: {
     provider: "z_api" | "meta_cloud_api";
     zapi?: { instanceId: string; token: string; clientToken?: string };
@@ -53,7 +64,11 @@ type NewClinicConfig = {
     description?: string;
     requiresEvaluationFirst?: boolean;
   }[];
-  admins: { email: string; password: string; role?: "owner" | "clinic_admin" }[];
+  admins: {
+    email: string;
+    password: string;
+    role?: "owner" | "clinic_admin";
+  }[];
 };
 
 const configPath = process.argv[2];
@@ -75,10 +90,18 @@ async function main() {
   const parsed = onboardingConfigSchema.safeParse(cfg);
   if (!parsed.success) {
     console.error("Configuração inválida:");
-    for (const i of parsed.error.issues) console.error(` - ${i.path.join('.')}: ${i.message}`);
+    for (const i of parsed.error.issues)
+      console.error(` - ${i.path.join(".")}: ${i.message}`);
     process.exit(1);
   }
   const now = new Date();
+  const commercialSettings = resolveClinicCommercialSettings({
+    plan: parsed.data.plan,
+    billingActive: parsed.data.billingActive,
+    monthlyRevenueBrl: parsed.data.monthlyRevenueBrl,
+    billingStartedAt: parsed.data.billingStartedAt,
+    isTest: parsed.data.isTest,
+  });
 
   // 1) clínica (upsert por slug)
   const existing = await db
@@ -95,12 +118,22 @@ async function main() {
     timezone: cfg.timezone ?? "America/Sao_Paulo",
     businessHours: cfg.businessHours ?? null,
     greetingMessage: cfg.greetingMessage ?? null,
+    receptionistPhone: cfg.receptionistPhone ?? null,
+    calendarMode: cfg.calendarMode ?? "internal",
+    googleCalendarId: cfg.googleCalendarId ?? null,
+    plan: commercialSettings.plan,
+    operationalStatus: resolveInitialClinicOperationalStatus({
+      isTest: commercialSettings.isTest,
+    }),
+    monthlyRevenueBrl: commercialSettings.monthlyRevenueBrl,
+    billingStartedAt: commercialSettings.billingStartedAt,
+    isTest: commercialSettings.isTest,
     channelProvider: cfg.channel.provider,
     zapiInstanceId: cfg.channel.zapi?.instanceId ?? null,
-    zapiToken: cfg.channel.zapi?.token ?? null,
-    zapiClientToken: cfg.channel.zapi?.clientToken ?? null,
+    zapiToken: encryptCredentialNullable(cfg.channel.zapi?.token),
+    zapiClientToken: encryptCredentialNullable(cfg.channel.zapi?.clientToken),
     metaPhoneNumberId: cfg.channel.meta?.phoneNumberId ?? null,
-    metaAccessToken: cfg.channel.meta?.accessToken ?? null,
+    metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
     updatedAt: now,
   };
 
@@ -122,7 +155,12 @@ async function main() {
   await db
     .update(playbookVersions)
     .set({ status: "historical", updatedAt: now })
-    .where(and(eq(playbookVersions.clinicId, clinicId), eq(playbookVersions.status, "active")));
+    .where(
+      and(
+        eq(playbookVersions.clinicId, clinicId),
+        eq(playbookVersions.status, "active"),
+      ),
+    );
 
   await db.insert(playbookVersions).values({
     clinicId,
@@ -143,7 +181,9 @@ async function main() {
     const existsProc = await db
       .select({ id: treatments.id })
       .from(treatments)
-      .where(and(eq(treatments.clinicId, clinicId), eq(treatments.name, p.name)))
+      .where(
+        and(eq(treatments.clinicId, clinicId), eq(treatments.name, p.name)),
+      )
       .limit(1)
       .then((r) => r[0] ?? null);
     const vals = {
@@ -155,12 +195,17 @@ async function main() {
       updatedAt: now,
     };
     if (existsProc) {
-      await db.update(treatments).set(vals).where(eq(treatments.id, existsProc.id));
+      await db
+        .update(treatments)
+        .set(vals)
+        .where(eq(treatments.id, existsProc.id));
     } else {
       await db.insert(treatments).values(vals);
     }
   }
-  console.log(`${(cfg.procedures ?? []).length} procedimento(s) sincronizado(s).`);
+  console.log(
+    `${(cfg.procedures ?? []).length} procedimento(s) sincronizado(s).`,
+  );
 
   // 4) admins vinculados
   for (const a of cfg.admins) {
@@ -169,7 +214,12 @@ async function main() {
     const existsMember = await db
       .select({ id: clinicMembers.id })
       .from(clinicMembers)
-      .where(and(eq(clinicMembers.email, email), eq(clinicMembers.clinicId, clinicId)))
+      .where(
+        and(
+          eq(clinicMembers.email, email),
+          eq(clinicMembers.clinicId, clinicId),
+        ),
+      )
       .limit(1)
       .then((r) => r[0] ?? null);
     if (existsMember) {
@@ -191,7 +241,9 @@ async function main() {
   console.log("\n✅ Onboarding concluído.");
   console.log(`   clinicId: ${clinicId}`);
   console.log(`   slug:     ${cfg.slug}`);
-  console.log("   Aponte o webhook do canal desta clínica para este ambiente e teste o checklist.");
+  console.log(
+    "   Aponte o webhook do canal desta clínica para este ambiente e teste o checklist.",
+  );
 }
 
 main()

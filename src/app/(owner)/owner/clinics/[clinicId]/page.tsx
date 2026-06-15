@@ -13,16 +13,56 @@ import {
   conversations,
   messages,
   agentRecommendations,
+  playbookVersions,
+  treatments,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
-import { ArrowLeft, ExternalLink, Flame, Thermometer, Snowflake, FlaskConical, Building2, KeyRound, UserPlus, Workflow } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  Flame,
+  Thermometer,
+  Snowflake,
+  FlaskConical,
+  Building2,
+  KeyRound,
+  UserPlus,
+  Workflow,
+} from "lucide-react";
 import { hashPassword } from "@/lib/password";
+import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
+import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
+import {
+  getClinicOperationalStatusColors,
+  getClinicOperationalStatusLabel,
+} from "@/application/clinics/clinic-operational-status-presentation";
 
 async function toggleIsTest(clinicId: string, currentValue: boolean) {
   "use server";
+  const clinic = await db.query.clinics.findFirst({
+    where: eq(clinics.id, clinicId),
+    columns: {
+      autoReplyEnabled: true,
+      operationalStatus: true,
+    },
+  });
+  if (!clinic) redirect(`/owner/clinics/${clinicId}`);
+
+  const nextIsTest = !currentValue;
   await db
     .update(clinics)
-    .set({ isTest: !currentValue })
+    .set({
+      isTest: nextIsTest,
+      operationalStatus: nextIsTest
+        ? "test"
+        : clinic.operationalStatus === "test"
+          ? "prospect"
+          : resolveOperationalStatusFromAutomationState({
+              currentStatus: clinic.operationalStatus,
+              isTest: nextIsTest,
+              autoReplyEnabled: clinic.autoReplyEnabled,
+            }),
+    })
     .where(eq(clinics.id, clinicId));
   redirect(`/owner/clinics/${clinicId}`);
 }
@@ -31,18 +71,26 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
   "use server";
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
-  if (!email || !password || password.length < 8) redirect(`/owner/clinics/${clinicId}?memberError=1`);
+  if (!email || !password || password.length < 8)
+    redirect(`/owner/clinics/${clinicId}?memberError=1`);
   const hash = await hashPassword(password);
   const existing = await db
     .select({ id: clinicMembers.id })
     .from(clinicMembers)
-    .where(and(eq(clinicMembers.email, email), eq(clinicMembers.clinicId, clinicId)))
+    .where(
+      and(eq(clinicMembers.email, email), eq(clinicMembers.clinicId, clinicId)),
+    )
     .limit(1)
     .then((r) => r[0] ?? null);
   if (existing) {
-    await db.update(clinicMembers).set({ passwordHash: hash }).where(eq(clinicMembers.id, existing.id));
+    await db
+      .update(clinicMembers)
+      .set({ passwordHash: hash })
+      .where(eq(clinicMembers.id, existing.id));
   } else {
-    await db.insert(clinicMembers).values({ clinicId, email, role: "clinic_admin", passwordHash: hash });
+    await db
+      .insert(clinicMembers)
+      .values({ clinicId, email, role: "clinic_admin", passwordHash: hash });
   }
   redirect(`/owner/clinics/${clinicId}?memberOk=1`);
 }
@@ -74,6 +122,102 @@ function thirtyDaysAgo(): Date {
   return d;
 }
 
+async function activateClinicGoLive(clinicId: string) {
+  "use server";
+
+  const clinic = await db.query.clinics.findFirst({
+    where: eq(clinics.id, clinicId),
+    columns: {
+      id: true,
+      specialty: true,
+      city: true,
+      address: true,
+      greetingMessage: true,
+      businessHours: true,
+      calendarMode: true,
+      googleCalendarId: true,
+      receptionistPhone: true,
+      autoReplyEnabled: true,
+      isTest: true,
+      plan: true,
+      monthlyRevenueBrl: true,
+      billingStartedAt: true,
+      defaultAppointmentDurationMinutes: true,
+      postAppointmentBufferMinutes: true,
+      takeoverTtlHours: true,
+      channelProvider: true,
+      zapiInstanceId: true,
+      zapiToken: true,
+      metaPhoneNumberId: true,
+      metaAccessToken: true,
+      operationalStatus: true,
+    },
+  });
+
+  if (!clinic) redirect(`/owner/clinics/${clinicId}?goLiveError=not-found`);
+  if (clinic.operationalStatus === "cancelled") {
+    redirect(`/owner/clinics/${clinicId}?goLiveError=cancelled`);
+  }
+
+  const [activePlaybook, clinicTreatments] = await Promise.all([
+    db.query.playbookVersions.findFirst({
+      where: and(
+        eq(playbookVersions.clinicId, clinicId),
+        eq(playbookVersions.status, "active"),
+      ),
+      columns: {
+        toneOfVoice: true,
+        commercialPolicy: true,
+        notes: true,
+        differentials: true,
+        mediaLibrary: true,
+      },
+    }),
+    db.query.treatments.findMany({
+      where: eq(treatments.clinicId, clinicId),
+      columns: {
+        pipelineSteps: true,
+      },
+    }),
+  ]);
+
+  const blueprint = buildClinicBlueprint({
+    clinic,
+    playbook: {
+      toneOfVoice: activePlaybook?.toneOfVoice ?? null,
+      commercialPolicy: activePlaybook?.commercialPolicy ?? null,
+      notes: activePlaybook?.notes ?? null,
+      differentialsCount: Array.isArray(activePlaybook?.differentials)
+        ? activePlaybook.differentials.length
+        : 0,
+      mediaLibraryCount: Array.isArray(activePlaybook?.mediaLibrary)
+        ? activePlaybook.mediaLibrary.length
+        : 0,
+    },
+    treatments: clinicTreatments.map((t) => ({
+      pipelineStepsCount: Array.isArray(t.pipelineSteps)
+        ? t.pipelineSteps.length
+        : 0,
+    })),
+  });
+
+  if (blueprint.criticalMissing.length > 0) {
+    redirect(`/owner/clinics/${clinicId}?goLiveError=incomplete`);
+  }
+
+  await db
+    .update(clinics)
+    .set({
+      isTest: false,
+      autoReplyEnabled: true,
+      operationalStatus: "active",
+      updatedAt: new Date(),
+    })
+    .where(eq(clinics.id, clinicId));
+
+  redirect(`/owner/clinics/${clinicId}?goLiveOk=1`);
+}
+
 export default async function ClinicDetailPage({
   params,
   searchParams,
@@ -85,24 +229,105 @@ export default async function ClinicDetailPage({
   const sp = await searchParams;
   const memberOk = sp.memberOk === "1";
   const memberError = sp.memberError === "1";
+  const goLiveOk = sp.goLiveOk === "1";
+  const goLiveError = sp.goLiveError;
 
   const [clinic] = await db
     .select({
       id: clinics.id,
       name: clinics.name,
+      specialty: clinics.specialty,
+      city: clinics.city,
+      address: clinics.address,
+      greetingMessage: clinics.greetingMessage,
+      businessHours: clinics.businessHours,
+      calendarMode: clinics.calendarMode,
+      googleCalendarId: clinics.googleCalendarId,
+      receptionistPhone: clinics.receptionistPhone,
+      plan: clinics.plan,
+      monthlyRevenueBrl: clinics.monthlyRevenueBrl,
+      billingStartedAt: clinics.billingStartedAt,
+      defaultAppointmentDurationMinutes:
+        clinics.defaultAppointmentDurationMinutes,
+      postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
+      takeoverTtlHours: clinics.takeoverTtlHours,
       autoReplyEnabled: clinics.autoReplyEnabled,
+      operationalStatus: clinics.operationalStatus,
       isTest: clinics.isTest,
+      channelProvider: clinics.channelProvider,
+      zapiInstanceId: clinics.zapiInstanceId,
+      zapiToken: clinics.zapiToken,
+      metaPhoneNumberId: clinics.metaPhoneNumberId,
+      metaAccessToken: clinics.metaAccessToken,
     })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
     .limit(1);
   if (!clinic) notFound();
 
+  const [activePlaybook, clinicTreatments] = await Promise.all([
+    db.query.playbookVersions.findFirst({
+      where: and(
+        eq(playbookVersions.clinicId, clinicId),
+        eq(playbookVersions.status, "active"),
+      ),
+      columns: {
+        toneOfVoice: true,
+        commercialPolicy: true,
+        notes: true,
+        differentials: true,
+        mediaLibrary: true,
+      },
+    }),
+    db.query.treatments.findMany({
+      where: eq(treatments.clinicId, clinicId),
+      columns: {
+        pipelineSteps: true,
+      },
+    }),
+  ]);
+
+  const blueprint = buildClinicBlueprint({
+    clinic,
+    playbook: {
+      toneOfVoice: activePlaybook?.toneOfVoice ?? null,
+      commercialPolicy: activePlaybook?.commercialPolicy ?? null,
+      notes: activePlaybook?.notes ?? null,
+      differentialsCount: Array.isArray(activePlaybook?.differentials)
+        ? activePlaybook.differentials.length
+        : 0,
+      mediaLibraryCount: Array.isArray(activePlaybook?.mediaLibrary)
+        ? activePlaybook.mediaLibrary.length
+        : 0,
+    },
+    treatments: clinicTreatments.map((t) => ({
+      pipelineStepsCount: Array.isArray(t.pipelineSteps)
+        ? t.pipelineSteps.length
+        : 0,
+    })),
+  });
+  const operationalColors = getClinicOperationalStatusColors(
+    clinic.operationalStatus,
+  );
+  const goLiveBlockingIssues =
+    blueprint.sections.find((section) => section.id === "go_live")?.missing ??
+    [];
+  const canActivateGoLive =
+    clinic.operationalStatus !== "active" &&
+    clinic.operationalStatus !== "cancelled" &&
+    blueprint.criticalMissing.length === 0;
+
   const toggleTestAction = toggleIsTest.bind(null, clinic.id, clinic.isTest);
+  const activateGoLiveAction = activateClinicGoLive.bind(null, clinic.id);
   const upsertMemberAction = upsertMemberPassword.bind(null, clinic.id);
 
   const members = await db
-    .select({ id: clinicMembers.id, email: clinicMembers.email, role: clinicMembers.role, hasPassword: clinicMembers.passwordHash })
+    .select({
+      id: clinicMembers.id,
+      email: clinicMembers.email,
+      role: clinicMembers.role,
+      hasPassword: clinicMembers.passwordHash,
+    })
     .from(clinicMembers)
     .where(eq(clinicMembers.clinicId, clinicId));
 
@@ -118,20 +343,60 @@ export default async function ClinicDetailPage({
     tempWarmResult,
     tempColdResult,
   ] = await Promise.all([
-    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), gte(leads.createdAt, monthStart))),
-    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.status, "appointment_scheduled"), gte(leads.createdAt, monthStart))),
-    db.select({ total: sum(aiUsageCosts.estimatedCostUsdMicros) }).from(aiUsageCosts).where(and(eq(aiUsageCosts.clinicId, clinicId), gte(aiUsageCosts.createdAt, monthStart))),
-    db.select({ total: sum(whatsappMessageCosts.estimatedCostUsdMicros) }).from(whatsappMessageCosts).where(and(eq(whatsappMessageCosts.clinicId, clinicId), gte(whatsappMessageCosts.createdAt, monthStart))),
-    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "hot"))),
-    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "warm"))),
-    db.select({ count: count() }).from(leads).where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "cold"))),
+    db
+      .select({ count: count() })
+      .from(leads)
+      .where(
+        and(eq(leads.clinicId, clinicId), gte(leads.createdAt, monthStart)),
+      ),
+    db
+      .select({ count: count() })
+      .from(leads)
+      .where(
+        and(
+          eq(leads.clinicId, clinicId),
+          eq(leads.status, "appointment_scheduled"),
+          gte(leads.createdAt, monthStart),
+        ),
+      ),
+    db
+      .select({ total: sum(aiUsageCosts.estimatedCostUsdMicros) })
+      .from(aiUsageCosts)
+      .where(
+        and(
+          eq(aiUsageCosts.clinicId, clinicId),
+          gte(aiUsageCosts.createdAt, monthStart),
+        ),
+      ),
+    db
+      .select({ total: sum(whatsappMessageCosts.estimatedCostUsdMicros) })
+      .from(whatsappMessageCosts)
+      .where(
+        and(
+          eq(whatsappMessageCosts.clinicId, clinicId),
+          gte(whatsappMessageCosts.createdAt, monthStart),
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(leads)
+      .where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "hot"))),
+    db
+      .select({ count: count() })
+      .from(leads)
+      .where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "warm"))),
+    db
+      .select({ count: count() })
+      .from(leads)
+      .where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "cold"))),
   ]);
 
   const leadsCount = leadsMonthResult[0]?.count ?? 0;
   const scheduledCount = scheduledMonthResult[0]?.count ?? 0;
   const aiCost = Number(aiCostResult[0]?.total ?? 0);
   const waCost = Number(waCostResult[0]?.total ?? 0);
-  const conversion = leadsCount > 0 ? ((scheduledCount / leadsCount) * 100).toFixed(1) : "0.0";
+  const conversion =
+    leadsCount > 0 ? ((scheduledCount / leadsCount) * 100).toFixed(1) : "0.0";
   const tempCounts = {
     hot: tempHotResult[0]?.count ?? 0,
     warm: tempWarmResult[0]?.count ?? 0,
@@ -147,7 +412,9 @@ export default async function ClinicDetailPage({
     .from(leads)
     .where(and(eq(leads.clinicId, clinicId), gte(leads.createdAt, thirtyDays)))
     .groupBy(sql`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo')`)
-    .orderBy(sql`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo') DESC`);
+    .orderBy(
+      sql`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo') DESC`,
+    );
 
   const dailyMessagesResult = await db
     .select({
@@ -156,13 +423,24 @@ export default async function ClinicDetailPage({
     })
     .from(messages)
     .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-    .where(and(eq(conversations.clinicId, clinicId), gte(messages.sentAt, thirtyDays)))
+    .where(
+      and(
+        eq(conversations.clinicId, clinicId),
+        gte(messages.sentAt, thirtyDays),
+      ),
+    )
     .groupBy(sql`DATE(${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo')`)
-    .orderBy(sql`DATE(${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo') DESC`);
+    .orderBy(
+      sql`DATE(${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo') DESC`,
+    );
 
   // Merge daily data
-  const dailyLeadsMap = Object.fromEntries(dailyLeadsResult.map((r) => [r.day, r.count]));
-  const dailyMsgMap = Object.fromEntries(dailyMessagesResult.map((r) => [r.day, r.count]));
+  const dailyLeadsMap = Object.fromEntries(
+    dailyLeadsResult.map((r) => [r.day, r.count]),
+  );
+  const dailyMsgMap = Object.fromEntries(
+    dailyMessagesResult.map((r) => [r.day, r.count]),
+  );
   const allDays = Array.from(
     new Set([...Object.keys(dailyLeadsMap), ...Object.keys(dailyMsgMap)]),
   ).sort((a, b) => b.localeCompare(a));
@@ -212,23 +490,49 @@ export default async function ClinicDetailPage({
     <div>
       {/* Header */}
       <div className="product-topbar">
-        <div className="clinic-header-left" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div
+          className="clinic-header-left"
+          style={{ display: "flex", alignItems: "center", gap: 14 }}
+        >
           <Link
             href="/owner"
-            style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", textDecoration: "none", fontSize: 13, fontWeight: 600, flexShrink: 0 }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              color: "var(--muted)",
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 600,
+              flexShrink: 0,
+            }}
           >
             <ArrowLeft size={14} />
             Visão geral
           </Link>
-          <span className="clinic-header-sep" style={{ color: "var(--line-strong)" }}>·</span>
+          <span
+            className="clinic-header-sep"
+            style={{ color: "var(--line-strong)" }}
+          >
+            ·
+          </span>
           <div className="clinic-header-title">
             <h1 style={{ margin: 0 }}>{clinic.name}</h1>
-            <p style={{ margin: "3px 0 0", fontSize: 13, color: "var(--muted)" }}>
+            <p
+              style={{ margin: "3px 0 0", fontSize: 13, color: "var(--muted)" }}
+            >
               Drill-down da clínica
             </p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
           {clinic.isTest && (
             <span
               style={{
@@ -247,12 +551,43 @@ export default async function ClinicDetailPage({
               <FlaskConical size={11} /> Teste
             </span>
           )}
+          <span
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              border: `1px solid ${operationalColors.border}`,
+              borderRadius: 999,
+              background: operationalColors.background,
+              color: operationalColors.text,
+              fontSize: 11,
+              fontWeight: 700,
+              padding: "3px 10px",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: operationalColors.text,
+                flexShrink: 0,
+              }}
+            />
+            {getClinicOperationalStatusLabel(clinic.operationalStatus)}
+          </span>
           {clinic.autoReplyEnabled ? (
-            <span className="status-pill" style={{ fontSize: 11, padding: "3px 10px" }}>
+            <span
+              className="status-pill"
+              style={{ fontSize: 11, padding: "3px 10px" }}
+            >
               <span className="status-dot" /> IA Ativa
             </span>
           ) : (
-            <span className="status-pill status-handoff" style={{ fontSize: 11, padding: "3px 10px" }}>
+            <span
+              className="status-pill status-handoff"
+              style={{ fontSize: 11, padding: "3px 10px" }}
+            >
               <span className="status-dot" /> IA Pausada
             </span>
           )}
@@ -292,67 +627,480 @@ export default async function ClinicDetailPage({
         </div>
       </div>
 
-      <div className="page-content" style={{ paddingBottom: "60px", display: "grid", gap: 32 }}>
+      <div
+        className="page-content"
+        style={{ paddingBottom: "60px", display: "grid", gap: 32 }}
+      >
+        {goLiveOk && (
+          <div
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "1px solid rgba(16,185,129,0.24)",
+              background: "rgba(16,185,129,0.08)",
+              color: "#34d399",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            Go-live ativado. A clínica entrou em produção com automação
+            liberada.
+          </div>
+        )}
+
+        {goLiveError && (
+          <div
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "1px solid rgba(245,158,11,0.24)",
+              background: "rgba(245,158,11,0.08)",
+              color: "#f59e0b",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {goLiveError === "incomplete"
+              ? "O go-live foi bloqueado porque ainda existem lacunas obrigatórias no blueprint."
+              : goLiveError === "cancelled"
+                ? "Clínica cancelada não pode ser promovida para go-live."
+                : "Não foi possível concluir o go-live desta clínica."}
+          </div>
+        )}
+
+        <div
+          style={{
+            border:
+              blueprint.status === "complete"
+                ? "1px solid rgba(16,185,129,0.22)"
+                : blueprint.status === "attention"
+                  ? "1px solid rgba(245,158,11,0.22)"
+                  : "1px solid rgba(99,102,241,0.26)",
+            borderRadius: 16,
+            overflow: "hidden",
+            background:
+              blueprint.status === "complete"
+                ? "rgba(16,185,129,0.04)"
+                : blueprint.status === "attention"
+                  ? "rgba(245,158,11,0.04)"
+                  : "rgba(99,102,241,0.04)",
+          }}
+        >
+          <div
+            style={{
+              padding: "18px 20px 16px",
+              borderBottom: "1px solid var(--line)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <p className="eyebrow" style={{ margin: 0 }}>
+                Clinic Blueprint
+              </p>
+              <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>
+                Prontidão de implantação: {blueprint.readinessPercent}%
+              </h2>
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: 13,
+                  color: "var(--muted)",
+                  lineHeight: 1.5,
+                }}
+              >
+                Uma leitura rápida do que já está pronto para venda, setup e
+                go-live desta clínica.
+              </p>
+            </div>
+            <Link
+              href={`/owner/onboarding/${clinic.id}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "9px 14px",
+                borderRadius: 10,
+                textDecoration: "none",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "var(--accent-strong)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "var(--surface-soft)",
+              }}
+            >
+              <Workflow size={14} />
+              Abrir onboarding
+            </Link>
+          </div>
+
+          <div style={{ padding: "18px 20px", display: "grid", gap: 18 }}>
+            <div
+              style={{
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                padding: "14px 16px",
+                background: "rgba(255,255,255,0.02)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <p className="eyebrow" style={{ margin: 0 }}>
+                    Checklist de go-live
+                  </p>
+                  <p
+                    style={{
+                      margin: "8px 0 0",
+                      fontSize: 13,
+                      color: "var(--muted)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    A clínica só deve ir para `active` quando o blueprint
+                    estiver completo e a operação estiver pronta para produção.
+                  </p>
+                </div>
+                {canActivateGoLive ? (
+                  <form action={activateGoLiveAction}>
+                    <button
+                      type="submit"
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: "var(--accent)",
+                        color: "#000",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Promover para active
+                    </button>
+                  </form>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--muted)",
+                    }}
+                  >
+                    Go-live ainda bloqueado
+                  </span>
+                )}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 14,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                {goLiveBlockingIssues.length === 0 ? (
+                  <span
+                    style={{
+                      fontSize: 13,
+                      color: "#34d399",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Nenhum bloqueio restante. A clínica está pronta para
+                    go-live.
+                  </span>
+                ) : (
+                  goLiveBlockingIssues.slice(0, 6).map((item) => (
+                    <span
+                      key={item}
+                      style={{ fontSize: 13, color: "var(--muted)" }}
+                    >
+                      • {item}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 12,
+              }}
+            >
+              {blueprint.sections.map((section) => (
+                <div
+                  key={section.id}
+                  style={{
+                    border: "1px solid var(--line)",
+                    borderRadius: 12,
+                    padding: "14px 14px 12px",
+                    background: "var(--surface-soft)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <strong style={{ fontSize: 14 }}>{section.title}</strong>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "4px 8px",
+                        borderRadius: 999,
+                        color:
+                          section.status === "complete"
+                            ? "#34d399"
+                            : section.status === "attention"
+                              ? "#f59e0b"
+                              : "#818cf8",
+                        background:
+                          section.status === "complete"
+                            ? "rgba(16,185,129,0.12)"
+                            : section.status === "attention"
+                              ? "rgba(245,158,11,0.12)"
+                              : "rgba(99,102,241,0.12)",
+                      }}
+                    >
+                      {section.status === "complete"
+                        ? "Completo"
+                        : section.status === "attention"
+                          ? "Atenção"
+                          : "Pendente"}
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      margin: "10px 0 0",
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {section.summary}
+                  </p>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                    }}
+                  >
+                    {section.missing.length === 0 ? (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          color: "#34d399",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Nenhum item crítico em aberto.
+                      </span>
+                    ) : (
+                      section.missing.slice(0, 3).map((item) => (
+                        <span
+                          key={item}
+                          style={{ fontSize: 12, color: "var(--muted)" }}
+                        >
+                          • {item}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {blueprint.criticalMissing.length > 0 && (
+              <div
+                style={{
+                  border: "1px solid var(--line)",
+                  borderRadius: 12,
+                  padding: "14px 16px",
+                  background: "rgba(255,255,255,0.02)",
+                }}
+              >
+                <p className="eyebrow" style={{ margin: 0 }}>
+                  Próximas lacunas para fechar
+                </p>
+                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                  {blueprint.criticalMissing.slice(0, 6).map((item) => (
+                    <span
+                      key={item}
+                      style={{ fontSize: 13, color: "var(--muted)" }}
+                    >
+                      • {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* KPIs */}
         <div className="kpi-strip" style={{ marginLeft: 0 }}>
           <div className="metric metric-highlight">
-            <div className="metric-header"><span className="metric-label">Leads no mês</span></div>
+            <div className="metric-header">
+              <span className="metric-label">Leads no mês</span>
+            </div>
             <span className="metric-value">{leadsCount}</span>
             <span className="metric-context">mês atual</span>
           </div>
           <div className="metric">
-            <div className="metric-header"><span className="metric-label">Agendamentos</span></div>
+            <div className="metric-header">
+              <span className="metric-label">Agendamentos</span>
+            </div>
             <span className="metric-value">{scheduledCount}</span>
             <span className="metric-context">no mês</span>
           </div>
           <div className="metric">
-            <div className="metric-header"><span className="metric-label">Conversão</span></div>
+            <div className="metric-header">
+              <span className="metric-label">Conversão</span>
+            </div>
             <span className="metric-value">{conversion}%</span>
             <span className="metric-context">agend. / leads</span>
           </div>
           <div className="metric">
-            <div className="metric-header"><span className="metric-label">Custo IA</span></div>
-            <span className="metric-value" style={{ fontFamily: "monospace", fontSize: 16 }}>{formatCurrency(aiCost)}</span>
+            <div className="metric-header">
+              <span className="metric-label">Custo IA</span>
+            </div>
+            <span
+              className="metric-value"
+              style={{ fontFamily: "monospace", fontSize: 16 }}
+            >
+              {formatCurrency(aiCost)}
+            </span>
             <span className="metric-context">OpenAI no mês</span>
           </div>
           <div className="metric">
-            <div className="metric-header"><span className="metric-label">Custo WhatsApp</span></div>
-            <span className="metric-value" style={{ fontFamily: "monospace", fontSize: 16 }}>{formatCurrency(waCost)}</span>
+            <div className="metric-header">
+              <span className="metric-label">Custo WhatsApp</span>
+            </div>
+            <span
+              className="metric-value"
+              style={{ fontFamily: "monospace", fontSize: 16 }}
+            >
+              {formatCurrency(waCost)}
+            </span>
             <span className="metric-context">Z-API / Meta no mês</span>
           </div>
         </div>
 
         {/* Daily volume */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
-            <p className="eyebrow" style={{ margin: 0 }}>Volume diário — últimos 30 dias</p>
+        <div
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "14px 18px 12px",
+              borderBottom: "1px solid var(--line)",
+              background: "var(--surface-soft)",
+            }}
+          >
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Volume diário — últimos 30 dias
+            </p>
           </div>
           {allDays.length === 0 ? (
-            <div className="empty-state compact" style={{ borderRadius: 0, border: "none" }}>
+            <div
+              className="empty-state compact"
+              style={{ borderRadius: 0, border: "none" }}
+            >
               Sem dados no período.
             </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "var(--surface-soft)", borderBottom: "1px solid var(--line)" }}>
-                  {["Data", "Leads", "Mensagens"].map((col) => (
-                    <th key={col} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted)" }}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {allDays.slice(0, 30).map((day, i) => (
-                  <tr key={day} style={{ background: i % 2 === 1 ? "var(--surface-soft)" : "transparent", borderBottom: i < Math.min(allDays.length, 30) - 1 ? "1px solid var(--line)" : "none" }}>
-                    <td style={{ padding: "10px 16px", color: "var(--text-soft)" }}>{day}</td>
-                    <td style={{ padding: "10px 16px", fontWeight: 600 }}>{dailyLeadsMap[day] ?? 0}</td>
-                    <td style={{ padding: "10px 16px", color: "var(--text-soft)" }}>{dailyMsgMap[day] ?? 0}</td>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 13,
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      background: "var(--surface-soft)",
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  >
+                    {["Data", "Leads", "Mensagens"].map((col) => (
+                      <th
+                        key={col}
+                        style={{
+                          padding: "10px 16px",
+                          textAlign: "left",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {col}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {allDays.slice(0, 30).map((day, i) => (
+                    <tr
+                      key={day}
+                      style={{
+                        background:
+                          i % 2 === 1 ? "var(--surface-soft)" : "transparent",
+                        borderBottom:
+                          i < Math.min(allDays.length, 30) - 1
+                            ? "1px solid var(--line)"
+                            : "none",
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: "10px 16px",
+                          color: "var(--text-soft)",
+                        }}
+                      >
+                        {day}
+                      </td>
+                      <td style={{ padding: "10px 16px", fontWeight: 600 }}>
+                        {dailyLeadsMap[day] ?? 0}
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px 16px",
+                          color: "var(--text-soft)",
+                        }}
+                      >
+                        {dailyMsgMap[day] ?? 0}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -360,32 +1108,76 @@ export default async function ClinicDetailPage({
         {/* Distribuição de temperatura */}
         <div>
           <p className="eyebrow">Distribuição de temperatura</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
             <div className="metric">
-              <div className="metric-header"><span className="metric-icon"><Flame size={14} /></span><span className="metric-label">Quentes</span></div>
+              <div className="metric-header">
+                <span className="metric-icon">
+                  <Flame size={14} />
+                </span>
+                <span className="metric-label">Quentes</span>
+              </div>
               <span className="metric-value temp-hot">{tempCounts.hot}</span>
-              <span className="metric-context"><span className="temp-badge temp-hot">Quente</span></span>
+              <span className="metric-context">
+                <span className="temp-badge temp-hot">Quente</span>
+              </span>
             </div>
             <div className="metric">
-              <div className="metric-header"><span className="metric-icon"><Thermometer size={14} /></span><span className="metric-label">Mornos</span></div>
+              <div className="metric-header">
+                <span className="metric-icon">
+                  <Thermometer size={14} />
+                </span>
+                <span className="metric-label">Mornos</span>
+              </div>
               <span className="metric-value temp-warm">{tempCounts.warm}</span>
-              <span className="metric-context"><span className="temp-badge temp-warm">Morno</span></span>
+              <span className="metric-context">
+                <span className="temp-badge temp-warm">Morno</span>
+              </span>
             </div>
             <div className="metric">
-              <div className="metric-header"><span className="metric-icon"><Snowflake size={14} /></span><span className="metric-label">Frios</span></div>
+              <div className="metric-header">
+                <span className="metric-icon">
+                  <Snowflake size={14} />
+                </span>
+                <span className="metric-label">Frios</span>
+              </div>
               <span className="metric-value temp-cold">{tempCounts.cold}</span>
-              <span className="metric-context"><span className="temp-badge temp-cold">Frio</span></span>
+              <span className="metric-context">
+                <span className="temp-badge temp-cold">Frio</span>
+              </span>
             </div>
           </div>
         </div>
 
         {/* Handoff conversations */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
-            <p className="eyebrow" style={{ margin: 0 }}>Conversas com handoff</p>
+        <div
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "14px 18px 12px",
+              borderBottom: "1px solid var(--line)",
+              background: "var(--surface-soft)",
+            }}
+          >
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Conversas com handoff
+            </p>
           </div>
           {handoffConvs.length === 0 ? (
-            <div className="empty-state compact" style={{ borderRadius: 0, border: "none" }}>
+            <div
+              className="empty-state compact"
+              style={{ borderRadius: 0, border: "none" }}
+            >
               Nenhum handoff registrado.
             </div>
           ) : (
@@ -398,25 +1190,52 @@ export default async function ClinicDetailPage({
                     alignItems: "center",
                     justifyContent: "space-between",
                     padding: "12px 16px",
-                    borderBottom: i < handoffConvs.length - 1 ? "1px solid var(--line)" : "none",
-                    background: i % 2 === 1 ? "var(--surface-soft)" : "transparent",
+                    borderBottom:
+                      i < handoffConvs.length - 1
+                        ? "1px solid var(--line)"
+                        : "none",
+                    background:
+                      i % 2 === 1 ? "var(--surface-soft)" : "transparent",
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--text)",
+                      }}
+                    >
                       {h.leadName ?? h.leadPhone ?? "Lead desconhecido"}
                     </span>
                     {h.leadPhone && h.leadName && (
-                      <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>{h.leadPhone}</span>
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 12,
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {h.leadPhone}
+                      </span>
                     )}
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
+                  >
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
                       {relativeTime(new Date(h.createdAt))}
                     </span>
                     <Link
                       href={`/app/inbox/${h.convId}`}
-                      style={{ fontSize: 12, color: "var(--accent-strong)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}
+                      style={{
+                        fontSize: 12,
+                        color: "var(--accent-strong)",
+                        textDecoration: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
                     >
                       <ExternalLink size={12} /> Ver conversa
                     </Link>
@@ -428,14 +1247,29 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* Stale conversations (AI non-response proxy) */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
+        <div
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "14px 18px 12px",
+              borderBottom: "1px solid var(--line)",
+              background: "var(--surface-soft)",
+            }}
+          >
             <p className="eyebrow" style={{ margin: 0 }}>
               Possíveis falhas da IA — leads ativos sem resposta há +1h
             </p>
           </div>
           {staleConvs.length === 0 ? (
-            <div className="empty-state compact" style={{ borderRadius: 0, border: "none" }}>
+            <div
+              className="empty-state compact"
+              style={{ borderRadius: 0, border: "none" }}
+            >
               Nenhuma conversa parada detectada.
             </div>
           ) : (
@@ -448,16 +1282,34 @@ export default async function ClinicDetailPage({
                     alignItems: "center",
                     justifyContent: "space-between",
                     padding: "12px 16px",
-                    borderBottom: i < staleConvs.length - 1 ? "1px solid var(--line)" : "none",
-                    background: i % 2 === 1 ? "var(--surface-soft)" : "transparent",
+                    borderBottom:
+                      i < staleConvs.length - 1
+                        ? "1px solid var(--line)"
+                        : "none",
+                    background:
+                      i % 2 === 1 ? "var(--surface-soft)" : "transparent",
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--text)",
+                      }}
+                    >
                       {c.leadName ?? c.leadPhone ?? "Lead desconhecido"}
                     </span>
                     {c.leadPhone && c.leadName && (
-                      <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>{c.leadPhone}</span>
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 12,
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {c.leadPhone}
+                      </span>
                     )}
                     <span
                       style={{
@@ -467,12 +1319,21 @@ export default async function ClinicDetailPage({
                         fontWeight: 600,
                       }}
                     >
-                      {c.lastMessageAt ? relativeTime(new Date(c.lastMessageAt)) : "—"}
+                      {c.lastMessageAt
+                        ? relativeTime(new Date(c.lastMessageAt))
+                        : "—"}
                     </span>
                   </div>
                   <Link
                     href={`/app/inbox/${c.id}`}
-                    style={{ fontSize: 12, color: "var(--accent-strong)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}
+                    style={{
+                      fontSize: 12,
+                      color: "var(--accent-strong)",
+                      textDecoration: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
                   >
                     <ExternalLink size={12} /> Ver conversa
                   </Link>
@@ -495,12 +1356,31 @@ export default async function ClinicDetailPage({
         >
           <p
             className="eyebrow"
-            style={{ margin: "0 0 6px", color: clinic.isTest ? "#818cf8" : "var(--muted)", opacity: 0.9 }}
+            style={{
+              margin: "0 0 6px",
+              color: clinic.isTest ? "#818cf8" : "var(--muted)",
+              opacity: 0.9,
+            }}
           >
             {clinic.isTest ? "Ambiente de testes" : "Clínica em produção"}
           </p>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13,
+                color: "var(--muted)",
+                lineHeight: 1.5,
+              }}
+            >
               {clinic.isTest
                 ? "Esta clínica está marcada como ambiente de testes. Custos e leads são excluídos dos KPIs de produção."
                 : "Esta clínica está em produção. Leads e receita entram nos KPIs do painel financeiro."}
@@ -524,9 +1404,13 @@ export default async function ClinicDetailPage({
                 }}
               >
                 {clinic.isTest ? (
-                  <><Building2 size={13} /> Mover para produção</>
+                  <>
+                    <Building2 size={13} /> Mover para produção
+                  </>
                 ) : (
-                  <><FlaskConical size={13} /> Marcar como teste</>
+                  <>
+                    <FlaskConical size={13} /> Marcar como teste
+                  </>
                 )}
               </button>
             </form>
@@ -534,19 +1418,61 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* Membros e senhas */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", alignItems: "center", gap: 8 }}>
+        <div
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "14px 18px 12px",
+              borderBottom: "1px solid var(--line)",
+              background: "var(--surface-soft)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
             <KeyRound size={13} style={{ color: "var(--muted)" }} />
-            <p className="eyebrow" style={{ margin: 0 }}>Acesso da clínica</p>
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Acesso da clínica
+            </p>
           </div>
-          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div
+            style={{
+              padding: "16px 18px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+            }}
+          >
             {memberOk && (
-              <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399", fontSize: 13 }}>
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "rgba(16,185,129,0.08)",
+                  border: "1px solid rgba(16,185,129,0.2)",
+                  color: "#34d399",
+                  fontSize: 13,
+                }}
+              >
                 Senha salva com sucesso.
               </div>
             )}
             {memberError && (
-              <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)", fontSize: 13 }}>
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.2)",
+                  color: "var(--danger)",
+                  fontSize: 13,
+                }}
+              >
                 Senha inválida — mínimo 8 caracteres.
               </div>
             )}
@@ -554,14 +1480,52 @@ export default async function ClinicDetailPage({
             {/* Membros existentes */}
             {members.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted)" }}>Membros cadastrados</p>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Membros cadastrados
+                </p>
                 {members.map((m) => (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: 8, background: "var(--surface-soft)", border: "1px solid var(--line)" }}>
+                  <div
+                    key={m.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "var(--surface-soft)",
+                      border: "1px solid var(--line)",
+                    }}
+                  >
                     <div>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{m.email}</span>
-                      <span style={{ marginLeft: 8, fontSize: 11, color: "var(--muted)" }}>{m.role}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>
+                        {m.email}
+                      </span>
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 11,
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {m.role}
+                      </span>
                     </div>
-                    <span style={{ fontSize: 11, color: m.hasPassword ? "#34d399" : "#f59e0b", fontWeight: 600 }}>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: m.hasPassword ? "#34d399" : "#f59e0b",
+                        fontWeight: 600,
+                      }}
+                    >
                       {m.hasPassword ? "Senha definida" : "Sem senha (usa env)"}
                     </span>
                   </div>
@@ -570,15 +1534,37 @@ export default async function ClinicDetailPage({
             )}
 
             {/* Formulário para criar/atualizar membro */}
-            <form action={upsertMemberAction} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted)" }}>Adicionar / redefinir senha</p>
+            <form
+              action={upsertMemberAction}
+              style={{ display: "flex", flexDirection: "column", gap: 10 }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--muted)",
+                }}
+              >
+                Adicionar / redefinir senha
+              </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input
                   name="email"
                   type="email"
                   placeholder="admin@clinica.com"
                   required
-                  style={{ flex: "1 1 200px", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)", color: "var(--text)", fontSize: 13 }}
+                  style={{
+                    flex: "1 1 200px",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-soft)",
+                    color: "var(--text)",
+                    fontSize: 13,
+                  }}
                 />
                 <input
                   name="password"
@@ -586,28 +1572,78 @@ export default async function ClinicDetailPage({
                   placeholder="Senha (mín. 8 caracteres)"
                   required
                   minLength={8}
-                  style={{ flex: "1 1 200px", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)", color: "var(--text)", fontSize: 13 }}
+                  style={{
+                    flex: "1 1 200px",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-soft)",
+                    color: "var(--text)",
+                    fontSize: 13,
+                  }}
                 />
                 <button
                   type="submit"
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)", color: "var(--text-soft)", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-soft)",
+                    color: "var(--text-soft)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
                 >
                   <UserPlus size={13} /> Salvar
                 </button>
               </div>
               <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-                Se o e-mail já for membro, apenas a senha é atualizada. Se for novo, cria vínculo com role clinic_admin.
+                Se o e-mail já for membro, apenas a senha é atualizada. Se for
+                novo, cria vínculo com role clinic_admin.
               </p>
             </form>
           </div>
         </div>
 
         {/* Danger zone */}
-        <div style={{ border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "18px 20px", background: "rgba(239,68,68,0.03)" }}>
-          <p className="eyebrow" style={{ margin: "0 0 6px", color: "var(--danger)", opacity: 0.7 }}>Zona de risco</p>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
-              Apaga todos os leads, conversas e agendamentos de teste. As configurações da clínica são preservadas.
+        <div
+          style={{
+            border: "1px solid rgba(239,68,68,0.2)",
+            borderRadius: 12,
+            padding: "18px 20px",
+            background: "rgba(239,68,68,0.03)",
+          }}
+        >
+          <p
+            className="eyebrow"
+            style={{ margin: "0 0 6px", color: "var(--danger)", opacity: 0.7 }}
+          >
+            Zona de risco
+          </p>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13,
+                color: "var(--muted)",
+                lineHeight: 1.5,
+              }}
+            >
+              Apaga todos os leads, conversas e agendamentos de teste. As
+              configurações da clínica são preservadas.
             </p>
             <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
           </div>

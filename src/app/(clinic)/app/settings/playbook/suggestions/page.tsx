@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinicMetrics, clinics, playbookVersions } from "@/infrastructure/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { SuggestionsClient } from "./suggestions-client";
 
 async function getData() {
@@ -21,7 +21,7 @@ async function getData() {
     db
       .select()
       .from(playbookVersions)
-      .where(eq(playbookVersions.clinicId, clinicId) && eq(playbookVersions.status, "active") as never)
+      .where(and(eq(playbookVersions.clinicId, clinicId), eq(playbookVersions.status, "active")))
       .orderBy(desc(playbookVersions.createdAt))
       .limit(1)
       .then((r) => r[0] ?? null),

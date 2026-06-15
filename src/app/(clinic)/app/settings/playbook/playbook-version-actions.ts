@@ -7,6 +7,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
+import { publishablePlaybookSchema } from "@/application/config/editorial-config";
 
 
 type PlaybookVersionData = {
@@ -85,6 +86,22 @@ export async function activatePlaybookVersion(id: string) {
     .limit(1);
 
   if (!version) return;
+
+  const validation = publishablePlaybookSchema.safeParse({
+    specialty: version.specialty ?? "",
+    procedureDescription: version.procedureDescription ?? "",
+    toneOfVoice: version.toneOfVoice ?? "acolhedor",
+    receptionistName: "Marina",
+    differentials: version.differentials ?? [],
+    commercialPolicy: version.commercialPolicy ?? "",
+  });
+
+  if (!validation.success) {
+    const issues = validation.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Playbook inválido para ativação: ${issues}`);
+  }
 
   await db
     .update(playbookVersions)

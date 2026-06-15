@@ -1,0 +1,76 @@
+import { describe, expect, it } from "vitest";
+import {
+  evaluateClinicHealth,
+  hasCompleteChannelConfig,
+} from "@/application/health/clinic-health";
+
+describe("clinic health", () => {
+  it("detects missing channel credentials", () => {
+    expect(
+      hasCompleteChannelConfig({
+        clinicId: "1",
+        clinicName: "Teste",
+        operationalStatus: "active",
+        channelProvider: "z_api",
+        zapiInstanceId: "",
+        zapiToken: "",
+        hasActivePlaybook: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("marks active clinics as degraded when core config is missing", () => {
+    const report = evaluateClinicHealth(
+      [
+        {
+          clinicId: "1",
+          clinicName: "Clinica A",
+          operationalStatus: "active",
+          channelProvider: "z_api",
+          zapiInstanceId: "inst",
+          zapiToken: "token",
+          hasActivePlaybook: false,
+          latestMetricAt: new Date("2026-06-14T10:00:00.000Z"),
+        },
+      ],
+      new Date("2026-06-14T12:00:00.000Z"),
+    );
+
+    expect(report.status).toBe("degraded");
+    expect(report.degradedClinicCount).toBe(1);
+    expect(report.degradedClinics[0]?.issues).toContain("sem playbook ativo");
+  });
+
+  it("keeps health ok when active clinics are configured and only warns on stale metrics", () => {
+    const report = evaluateClinicHealth(
+      [
+        {
+          clinicId: "1",
+          clinicName: "Clinica A",
+          operationalStatus: "active",
+          channelProvider: "meta_cloud_api",
+          metaPhoneNumberId: "123",
+          metaAccessToken: "token",
+          hasActivePlaybook: true,
+          latestMetricAt: new Date("2026-06-12T00:00:00.000Z"),
+        },
+        {
+          clinicId: "2",
+          clinicName: "Clinica B",
+          operationalStatus: "prospect",
+          channelProvider: "z_api",
+          zapiInstanceId: "",
+          zapiToken: "",
+          hasActivePlaybook: false,
+        },
+      ],
+      new Date("2026-06-14T12:00:00.000Z"),
+    );
+
+    expect(report.status).toBe("ok");
+    expect(report.activeClinicCount).toBe(1);
+    expect(report.warnings).toContain(
+      "Clinica A: métricas desatualizadas há mais de 36h",
+    );
+  });
+});
