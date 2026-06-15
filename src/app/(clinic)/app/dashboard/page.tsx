@@ -9,7 +9,10 @@ import { db } from "@/infrastructure/db/client";
 import { leads, conversations, messages, clinicMembers } from "@/infrastructure/db/schema";
 import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
 import Link from "next/link";
+import { Suspense } from "react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
+import { DashboardPeriodToggle } from "./DashboardPeriodToggle";
+import { DashboardRingMetrics } from "./DashboardRingMetrics";
 import {
   Activity,
   AlertTriangle,
@@ -513,10 +516,9 @@ export default async function DashboardPage() {
               <p className="dashboard-panel-kicker">Performance</p>
               <h2>Fluxo de Conversas</h2>
             </div>
-            <span className="dashboard-panel-badge">
-              <Activity size={14} />
-              7 dias
-            </span>
+            <Suspense fallback={<span className="dashboard-panel-badge"><Activity size={14} />7 dias</span>}>
+              <DashboardPeriodToggle current="7d" />
+            </Suspense>
           </div>
 
           <div className="dashboard-chart-wrap" aria-label="Leads capturados nos últimos 7 dias">
@@ -564,29 +566,11 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="dashboard-insights">
-            <div>
-              <MessageCircle size={15} />
-              <span>
-                <strong>{formatPercent(automationRate)}%</strong>
-                autonomia da IA
-              </span>
-            </div>
-            <div>
-              <Clock size={15} />
-              <span>
-                <strong>{data.afterHoursCount}</strong>
-                msgs fora do horário atendidas pela IA
-              </span>
-            </div>
-            <div>
-              <TrendingUp size={15} />
-              <span>
-                <strong>{data.scheduledCount}</strong>
-                consultas marcadas
-              </span>
-            </div>
-          </div>
+          <DashboardRingMetrics
+            automationRate={automationRate}
+            afterHoursCount={data.afterHoursCount}
+            scheduledCount={data.scheduledCount}
+          />
         </section>
 
         <section className="dashboard-panel dashboard-leads-panel">
