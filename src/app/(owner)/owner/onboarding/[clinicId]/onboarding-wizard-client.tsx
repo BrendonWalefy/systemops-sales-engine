@@ -1992,6 +1992,7 @@ export function OnboardingWizardClient({
       notes: policy.notes,
       differentialsCount: receptionist.differentials.filter(Boolean).length,
       mediaLibraryCount: initial.mediaLibrary.length,
+      objectionsCount: 0,
     },
     treatments: treatmentList.map((t) => ({
       pipelineStepsCount: pipelines.find(
@@ -2249,17 +2250,41 @@ export function OnboardingWizardClient({
         )}
         {step === 6 && <StepPolitica data={policy} onChange={setPolicy} />}
         {step === 7 && (
-          <StepRevisao
-            clinicName={clinicName}
-            identity={identity}
-            channel={channel}
-            receptionist={receptionist}
-            schedule={schedule}
-            treatments={treatmentList}
-            pipelines={pipelines}
-            policy={policy}
-            blueprint={blueprint}
-          />
+          <>
+            <StepRevisao
+              clinicName={clinicName}
+              identity={identity}
+              channel={channel}
+              receptionist={receptionist}
+              schedule={schedule}
+              treatments={treatmentList}
+              pipelines={pipelines}
+              policy={policy}
+              blueprint={blueprint}
+            />
+            <a
+              href={`/owner/clinics/${clinicId}/blueprint`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: 16,
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: "1px solid rgba(16,185,129,0.22)",
+                background: "rgba(16,185,129,0.05)",
+                textDecoration: "none",
+                color: "#10b981",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              <span>Ver Blueprint completo em modo apresentação</span>
+              <ChevronRight size={16} />
+            </a>
+          </>
         )}
 
         {error && (

@@ -23,6 +23,7 @@ export type ClinicBlueprintInput = {
     zapiToken?: string | null;
     metaPhoneNumberId?: string | null;
     metaAccessToken?: string | null;
+    hasTtsConfig?: boolean;
   };
   playbook: {
     toneOfVoice?: string | null;
@@ -30,6 +31,7 @@ export type ClinicBlueprintInput = {
     notes?: string | null;
     differentialsCount: number;
     mediaLibraryCount: number;
+    objectionsCount: number;
   };
   treatments: Array<{
     pipelineStepsCount: number;
@@ -44,6 +46,9 @@ export type BlueprintSection = {
     | "playbook"
     | "commercial"
     | "treatments"
+    | "objections"
+    | "media"
+    | "tts"
     | "go_live";
   title: string;
   status: BlueprintStatus;
@@ -192,17 +197,59 @@ export function buildClinicBlueprint(
           : null,
       ],
     ),
+    createSection(
+      "objections",
+      "Objeções",
+      "Objeções mapeadas ajudam a IA a converter leads que hesitam.",
+      [
+        playbook.objectionsCount === 0
+          ? "ao menos 1 objeção mapeada no playbook"
+          : null,
+      ],
+    ),
+    createSection(
+      "media",
+      "Mídia",
+      playbook.mediaLibraryCount > 0
+        ? `${playbook.mediaLibraryCount} item(s) na biblioteca de mídia.`
+        : "Biblioteca de mídia vazia — a IA não enviará vídeos ou áudios.",
+      [
+        playbook.mediaLibraryCount === 0
+          ? "ao menos 1 item na biblioteca de mídia"
+          : null,
+      ],
+    ),
+    createSection(
+      "tts",
+      "Voz da IA",
+      clinic.hasTtsConfig
+        ? "Configuração de TTS personalizada ativa."
+        : "Usando voz padrão (nova). Configure TTS para personalizar a experiência.",
+      [!clinic.hasTtsConfig ? "configuração de voz personalizada (TTS)" : null],
+    ),
   ];
 
-  const criticalMissing = sections.flatMap((section) =>
-    section.missing.map((item) => `${section.title}: ${item}`),
-  );
+  const enrichmentSectionIds: BlueprintSection["id"][] = [
+    "objections",
+    "media",
+    "tts",
+  ];
+
+  const criticalMissing = sections
+    .filter((s) => !enrichmentSectionIds.includes(s.id))
+    .flatMap((section) =>
+      section.missing.map((item) => `${section.title}: ${item}`),
+    );
 
   const goLiveChecks = [
     clinic.isTest ? "clínica ainda está marcada como ambiente de teste" : null,
     !clinic.autoReplyEnabled ? "IA ainda está pausada" : null,
     ...sections
-      .filter((section) => section.status !== "complete")
+      .filter(
+        (section) =>
+          section.status !== "complete" &&
+          !enrichmentSectionIds.includes(section.id),
+      )
       .flatMap((section) =>
         section.missing.map(
           (item) => `${section.title.toLowerCase()}: ${item}`,

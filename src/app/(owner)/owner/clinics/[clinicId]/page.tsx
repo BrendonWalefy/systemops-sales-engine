@@ -151,6 +151,7 @@ async function activateClinicGoLive(clinicId: string) {
       metaPhoneNumberId: true,
       metaAccessToken: true,
       operationalStatus: true,
+      ttsConfig: true,
     },
   });
 
@@ -171,6 +172,7 @@ async function activateClinicGoLive(clinicId: string) {
         notes: true,
         differentials: true,
         mediaLibrary: true,
+        objections: true,
       },
     }),
     db.query.treatments.findMany({
@@ -182,7 +184,7 @@ async function activateClinicGoLive(clinicId: string) {
   ]);
 
   const blueprint = buildClinicBlueprint({
-    clinic,
+    clinic: { ...clinic, hasTtsConfig: clinic.ttsConfig != null },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,
       commercialPolicy: activePlaybook?.commercialPolicy ?? null,
@@ -192,6 +194,9 @@ async function activateClinicGoLive(clinicId: string) {
         : 0,
       mediaLibraryCount: Array.isArray(activePlaybook?.mediaLibrary)
         ? activePlaybook.mediaLibrary.length
+        : 0,
+      objectionsCount: Array.isArray(activePlaybook?.objections)
+        ? activePlaybook.objections.length
         : 0,
     },
     treatments: clinicTreatments.map((t) => ({
@@ -259,6 +264,7 @@ export default async function ClinicDetailPage({
       zapiToken: clinics.zapiToken,
       metaPhoneNumberId: clinics.metaPhoneNumberId,
       metaAccessToken: clinics.metaAccessToken,
+      ttsConfig: clinics.ttsConfig,
     })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
@@ -277,6 +283,7 @@ export default async function ClinicDetailPage({
         notes: true,
         differentials: true,
         mediaLibrary: true,
+        objections: true,
       },
     }),
     db.query.treatments.findMany({
@@ -288,7 +295,7 @@ export default async function ClinicDetailPage({
   ]);
 
   const blueprint = buildClinicBlueprint({
-    clinic,
+    clinic: { ...clinic, hasTtsConfig: clinic.ttsConfig != null },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,
       commercialPolicy: activePlaybook?.commercialPolicy ?? null,
@@ -298,6 +305,9 @@ export default async function ClinicDetailPage({
         : 0,
       mediaLibraryCount: Array.isArray(activePlaybook?.mediaLibrary)
         ? activePlaybook.mediaLibrary.length
+        : 0,
+      objectionsCount: Array.isArray(activePlaybook?.objections)
+        ? activePlaybook.objections.length
         : 0,
     },
     treatments: clinicTreatments.map((t) => ({
@@ -716,25 +726,46 @@ export default async function ClinicDetailPage({
                 go-live desta clínica.
               </p>
             </div>
-            <Link
-              href={`/owner/onboarding/${clinic.id}`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "9px 14px",
-                borderRadius: 10,
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: 700,
-                color: "var(--accent-strong)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "var(--surface-soft)",
-              }}
-            >
-              <Workflow size={14} />
-              Abrir onboarding
-            </Link>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Link
+                href={`/owner/clinics/${clinic.id}/blueprint`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "9px 14px",
+                  borderRadius: 10,
+                  textDecoration: "none",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#10b981",
+                  border: "1px solid rgba(16,185,129,0.22)",
+                  background: "rgba(16,185,129,0.06)",
+                }}
+              >
+                <Building2 size={14} />
+                Ver Blueprint
+              </Link>
+              <Link
+                href={`/owner/onboarding/${clinic.id}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "9px 14px",
+                  borderRadius: 10,
+                  textDecoration: "none",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "var(--accent-strong)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "var(--surface-soft)",
+                }}
+              >
+                <Workflow size={14} />
+                Abrir onboarding
+              </Link>
+            </div>
           </div>
 
           <div style={{ padding: "18px 20px", display: "grid", gap: 18 }}>

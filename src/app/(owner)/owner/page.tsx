@@ -337,14 +337,34 @@ export default async function OwnerPage() {
             {pausedRows.length > 0 &&
               ` · ${pausedRows.length} pausada${pausedRows.length !== 1 ? "s" : ""}`}
             {prospectRows.length > 0 &&
-              ` · ${prospectRows.length} prospect${prospectRows.length !== 1 ? "s" : ""}`}
+              ` · ${prospectRows.length} em implantação`}
             {testRows.length > 0 &&
               ` · ${testRows.length} teste${testRows.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <Link href="/owner/clinics/new" className="primary-button">
-          + Nova clínica
-        </Link>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link
+            href="/owner/clinics/novo"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "9px 16px",
+              borderRadius: 10,
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#10b981",
+              border: "1px solid rgba(16,185,129,0.3)",
+              background: "rgba(16,185,129,0.07)",
+            }}
+          >
+            + Diagnóstico rápido
+          </Link>
+          <Link href="/owner/clinics/new" className="primary-button">
+            Clínica completa
+          </Link>
+        </div>
       </div>
 
       {/* KPIs — apenas produção */}
@@ -435,7 +455,7 @@ export default async function OwnerPage() {
               status: "paused" as const,
             },
             {
-              label: "Prospects",
+              label: "Implantação",
               value: prospectRows.length,
               status: "prospect" as const,
             },
@@ -928,7 +948,7 @@ export default async function OwnerPage() {
               }}
             >
               <p className="eyebrow" style={{ margin: 0, color: "#60a5fa" }}>
-                Prospects e implantação
+                Em implantação
               </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
