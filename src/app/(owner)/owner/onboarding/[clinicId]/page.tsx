@@ -3,11 +3,20 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, playbookVersions, treatments } from "@/infrastructure/db/schema";
+import {
+  clinics,
+  playbookVersions,
+  treatments,
+} from "@/infrastructure/db/schema";
 import { OnboardingWizardClient } from "./onboarding-wizard-client";
 import type { PipelineStep } from "@/domain/entities/treatment";
 
-type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
+type MediaItem = {
+  id: string;
+  title: string;
+  url: string;
+  type: "video" | "image";
+};
 
 export default async function OnboardingWizardPage({
   params,
@@ -27,14 +36,37 @@ export default async function OnboardingWizardPage({
         address: true,
         greetingMessage: true,
         businessHours: true,
+        calendarMode: true,
+        googleCalendarId: true,
+        receptionistPhone: true,
+        plan: true,
+        monthlyRevenueBrl: true,
+        billingStartedAt: true,
+        isTest: true,
+        autoReplyEnabled: true,
+        channelProvider: true,
+        zapiInstanceId: true,
+        zapiToken: true,
+        zapiClientToken: true,
+        metaPhoneNumberId: true,
+        metaAccessToken: true,
         defaultAppointmentDurationMinutes: true,
         postAppointmentBufferMinutes: true,
         takeoverTtlHours: true,
       },
     }),
     db.query.playbookVersions.findFirst({
-      where: and(eq(playbookVersions.clinicId, clinicId), eq(playbookVersions.status, "active")),
-      columns: { toneOfVoice: true, differentials: true, commercialPolicy: true, notes: true, mediaLibrary: true },
+      where: and(
+        eq(playbookVersions.clinicId, clinicId),
+        eq(playbookVersions.status, "active"),
+      ),
+      columns: {
+        toneOfVoice: true,
+        differentials: true,
+        commercialPolicy: true,
+        notes: true,
+        mediaLibrary: true,
+      },
     }),
     db.query.treatments.findMany({
       where: eq(treatments.clinicId, clinicId),
@@ -66,13 +98,26 @@ export default async function OnboardingWizardPage({
         },
         receptionist: {
           toneOfVoice: activePlaybook?.toneOfVoice ?? "acolhedor",
-          differentials: (activePlaybook?.differentials as string[] | null) ?? [],
+          differentials:
+            (activePlaybook?.differentials as string[] | null) ?? [],
         },
         schedule: {
           businessHours: clinic.businessHours ?? "Seg-Sex 8h-18h",
-          defaultDurationMinutes: clinic.defaultAppointmentDurationMinutes ?? 60,
+          calendarMode: clinic.calendarMode ?? "internal",
+          googleCalendarId: clinic.googleCalendarId ?? "",
+          receptionistPhone: clinic.receptionistPhone ?? "",
+          defaultDurationMinutes:
+            clinic.defaultAppointmentDurationMinutes ?? 60,
           bufferMinutes: clinic.postAppointmentBufferMinutes ?? 30,
           takeoverTtlHours: clinic.takeoverTtlHours ?? 4,
+        },
+        channel: {
+          provider: clinic.channelProvider ?? "z_api",
+          zapiInstanceId: clinic.zapiInstanceId ?? "",
+          zapiToken: clinic.zapiToken ?? "",
+          zapiClientToken: clinic.zapiClientToken ?? "",
+          metaPhoneNumberId: clinic.metaPhoneNumberId ?? "",
+          metaAccessToken: clinic.metaAccessToken ?? "",
         },
         treatments: existingTreatments.map((t) => ({
           id: t.id,
@@ -86,8 +131,23 @@ export default async function OnboardingWizardPage({
         policy: {
           commercialPolicy: activePlaybook?.commercialPolicy ?? "",
           notes: activePlaybook?.notes ?? "",
+          plan: clinic.plan ?? "custom",
+          billingActive:
+            !clinic.isTest &&
+            ((clinic.monthlyRevenueBrl ?? 0) > 0 ||
+              clinic.billingStartedAt !== null),
+          monthlyRevenueBrl:
+            clinic.monthlyRevenueBrl && clinic.monthlyRevenueBrl > 0
+              ? String(Math.round(clinic.monthlyRevenueBrl / 100))
+              : "",
+          billingStartedAt: clinic.billingStartedAt
+            ? clinic.billingStartedAt.toISOString().slice(0, 10)
+            : "",
+          isTest: clinic.isTest,
         },
-        mediaLibrary: (activePlaybook?.mediaLibrary as MediaItem[] | null) ?? [],
+        mediaLibrary:
+          (activePlaybook?.mediaLibrary as MediaItem[] | null) ?? [],
+        autoReplyEnabled: clinic.autoReplyEnabled,
       }}
     />
   );

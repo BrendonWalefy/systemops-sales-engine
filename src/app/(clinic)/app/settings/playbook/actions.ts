@@ -5,6 +5,7 @@ import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
 
 export async function saveTakeoverTtl(formData: FormData) {
   const clinicId = await requireSessionClinicId();
@@ -19,7 +20,10 @@ export async function saveTakeoverTtl(formData: FormData) {
 
 export async function saveSchedulingPolicy(formData: FormData) {
   const clinicId = await requireSessionClinicId();
-  const raw = parseInt(formData.get("postAppointmentBufferMinutes") as string, 10);
+  const raw = parseInt(
+    formData.get("postAppointmentBufferMinutes") as string,
+    10,
+  );
   const bufferMinutes = isNaN(raw) || raw < 0 ? 60 : Math.min(raw, 240);
   await db
     .update(clinics)
@@ -42,10 +46,24 @@ export async function saveBusinessHours(formData: FormData) {
 
 export async function toggleAutoReply(currentValue: boolean) {
   const clinicId = await requireSessionClinicId();
+  const clinic = await db.query.clinics.findFirst({
+    where: eq(clinics.id, clinicId),
+    columns: {
+      isTest: true,
+      operationalStatus: true,
+    },
+  });
+  if (!clinic) return;
+
   await db
     .update(clinics)
     .set({
       autoReplyEnabled: !currentValue,
+      operationalStatus: resolveOperationalStatusFromAutomationState({
+        currentStatus: clinic.operationalStatus,
+        isTest: clinic.isTest,
+        autoReplyEnabled: !currentValue,
+      }),
       updatedAt: new Date(),
     })
     .where(eq(clinics.id, clinicId));

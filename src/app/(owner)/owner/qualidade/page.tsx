@@ -4,7 +4,13 @@ import Link from "next/link";
 import { db } from "@/infrastructure/db/client";
 import { clinics, clinicMetrics } from "@/infrastructure/db/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { ArrowLeft, AlertTriangle, CheckCircle, Activity, TrendingDown } from "lucide-react";
+import {
+  ArrowLeft,
+  AlertTriangle,
+  CheckCircle,
+  Activity,
+  TrendingDown,
+} from "lucide-react";
 
 type DailySnapshot = {
   clinicId: string;
@@ -16,7 +22,12 @@ type DailySnapshot = {
   needsHumanRate: number;
   conversionRate: number;
   dropOffAfterSlotsRate: number;
-  alerts: Array<{ metric: string; value: number; threshold: number; level: "warn" | "critical" }>;
+  alerts: Array<{
+    metric: string;
+    value: number;
+    threshold: number;
+    level: "warn" | "critical";
+  }>;
 };
 
 function pct(rate: number): string {
@@ -24,7 +35,13 @@ function pct(rate: number): string {
 }
 
 function formatDate(d: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(d);
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  }).format(d);
 }
 
 async function fetchQualityData(): Promise<DailySnapshot[]> {
@@ -34,7 +51,7 @@ async function fetchQualityData(): Promise<DailySnapshot[]> {
   const allClinics = await db
     .select({ id: clinics.id, name: clinics.name })
     .from(clinics)
-    .where(eq(clinics.autoReplyEnabled, true));
+    .where(eq(clinics.operationalStatus, "active"));
 
   const snapshots: DailySnapshot[] = [];
 
@@ -81,12 +98,17 @@ async function fetchQualityData(): Promise<DailySnapshot[]> {
 export default async function QualidadePage() {
   const snapshots = await fetchQualityData();
   const totalAlerts = snapshots.reduce((s, n) => s + n.alerts.length, 0);
-  const hasCritical = snapshots.some((s) => s.alerts.some((a) => a.level === "critical"));
+  const hasCritical = snapshots.some((s) =>
+    s.alerts.some((a) => a.level === "critical"),
+  );
 
   return (
     <div>
       <div className="product-topbar">
-        <div className="owner-page-header" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div
+          className="owner-page-header"
+          style={{ display: "flex", alignItems: "center", gap: 14 }}
+        >
           <Link
             href="/owner"
             style={{
@@ -106,15 +128,19 @@ export default async function QualidadePage() {
           <span style={{ color: "var(--line-strong)" }}>·</span>
           <div className="owner-page-header-title">
             <h1 style={{ margin: 0 }}>Qualidade IA</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
+            <p
+              style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}
+            >
               Último snapshot diário por clínica · Atualizado às 8h UTC
             </p>
           </div>
         </div>
       </div>
 
-      <div className="page-content" style={{ paddingBottom: 60, display: "grid", gap: 24 }}>
-
+      <div
+        className="page-content"
+        style={{ paddingBottom: 60, display: "grid", gap: 24 }}
+      >
         {/* Banner de status global */}
         {snapshots.length === 0 ? (
           <div
@@ -128,9 +154,13 @@ export default async function QualidadePage() {
               background: "var(--surface)",
             }}
           >
-            <Activity size={16} style={{ color: "var(--muted)", flexShrink: 0 }} />
+            <Activity
+              size={16}
+              style={{ color: "var(--muted)", flexShrink: 0 }}
+            />
             <span style={{ fontSize: 13, color: "var(--muted)" }}>
-              Nenhum snapshot disponível ainda. O cron de analytics roda às 8h UTC.
+              Nenhum snapshot disponível ainda. O cron de analytics roda às 8h
+              UTC.
             </span>
           </div>
         ) : totalAlerts === 0 ? (
@@ -145,7 +175,10 @@ export default async function QualidadePage() {
               background: "rgba(16,185,129,0.05)",
             }}
           >
-            <CheckCircle size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+            <CheckCircle
+              size={16}
+              style={{ color: "var(--accent)", flexShrink: 0 }}
+            />
             <span style={{ fontSize: 13, color: "var(--fg)" }}>
               Todas as clínicas dentro dos limites. Nenhum alerta ativo.
             </span>
@@ -159,12 +192,22 @@ export default async function QualidadePage() {
               border: `1px solid ${hasCritical ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.25)"}`,
               borderRadius: 12,
               padding: "16px 20px",
-              background: hasCritical ? "rgba(239,68,68,0.05)" : "rgba(245,158,11,0.05)",
+              background: hasCritical
+                ? "rgba(239,68,68,0.05)"
+                : "rgba(245,158,11,0.05)",
             }}
           >
-            <AlertTriangle size={16} style={{ color: hasCritical ? "#ef4444" : "#f59e0b", flexShrink: 0 }} />
+            <AlertTriangle
+              size={16}
+              style={{
+                color: hasCritical ? "#ef4444" : "#f59e0b",
+                flexShrink: 0,
+              }}
+            />
             <span style={{ fontSize: 13, color: "var(--fg)" }}>
-              {totalAlerts} alerta{totalAlerts > 1 ? "s" : ""} ativo{totalAlerts > 1 ? "s" : ""}{hasCritical ? " — verifique os itens críticos abaixo" : ""}.
+              {totalAlerts} alerta{totalAlerts > 1 ? "s" : ""} ativo
+              {totalAlerts > 1 ? "s" : ""}
+              {hasCritical ? " — verifique os itens críticos abaixo" : ""}.
             </span>
           </div>
         )}
@@ -173,13 +216,15 @@ export default async function QualidadePage() {
         {snapshots.length > 0 && (
           <div style={{ display: "grid", gap: 12 }}>
             {snapshots.map((snap) => {
-              const hasCriticalAlert = snap.alerts.some((a) => a.level === "critical");
+              const hasCriticalAlert = snap.alerts.some(
+                (a) => a.level === "critical",
+              );
               const hasWarnAlert = snap.alerts.some((a) => a.level === "warn");
               const borderColor = hasCriticalAlert
                 ? "rgba(239,68,68,0.3)"
                 : hasWarnAlert
-                ? "rgba(245,158,11,0.25)"
-                : "var(--line)";
+                  ? "rgba(245,158,11,0.25)"
+                  : "var(--line)";
 
               return (
                 <div
@@ -194,18 +239,59 @@ export default async function QualidadePage() {
                   }}
                 >
                   {/* Header da clínica */}
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--fg)" }}>{snap.clinicName}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        Período: {formatDate(snap.periodFrom)} → {formatDate(snap.periodTo)}
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 15,
+                          color: "var(--fg)",
+                        }}
+                      >
+                        {snap.clinicName}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--muted)",
+                          marginTop: 2,
+                        }}
+                      >
+                        Período: {formatDate(snap.periodFrom)} →{" "}
+                        {formatDate(snap.periodTo)}
                       </div>
                     </div>
                     {snap.alerts.length > 0 && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        <AlertTriangle size={13} style={{ color: hasCriticalAlert ? "#ef4444" : "#f59e0b" }} />
-                        <span style={{ fontSize: 12, color: hasCriticalAlert ? "#ef4444" : "#f59e0b", fontWeight: 600 }}>
-                          {snap.alerts.length} alerta{snap.alerts.length > 1 ? "s" : ""}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <AlertTriangle
+                          size={13}
+                          style={{
+                            color: hasCriticalAlert ? "#ef4444" : "#f59e0b",
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: hasCriticalAlert ? "#ef4444" : "#f59e0b",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {snap.alerts.length} alerta
+                          {snap.alerts.length > 1 ? "s" : ""}
                         </span>
                       </div>
                     )}
@@ -215,7 +301,8 @@ export default async function QualidadePage() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+                      gridTemplateColumns:
+                        "repeat(auto-fill, minmax(130px, 1fr))",
                       gap: 12,
                     }}
                   >
@@ -227,12 +314,12 @@ export default async function QualidadePage() {
                     <MetricCard
                       label="Taxa unclear"
                       value={pct(snap.unclearRate)}
-                      warn={snap.unclearRate > 0.20}
+                      warn={snap.unclearRate > 0.2}
                     />
                     <MetricCard
                       label="Needs human"
                       value={pct(snap.needsHumanRate)}
-                      warn={snap.needsHumanRate > 0.30}
+                      warn={snap.needsHumanRate > 0.3}
                     />
                     <MetricCard
                       label="Conversão"
@@ -242,7 +329,7 @@ export default async function QualidadePage() {
                     <MetricCard
                       label="Drop pós-slots"
                       value={pct(snap.dropOffAfterSlotsRate)}
-                      warn={snap.dropOffAfterSlotsRate > 0.50}
+                      warn={snap.dropOffAfterSlotsRate > 0.5}
                     />
                   </div>
 
@@ -257,7 +344,10 @@ export default async function QualidadePage() {
                             alignItems: "center",
                             gap: 8,
                             fontSize: 12,
-                            color: alert.level === "critical" ? "#ef4444" : "#f59e0b",
+                            color:
+                              alert.level === "critical"
+                                ? "#ef4444"
+                                : "#f59e0b",
                           }}
                         >
                           {alert.level === "critical" ? (
@@ -266,12 +356,16 @@ export default async function QualidadePage() {
                             <AlertTriangle size={12} />
                           )}
                           <span>
-                            <strong>{alert.metric}</strong>: {typeof alert.value === "number" && alert.value < 1
+                            <strong>{alert.metric}</strong>:{" "}
+                            {typeof alert.value === "number" && alert.value < 1
                               ? pct(alert.value)
                               : alert.value}{" "}
-                            (limite: {typeof alert.threshold === "number" && alert.threshold < 1
+                            (limite:{" "}
+                            {typeof alert.threshold === "number" &&
+                            alert.threshold < 1
                               ? pct(alert.threshold)
-                              : alert.threshold})
+                              : alert.threshold}
+                            )
                           </span>
                         </div>
                       ))}
@@ -308,8 +402,17 @@ function MetricCard({
         background: "var(--bg)",
       }}
     >
-      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: valueColor, fontVariantNumeric: "tabular-nums" }}>
+      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 700,
+          color: valueColor,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
         {value}
       </div>
     </div>
