@@ -5036,6 +5036,16 @@ textarea:focus {
   .pipeline-v2 {
     gap: 0;
   }
+
+  .pipeline-v2-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .pipeline-v2-step.active .pipeline-v2-dot {
+    width: 8px;
+    height: 8px;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -5160,6 +5170,12 @@ textarea:focus {
 .inbox-card-v2.needs-attention {
   border-left-color: var(--hot) !important;
 }
+
+/* Border-left keyed to conversation urgency/status (not temperature) */
+.card-border-attention { border-left-color: var(--hot); }
+.card-border-paused    { border-left-color: var(--warm); }
+.card-border-ai-active { border-left-color: var(--accent-strong); }
+.card-border-default   { border-left-color: var(--line-strong); }
 
 /* Top row: badge + time */
 .inbox-card-v2-top {
@@ -5365,18 +5381,19 @@ textarea:focus {
 }
 
 .status-badge-v2-hot {
-  background: color-mix(in srgb, var(--hot) 14%, transparent);
-  color: var(--hot);
+  background: #d97706;
+  color: #fff;
 }
 
 .status-badge-v2-warm {
-  background: var(--warm-soft);
+  background: color-mix(in srgb, var(--warm) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warm) 35%, transparent);
   color: var(--warm);
 }
 
 .status-badge-v2-accent {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: var(--accent);
+  color: #fff;
 }
 
 .status-badge-v2-muted {
