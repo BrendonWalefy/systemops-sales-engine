@@ -18,9 +18,9 @@ const NAV_CONFIG: { href: string; label: string; Icon: React.ElementType; mobile
   { href: "/app/settings/pipeline", label: "Pipeline", Icon: Workflow, mobileHidden: true },
 ];
 
-type Props = { email?: string; avatarUrl?: string | null };
+type Props = { email?: string; avatarUrl?: string | null; inboxBadge?: number };
 
-export function SidebarNav({ email, avatarUrl }: Props) {
+export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
   const pathname = usePathname();
 
   return (
@@ -31,7 +31,7 @@ export function SidebarNav({ email, avatarUrl }: Props) {
       </div>
 
       <nav className="side-nav">
-        {NAV_PRIMARY.slice(0, 2).map(({ href, label, Icon }) => (
+        {NAV_PRIMARY.slice(0, 1).map(({ href, label, Icon }) => (
           <Link
             key={href}
             href={href}
@@ -41,6 +41,19 @@ export function SidebarNav({ email, avatarUrl }: Props) {
             <span className="nav-label">{label}</span>
           </Link>
         ))}
+        {/* Inbox with badge */}
+        <Link
+          href="/app/inbox"
+          className={`side-nav-item${pathname.startsWith("/app/inbox") ? " active" : ""}`}
+        >
+          <span className="nav-icon-wrap">
+            <Inbox size={15} strokeWidth={2} />
+            {inboxBadge > 0 && (
+              <span className="nav-inbox-badge">{inboxBadge > 99 ? "99+" : inboxBadge}</span>
+            )}
+          </span>
+          <span className="nav-label">Inbox</span>
+        </Link>
         <Link href="/app/agenda?new=1" className="mobile-novo-btn" aria-label="Novo agendamento">
           <Plus size={22} strokeWidth={2.5} />
           <span className="nav-label">Novo</span>
