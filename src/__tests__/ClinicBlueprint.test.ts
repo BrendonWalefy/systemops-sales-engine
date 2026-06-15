@@ -31,6 +31,7 @@ describe("buildClinicBlueprint", () => {
         notes: "",
         differentialsCount: 0,
         mediaLibraryCount: 0,
+        objectionsCount: 0,
       },
       treatments: [],
     });
@@ -69,6 +70,7 @@ describe("buildClinicBlueprint", () => {
         channelProvider: "meta_cloud_api",
         metaPhoneNumberId: "123",
         metaAccessToken: "token",
+        hasTtsConfig: true,
       },
       playbook: {
         toneOfVoice: "acolhedor",
@@ -76,6 +78,7 @@ describe("buildClinicBlueprint", () => {
         notes: "Sempre confirmar o procedimento antes do horário.",
         differentialsCount: 2,
         mediaLibraryCount: 1,
+        objectionsCount: 2,
       },
       treatments: [{ pipelineStepsCount: 4 }, { pipelineStepsCount: 2 }],
     });
