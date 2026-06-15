@@ -23,30 +23,7 @@
   --agenda-shadow-sm: 0 8px 26px rgba(3, 10, 18, 0.22);
 }
 
-@media (prefers-color-scheme: light) {
-  .agenda-v2 {
-    --agenda-bg: #edf5f3;
-    --agenda-bg-elevated: #f5faf9;
-    --agenda-panel: rgba(255, 255, 255, 0.9);
-    --agenda-panel-solid: #fbfefd;
-    --agenda-panel-raised: rgba(255, 255, 255, 0.96);
-    --agenda-panel-soft: rgba(20, 108, 95, 0.06);
-    --agenda-grid: #d7e2e5;
-    --agenda-grid-soft: #edf2f4;
-    --agenda-border: #cfdde1;
-    --agenda-border-strong: #b5c8ce;
-    --agenda-text: #172331;
-    --agenda-text-soft: #273848;
-    --agenda-muted: #667789;
-    --agenda-accent: #146c5f;
-    --agenda-accent-strong: #0f5148;
-    --agenda-accent-soft: #e2f4f0;
-    --agenda-warm: #9a5b00;
-    --agenda-danger: #a33a3a;
-    --agenda-shadow: 0 20px 55px rgba(15, 23, 42, 0.08);
-    --agenda-shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.06);
-  }
-}
+/* Agenda sempre dark — ignorar preferência do OS para manter consistência com o design system */
 
 /* ── @schedule-x agenda theme overrides ───────────────────────── */
 
@@ -2395,6 +2372,64 @@ select.field-input option {
   .agenda-filter-bar-mobile {
     display: flex;
   }
+}
+
+/* ── A4: FAB mobile — novo agendamento ────────────────────────── */
+
+.agenda-fab {
+  display: none;
+  position: fixed;
+  bottom: calc(68px + env(safe-area-inset-bottom));
+  right: 18px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--agenda-accent), var(--agenda-accent-strong));
+  color: #03221c;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 212, 170, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.agenda-fab:hover,
+.agenda-fab:active {
+  transform: scale(1.06);
+  box-shadow: 0 6px 28px rgba(0, 212, 170, 0.5), 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 640px) {
+  .agenda-fab {
+    display: flex;
+  }
+
+  /* Oculta o botão "+ Novo agendamento" do header no mobile (FAB substitui) */
+  .agenda-v2-actions .btn-primary {
+    display: none;
+  }
+}
+
+/* ── A5: Bloqueios com padrão hachurado ────────────────────────── */
+
+/* Schedule-x: calendarId "block" recebe classe .sx__calendar-{calendarId} */
+.sx-calendar-wrapper .sx__event[data-calendar-id="block"],
+.sx-calendar-wrapper .sx__time-grid-event[data-calendar-id="block"],
+.sx-calendar-wrapper .sx__month-grid-event[data-calendar-id="block"] {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(245, 180, 81, 0.18),
+    rgba(245, 180, 81, 0.18) 4px,
+    rgba(245, 180, 81, 0.04) 4px,
+    rgba(245, 180, 81, 0.04) 10px
+  ) !important;
+  border-left: 3px solid var(--agenda-warm) !important;
+  border-top: 1px solid rgba(245, 180, 81, 0.3) !important;
+  border-right: 1px solid rgba(245, 180, 81, 0.1) !important;
+  border-bottom: 1px solid rgba(245, 180, 81, 0.1) !important;
 }
 
 /* ── SX event title: allow professional name to show ───────────── */

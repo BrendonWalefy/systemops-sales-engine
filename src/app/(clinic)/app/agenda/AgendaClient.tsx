@@ -48,6 +48,7 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
     leadId: "",
     leadName: block.reason || "Horário bloqueado",
     leadPhone: null,
+    leadTreatmentInterest: null,
     professionalId: null,
     professionalName: null,
     professionalColor: null,
@@ -341,6 +342,15 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew, t
           timezone={timezone}
         />
       </div>
+
+      {/* ── FAB mobile: novo agendamento ── */}
+      <button
+        className="agenda-fab"
+        onClick={() => setAppointmentModal({ open: true })}
+        aria-label="Novo agendamento"
+      >
+        <Plus size={24} />
+      </button>
 
       {/* ── Modals ── */}
       {appointmentModal.open && (

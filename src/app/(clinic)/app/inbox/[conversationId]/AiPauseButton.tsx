@@ -26,33 +26,15 @@ export function AiPauseButton({ conversationId, leadId, aiPaused, compact }: Pro
   if (compact) {
     return (
       <button
-        className={aiPaused ? "primary-button" : "secondary-button"}
-        style={{ gap: 6, padding: "8px 14px", fontSize: 13, minHeight: 36 }}
+        className={`ai-status-pill${aiPaused ? " paused" : " active"}`}
         disabled={pending}
         onClick={handleToggle}
         title={aiPaused ? "IA pausada — clique para retomar" : "IA ativa — clique para pausar"}
       >
-        <span
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: "50%",
-            flexShrink: 0,
-            background: aiPaused ? "var(--warning)" : "var(--accent)",
-            boxShadow: aiPaused ? "0 0 5px var(--warning)" : "0 0 5px var(--accent)",
-          }}
-        />
-        {aiPaused ? (
-          <>
-            <PlayCircle size={13} />
-            {pending ? "Retomando…" : "Ativar IA"}
-          </>
-        ) : (
-          <>
-            <PauseCircle size={13} />
-            {pending ? "Pausando…" : "Pausar IA"}
-          </>
-        )}
+        <span className="ai-status-dot" />
+        {pending
+          ? (aiPaused ? "Retomando…" : "Pausando…")
+          : (aiPaused ? "IA Pausada" : "IA Ativa")}
       </button>
     );
   }

@@ -69,8 +69,8 @@ export function ManualAppointmentForm({ conversationId, defaultDurationMinutes, 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <button
-        className="secondary-button"
-        style={{ width: "100%", justifyContent: "space-between" }}
+        className="primary-button"
+        style={{ width: "100%", justifyContent: "space-between", opacity: open ? 0.85 : 1 }}
         onClick={handleOpen}
       >
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>

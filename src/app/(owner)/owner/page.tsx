@@ -10,10 +10,13 @@ import {
   conversations,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, max } from "drizzle-orm";
-import { Users, Calendar, TrendingUp, Cpu, MessageCircle, ChevronRight, AlertCircle, FlaskConical } from "lucide-react";
+import { Users, Calendar, TrendingUp, DollarSign, ChevronRight, AlertCircle, FlaskConical } from "lucide-react";
+
+const USD_TO_BRL = 5.5;
 
 function formatCurrency(micros: number): string {
-  return "$" + (micros / 1_000_000).toFixed(4);
+  const brl = (micros / 1_000_000) * USD_TO_BRL;
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(brl);
 }
 
 function relativeTime(date: Date | null): string {
@@ -143,7 +146,7 @@ export default async function OwnerPage() {
   const globalConversion = totalLeads > 0 ? ((totalScheduled / totalLeads) * 100).toFixed(1) : "0.0";
 
   return (
-    <div>
+    <div className="owner-dark-forced">
       <div className="product-topbar">
         <div>
           <p className="eyebrow">Owner Panel</p>
@@ -158,7 +161,7 @@ export default async function OwnerPage() {
         </Link>
       </div>
 
-      {/* KPIs — apenas produção */}
+      {/* KPIs — apenas produção (2×2 grid) */}
       <div className="kpi-strip">
         <div className="metric metric-highlight">
           <div className="metric-header">
@@ -179,26 +182,18 @@ export default async function OwnerPage() {
         <div className="metric">
           <div className="metric-header">
             <span className="metric-icon"><TrendingUp size={14} /></span>
-            <span className="metric-label">Conversão global</span>
+            <span className="metric-label">Conversão</span>
           </div>
           <span className="metric-value">{globalConversion}%</span>
           <span className="metric-context">agendamentos / leads</span>
         </div>
         <div className="metric">
           <div className="metric-header">
-            <span className="metric-icon"><Cpu size={14} /></span>
-            <span className="metric-label">Custo IA total</span>
+            <span className="metric-icon"><DollarSign size={14} /></span>
+            <span className="metric-label">Custo IA+WA</span>
           </div>
-          <span className="metric-value" style={{ fontFamily: "monospace", fontSize: 18 }}>{formatCurrency(totalAiCost)}</span>
-          <span className="metric-context">OpenAI no mês</span>
-        </div>
-        <div className="metric">
-          <div className="metric-header">
-            <span className="metric-icon"><MessageCircle size={14} /></span>
-            <span className="metric-label">Custo WhatsApp</span>
-          </div>
-          <span className="metric-value" style={{ fontFamily: "monospace", fontSize: 18 }}>{formatCurrency(totalWaCost)}</span>
-          <span className="metric-context">Z-API / Meta no mês</span>
+          <span className="metric-value">{formatCurrency(totalAiCost + totalWaCost)}</span>
+          <span className="metric-context">no mês em R$</span>
         </div>
       </div>
 
@@ -267,7 +262,7 @@ export default async function OwnerPage() {
                         conv.
                       </span>
                       <span>
-                        <strong style={{ fontFamily: "monospace", fontSize: 11 }}>
+                        <strong style={{ fontSize: 11 }}>
                           {formatCurrency(totalCost)}
                         </strong>{" "}
                         IA+WA
@@ -363,7 +358,7 @@ export default async function OwnerPage() {
                             {conversion}%
                           </span>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "var(--text-soft)", fontFamily: "monospace", fontSize: 12 }}>
+                        <td style={{ padding: "12px 16px", color: "var(--text-soft)", fontSize: 12 }}>
                           {formatCurrency(totalCost)}
                         </td>
                         <td style={{ padding: "12px 16px", color: "var(--muted)", fontSize: 12 }}>

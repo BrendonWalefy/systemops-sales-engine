@@ -1,7 +1,29 @@
 "use client";
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { useFormStatus } from "react-dom";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { login } from "./actions";
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      className="primary-button"
+      disabled={pending}
+      style={{ marginTop: 4, width: "100%", height: 42, fontSize: 14, gap: 8 }}
+    >
+      {pending ? (
+        <>
+          <Loader2 size={15} style={{ animation: "spin 0.7s linear infinite", flexShrink: 0 }} />
+          Entrando…
+        </>
+      ) : (
+        "Entrar"
+      )}
+    </button>
+  );
+}
 
 export function LoginForm({ error }: { error?: string }) {
   const [showPassword, setShowPassword] = useState(false);
@@ -14,7 +36,7 @@ export function LoginForm({ error }: { error?: string }) {
             border: "1px solid color-mix(in srgb, var(--danger) 36%, transparent)",
             borderRadius: 8,
             background: "rgba(239, 68, 68, 0.08)",
-            color: "var(--danger)",
+            color: "#f87171",
             fontSize: 13,
             fontWeight: 600,
             padding: "10px 14px",
@@ -59,7 +81,7 @@ export function LoginForm({ error }: { error?: string }) {
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: "var(--muted)",
+                color: "rgba(161,161,170,0.8)",
                 padding: 0,
                 display: "flex",
                 alignItems: "center",
@@ -70,14 +92,10 @@ export function LoginForm({ error }: { error?: string }) {
           </div>
         </label>
 
-        <button
-          type="submit"
-          className="primary-button"
-          style={{ marginTop: 4, width: "100%", height: 42, fontSize: 14 }}
-        >
-          Entrar
-        </button>
+        <SubmitButton />
       </form>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   );
 }

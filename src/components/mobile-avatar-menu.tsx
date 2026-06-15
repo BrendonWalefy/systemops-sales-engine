@@ -19,6 +19,70 @@ const SHEET_ITEMS = [
   { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users, desc: "Equipe da clínica" },
 ];
 
+function LogoutSection() {
+  const [confirm, setConfirm] = useState(false);
+
+  if (confirm) {
+    return (
+      <div className="mobile-sheet-footer">
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 10px", textAlign: "center" }}>
+          Confirmar saída da conta?
+        </p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setConfirm(false)}
+            style={{
+              flex: 1,
+              padding: "10px 0",
+              borderRadius: 12,
+              border: "1px solid var(--line)",
+              background: "transparent",
+              color: "var(--muted)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Cancelar
+          </button>
+          <form action={logout} style={{ flex: 1 }}>
+            <button
+              type="submit"
+              style={{
+                width: "100%",
+                padding: "10px 0",
+                borderRadius: 12,
+                border: "none",
+                background: "rgba(239, 68, 68, 0.12)",
+                color: "#f87171",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Sair
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mobile-sheet-footer">
+      <button
+        type="button"
+        className="mobile-sheet-logout"
+        onClick={() => setConfirm(true)}
+      >
+        <LogOut size={15} strokeWidth={2} />
+        Sair da conta
+      </button>
+    </div>
+  );
+}
+
 export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsMode }: Props) {
   const [open, setOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
@@ -199,15 +263,8 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
           ))}
         </nav>
 
-        {/* Logout */}
-        <div className="mobile-sheet-footer">
-          <form action={logout}>
-            <button type="submit" className="mobile-sheet-logout">
-              <LogOut size={15} strokeWidth={2} />
-              Sair da conta
-            </button>
-          </form>
-        </div>
+        {/* Logout — confirmação inline */}
+        <LogoutSection />
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

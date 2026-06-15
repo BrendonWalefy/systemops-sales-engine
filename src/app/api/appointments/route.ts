@@ -46,6 +46,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         leadId: appointments.leadId,
         leadName: leads.name,
         leadPhone: leads.phone,
+        leadTreatmentInterest: leads.treatmentInterest,
         professionalId: appointments.professionalId,
         professionalName: professionals.name,
         professionalColor: professionals.color,
