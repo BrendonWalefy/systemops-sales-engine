@@ -3845,6 +3845,20 @@ textarea:focus {
     font-size: 16px !important;
   }
 
+  /* Preenche o gap entre o pill nav e a borda inferior da tela (safe-area) */
+  body::after {
+    content: "";
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: max(0px, calc(env(safe-area-inset-bottom) - 16px));
+    background: rgba(8, 10, 14, 0.95);
+    z-index: 199;
+    pointer-events: none;
+  }
+
   /* Layout: sidebar vira bottom tab bar nativo */
   .clinic-layout {
     grid-template-columns: 1fr;
