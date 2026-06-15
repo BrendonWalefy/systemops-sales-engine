@@ -269,6 +269,33 @@ button:disabled {
   flex: 1;
 }
 
+/* Desktop sidebar badge */
+.nav-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-inbox-badge {
+  position: absolute;
+  top: -5px;
+  right: -9px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ff9f2e;
+  color: #1a0900;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px var(--surface-muted, #161b27);
+}
+
 .side-nav-item:hover {
   background: var(--surface-soft);
   color: var(--text-soft);
@@ -3664,14 +3691,15 @@ textarea:focus {
     top: auto;
     height: 60px;
     border-radius: 20px;
-    background: rgba(14, 14, 16, 0.86);
-    backdrop-filter: blur(32px) saturate(200%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.13);
-    box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.5),
-      0 2px 8px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    background: rgba(8, 10, 14, 0.90);
+    backdrop-filter: blur(36px) saturate(200%);
+    -webkit-backdrop-filter: blur(36px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    /* filter respeita o shape real do elemento (incluindo overflow de filhos) */
+    filter:
+      drop-shadow(0 -4px 14px rgba(0, 0, 0, 0.55))
+      drop-shadow(0 8px 28px rgba(0, 0, 0, 0.7));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     flex-direction: row;
     align-items: center;
     justify-content: space-around;
@@ -3713,7 +3741,11 @@ textarea:focus {
     text-align: center;
   }
 
-  /* Active: pill arredondado só em volta do ícone */
+  /* Active: highlight acima + glow ao redor (sem pill sólido) */
+  .side-nav-item {
+    position: relative;
+  }
+
   .side-nav-item.active {
     background: none;
     border-color: transparent;
@@ -3721,17 +3753,34 @@ textarea:focus {
     color: var(--accent-strong);
   }
 
+  /* Linha de highlight no topo */
   .side-nav-item.active::before {
     content: '';
     position: absolute;
-    top: 14px;
+    top: 0;
     left: 50%;
     transform: translateX(-50%);
-    width: 44px;
-    height: 26px;
-    background: rgba(16, 185, 129, 0.18);
-    border-radius: 999px;
-    border: 1px solid rgba(16, 185, 129, 0.18);
+    width: 28px;
+    height: 2.5px;
+    background: var(--accent-strong);
+    border-radius: 0 0 4px 4px;
+    box-shadow:
+      0 0 8px rgba(0, 212, 170, 0.9),
+      0 0 20px rgba(0, 212, 170, 0.45);
+    pointer-events: none;
+  }
+
+  /* Glow radial atrás e abaixo do ícone */
+  .side-nav-item.active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 80% 90% at 50% 44%,
+      rgba(0, 212, 170, 0.13) 0%,
+      rgba(0, 212, 170, 0.05) 50%,
+      transparent 72%
+    );
     pointer-events: none;
   }
 
@@ -3739,6 +3788,39 @@ textarea:focus {
     font-size: 9.5px;
     font-weight: 600;
     letter-spacing: 0.01em;
+  }
+
+  /* Badge âmbar no Inbox */
+  .nav-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-inbox-badge {
+    position: absolute;
+    top: -6px;
+    right: -10px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #ff6b5f;
+    color: #1a0400;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px rgba(8, 10, 14, 0.9);
+    animation: badge-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  @keyframes badge-in {
+    from { transform: scale(0) rotate(-15deg); opacity: 0; }
+    to   { transform: scale(1) rotate(0deg);   opacity: 1; }
   }
 
   /* Itens de config ficam no sheet — só acessíveis via avatar */
@@ -3788,27 +3870,33 @@ textarea:focus {
     justify-content: center;
     align-items: center;
     gap: 3px;
-    flex: 0 0 56px;
+    flex: 0 0 52px;
     position: relative;
-    bottom: 10px;
+    bottom: 14px;
+    width: 52px;
     height: 52px;
     border-radius: 16px;
-    background: linear-gradient(145deg, #0d9e78, #0a7d60);
-    color: rgba(255, 255, 255, 0.92);
+    background: linear-gradient(145deg, #12f0c0, #00b896);
+    color: #041410;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.01em;
     text-decoration: none;
     box-shadow:
-      0 4px 16px rgba(13, 158, 120, 0.35),
-      0 2px 8px rgba(0, 0, 0, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      0 0 0 3px rgba(8, 10, 14, 0.9),
+      0 0 22px rgba(0, 212, 170, 0.6),
+      0 0 48px rgba(0, 212, 170, 0.28),
+      0 6px 20px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
     transition: transform 150ms ease, box-shadow 150ms ease;
   }
 
   .mobile-novo-btn:active {
     transform: scale(0.91);
-    box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 40%, transparent);
+    box-shadow:
+      0 0 0 3px rgba(8, 10, 14, 0.9),
+      0 0 14px rgba(0, 212, 170, 0.5),
+      0 3px 10px rgba(0, 0, 0, 0.45);
   }
 
   /* ── Ajustes button in pill ─────────────────────────── */

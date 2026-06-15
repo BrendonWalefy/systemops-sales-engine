@@ -11,7 +11,7 @@ import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
 import Link from "next/link";
 import { Suspense } from "react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
-import { DashboardPeriodToggle } from "./DashboardPeriodToggle";
+import { DashboardPeriodToggle, type PeriodKey } from "./DashboardPeriodToggle";
 import { DashboardRingMetrics } from "./DashboardRingMetrics";
 import {
   Activity,
@@ -155,9 +155,9 @@ function dateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function buildFlowSeries(rows: Array<{ createdAt: Date }>, startDate: Date): FlowPoint[] {
+function buildFlowSeries(rows: Array<{ createdAt: Date }>, startDate: Date, numDays = 7): FlowPoint[] {
   const buckets = new Map<string, number>();
-  const days = Array.from({ length: 7 }, (_, index) => addDays(startDate, index));
+  const days = Array.from({ length: numDays }, (_, index) => addDays(startDate, index));
 
   for (const day of days) {
     buckets.set(dateKey(day), 0);
@@ -232,12 +232,19 @@ function chartGeometry(series: FlowPoint[]) {
   return { width, height, path, areaPath, points };
 }
 
-async function fetchDashboardData() {
+function periodToDays(period: string): number {
+  if (period === "30d") return 30;
+  if (period === "3m") return 90;
+  return 7;
+}
+
+async function fetchDashboardData(period: string) {
   const CLINIC_ID = await getSessionClinicId();
   if (!CLINIC_ID) redirect("/login");
+  const days = periodToDays(period);
   const todayStart = startOfDay(new Date());
-  const flowStart = addDays(todayStart, -6);
-  const previousStart = addDays(flowStart, -7);
+  const flowStart = addDays(todayStart, -(days - 1));
+  const previousStart = addDays(flowStart, -days);
 
   const jar = await cookies();
   const token = jar.get(COOKIE_NAME)?.value;
@@ -338,6 +345,7 @@ async function fetchDashboardData() {
         and(
           eq(conversations.clinicId, CLINIC_ID),
           eq(messages.author, "lead"),
+          gte(messages.sentAt, flowStart),
           sql`(
             EXTRACT(HOUR FROM (${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo')) >= 18
             OR EXTRACT(HOUR FROM (${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo')) < 8
@@ -378,7 +386,7 @@ async function fetchDashboardData() {
     currentPeriodLeadCount: currentFlowLeadsResult.length,
     previousPeriodLeadCount: previousLeadPeriodResult[0]?.count ?? 0,
     recentLeads: recentLeadsResult,
-    flowSeries: buildFlowSeries(currentFlowLeadsResult, flowStart),
+    flowSeries: buildFlowSeries(currentFlowLeadsResult, flowStart, days),
     tempCounts: {
       hot: tempHotResult[0]?.count ?? 0,
       warm: tempWarmResult[0]?.count ?? 0,
@@ -389,8 +397,14 @@ async function fetchDashboardData() {
   };
 }
 
-export default async function DashboardPage() {
-  const data = await fetchDashboardData();
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
+  const { period = "7d" } = await searchParams;
+  const safePeriod = ["7d", "30d", "3m"].includes(period) ? period : "7d";
+  const data = await fetchDashboardData(safePeriod);
   const firstName = data.userEmail ? emailToFirstName(data.userEmail) : "você";
   const conversionRate = data.totalLeads > 0 ? (data.scheduledCount / data.totalLeads) * 100 : 0;
   const automationRate =
@@ -517,7 +531,7 @@ export default async function DashboardPage() {
               <h2>Fluxo de Conversas</h2>
             </div>
             <Suspense fallback={<span className="dashboard-panel-badge"><Activity size={14} />7 dias</span>}>
-              <DashboardPeriodToggle current="7d" />
+              <DashboardPeriodToggle current={safePeriod as PeriodKey} />
             </Suspense>
           </div>
 
