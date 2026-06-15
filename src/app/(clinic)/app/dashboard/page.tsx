@@ -170,8 +170,11 @@ function buildFlowSeries(rows: Array<{ createdAt: Date }>, startDate: Date, numD
     }
   }
 
+  const labelFormat: Intl.DateTimeFormatOptions =
+    numDays <= 7 ? { weekday: "short" } : { day: "2-digit", month: "short" };
+
   return days.map((day) => ({
-    label: day.toLocaleDateString("pt-BR", { weekday: "short", timeZone: DASHBOARD_TZ }),
+    label: day.toLocaleDateString("pt-BR", { ...labelFormat, timeZone: DASHBOARD_TZ }),
     count: buckets.get(dateKey(day)) ?? 0,
   }));
 }
@@ -571,12 +574,18 @@ export default async function DashboardPage({
               ))}
             </svg>
             <div className="dashboard-chart-labels">
-              {data.flowSeries.map((point) => (
-                <span key={point.label}>
-                  <strong>{point.count}</strong>
-                  {point.label}
-                </span>
-              ))}
+              {data.flowSeries
+                .filter((_, i, arr) => {
+                  if (arr.length <= 7) return true;
+                  const step = Math.floor((arr.length - 1) / 6);
+                  return i % step === 0;
+                })
+                .map((point) => (
+                  <span key={`${point.label}-${point.count}`}>
+                    <strong>{point.count}</strong>
+                    {point.label}
+                  </span>
+                ))}
             </div>
           </div>
 
