@@ -1123,7 +1123,7 @@ function FinanceiroTab({ clinic }: { clinic: ClinicData }) {
       {/* Grade 1x–12x */}
       <div>
         <p style={{ margin: "0 0 12px", fontSize: "11px", fontWeight: 700, color: "#3f3f46", letterSpacing: "0.07em" }}>ATÉ 12x — OPERADORA ATUAL</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "8px" }}>
           {current12.map((row) => (
             <div
               key={row.n}
@@ -1206,7 +1206,7 @@ function FinanceiroTab({ clinic }: { clinic: ClinicData }) {
             Em breve
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "8px" }}>
           {future.map((row) => (
             <div
               key={row.n}

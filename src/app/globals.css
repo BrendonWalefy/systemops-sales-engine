@@ -3838,6 +3838,13 @@ textarea:focus {
 }
 
 @media (max-width: 640px) {
+  /* Previne zoom automático no iOS ao focar inputs/textareas (threshold iOS = 16px) */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
   /* Layout: sidebar vira bottom tab bar nativo */
   .clinic-layout {
     grid-template-columns: 1fr;
@@ -3851,7 +3858,7 @@ textarea:focus {
   /* Sidebar → pill glassmorphism flutuante próximo ao fundo */
   .sidebar {
     position: fixed;
-    bottom: calc(env(safe-area-inset-bottom) - 16px);
+    bottom: max(0px, calc(env(safe-area-inset-bottom) - 16px));
     left: 14px;
     right: 14px;
     top: auto;
