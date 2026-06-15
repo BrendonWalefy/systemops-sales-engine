@@ -352,6 +352,13 @@ function RecoveryCard({
   );
 }
 
+function cardBorderClass(row: ConvRow, lastAuthor: string): string {
+  if (row.needsAttention) return "card-border-attention";
+  if (row.aiPaused) return "card-border-paused";
+  if (lastAuthor === "agent") return "card-border-ai-active";
+  return "card-border-default";
+}
+
 function pipelineIndex(status: string): number {
   if (status === "new") return 0;
   if (status === "waiting_response" || status === "in_conversation") return 1;
@@ -397,6 +404,7 @@ function InboxCard({
     lastReadAt: row.lastReadAt,
   });
   const badge = convStatusBadge(row, lastMsg.author);
+  const borderClass = cardBorderClass(row, lastMsg.author);
   const treatment =
     row.leadTreatmentInterest && row.leadTreatmentInterest.length > 28
       ? row.leadTreatmentInterest.slice(0, 26) + "…"
@@ -410,7 +418,7 @@ function InboxCard({
       style={{ textDecoration: "none" }}
     >
       <div
-        className={`inbox-card-v2 conv-temp-${tk}${row.needsAttention ? " needs-attention" : ""}${hasUnread ? " has-unread" : ""}`}
+        className={`inbox-card-v2 ${borderClass}${hasUnread ? " has-unread" : ""}`}
       >
         <div className="inbox-card-v2-top">
           {row.needsAttention ? (
@@ -614,7 +622,7 @@ export function InboxClient({
         <Search size={13} style={{ color: "var(--muted)", flexShrink: 0 }} />
         <input
           type="text"
-          placeholder="Buscar lead..."
+          placeholder="Nome, telefone ou tratamento..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="inbox-search-input"

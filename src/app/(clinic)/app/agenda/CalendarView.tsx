@@ -105,9 +105,17 @@ export function CalendarView({ initialEvents, currentView, timezone = DEFAULT_TI
   const toCalendarEvent = useCallback((e: AppointmentEvent) => {
     const isBlock = e.status === "block";
     const leadLabel = e.leadName ?? e.leadPhone ?? "Paciente";
-    const title = isBlock
-      ? `🚫 ${e.leadName || "Bloqueado"}`
-      : [leadLabel, e.professionalName].filter(Boolean).join(" · ");
+
+    let title: string;
+    if (isBlock) {
+      title = `🚫 ${e.leadName || "Bloqueado"}`;
+    } else {
+      const parts = [leadLabel];
+      if (e.leadTreatmentInterest) parts.push(e.leadTreatmentInterest);
+      if (e.professionalName) parts.push(e.professionalName);
+      title = parts.join(" · ");
+    }
+
     return {
       id: e.id,
       title,
@@ -172,15 +180,30 @@ export function CalendarView({ initialEvents, currentView, timezone = DEFAULT_TI
     $app?.calendarState?.setView?.(currentView, Temporal.Now.plainDateISO());
   }, [calendar, currentView]);
 
-  // Scroll the week grid horizontally to center today's column after SX finishes rendering
+  // Scroll horizontally to center today's column + vertically to current time
   useEffect(() => {
     if (!calendar) return;
     const timer = setTimeout(() => {
+      // Horizontal: center today's column
       const todayHeader = document.querySelector(
         ".sx__week-grid__date--is-today",
       ) as HTMLElement | null;
       todayHeader?.scrollIntoView({ behavior: "instant", block: "nearest", inline: "center" });
-    }, 120);
+
+      // Vertical: scroll to current time indicator (or 9 AM if not visible)
+      const indicator = document.querySelector(".sx__current-time-indicator") as HTMLElement | null;
+      if (indicator) {
+        indicator.scrollIntoView({ behavior: "instant", block: "center" });
+      } else {
+        // No indicator (other day/month view): scroll to 9 AM equivalent
+        const viewScroll = document.querySelector(".sx__view-container") as HTMLElement | null;
+        if (viewScroll) {
+          const slotEl = document.querySelector(".sx__time-grid-slot") as HTMLElement | null;
+          const slotHeight = slotEl?.offsetHeight ?? 48;
+          viewScroll.scrollTop = slotHeight * 2; // ~2 hours from start (07:00 → 09:00)
+        }
+      }
+    }, 150);
     return () => clearTimeout(timer);
   }, [calendar, currentView]);
 

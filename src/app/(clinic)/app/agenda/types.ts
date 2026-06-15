@@ -3,6 +3,7 @@ export type AppointmentEvent = {
   leadId: string;
   leadName: string | null;
   leadPhone: string | null;
+  leadTreatmentInterest: string | null;
   professionalId: string | null;
   professionalName: string | null;
   professionalColor: string | null;

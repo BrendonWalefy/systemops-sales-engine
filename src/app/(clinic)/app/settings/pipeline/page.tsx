@@ -34,47 +34,33 @@ export default async function PipelinePage() {
           </div>
 
           {total > 0 && (
-            <div
-              style={{
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "5px", flexShrink: 0 }}>
+              <div style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "7px",
-                padding: "6px 12px",
-                borderRadius: "999px",
-                border: configured === total
-                  ? "1px solid rgba(16,185,129,0.3)"
-                  : "1px solid rgba(255,255,255,0.1)",
-                background: configured === total
-                  ? "rgba(16,185,129,0.08)"
-                  : "rgba(255,255,255,0.04)",
-                color: configured === total ? "var(--accent-strong)" : "var(--muted)",
+                gap: "6px",
                 fontSize: "12px",
                 fontWeight: 600,
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              {configured === total ? (
-                <CheckCircle2 size={13} strokeWidth={2} />
-              ) : (
-                <span style={{
-                  display: "inline-block",
-                  width: "13px",
-                  height: "13px",
+                color: configured === total ? "var(--accent-strong)" : "var(--muted)",
+              }}>
+                {configured === total && <CheckCircle2 size={13} strokeWidth={2} />}
+                {configured}/{total} configurados
+              </div>
+              <div style={{
+                width: "100px",
+                height: "4px",
+                borderRadius: "999px",
+                background: "var(--line)",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%",
+                  width: `${total > 0 ? Math.round((configured / total) * 100) : 0}%`,
                   borderRadius: "999px",
-                  border: "2px solid currentColor",
-                  position: "relative",
-                }}>
-                  <span style={{
-                    position: "absolute",
-                    inset: "1px",
-                    borderRadius: "999px",
-                    background: "currentColor",
-                    clipPath: `inset(0 ${100 - Math.round((configured / total) * 100)}% 0 0)`,
-                  }} />
-                </span>
-              )}
-              {configured}/{total} configurados
+                  background: configured === total ? "var(--accent)" : "var(--warm)",
+                  transition: "width 0.4s ease",
+                }} />
+              </div>
             </div>
           )}
         </div>
@@ -155,22 +141,19 @@ export default async function PipelinePage() {
                   {!hasPipeline ? (
                     <span
                       style={{
-                        fontSize: "11.5px",
-                        color: "var(--muted)",
+                        fontSize: "11px",
+                        color: "var(--warm)",
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "5px",
+                        background: "rgba(245,158,11,0.08)",
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(245,158,11,0.18)",
+                        fontWeight: 600,
                       }}
                     >
-                      <span style={{
-                        width: "5px",
-                        height: "5px",
-                        borderRadius: "999px",
-                        background: "rgba(255,255,255,0.15)",
-                        flexShrink: 0,
-                        display: "inline-block",
-                      }} />
-                      Sem pipeline — fluxo reativo padrão
+                      Configurar pipeline →
                     </span>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>

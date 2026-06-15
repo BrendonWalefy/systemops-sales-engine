@@ -691,20 +691,60 @@ export function ProfissionaisClient({ initialProfessionals }: Props) {
         <div
           className="professionals-empty"
           style={{
-            border: "1px dashed var(--line)",
+            border: "1px dashed rgba(255,255,255,0.12)",
             borderRadius: "14px",
             padding: "40px 24px",
             textAlign: "center",
             marginBottom: "24px",
+            background: "var(--surface-soft)",
           }}
         >
-          <Users size={28} strokeWidth={1.5} style={{ color: "var(--muted)", margin: "0 auto 12px" }} />
-          <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "var(--text)" }}>
-            Nenhum profissional cadastrado
+          <div style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: "8px",
+            marginBottom: "16px",
+          }}>
+            {["#10b981","#3b82f6","#f59e0b"].map((c) => (
+              <div key={c} style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "50%",
+                background: `${c}22`,
+                border: `2px solid ${c}55`,
+                display: "grid",
+                placeItems: "center",
+              }}>
+                <UserRound size={16} strokeWidth={1.8} style={{ color: c }} />
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--text)" }}>
+            Adicione seu primeiro profissional
           </p>
-          <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--muted)" }}>
-            Adicione a equipe para filtrar a agenda por profissional.
+          <p style={{ margin: "6px 0 16px", fontSize: "13px", color: "var(--muted)" }}>
+            Cada profissional aparece com uma cor no calendário.
           </p>
+          <button
+            type="button"
+            onClick={() => document.querySelector<HTMLInputElement>(".professionals-form-card input")?.focus()}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 18px",
+              borderRadius: "999px",
+              border: "none",
+              background: "var(--accent)",
+              color: "#03221c",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            <Plus size={14} />
+            Adicionar profissional
+          </button>
         </div>
       )}
 

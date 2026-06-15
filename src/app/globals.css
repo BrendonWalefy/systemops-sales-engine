@@ -50,6 +50,50 @@
     --shadow: 0 20px 55px rgba(15, 23, 42, 0.08);
     --shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.06);
   }
+
+  /* Owner panel always renders dark regardless of OS preference */
+  .owner-dark-forced {
+    color-scheme: dark;
+    --background: #09090b;
+    --surface: rgba(17, 17, 19, 0.88);
+    --surface-muted: #18181b;
+    --surface-raised: #202024;
+    --surface-soft: rgba(255, 255, 255, 0.03);
+    --text: #fafafa;
+    --text-soft: #e4e4e7;
+    --muted: #a1a1aa;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.14);
+    --accent: #10b981;
+    --accent-strong: #34d399;
+    --accent-soft: rgba(16, 185, 129, 0.12);
+    --warm: #f59e0b;
+    --warm-soft: rgba(245, 158, 11, 0.12);
+    --cold: #60a5fa;
+    --cold-soft: rgba(96, 165, 250, 0.12);
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+    --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.24);
+    background: var(--background);
+    color: var(--text);
+  }
+
+  /* Login page always renders dark */
+  .login-dark-page {
+    color-scheme: dark;
+    --background: #09090b;
+    --surface: rgba(17, 17, 19, 0.88);
+    --text: #fafafa;
+    --muted: #a1a1aa;
+    --line: rgba(255, 255, 255, 0.08);
+    --accent: #10b981;
+    --accent-strong: #34d399;
+    --accent-soft: rgba(16, 185, 129, 0.12);
+    --danger: #ef4444;
+    background: #09090b;
+    color: #fafafa;
+  }
 }
 
 * {
@@ -3552,17 +3596,146 @@ textarea:focus {
 }
 
 /* Banner no topo da conversa */
-.attention-banner-conv {
+/* C1: atenção como card inline, não banner disruptivo */
+.attention-card-conv {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: color-mix(in srgb, var(--hot) 10%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--hot) 25%, transparent);
+  gap: 10px;
+  margin: 8px 12px 0;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--hot) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hot) 22%, transparent);
+  border-left: 3px solid var(--hot);
+  border-radius: 8px;
   color: var(--hot);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 8px 20px;
   flex-shrink: 0;
+}
+
+.attention-card-icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hot) 18%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* C2: pill de temperatura no header do chat */
+.conv-temp-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.conv-temp-pill-hot {
+  background: color-mix(in srgb, var(--hot) 14%, transparent);
+  color: var(--hot);
+  border: 1px solid color-mix(in srgb, var(--hot) 30%, transparent);
+}
+
+.conv-temp-pill-warm {
+  background: var(--warm-soft);
+  color: var(--warm);
+  border: 1px solid color-mix(in srgb, var(--warm) 30%, transparent);
+}
+
+.conv-temp-pill-cold {
+  background: var(--cold-soft);
+  color: var(--cold);
+  border: 1px solid color-mix(in srgb, var(--cold) 30%, transparent);
+}
+
+.conv-temp-pill-neutral {
+  background: var(--surface-soft);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.conv-header-treatment {
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* C4: pill pulsante IA Ativa / IA Pausada */
+.ai-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1.5px solid;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, color 150ms;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: none;
+  font-family: inherit;
+}
+
+.ai-status-pill:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ai-status-pill.active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent-strong);
+}
+
+.ai-status-pill.active:not(:disabled):hover {
+  background: color-mix(in srgb, var(--hot) 10%, transparent);
+  border-color: color-mix(in srgb, var(--hot) 35%, transparent);
+  color: var(--hot);
+}
+
+.ai-status-pill.paused {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning);
+}
+
+.ai-status-pill.paused:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent-strong);
+}
+
+.ai-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ai-status-pill.active .ai-status-dot {
+  background: var(--accent);
+  animation: ai-dot-pulse 2s ease-in-out infinite;
+}
+
+.ai-status-pill.paused .ai-status-dot {
+  background: var(--warning);
+}
+
+@keyframes ai-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  50%       { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 
 /* ─── Inbox Page ─────────────────────────────────────────── */
@@ -4312,18 +4485,20 @@ textarea:focus {
     width: 100%;
     padding: 12px 14px;
     border-radius: 14px;
-    border: 1px solid rgba(239, 68, 68, 0.15);
-    background: rgba(239, 68, 68, 0.06);
-    color: #f87171;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: transparent;
+    color: var(--muted);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 140ms ease;
+    transition: background 140ms ease, color 140ms ease;
   }
 
   .mobile-sheet-logout:hover,
   .mobile-sheet-logout:active {
-    background: rgba(239, 68, 68, 0.12);
+    background: rgba(239, 68, 68, 0.08);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.15);
   }
 
   @keyframes sheet-overlay-in {
@@ -5036,6 +5211,16 @@ textarea:focus {
   .pipeline-v2 {
     gap: 0;
   }
+
+  .pipeline-v2-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .pipeline-v2-step.active .pipeline-v2-dot {
+    width: 8px;
+    height: 8px;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -5160,6 +5345,12 @@ textarea:focus {
 .inbox-card-v2.needs-attention {
   border-left-color: var(--hot) !important;
 }
+
+/* Border-left keyed to conversation urgency/status (not temperature) */
+.card-border-attention { border-left-color: var(--hot); }
+.card-border-paused    { border-left-color: var(--warm); }
+.card-border-ai-active { border-left-color: var(--accent-strong); }
+.card-border-default   { border-left-color: var(--line-strong); }
 
 /* Top row: badge + time */
 .inbox-card-v2-top {
@@ -5365,18 +5556,19 @@ textarea:focus {
 }
 
 .status-badge-v2-hot {
-  background: color-mix(in srgb, var(--hot) 14%, transparent);
-  color: var(--hot);
+  background: #d97706;
+  color: #fff;
 }
 
 .status-badge-v2-warm {
-  background: var(--warm-soft);
+  background: color-mix(in srgb, var(--warm) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warm) 35%, transparent);
   color: var(--warm);
 }
 
 .status-badge-v2-accent {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: var(--accent);
+  color: #fff;
 }
 
 .status-badge-v2-muted {

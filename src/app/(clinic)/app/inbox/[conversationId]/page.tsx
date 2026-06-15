@@ -103,7 +103,10 @@ export default async function ConversationPage({
         <div className="conv-header-info">
           <div className="conv-header-name">{displayName}</div>
           <div className="conv-header-sub">
-            <span style={{ fontSize: 11, color: "var(--muted)" }}>{sLabel}</span>
+            <span className={`conv-temp-pill conv-temp-pill-${temp.cls}`}>{temp.label}</span>
+            {lead.treatmentInterest && (
+              <span className="conv-header-treatment">· {lead.treatmentInterest}</span>
+            )}
           </div>
         </div>
 
@@ -125,9 +128,16 @@ export default async function ConversationPage({
       </div>
 
       {conv.needsAttention && (
-        <div className="attention-banner-conv">
-          <span>{conv.attentionReason ?? "Esta conversa precisa de atenção"}</span>
-          <span style={{ opacity: 0.6, fontSize: 11 }}>— Será limpo ao enviar uma mensagem</span>
+        <div className="attention-card-conv">
+          <div className="attention-card-icon">!</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 12 }}>
+              {conv.attentionReason ?? "Lead quer atenção humana"}
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.65, marginTop: 1 }}>
+              Responda abaixo — aviso some ao enviar
+            </div>
+          </div>
         </div>
       )}
 
