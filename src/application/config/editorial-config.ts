@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
+export { lintPlaybookNotes } from "./playbook-lint";
 
 /**
  * FONTE ÚNICA DA VERDADE EDITORIAL.
@@ -70,26 +71,6 @@ export const publishablePlaybookSchema = z.object({
     .default([]),
   greetingMessage: z.string().optional(),
 });
-
-/**
- * Valida o campo `notes` para garantir que não está sendo usado como depósito
- * de informações que pertencem a campos estruturados (preços → commercialPolicy,
- * objeções → objections). Retorna lista de avisos; nunca bloqueia publicação.
- */
-export function lintPlaybookNotes(notes: string | null | undefined): string[] {
-  if (!notes?.trim()) return [];
-  const warnings: string[] = [];
-  if (/R\$\s*[\d.,]+/.test(notes)) {
-    warnings.push('notes contém padrão de preço (R$). Preços pertencem a commercialPolicy.');
-  }
-  if (/parcel[ao]|entrada|parcela/i.test(notes)) {
-    warnings.push('notes menciona condições de pagamento. Isso pertence a commercialPolicy.');
-  }
-  if (/objeç[aã]o|desconto|caro|barato/i.test(notes)) {
-    warnings.push('notes menciona objeções. Use o campo Objeções para isso.');
-  }
-  return warnings;
-}
 
 export type PublishablePlaybook = z.infer<typeof publishablePlaybookSchema>;
 

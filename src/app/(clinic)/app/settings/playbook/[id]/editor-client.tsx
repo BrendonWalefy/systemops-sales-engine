@@ -18,6 +18,7 @@ import {
   Film,
 } from "lucide-react";
 import { updatePlaybookVersion } from "../playbook-version-actions";
+import { lintPlaybookNotes } from "@/application/config/playbook-lint";
 import type { FieldTarget } from "@/core/intelligence/FieldComposer";
 
 type Objection = { objection: string; response: string };
@@ -327,6 +328,30 @@ const quickPromptStyle: React.CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 };
+
+function NotesLintWarnings({ notes }: { notes: string }) {
+  const warnings = lintPlaybookNotes(notes);
+  if (warnings.length === 0) return null;
+  return (
+    <div style={{
+      marginTop: "6px",
+      padding: "10px 12px",
+      background: "rgba(245,158,11,0.07)",
+      border: "1px solid rgba(245,158,11,0.22)",
+      borderRadius: "8px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "5px",
+    }}>
+      <span style={{ fontSize: "10px", fontWeight: 700, color: "#f59e0b", letterSpacing: "0.06em" }}>
+        CONTEÚDO FORA DO LUGAR
+      </span>
+      {warnings.map((w, i) => (
+        <span key={i} style={{ fontSize: "11px", color: "#fbbf24", lineHeight: 1.5 }}>• {w}</span>
+      ))}
+    </div>
+  );
+}
 
 const OBJECTION_EXAMPLES: Objection[] = [
   {
@@ -864,6 +889,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                     rows={7}
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
+                  <NotesLintWarnings notes={data.notes} />
                   <CowriterBox
                     field="notes"
                     currentValue={data.notes}
