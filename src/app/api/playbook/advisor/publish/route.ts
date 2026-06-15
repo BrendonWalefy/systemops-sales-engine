@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       specialty: playbook.specialty,
       procedureDescription: playbook.procedureDescription,
       toneOfVoice: playbook.toneOfVoice,
+      receptionistName: playbook.receptionistName,
       differentials: playbook.differentials,
       commercialPolicy: playbook.commercialPolicy,
       objections: playbook.objections,

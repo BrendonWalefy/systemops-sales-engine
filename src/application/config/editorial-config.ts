@@ -63,13 +63,33 @@ export const publishablePlaybookSchema = z.object({
     .trim()
     .min(1, "descrição de procedimentos não pode ser vazia"),
   toneOfVoice: z.string().trim().min(1).default("acolhedor"),
-  receptionistName: z.string().trim().min(1).default("Marina"),
+  receptionistName: z.string().trim().min(1, "nome da recepcionista é obrigatório").default("Marina"),
   differentials: z.array(z.string()).default([]),
   objections: z
     .array(z.object({ objection: z.string(), response: z.string() }))
     .default([]),
   greetingMessage: z.string().optional(),
 });
+
+/**
+ * Valida o campo `notes` para garantir que não está sendo usado como depósito
+ * de informações que pertencem a campos estruturados (preços → commercialPolicy,
+ * objeções → objections). Retorna lista de avisos; nunca bloqueia publicação.
+ */
+export function lintPlaybookNotes(notes: string | null | undefined): string[] {
+  if (!notes?.trim()) return [];
+  const warnings: string[] = [];
+  if (/R\$\s*[\d.,]+/.test(notes)) {
+    warnings.push('notes contém padrão de preço (R$). Preços pertencem a commercialPolicy.');
+  }
+  if (/parcel[ao]|entrada|parcela/i.test(notes)) {
+    warnings.push('notes menciona condições de pagamento. Isso pertence a commercialPolicy.');
+  }
+  if (/objeç[aã]o|desconto|caro|barato/i.test(notes)) {
+    warnings.push('notes menciona objeções. Use o campo Objeções para isso.');
+  }
+  return warnings;
+}
 
 export type PublishablePlaybook = z.infer<typeof publishablePlaybookSchema>;
 
@@ -164,8 +184,7 @@ export async function resolveActiveEditorialConfig(
     specialty: activeVersion.specialty,
     toneOfVoice: activeVersion.toneOfVoice,
     commercialPolicy: activeVersion.commercialPolicy,
-    receptionistName:
-      (activeVersion as unknown as { receptionistName?: string }).receptionistName ?? "Marina",
+    receptionistName: activeVersion.receptionistName,
     procedures,
     differentials,
     objections,

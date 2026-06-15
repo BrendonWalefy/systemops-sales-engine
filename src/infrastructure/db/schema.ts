@@ -666,6 +666,7 @@ export const playbookVersions = pgTable(
     // Orientação livre editada pela tela de settings. Vive aqui (e não em
     // clinics) para que settings e advisor alimentem a MESMA versão ativa.
     notes: text("notes"),
+    receptionistName: text("receptionist_name").notNull().default("Marina"),
     objections: jsonb("objections")
       .$type<{ objection: string; response: string }[]>()
       .notNull()

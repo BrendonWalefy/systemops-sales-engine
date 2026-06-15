@@ -28,6 +28,7 @@ type EditorData = {
   specialty: string;
   procedureDescription: string;
   toneOfVoice: string;
+  receptionistName: string;
   differentials: string[];
   commercialPolicy: string;
   objections: Objection[];
@@ -55,10 +56,11 @@ function completude(data: EditorData): number {
   if (data.specialty.trim()) filled++;
   if (data.procedureDescription.trim()) filled++;
   filled++; // toneOfVoice always has value
+  if (data.receptionistName.trim() && data.receptionistName !== "Marina") filled++;
   if (data.differentials.filter((d) => d.trim()).length > 0) filled++;
   if (data.commercialPolicy.trim()) filled++;
   if (data.objections.filter((o) => o.objection.trim()).length > 0) filled++;
-  return Math.round((filled / 7) * 100);
+  return Math.round((filled / 8) * 100);
 }
 
 type ObjectionFilter = "all" | "pending";
@@ -111,6 +113,7 @@ function SimulatorPanel({ data, greetingMessage }: { data: EditorData; greetingM
             specialty: data.specialty,
             procedureDescription: data.procedureDescription,
             toneOfVoice: data.toneOfVoice,
+            receptionistName: data.receptionistName || undefined,
             differentials: data.differentials.filter((d) => d.trim()),
             commercialPolicy: data.commercialPolicy,
             objections: data.objections.filter((o) => o.objection.trim()),
@@ -591,6 +594,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
           specialty: newData.specialty || null,
           procedureDescription: newData.procedureDescription || null,
           toneOfVoice: newData.toneOfVoice,
+          receptionistName: newData.receptionistName || "Marina",
           differentials: newData.differentials.filter((d) => d.trim()),
           commercialPolicy: newData.commercialPolicy || null,
           objections: newData.objections.filter((o) => o.objection.trim()),
@@ -883,6 +887,16 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                       value={data.specialty}
                       onChange={(e) => updateVersion({ specialty: e.target.value })}
                       placeholder="Ex: Odontologia Estética e Reabilitação Oral"
+                      style={inputStyle}
+                    />
+                  </FieldGroup>
+
+                  <FieldGroup label="Nome da recepcionista" hint="Nome com que a IA se apresenta ao paciente. Deve coincidir com o nome na saudação automática.">
+                    <input
+                      type="text"
+                      value={data.receptionistName}
+                      onChange={(e) => updateVersion({ receptionistName: e.target.value })}
+                      placeholder="Ex: Marina"
                       style={inputStyle}
                     />
                   </FieldGroup>

@@ -14,6 +14,7 @@ type PlaybookVersionData = {
   specialty?: string | null;
   procedureDescription?: string | null;
   toneOfVoice?: string;
+  receptionistName?: string;
   differentials?: string[];
   commercialPolicy?: string | null;
   objections?: { objection: string; response: string }[];
@@ -91,7 +92,7 @@ export async function activatePlaybookVersion(id: string) {
     specialty: version.specialty ?? "",
     procedureDescription: version.procedureDescription ?? "",
     toneOfVoice: version.toneOfVoice ?? "acolhedor",
-    receptionistName: "Marina",
+    receptionistName: version.receptionistName,
     differentials: version.differentials ?? [],
     commercialPolicy: version.commercialPolicy ?? "",
   });
@@ -163,6 +164,7 @@ export async function duplicatePlaybookVersion(id: string) {
     specialty: original.specialty,
     procedureDescription: original.procedureDescription,
     toneOfVoice: original.toneOfVoice,
+    receptionistName: original.receptionistName,
     differentials: original.differentials,
     commercialPolicy: original.commercialPolicy,
     objections: original.objections,
