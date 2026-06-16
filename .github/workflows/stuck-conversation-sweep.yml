@@ -1,0 +1,16 @@
+name: Stuck Conversation Sweep
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call endpoint
+        run: |
+          curl -sf -X GET https://systemops-core.vercel.app/api/cron/stuck-conversation-sweep \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            | jq .
