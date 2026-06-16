@@ -150,6 +150,10 @@ function buildLentesPipeline(videoSimplificadaId: string | null, videoEstratific
   const contentBlocks: ContentBlock[] = [
     {
       kind: "text",
+      content: "Trabalhamos com duas técnicas de lentes em resina: a Simplificada e a Estratificada. Vou te explicar rapidinho as duas para você ver qual faz mais sentido pro seu caso:",
+    },
+    {
+      kind: "text",
       content: "A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo.",
     },
   ];
