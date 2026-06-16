@@ -520,7 +520,7 @@ export default async function OwnerPage() {
                 Alertas operacionais
               </p>
               <p
-                style={{ margin: "6px 0 0", fontSize: 13, color: "var(--fg)" }}
+                style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-soft)" }}
               >
                 {operationalAlertReport.alertCount === 0
                   ? "Nenhum alerta ativo nas clínicas em produção."
@@ -545,7 +545,7 @@ export default async function OwnerPage() {
             <Link
               href="/owner/qualidade"
               style={{
-                color: "var(--fg)",
+                color: "var(--text-soft)",
                 fontSize: 12,
                 fontWeight: 700,
                 textDecoration: "none",

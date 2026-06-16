@@ -115,7 +115,7 @@ function RecoveryModal({
       <div
         style={{
           background: "var(--surface)",
-          border: "1px solid var(--border)",
+          border: "1px solid var(--line)",
           borderRadius: 14,
           width: "100%",
           maxWidth: 480,
@@ -147,7 +147,7 @@ function RecoveryModal({
             onClick={handleGenerate}
             style={{
               background: "var(--surface-raised)",
-              border: "1px solid var(--border)",
+              border: "1px solid var(--line)",
               borderRadius: 8,
               padding: "10px 16px",
               cursor: "pointer",
@@ -180,7 +180,7 @@ function RecoveryModal({
               rows={4}
               style={{
                 background: "var(--surface-raised)",
-                border: "1px solid var(--border)",
+                border: "1px solid var(--line)",
                 borderRadius: 8,
                 padding: "10px 12px",
                 color: "var(--text)",
@@ -316,7 +316,7 @@ function RecoveryCard({
               textAlign: "center",
               padding: "7px 0",
               background: "var(--surface-raised)",
-              border: "1px solid var(--border)",
+              border: "1px solid var(--line)",
               borderRadius: 7,
               fontSize: 12,
               color: "var(--text)",
