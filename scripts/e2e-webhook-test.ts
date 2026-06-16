@@ -16,7 +16,7 @@ config({ path: ".env.local" });
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, inArray, like, and, gte } from "drizzle-orm";
+import { eq, inArray, like, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   clinics,
@@ -193,13 +193,6 @@ async function getAgentMessages(convId: string): Promise<Array<{ body: string; i
     .select({ body: messages.body, intent: messages.intent })
     .from(messages)
     .where(and(eq(messages.conversationId, convId), eq(messages.author, "agent")));
-}
-
-async function getAppointmentCount(phone: string): Promise<number> {
-  const [lead] = await db.select({ id: leads.id }).from(leads).where(and(eq(leads.clinicId, clinicId!), eq(leads.phone, phone))).limit(1);
-  if (!lead) return 0;
-  const rows = await db.select({ id: appointments.id }).from(appointments).where(eq(appointments.leadId, lead.id));
-  return rows.length;
 }
 
 // ── Cleanup ───────────────────────────────────────────────────────────────────

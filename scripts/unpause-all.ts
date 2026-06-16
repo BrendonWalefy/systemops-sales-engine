@@ -1,7 +1,7 @@
 import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { conversations, leads } from "../src/infrastructure/db/schema";
+import { conversations } from "../src/infrastructure/db/schema";
 import { eq, and } from "drizzle-orm";
 
 const sql = postgres(process.env.DATABASE_URL!, { max: 1 });

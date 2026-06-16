@@ -44,6 +44,7 @@ export function MobileDashboardAvatar({ avatarUrl, initial }: Props) {
           <Loader2 size={16} strokeWidth={2} style={{ animation: "spin 0.8s linear infinite" }} />
         </div>
       ) : avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica do Vercel Blob, sem domain configurado em next.config; thumbnail pequeno, não afeta LCP
         <img src={avatarUrl} alt="Avatar" className="dashboard-mobile-avatar" />
       ) : (
         <div className="dashboard-mobile-avatar dashboard-mobile-avatar-fallback">

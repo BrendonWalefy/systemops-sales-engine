@@ -21,10 +21,8 @@ import {
   CheckCircle2,
   Clock,
   Flame,
-  MessageCircle,
   Snowflake,
   Thermometer,
-  TrendingUp,
   Users,
 } from "lucide-react";
 

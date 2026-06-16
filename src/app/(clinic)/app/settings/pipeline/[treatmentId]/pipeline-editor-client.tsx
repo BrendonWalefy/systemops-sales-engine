@@ -94,13 +94,11 @@ function StepBadge({ type }: { type: string }) {
 
 function ContentBlockEditor({
   block,
-  index,
   mediaLibrary,
   onChange,
   onRemove,
 }: {
   block: ContentBlock;
-  index: number;
   mediaLibrary: MediaItem[];
   onChange: (b: ContentBlock) => void;
   onRemove: () => void;
@@ -307,7 +305,6 @@ function StepCard({
             <ContentBlockEditor
               key={bi}
               block={block}
-              index={bi}
               mediaLibrary={mediaLibrary}
               onChange={(b) => {
                 const blocks = [...step.blocks];

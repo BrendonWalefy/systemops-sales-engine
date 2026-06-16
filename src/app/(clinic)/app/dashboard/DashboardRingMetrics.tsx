@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, MessageCircle } from "lucide-react";
+import { CheckCircle2, Clock } from "lucide-react";
 
 type Props = {
   automationRate: number;

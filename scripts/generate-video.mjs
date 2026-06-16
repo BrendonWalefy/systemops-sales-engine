@@ -49,7 +49,7 @@ async function main() {
   if (!projectId) {
     console.error('❌ Erro: GCP_PROJECT_ID não definido!');
     console.error('Por favor, defina a variável de ambiente: GCP_PROJECT_ID="seu-projeto-id"');
-    console.exit ? console.exit(1) : process.exit(1);
+    process.exit(1);
   }
 
   if (!bucketName) {
