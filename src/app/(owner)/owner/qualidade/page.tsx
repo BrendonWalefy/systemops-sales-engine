@@ -10,7 +10,9 @@ import {
   CheckCircle,
   Activity,
   TrendingDown,
+  RefreshCw,
 } from "lucide-react";
+import { recheckOperationalHealth } from "./actions";
 
 type DailySnapshot = {
   clinicId: string;
@@ -95,12 +97,24 @@ async function fetchQualityData(): Promise<DailySnapshot[]> {
   return snapshots.sort((a, b) => b.alerts.length - a.alerts.length);
 }
 
-export default async function QualidadePage() {
+export default async function QualidadePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string>>;
+}) {
+  const sp = await searchParams;
   const snapshots = await fetchQualityData();
   const totalAlerts = snapshots.reduce((s, n) => s + n.alerts.length, 0);
   const hasCritical = snapshots.some((s) =>
     s.alerts.some((a) => a.level === "critical"),
   );
+  const recheckState = sp.recheck;
+  const recheckProcessed = Number(sp.processed ?? "0");
+  const recheckFailed = Number(sp.failed ?? "0");
+  const recheckChannelDegraded = Number(sp.channelDegraded ?? "0");
+  const recheckSnapshotAlerts = Number(sp.snapshotAlerts ?? "0");
+  const recheckMessage = sp.message;
+  const recheckScope = sp.scope === "clinic" ? "da clínica" : "geral";
 
   return (
     <div>
@@ -131,7 +145,7 @@ export default async function QualidadePage() {
             <p
               style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}
             >
-              Último snapshot diário por clínica · Atualizado às 8h UTC
+              Último snapshot diário por clínica · Atualizado às 8h UTC ou sob demanda
             </p>
           </div>
         </div>
@@ -141,6 +155,87 @@ export default async function QualidadePage() {
         className="page-content"
         style={{ paddingBottom: 60, display: "grid", gap: 24 }}
       >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+            Use o recheck manual para recalcular o snapshot diário e revalidar a saúde operacional sem esperar o próximo cron.
+          </p>
+          <form action={recheckOperationalHealth}>
+            <button
+              type="submit"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 10,
+                border: "1px solid var(--line)",
+                background: "var(--surface)",
+                color: "var(--fg)",
+                padding: "10px 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <RefreshCw size={14} />
+              Recheck geral
+            </button>
+          </form>
+        </div>
+
+        {recheckState && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              border: `1px solid ${
+                recheckState === "ok"
+                  ? "rgba(16,185,129,0.2)"
+                  : recheckState === "partial"
+                    ? "rgba(245,158,11,0.25)"
+                    : "rgba(239,68,68,0.3)"
+              }`,
+              borderRadius: 12,
+              padding: "16px 20px",
+              background:
+                recheckState === "ok"
+                  ? "rgba(16,185,129,0.05)"
+                  : recheckState === "partial"
+                    ? "rgba(245,158,11,0.05)"
+                    : "rgba(239,68,68,0.05)",
+            }}
+          >
+            {recheckState === "ok" ? (
+              <CheckCircle
+                size={16}
+                style={{ color: "var(--accent)", flexShrink: 0 }}
+              />
+            ) : (
+              <AlertTriangle
+                size={16}
+                style={{
+                  color:
+                    recheckState === "partial" ? "#f59e0b" : "#ef4444",
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <span style={{ fontSize: 13, color: "var(--fg)" }}>
+              {recheckMessage
+                ? recheckMessage
+                : `Recheck ${recheckScope} concluído: ${recheckProcessed} clínica(s) processada(s), ${recheckFailed} falha(s), ${recheckChannelDegraded} canal(is) degradado(s) e ${recheckSnapshotAlerts} alerta(s) de snapshot no resultado atual.`}
+            </span>
+          </div>
+        )}
+
         {/* Banner de status global */}
         {snapshots.length === 0 ? (
           <div
@@ -268,33 +363,63 @@ export default async function QualidadePage() {
                         {formatDate(snap.periodTo)}
                       </div>
                     </div>
-                    {snap.alerts.length > 0 && (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <AlertTriangle
-                          size={13}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {snap.alerts.length > 0 && (
+                        <div
                           style={{
-                            color: hasCriticalAlert ? "#ef4444" : "#f59e0b",
-                          }}
-                        />
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: hasCriticalAlert ? "#ef4444" : "#f59e0b",
-                            fontWeight: 600,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
                           }}
                         >
-                          {snap.alerts.length} alerta
-                          {snap.alerts.length > 1 ? "s" : ""}
-                        </span>
-                      </div>
-                    )}
+                          <AlertTriangle
+                            size={13}
+                            style={{
+                              color: hasCriticalAlert ? "#ef4444" : "#f59e0b",
+                            }}
+                          />
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: hasCriticalAlert ? "#ef4444" : "#f59e0b",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {snap.alerts.length} alerta
+                            {snap.alerts.length > 1 ? "s" : ""}
+                          </span>
+                        </div>
+                      )}
+                      <form action={recheckOperationalHealth}>
+                        <input type="hidden" name="clinicId" value={snap.clinicId} />
+                        <button
+                          type="submit"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            borderRadius: 10,
+                            border: "1px solid var(--line)",
+                            background: "transparent",
+                            color: "var(--fg)",
+                            padding: "8px 12px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <RefreshCw size={13} />
+                          Recheck
+                        </button>
+                      </form>
+                    </div>
                   </div>
 
                   {/* Métricas */}
