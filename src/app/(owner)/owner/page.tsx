@@ -28,6 +28,7 @@ import {
   isBillableOperationalStatus,
 } from "@/application/clinics/clinic-operational-status-presentation";
 import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
+import { probeClinicChannelHealth } from "@/application/health/channel-health";
 import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
 
 const USD_TO_BRL = 5.5;
@@ -69,6 +70,7 @@ type ClinicRow = {
   channelProvider: "z_api" | "meta_cloud_api" | null;
   zapiInstanceId: string | null;
   zapiToken: string | null;
+  zapiClientToken: string | null;
   metaPhoneNumberId: string | null;
   metaAccessToken: string | null;
 };
@@ -84,6 +86,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
       channelProvider: clinics.channelProvider,
       zapiInstanceId: clinics.zapiInstanceId,
       zapiToken: clinics.zapiToken,
+      zapiClientToken: clinics.zapiClientToken,
       metaPhoneNumberId: clinics.metaPhoneNumberId,
       metaAccessToken: clinics.metaAccessToken,
     })
@@ -173,6 +176,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
         channelProvider: clinic.channelProvider,
         zapiInstanceId: clinic.zapiInstanceId,
         zapiToken: clinic.zapiToken,
+        zapiClientToken: clinic.zapiClientToken,
         metaPhoneNumberId: clinic.metaPhoneNumberId,
         metaAccessToken: clinic.metaAccessToken,
       };
@@ -231,7 +235,7 @@ async function fetchOperationalAlertReport(clinicRows: ClinicRow[]) {
   });
 
   return evaluateOperationalAlerts(
-    activeClinics.map((clinic) => {
+    await Promise.all(activeClinics.map(async (clinic) => {
       const latestMetric = latestMetricMap.get(clinic.id);
 
       return {
@@ -241,10 +245,21 @@ async function fetchOperationalAlertReport(clinicRows: ClinicRow[]) {
         channelProvider: clinic.channelProvider,
         zapiInstanceId: clinic.zapiInstanceId,
         zapiToken: clinic.zapiToken,
+        zapiClientToken: clinic.zapiClientToken,
         metaPhoneNumberId: clinic.metaPhoneNumberId,
         metaAccessToken: clinic.metaAccessToken,
         hasActivePlaybook: playbookClinicIds.has(clinic.id),
         latestMetricAt: latestMetric?.createdAt ?? null,
+        channelStatus: await probeClinicChannelHealth({
+          clinicId: clinic.id,
+          clinicName: clinic.name,
+          channelProvider: clinic.channelProvider,
+          zapiInstanceId: clinic.zapiInstanceId,
+          zapiToken: clinic.zapiToken,
+          zapiClientToken: clinic.zapiClientToken,
+          metaPhoneNumberId: clinic.metaPhoneNumberId,
+          metaAccessToken: clinic.metaAccessToken,
+        }),
         latestMetricData:
           latestMetric && typeof latestMetric.data === "object"
             ? (latestMetric.data as {
@@ -255,10 +270,10 @@ async function fetchOperationalAlertReport(clinicRows: ClinicRow[]) {
                   threshold: number;
                   level: "warn" | "critical";
                 }> | null;
-              })
+                })
             : null,
       };
-    }),
+    })),
     new Date(),
   );
 }
