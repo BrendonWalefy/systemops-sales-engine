@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { conversations, messages } from "@/infrastructure/db/schema";
-import { and, eq, asc } from "drizzle-orm";
+import { and, asc, eq, gt, or } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
 ): Promise<NextResponse> {
   const clinicId = await getSessionClinicId();
@@ -29,11 +29,48 @@ export async function GET(
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
 
+  const afterId = req.nextUrl.searchParams.get("after");
+
+  if (!afterId) {
+    const msgs = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(asc(messages.sentAt), asc(messages.createdAt), asc(messages.id));
+
+    return NextResponse.json({ messages: msgs });
+  }
+
+  const [afterMessage] = await db
+    .select({
+      id: messages.id,
+      sentAt: messages.sentAt,
+      createdAt: messages.createdAt,
+    })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), eq(messages.id, afterId)))
+    .limit(1);
+
   const msgs = await db
     .select()
     .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(asc(messages.sentAt));
+    .where(
+      afterMessage
+        ? and(
+            eq(messages.conversationId, conversationId),
+            or(
+              gt(messages.sentAt, afterMessage.sentAt),
+              and(eq(messages.sentAt, afterMessage.sentAt), gt(messages.createdAt, afterMessage.createdAt)),
+              and(
+                eq(messages.sentAt, afterMessage.sentAt),
+                eq(messages.createdAt, afterMessage.createdAt),
+                gt(messages.id, afterMessage.id),
+              ),
+            ),
+          )
+        : eq(messages.conversationId, conversationId),
+    )
+    .orderBy(asc(messages.sentAt), asc(messages.createdAt), asc(messages.id));
 
   return NextResponse.json({ messages: msgs });
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { BellOff, BellRing } from "lucide-react";
 import { subscribeAndSave } from "./push-notification-setup";
+import { haptic } from "@/lib/haptic";
 
 type State = "loading" | "unsupported" | "default" | "granted" | "denied";
 
@@ -30,6 +31,7 @@ export function EnableNotificationsButton() {
 
   async function handleClick() {
     if (state !== "default") return;
+    haptic("medium");
     setState("loading");
 
     try {

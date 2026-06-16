@@ -2,6 +2,13 @@
 
 import { useEffect } from "react";
 
+export type PushPermissionState =
+  | "loading"
+  | "unsupported"
+  | "default"
+  | "granted"
+  | "denied";
+
 export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -11,6 +18,26 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuf
     output[i] = rawData.charCodeAt(i);
   }
   return output;
+}
+
+export function detectPushPermissionState(): PushPermissionState {
+  if (
+    typeof window === "undefined" ||
+    !("serviceWorker" in navigator) ||
+    !("PushManager" in window) ||
+    !("Notification" in window) ||
+    !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  ) {
+    return "unsupported";
+  }
+
+  return Notification.permission as PushPermissionState;
+}
+
+export async function getCurrentPushSubscription(): Promise<PushSubscription | null> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  const registration = await navigator.serviceWorker.ready;
+  return registration.pushManager.getSubscription();
 }
 
 export async function subscribeAndSave(registration: ServiceWorkerRegistration): Promise<boolean> {
@@ -35,6 +62,22 @@ export async function subscribeAndSave(registration: ServiceWorkerRegistration):
     }),
   });
   return res.ok;
+}
+
+export async function unsubscribeAndDelete(registration?: ServiceWorkerRegistration): Promise<boolean> {
+  const activeRegistration = registration ?? await navigator.serviceWorker.ready;
+  const existing = await activeRegistration.pushManager.getSubscription();
+  if (!existing) return true;
+
+  const endpoint = existing.endpoint;
+  const unsubscribed = await existing.unsubscribe();
+  const response = await fetch("/api/push/subscribe", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  });
+
+  return unsubscribed && response.ok;
 }
 
 // Registra o service worker silenciosamente.

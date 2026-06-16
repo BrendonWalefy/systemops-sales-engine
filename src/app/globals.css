@@ -115,10 +115,22 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
 button,
 input,
 textarea {
   font: inherit;
+}
+
+a,
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"] {
+  touch-action: manipulation;
 }
 
 button {
@@ -4435,8 +4447,8 @@ textarea:focus {
     transition: background 140ms ease, border-color 140ms ease;
   }
 
-  .mobile-sheet-item:hover,
-  .mobile-sheet-item:active {
+.mobile-sheet-item:hover,
+.mobile-sheet-item:active {
     background: rgba(255, 255, 255, 0.05);
   }
 
@@ -4525,6 +4537,45 @@ textarea:focus {
   @keyframes sheet-overlay-in {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+
+  .side-nav-item,
+  .mobile-avatar-btn,
+  .mobile-novo-btn,
+  .mobile-settings-btn,
+  .dashboard-mobile-avatar-btn,
+  .mobile-sheet-item,
+  .mobile-sheet-close,
+  .mobile-sheet-avatar-upload-btn,
+  .mobile-sheet-avatar-remove-btn,
+  .mobile-sheet-logout,
+  .primary-button,
+  .secondary-button,
+  .conv-back-btn,
+  .conv-action-btn,
+  .inbox-card-v2 {
+    will-change: transform;
+  }
+
+  .side-nav-item:active,
+  .mobile-sheet-item:active,
+  .primary-button:active:not(:disabled),
+  .secondary-button:active:not(:disabled),
+  .conv-back-btn:active,
+  .conv-action-btn:active,
+  .mobile-sheet-close:active,
+  .mobile-sheet-avatar-upload-btn:active:not(:disabled),
+  .mobile-sheet-avatar-remove-btn:active:not(:disabled),
+  .mobile-sheet-logout:active,
+  .inbox-card-v2:active {
+    transform: scale(0.98);
+  }
+
+  .inbox-card-v2,
+  .chat-message,
+  .dashboard-mobile-lead {
+    content-visibility: auto;
+    contain-intrinsic-size: 96px;
   }
 
   /* Quando em conversa: main sem padding (conv-root é fixed, sai do fluxo) */

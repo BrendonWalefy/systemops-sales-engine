@@ -19,6 +19,7 @@ import type { TtsProvider } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { AddTreatmentForm } from "../tratamentos/AddTreatmentForm";
+import { PushNotificationSettingsCard } from "@/components/push-notification-settings-card";
 
 type Version = {
   id: string;
@@ -606,6 +607,8 @@ function GeralTab({
           </div>
         </div>
       </div>
+
+      <PushNotificationSettingsCard />
 
       {/* Resposta por voz */}
       <div className="ia-status-card" style={cardStyle}>

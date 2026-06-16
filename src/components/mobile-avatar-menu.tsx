@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2 } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { uploadAvatar, removeAvatar } from "@/app/(clinic)/app/settings/profile/actions";
+import { haptic } from "@/lib/haptic";
 
 type Props = {
   email?: string;
@@ -31,7 +32,10 @@ function LogoutSection() {
         <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"
-            onClick={() => setConfirm(false)}
+            onClick={() => {
+              haptic();
+              setConfirm(false);
+            }}
             style={{
               flex: 1,
               padding: "10px 0",
@@ -49,6 +53,7 @@ function LogoutSection() {
           <form action={logout} style={{ flex: 1 }}>
             <button
               type="submit"
+              onClick={() => haptic("medium")}
               style={{
                 width: "100%",
                 padding: "10px 0",
@@ -74,7 +79,10 @@ function LogoutSection() {
       <button
         type="button"
         className="mobile-sheet-logout"
-        onClick={() => setConfirm(true)}
+        onClick={() => {
+          haptic();
+          setConfirm(true);
+        }}
       >
         <LogOut size={15} strokeWidth={2} />
         Sair da conta
@@ -91,6 +99,14 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!open) return;
+
+    for (const item of SHEET_ITEMS) {
+      router.prefetch(item.href);
+    }
+  }, [open, router]);
 
   const initial = email?.split("@")[0]?.[0]?.toUpperCase() ?? "?";
   const isActive = open || SHEET_ITEMS.some((item) => pathname.startsWith(item.href));
@@ -130,7 +146,10 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
       {settingsMode ? (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            haptic();
+            setOpen(true);
+          }}
           className={`mobile-settings-btn${isActive ? " active" : ""}`}
           aria-label="Ajustes"
         >
@@ -140,7 +159,10 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
       ) : (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            haptic();
+            setOpen(true);
+          }}
           className={`mobile-avatar-btn${isActive ? " active" : ""}`}
           aria-label="Abrir menu"
         >
@@ -160,7 +182,10 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
       {open && (
         <div
           className="mobile-sheet-overlay"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            haptic();
+            setOpen(false);
+          }}
           aria-hidden="true"
         />
       )}
@@ -173,7 +198,10 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
         {/* Close button */}
         <button
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            haptic();
+            setOpen(false);
+          }}
           className="mobile-sheet-close"
           aria-label="Fechar"
         >
@@ -204,7 +232,10 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
             <div className="mobile-sheet-avatar-actions">
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  haptic();
+                  fileInputRef.current?.click();
+                }}
                 disabled={isPending}
                 className="mobile-sheet-avatar-upload-btn"
               >
@@ -214,7 +245,10 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
               {avatarUrl && (
                 <button
                   type="button"
-                  onClick={handleRemoveAvatar}
+                  onClick={() => {
+                    haptic("medium");
+                    handleRemoveAvatar();
+                  }}
                   disabled={isPending}
                   className="mobile-sheet-avatar-remove-btn"
                 >
@@ -248,7 +282,11 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
             <Link
               key={href}
               href={href}
-              onClick={() => setOpen(false)}
+              prefetch
+              onClick={() => {
+                haptic();
+                setOpen(false);
+              }}
               className={`mobile-sheet-item${pathname.startsWith(href) ? " active" : ""}`}
             >
               <div className="mobile-sheet-item-icon">

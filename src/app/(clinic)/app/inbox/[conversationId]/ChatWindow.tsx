@@ -68,6 +68,7 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  const latestMessageIdRef = useRef<string | null>(initialMessages.at(-1)?.id ?? null);
 
   const scrollToBottom = useCallback((instant = false) => {
     if (!isNearBottomRef.current && !instant) return;
@@ -99,14 +100,30 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
     );
   }, [initialMessages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    latestMessageIdRef.current = messages.at(-1)?.id ?? null;
+  }, [messages]);
+
   // Poll for new messages every 3 seconds
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch(`/api/conversations/${conversationId}/messages`);
+        const params = new URLSearchParams();
+        if (latestMessageIdRef.current) {
+          params.set("after", latestMessageIdRef.current);
+        }
+
+        const query = params.toString();
+        const res = await fetch(`/api/conversations/${conversationId}/messages${query ? `?${query}` : ""}`);
         if (!res.ok) return;
         const data: { messages: Msg[] } = await res.json();
-        setMessages((prev) => (data.messages.length !== prev.length ? data.messages : prev));
+        if (data.messages.length === 0) return;
+
+        setMessages((prev) => {
+          const knownIds = new Set(prev.map((msg) => msg.id));
+          const nextMessages = data.messages.filter((msg) => !knownIds.has(msg.id));
+          return nextMessages.length > 0 ? [...prev, ...nextMessages] : prev;
+        });
       } catch {
         // silently ignore network errors between polls
       }

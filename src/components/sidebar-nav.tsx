@@ -1,10 +1,11 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
+import { haptic } from "@/lib/haptic";
 
 const NAV_PRIMARY = [
   { href: "/app/dashboard", label: "Inicio", Icon: Home },
@@ -22,6 +23,19 @@ type Props = { email?: string; avatarUrl?: string | null; inboxBadge?: number };
 
 export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  React.useEffect(() => {
+    const routes = [
+      ...NAV_PRIMARY.map((item) => item.href),
+      "/app/agenda?new=1",
+      ...NAV_CONFIG.map((item) => item.href),
+    ];
+
+    for (const route of routes) {
+      router.prefetch(route);
+    }
+  }, [router]);
 
   return (
     <aside className="sidebar">
@@ -35,6 +49,8 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
           <Link
             key={href}
             href={href}
+            prefetch
+            onClick={() => haptic()}
             className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}`}
           >
             <Icon size={15} strokeWidth={2} />
@@ -44,6 +60,8 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
         {/* Inbox with badge */}
         <Link
           href="/app/inbox"
+          prefetch
+          onClick={() => haptic()}
           className={`side-nav-item${pathname.startsWith("/app/inbox") ? " active" : ""}`}
         >
           <span className="nav-icon-wrap">
@@ -52,7 +70,13 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
           </span>
           <span className="nav-label">Inbox</span>
         </Link>
-        <Link href="/app/agenda?new=1" className="mobile-novo-btn" aria-label="Novo agendamento">
+        <Link
+          href="/app/agenda?new=1"
+          prefetch
+          onClick={() => haptic("medium")}
+          className="mobile-novo-btn"
+          aria-label="Novo agendamento"
+        >
           <Plus size={22} strokeWidth={2.5} />
           <span className="nav-label">Novo</span>
         </Link>
@@ -60,6 +84,8 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
           <Link
             key={href}
             href={href}
+            prefetch
+            onClick={() => haptic()}
             className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}`}
           >
             <Icon size={15} strokeWidth={2} />
@@ -71,6 +97,8 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
           <Link
             key={href}
             href={href}
+            prefetch
+            onClick={() => haptic()}
             className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}${mobileHidden ? " nav-mobile-hidden" : ""}`}
           >
             <Icon size={15} strokeWidth={2} />
@@ -84,6 +112,7 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
         <form action={logout}>
           <button
             type="submit"
+            onClick={() => haptic("medium")}
             className="side-nav-item"
             style={{ width: "100%", border: "none", cursor: "pointer" }}
           >

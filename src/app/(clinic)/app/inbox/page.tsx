@@ -4,18 +4,22 @@ import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
 import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
-import { and, eq, desc, inArray, between, isNotNull, lt } from "drizzle-orm";
+import { and, eq, desc, inArray, between } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
 import { getAppointmentBadgeWindow } from "./inbox-visibility";
+import { buildInboxSnapshotSignature, type InboxSnapshotRow } from "./inbox-snapshot";
 
 export default async function InboxPage() {
   const clinicId = await getSessionClinicId();
   if (!clinicId) redirect("/login");
 
   const [clinicRows, rows] = await Promise.all([
-    db.select({ autoReplyEnabled: clinics.autoReplyEnabled })
+    db.select({
+      autoReplyEnabled: clinics.autoReplyEnabled,
+      updatedAt: clinics.updatedAt,
+    })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
       .limit(1),
@@ -35,6 +39,8 @@ export default async function InboxPage() {
         leadTemperature: leads.temperature,
         leadTreatmentInterest: leads.treatmentInterest,
         leadProfilePicUrl: leads.profilePicUrl,
+        leadUpdatedAt: leads.updatedAt,
+        conversationUpdatedAt: conversations.updatedAt,
       })
       .from(conversations)
       .innerJoin(leads, eq(conversations.leadId, leads.id))
@@ -95,9 +101,28 @@ export default async function InboxPage() {
       : 0,
   }));
 
+  const snapshotRows: InboxSnapshotRow[] = rows.map((row) => ({
+    convId: row.convId,
+    conversationUpdatedAt: row.conversationUpdatedAt,
+    leadUpdatedAt: row.leadUpdatedAt,
+    lastMessageAt: row.lastMessageAt,
+    lastReadAt: row.lastReadAt,
+    aiPaused: row.aiPaused,
+    needsAttention: row.needsAttention,
+    takeoverExpiresAt: row.takeoverExpiresAt,
+    leadStatus: row.leadStatus,
+    leadTemperature: row.leadTemperature,
+    appointmentStartsAt: appointmentMap[row.leadId] ?? null,
+  }));
+
+  const initialSignature = buildInboxSnapshotSignature(snapshotRows, {
+    autoReplyEnabled: clinicRows[0]?.autoReplyEnabled ?? false,
+    clinicUpdatedAt: clinicRows[0]?.updatedAt ?? null,
+  });
+
   return (
     <div className="inbox-shell">
-      <InboxPoller />
+      <InboxPoller initialSignature={initialSignature} />
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 28px 0" }}>
         <EnableNotificationsButton />
       </div>

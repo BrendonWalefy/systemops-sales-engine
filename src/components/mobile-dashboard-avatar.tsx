@@ -4,6 +4,7 @@ import { useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Loader2 } from "lucide-react";
 import { uploadAvatar } from "@/app/(clinic)/app/settings/profile/actions";
+import { haptic } from "@/lib/haptic";
 
 type Props = {
   avatarUrl: string | null;
@@ -30,7 +31,10 @@ export function MobileDashboardAvatar({ avatarUrl, initial }: Props) {
   return (
     <button
       type="button"
-      onClick={() => fileInputRef.current?.click()}
+      onClick={() => {
+        haptic();
+        fileInputRef.current?.click();
+      }}
       className="dashboard-mobile-avatar-btn"
       aria-label="Alterar foto de perfil"
       disabled={isPending}
