@@ -41,6 +41,33 @@ describe("clinic health", () => {
     expect(report.degradedClinics[0]?.issues).toContain("sem playbook ativo");
   });
 
+  it("marks active clinics as degraded when the channel health probe fails", () => {
+    const report = evaluateClinicHealth(
+      [
+        {
+          clinicId: "1",
+          clinicName: "Clinica A",
+          operationalStatus: "active",
+          channelProvider: "z_api",
+          zapiInstanceId: "inst",
+          zapiToken: "token",
+          hasActivePlaybook: true,
+          latestMetricAt: new Date("2026-06-14T10:00:00.000Z"),
+          channelStatus: {
+            status: "degraded",
+            detail: "Z-API retornou Instance not found",
+          },
+        },
+      ],
+      new Date("2026-06-14T12:00:00.000Z"),
+    );
+
+    expect(report.status).toBe("degraded");
+    expect(report.degradedClinics[0]?.issues).toContain(
+      "canal indisponível: Z-API retornou Instance not found",
+    );
+  });
+
   it("keeps health ok when active clinics are configured and only warns on stale metrics", () => {
     const report = evaluateClinicHealth(
       [

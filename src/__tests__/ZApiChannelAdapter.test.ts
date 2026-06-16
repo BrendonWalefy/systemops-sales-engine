@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sendZApiTextMessage } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import {
+  getZApiInstanceStatus,
+  sendZApiTextMessage,
+} from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 
@@ -64,6 +67,43 @@ describe("sendZApiTextMessage", () => {
     expect(init.headers).toEqual({
       "Content-Type": "application/json",
       "Client-Token": "client-token-1",
+    });
+  });
+});
+
+describe("getZApiInstanceStatus", () => {
+  it("retorna status parseado quando a Z-API responde 200", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ connected: true, smartphoneConnected: true }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getZApiInstanceStatus({
+        instanceId: "instance-1",
+        token: "token-1",
+        clientToken: "client-token-1",
+      }),
+    ).resolves.toMatchObject({
+      connected: true,
+      smartphoneConnected: true,
+    });
+  });
+
+  it("retorna erro normalizado quando a Z-API responde com falha", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "Instance not found" }), { status: 400 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getZApiInstanceStatus({
+        instanceId: "instance-1",
+        token: "token-1",
+      }),
+    ).resolves.toMatchObject({
+      connected: false,
+      smartphoneConnected: false,
     });
   });
 });

@@ -97,4 +97,33 @@ describe("operational alerts", () => {
       title: "Taxa alta de respostas unclear",
     });
   });
+
+  it("raises a critical alert when the channel probe says the clinic is down", () => {
+    const report = evaluateOperationalAlerts(
+      [
+        {
+          clinicId: "1",
+          clinicName: "Clinic A",
+          operationalStatus: "active",
+          channelProvider: "z_api",
+          zapiInstanceId: "inst",
+          zapiToken: "token",
+          hasActivePlaybook: true,
+          latestMetricAt: new Date("2026-06-14T10:00:00.000Z"),
+          channelStatus: {
+            status: "degraded",
+            detail: "Z-API retornou Instance not found",
+          },
+        },
+      ],
+      new Date("2026-06-14T12:00:00.000Z"),
+    );
+
+    expect(report.status).toBe("degraded");
+    expect(report.alerts[0]).toMatchObject({
+      source: "channel",
+      title: "Canal indisponível",
+      detail: "Z-API retornou Instance not found",
+    });
+  });
 });

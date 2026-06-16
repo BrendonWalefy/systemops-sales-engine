@@ -1,0 +1,23 @@
+name: Channel Health Alert
+
+on:
+  schedule:
+    # Evita o topo da hora, onde o GitHub admite maior chance de atraso/drop.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: channel-health-alert
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Call endpoint
+        run: |
+          curl -sf -X GET https://systemops-core.vercel.app/api/cron/channel-health-alert \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            | jq .

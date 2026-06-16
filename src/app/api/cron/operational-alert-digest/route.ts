@@ -3,6 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { clinics, clinicMetrics, playbookVersions } from "@/infrastructure/db/schema";
 import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
+import { probeClinicChannelHealth } from "@/application/health/channel-health";
 import { buildAlertDigestEmail } from "@/infrastructure/notifications/alert-email-template";
 import { sendEmail } from "@/infrastructure/notifications/email-sender";
 
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
       channelProvider: clinics.channelProvider,
       zapiInstanceId: clinics.zapiInstanceId,
       zapiToken: clinics.zapiToken,
+      zapiClientToken: clinics.zapiClientToken,
       metaPhoneNumberId: clinics.metaPhoneNumberId,
       metaAccessToken: clinics.metaAccessToken,
     })
@@ -70,8 +72,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const clinicsWithChannelStatus = await Promise.all(
+    activeClinics.map(async (clinic) => ({
+      ...clinic,
+      channelStatus: await probeClinicChannelHealth(clinic),
+    })),
+  );
+
   const alertReport = evaluateOperationalAlerts(
-    activeClinics.map((clinic) => {
+    clinicsWithChannelStatus.map((clinic) => {
       const latestMetric = latestMetrics.find((r) => r.clinicId === clinic.clinicId);
       return {
         ...clinic,

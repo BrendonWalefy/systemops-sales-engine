@@ -4,6 +4,7 @@ import {
   decryptCredential,
   encryptCredentialNullable,
   decryptCredentialNullable,
+  isEncryptedCredential,
 } from "@/infrastructure/crypto/credential-vault";
 
 const TEST_KEY = "a".repeat(64); // 64 hex chars = 32 bytes
@@ -39,6 +40,12 @@ describe("encryptCredential / decryptCredential", () => {
     expect(() => decryptCredential("enc:v1:invalido")).toThrow();
   });
 
+  it("desembrulha credencial encriptada mais de uma vez", () => {
+    const original = "token-duplo";
+    const encryptedTwice = encryptCredential(encryptCredential(original));
+    expect(decryptCredential(encryptedTwice)).toBe(original);
+  });
+
   it("lança erro se CREDENTIAL_ENCRYPTION_KEY não está definida", () => {
     const original = process.env.CREDENTIAL_ENCRYPTION_KEY;
     delete process.env.CREDENTIAL_ENCRYPTION_KEY;
@@ -68,5 +75,11 @@ describe("encryptCredentialNullable / decryptCredentialNullable", () => {
     const enc = encryptCredentialNullable(v);
     expect(enc).not.toBeNull();
     expect(decryptCredentialNullable(enc)).toBe(v);
+  });
+
+  it("nao re-encripta valor ja encriptado", () => {
+    const encrypted = encryptCredential("ja-encriptado");
+    expect(isEncryptedCredential(encrypted)).toBe(true);
+    expect(encryptCredentialNullable(encrypted)).toBe(encrypted);
   });
 });

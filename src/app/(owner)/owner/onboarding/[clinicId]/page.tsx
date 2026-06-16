@@ -10,6 +10,7 @@ import {
 } from "@/infrastructure/db/schema";
 import { OnboardingWizardClient } from "./onboarding-wizard-client";
 import type { PipelineStep } from "@/domain/entities/treatment";
+import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 
 type MediaItem = {
   id: string;
@@ -114,10 +115,10 @@ export default async function OnboardingWizardPage({
         channel: {
           provider: clinic.channelProvider ?? "z_api",
           zapiInstanceId: clinic.zapiInstanceId ?? "",
-          zapiToken: clinic.zapiToken ?? "",
-          zapiClientToken: clinic.zapiClientToken ?? "",
+          zapiToken: decryptCredentialNullable(clinic.zapiToken) ?? "",
+          zapiClientToken: decryptCredentialNullable(clinic.zapiClientToken) ?? "",
           metaPhoneNumberId: clinic.metaPhoneNumberId ?? "",
-          metaAccessToken: clinic.metaAccessToken ?? "",
+          metaAccessToken: decryptCredentialNullable(clinic.metaAccessToken) ?? "",
         },
         treatments: existingTreatments.map((t) => ({
           id: t.id,

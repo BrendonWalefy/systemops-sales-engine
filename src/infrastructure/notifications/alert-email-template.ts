@@ -15,6 +15,7 @@ const SOURCE_LABEL: Record<string, string> = {
   cron: "Cron / Automação",
   quality: "Qualidade",
   webhook: "Webhook / Entrada",
+  channel: "Canal / Saída",
 };
 
 function alertRow(alert: OperationalAlertReport["alerts"][number]): string {

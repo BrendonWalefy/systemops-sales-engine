@@ -11,6 +11,10 @@ export type ClinicHealthInput = {
   metaAccessToken?: string | null;
   hasActivePlaybook: boolean;
   latestMetricAt?: Date | null;
+  channelStatus?: {
+    status: "healthy" | "degraded" | "unknown";
+    detail: string | null;
+  } | null;
 };
 
 export type ClinicHealthIssue = {
@@ -61,6 +65,14 @@ export function evaluateClinicHealth(
 
       if (!hasCompleteChannelConfig(clinic)) {
         issues.push("credenciais de canal incompletas");
+      }
+
+      if (clinic.channelStatus?.status === "degraded") {
+        issues.push(
+          clinic.channelStatus.detail
+            ? `canal indisponível: ${clinic.channelStatus.detail}`
+            : "canal indisponível",
+        );
       }
 
       if (!clinic.hasActivePlaybook) {

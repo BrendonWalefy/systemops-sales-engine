@@ -8,6 +8,7 @@ import {
 } from "@/infrastructure/db/schema";
 import { evaluateClinicHealth } from "@/application/health/clinic-health";
 import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
+import { probeClinicChannelHealth } from "@/application/health/channel-health";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function GET() {
         channelProvider: clinics.channelProvider,
         zapiInstanceId: clinics.zapiInstanceId,
         zapiToken: clinics.zapiToken,
+        zapiClientToken: clinics.zapiClientToken,
         metaPhoneNumberId: clinics.metaPhoneNumberId,
         metaAccessToken: clinics.metaAccessToken,
       })
@@ -63,24 +65,27 @@ export async function GET() {
       }
     }
 
-    const report = evaluateClinicHealth(
-      activeClinics.map((clinic) => ({
+    const clinicsWithChannelStatus = await Promise.all(
+      activeClinics.map(async (clinic) => ({
         ...clinic,
+        channelStatus: await probeClinicChannelHealth(clinic),
         hasActivePlaybook: playbookClinicIds.has(clinic.clinicId),
         latestMetricAt: latestMetricMap.get(clinic.clinicId) ?? null,
       })),
+    );
+
+    const report = evaluateClinicHealth(
+      clinicsWithChannelStatus,
       new Date(),
     );
     const alertReport = evaluateOperationalAlerts(
-      activeClinics.map((clinic) => {
+      clinicsWithChannelStatus.map((clinic) => {
         const latestMetric = latestMetrics.find(
           (row) => row.clinicId === clinic.clinicId,
         );
 
         return {
           ...clinic,
-          hasActivePlaybook: playbookClinicIds.has(clinic.clinicId),
-          latestMetricAt: latestMetricMap.get(clinic.clinicId) ?? null,
           latestMetricData:
             latestMetric && typeof latestMetric.data === "object"
               ? (latestMetric.data as {
@@ -115,6 +120,12 @@ export async function GET() {
         activeAlerts: alertReport.alertCount,
         criticalAlerts: alertReport.criticalCount,
         warnAlerts: alertReport.warnCount,
+        channelStatuses: clinicsWithChannelStatus.map((clinic) => ({
+          clinicId: clinic.clinicId,
+          clinicName: clinic.clinicName,
+          status: clinic.channelStatus?.status ?? "unknown",
+          detail: clinic.channelStatus?.detail ?? null,
+        })),
         alerts: alertReport.alerts,
       },
       { status: overallStatus === "ok" ? 200 : 503 },

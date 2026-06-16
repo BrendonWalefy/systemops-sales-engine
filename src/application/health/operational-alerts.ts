@@ -19,7 +19,7 @@ export type ClinicOperationalAlertInput = ClinicHealthInput & {
 export type OperationalAlert = {
   clinicId: string;
   clinicName: string;
-  source: "configuration" | "cron" | "quality" | "webhook";
+  source: "configuration" | "cron" | "quality" | "webhook" | "channel";
   level: "warn" | "critical";
   title: string;
   detail: string;
@@ -107,6 +107,17 @@ export function evaluateOperationalAlerts(
         level: "critical",
         title: "Canal incompleto",
         detail: "Credenciais do canal de atendimento estão incompletas",
+      });
+    }
+
+    if (clinic.channelStatus?.status === "degraded") {
+      alerts.push({
+        clinicId: clinic.clinicId,
+        clinicName: clinic.clinicName,
+        source: "channel",
+        level: "critical",
+        title: "Canal indisponível",
+        detail: clinic.channelStatus.detail ?? "Falha ativa ao validar a conectividade do canal",
       });
     }
 

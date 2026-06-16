@@ -175,6 +175,11 @@ export async function sendZApiMediaMessage(
 // "pending"     → ainda na fila da Z-API — aguardar
 // "unsupported" → endpoint indisponível ou resposta irreconhecível — não insistir
 export type ZApiDeliveryStatus = "delivered" | "pending" | "unsupported";
+export type ZApiInstanceStatus = {
+  connected?: boolean;
+  smartphoneConnected?: boolean;
+  error?: string;
+};
 
 const ZAPI_DELIVERED_STATUSES = new Set(["SENT", "RECEIVED", "READ", "PLAYED", "DELIVERED", "VIEWED"]);
 const ZAPI_PENDING_STATUSES = new Set(["PENDING", "QUEUED", "WAITING", "PROCESSING"]);
@@ -208,6 +213,49 @@ export async function getZApiMessageDeliveryStatus(
     return "unsupported";
   } catch {
     return "unsupported";
+  }
+}
+
+export async function getZApiInstanceStatus(
+  creds: { instanceId: string; token: string; clientToken?: string },
+): Promise<ZApiInstanceStatus> {
+  const { instanceId, token } = creds;
+  const rawClientToken = creds.clientToken;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http") ? rawClientToken : undefined;
+  if (!instanceId || !token) {
+    return { connected: false, smartphoneConnected: false, error: "Missing instanceId or token" };
+  }
+
+  const headers: Record<string, string> = {};
+  if (clientToken) headers["Client-Token"] = clientToken;
+
+  try {
+    const response = await fetch(
+      `https://api.z-api.io/instances/${instanceId}/token/${token}/status`,
+      { method: "GET", headers, signal: AbortSignal.timeout(5_000) },
+    );
+
+    const text = await response.text();
+    if (!response.ok) {
+      return {
+        connected: false,
+        smartphoneConnected: false,
+        error: text || `HTTP ${response.status}`,
+      };
+    }
+
+    try {
+      const data = JSON.parse(text) as ZApiInstanceStatus;
+      return data;
+    } catch {
+      return { connected: false, smartphoneConnected: false, error: "Invalid Z-API status response" };
+    }
+  } catch (error) {
+    return {
+      connected: false,
+      smartphoneConnected: false,
+      error: error instanceof Error ? error.message : "Unknown Z-API status error",
+    };
   }
 }
 
