@@ -95,10 +95,18 @@ A lentidão no mobile vem de:
   - O toggle atua por dispositivo/navegador, sem afetar outros operadores.
 
 ### Pendência Extra — Agenda Polling
-- **Status**: `[ ]` Pendente
+- **Status**: `[x]` Concluído
 - **Problema**: `AgendaClient` ainda faz refresh periódico completo dos eventos/bloqueios
 - **Solução**: aplicar estratégia incremental semelhante à inbox ou migrar direto para SSE
 - **Arquivos**: `src/app/(clinic)/app/agenda/AgendaClient.tsx` e rotas relacionadas
+- **Implementado em**:
+  - `src/app/api/appointments/check/route.ts`
+  - `src/app/(clinic)/app/agenda/agenda-snapshot.ts`
+  - `src/app/(clinic)/app/agenda/AgendaClient.tsx`
+- **Notas**:
+  - Poll de 30s agora consulta `/api/appointments/check` (query leve, sem joins) e só refaz o fetch completo de eventos quando a assinatura mudar.
+  - Bloqueios saíram do poll periódico: só mudam por ação manual nesta própria tela (criação de bloqueio), que já dispara `refreshAll()` diretamente. IA/orquestrador nunca cria bloqueios.
+  - Poll pausa quando a aba está oculta (`document.hidden`).
 
 ### 2.3 — Skeleton Loading no Chat
 - **Status**: `[x]` Concluído
@@ -134,3 +142,4 @@ A lentidão no mobile vem de:
 | 2026-06-16 | 2.1 Service worker cache strategy | local | `public/sw.js` passou de push-only para app shell/runtime cache com fallback offline seguro para navegações. |
 | 2026-06-16 | 2.2 Push notifications UI | local | Settings agora mostra permissão, inscrição local e ações para ativar/desativar notificações neste dispositivo. |
 | 2026-06-16 | 2.3 Skeleton loading no chat | local | Adicionado `loading.tsx` da conversa com skeleton de header, mensagens e composer usando a classe global existente. |
+| 2026-06-16 | Pendência Extra — Agenda smart polling | local | Criado `/api/appointments/check` + assinatura leve de agendamentos; `AgendaClient` só refaz fetch completo quando a assinatura muda, e bloqueios saíram do poll periódico (só mudam por ação manual). |
