@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, FileText, Image as ImageIcon } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
+import { Play, FileText } from "lucide-react";
 
 type Msg = {
   id: string;
@@ -20,38 +20,52 @@ function formatTime(sentAt: Date | string): string {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
 }
 
+function getLocalDateStr(d: Date): string {
+  return d.toLocaleDateString("sv-SE", { timeZone: TZ }); // "YYYY-MM-DD"
+}
+
+function formatDateLabel(dateStr: string): string {
+  const now = new Date();
+  const today = getLocalDateStr(now);
+  const yesterday = getLocalDateStr(new Date(now.getTime() - 86_400_000));
+  if (dateStr === today) return "Hoje";
+  if (dateStr === yesterday) return "Ontem";
+
+  // parse at noon to avoid DST edge cases
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  }
+  return d.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function DateSeparator({ label }: { label: string }) {
+  return (
+    <div className="msg-date-separator">
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function VideoCard({ url, title }: { url: string; title?: string }) {
   const [expanded, setExpanded] = useState(false);
-
   if (expanded) {
     return (
       <div style={{ marginBottom: 6 }}>
-        <video
-          controls
-          autoPlay
-          src={url}
-          style={{ width: "100%", borderRadius: 10, display: "block", maxHeight: 220 }}
-        >
+        <video controls autoPlay src={url}
+          style={{ width: "100%", borderRadius: 10, display: "block", maxHeight: 220 }}>
           <track kind="captions" />
         </video>
       </div>
     );
   }
-
   return (
-    <button
-      className="msg-media-card"
+    <button className="msg-media-card"
       onClick={() => setExpanded(true)}
-      style={{ width: "100%", background: "none", border: "none", padding: 0, textAlign: "left" }}
-    >
+      style={{ width: "100%", background: "none", border: "none", padding: 0, textAlign: "left" }}>
       <div className="msg-media-thumb">
-        <video
-          src={`${url}#t=0.5`}
-          preload="metadata"
-          muted
-          playsInline
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        />
+        <video src={`${url}#t=0.5`} preload="metadata" muted playsInline
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         <div className="msg-media-thumb-overlay">
           <Play size={18} fill="white" color="white" />
         </div>
@@ -66,13 +80,8 @@ function VideoCard({ url, title }: { url: string; title?: string }) {
 
 function ImageCard({ url, title }: { url: string; title?: string }) {
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="msg-media-card"
-      style={{ display: "flex", textDecoration: "none" }}
-    >
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      className="msg-media-card" style={{ display: "flex", textDecoration: "none" }}>
       <div className="msg-media-thumb">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt={title || "imagem"} />
@@ -85,21 +94,10 @@ function ImageCard({ url, title }: { url: string; title?: string }) {
   );
 }
 
-function AudioPlayer({ url }: { url: string }) {
-  return (
-    <audio controls src={url} style={{ width: "100%", marginBottom: 4, display: "block" }} />
-  );
-}
-
 function DocumentLink({ url, title }: { url: string; title?: string }) {
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="msg-media-card"
-      style={{ display: "flex", textDecoration: "none" }}
-    >
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      className="msg-media-card" style={{ display: "flex", textDecoration: "none" }}>
       <div className="msg-media-thumb">
         <FileText size={20} color="rgba(255,255,255,0.7)" />
       </div>
@@ -115,7 +113,7 @@ function MediaPreview({ url, type, title }: { url?: string | null; type?: string
   if (!url || !type) return null;
   if (type === "video") return <VideoCard url={url} title={title} />;
   if (type === "image") return <ImageCard url={url} title={title} />;
-  if (type === "audio") return <AudioPlayer url={url} />;
+  if (type === "audio") return <audio controls src={url} style={{ width: "100%", marginBottom: 4, display: "block" }} />;
   if (type === "document") return <DocumentLink url={url} title={title} />;
   return null;
 }
@@ -123,6 +121,10 @@ function MediaPreview({ url, type, title }: { url?: string | null; type?: string
 function cleanBody(body: string): string {
   return body.replace(/\[(?:VÍDEO|VIDEO|FOTO|IMAGEM|IMAGE|MEDIA:[a-zA-Z0-9_-]+)\][^\n]*/gi, "").trim();
 }
+
+type ListItem =
+  | { kind: "separator"; dateStr: string }
+  | { kind: "message"; msg: Msg };
 
 interface Props {
   initialMessages: Msg[];
@@ -134,16 +136,26 @@ interface Props {
 export function ChatWindow({ initialMessages, conversationId, leadName, leadPhone }: Props) {
   const [messages, setMessages] = useState<Msg[]>(initialMessages);
   const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const latestMessageIdRef = useRef<string | null>(initialMessages.at(-1)?.id ?? null);
 
+  // Direct container scroll — mais confiável que scrollIntoView em layout fixed
   const scrollToBottom = useCallback((instant = false) => {
+    const el = containerRef.current;
+    if (!el) return;
     if (!isNearBottomRef.current && !instant) return;
-    bottomRef.current?.scrollIntoView({ behavior: instant ? "instant" : "smooth" });
+    if (instant) {
+      el.scrollTop = el.scrollHeight;
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, []);
 
-  useEffect(() => { scrollToBottom(true); }, [scrollToBottom]);
+  // useLayoutEffect garante scroll antes do paint — elimina o flash de topo
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []); // só na montagem
 
   useEffect(() => {
     const container = containerRef.current;
@@ -178,9 +190,9 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
         const data: { messages: Msg[] } = await res.json();
         if (data.messages.length === 0) return;
         setMessages((prev) => {
-          const knownIds = new Set(prev.map((msg) => msg.id));
-          const nextMessages = data.messages.filter((msg) => !knownIds.has(msg.id));
-          return nextMessages.length > 0 ? [...prev, ...nextMessages] : prev;
+          const knownIds = new Set(prev.map((m) => m.id));
+          const next = data.messages.filter((m) => !knownIds.has(m.id));
+          return next.length > 0 ? [...prev, ...next] : prev;
         });
       } catch {
         // ignore network errors between polls
@@ -202,6 +214,21 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
 
   const displayName = leadName ?? leadPhone ?? "Lead";
 
+  // Intercala separadores de data entre mensagens de dias diferentes
+  const listItems = useMemo<ListItem[]>(() => {
+    let lastDateStr: string | null = null;
+    const result: ListItem[] = [];
+    for (const msg of messages) {
+      const dateStr = getLocalDateStr(new Date(msg.sentAt));
+      if (dateStr !== lastDateStr) {
+        result.push({ kind: "separator", dateStr });
+        lastDateStr = dateStr;
+      }
+      result.push({ kind: "message", msg });
+    }
+    return result;
+  }, [messages]);
+
   return (
     <div ref={containerRef} className="conv-messages">
       <div className="chat-window" style={{ flex: 1, maxHeight: "none", minHeight: 0 }}>
@@ -211,7 +238,13 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
             <span>As mensagens desta conversa aparecerão aqui.</span>
           </div>
         )}
-        {messages.map((msg) => {
+
+        {listItems.map((item, i) => {
+          if (item.kind === "separator") {
+            return <DateSeparator key={`sep-${item.dateStr}`} label={formatDateLabel(item.dateStr)} />;
+          }
+
+          const { msg } = item;
           const isAgent = msg.author === "agent";
           const isOperator = msg.author === "clinic_user";
           const isRight = isAgent || isOperator;
@@ -229,27 +262,19 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
                     )}
                   </span>
                 )}
-                {isOperator && (
-                  <span className="agent-badge" style={{ color: "var(--cold)" }}>OP</span>
-                )}
+                {isOperator && <span className="agent-badge" style={{ color: "var(--cold)" }}>OP</span>}
                 {!isRight && <span className="lead-badge">{displayName}</span>}
                 <span className="message-time">{formatTime(msg.sentAt)}</span>
               </div>
 
               {hasMedia && (
-                <MediaPreview
-                  url={msg.mediaUrl}
-                  type={msg.mediaType}
-                  title={bodyText || undefined}
-                />
+                <MediaPreview url={msg.mediaUrl} type={msg.mediaType} title={bodyText || undefined} />
               )}
-
               {bodyText && !hasMedia && <p>{bodyText}</p>}
               {bodyText && hasMedia && msg.mediaType === "audio" && <p>{bodyText}</p>}
             </div>
           );
         })}
-        <div ref={bottomRef} />
       </div>
     </div>
   );
