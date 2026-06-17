@@ -7,8 +7,8 @@ import { appointments, clinics, conversations, leads, messages } from "@/infrast
 import { eq, asc, desc } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
-import { MessageInput } from "./MessageInput";
 import { ChatWindow } from "./ChatWindow";
+import { ConvComposer } from "./ConvComposer";
 import { ManualAppointmentForm } from "./ManualAppointmentForm";
 import { ConversationReadMarker } from "./ConversationReadMarker";
 import { tempLabel, statusLabel, channelLabel, avatarColor } from "../inbox-utils";
@@ -151,17 +151,19 @@ export default async function ConversationPage({
             leadPhone={lead.phone ?? null}
           />
 
-          {/* Ações rápidas — mobile only */}
-          <div className="conv-mobile-actions">
-            <ManualAppointmentForm
-              conversationId={conversationId}
-              defaultDurationMinutes={clinic?.defaultAppointmentDurationMinutes ?? 60}
-              timezone={clinic?.timezone ?? "America/Sao_Paulo"}
-            />
-          </div>
-
-          {/* Input do operador */}
-          <MessageInput conversationId={conversationId} />
+          <ConvComposer
+            conversationId={conversationId}
+            leadId={lead.id}
+            aiPaused={conv.aiPaused}
+            leadName={lead.name ?? null}
+            treatmentInterest={lead.treatmentInterest ?? null}
+            temperature={lead.temperature ?? null}
+            leadStatus={lead.status}
+            needsAttention={conv.needsAttention}
+            attentionReason={conv.attentionReason ?? null}
+            defaultDurationMinutes={clinic?.defaultAppointmentDurationMinutes ?? 60}
+            timezone={clinic?.timezone ?? "America/Sao_Paulo"}
+          />
         </div>
 
         {/* Painel lateral */}

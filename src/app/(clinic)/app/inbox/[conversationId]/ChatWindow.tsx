@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { Play, FileText, Image as ImageIcon } from "lucide-react";
 
 type Msg = {
   id: string;
@@ -19,41 +20,108 @@ function formatTime(sentAt: Date | string): string {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
 }
 
-function MediaPreview({ url, type }: { url?: string | null; type?: string | null }) {
-  if (!url || !type) return null;
+function VideoCard({ url, title }: { url: string; title?: string }) {
+  const [expanded, setExpanded] = useState(false);
 
-  if (type === "image") {
+  if (expanded) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginBottom: "4px" }}>
+      <div style={{ marginBottom: 6 }}>
+        <video
+          controls
+          autoPlay
+          src={url}
+          style={{ width: "100%", borderRadius: 10, display: "block", maxHeight: 220 }}
+        >
+          <track kind="captions" />
+        </video>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="msg-media-card"
+      onClick={() => setExpanded(true)}
+      style={{ width: "100%", background: "none", border: "none", padding: 0, textAlign: "left" }}
+    >
+      <div className="msg-media-thumb">
+        <video
+          src={`${url}#t=0.5`}
+          preload="metadata"
+          muted
+          playsInline
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+        <div className="msg-media-thumb-overlay">
+          <Play size={18} fill="white" color="white" />
+        </div>
+      </div>
+      <div className="msg-media-info">
+        <div className="msg-media-title">{title || "Vídeo"}</div>
+        <div className="msg-media-sub">Toque para assistir</div>
+      </div>
+    </button>
+  );
+}
+
+function ImageCard({ url, title }: { url: string; title?: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="msg-media-card"
+      style={{ display: "flex", textDecoration: "none" }}
+    >
+      <div className="msg-media-thumb">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt="imagem" style={{ maxWidth: "220px", maxHeight: "180px", borderRadius: "8px", display: "block", objectFit: "cover" }} />
-      </a>
-    );
-  }
+        <img src={url} alt={title || "imagem"} />
+      </div>
+      <div className="msg-media-info">
+        <div className="msg-media-title">{title || "Imagem"}</div>
+        <div className="msg-media-sub">Toque para ampliar</div>
+      </div>
+    </a>
+  );
+}
 
-  if (type === "video") {
-    return (
-      <video controls src={url} style={{ maxWidth: "280px", borderRadius: "8px", display: "block", marginBottom: "4px" }}>
-        <track kind="captions" />
-      </video>
-    );
-  }
+function AudioPlayer({ url }: { url: string }) {
+  return (
+    <audio controls src={url} style={{ width: "100%", marginBottom: 4, display: "block" }} />
+  );
+}
 
-  if (type === "audio") {
-    return (
-      <audio controls src={url} style={{ width: "220px", display: "block", marginBottom: "4px" }} />
-    );
-  }
+function DocumentLink({ url, title }: { url: string; title?: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="msg-media-card"
+      style={{ display: "flex", textDecoration: "none" }}
+    >
+      <div className="msg-media-thumb">
+        <FileText size={20} color="rgba(255,255,255,0.7)" />
+      </div>
+      <div className="msg-media-info">
+        <div className="msg-media-title">{title || "Documento"}</div>
+        <div className="msg-media-sub">Toque para abrir</div>
+      </div>
+    </a>
+  );
+}
 
-  if (type === "document") {
-    return (
-      <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#34d399", marginBottom: "4px" }}>
-        📎 Documento
-      </a>
-    );
-  }
-
+function MediaPreview({ url, type, title }: { url?: string | null; type?: string | null; title?: string }) {
+  if (!url || !type) return null;
+  if (type === "video") return <VideoCard url={url} title={title} />;
+  if (type === "image") return <ImageCard url={url} title={title} />;
+  if (type === "audio") return <AudioPlayer url={url} />;
+  if (type === "document") return <DocumentLink url={url} title={title} />;
   return null;
+}
+
+function cleanBody(body: string): string {
+  return body.replace(/\[(?:VÍDEO|VIDEO|FOTO|IMAGEM|IMAGE|MEDIA:[a-zA-Z0-9_-]+)\][^\n]*/gi, "").trim();
 }
 
 interface Props {
@@ -75,12 +143,8 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
     bottomRef.current?.scrollIntoView({ behavior: instant ? "instant" : "smooth" });
   }, []);
 
-  // Scroll to bottom on first render
-  useEffect(() => {
-    scrollToBottom(true);
-  }, [scrollToBottom]);
+  useEffect(() => { scrollToBottom(true); }, [scrollToBottom]);
 
-  // Track if user is near the bottom to decide whether to auto-scroll
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -92,7 +156,6 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
     return () => container.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Sync when server re-renders with more messages (e.g. after router.refresh())
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages((prev) =>
@@ -104,47 +167,35 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
     latestMessageIdRef.current = messages.at(-1)?.id ?? null;
   }, [messages]);
 
-  // Poll for new messages every 3 seconds
   useEffect(() => {
     const poll = async () => {
       try {
         const params = new URLSearchParams();
-        if (latestMessageIdRef.current) {
-          params.set("after", latestMessageIdRef.current);
-        }
-
+        if (latestMessageIdRef.current) params.set("after", latestMessageIdRef.current);
         const query = params.toString();
         const res = await fetch(`/api/conversations/${conversationId}/messages${query ? `?${query}` : ""}`);
         if (!res.ok) return;
         const data: { messages: Msg[] } = await res.json();
         if (data.messages.length === 0) return;
-
         setMessages((prev) => {
           const knownIds = new Set(prev.map((msg) => msg.id));
           const nextMessages = data.messages.filter((msg) => !knownIds.has(msg.id));
           return nextMessages.length > 0 ? [...prev, ...nextMessages] : prev;
         });
       } catch {
-        // silently ignore network errors between polls
+        // ignore network errors between polls
       }
     };
-
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [conversationId]);
 
-  // Auto-scroll when message count grows
-  useEffect(() => {
-    scrollToBottom(false);
-  }, [messages.length, scrollToBottom]);
+  useEffect(() => { scrollToBottom(false); }, [messages.length, scrollToBottom]);
 
-  // Scroll to bottom when keyboard opens/closes (visual viewport resize)
   useEffect(() => {
     const vp = window.visualViewport;
     if (!vp) return;
-    const onResize = () => {
-      if (isNearBottomRef.current) scrollToBottom(true);
-    };
+    const onResize = () => { if (isNearBottomRef.current) scrollToBottom(true); };
     vp.addEventListener("resize", onResize);
     return () => vp.removeEventListener("resize", onResize);
   }, [scrollToBottom]);
@@ -164,27 +215,37 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
           const isAgent = msg.author === "agent";
           const isOperator = msg.author === "clinic_user";
           const isRight = isAgent || isOperator;
+          const hasMedia = !!(msg.mediaUrl && msg.mediaType);
+          const bodyText = cleanBody(msg.body);
+
           return (
             <div key={msg.id} className={`chat-message ${isRight ? "agent" : "lead"}`}>
               <div className="message-meta">
                 {isAgent && (
-                  <span className="agent-badge" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    IA Recepcionista
+                  <span className="agent-badge">
+                    IA
                     {msg.deliveryFormat === "audio" && (
-                      <span title="Enviado como áudio" style={{ fontSize: 10, opacity: 0.75 }}>🔊</span>
+                      <span title="Enviado como áudio" style={{ fontSize: 10 }}>🔊</span>
                     )}
                   </span>
                 )}
                 {isOperator && (
-                  <span className="agent-badge" style={{ color: "var(--cold)" }}>
-                    Operador
-                  </span>
+                  <span className="agent-badge" style={{ color: "var(--cold)" }}>OP</span>
                 )}
                 {!isRight && <span className="lead-badge">{displayName}</span>}
                 <span className="message-time">{formatTime(msg.sentAt)}</span>
               </div>
-              <MediaPreview url={msg.mediaUrl} type={msg.mediaType} />
-              {msg.body && <p>{msg.body}</p>}
+
+              {hasMedia && (
+                <MediaPreview
+                  url={msg.mediaUrl}
+                  type={msg.mediaType}
+                  title={bodyText || undefined}
+                />
+              )}
+
+              {bodyText && !hasMedia && <p>{bodyText}</p>}
+              {bodyText && hasMedia && msg.mediaType === "audio" && <p>{bodyText}</p>}
             </div>
           );
         })}
