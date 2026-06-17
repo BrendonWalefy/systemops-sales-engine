@@ -299,6 +299,11 @@ export function ConvComposer({
           placeholder="Responder como operador…"
           rows={1}
           disabled={isSending}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="sentences"
+          spellCheck={false}
+          enterKeyHint="send"
         />
         <button
           className="conv-send-btn"

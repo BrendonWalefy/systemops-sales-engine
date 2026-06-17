@@ -4700,19 +4700,25 @@ textarea:focus {
   }
 
   /*
-   * conv-root fixed ao viewport: elimina o gap de timing do iOS Safari.
-   * position:fixed é relativo ao viewport — não depende de JS para ajustar
-   * quando o teclado abre. --keyboard-height empurra o bottom para cima
-   * do teclado como fallback explícito para iOS mais antigo.
+   * conv-root ocupa a tela inteira até o bottom: 0.
+   * O teclado sobrepõe a parte inferior — sem gap preto porque o background
+   * de conv-root preenche essa área. O deslocamento do composer é feito via
+   * padding-bottom em .conv-composer, não movendo o próprio root.
    */
   .conv-root {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    bottom: var(--keyboard-height, 0px);
+    bottom: 0;
     height: auto;
     overflow: hidden;
+    background: var(--surface);
+  }
+
+  /* Compositor empurra seu conteúdo acima do teclado */
+  .conv-composer {
+    padding-bottom: var(--keyboard-height, 0px);
   }
 
   .conv-header {
@@ -4771,25 +4777,8 @@ textarea:focus {
   }
 
   /* Ações rápidas do operador — apenas no mobile */
-  .conv-mobile-actions {
-    display: block;
-    flex-shrink: 0;
-    padding: 10px 14px;
-    border-top: 1px solid var(--line);
-    background: var(--surface);
-  }
-
-  /* Input do operador respeita home indicator do iPhone */
-  .conv-message-input {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
-
   .conv-messages {
     padding: 12px;
-  }
-
-  .conv-message-input textarea {
-    font-size: 16px;
   }
 
   /* Inbox */
@@ -5306,6 +5295,8 @@ textarea:focus {
   align-items: flex-end;
   gap: 8px;
   padding: 8px 14px;
+  /* safe-area-inset-bottom quando teclado fechado (home indicator);
+     quando teclado aberto, --keyboard-height no conv-composer já faz o trabalho */
   padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
 
