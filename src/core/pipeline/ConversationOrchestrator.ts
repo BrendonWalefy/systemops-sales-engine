@@ -442,6 +442,41 @@ export function resolveInformationalTreatmentTarget(params: {
   );
 }
 
+// Infere o tratamento em discussão a partir da última mensagem do agente.
+// Usado para enriquecer o clinicContext do compose() quando a mensagem atual não
+// menciona explicitamente nenhum tratamento (ex: "pode ser os vídeos", "quanto fica?").
+// NÃO deve ser usada para iniciar pipeline — apenas para fornecer contexto editorial.
+export function inferTreatmentContextFromHistory(params: {
+  message: string;
+  treatments: Treatment[];
+  lastAgentMessage: string | null;
+}): Treatment | null {
+  if (!params.lastAgentMessage) return null;
+
+  const normalized = normalizeFreeText(params.message);
+  if (!normalized) return null;
+
+  // Mensagens longas provavelmente introduzem novo tópico — não inferir
+  if (normalized.split(/\s+/).length > 6) return null;
+
+  // Solicitações com handlers próprios no Orchestrator — não inferir aqui
+  if (
+    isSchedulingRequestText(normalized) ||
+    isPriceRequestText(normalized) ||
+    isLocationRequestText(normalized) ||
+    isProcedureCatalogRequestText(normalized)
+  ) {
+    return null;
+  }
+
+  // Busca keyword de tratamento na última mensagem do agente
+  return matchTreatmentByNormalizedMessage(
+    normalizeFreeText(params.lastAgentMessage),
+    params.treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+}
+
 export function resolveSchedulingTreatmentTarget(params: {
   message: string;
   treatments: Treatment[];
@@ -2239,8 +2274,24 @@ export class ConversationOrchestrator {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
         } else {
-          // Fallback: contexto mínimo — commercialPolicy já está no system prompt via buildSystemPrompt
-          clinicContext = `${clinic.name} — ${clinic.specialty}.`;
+          // Mensagem sem tratamento explícito — tenta inferir tratamento em discussão
+          // da última mensagem do agente (ex: "pode ser os vídeos" após explicação de lentes).
+          // Não inicia pipeline; só enriquece o contexto do compose() com instruções de mídia.
+          const contextualTreatment = inferTreatmentContextFromHistory({
+            message: messageText,
+            treatments: clinicTreatments,
+            lastAgentMessage: lastAgentMessage?.body ?? null,
+          });
+          if (contextualTreatment) {
+            log.info("tratamento inferido do histórico para contexto LLM", {
+              treatmentId: contextualTreatment.id,
+              treatmentName: contextualTreatment.name,
+            });
+            clinicContext = buildDirectTreatmentContext(contextualTreatment, editorial?.commercialPolicy ?? null, experience);
+          } else {
+            // Fallback: contexto mínimo — commercialPolicy já está no system prompt via buildSystemPrompt
+            clinicContext = `${clinic.name} — ${clinic.specialty}.`;
+          }
         }
         if (!triggerPartsOverride) {
           replyText = await compose({ type: "general_question", clinicContext });

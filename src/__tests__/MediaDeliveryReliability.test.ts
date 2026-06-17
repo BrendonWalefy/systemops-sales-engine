@@ -14,6 +14,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseIntoParts } from "@/core/intelligence/ResponseComposer";
+import { inferTreatmentContextFromHistory } from "@/core/pipeline/ConversationOrchestrator";
+import type { Treatment } from "@/domain/entities/treatment";
 import {
   OutboundDeliveryService,
   type OutboundPart,
@@ -291,5 +293,103 @@ describe("Bug D — OutboundDeliveryService: retry transparente em falha de míd
 
     // Todas as 50 entregas devem completar sem exceção
     expect(results).toHaveLength(50);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug E — compose() sem contexto de tratamento quando lead faz follow-up
+// "pode ser os vídeos" após agente ter explicado lentes de resina composta.
+// inferTreatmentContextFromHistory garante contexto correto para o LLM.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const makeTreatment = (overrides: Partial<Treatment> = {}): Treatment => ({
+  id: "lentes-id",
+  clinicId: "clinic-1",
+  name: "Lentes de resina composta",
+  description: "Técnica de restauração estética.",
+  isAesthetic: true,
+  requiresEvaluationFirst: false,
+  keywordMatchEnabled: true,
+  aliases: ["lentes", "resina"],
+  commonObjections: [],
+  pipelineSteps: null,
+  triggerTemplate: null,
+  durationMinutes: 60,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+});
+
+describe("Bug E — inferTreatmentContextFromHistory: continuidade de contexto no LLM path", () => {
+  const treatments = [makeTreatment()];
+
+  it("infere lentes quando agente falou sobre lentes e lead faz follow-up curto", () => {
+    const result = inferTreatmentContextFromHistory({
+      message: "pode ser os vídeos",
+      treatments,
+      lastAgentMessage:
+        "✅ Trabalhamos com duas técnicas de lentes de resina composta: Simplificada e Estratificada. Qual prefere saber mais?",
+    });
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("retorna null quando mensagem tem mais de 6 palavras (provavelmente novo tópico)", () => {
+    const result = inferTreatmentContextFromHistory({
+      message: "quero saber sobre implante dentário para minha mãe",
+      treatments,
+      lastAgentMessage: "Trabalhamos com lentes de resina composta.",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("retorna null quando lastAgentMessage é null", () => {
+    const result = inferTreatmentContextFromHistory({
+      message: "pode mandar",
+      treatments,
+      lastAgentMessage: null,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("retorna null quando agente não mencionou nenhum tratamento cadastrado", () => {
+    const result = inferTreatmentContextFromHistory({
+      message: "sim",
+      treatments,
+      lastAgentMessage: "Olá! Em que posso ajudar hoje?",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("retorna null para solicitações de agendamento mesmo com follow-up curto", () => {
+    const result = inferTreatmentContextFromHistory({
+      message: "quero agendar",
+      treatments,
+      lastAgentMessage: "Trabalhamos com lentes de resina composta.",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("infere tratamento de mensagem de agente longa (explicação detalhada)", () => {
+    const longAgentMessage =
+      "Ótima escolha! As lentes de resina composta são uma excelente opção estética. " +
+      "Temos duas técnicas: a Simplificada (resultados em 1 sessão) e a Estratificada " +
+      "(múltiplas camadas para máximo realismo). Qual técnica você gostaria de conhecer melhor?";
+    const result = inferTreatmentContextFromHistory({
+      message: "pode ser os dois",
+      treatments,
+      lastAgentMessage: longAgentMessage,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe("lentes-id");
+  });
+
+  it("retorna null para pergunta de preço (handler específico no Orchestrator)", () => {
+    const result = inferTreatmentContextFromHistory({
+      message: "quanto custa",
+      treatments,
+      lastAgentMessage: "Trabalhamos com lentes de resina composta.",
+    });
+    expect(result).toBeNull();
   });
 });
