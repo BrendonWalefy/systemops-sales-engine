@@ -17,10 +17,192 @@ import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactId
 import { selectOneFollowUpPerLead } from "@/application/use-cases/leads/follow-up-dispatch-policy";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import type { FollowUp } from "@/domain/entities/follow-up";
 
 export const dynamic = "force-dynamic";
 
+// Max concurrent follow-up sends per clinic. Keeps Z-API happy and Vercel
+// function slots from exhausting. When migrating to Inngest, remove this and
+// let Inngest handle concurrency via its `concurrency` step config instead.
+const DISPATCH_CONCURRENCY = 5;
+
+// Per-send timeout. Prevents one slow Z-API call from blocking the whole batch.
+// Must be well below the Vercel function maxDuration (60s).
+const SEND_TIMEOUT_MS = 25_000;
+
 type ClinicResult = { clinicId: string; dispatched: number; failed: number; total: number };
+type FollowUpOutcome = "dispatched" | "failed" | "skipped";
+
+function createConcurrencyLimiter(max: number) {
+  let running = 0;
+  const queue: Array<() => void> = [];
+
+  return async function limit<T>(fn: () => Promise<T>): Promise<T> {
+    if (running >= max) {
+      await new Promise<void>((res) => queue.push(res));
+    }
+    running++;
+    try {
+      return await fn();
+    } finally {
+      running--;
+      queue.shift()?.();
+    }
+  };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`[FollowUpDispatcher] timeout after ${ms}ms: ${label}`)), ms),
+    ),
+  ]);
+}
+
+type DispatchDeps = {
+  followUpRepository: DrizzleFollowUpRepository;
+  leadRepository: DrizzleLeadRepository;
+  appointmentRepository: DrizzleAppointmentRepository;
+  composer: ResponseComposer;
+  clinic: typeof clinics.$inferSelect;
+  editorial: Awaited<ReturnType<typeof resolveActiveEditorialConfig>>;
+  defaultChannelConfig: ReturnType<typeof resolveChannelConfig>;
+  timezone: ClinicTimezone;
+  now: Date;
+  // deferred: used to cancel stale video follow-ups for the same lead after dispatch
+  deferred: FollowUp[];
+};
+
+// Isolated unit of work per follow-up. Extracted so Inngest can call it directly
+// as a step function when the time comes — dispatcher becomes a fan-out trigger,
+// this function becomes the per-message handler.
+async function processOneFollowUp(
+  followUp: FollowUp,
+  deps: DispatchDeps,
+): Promise<FollowUpOutcome> {
+  const {
+    followUpRepository,
+    leadRepository,
+    appointmentRepository,
+    composer,
+    clinic,
+    editorial,
+    defaultChannelConfig,
+    timezone,
+    now,
+    deferred,
+  } = deps;
+
+  // Claim-before-send: atomic pending → sending. Guards against duplicate cron runs.
+  const claimed = await followUpRepository.claimForSending(followUp.id);
+  if (!claimed) return "skipped";
+
+  const lead = await leadRepository.findById(followUp.leadId);
+  if (!lead) {
+    await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+    return "skipped";
+  }
+
+  const channelAddress = resolveWhatsAppChannelAddress({
+    phone: lead.phone,
+    whatsappLid: lead.whatsappLid,
+  });
+  if (!channelAddress) {
+    await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+    return "skipped";
+  }
+
+  // Don't re-engage a lead that already has a future appointment.
+  const upcomingAppt = await appointmentRepository.findActiveByLeadId(followUp.leadId);
+  if (upcomingAppt && upcomingAppt.startsAt > now) {
+    await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+    console.log(
+      `[FollowUpDispatcher] follow-up ${followUp.id} cancelado — lead tem consulta em ${upcomingAppt.startsAt.toISOString()}`,
+    );
+    return "skipped";
+  }
+
+  const isVideoFollowUp = followUp.reason.startsWith("video_sent:");
+  const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;
+
+  let actionResult: Parameters<typeof composer.compose>[0]["actionResult"];
+
+  if (isVideoFollowUp && videoTitle) {
+    actionResult = { type: "video_sent_followup", videoTitle };
+  } else {
+    const lastAppointment = await appointmentRepository.findByLeadId(followUp.leadId);
+    const lastAppointmentLabel = lastAppointment
+      ? new Intl.DateTimeFormat("pt-BR", {
+          timeZone: clinic.timezone,
+          weekday: "short",
+          day: "2-digit",
+          month: "2-digit",
+        }).format(lastAppointment.startsAt)
+      : "consulta anterior";
+    actionResult = { type: "reengagement", lastAppointmentLabel };
+  }
+
+  const composed = await composer.compose({
+    actionResult,
+    conversationHistory: [],
+    clinic: {
+      name: clinic.name,
+      specialty: editorial?.specialty ?? clinic.specialty,
+      toneOfVoice: editorial?.toneOfVoice ?? null,
+      playbook: editorial?.playbookText ?? null,
+      commercialPolicy: editorial?.commercialPolicy ?? null,
+      receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+    },
+    leadName: lead.name,
+    timezone,
+    isFirstMessage: true,
+  });
+
+  const zapiMessageId = await withTimeout(
+    sendTextMessage(channelAddress, composed.text, defaultChannelConfig),
+    SEND_TIMEOUT_MS,
+    `follow-up ${followUp.id} lead=${lead.phone}`,
+  );
+
+  // Persist the outbound message so the Z-API echo is recognised as already
+  // processed and does not re-trigger the Orchestrator.
+  const [conv] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.leadId, followUp.leadId))
+    .limit(1);
+  if (conv) {
+    await db
+      .insert(messages)
+      .values({
+        id: randomUUID(),
+        conversationId: conv.id,
+        author: "agent",
+        body: composed.text,
+        sentAt: now,
+        externalId: zapiMessageId ?? null,
+        intent: "reengagement" as const,
+        deliveryFormat: "text",
+      })
+      .onConflictDoNothing();
+  }
+
+  await followUpRepository.save({ ...followUp, status: "done", completedAt: now, updatedAt: now });
+  await leadRepository.save({ ...lead, status: "in_conversation", updatedAt: now });
+
+  // Cancel stale video follow-ups for this same lead that were deferred.
+  const staleVideoFollowUps = deferred.filter(
+    (d) => d.leadId === followUp.leadId && d.reason.startsWith("video_sent:"),
+  );
+  await Promise.allSettled(
+    staleVideoFollowUps.map((d) =>
+      followUpRepository.save({ ...d, status: "cancelled", updatedAt: now }),
+    ),
+  );
+
+  return "dispatched";
+}
 
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
@@ -41,130 +223,47 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
 
   const now = new Date();
 
-  // Recupera follow-ups presos em "sending" por um run anterior que morreu
-  // (crash entre o claim e a conclusão). 30min de margem evita colidir com
-  // um run lento ainda em andamento.
   const staleCutoff = new Date(now.getTime() - 30 * 60_000);
   const recovered = await followUpRepository.recoverStaleSending({ clinicId, olderThan: staleCutoff });
   if (recovered > 0) {
-    console.warn(`[FollowUpDispatcher] ${recovered} follow-up(s) recuperado(s) de "sending" stale (clinic=${clinicId})`);
+    console.warn(
+      `[FollowUpDispatcher] ${recovered} follow-up(s) recuperado(s) de "sending" stale (clinic=${clinicId})`,
+    );
   }
 
   const dueFollowUps = await followUpRepository.listDue({ clinicId, now });
   const dispatchPlan = selectOneFollowUpPerLead(dueFollowUps);
 
+  const deps: DispatchDeps = {
+    followUpRepository,
+    leadRepository,
+    appointmentRepository,
+    composer,
+    clinic,
+    editorial,
+    defaultChannelConfig,
+    timezone,
+    now,
+    deferred: dispatchPlan.deferred,
+  };
+
+  const limit = createConcurrencyLimiter(DISPATCH_CONCURRENCY);
+
+  const results = await Promise.allSettled(
+    dispatchPlan.selected.map((followUp) =>
+      limit(() => processOneFollowUp(followUp, deps)).catch((err) => {
+        console.error("[FollowUpDispatcher] Failed for follow-up:", followUp.id, err);
+        return "failed" as FollowUpOutcome;
+      }),
+    ),
+  );
+
   let dispatched = 0;
   let failed = 0;
-
-  for (const followUp of dispatchPlan.selected) {
-    try {
-      // Claim-before-send: transição atômica pending → sending. Se outro run
-      // (cron duplicado, redeploy) já reivindicou, pular — evita mensagem dupla.
-      const claimed = await followUpRepository.claimForSending(followUp.id);
-      if (!claimed) continue;
-
-      const lead = await leadRepository.findById(followUp.leadId);
-      if (!lead) {
-        await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
-        continue;
-      }
-      const channelAddress = resolveWhatsAppChannelAddress({
-        phone: lead.phone,
-        whatsappLid: lead.whatsappLid,
-      });
-      if (!channelAddress) {
-        await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
-        continue;
-      }
-      const channelConfig = defaultChannelConfig;
-
-      // Não disparar follow-up se o lead já tem consulta futura agendada.
-      const upcomingAppt = await appointmentRepository.findActiveByLeadId(followUp.leadId);
-      if (upcomingAppt && upcomingAppt.startsAt > now) {
-        await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
-        console.log(`[FollowUpDispatcher] follow-up ${followUp.id} cancelado — lead tem consulta em ${upcomingAppt.startsAt.toISOString()}`);
-        continue;
-      }
-
-      const isVideoFollowUp = followUp.reason.startsWith("video_sent:");
-      const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;
-
-      let actionResult: Parameters<typeof composer.compose>[0]["actionResult"];
-
-      if (isVideoFollowUp && videoTitle) {
-        actionResult = { type: "video_sent_followup", videoTitle };
-      } else {
-        const lastAppointment = await appointmentRepository.findByLeadId(followUp.leadId);
-        const lastAppointmentLabel = lastAppointment
-          ? new Intl.DateTimeFormat("pt-BR", {
-              timeZone: clinic.timezone,
-              weekday: "short",
-              day: "2-digit",
-              month: "2-digit",
-            }).format(lastAppointment.startsAt)
-          : "consulta anterior";
-        actionResult = { type: "reengagement", lastAppointmentLabel };
-      }
-
-      const composed = await composer.compose({
-        actionResult,
-        conversationHistory: [],
-        clinic: {
-          name: clinic.name,
-          specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? null,
-          playbook: editorial?.playbookText ?? null,
-          commercialPolicy: editorial?.commercialPolicy ?? null,
-          receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-        },
-        leadName: lead.name,
-        timezone,
-        isFirstMessage: true,
-      });
-
-      const zapiMessageId = await sendTextMessage(channelAddress, composed.text, channelConfig);
-
-      // Salva a mensagem enviada como "agent" para que o echo Z-API (fromMe ou não)
-      // seja reconhecido como já processado e não dispare o Orchestrator novamente.
-      const [conv] = await db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(eq(conversations.leadId, followUp.leadId))
-        .limit(1);
-      if (conv) {
-        await db.insert(messages).values({
-          id: randomUUID(),
-          conversationId: conv.id,
-          author: "agent",
-          body: composed.text,
-          sentAt: now,
-          externalId: zapiMessageId ?? null,
-          intent: "reengagement" as const,
-          deliveryFormat: "text",
-        }).onConflictDoNothing();
-      }
-
-      await followUpRepository.save({ ...followUp, status: "done", completedAt: now, updatedAt: now });
-      await leadRepository.save({ ...lead, status: "in_conversation", updatedAt: now });
-
-      const duplicateVideoFollowUps = dispatchPlan.deferred.filter(
-        (deferredFollowUp) =>
-          deferredFollowUp.leadId === followUp.leadId &&
-          deferredFollowUp.reason.startsWith("video_sent:"),
-      );
-      for (const duplicateVideoFollowUp of duplicateVideoFollowUps) {
-        await followUpRepository.save({
-          ...duplicateVideoFollowUp,
-          status: "cancelled",
-          updatedAt: now,
-        });
-      }
-
-      dispatched++;
-    } catch (err) {
-      console.error("[FollowUpDispatcher] Failed for follow-up:", followUp.id, err);
-      failed++;
-    }
+  for (const r of results) {
+    const outcome = r.status === "fulfilled" ? r.value : "failed";
+    if (outcome === "dispatched") dispatched++;
+    else if (outcome === "failed") failed++;
   }
 
   return { clinicId, dispatched, failed, total: dueFollowUps.length };
@@ -174,12 +273,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireCronAuthorization(request);
   if (unauthorized) return unauthorized;
 
-  // Roda para todas as clínicas cadastradas.
   const clinicIds = await listAllClinicIds();
+
+  // Clinics are independent — run in parallel.
+  const settled = await Promise.allSettled(clinicIds.map((id) => processClinic(id)));
+
   const results: ClinicResult[] = [];
-  for (const id of clinicIds) {
-    const r = await processClinic(id);
-    if (r) results.push(r);
+  for (const r of settled) {
+    if (r.status === "fulfilled" && r.value) results.push(r.value);
+    else if (r.status === "rejected")
+      console.error("[FollowUpDispatcher] processClinic failed:", r.reason);
   }
 
   const dispatched = results.reduce((a, r) => a + r.dispatched, 0);
