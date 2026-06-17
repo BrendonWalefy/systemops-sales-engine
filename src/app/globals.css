@@ -4731,9 +4731,11 @@ textarea:focus {
     background: #111113;
   }
 
-  /* Compositor empurra seu conteúdo acima do teclado */
+  /* Compositor empurra conteúdo acima do teclado.
+     max() garante que safe-area-inset-bottom (home indicator iPhone) seja
+     respeitado quando teclado estiver fechado, sem criar barra extra visível. */
   .conv-composer {
-    padding-bottom: var(--keyboard-height, 0px);
+    padding-bottom: max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px));
   }
 
   .conv-header {
@@ -5309,10 +5311,7 @@ textarea:focus {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 8px 14px;
-  /* safe-area-inset-bottom quando teclado fechado (home indicator);
-     quando teclado aberto, --keyboard-height no conv-composer já faz o trabalho */
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  padding: 8px 14px 10px;
 }
 
 .conv-input-row textarea {
@@ -5324,7 +5323,7 @@ textarea:focus {
   border-radius: 10px;
   padding: 9px 13px;
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px; /* 16px previne zoom automático do iOS ao focar */
   line-height: 1.45;
   outline: none;
   transition: border-color 120ms ease;
