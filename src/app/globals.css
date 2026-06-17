@@ -3670,6 +3670,18 @@ textarea:focus {
   overscroll-behavior: contain;
   touch-action: pan-y;
   padding: 24px;
+  /* Gradiente premium: azul marinho → preto com brilho teal no topo + granulado sutil */
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 100% 40% at 50% 0%, rgba(16, 185, 129, 0.09) 0%, transparent 100%),
+    linear-gradient(180deg, #0d1b28 0%, #090f1a 45%, #060c12 100%);
+  background-size: 200px 200px, 100% 100%, 100% 100%;
+  background-repeat: repeat, no-repeat, no-repeat;
+}
+
+/* Remove background from chat-window so the conv-messages gradient shows through */
+.conv-messages .chat-window {
+  background: transparent;
 }
 
 /* Ações rápidas da conversa — ocultas no desktop, visíveis no mobile via media query */
