@@ -2283,10 +2283,7 @@ export class ConversationOrchestrator {
             lastAgentMessage: lastAgentMessage?.body ?? null,
           });
           if (contextualTreatment) {
-            log.info("tratamento inferido do histórico para contexto LLM", {
-              treatmentId: contextualTreatment.id,
-              treatmentName: contextualTreatment.name,
-            });
+            console.log(`[Orchestrator] Tratamento inferido do histórico para contexto LLM: "${contextualTreatment.name}" (${contextualTreatment.id})`);
             clinicContext = buildDirectTreatmentContext(contextualTreatment, editorial?.commercialPolicy ?? null, experience);
           } else {
             // Fallback: contexto mínimo — commercialPolicy já está no system prompt via buildSystemPrompt

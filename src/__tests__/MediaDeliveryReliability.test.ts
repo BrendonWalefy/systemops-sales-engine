@@ -12,7 +12,7 @@
 //
 //   Bug D: sendZApiMediaMessage não tentava retry em erros 5xx transientes.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { parseIntoParts } from "@/core/intelligence/ResponseComposer";
 import { inferTreatmentContextFromHistory } from "@/core/pipeline/ConversationOrchestrator";
 import type { Treatment } from "@/domain/entities/treatment";
