@@ -123,6 +123,12 @@ const ZAPI_MEDIA_BODY_KEY: Record<string, string> = {
   document: "document",
 };
 
+// Erros 5xx ou de rede são transientes — vale 1 retry com backoff curto.
+// Erros 4xx (payload inválido, credenciais, URL inacessível) são permanentes — não retentar.
+function isTransientZApiError(status: number): boolean {
+  return status >= 500 || status === 429;
+}
+
 export async function sendZApiMediaMessage(
   phone: string,
   mediaUrl: string,
@@ -148,22 +154,41 @@ export async function sendZApiMediaMessage(
   if (caption) payload.caption = caption;
   if (mediaType === "document" && caption) payload.fileName = caption;
 
-  const response = await fetch(
-    `https://api.z-api.io/instances/${instanceId}/token/${token}/${endpoint}`,
-    { method: "POST", headers, body: JSON.stringify(payload) },
-  );
+  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/${endpoint}`;
+  const requestBody = JSON.stringify(payload);
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Z-API send-${mediaType} failed (${response.status}): ${error}`);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1_500));
+
+    let response: Response;
+    try {
+      response = await fetch(url, { method: "POST", headers, body: requestBody });
+    } catch (networkErr) {
+      lastError = networkErr instanceof Error ? networkErr : new Error(String(networkErr));
+      console.warn(`[ZApi] send-${mediaType} erro de rede (tentativa ${attempt + 1}/2):`, lastError.message);
+      continue;
+    }
+
+    if (!response.ok) {
+      const error = await response.text();
+      if (!isTransientZApiError(response.status)) {
+        throw new Error(`Z-API send-${mediaType} failed (${response.status}): ${error}`);
+      }
+      lastError = new Error(`Z-API send-${mediaType} failed (${response.status}): ${error}`);
+      console.warn(`[ZApi] send-${mediaType} erro transiente ${response.status} (tentativa ${attempt + 1}/2) — retentando`);
+      continue;
+    }
+
+    try {
+      const data = await response.json() as { messageId?: string; zaapId?: string };
+      return data.messageId ?? data.zaapId ?? null;
+    } catch {
+      return null;
+    }
   }
 
-  try {
-    const data = await response.json() as { messageId?: string; zaapId?: string };
-    return data.messageId ?? data.zaapId ?? null;
-  } catch {
-    return null;
-  }
+  throw lastError ?? new Error(`Z-API send-${mediaType} falhou após 2 tentativas`);
 }
 
 // Status de entrega de uma mensagem já aceita pela Z-API.

@@ -101,9 +101,16 @@ export function parseIntoParts(raw: string): ResponsePart[] {
   return parts;
 }
 
+// Remove artefatos literais gerados pelo LLM quando confunde o formato da biblioteca
+// de mídia com o tag de referência. Ex: "[VÍDEO] Lentes – ..." → stripped.
+// Defesa de profundidade: o formato do system prompt já usa [MEDIA:id] diretamente,
+// mas este cleanup garante que nenhum texto malformado chegue ao lead.
+const MEDIA_LABEL_ARTIFACT_RE = /\[(?:VÍDEO|VIDEO|FOTO|IMAGEM|IMAGE)\][^\[\]\n]*/gi;
+
 function normalizeTextReplyContent(content: string): string {
   return content
     .replace(/\r\n/g, "\n")
+    .replace(MEDIA_LABEL_ARTIFACT_RE, "")
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n")
@@ -278,8 +285,8 @@ ${clinic.commercialPolicy ? `\nPOLÍTICA COMERCIAL:\n<dados_da_clinica>\n${fence
 ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n<dados_da_clinica>\n${fenceClinicContent(clinic.playbook)}\n</dados_da_clinica>` : ""}
 ${clinic.mediaLibrary && clinic.mediaLibrary.length > 0 ? `
 BIBLIOTECA DE MÍDIA DISPONÍVEL PARA ENVIAR AO LEAD:
-${clinic.mediaLibrary.map((m) => `• [${m.type === "video" ? "VÍDEO" : "FOTO"}] id="${m.id}" — ${m.title}`).join("\n")}
-REGRA OBRIGATÓRIA DE MÍDIA: Você tem capacidade de enviar vídeos e imagens diretamente ao lead usando [MEDIA:id] — NÃO diga que vai "avisar a equipe" ou que o material "será enviado em breve". Posicione cada [MEDIA:id] EXATAMENTE onde as ORIENTAÇÕES DA CLÍNICA indicarem. Se o playbook mostrar um exemplo de formato com [MEDIA:id] intercalado no texto, reproduza esse formato com precisão — não agrupe todas as tags no final.` : ""}
+${clinic.mediaLibrary.map((m) => `• [MEDIA:${m.id}] (${m.type === "video" ? "vídeo" : "imagem"}) — ${m.title}`).join("\n")}
+REGRA OBRIGATÓRIA DE MÍDIA: Para enviar um arquivo ao lead, insira o token [MEDIA:id] exatamente como aparece na lista acima — NÃO escreva o título separadamente, NÃO diga "vou enviar" ou "será enviado em breve", NÃO invente IDs. O token [MEDIA:id] é o próprio arquivo; ao inseri-lo a plataforma envia o vídeo/imagem automaticamente. Posicione-o EXATAMENTE onde as ORIENTAÇÕES DA CLÍNICA indicarem. Se o playbook mostrar formato com [MEDIA:id] intercalado, reproduza com precisão.` : ""}
 ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}
@@ -291,7 +298,7 @@ Esta resposta será convertida em áudio e enviada pelo WhatsApp. Siga rigorosam
 3. Para horários disponíveis: mencione em linguagem natural, não em lista ("temos segunda às catorze horas e terça às nove da manhã, qual fica melhor?").
 4. Português brasileiro natural — fale como uma pessoa real, sem linguagem de call center.
 5. Sem emojis. Sem asteriscos. Sem markdown de nenhum tipo.
-6. Quando houver vídeos relevantes na biblioteca, inclua todos os [MEDIA:id] aplicáveis ao final — cada vídeo será enviado separadamente após o áudio.` : ""}`;
+6. Quando houver vídeos relevantes na biblioteca, inclua o token [MEDIA:id] ao final (ex: "[MEDIA:abc123]") — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.` : ""}`;
 }
 
 export function buildActionContext(

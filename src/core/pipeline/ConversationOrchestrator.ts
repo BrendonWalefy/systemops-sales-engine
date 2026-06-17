@@ -775,13 +775,16 @@ async function sendReply(
 }
 
 // Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
-// produzindo partes prontas para entrega. IDs ausentes são logados e pulados.
+// produzindo partes prontas para entrega. IDs ausentes são logados como erro crítico
+// (vídeo perdido silenciosamente é pior do que log ruidoso) e pulados.
 function resolveOutboundParts(
   parts: ResponsePart[],
   mediaLibrary: { id: string; title: string; type: "video" | "image"; url: string }[] | undefined,
   log: Logger,
 ): OutboundPart[] {
   const out: OutboundPart[] = [];
+  const libraryIds = mediaLibrary?.map((m) => m.id) ?? [];
+
   for (const part of parts) {
     if (part.type === "text") {
       out.push({ type: "text", content: part.content });
@@ -789,7 +792,22 @@ function resolveOutboundParts(
     }
     const item = mediaLibrary?.find((m) => m.id === part.id);
     if (!item) {
-      log.warn("mediaId não encontrado na biblioteca", { mediaId: part.id });
+      // Erro crítico: o vídeo era esperado mas será silenciosamente omitido ao lead.
+      // Causas comuns: (1) pipeline step com mediaId de versão antiga do playbook,
+      // (2) vídeo re-uploadado com novo ID sem re-seeded o pipeline,
+      // (3) LLM gerou ID inventado.
+      log.error("mediaId não encontrado na biblioteca — vídeo será omitido ao lead", {
+        mediaId: part.id,
+        libraryIds,
+        librarySize: libraryIds.length,
+      });
+      continue;
+    }
+    if (!item.url) {
+      log.error("item da biblioteca sem URL — vídeo será omitido ao lead", {
+        mediaId: item.id,
+        title: item.title,
+      });
       continue;
     }
     out.push({
