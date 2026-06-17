@@ -11,6 +11,7 @@ import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clin
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import OpenAI from "openai";
 
 export const dynamic = "force-dynamic";
@@ -238,10 +239,8 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = requireCronAuthorization(request);
+  if (unauthorized) return unauthorized;
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const clinicIds = await listAllClinicIds();

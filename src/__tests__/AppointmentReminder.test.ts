@@ -161,23 +161,3 @@ describe("AppointmentReminder — janela de tempo", () => {
     expect(durationHours).toBe(12);
   });
 });
-
-// ─── Tests: cron auth (pure function) ──────────────────────────────────────
-
-function checkCronAuth(authHeader: string | null, cronSecret: string | undefined): boolean {
-  return authHeader === `Bearer ${cronSecret}`;
-}
-
-describe("AppointmentReminder cron route — autenticação", () => {
-  it("Authorization header correto → autorizado", () => {
-    expect(checkCronAuth("Bearer secret", "secret")).toBe(true);
-  });
-
-  it("Authorization header incorreto → não autorizado", () => {
-    expect(checkCronAuth("Bearer wrong", "secret")).toBe(false);
-  });
-
-  it("Authorization header ausente → não autorizado", () => {
-    expect(checkCronAuth(null, "secret")).toBe(false);
-  });
-});

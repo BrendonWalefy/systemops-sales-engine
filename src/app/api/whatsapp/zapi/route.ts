@@ -40,11 +40,16 @@ async function resolveWebhookClinic(
   return resolveClinicByZapiInstance(body.instanceId);
 }
 
-// Registra mensagem do operador enviada direto pelo celular (fromMe: true) e pausa a IA.
-async function handleOperatorMessageFromPhone(
+type OperatorOutbound =
+  | { kind: "text"; body: string }
+  | { kind: "media"; body: string; mediaUrl: string; mediaType: "image" | "video" | "document" };
+
+// Persiste mensagem do operador (texto ou mídia) e pausa a IA com TTL.
+async function saveOperatorOutbound(
   body: ZApiInboundPayload,
   convId: string,
   ttlHours: number,
+  msg: OperatorOutbound,
 ): Promise<void> {
   const now = new Date();
 
@@ -52,7 +57,8 @@ async function handleOperatorMessageFromPhone(
     id: randomUUID(),
     conversationId: convId,
     author: "clinic_user",
-    body: body.text!.message,
+    body: msg.body,
+    ...(msg.kind === "media" ? { mediaUrl: msg.mediaUrl, mediaType: msg.mediaType } : {}),
     sentAt: body.momment ? new Date(body.momment) : now,
     externalId: body.messageId,
   });
@@ -74,7 +80,7 @@ async function handleOperatorMessageFromPhone(
     .where(eq(conversations.id, convId));
 
   console.log(
-    `[ZApi] Operador enviou mensagem pelo celular (conv=${convId}) — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`,
+    `[ZApi] Operador enviou ${msg.kind} pelo celular (conv=${convId}) — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`,
   );
 }
 
@@ -153,13 +159,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Mensagem enviada pela instância Z-API (fromMe: true)
-  // Pode ser: (a) echo da IA enviando via API ou (b) operador digitando no celular
+  // Pode ser: (a) echo da IA enviando via API ou (b) operador enviando do celular (texto ou mídia)
   if (body.fromMe) {
-    // Sem texto → mídia, sticker, reação — ignora
-    if (!body.text?.message) return new NextResponse("OK", { status: 200 });
+    // Áudio fromMe (TTS/voz da IA ou áudio do operador) → ignora (não persiste echo de áudio)
+    if (body.audio?.audioUrl && !body.text?.message) return new NextResponse("OK", { status: 200 });
+
+    // Sticker, reação, ou payload sem conteúdo reconhecível → ignora
+    const hasText = Boolean(body.text?.message);
+    const hasMedia =
+      Boolean(body.video?.videoUrl) ||
+      Boolean(body.image?.imageUrl) ||
+      Boolean(body.document?.documentUrl);
+
+    if (!hasText && !hasMedia) return new NextResponse("OK", { status: 200 });
 
     try {
-      // 1ª verificação: messageId já está no banco → echo já registrado → ignora
+      // 1ª verificação: messageId já registrado → echo ou mensagem duplicada → ignora
       const [existing] = await db
         .select({ id: messages.id })
         .from(messages)
@@ -195,38 +210,73 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
 
       const conv = { id: match.conversation.id };
+      const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
 
-      // 2ª verificação (race condition): echo da IA chegou antes do Orchestrator salvar.
-      // Filtrado pela conversa específica para evitar falsos positivos com textos idênticos
-      // em conversas de outros leads (ex: dois leads recebem "Olá!" em <10s).
-      const tenSecondsAgo = new Date(Date.now() - 10_000);
-      const [recentAgent] = await db
-        .select({ id: messages.id, externalId: messages.externalId })
-        .from(messages)
-        .where(
-          and(
-            eq(messages.conversationId, conv.id),
-            eq(messages.author, "agent"),
-            eq(messages.body, body.text.message),
-            gte(messages.sentAt, tenSecondsAgo),
-          ),
-        )
-        .limit(1);
+      // Mensagem de texto fromMe: verifica se é echo da IA ou operador digitando
+      if (hasText) {
+        // 2ª verificação (race condition): echo da IA chegou antes do Orchestrator salvar.
+        // Filtrado pela conversa específica para evitar falsos positivos.
+        const tenSecondsAgo = new Date(Date.now() - 10_000);
+        const [recentAgent] = await db
+          .select({ id: messages.id, externalId: messages.externalId })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, conv.id),
+              eq(messages.author, "agent"),
+              eq(messages.body, body.text!.message),
+              gte(messages.sentAt, tenSecondsAgo),
+            ),
+          )
+          .limit(1);
 
-      if (recentAgent) {
-        // Atualiza o externalId do agente se ainda não foi preenchido (race condition)
-        if (!recentAgent.externalId) {
-          await db
-            .update(messages)
-            .set({ externalId: body.messageId })
-            .where(eq(messages.id, recentAgent.id));
+        if (recentAgent) {
+          if (!recentAgent.externalId) {
+            await db
+              .update(messages)
+              .set({ externalId: body.messageId })
+              .where(eq(messages.id, recentAgent.id));
+          }
+          return new NextResponse("OK", { status: 200 });
         }
+
+        // Nenhuma verificação bateu → operador enviando texto do celular
+        await saveOperatorOutbound(body, conv.id, ttlHours, {
+          kind: "text",
+          body: body.text!.message,
+        });
         return new NextResponse("OK", { status: 200 });
       }
 
-      // Nenhuma verificação bateu → é o operador enviando do celular
-      const ttlHours = clinicRow?.takeoverTtlHours ?? 4;
-      await handleOperatorMessageFromPhone(body, conv.id, ttlHours);
+      // Mídia fromMe (vídeo, imagem, documento) → sempre é do operador, nunca echo da IA
+      // (a IA envia mídia por URL direta na Z-API, não gera payload fromMe de mídia)
+      let operatorMedia: OperatorOutbound | null = null;
+      if (body.video?.videoUrl) {
+        operatorMedia = {
+          kind: "media",
+          body: body.video.caption?.trim() || "[vídeo enviado pelo operador]",
+          mediaUrl: body.video.videoUrl,
+          mediaType: "video",
+        };
+      } else if (body.image?.imageUrl) {
+        operatorMedia = {
+          kind: "media",
+          body: body.image.caption?.trim() || "[imagem enviada pelo operador]",
+          mediaUrl: body.image.imageUrl,
+          mediaType: "image",
+        };
+      } else if (body.document?.documentUrl) {
+        operatorMedia = {
+          kind: "media",
+          body: `[documento] ${body.document.fileName ?? "arquivo"}`,
+          mediaUrl: body.document.documentUrl,
+          mediaType: "document",
+        };
+      }
+
+      if (operatorMedia) {
+        await saveOperatorOutbound(body, conv.id, ttlHours, operatorMedia);
+      }
     } catch (err) {
       console.error("[ZApi] Erro ao processar mensagem fromMe:", err);
     }

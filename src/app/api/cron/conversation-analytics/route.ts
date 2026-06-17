@@ -13,14 +13,13 @@ import {
 import { db } from "@/infrastructure/db/client";
 import { clinics, clinicMetrics } from "@/infrastructure/db/schema";
 import { MetricsAggregator } from "@/core/intelligence/MetricsAggregator";
+import { requireCronAuthorization } from "@/app/api/cron/_auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("authorization")?.replace("Bearer ", "");
-  if (secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const unauthorized = requireCronAuthorization(req);
+  if (unauthorized) return unauthorized;
 
   const activeClinics = await db
     .select({ id: clinics.id, name: clinics.name })

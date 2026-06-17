@@ -42,14 +42,18 @@ type Deps = {
   pollIntervalMs: number;
 };
 
+// deliveryTimeoutMs: quanto tempo esperar a Z-API confirmar saída da fila de mídia.
+// 30s era excessivo — com 50 leads concorrentes cada webhook ficava pendurado 30s,
+// esgotando slots de função do Vercel e gerando timeout em cascata.
+// 15s é suficiente para a maioria das conexões; em timeout o log avisa e continua.
 const DEFAULT_DEPS: Deps = {
   sendMedia: sendMediaMessage,
   getDeliveryStatus: getZApiMessageDeliveryStatus,
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   now: () => Date.now(),
   minGapMs: 1_200,
-  deliveryTimeoutMs: 30_000,
-  pollIntervalMs: 2_000,
+  deliveryTimeoutMs: 15_000,
+  pollIntervalMs: 2_500,
 };
 
 export class OutboundDeliveryService {

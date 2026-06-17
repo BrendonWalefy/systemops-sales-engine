@@ -442,6 +442,41 @@ export function resolveInformationalTreatmentTarget(params: {
   );
 }
 
+// Infere o tratamento em discussão a partir da última mensagem do agente.
+// Usado para enriquecer o clinicContext do compose() quando a mensagem atual não
+// menciona explicitamente nenhum tratamento (ex: "pode ser os vídeos", "quanto fica?").
+// NÃO deve ser usada para iniciar pipeline — apenas para fornecer contexto editorial.
+export function inferTreatmentContextFromHistory(params: {
+  message: string;
+  treatments: Treatment[];
+  lastAgentMessage: string | null;
+}): Treatment | null {
+  if (!params.lastAgentMessage) return null;
+
+  const normalized = normalizeFreeText(params.message);
+  if (!normalized) return null;
+
+  // Mensagens longas provavelmente introduzem novo tópico — não inferir
+  if (normalized.split(/\s+/).length > 6) return null;
+
+  // Solicitações com handlers próprios no Orchestrator — não inferir aqui
+  if (
+    isSchedulingRequestText(normalized) ||
+    isPriceRequestText(normalized) ||
+    isLocationRequestText(normalized) ||
+    isProcedureCatalogRequestText(normalized)
+  ) {
+    return null;
+  }
+
+  // Busca keyword de tratamento na última mensagem do agente
+  return matchTreatmentByNormalizedMessage(
+    normalizeFreeText(params.lastAgentMessage),
+    params.treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+}
+
 export function resolveSchedulingTreatmentTarget(params: {
   message: string;
   treatments: Treatment[];
@@ -775,13 +810,16 @@ async function sendReply(
 }
 
 // Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
-// produzindo partes prontas para entrega. IDs ausentes são logados e pulados.
+// produzindo partes prontas para entrega. IDs ausentes são logados como erro crítico
+// (vídeo perdido silenciosamente é pior do que log ruidoso) e pulados.
 function resolveOutboundParts(
   parts: ResponsePart[],
   mediaLibrary: { id: string; title: string; type: "video" | "image"; url: string }[] | undefined,
   log: Logger,
 ): OutboundPart[] {
   const out: OutboundPart[] = [];
+  const libraryIds = mediaLibrary?.map((m) => m.id) ?? [];
+
   for (const part of parts) {
     if (part.type === "text") {
       out.push({ type: "text", content: part.content });
@@ -789,7 +827,22 @@ function resolveOutboundParts(
     }
     const item = mediaLibrary?.find((m) => m.id === part.id);
     if (!item) {
-      log.warn("mediaId não encontrado na biblioteca", { mediaId: part.id });
+      // Erro crítico: o vídeo era esperado mas será silenciosamente omitido ao lead.
+      // Causas comuns: (1) pipeline step com mediaId de versão antiga do playbook,
+      // (2) vídeo re-uploadado com novo ID sem re-seeded o pipeline,
+      // (3) LLM gerou ID inventado.
+      log.error("mediaId não encontrado na biblioteca — vídeo será omitido ao lead", {
+        mediaId: part.id,
+        libraryIds,
+        librarySize: libraryIds.length,
+      });
+      continue;
+    }
+    if (!item.url) {
+      log.error("item da biblioteca sem URL — vídeo será omitido ao lead", {
+        mediaId: item.id,
+        title: item.title,
+      });
       continue;
     }
     out.push({
@@ -2221,8 +2274,24 @@ export class ConversationOrchestrator {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
         } else {
-          // Fallback: contexto mínimo — commercialPolicy já está no system prompt via buildSystemPrompt
-          clinicContext = `${clinic.name} — ${clinic.specialty}.`;
+          // Mensagem sem tratamento explícito — tenta inferir tratamento em discussão
+          // da última mensagem do agente (ex: "pode ser os vídeos" após explicação de lentes).
+          // Não inicia pipeline; só enriquece o contexto do compose() com instruções de mídia.
+          const contextualTreatment = inferTreatmentContextFromHistory({
+            message: messageText,
+            treatments: clinicTreatments,
+            lastAgentMessage: lastAgentMessage?.body ?? null,
+          });
+          if (contextualTreatment) {
+            log.info("tratamento inferido do histórico para contexto LLM", {
+              treatmentId: contextualTreatment.id,
+              treatmentName: contextualTreatment.name,
+            });
+            clinicContext = buildDirectTreatmentContext(contextualTreatment, editorial?.commercialPolicy ?? null, experience);
+          } else {
+            // Fallback: contexto mínimo — commercialPolicy já está no system prompt via buildSystemPrompt
+            clinicContext = `${clinic.name} — ${clinic.specialty}.`;
+          }
         }
         if (!triggerPartsOverride) {
           replyText = await compose({ type: "general_question", clinicContext });
