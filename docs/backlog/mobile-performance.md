@@ -3,7 +3,7 @@
 > **Branch**: `feat/mobile-performance-optimization`
 > **Criado**: 2026-06-16
 > **Objetivo**: Eliminar lentidão no mobile, melhorar experiência PWA
-> **Status**: 🟡 Em progresso
+> **Status**: ✅ Completo (2026-06-16)
 
 ## Diagnóstico
 
@@ -95,10 +95,18 @@ A lentidão no mobile vem de:
   - O toggle atua por dispositivo/navegador, sem afetar outros operadores.
 
 ### Pendência Extra — Agenda Polling
-- **Status**: `[ ]` Pendente
+- **Status**: `[x]` Concluído
 - **Problema**: `AgendaClient` ainda faz refresh periódico completo dos eventos/bloqueios
 - **Solução**: aplicar estratégia incremental semelhante à inbox ou migrar direto para SSE
 - **Arquivos**: `src/app/(clinic)/app/agenda/AgendaClient.tsx` e rotas relacionadas
+- **Implementado em**:
+  - `src/app/api/appointments/check/route.ts`
+  - `src/app/(clinic)/app/agenda/agenda-snapshot.ts`
+  - `src/app/(clinic)/app/agenda/AgendaClient.tsx`
+- **Notas**:
+  - Poll de 30s agora consulta `/api/appointments/check` (query leve, sem joins) e só refaz o fetch completo de eventos quando a assinatura mudar.
+  - Bloqueios saíram do poll periódico: só mudam por ação manual nesta própria tela (criação de bloqueio), que já dispara `refreshAll()` diretamente. IA/orquestrador nunca cria bloqueios.
+  - Poll pausa quando a aba está oculta (`document.hidden`).
 
 ### 2.3 — Skeleton Loading no Chat
 - **Status**: `[x]` Concluído
@@ -110,15 +118,24 @@ A lentidão no mobile vem de:
 
 ---
 
-## Fase 3: Real-time (futuro)
+## Fase 3: Real-time
 
 ### 3.1 — Endpoint SSE
-- **Status**: `[ ]` Pendente
+- **Status**: `[x]` Concluído
 - **Solução**: `/api/events/stream` com Server-Sent Events
+- **Arquivo**: `src/app/api/events/stream/route.ts`
+- **Notas**:
+  - Stream único cobrindo inbox + agenda (janela fixa de -7/+90 dias), tick de 4s, auto-fechamento em 270s (margem segura sob o limite de função do Vercel) com reconexão transparente do `EventSource`.
+  - Reaproveita os builders de assinatura já existentes (`get-inbox-snapshot-signature.ts`, `get-agenda-snapshot-signature.ts`) — sem duplicar query.
 
 ### 3.2 — Substituir Polling por SSE
-- **Status**: `[ ]` Pendente
+- **Status**: `[x]` Concluído
 - **Depende de**: 3.1
+- **Arquivos**: `src/components/realtime-events-provider.tsx`, `src/app/(clinic)/layout.tsx`, `InboxPoller.tsx`, `AgendaClient.tsx`
+- **Notas**:
+  - Conexão única montada no layout compartilhado (`RealtimeEventsProvider`); Inbox e Agenda consomem via `useRealtimeEvents()`.
+  - Fallback automático (poll a cada 15s/30s) se a conexão cair; fecha o stream quando a aba fica oculta para não manter o Neon acordado sem necessidade.
+  - Validado em produção (Vercel): headers corretos (`text/event-stream`, sem buffering), push real sem F5, ciclo de auto-reconexão observado no Network (3 gerações de conexão, todas `200 eventsource`).
 
 ---
 
@@ -134,3 +151,5 @@ A lentidão no mobile vem de:
 | 2026-06-16 | 2.1 Service worker cache strategy | local | `public/sw.js` passou de push-only para app shell/runtime cache com fallback offline seguro para navegações. |
 | 2026-06-16 | 2.2 Push notifications UI | local | Settings agora mostra permissão, inscrição local e ações para ativar/desativar notificações neste dispositivo. |
 | 2026-06-16 | 2.3 Skeleton loading no chat | local | Adicionado `loading.tsx` da conversa com skeleton de header, mensagens e composer usando a classe global existente. |
+| 2026-06-16 | Pendência Extra — Agenda smart polling | local | Criado `/api/appointments/check` + assinatura leve de agendamentos; `AgendaClient` só refaz fetch completo quando a assinatura muda, e bloqueios saíram do poll periódico (só mudam por ação manual). |
+| 2026-06-16 | 3.1+3.2 SSE real-time (inbox+agenda) | 3994a57 | `RealtimeEventsProvider` com stream único no layout; fallback automático e fechamento ao ocultar aba; validado em produção (Vercel) com Network mostrando ciclo de reconexão e push real sem F5. |

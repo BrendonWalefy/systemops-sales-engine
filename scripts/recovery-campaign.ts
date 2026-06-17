@@ -9,24 +9,16 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { conversations, messages } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
-import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
-import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import OpenAI from "openai";
-import { readFileSync } from "fs";
 
 const DRY_RUN = !process.argv.includes("--send");
 if (DRY_RUN) console.log("DRY-RUN: nenhuma mensagem será enviada. Use --send para enviar.\n");
-
-const env = readFileSync(new URL("../.env.local", import.meta.url).pathname, "utf-8");
-const dbUrlMatch = env.match(/DATABASE_URL="([^"]+)"/);
-if (!dbUrlMatch) throw new Error("DATABASE_URL não encontrado em .env.local");
-const dbUrl = dbUrlMatch[1];;
 
 // 1. Buscar clínica Ximendes
 const clinic = await db.query.clinics.findFirst({
@@ -38,7 +30,6 @@ const clinicId = clinic.id;
 const editorial = await resolveActiveEditorialConfig(clinicId);
 const channelConfig = resolveChannelConfig(clinic);
 const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? "Marina";
-const timezone = new ClinicTimezone(clinic.timezone);
 const now = new Date();
 
 // 2. Leads elegíveis: takeover expirado OU IA ativa mas sem resposta por 2h

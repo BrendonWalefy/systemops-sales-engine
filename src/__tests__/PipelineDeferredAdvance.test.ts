@@ -170,9 +170,6 @@ describe("Pipeline — garantia de ordenação: avanço ocorre estritamente apó
   it("eventos: [decisão] → [envio blocos] → [avanço de estado] — nesta ordem", () => {
     const eventLog: string[] = [];
 
-    const steps = LENTES_PIPELINE;
-    const initialState: ConversationState = { pipelineStepIndex: 0 };
-
     // Simulate the orchestrator flow with event recording
     let pendingAdvance: (() => void) | null = null;
 

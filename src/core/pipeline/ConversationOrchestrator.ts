@@ -44,7 +44,7 @@ import { resolveActiveEditorialConfig } from "@/application/config/editorial-con
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
-import type { FormattedSlot, TreatmentPipelinePayload } from "@/core/conversation/ConversationStateMachine";
+import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";

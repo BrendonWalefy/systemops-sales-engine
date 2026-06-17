@@ -167,6 +167,7 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
           aria-label="Abrir menu"
         >
           {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica do Vercel Blob, sem domain configurado em next.config; thumbnail pequeno, não afeta LCP
             <img
               src={avatarUrl}
               alt="Avatar"
@@ -214,6 +215,7 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
           <div className="mobile-sheet-avatar-wrap">
             <div className="mobile-sheet-avatar-img">
               {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica do Vercel Blob, sem domain configurado em next.config; thumbnail pequeno, não afeta LCP
                 <img
                   src={avatarUrl}
                   alt="Avatar"

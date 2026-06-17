@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Ban,
   Calendar,
@@ -16,6 +16,7 @@ import { BlockModal } from "./BlockModal";
 import { AppointmentDrawer } from "./AppointmentDrawer";
 import { AgendaSidebar } from "./AgendaSidebar";
 import { AgendaStatsHeader } from "./AgendaStatsHeader";
+import { useRealtimeEvents } from "@/components/realtime-events-provider";
 import type { AppointmentEvent, BlockEvent, Professional } from "./types";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 
@@ -151,11 +152,39 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew, t
     }
   }, [resourceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Polling: agenda atualiza automaticamente quando IA agenda/cancela via WhatsApp
+  // Tempo real: agenda atualiza automaticamente quando IA agenda/cancela via WhatsApp.
+  // A assinatura vem do SSE compartilhado (layout); só refaz o fetch completo
+  // de eventos quando ela mudar. Bloqueios ficam fora pois só mudam por ação
+  // manual nesta própria tela (refreshAll cobre isso via onCreated/onUpdated).
+  const { agendaSignature, connected } = useRealtimeEvents();
+  const agendaSignatureRef = useRef<string | null>(null);
+
   useEffect(() => {
-    const id = setInterval(() => refreshAll(), 30_000);
+    agendaSignatureRef.current = null;
+  }, [range]);
+
+  useEffect(() => {
+    if (!agendaSignature) return;
+    if (agendaSignatureRef.current === null) {
+      agendaSignatureRef.current = agendaSignature;
+      return;
+    }
+    if (agendaSignature !== agendaSignatureRef.current) {
+      agendaSignatureRef.current = agendaSignature;
+      fetchEvents(range.from, range.to);
+    }
+  }, [agendaSignature, range, fetchEvents]);
+
+  // Fallback: se a conexão SSE cair, volta a checar periodicamente até reconectar.
+  useEffect(() => {
+    if (connected) return;
+
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      fetchEvents(range.from, range.to);
+    }, 30_000);
     return () => clearInterval(id);
-  }, [refreshAll]);
+  }, [connected, range, fetchEvents]);
 
   async function handleEventUpdate(id: string, startsAt: string, endsAt: string) {
     const [date, time] = startsAt.split(" ");

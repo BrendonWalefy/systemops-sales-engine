@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { eq, and, count } from "drizzle-orm";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { PushNotificationSetup } from "@/components/push-notification-setup";
+import { RealtimeEventsProvider } from "@/components/realtime-events-provider";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { db } from "@/infrastructure/db/client";
 import { clinicMembers, conversations } from "@/infrastructure/db/schema";
@@ -38,10 +39,12 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
   }
 
   return (
-    <div className="clinic-layout">
-      <SidebarNav email={session?.email} avatarUrl={avatarUrl} inboxBadge={inboxBadge} />
-      <main style={{ minWidth: 0, overflowX: "hidden" }}>{children}</main>
-      <PushNotificationSetup />
-    </div>
+    <RealtimeEventsProvider>
+      <div className="clinic-layout">
+        <SidebarNav email={session?.email} avatarUrl={avatarUrl} inboxBadge={inboxBadge} />
+        <main style={{ minWidth: 0, overflowX: "hidden" }}>{children}</main>
+        <PushNotificationSetup />
+      </div>
+    </RealtimeEventsProvider>
   );
 }
