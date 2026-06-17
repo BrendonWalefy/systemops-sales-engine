@@ -4714,28 +4714,17 @@ textarea:focus {
   }
 
   /*
-   * conv-root ocupa a tela inteira até o bottom: 0.
-   * O teclado sobrepõe a parte inferior — sem gap preto porque o background
-   * de conv-root preenche essa área. O deslocamento do composer é feito via
-   * padding-bottom em .conv-composer, não movendo o próprio root.
+   * Abordagem original: conv-root encolhe quando o teclado abre.
+   * --keyboard-height é atualizado via visualViewport.resize em ViewportHeightFix.
    */
   .conv-root {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: var(--keyboard-height, 0px);
     height: auto;
     overflow: hidden;
-    /* Cor sólida elimina transparência que causava o gap preto */
-    background: #111113;
-  }
-
-  /* Compositor empurra conteúdo acima do teclado.
-     max() garante que safe-area-inset-bottom (home indicator iPhone) seja
-     respeitado quando teclado estiver fechado, sem criar barra extra visível. */
-  .conv-composer {
-    padding-bottom: max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px));
   }
 
   .conv-header {
@@ -5311,7 +5300,8 @@ textarea:focus {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 8px 14px 10px;
+  padding: 8px 14px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
 }
 
 .conv-input-row textarea {
