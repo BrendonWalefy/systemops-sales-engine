@@ -6,14 +6,13 @@ import { probeClinicChannelHealth } from "@/application/health/channel-health";
 import type { OperationalAlertReport } from "@/application/health/operational-alerts";
 import { buildAlertDigestEmail } from "@/infrastructure/notifications/alert-email-template";
 import { sendEmail } from "@/infrastructure/notifications/email-sender";
+import { requireCronAuthorization } from "@/app/api/cron/_auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("authorization")?.replace("Bearer ", "");
-  if (secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const unauthorized = requireCronAuthorization(req);
+  if (unauthorized) return unauthorized;
 
   const ownerEmail = process.env.OWNER_EMAIL;
   if (!ownerEmail) {

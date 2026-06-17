@@ -6,6 +6,7 @@ import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google
 import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
+import { requireCronAuthorization } from "@/app/api/cron/_auth";
 
 export const dynamic = "force-dynamic";
 
@@ -52,10 +53,8 @@ async function renewForClinic(
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = requireCronAuthorization(request);
+  if (unauthorized) return unauthorized;
 
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??

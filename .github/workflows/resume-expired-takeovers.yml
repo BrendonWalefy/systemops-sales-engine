@@ -9,8 +9,10 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Call endpoint
-        run: |
-          curl -sf -X GET https://systemops-core.vercel.app/api/cron/resume-expired-takeovers \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            | jq .
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: bash scripts/call-cron-endpoint.sh https://systemops-core.vercel.app/api/cron/resume-expired-takeovers
