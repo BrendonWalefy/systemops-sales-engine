@@ -28,7 +28,7 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
       alt={displayName}
       className={className}
       style={{ objectFit: "cover", borderColor: accentColor, cursor: "pointer", ...style }}
-      onClick={() => setOpen(true)}
+      onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(true); }}
     />
   ) : (
     <div
@@ -59,10 +59,11 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
             alt={displayName}
             onClick={(e) => e.stopPropagation()}
             style={{
-              maxWidth: "min(420px, 90vw)",
-              maxHeight: "90vh",
-              borderRadius: 12,
-              boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+              width: "min(320px, 80vw)",
+              height: "min(320px, 80vw)",
+              borderRadius: "50%",
+              objectFit: "cover",
+              boxShadow: "0 0 0 4px rgba(16,185,129,0.25), 0 24px 80px rgba(0,0,0,0.6)",
               animation: "scaleIn 0.18s ease",
             }}
           />
