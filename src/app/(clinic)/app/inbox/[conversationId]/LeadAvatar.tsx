@@ -50,17 +50,8 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
 
       {open && (
         <div
+          className="lead-photo-lightbox"
           onClick={() => setOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "rgba(0,0,0,0.88)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            animation: "fadeIn 0.15s ease",
-          }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
