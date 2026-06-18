@@ -2787,6 +2787,75 @@ textarea:focus {
   margin-top: 4px;
 }
 
+/* ─── Video Card (chat bubble) ──────────────────────────────── */
+
+.msg-video-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  margin-bottom: 6px;
+}
+
+.msg-video-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: rgba(0,0,0,0.4);
+  overflow: hidden;
+}
+
+.msg-video-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.28);
+}
+
+.msg-video-play-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  border: 2px solid rgba(255,255,255,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 3px;
+}
+
+.msg-video-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px 10px;
+}
+
+.msg-video-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+}
+
+.msg-video-sub {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+}
+
 /* ─── Typing Indicator ───────────────────────────────────────── */
 
 .typing-indicator {

@@ -7,6 +7,7 @@ import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recov
 import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
 import { tempKey, tempLabel, avatarColor, relativeTime } from "./inbox-utils";
+import { LeadAvatar } from "./[conversationId]/LeadAvatar";
 
 export type ConvRow = {
   convId: string;
@@ -435,31 +436,13 @@ function InboxCard({
         </div>
 
         <div className="inbox-card-v2-body">
-          {row.leadProfilePicUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={row.leadProfilePicUrl}
-              alt={displayName}
-              className="avatar-v2"
-              style={{ objectFit: "cover", borderColor: accentColor }}
-              onError={(e) => {
-                const el = e.currentTarget as HTMLImageElement;
-                el.style.display = "none";
-                el.nextElementSibling?.removeAttribute("style");
-              }}
-            />
-          ) : null}
-          <div
+          <LeadAvatar
+            profilePicUrl={row.leadProfilePicUrl}
+            displayName={displayName}
+            initial={initial}
+            accentColor={accentColor}
             className="avatar-v2"
-            style={{
-              display: row.leadProfilePicUrl ? "none" : undefined,
-              background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
-              borderColor: accentColor,
-              color: accentColor,
-            }}
-          >
-            {initial}
-          </div>
+          />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
