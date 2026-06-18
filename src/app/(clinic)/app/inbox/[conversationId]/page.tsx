@@ -12,6 +12,7 @@ import { ConvComposer } from "./ConvComposer";
 import { ManualAppointmentForm } from "./ManualAppointmentForm";
 import { ConversationReadMarker } from "./ConversationReadMarker";
 import { tempLabel, statusLabel, channelLabel, avatarColor } from "../inbox-utils";
+import { LeadAvatar } from "./LeadAvatar";
 
 const TZ = "America/Sao_Paulo";
 
@@ -79,26 +80,13 @@ export default async function ConversationPage({
           <ArrowLeft size={18} />
         </Link>
 
-        {lead.profilePicUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={lead.profilePicUrl}
-            alt={displayName}
-            className="conv-header-avatar"
-            style={{ objectFit: "cover", borderColor: accentColor }}
-          />
-        ) : (
-          <div
-            className="conv-header-avatar"
-            style={{
-              background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
-              borderColor: accentColor,
-              color: accentColor,
-            }}
-          >
-            {initial}
-          </div>
-        )}
+        <LeadAvatar
+          profilePicUrl={lead.profilePicUrl}
+          displayName={displayName}
+          initial={initial}
+          accentColor={accentColor}
+          className="conv-header-avatar"
+        />
 
         <div className="conv-header-info">
           <div className="conv-header-name">{displayName}</div>
@@ -169,27 +157,14 @@ export default async function ConversationPage({
         {/* Painel lateral */}
         <div className="conv-lead-panel">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {lead.profilePicUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={lead.profilePicUrl}
-                alt={displayName}
-                className="avatar-v2"
-                style={{ width: 44, height: 44, minWidth: 44, objectFit: "cover", borderColor: accentColor }}
-              />
-            ) : (
-              <div
-                className="avatar-v2"
-                style={{
-                  width: 44, height: 44, minWidth: 44, fontSize: 15,
-                  background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
-                  borderColor: accentColor,
-                  color: accentColor,
-                }}
-              >
-                {initial}
-              </div>
-            )}
+            <LeadAvatar
+              profilePicUrl={lead.profilePicUrl}
+              displayName={displayName}
+              initial={initial}
+              accentColor={accentColor}
+              className="avatar-v2"
+              style={{ width: 44, height: 44, minWidth: 44, fontSize: 15 }}
+            />
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{displayName}</div>
               {lead.phone && <div className="lead-phone">{lead.phone}</div>}

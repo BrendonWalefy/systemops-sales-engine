@@ -29,6 +29,7 @@ import {
   type OutboundMediaPart,
 } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 import { createLogger, type Logger } from "@/infrastructure/logging/logger";
 import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
 import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, type TtsConfig } from "@/domain/entities/tts-config";
@@ -1039,6 +1040,13 @@ export class ConversationOrchestrator {
     const outboundAddress =
       resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
       channelAddress;
+
+    // ── 3.1. Enriquecimento de foto (fire-and-forget) ──
+    // Z-API não envia senderPhoto no webhook — buscamos sob demanda via /profile-picture
+    // e re-hospedamos no Vercel Blob para evitar expiração de 48h das URLs do WhatsApp.
+    if (!lead.profilePicUrl && lead.phone && channelConfig.zapi) {
+      void fetchAndPersistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
+    }
 
     // ── 3.2. Claim de processamento por conversa ──
     // Serializa webhooks concorrentes da mesma conversa: sem isso, dois handlers
