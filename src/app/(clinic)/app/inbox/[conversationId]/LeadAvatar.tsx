@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 type Props = {
   profilePicUrl: string | null;
@@ -13,6 +14,9 @@ type Props = {
 
 export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, className, style }: Props) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -44,31 +48,33 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
     </div>
   );
 
+  const lightbox = open && mounted && createPortal(
+    <div
+      className="lead-photo-lightbox"
+      onClick={() => setOpen(false)}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={profilePicUrl!}
+        alt={displayName}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(320px, 80vw)",
+          height: "min(320px, 80vw)",
+          borderRadius: "50%",
+          objectFit: "cover",
+          boxShadow: "0 0 0 4px rgba(16,185,129,0.25), 0 24px 80px rgba(0,0,0,0.6)",
+          animation: "scaleIn 0.18s ease",
+        }}
+      />
+    </div>,
+    document.body,
+  );
+
   return (
     <>
       {avatar}
-
-      {open && (
-        <div
-          className="lead-photo-lightbox"
-          onClick={() => setOpen(false)}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={profilePicUrl!}
-            alt={displayName}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(320px, 80vw)",
-              height: "min(320px, 80vw)",
-              borderRadius: "50%",
-              objectFit: "cover",
-              boxShadow: "0 0 0 4px rgba(16,185,129,0.25), 0 24px 80px rgba(0,0,0,0.6)",
-              animation: "scaleIn 0.18s ease",
-            }}
-          />
-        </div>
-      )}
+      {lightbox}
     </>
   );
 }
