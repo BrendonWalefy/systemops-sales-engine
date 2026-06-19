@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -14,6 +15,7 @@ import type {
   ConversationExperience,
   MenuItem,
 } from "@/domain/entities/clinic";
+import type { ModuleKey } from "@/application/modules/module-catalog";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -766,5 +768,29 @@ export const clinicMembers = pgTable(
       table.clinicId,
     ),
     emailIdx: index("clinic_members_email_idx").on(table.email),
+  }),
+);
+
+// ── Módulos por clínica: feature flags vinculados ao plano de assinatura ──
+// Cada linha representa um módulo ativado/desativado para uma clínica.
+// O catálogo e as regras de plano vivem em src/application/modules/.
+export const clinicModules = pgTable(
+  "clinic_modules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id, { onDelete: "cascade" }),
+    moduleKey: text("module_key").notNull().$type<ModuleKey>(),
+    isActive: boolean("is_active").notNull().default(true),
+    config: jsonb("config"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedBy: text("updated_by"),
+  },
+  (t) => ({
+    uniq: unique().on(t.clinicId, t.moduleKey),
+    activeIdx: index("idx_clinic_modules_clinic").on(t.clinicId),
   }),
 );

@@ -50,6 +50,7 @@ import { NotifyClinicOperators } from "@/application/use-cases/notifications/not
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
+import { getClinicModules } from "@/application/modules/module-gate";
 
 import type { Clinic, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import type { ConversationExperience } from "@/domain/entities/clinic";
@@ -996,9 +997,22 @@ export class ConversationOrchestrator {
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
 
-    // FONTE ÚNICA EDITORIAL: versão ativa de playbook_versions via resolveActiveEditorialConfig.
-    const editorial = await resolveActiveEditorialConfig(clinicId);
+    // FONTE ÚNICA EDITORIAL + módulos carregados em paralelo para evitar waterfall.
+    const [editorial, activeModules] = await Promise.all([
+      resolveActiveEditorialConfig(clinicId),
+      getClinicModules(clinicId),
+    ]);
     const channelConfig = resolveChannelConfig(clinicRows[0]);
+
+    // Derivados de módulos — usados em todo o método no lugar dos campos legados
+    const voiceMod = activeModules.find((m) => m.key === "voice_tts");
+    const voiceEnabled = !!voiceMod;
+    const ttsConf: TtsConfig = voiceMod?.config
+      ? ttsConfigFromVoice(String(voiceMod.config.provider ?? "nova"))
+      : DEFAULT_TTS_CONFIG;
+    const clinicExperience: ConversationExperience = activeModules.some((m) => m.key === "concierge_mode")
+      ? "concierge"
+      : "menu_first";
 
     // ── 3. Registra lead, conversa e mensagem ──
     const usageCostTracker = new DefaultUsageCostTracker({
@@ -1139,12 +1153,12 @@ export class ConversationOrchestrator {
               leadName: lead.name,
               timezone,
               isFirstMessage: false,
-              conversationExperience: clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
+              conversationExperience: clinicExperience,
               resumedFromHumanTakeover: false,
             });
             const photoNow = new Date();
             const photoAgentId = randomUUID();
-            const { msgId: photoMsgId, deliveryFormat: photoDeliveryFormat } = await sendReply(outboundAddress, photoComposed.text, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
+            const { msgId: photoMsgId, deliveryFormat: photoDeliveryFormat } = await sendReply(outboundAddress, photoComposed.text, channelConfig, voiceEnabled, ttsConf);
             await this.conversationRepo.appendMessage({
               id: photoAgentId,
               conversationId: conversation.id,
@@ -1182,7 +1196,7 @@ export class ConversationOrchestrator {
         leadName: lead.name,
         timezone,
         isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
-        conversationExperience: clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
+        conversationExperience: clinicExperience,
         resumedFromHumanTakeover: false,
       });
       const mediaReplyText = mediaComposed.text;
@@ -1202,7 +1216,7 @@ export class ConversationOrchestrator {
       }).where(eq(conversationsTable.id, conversation.id));
 
       const mediaAgentId = randomUUID();
-      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
+      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, voiceEnabled, ttsConf);
       await this.conversationRepo.appendMessage({
         id: mediaAgentId,
         conversationId: conversation.id,
@@ -1316,7 +1330,7 @@ export class ConversationOrchestrator {
 
     // ── 9. Resolve intenção: menu pré-classificado ou LLM estágio 1 ──
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
-    const experience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
+    const experience = clinicExperience;
 
     const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
 
@@ -1505,7 +1519,7 @@ export class ConversationOrchestrator {
           isFirstMessage,
           conversationExperience: experience,
           resumedFromHumanTakeover,
-          voiceResponseEnabled: clinic.voiceResponseEnabled,
+          voiceResponseEnabled: voiceEnabled,
         });
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
@@ -2380,7 +2394,7 @@ export class ConversationOrchestrator {
     }
 
     const hasInterleavedMedia =
-      !clinic.voiceResponseEnabled && composedParts.some((p) => p.type === "media");
+      !voiceEnabled && composedParts.some((p) => p.type === "media");
 
     const deliveryLog = createLogger({
       scope: "OutboundDelivery",
@@ -2466,7 +2480,7 @@ export class ConversationOrchestrator {
         parts: outboundParts,
         config: channelConfig,
         log: deliveryLog,
-        sendText: (content) => sendReply(outboundAddress, content, channelConfig, false, clinic.ttsConfig),
+        sendText: (content) => sendReply(outboundAddress, content, channelConfig, false, ttsConf),
         onTextSent: async ({ content, msgId, deliveryFormat: partFormat, isFirst }) => {
           if (isFirst) {
             zapiMessageId = msgId;
@@ -2495,7 +2509,7 @@ export class ConversationOrchestrator {
         onMediaSent: persistSentMedia,
       });
     } else {
-      const result = await sendReply(outboundAddress, replyText, channelConfig, clinic.voiceResponseEnabled, clinic.ttsConfig);
+      const result = await sendReply(outboundAddress, replyText, channelConfig, voiceEnabled, ttsConf);
       zapiMessageId = result.msgId;
       deliveryFormat = result.deliveryFormat;
     }
