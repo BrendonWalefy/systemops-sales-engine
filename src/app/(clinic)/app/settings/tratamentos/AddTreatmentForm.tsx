@@ -1,7 +1,7 @@
 "use client";
 import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
-import { CheckCircle2, Clock, Loader2, Plus, Stethoscope } from "lucide-react";
+import { CheckCircle2, Clock, DollarSign, Loader2, Plus, Stethoscope } from "lucide-react";
 import { createTreatment } from "./actions";
 
 function AddButton() {
@@ -23,7 +23,13 @@ function AddButton() {
   );
 }
 
-export function AddTreatmentForm() {
+export function AddTreatmentForm({
+  canEditPrices,
+  serviceNoun,
+}: {
+  canEditPrices: boolean;
+  serviceNoun: string;
+}) {
   const [state, formAction] = useActionState(createTreatment, null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -32,6 +38,8 @@ export function AddTreatmentForm() {
       formRef.current?.reset();
     }
   }, [state]);
+
+  const serviceNounCapitalized = serviceNoun.charAt(0).toUpperCase() + serviceNoun.slice(1);
 
   return (
     <section
@@ -60,7 +68,7 @@ export function AddTreatmentForm() {
         </div>
         <div>
           <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
-            Adicionar procedimento
+            Adicionar {serviceNoun}
           </strong>
           <p style={{ margin: "3px 0 0", fontSize: "13px", color: "var(--muted)" }}>
             A IA reconhece variações de escrita e erros de digitação e bloqueia o tempo exato no calendário.
@@ -72,19 +80,24 @@ export function AddTreatmentForm() {
         ref={formRef}
         action={formAction}
         className="treatment-add-form"
-        style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: "12px", alignItems: "end" }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: canEditPrices ? "1fr 120px 140px auto" : "1fr 120px auto",
+          gap: "12px",
+          alignItems: "end",
+        }}
       >
         <label style={{ margin: 0 }}>
           <span style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
             <Stethoscope size={12} strokeWidth={2} style={{ color: "var(--muted)" }} />
             <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 500 }}>
-              Nome do procedimento
+              Nome do {serviceNoun}
             </span>
           </span>
           <input
             type="text"
             name="name"
-            placeholder="Ex: 20 Lentes"
+            placeholder={`Ex: ${serviceNounCapitalized} Premium`}
             required
             style={{ margin: 0, fontSize: "16px" }}
           />
@@ -110,6 +123,25 @@ export function AddTreatmentForm() {
           />
         </label>
 
+        {canEditPrices && (
+          <label style={{ margin: 0 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+              <DollarSign size={12} strokeWidth={2} style={{ color: "var(--muted)" }} />
+              <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 500 }}>
+                Preço (R$)
+              </span>
+            </span>
+            <input
+              type="number"
+              name="priceCents"
+              placeholder="opcional"
+              min={0}
+              step={0.01}
+              style={{ textAlign: "center", margin: 0, fontSize: "16px" }}
+            />
+          </label>
+        )}
+
         <AddButton />
       </form>
 
@@ -125,7 +157,7 @@ export function AddTreatmentForm() {
           }}
         >
           <CheckCircle2 size={14} strokeWidth={2} />
-          Procedimento adicionado com sucesso
+          {serviceNounCapitalized} adicionado com sucesso
         </div>
       )}
 

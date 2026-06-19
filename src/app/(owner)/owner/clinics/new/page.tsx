@@ -1,14 +1,70 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { onboardClinic, type OnboardingState } from "./actions";
 
 const initialState: OnboardingState = { ok: false };
 
+type SegmentKey = "dental" | "barbershop" | "hair_salon" | "aesthetics" | "other";
+
+const SEGMENT_DEFAULTS: Record<SegmentKey, {
+  serviceNoun: string;
+  businessHours: string;
+  toneOfVoice: string;
+  greetingPlaceholder: string;
+  namePlaceholder: string;
+}> = {
+  dental: {
+    serviceNoun: "tratamento",
+    businessHours: "Seg-Sex 08:00-18:00, Sab 08:00-13:00",
+    toneOfVoice: "acolhedor",
+    greetingPlaceholder: "Olá! Sou a assistente virtual da clínica. Como posso ajudar?",
+    namePlaceholder: "Clínica Exemplo",
+  },
+  barbershop: {
+    serviceNoun: "serviço",
+    businessHours: "Seg-Sab 09:00-20:00",
+    toneOfVoice: "descontraído",
+    greetingPlaceholder: "E aí! Sou o assistente da barbearia. Quando vem cair o cabelo?",
+    namePlaceholder: "Barbearia Exemplo",
+  },
+  hair_salon: {
+    serviceNoun: "serviço",
+    businessHours: "Ter-Sab 09:00-20:00",
+    toneOfVoice: "amigável",
+    greetingPlaceholder: "Olá! Sou a assistente do salão. Quando quer agendar seu horário?",
+    namePlaceholder: "Salão Exemplo",
+  },
+  aesthetics: {
+    serviceNoun: "procedimento",
+    businessHours: "Seg-Sex 09:00-19:00, Sab 09:00-15:00",
+    toneOfVoice: "acolhedor",
+    greetingPlaceholder: "Olá! Sou a assistente da clínica de estética. Como posso te ajudar?",
+    namePlaceholder: "Clínica de Estética Exemplo",
+  },
+  other: {
+    serviceNoun: "serviço",
+    businessHours: "",
+    toneOfVoice: "profissional",
+    greetingPlaceholder: "Olá! Como posso ajudar?",
+    namePlaceholder: "Estabelecimento Exemplo",
+  },
+};
+
+const SEGMENTS: { key: SegmentKey; icon: string; label: string }[] = [
+  { key: "dental", icon: "🦷", label: "Odontologia" },
+  { key: "barbershop", icon: "✂️", label: "Barbearia" },
+  { key: "aesthetics", icon: "💅", label: "Estética" },
+  { key: "hair_salon", icon: "💇", label: "Cabeleireiro" },
+  { key: "other", icon: "⚙️", label: "Outro" },
+];
+
 export default function NewClinicPage() {
   const [state, formAction, pending] = useActionState(onboardClinic, initialState);
+  const [segment, setSegment] = useState<SegmentKey>("dental");
 
+  const defaults = SEGMENT_DEFAULTS[segment];
   const errorFor = (field: string) => state.errors?.find((e) => e.field === field)?.message;
 
   return (
@@ -29,13 +85,50 @@ export default function NewClinicPage() {
         </div>
       )}
 
+      {/* Segmento */}
+      <section className="panel" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Tipo de negócio</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "10px" }}>
+          {SEGMENTS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setSegment(s.key)}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "6px",
+                padding: "14px 8px",
+                border: segment === s.key ? "2px solid var(--accent-strong)" : "1px solid var(--line)",
+                borderRadius: "10px",
+                background: segment === s.key ? "rgba(16,185,129,0.08)" : "var(--surface-raised)",
+                cursor: "pointer",
+                fontSize: "22px",
+                color: "var(--text)",
+                transition: "border-color 0.15s, background 0.15s",
+              }}
+            >
+              <span>{s.icon}</span>
+              <span style={{ fontSize: "11px", fontWeight: 600, color: segment === s.key ? "var(--accent-strong)" : "var(--muted)" }}>
+                {s.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <form action={formAction}>
+        {/* Hidden fields — driven by segment selection */}
+        <input type="hidden" name="segment" value={segment} />
+        <input type="hidden" name="serviceNoun" value={defaults.serviceNoun} />
+
         <section className="panel" style={{ marginBottom: 16 }}>
           <h2 style={{ marginTop: 0 }}>Identificação</h2>
           <div className="form-stack">
             <label>
-              Nome da clínica
-              <input name="name" required placeholder="Clínica Exemplo" />
+              Nome do estabelecimento
+              <input name="name" required placeholder={defaults.namePlaceholder} />
               {errorFor("name") && <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("name")}</small>}
             </label>
             <label>
@@ -53,11 +146,20 @@ export default function NewClinicPage() {
             </label>
             <label>
               Horário comercial
-              <input name="businessHours" placeholder="Seg-Sex 09:00-18:00" />
+              <input
+                key={segment}
+                name="businessHours"
+                placeholder="Seg-Sex 09:00-18:00"
+                defaultValue={defaults.businessHours}
+              />
             </label>
             <label>
               Saudação
-              <input name="greetingMessage" placeholder="Olá! Seja bem-vindo." />
+              <input
+                key={`greeting-${segment}`}
+                name="greetingMessage"
+                placeholder={defaults.greetingPlaceholder}
+              />
             </label>
           </div>
         </section>
@@ -167,7 +269,11 @@ export default function NewClinicPage() {
             </label>
             <label>
               Tom de voz
-              <input name="toneOfVoice" defaultValue="acolhedor" />
+              <input
+                key={`tone-${segment}`}
+                name="toneOfVoice"
+                defaultValue={defaults.toneOfVoice}
+              />
             </label>
             <label>
               Orientações livres (notes)

@@ -92,6 +92,8 @@ function internalGateway(over: Partial<{ isSlotFree: boolean }> = {}) {
         status: "scheduled",
         source: "app",
         reminderSentAt: null,
+        treatmentId: null,
+        valueCents: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -278,6 +280,8 @@ describe("BookingService — modo interno", () => {
       status: "scheduled",
       source: "app",
       reminderSentAt: null,
+      treatmentId: null,
+      valueCents: null,
       createdAt: new Date("2026-01-05T12:00:00.000Z"),
       updatedAt: new Date("2026-01-05T12:00:00.000Z"),
     };
@@ -313,6 +317,8 @@ describe("BookingService — modo interno", () => {
       status: "scheduled",
       source: "app",
       reminderSentAt: null,
+      treatmentId: null,
+      valueCents: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

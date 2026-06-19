@@ -59,7 +59,6 @@ import type { Message } from "@/domain/entities/conversation";
 import type { Treatment } from "@/domain/entities/treatment";
 import {
   CONCIERGE_MENU_ITEMS,
-  DEFAULT_CONVERSATION_EXPERIENCE,
   DEFAULT_MENU_ITEMS,
 } from "@/domain/entities/clinic";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
@@ -1635,12 +1634,22 @@ export class ConversationOrchestrator {
         const existingAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
 
         const offeredTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
+
+        // Infere treatmentId e valueCents a partir do tratamento identificado
+        const matchedTreatmentForBooking = offeredTreatment?.treatmentName
+          ? clinicTreatments.find(
+              (t) => t.name.toLowerCase() === offeredTreatment.treatmentName!.toLowerCase(),
+            ) ?? null
+          : null;
+
         const result = await bookingService.book({
           clinic,
           lead,
           startsAt: new Date(chosenSlot.startsAt),
           endsAt: new Date(chosenSlot.endsAt),
           treatmentName: offeredTreatment?.treatmentName,
+          treatmentId: matchedTreatmentForBooking?.id ?? null,
+          valueCents: matchedTreatmentForBooking?.priceCents ?? null,
         });
 
         if (result.success) {

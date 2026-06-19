@@ -13,7 +13,6 @@ import type { IntentClassification, IntentType } from "@/core/intelligence/Inten
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import {
   CONCIERGE_MENU_ITEMS,
-  DEFAULT_CONVERSATION_EXPERIENCE,
   DEFAULT_MENU_ITEMS,
 } from "@/domain/entities/clinic";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";

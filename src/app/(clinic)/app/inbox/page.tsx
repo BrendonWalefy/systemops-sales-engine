@@ -4,11 +4,10 @@ import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
 import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
-import { and, eq, desc, inArray, between } from "drizzle-orm";
+import { and, eq, desc, inArray, gte } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
-import { getAppointmentBadgeWindow } from "./inbox-visibility";
 import { buildInboxSnapshotSignature, type InboxSnapshotRow } from "./inbox-snapshot";
 
 export default async function InboxPage() {
@@ -49,12 +48,18 @@ export default async function InboxPage() {
   ]);
 
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
-  const appointmentBadgeWindow = getAppointmentBadgeWindow();
 
-  // Badge de agenda no inbox: só o lembrete operacional perto da consulta.
+  // Busca a próxima consulta de todos os leads com appointment_scheduled — sem janela de tempo
+  // restrita, para que o card mostre a data mesmo quando a consulta é semanas à frente.
   const scheduledLeadIds = rows
     .filter((r) => r.leadStatus === "appointment_scheduled")
     .map((r) => r.leadId);
+
+  const now = new Date();
+
+  // Janela retroativa de 48h: inclui consultas que acabaram de acontecer mas ainda não
+  // tiveram o status do lead atualizado para "won".
+  const recentPast = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
   const [lastMessages, appointmentRows] = await Promise.all([
     Promise.all(
@@ -76,10 +81,10 @@ export default async function InboxPage() {
             and(
               inArray(appointments.leadId, scheduledLeadIds),
               inArray(appointments.status, ["scheduled", "confirmed"]),
-              between(appointments.startsAt, appointmentBadgeWindow.startsAtFrom, appointmentBadgeWindow.startsAtTo),
+              gte(appointments.startsAt, recentPast),
             ),
           )
-          .orderBy(desc(appointments.startsAt))
+          .orderBy(appointments.startsAt)
       : Promise.resolve([]),
   ]);
 
@@ -92,7 +97,6 @@ export default async function InboxPage() {
     }
   }
 
-  const now = new Date();
   const allRows: ConvRow[] = rows.map((r) => ({
     ...r,
     appointmentStartsAt: appointmentMap[r.leadId] ?? null,

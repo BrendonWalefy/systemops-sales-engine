@@ -9,7 +9,7 @@ import type { Lead } from "@/domain/entities/lead";
 import type { FollowUp } from "@/domain/entities/follow-up";
 
 function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
-  return {
+  const base: Appointment = {
     id: "appt-1",
     clinicId: "clinic-1",
     leadId: "lead-1",
@@ -22,9 +22,17 @@ function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
     status: "scheduled",
     source: "app",
     reminderSentAt: null,
+    treatmentId: null,
+    valueCents: null,
     createdAt: new Date("2026-06-01T10:00:00Z"),
     updatedAt: new Date("2026-06-01T10:00:00Z"),
+  };
+
+  return {
+    ...base,
     ...overrides,
+    treatmentId: overrides.treatmentId ?? null,
+    valueCents: overrides.valueCents ?? null,
   };
 }
 

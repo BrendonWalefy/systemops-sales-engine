@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { getSessionMemberProfile, canEditPrices } from "@/application/tenancy/member-role";
 import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
@@ -11,7 +12,7 @@ import { getClinicModules } from "@/application/modules/module-gate";
 
 async function getData() {
   const clinicId = await requireSessionClinicId();
-  const [clinic, versions, treatments, activeModules] = await Promise.all([
+  const [clinic, versions, treatments, activeModules, memberProfile] = await Promise.all([
     db
       .select({
         name: clinics.name,
@@ -26,6 +27,7 @@ async function getData() {
         slotLookaheadDays: clinics.slotLookaheadDays,
         mediaTakeoverTtlHours: clinics.mediaTakeoverTtlHours,
         installmentRates: clinics.installmentRates,
+        serviceNoun: clinics.serviceNoun,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
@@ -43,12 +45,15 @@ async function getData() {
       .orderBy(desc(playbookVersions.updatedAt)),
     new DrizzleTreatmentRepository().listByClinic(clinicId),
     getClinicModules(clinicId),
+    getSessionMemberProfile(clinicId),
   ]);
-  return { clinic, versions, treatments, activeModules };
+  return { clinic, versions, treatments, activeModules, memberProfile };
 }
 
 export default async function PlaybookPage() {
-  const { clinic, versions, treatments, activeModules } = await getData();
+  const { clinic, versions, treatments, activeModules, memberProfile } = await getData();
+  const pricesEditable = memberProfile ? canEditPrices(memberProfile) : true;
+  const serviceNoun = clinic?.serviceNoun ?? "tratamento";
 
   return (
     <IASettingsClient
@@ -74,6 +79,8 @@ export default async function PlaybookPage() {
         updatedAt: v.updatedAt,
       }))}
       treatments={treatments}
+      canEditPrices={pricesEditable}
+      serviceNoun={serviceNoun}
     />
   );
 }

@@ -20,6 +20,8 @@ export type Appointment = {
   status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show";
   source: "app" | "gcal_import";
   reminderSentAt: Date | null;
+  treatmentId: string | null;
+  valueCents: number | null;
   createdAt: Date;
   updatedAt: Date;
 };

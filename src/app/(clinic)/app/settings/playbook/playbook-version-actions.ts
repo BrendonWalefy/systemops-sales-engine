@@ -6,7 +6,7 @@ import { clinics, clinicModules, playbookVersions } from "@/infrastructure/db/sc
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
+import type { MenuItem } from "@/domain/entities/clinic";
 import { publishablePlaybookSchema } from "@/application/config/editorial-config";
 import type { VoiceTtsConfig } from "@/application/modules/module-configs";
 

@@ -18,6 +18,9 @@ function makeTreatment(name: string, durationMinutes: number): Treatment {
     aliases: [],
     isAesthetic: false,
     pipelineSteps: null,
+    priceCents: null,
+    minPriceCents: null,
+    maxPriceCents: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

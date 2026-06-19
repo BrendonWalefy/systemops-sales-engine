@@ -5761,10 +5761,26 @@ textarea:focus {
 }
 
 /* Border-left keyed to conversation urgency/status (not temperature) */
-.card-border-attention { border-left-color: var(--hot); }
-.card-border-paused    { border-left-color: var(--warm); }
-.card-border-ai-active { border-left-color: var(--accent-strong); }
-.card-border-default   { border-left-color: var(--line-strong); }
+.card-border-attention  { border-left-color: var(--hot); }
+.card-border-paused     { border-left-color: var(--warm); }
+.card-border-scheduled  { border-left-color: var(--accent); }
+.card-border-ai-active  { border-left-color: var(--accent-strong); }
+.card-border-default    { border-left-color: var(--line-strong); }
+
+/* Chip de data de consulta no card do inbox */
+.appointment-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 6px;
+  padding: 3px 7px;
+  width: fit-content;
+}
 
 /* Top row: badge + time */
 .inbox-card-v2-top {

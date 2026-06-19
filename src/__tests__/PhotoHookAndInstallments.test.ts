@@ -30,6 +30,9 @@ function makeTreatment(name: string, requiresEval = false): Treatment {
     aliases: [],
     isAesthetic: false,
     pipelineSteps: null,
+    priceCents: null,
+    minPriceCents: null,
+    maxPriceCents: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
   };

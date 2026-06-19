@@ -302,23 +302,35 @@ describe("Bug D — OutboundDeliveryService: retry transparente em falha de míd
 // inferTreatmentContextFromHistory garante contexto correto para o LLM.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const makeTreatment = (overrides: Partial<Treatment> = {}): Treatment => ({
-  id: "lentes-id",
-  clinicId: "clinic-1",
-  name: "Lentes de resina composta",
-  description: "Técnica de restauração estética.",
-  isAesthetic: true,
-  requiresEvaluationFirst: false,
-  keywordMatchEnabled: true,
-  aliases: ["lentes", "resina"],
-  commonObjections: [],
-  pipelineSteps: null,
-  triggerTemplate: null,
-  durationMinutes: 60,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  ...overrides,
-});
+const makeTreatment = (overrides: Partial<Treatment> = {}): Treatment => {
+  const base: Treatment = {
+    id: "lentes-id",
+    clinicId: "clinic-1",
+    name: "Lentes de resina composta",
+    description: "Técnica de restauração estética.",
+    isAesthetic: true,
+    requiresEvaluationFirst: false,
+    keywordMatchEnabled: true,
+    aliases: ["lentes", "resina"],
+    commonObjections: [],
+    pipelineSteps: null,
+    triggerTemplate: null,
+    durationMinutes: 60,
+    priceCents: null,
+    minPriceCents: null,
+    maxPriceCents: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    priceCents: overrides.priceCents ?? null,
+    minPriceCents: overrides.minPriceCents ?? null,
+    maxPriceCents: overrides.maxPriceCents ?? null,
+  };
+};
 
 describe("Bug E — inferTreatmentContextFromHistory: continuidade de contexto no LLM path", () => {
   const treatments = [makeTreatment()];

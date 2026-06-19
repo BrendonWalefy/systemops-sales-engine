@@ -49,8 +49,10 @@ export class BookingService {
     startsAt: Date;
     endsAt: Date;
     treatmentName?: string;
+    treatmentId?: string | null;
+    valueCents?: number | null;
   }): Promise<BookingResult> {
-    const { clinic, lead, startsAt, endsAt, treatmentName } = params;
+    const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null } = params;
 
     // Passo 1: Lock otimista — previne double-booking (reserve() já chama releaseExpired internamente)
     const reservation = await this.reservationService.reserve(
@@ -120,13 +122,14 @@ export class BookingService {
     let appointment: Appointment;
     const now = new Date();
     try {
-      appointment = await this.calendarGateway.createAppointment({
+      const created = await this.calendarGateway.createAppointment({
         clinicId: clinic.id,
         leadId: lead.id,
         startsAt,
         endsAt,
         title: `${procedureLabel} — ${leadName} | ${clinic.name}`,
       });
+      appointment = { ...created, treatmentId, valueCents };
     } catch (err) {
       console.error("[BookingService] CalendarGateway createAppointment failed:", err);
       appointment = {
@@ -142,6 +145,8 @@ export class BookingService {
         status: "scheduled",
         source: "app",
         reminderSentAt: null,
+        treatmentId,
+        valueCents,
         createdAt: now,
         updatedAt: now,
       };

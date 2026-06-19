@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Search, Inbox, RefreshCw, Send, X } from "lucide-react";
+import { Search, Inbox, RefreshCw, Send, X, CalendarCheck } from "lucide-react";
 import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recovery-actions";
 import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
@@ -356,6 +356,7 @@ function RecoveryCard({
 function cardBorderClass(row: ConvRow, lastAuthor: string): string {
   if (row.needsAttention) return "card-border-attention";
   if (row.aiPaused) return "card-border-paused";
+  if (row.leadStatus === "appointment_scheduled") return "card-border-scheduled";
   if (lastAuthor === "agent") return "card-border-ai-active";
   return "card-border-default";
 }
@@ -364,8 +365,23 @@ function pipelineIndex(status: string): number {
   if (status === "new") return 0;
   if (status === "waiting_response" || status === "in_conversation") return 1;
   if (status === "follow_up_due") return 2;
-  if (status === "appointment_scheduled") return 3;
+  // appointment_scheduled avança para o último step ("Fechado") — todos os passos
+  // anteriores, incluindo "Agendar", ficam marcados como concluídos.
+  if (status === "appointment_scheduled") return 4;
   return 4;
+}
+
+function formatApptDate(date: Date): string {
+  const now = new Date();
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
 }
 
 function convStatusBadge(
@@ -374,6 +390,9 @@ function convStatusBadge(
 ): { label: string; variant: "hot" | "warm" | "accent" | "muted" } {
   if (row.needsAttention) return { label: "Requer humano", variant: "hot" };
   if (row.aiPaused) return { label: "Aguardando retorno", variant: "warm" };
+  // Consulta marcada tem precedência sobre o estado da última mensagem — o operador
+  // precisa saber o contexto (paciente já convertido) antes de qualquer outra coisa.
+  if (row.leadStatus === "appointment_scheduled") return { label: "Consulta marcada", variant: "accent" };
   if (lastAuthor === "agent") return { label: "IA respondendo", variant: "accent" };
   if (lastAuthor === "lead") return { label: "Aguardando resposta", variant: "warm" };
   return { label: "Em conversa", variant: "muted" };
@@ -493,6 +512,13 @@ function InboxCard({
             );
           })}
         </div>
+
+        {row.appointmentStartsAt && (
+          <div className="appointment-date-chip">
+            <CalendarCheck size={10} />
+            <span>Consulta: {formatApptDate(new Date(row.appointmentStartsAt))}</span>
+          </div>
+        )}
 
         <div className="inbox-card-v2-footer">
           <span className="inbox-card-v2-preview">

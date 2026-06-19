@@ -14,7 +14,7 @@ import {
 } from "./playbook-version-actions";
 import { toggleAutoReply } from "./actions";
 import type { ConversationExperience, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
-import { CONCIERGE_MENU_ITEMS, DEFAULT_CONVERSATION_EXPERIENCE, DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
+import { CONCIERGE_MENU_ITEMS, DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
 import { TTS_SPEED_DEFAULTS } from "@/domain/entities/tts-config";
 import type { TtsProvider } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
@@ -925,7 +925,9 @@ function GeralTab({
   );
 }
 
-function ProcedimentosTab({ treatments }: { treatments: Treatment[] }) {
+function ProcedimentosTab({ treatments, canEditPrices, serviceNoun }: { treatments: Treatment[]; canEditPrices: boolean; serviceNoun: string }) {
+  const serviceNounPl = `${serviceNoun}s`;
+  const serviceNounCapitalized = serviceNoun.charAt(0).toUpperCase() + serviceNoun.slice(1);
   return (
     <div style={{ maxWidth: "760px", display: "grid", gap: "24px" }}>
       <section
@@ -964,30 +966,36 @@ function ProcedimentosTab({ treatments }: { treatments: Treatment[] }) {
           </div>
           <div>
             <strong style={{ fontSize: "15px", fontWeight: 700, color: "#fafafa" }}>
-              Procedimentos cadastrados
+              {serviceNounCapitalized}s cadastrados
             </strong>
             <p style={{ margin: "3px 0 0", fontSize: "13px", color: "#52525b" }}>
               {treatments.length === 0
-                ? "Nenhum procedimento cadastrado ainda"
-                : `${treatments.length} procedimento${treatments.length !== 1 ? "s" : ""} · edite e salve inline`}
+                ? `Nenhum ${serviceNoun} cadastrado ainda`
+                : `${treatments.length} ${treatments.length !== 1 ? serviceNounPl : serviceNoun} · edite e salve inline`}
             </p>
           </div>
         </div>
 
         {treatments.length === 0 ? (
           <div style={{ padding: "32px 22px", textAlign: "center", color: "#52525b", fontSize: "14px" }}>
-            Adicione o primeiro procedimento abaixo
+            Adicione o primeiro {serviceNoun} abaixo
           </div>
         ) : (
           <div style={{ display: "grid" }}>
             {treatments.map((t, idx) => (
-              <TreatmentRow key={t.id} treatment={t} isLast={idx === treatments.length - 1} />
+              <TreatmentRow
+                key={t.id}
+                treatment={t}
+                isLast={idx === treatments.length - 1}
+                canEditPrices={canEditPrices}
+                serviceNoun={serviceNoun}
+              />
             ))}
           </div>
         )}
       </section>
 
-      <AddTreatmentForm />
+      <AddTreatmentForm canEditPrices={canEditPrices} serviceNoun={serviceNoun} />
 
       <div className="automation-note">
         <div className="automation-header">
@@ -1258,7 +1266,7 @@ function FinanceiroTab({ clinic }: { clinic: ClinicData }) {
   );
 }
 
-export function IASettingsClient({ clinic, versions, treatments }: { clinic: ClinicData; versions: Version[]; treatments: Treatment[] }) {
+export function IASettingsClient({ clinic, versions, treatments, canEditPrices, serviceNoun }: { clinic: ClinicData; versions: Version[]; treatments: Treatment[]; canEditPrices: boolean; serviceNoun: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("geral");
   const [focusTarget, setFocusTarget] = useState<SettingsFocusTarget | null>(null);
@@ -1465,7 +1473,7 @@ export function IASettingsClient({ clinic, versions, treatments }: { clinic: Cli
           </div>
         )}
 
-        {tab === "procedimentos" && <ProcedimentosTab treatments={treatments} />}
+        {tab === "procedimentos" && <ProcedimentosTab treatments={treatments} canEditPrices={canEditPrices} serviceNoun={serviceNoun} />}
         {tab === "financeiro" && <FinanceiroTab clinic={clinic} />}
       </div>
     </div>

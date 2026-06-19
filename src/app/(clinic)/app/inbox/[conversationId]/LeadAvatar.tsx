@@ -14,9 +14,7 @@ type Props = {
 
 export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, className, style }: Props) {
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
+  const canUsePortal = typeof document !== "undefined";
 
   useEffect(() => {
     if (!open) return;
@@ -48,7 +46,7 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
     </div>
   );
 
-  const lightbox = open && mounted && createPortal(
+  const lightbox = open && canUsePortal && createPortal(
     <div
       className="lead-photo-lightbox"
       onClick={() => setOpen(false)}

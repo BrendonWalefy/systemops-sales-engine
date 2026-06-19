@@ -241,7 +241,7 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
           </div>
         )}
 
-        {listItems.map((item, i) => {
+        {listItems.map((item) => {
           if (item.kind === "separator") {
             return <DateSeparator key={`sep-${item.dateStr}`} label={formatDateLabel(item.dateStr)} />;
           }
