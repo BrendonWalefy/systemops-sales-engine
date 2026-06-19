@@ -25,7 +25,6 @@ const clinic: Clinic = {
   city: null,
   address: null,
   timezone: "America/Sao_Paulo",
-  conversationExperience: "menu_first",
   greetingMessage: null,
   menuItems: null,
   businessHours: null,
@@ -44,8 +43,6 @@ const clinic: Clinic = {
   mediaTakeoverTtlHours: null,
   rapidThrottleMs: 4000,
   messageDebounceMs: null,
-  voiceResponseEnabled: false,
-  ttsConfig: { provider: "nova" as const, speed: 0.92 },
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 };

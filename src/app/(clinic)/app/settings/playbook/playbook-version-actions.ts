@@ -2,12 +2,13 @@
 
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { clinics, clinicModules, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
 import { publishablePlaybookSchema } from "@/application/config/editorial-config";
+import type { VoiceTtsConfig } from "@/application/modules/module-configs";
 
 
 type PlaybookVersionData = {
@@ -178,7 +179,6 @@ export async function updateClinicOperationalSettings(data: {
   businessHours?: string | null;
   takeoverTtlHours?: number;
   postAppointmentBufferMinutes?: number;
-  conversationExperience?: ConversationExperience;
   greetingMessage?: string | null;
   menuItems?: MenuItem[] | null;
   receptionistPhone?: string | null;
@@ -186,15 +186,26 @@ export async function updateClinicOperationalSettings(data: {
   slotLookaheadDays?: number;
   mediaTakeoverTtlHours?: number | null;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
-  voiceResponseEnabled?: boolean;
-  ttsVoice?: string;
-  ttsConfig?: { provider: string; speed: number } | null;
 }) {
   const CLINIC_ID = await requireSessionClinicId();
   await db
     .update(clinics)
     .set({ ...data, updatedAt: new Date() })
     .where(eq(clinics.id, CLINIC_ID));
+  revalidatePath("/app/settings/playbook");
+}
+
+export async function updateVoiceModuleConfig(config: VoiceTtsConfig) {
+  const CLINIC_ID = await requireSessionClinicId();
+  await db
+    .update(clinicModules)
+    .set({ config, updatedAt: new Date(), updatedBy: "clinic_admin" })
+    .where(
+      and(
+        eq(clinicModules.clinicId, CLINIC_ID),
+        eq(clinicModules.moduleKey, "voice_tts"),
+      ),
+    );
   revalidatePath("/app/settings/playbook");
 }
 

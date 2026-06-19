@@ -16,6 +16,7 @@ import { hashPassword } from "@/lib/password";
 import { resolveClinicCommercialSettings } from "@/application/onboarding/clinic-commercial-settings";
 import { resolveInitialClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 import { encryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
+import { syncModulesForPlan } from "@/application/modules/module-gate";
 
 export type OnboardingState = {
   ok: boolean;
@@ -196,6 +197,8 @@ export async function onboardClinic(
       updatedAt: now,
     });
   }
+
+  await syncModulesForPlan(clinicId, commercialSettings.plan, "onboarding");
 
   for (const a of cfg.admins) {
     const email = a.email.toLowerCase();

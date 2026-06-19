@@ -28,6 +28,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { buildClinicBlueprint, type BlueprintSection } from "@/application/onboarding/clinic-blueprint";
+import { clinicHasModule } from "@/application/modules/module-gate";
 
 type Params = Promise<{ clinicId: string }>;
 
@@ -140,7 +141,6 @@ export default async function BlueprintPage({ params }: { params: Params }) {
       zapiToken: clinics.zapiToken,
       metaPhoneNumberId: clinics.metaPhoneNumberId,
       metaAccessToken: clinics.metaAccessToken,
-      ttsConfig: clinics.ttsConfig,
     })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
@@ -148,7 +148,8 @@ export default async function BlueprintPage({ params }: { params: Params }) {
 
   if (!clinic) notFound();
 
-  const [activePlaybook, clinicTreatments] = await Promise.all([
+  const [hasVoiceTts, activePlaybook, clinicTreatments] = await Promise.all([
+    clinicHasModule(clinicId, "voice_tts"),
     db.query.playbookVersions.findFirst({
       where: and(
         eq(playbookVersions.clinicId, clinicId),
@@ -170,7 +171,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
   ]);
 
   const blueprint = buildClinicBlueprint({
-    clinic: { ...clinic, hasTtsConfig: clinic.ttsConfig != null },
+    clinic: { ...clinic, hasTtsConfig: hasVoiceTts },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,
       commercialPolicy: activePlaybook?.commercialPolicy ?? null,
