@@ -21,6 +21,9 @@ function treatment(name: string): Treatment {
     aliases: [],
     isAesthetic: false,
     pipelineSteps: null,
+    priceCents: null,
+    minPriceCents: null,
+    maxPriceCents: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   };

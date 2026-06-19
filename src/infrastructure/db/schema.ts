@@ -189,6 +189,10 @@ export const clinics = pgTable("clinics", {
   zapiClientToken: text("zapi_client_token"),
   metaPhoneNumberId: text("meta_phone_number_id"),
   metaAccessToken: text("meta_access_token"),
+  // Terminologia adaptada por segmento (ex: "tratamento", "serviço", "procedimento")
+  serviceNoun: text("service_noun").notNull().default("tratamento"),
+  // Segmento do negócio: "dental" | "barbershop" | "hair_salon" | "aesthetics" | "other"
+  segment: text("segment").notNull().default("dental"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -224,6 +228,9 @@ export const treatments = pgTable(
       jsonb("pipeline_steps").$type<
         import("@/domain/entities/treatment").PipelineStep[]
       >(),
+    priceCents: integer("price_cents"),
+    minPriceCents: integer("min_price_cents"),
+    maxPriceCents: integer("max_price_cents"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -493,6 +500,8 @@ export const appointments = pgTable(
     status: appointmentStatusEnum("status").notNull().default("scheduled"),
     source: appointmentSourceEnum("source").notNull().default("app"),
     reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    treatmentId: uuid("treatment_id").references(() => treatments.id),
+    valueCents: integer("value_cents"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -731,7 +740,12 @@ export const slotReservations = pgTable(
 
 // ── Membros: liga um usuário (por email) a uma clínica ──
 // owner enxerga todas; clinic_admin é resolvido para a clínica do seu vínculo.
-export const memberRoleEnum = pgEnum("member_role", ["owner", "clinic_admin"]);
+export const memberRoleEnum = pgEnum("member_role", [
+  "owner",
+  "clinic_admin",
+  "receptionist",
+  "professional",
+]);
 
 export const clinicMembers = pgTable(
   "clinic_members",
@@ -742,6 +756,7 @@ export const clinicMembers = pgTable(
       .references(() => clinics.id),
     email: text("email").notNull(),
     role: memberRoleEnum("role").notNull().default("clinic_admin"),
+    professionalId: uuid("professional_id").references(() => professionals.id),
     passwordHash: text("password_hash"),
     avatarUrl: text("avatar_url"),
     createdAt: timestamp("created_at", { withTimezone: true })

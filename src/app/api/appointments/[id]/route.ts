@@ -36,6 +36,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     durationMinutes?: number;
     professionalId?: string | null;
     roomId?: string | null;
+    treatmentId?: string | null;
+    valueCents?: number | null;
   };
 
   try {
@@ -101,6 +103,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
         endsAt,
         professionalId: body.professionalId,
         roomId: body.roomId,
+        treatmentId: body.treatmentId,
+        valueCents: body.valueCents,
       },
       {
         appointmentRepository: apptRepo,
