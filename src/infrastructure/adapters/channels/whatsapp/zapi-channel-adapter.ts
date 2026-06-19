@@ -45,6 +45,7 @@ export class ZApiChannelAdapter implements ChannelAdapter {
       externalThreadId: data.phone,
       externalMessageId: data.messageId,
       name: data.senderName || null,
+      senderPhoto: data.senderPhoto ?? null,
       phone: data.phone,
       whatsappLid: data.chatLid ?? null,
       email: null,
