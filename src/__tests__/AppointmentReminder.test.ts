@@ -8,7 +8,7 @@ import type { Appointment } from "@/domain/entities/calendar-slot";
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
-  return {
+  const base: Appointment = {
     id: "appt-1",
     clinicId: "clinic-1",
     leadId: "lead-1",
@@ -21,9 +21,17 @@ function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
     status: "scheduled",
     source: "app",
     reminderSentAt: null,
+    treatmentId: null,
+    valueCents: null,
     createdAt: new Date("2026-05-01"),
     updatedAt: new Date("2026-05-01"),
+  };
+
+  return {
+    ...base,
     ...overrides,
+    treatmentId: overrides.treatmentId ?? null,
+    valueCents: overrides.valueCents ?? null,
   };
 }
 

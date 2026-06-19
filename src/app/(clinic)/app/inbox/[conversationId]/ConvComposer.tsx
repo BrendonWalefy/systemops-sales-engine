@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, PauseCircle, PlayCircle, Send, AlertCircle, ChevronDown, ChevronUp, CalendarPlus } from "lucide-react";
+import { Sparkles, Calendar, PauseCircle, PlayCircle, Send, AlertCircle, CalendarPlus } from "lucide-react";
 import { pauseAi, resumeAi } from "./actions";
 
 interface Props {
@@ -42,7 +42,6 @@ export function ConvComposer({
   conversationId,
   leadId,
   aiPaused,
-  leadName,
   treatmentInterest,
   temperature,
   leadStatus,

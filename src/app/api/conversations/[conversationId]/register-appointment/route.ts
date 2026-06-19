@@ -120,6 +120,8 @@ export async function POST(
         status: "scheduled",
         source: "app",
         reminderSentAt: null,
+        treatmentId: null,
+        valueCents: null,
         createdAt: now,
         updatedAt: now,
       });

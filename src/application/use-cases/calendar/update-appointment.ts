@@ -13,6 +13,8 @@ export type UpdateAppointmentInput = {
   endsAt?: Date;
   professionalId?: string | null;
   roomId?: string | null;
+  treatmentId?: string | null;
+  valueCents?: number | null;
 };
 
 export async function updateAppointment(
@@ -63,6 +65,8 @@ export async function updateAppointment(
     ...(input.endsAt && { endsAt: input.endsAt }),
     ...(input.professionalId !== undefined && { professionalId: input.professionalId }),
     ...(input.roomId !== undefined && { roomId: input.roomId }),
+    ...(input.treatmentId !== undefined && { treatmentId: input.treatmentId }),
+    ...(input.valueCents !== undefined && { valueCents: input.valueCents }),
     updatedAt: new Date(),
   });
 

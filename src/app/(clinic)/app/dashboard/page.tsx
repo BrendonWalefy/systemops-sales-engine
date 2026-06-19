@@ -4,10 +4,11 @@ import type { CSSProperties } from "react";
 import { cookies } from "next/headers";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { getSessionMemberProfile, canViewFinancials, canViewOwnRevenue } from "@/application/tenancy/member-role";
 import { redirect } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
-import { leads, conversations, messages, clinicMembers } from "@/infrastructure/db/schema";
-import { eq, count, and, desc, sql, gte, lt } from "drizzle-orm";
+import { leads, conversations, messages, clinicMembers, appointments, treatments, clinics } from "@/infrastructure/db/schema";
+import { eq, count, and, desc, sql, gte, lt, notInArray, inArray, isNotNull } from "drizzle-orm";
 import Link from "next/link";
 import { Suspense } from "react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
@@ -30,16 +31,6 @@ const DASHBOARD_TZ = "America/Sao_Paulo";
 const MINUTES_SAVED_PER_AGENT_REPLY = 2;
 
 type LeadTemperature = "hot" | "warm" | "cold";
-
-type RecentLead = {
-  id: string;
-  name: string | null;
-  phone: string | null;
-  channel: string;
-  status: string;
-  temperature: string | null;
-  createdAt: Date;
-};
 
 type FlowPoint = {
   label: string;
@@ -239,6 +230,105 @@ function periodToDays(period: string): number {
   return 7;
 }
 
+function formatBRL(cents: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+function periodLabel(period: string): string {
+  if (period === "30d") return "30 dias";
+  if (period === "3m") return "3 meses";
+  return "7 dias";
+}
+
+type ByTreatmentRow = { treatmentName: string; total: number; count: number };
+
+type RevenueData = {
+  potentialCents: number;
+  potentialCount: number;
+  confirmedCents: number;
+  confirmedCount: number;
+  byTreatment: ByTreatmentRow[];
+  monthlyRevenueBrl: number;
+};
+
+async function fetchRevenueData(
+  clinicId: string,
+  periodStart: Date,
+  professionalId: string | null,
+): Promise<RevenueData> {
+  const professionalFilter = professionalId
+    ? [eq(appointments.professionalId, professionalId)]
+    : [];
+
+  const [potentialResult, confirmedResult, byTreatmentResult, clinicRow] = await Promise.all([
+    db
+      .select({ sum: sql<number>`coalesce(sum(${appointments.valueCents}), 0)`, cnt: count() })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.clinicId, clinicId),
+          inArray(appointments.status, ["scheduled", "confirmed"]),
+          gte(appointments.createdAt, periodStart),
+          isNotNull(appointments.valueCents),
+          ...professionalFilter,
+        ),
+      ),
+    db
+      .select({ sum: sql<number>`coalesce(sum(${appointments.valueCents}), 0)`, cnt: count() })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.clinicId, clinicId),
+          eq(appointments.status, "completed"),
+          gte(appointments.createdAt, periodStart),
+          isNotNull(appointments.valueCents),
+          ...professionalFilter,
+        ),
+      ),
+    db
+      .select({
+        treatmentName: treatments.name,
+        total: sql<number>`coalesce(sum(${appointments.valueCents}), 0)`,
+        cnt: count(),
+      })
+      .from(appointments)
+      .innerJoin(treatments, eq(appointments.treatmentId, treatments.id))
+      .where(
+        and(
+          eq(appointments.clinicId, clinicId),
+          gte(appointments.createdAt, periodStart),
+          isNotNull(appointments.valueCents),
+          ...professionalFilter,
+        ),
+      )
+      .groupBy(treatments.name)
+      .orderBy(desc(sql`sum(${appointments.valueCents})`))
+      .limit(3),
+    db
+      .select({ monthlyRevenueBrl: clinics.monthlyRevenueBrl })
+      .from(clinics)
+      .where(eq(clinics.id, clinicId))
+      .limit(1),
+  ]);
+
+  return {
+    potentialCents: Number(potentialResult[0]?.sum ?? 0),
+    potentialCount: potentialResult[0]?.cnt ?? 0,
+    confirmedCents: Number(confirmedResult[0]?.sum ?? 0),
+    confirmedCount: confirmedResult[0]?.cnt ?? 0,
+    byTreatment: byTreatmentResult.map((r) => ({
+      treatmentName: r.treatmentName,
+      total: Number(r.total),
+      count: r.cnt,
+    })),
+    monthlyRevenueBrl: clinicRow[0]?.monthlyRevenueBrl ?? 89700,
+  };
+}
+
 async function fetchDashboardData(period: string) {
   const CLINIC_ID = await getSessionClinicId();
   if (!CLINIC_ID) redirect("/login");
@@ -252,24 +342,7 @@ async function fetchDashboardData(period: string) {
   const session = token ? await verifyToken(token) : null;
   const userEmail = session?.email ?? "";
 
-  if (!CLINIC_ID) {
-    return {
-      totalLeads: 0,
-      scheduledCount: 0,
-      activeHotCount: 0,
-      afterHoursCount: 0,
-      totalConversations: 0,
-      needsAttentionCount: 0,
-      agentMessageCount: 0,
-      currentPeriodLeadCount: 0,
-      previousPeriodLeadCount: 0,
-      recentLeads: [] as RecentLead[],
-      flowSeries: buildFlowSeries([], flowStart),
-      tempCounts: { hot: 0, warm: 0, cold: 0 },
-      userEmail,
-      avatarUrl: null as string | null,
-    };
-  }
+  const memberProfile = await getSessionMemberProfile(CLINIC_ID);
 
   const [
     totalLeadsResult,
@@ -319,15 +392,27 @@ async function fetchDashboardData(period: string) {
     db
       .select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.temperature, "hot"))),
+      .where(and(
+        eq(leads.clinicId, CLINIC_ID),
+        eq(leads.temperature, "hot"),
+        notInArray(leads.status, ["appointment_scheduled", "won", "lost"]),
+      )),
     db
       .select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.temperature, "warm"))),
+      .where(and(
+        eq(leads.clinicId, CLINIC_ID),
+        eq(leads.temperature, "warm"),
+        notInArray(leads.status, ["appointment_scheduled", "won", "lost"]),
+      )),
     db
       .select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.temperature, "cold"))),
+      .where(and(
+        eq(leads.clinicId, CLINIC_ID),
+        eq(leads.temperature, "cold"),
+        notInArray(leads.status, ["appointment_scheduled", "won", "lost"]),
+      )),
     db.select({ count: count() }).from(conversations).where(eq(conversations.clinicId, CLINIC_ID)),
     db
       .select({ count: count() })
@@ -395,6 +480,9 @@ async function fetchDashboardData(period: string) {
     },
     userEmail,
     avatarUrl: memberResult[0]?.avatarUrl ?? null,
+    memberProfile,
+    flowStart,
+    CLINIC_ID,
   };
 }
 
@@ -406,8 +494,24 @@ export default async function DashboardPage({
   const { period = "7d" } = await searchParams;
   const safePeriod = ["7d", "30d", "3m"].includes(period) ? period : "7d";
   const data = await fetchDashboardData(safePeriod);
+
+  const { memberProfile } = data;
+  const showRevenue = memberProfile
+    ? canViewFinancials(memberProfile) || canViewOwnRevenue(memberProfile)
+    : false;
+  const ownRevenueOnly = memberProfile ? canViewOwnRevenue(memberProfile) : false;
+  const showRoi = memberProfile ? canViewFinancials(memberProfile) : false;
+
+  const revenueData = showRevenue
+    ? await fetchRevenueData(
+        data.CLINIC_ID,
+        data.flowStart,
+        ownRevenueOnly ? (memberProfile?.professionalId ?? null) : null,
+      )
+    : null;
   const firstName = data.userEmail ? emailToFirstName(data.userEmail) : "você";
   const conversionRate = data.totalLeads > 0 ? (data.scheduledCount / data.totalLeads) * 100 : 0;
+  const conversionTone = conversionRate >= 10 ? "positive" : conversionRate >= 4 ? "neutral" : "negative";
   const automationRate =
     data.totalConversations > 0
       ? ((data.totalConversations - data.needsAttentionCount) / data.totalConversations) * 100
@@ -484,7 +588,7 @@ export default async function DashboardPage({
             <span className={`dashboard-trend ${leadTrendTone}`}>{leadTrend}</span>
           </div>
           <strong>{data.totalLeads}</strong>
-          <small>{data.currentPeriodLeadCount} nos últimos 7 dias</small>
+          <small>{data.currentPeriodLeadCount} nos últimos {periodLabel(safePeriod)}</small>
         </article>
 
         <article className="dashboard-kpi-card featured">
@@ -492,11 +596,11 @@ export default async function DashboardPage({
             <span className="dashboard-kpi-icon">
               <Calendar size={16} />
             </span>
-            <span>Agendamentos IA</span>
-            <span className="dashboard-trend positive">{formatPercent(conversionRate)}%</span>
+            <span>Consultas Marcadas</span>
+            <span className={`dashboard-trend ${conversionTone}`}>{formatPercent(conversionRate)}%</span>
           </div>
           <strong>{data.scheduledCount}</strong>
-          <small>{formatPercent(conversionRate)}% taxa de conversão</small>
+          <small>{formatPercent(conversionRate)}% de conversão · foto atual</small>
         </article>
 
         <article className="dashboard-kpi-card">
@@ -520,9 +624,132 @@ export default async function DashboardPage({
             <span className="dashboard-trend neutral">{data.activeHotCount} em conversa</span>
           </div>
           <strong>{data.tempCounts.hot}</strong>
-          <small>total · {data.activeHotCount} ativos agora</small>
+          <small>ativos no funil · {data.activeHotCount} em conversa agora</small>
         </article>
       </section>
+
+      {/* ── Pipeline de Receita ─────────────────────────────────────────── */}
+      {revenueData && (
+        <section
+          style={{
+            border: "1px solid var(--line)",
+            borderRadius: "14px",
+            background: "var(--surface-soft)",
+            padding: "20px 24px",
+            marginTop: "0",
+          }}
+          aria-label="Pipeline de receita"
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+            <div>
+              <p style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em", color: "var(--muted)", textTransform: "uppercase", margin: 0 }}>
+                Receita
+              </p>
+              <h2 style={{ margin: "2px 0 0", fontSize: "17px", fontWeight: 700 }}>
+                {ownRevenueOnly ? "Minha Receita" : "Pipeline de Receita"}
+              </h2>
+            </div>
+            <span style={{ fontSize: "12px", color: "var(--muted)" }}>{periodLabel(safePeriod)}</span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: showRoi ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+            <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
+              <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Potencial</p>
+              <strong style={{ fontSize: "22px", fontWeight: 800, color: "var(--accent-strong)" }}>
+                {formatBRL(revenueData.potentialCents)}
+              </strong>
+              <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
+                {revenueData.potentialCount} agendado{revenueData.potentialCount !== 1 ? "s" : ""}
+              </p>
+            </div>
+
+            <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
+              <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Confirmado</p>
+              <strong style={{ fontSize: "22px", fontWeight: 800, color: "var(--text)" }}>
+                {formatBRL(revenueData.confirmedCents)}
+              </strong>
+              <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
+                {revenueData.confirmedCount} realizado{revenueData.confirmedCount !== 1 ? "s" : ""}
+              </p>
+            </div>
+
+            {showRoi && (
+              <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
+                <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>ROI</p>
+                <strong style={{ fontSize: "22px", fontWeight: 800, color: "var(--text)" }}>
+                  {revenueData.monthlyRevenueBrl > 0
+                    ? `${Math.round((revenueData.confirmedCents / 100 / (revenueData.monthlyRevenueBrl / 100)) * 100)}%`
+                    : "—"}
+                </strong>
+                <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
+                  da receita mensal
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Barra de conversão */}
+          {(revenueData.potentialCents + revenueData.confirmedCents) > 0 && (
+            <div style={{ marginBottom: "20px" }}>
+              <div
+                style={{
+                  height: "6px",
+                  borderRadius: "3px",
+                  background: "var(--line-strong)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${Math.min(100, Math.round((revenueData.confirmedCents / (revenueData.potentialCents + revenueData.confirmedCents)) * 100))}%`,
+                    background: "var(--accent-strong)",
+                    borderRadius: "3px",
+                    transition: "width 0.4s ease",
+                  }}
+                />
+              </div>
+              <p style={{ fontSize: "11px", color: "var(--muted)", marginTop: "6px" }}>
+                {Math.round((revenueData.confirmedCents / (revenueData.potentialCents + revenueData.confirmedCents)) * 100)}% convertido
+              </p>
+            </div>
+          )}
+
+          {/* Top tratamentos */}
+          {revenueData.byTreatment.length > 0 && (
+            <div style={{ display: "grid", gap: "8px" }}>
+              {revenueData.byTreatment.map((row) => {
+                const maxTotal = revenueData.byTreatment[0]?.total ?? 1;
+                const barWidth = Math.round((row.total / maxTotal) * 100);
+                return (
+                  <div key={row.treatmentName} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "13px", color: "var(--text)", minWidth: "140px", flexShrink: 0 }}>
+                      {row.treatmentName}
+                    </span>
+                    <div style={{ flex: 1, height: "6px", borderRadius: "3px", background: "var(--line-strong)", overflow: "hidden" }}>
+                      <div style={{ width: `${barWidth}%`, height: "100%", background: "var(--accent)", borderRadius: "3px" }} />
+                    </div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text)", minWidth: "80px", textAlign: "right" }}>
+                      {formatBRL(row.total)}
+                    </span>
+                    <span style={{ fontSize: "11px", color: "var(--muted)", minWidth: "60px", textAlign: "right" }}>
+                      {row.count} cons.
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {revenueData.byTreatment.length === 0 && revenueData.confirmedCents === 0 && revenueData.potentialCents === 0 && (
+            <p style={{ fontSize: "13px", color: "var(--muted)", textAlign: "center", padding: "8px 0" }}>
+              Nenhum agendamento com valor registrado neste período.
+              <br />
+              <small>Cadastre preços nos procedimentos e marque consultas como realizadas para ver o pipeline.</small>
+            </p>
+          )}
+        </section>
+      )}
 
       <main className="dashboard-grid">
         <section className="dashboard-panel dashboard-flow-panel">
@@ -683,7 +910,7 @@ export default async function DashboardPage({
         <section className="dashboard-panel dashboard-temp-panel">
           <div className="dashboard-panel-header compact">
             <div>
-              <p className="dashboard-panel-kicker">Saúde do funil</p>
+              <p className="dashboard-panel-kicker">Saúde do funil · leads ativos</p>
               <h2>Distribuição de Temperatura</h2>
             </div>
             <span className="dashboard-panel-badge">+{tempTotal}</span>

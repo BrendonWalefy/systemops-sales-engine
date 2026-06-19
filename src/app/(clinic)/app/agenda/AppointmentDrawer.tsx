@@ -4,10 +4,14 @@ import { useState } from "react";
 import { X, ExternalLink, Loader2, CheckCircle2, XCircle, Clock, UserX, Trash2 } from "lucide-react";
 import Link from "next/link";
 import type { AppointmentEvent } from "./types";
+import type { TreatmentOption } from "./AgendaClient";
 
 type Props = {
   event: AppointmentEvent;
   conversationId?: string;
+  treatments: TreatmentOption[];
+  memberRole: string;
+  serviceNoun: string;
   onClose: () => void;
   onUpdated: () => void;
 };
@@ -28,12 +32,40 @@ const STATUS_COLORS: Record<string, string> = {
   no_show: "status-no_show",
 };
 
-type Action = "confirmed" | "cancelled" | "completed" | "no_show";
+type Action = "confirmed" | "cancelled" | "no_show";
 
-export function AppointmentDrawer({ event, conversationId, onClose, onUpdated }: Props) {
+type CompletedModalState = {
+  open: boolean;
+  treatmentId: string;
+  valueStr: string; // reais com vírgula, ex: "8500,00"
+};
+
+function formatCents(cents: number | null): string {
+  if (cents == null) return "";
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+function reaisToMaybeCents(str: string): number | null {
+  const normalized = str.replace(",", ".").replace(/[^\d.]/g, "");
+  const val = parseFloat(normalized);
+  if (isNaN(val) || val < 0) return null;
+  return Math.round(val * 100);
+}
+
+export function AppointmentDrawer({ event, conversationId, treatments, memberRole, serviceNoun, onClose, onUpdated }: Props) {
   const [loading, setLoading] = useState<Action | null>(null);
+  const [completingLoading, setCompletingLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [completedModal, setCompletedModal] = useState<CompletedModalState>({
+    open: false,
+    treatmentId: treatments[0]?.id ?? "",
+    valueStr: "",
+  });
+
+  const serviceNounCapitalized = serviceNoun.charAt(0).toUpperCase() + serviceNoun.slice(1);
+  const canSeeValue = memberRole !== "receptionist";
 
   const startsAt = new Date(event.startsAt);
   const endsAt = new Date(event.endsAt);
@@ -64,6 +96,60 @@ export function AppointmentDrawer({ event, conversationId, onClose, onUpdated }:
       setError("Erro de conexão");
     } finally {
       setLoading(null);
+    }
+  }
+
+  function openCompletedModal() {
+    // Tenta inferir tratamento pelo lead.treatmentInterest
+    const preselected = treatments.find((t) =>
+      event.leadTreatmentInterest
+        ? t.name.toLowerCase().includes(event.leadTreatmentInterest.toLowerCase())
+        : false,
+    ) ?? treatments[0];
+
+    setCompletedModal({
+      open: true,
+      treatmentId: preselected?.id ?? "",
+      valueStr: formatCents(preselected?.priceCents ?? null),
+    });
+    setError(null);
+  }
+
+  function handleTreatmentChange(id: string) {
+    const t = treatments.find((t) => t.id === id);
+    setCompletedModal((prev) => ({
+      ...prev,
+      treatmentId: id,
+      // só preenche automaticamente se o campo estava com o valor do tratamento anterior
+      valueStr: t?.priceCents != null ? formatCents(t.priceCents) : prev.valueStr,
+    }));
+  }
+
+  async function confirmCompleted() {
+    setCompletingLoading(true);
+    setError(null);
+    try {
+      const valueCents = canSeeValue ? reaisToMaybeCents(completedModal.valueStr) : null;
+      const res = await fetch(`/api/appointments/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          treatmentId: completedModal.treatmentId || null,
+          valueCents,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Erro ao concluir");
+        return;
+      }
+      onUpdated();
+      onClose();
+    } catch {
+      setError("Erro de conexão");
+    } finally {
+      setCompletingLoading(false);
     }
   }
 
@@ -132,97 +218,190 @@ export function AppointmentDrawer({ event, conversationId, onClose, onUpdated }:
 
   // ── Appointment drawer ────────────────────────────────────────────────
   return (
-    <div className="drawer-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="drawer-panel">
-        <div className="drawer-header">
-          <div>
-            <h2 className="drawer-title">{event.leadName ?? event.leadPhone ?? "Paciente"}</h2>
-            {event.leadPhone && <p className="drawer-subtitle">{event.leadPhone}</p>}
-          </div>
-          <button className="modal-close" onClick={onClose}><X size={18} /></button>
-        </div>
-
-        <div className="drawer-body">
-          <div className="drawer-section">
-            <p className="drawer-date">{dateStr}</p>
-            <p className="drawer-time">{timeStr}</p>
+    <>
+      <div className="drawer-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="drawer-panel">
+          <div className="drawer-header">
+            <div>
+              <h2 className="drawer-title">{event.leadName ?? event.leadPhone ?? "Paciente"}</h2>
+              {event.leadPhone && <p className="drawer-subtitle">{event.leadPhone}</p>}
+            </div>
+            <button className="modal-close" onClick={onClose}><X size={18} /></button>
           </div>
 
-          <div className="drawer-section">
-            <span className={`status-badge ${STATUS_COLORS[event.status] ?? ""}`}>
-              {STATUS_LABELS[event.status] ?? event.status}
-            </span>
-            {event.source === "gcal_import" && (
-              <span className="source-badge">Importado do Google Calendar</span>
+          <div className="drawer-body">
+            <div className="drawer-section">
+              <p className="drawer-date">{dateStr}</p>
+              <p className="drawer-time">{timeStr}</p>
+            </div>
+
+            <div className="drawer-section">
+              <span className={`status-badge ${STATUS_COLORS[event.status] ?? ""}`}>
+                {STATUS_LABELS[event.status] ?? event.status}
+              </span>
+              {event.source === "gcal_import" && (
+                <span className="source-badge">Importado do Google Calendar</span>
+              )}
+            </div>
+
+            {event.professionalName && (
+              <div className="drawer-section">
+                <div className="professional-row">
+                  <span
+                    className="professional-dot"
+                    style={{ background: event.professionalColor ?? "#10b981" }}
+                  />
+                  <span className="professional-name">{event.professionalName}</span>
+                </div>
+              </div>
+            )}
+
+            {event.calendarEventUrl && (
+              <a href={event.calendarEventUrl} target="_blank" rel="noopener noreferrer" className="gcal-link">
+                <ExternalLink size={12} />
+                Ver no Google Calendar
+              </a>
+            )}
+
+            {conversationId && (
+              <Link href={`/app/inbox/${conversationId}`} className="gcal-link">
+                <ExternalLink size={12} />
+                Ver conversa na Inbox
+              </Link>
+            )}
+
+            {error && <p className="field-error">{error}</p>}
+
+            {isActive && (
+              <div className="drawer-actions">
+                <button
+                  className="btn-action btn-confirm"
+                  onClick={() => updateStatus("confirmed")}
+                  disabled={loading !== null || event.status === "confirmed"}
+                >
+                  {loading === "confirmed" ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
+                  Confirmar
+                </button>
+                <button
+                  className="btn-action btn-noshow"
+                  onClick={() => updateStatus("no_show")}
+                  disabled={loading !== null}
+                >
+                  {loading === "no_show" ? <Loader2 size={14} className="spin" /> : <UserX size={14} />}
+                  Não compareceu
+                </button>
+                <button
+                  className="btn-action btn-complete"
+                  onClick={openCompletedModal}
+                  disabled={loading !== null}
+                >
+                  <Clock size={14} />
+                  Concluir
+                </button>
+                <button
+                  className="btn-action btn-cancel"
+                  onClick={() => updateStatus("cancelled")}
+                  disabled={loading !== null}
+                >
+                  {loading === "cancelled" ? <Loader2 size={14} className="spin" /> : <XCircle size={14} />}
+                  Cancelar
+                </button>
+              </div>
             )}
           </div>
-
-          {event.professionalName && (
-            <div className="drawer-section">
-              <div className="professional-row">
-                <span
-                  className="professional-dot"
-                  style={{ background: event.professionalColor ?? "#10b981" }}
-                />
-                <span className="professional-name">{event.professionalName}</span>
-              </div>
-            </div>
-          )}
-
-          {event.calendarEventUrl && (
-            <a href={event.calendarEventUrl} target="_blank" rel="noopener noreferrer" className="gcal-link">
-              <ExternalLink size={12} />
-              Ver no Google Calendar
-            </a>
-          )}
-
-          {conversationId && (
-            <Link href={`/app/inbox/${conversationId}`} className="gcal-link">
-              <ExternalLink size={12} />
-              Ver conversa na Inbox
-            </Link>
-          )}
-
-          {error && <p className="field-error">{error}</p>}
-
-          {isActive && (
-            <div className="drawer-actions">
-              <button
-                className="btn-action btn-confirm"
-                onClick={() => updateStatus("confirmed")}
-                disabled={loading !== null || event.status === "confirmed"}
-              >
-                {loading === "confirmed" ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
-                Confirmar
-              </button>
-              <button
-                className="btn-action btn-noshow"
-                onClick={() => updateStatus("no_show")}
-                disabled={loading !== null}
-              >
-                {loading === "no_show" ? <Loader2 size={14} className="spin" /> : <UserX size={14} />}
-                Não compareceu
-              </button>
-              <button
-                className="btn-action btn-complete"
-                onClick={() => updateStatus("completed")}
-                disabled={loading !== null}
-              >
-                {loading === "completed" ? <Loader2 size={14} className="spin" /> : <Clock size={14} />}
-                Concluir
-              </button>
-              <button
-                className="btn-action btn-cancel"
-                onClick={() => updateStatus("cancelled")}
-                disabled={loading !== null}
-              >
-                {loading === "cancelled" ? <Loader2 size={14} className="spin" /> : <XCircle size={14} />}
-                Cancelar
-              </button>
-            </div>
-          )}
         </div>
       </div>
-    </div>
+
+      {/* ── Modal "Consulta Realizada" ───────────────────────────────── */}
+      {completedModal.open && (
+        <div
+          className="drawer-overlay"
+          style={{ zIndex: 200 }}
+          onClick={(e) => e.target === e.currentTarget && setCompletedModal((p) => ({ ...p, open: false }))}
+        >
+          <div
+            className="drawer-panel"
+            style={{ maxWidth: 440 }}
+          >
+            <div className="drawer-header">
+              <div>
+                <h2 className="drawer-title">Consulta Realizada</h2>
+                <p className="drawer-subtitle">{event.leadName ?? "Paciente"}</p>
+              </div>
+              <button
+                className="modal-close"
+                onClick={() => setCompletedModal((p) => ({ ...p, open: false }))}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="drawer-body" style={{ display: "grid", gap: "16px" }}>
+              {treatments.length > 0 && (
+                <label style={{ margin: 0 }}>
+                  <span style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "6px" }}>
+                    {serviceNounCapitalized} realizado
+                  </span>
+                  <select
+                    value={completedModal.treatmentId}
+                    onChange={(e) => handleTreatmentChange(e.target.value)}
+                    style={{ width: "100%", margin: 0, fontSize: "15px" }}
+                  >
+                    <option value="">— Não especificado —</option>
+                    {treatments.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {canSeeValue && (
+                <label style={{ margin: 0 }}>
+                  <span style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "6px" }}>
+                    Valor cobrado (R$)
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={completedModal.valueStr}
+                    onChange={(e) => setCompletedModal((p) => ({ ...p, valueStr: e.target.value }))}
+                    placeholder="0,00"
+                    style={{ width: "100%", margin: 0, fontSize: "15px" }}
+                  />
+                  <span style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px", display: "block" }}>
+                    Ajuste se o valor cobrado foi diferente
+                  </span>
+                </label>
+              )}
+
+              {error && <p className="field-error">{error}</p>}
+
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  className="secondary-button"
+                  onClick={() => setCompletedModal((p) => ({ ...p, open: false }))}
+                  disabled={completingLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="primary-button"
+                  onClick={confirmCompleted}
+                  disabled={completingLoading}
+                  style={{ gap: "8px" }}
+                >
+                  {completingLoading ? (
+                    <Loader2 size={14} className="spin" />
+                  ) : (
+                    <CheckCircle2 size={14} />
+                  )}
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

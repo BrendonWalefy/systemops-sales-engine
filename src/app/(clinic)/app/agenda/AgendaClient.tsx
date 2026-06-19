@@ -29,8 +29,17 @@ const SX_VIEW_NAMES: Record<ScheduleView, string> = {
   month: createViewMonthGrid().name,
 };
 
+export type TreatmentOption = {
+  id: string;
+  name: string;
+  priceCents: number | null;
+};
+
 type Props = {
   professionals: Professional[];
+  treatments: TreatmentOption[];
+  memberRole: string;
+  serviceNoun: string;
   initialFrom: string;
   initialTo: string;
   openNew?: boolean;
@@ -63,7 +72,7 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
   };
 }
 
-export function AgendaClient({ professionals, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
+export function AgendaClient({ professionals, treatments, memberRole, serviceNoun, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
   const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -406,6 +415,9 @@ export function AgendaClient({ professionals, initialFrom, initialTo, openNew, t
         <AppointmentDrawer
           event={drawer.event}
           conversationId={drawer.event.conversationId ?? undefined}
+          treatments={treatments}
+          memberRole={memberRole}
+          serviceNoun={serviceNoun}
           onClose={() => setDrawer({ open: false })}
           onUpdated={refreshAll}
         />

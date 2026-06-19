@@ -1,7 +1,7 @@
 "use server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { signToken, COOKIE_NAME, MAX_AGE, type SessionRole } from "@/lib/session";
+import { signToken, COOKIE_NAME, MAX_AGE, type MemberRole } from "@/lib/session";
 import { verifyPassword, dummyVerify } from "@/lib/password";
 import { db } from "@/infrastructure/db/client";
 import { clinicMembers } from "@/infrastructure/db/schema";
@@ -15,15 +15,15 @@ export async function login(formData: FormData) {
   const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
   const ownerPassword = process.env.OWNER_PASSWORD;
   if (ownerEmail && email === ownerEmail && password === ownerPassword) {
-    const token = await signToken(email, "owner");
+    const token = await signToken({ email, role: "owner", memberRole: "owner", professionalId: null });
     const jar = await cookies();
     jar.set(COOKIE_NAME, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: MAX_AGE, path: "/" });
     redirect("/owner");
   }
 
-  // Clinic admin: senha própria armazenada em clinic_members.password_hash.
+  // Clinic admin/professional/receptionist: senha em clinic_members.password_hash.
   const member = await db
-    .select({ passwordHash: clinicMembers.passwordHash, role: clinicMembers.role })
+    .select({ passwordHash: clinicMembers.passwordHash, role: clinicMembers.role, professionalId: clinicMembers.professionalId })
     .from(clinicMembers)
     .where(eq(clinicMembers.email, email))
     .limit(1)
@@ -33,11 +33,19 @@ export async function login(formData: FormData) {
     if (member.passwordHash) {
       const authenticated = await verifyPassword(password, member.passwordHash);
       if (authenticated) {
-        const role: SessionRole = member.role === "owner" ? "owner" : "clinic_admin";
-        const token = await signToken(email, role);
+        // Papéis "owner" e "clinic_admin" usam role = "clinic_admin" no JWT de rota
+        // (o campo role é apenas para resolve-clinic.ts); memberRole carrega o papel real.
+        const memberRole = member.role as MemberRole;
+        const sessionRole = memberRole === "owner" ? "owner" as const : "clinic_admin" as const;
+        const token = await signToken({
+          email,
+          role: sessionRole,
+          memberRole,
+          professionalId: member.professionalId ?? null,
+        });
         const jar = await cookies();
         jar.set(COOKIE_NAME, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: MAX_AGE, path: "/" });
-        redirect(role === "owner" ? "/owner" : "/app/dashboard");
+        redirect(sessionRole === "owner" ? "/owner" : "/app/dashboard");
       }
     }
   }

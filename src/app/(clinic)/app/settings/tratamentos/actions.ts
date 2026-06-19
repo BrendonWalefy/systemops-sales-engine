@@ -7,6 +7,13 @@ const repo = new DrizzleTreatmentRepository();
 
 export type ActionState = { success: boolean; error?: string } | null;
 
+function parseOptionalCents(raw: FormDataEntryValue | null): number | null {
+  if (!raw || String(raw).trim() === "") return null;
+  const val = parseFloat(String(raw));
+  if (isNaN(val) || val < 0) return null;
+  return Math.round(val * 100);
+}
+
 export async function createTreatment(prevState: ActionState, formData: FormData): Promise<ActionState> {
   const clinicId = await requireSessionClinicId();
   const name = (formData.get("name") as string)?.trim();
@@ -16,7 +23,24 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     return { success: false, error: "Preencha todos os campos corretamente." };
   }
 
-  await repo.create({ clinicId, name, durationMinutes, description: null, commonObjections: [], requiresEvaluationFirst: false, triggerTemplate: null, keywordMatchEnabled: true, aliases: [], isAesthetic: false, pipelineSteps: null });
+  const priceCents = parseOptionalCents(formData.get("priceCents"));
+
+  await repo.create({
+    clinicId,
+    name,
+    durationMinutes,
+    description: null,
+    commonObjections: [],
+    requiresEvaluationFirst: false,
+    triggerTemplate: null,
+    keywordMatchEnabled: true,
+    aliases: [],
+    isAesthetic: false,
+    pipelineSteps: null,
+    priceCents,
+    minPriceCents: null,
+    maxPriceCents: null,
+  });
   revalidatePath("/app/settings/playbook");
   return { success: true };
 }
@@ -30,7 +54,19 @@ export async function updateTreatment(prevState: ActionState, formData: FormData
     return { success: false, error: "Dados inválidos." };
   }
 
-  await repo.update(id, { name, durationMinutes });
+  const useRange = formData.get("useRange") === "1";
+  let priceCents: number | null = null;
+  let minPriceCents: number | null = null;
+  let maxPriceCents: number | null = null;
+
+  if (useRange) {
+    minPriceCents = parseOptionalCents(formData.get("minPriceCents"));
+    maxPriceCents = parseOptionalCents(formData.get("maxPriceCents"));
+  } else {
+    priceCents = parseOptionalCents(formData.get("priceCents"));
+  }
+
+  await repo.update(id, { name, durationMinutes, priceCents, minPriceCents, maxPriceCents });
   revalidatePath("/app/settings/playbook");
   return { success: true };
 }

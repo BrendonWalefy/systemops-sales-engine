@@ -49,6 +49,8 @@ export async function onboardClinic(
     name: formData.get("name"),
     slug: formData.get("slug"),
     specialty: (formData.get("specialty") as string) || "odontology",
+    segment: (formData.get("segment") as string) || "dental",
+    serviceNoun: (formData.get("serviceNoun") as string) || "tratamento",
     timezone: (formData.get("timezone") as string) || "America/Sao_Paulo",
     businessHours: (formData.get("businessHours") as string) || undefined,
     greetingMessage: (formData.get("greetingMessage") as string) || undefined,
@@ -169,6 +171,8 @@ export async function onboardClinic(
       zapiClientToken: encryptCredentialNullable(cfg.channel.zapi?.clientToken),
       metaPhoneNumberId: cfg.channel.meta?.phoneNumberId ?? null,
       metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
+      segment: cfg.segment,
+      serviceNoun: cfg.serviceNoun,
       updatedAt: now,
     })
     .returning({ id: clinics.id });
