@@ -4,10 +4,12 @@ import { getInboxSnapshotSignature } from "@/app/(clinic)/app/inbox/get-inbox-sn
 import { getAgendaSnapshotSignature } from "@/app/(clinic)/app/agenda/get-agenda-snapshot-signature";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 280;
+// Vercel Hobby limita serverless a ~60s — fechamos em 50s para evitar
+// o Runtime Timeout Error nos logs. EventSource reconecta via retry:2000.
+export const maxDuration = 55;
 
 const TICK_MS = 4_000;
-const STREAM_MAX_MS = 270_000;
+const STREAM_MAX_MS = 50_000;
 
 // Janela larga e fixa: cobre a navegação típica da agenda sem depender do
 // range visível no cliente, evitando reabrir a conexão a cada troca de view.

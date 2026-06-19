@@ -296,6 +296,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (dup) return new NextResponse("OK", { status: 200 });
   }
 
+  // Diagnóstico foto de perfil: confirma se a Z-API está enviando `senderPhoto` no webhook.
+  // Sem foto aqui → leads.profile_pic_url fica null → inbox mostra só as iniciais.
+  console.log(
+    `[ZApi] inbound phone=${body.phone} senderPhoto=${body.senderPhoto ? "presente" : "AUSENTE"}`,
+  );
+
   // Mensagem inbound do lead: texto digitado, áudio transcrito, ou mídia (imagem/vídeo/documento).
   let messageText: string | null = null;
   let inboundMediaUrl: string | null = null;

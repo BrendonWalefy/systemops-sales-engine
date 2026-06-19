@@ -53,27 +53,29 @@ function VideoCard({ url, title }: { url: string; title?: string }) {
     return (
       <div style={{ marginBottom: 6 }}>
         <video controls autoPlay src={url}
-          style={{ width: "100%", borderRadius: 10, display: "block", maxHeight: 220 }}>
+          style={{ width: "100%", borderRadius: 10, display: "block", maxHeight: 280 }}>
           <track kind="captions" />
         </video>
       </div>
     );
   }
   return (
-    <button className="msg-media-card"
-      onClick={() => setExpanded(true)}
-      style={{ width: "100%", background: "none", border: "none", padding: 0, textAlign: "left" }}>
-      <div className="msg-media-thumb">
+    <button className="msg-video-card" onClick={() => setExpanded(true)}>
+      <div className="msg-video-thumb">
         <video src={`${url}#t=0.5`} preload="metadata" muted playsInline
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        <div className="msg-media-thumb-overlay">
-          <Play size={18} fill="white" color="white" />
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", borderRadius: "10px 10px 0 0" }} />
+        <div className="msg-video-play">
+          <div className="msg-video-play-btn">
+            <Play size={22} fill="white" color="white" />
+          </div>
         </div>
       </div>
-      <div className="msg-media-info">
-        <div className="msg-media-title">{title || "Vídeo"}</div>
-        <div className="msg-media-sub">Toque para assistir</div>
-      </div>
+      {title && (
+        <div className="msg-video-footer">
+          <span className="msg-video-title">{title}</span>
+          <span className="msg-video-sub">Toque para assistir</span>
+        </div>
+      )}
     </button>
   );
 }
