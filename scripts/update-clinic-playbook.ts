@@ -48,7 +48,6 @@ async function main() {
 
   await db.update(clinics).set({
     businessHours: "Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.",
-    conversationExperience: "concierge",
     greetingMessage: GREETING_MESSAGE,
     menuItems: CONCIERGE_MENU_ITEMS,
     receptionistPhone: null,

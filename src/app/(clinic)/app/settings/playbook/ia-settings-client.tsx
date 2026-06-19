@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useOptimistic, useTransition, useRef, useEffect, useCallback } from "react";
+import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone, Sparkles, ListChecks, Mic } from "lucide-react";
+import { Timer, CalendarClock, Clock, FlaskConical, MoreHorizontal, Plus, Edit2, Copy, Trash2, Check, Pencil, Zap, MessageSquare, GripVertical, Phone, Sparkles, Mic, Lock } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
@@ -10,6 +10,7 @@ import {
   deletePlaybookVersion,
   createPlaybookVersion,
   updateClinicOperationalSettings,
+  updateVoiceModuleConfig,
 } from "./playbook-version-actions";
 import { toggleAutoReply } from "./actions";
 import type { ConversationExperience, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
@@ -20,6 +21,7 @@ import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { AddTreatmentForm } from "../tratamentos/AddTreatmentForm";
 import { PushNotificationSettingsCard } from "@/components/push-notification-settings-card";
+import type { ActiveModule } from "@/application/modules/module-gate";
 
 type Version = {
   id: string;
@@ -33,7 +35,6 @@ type ClinicData = {
   autoReplyEnabled: boolean | null;
   takeoverTtlHours: number | null;
   postAppointmentBufferMinutes: number | null;
-  conversationExperience: ConversationExperience | null;
   businessHours: string | null;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;
@@ -42,8 +43,7 @@ type ClinicData = {
   slotLookaheadDays: number | null;
   mediaTakeoverTtlHours: number | null;
   installmentRates: { n: number; rate: number; active: boolean }[] | null;
-  voiceResponseEnabled: boolean;
-  ttsConfig: { provider: string; speed: number };
+  activeModules: ActiveModule[];
 };
 
 const INTENT_LABELS: Record<MenuItemIntent, string> = {
@@ -439,21 +439,24 @@ function GeralTab({
   focusTarget: SettingsFocusTarget | null;
   onFocusHandled: () => void;
 }) {
+  // Deriva estado de módulos
+  const voiceMod = clinic.activeModules.find((m) => m.key === "voice_tts");
+  const voiceModuleActive = !!voiceMod;
+  const conciergeModuleActive = clinic.activeModules.some((m) => m.key === "concierge_mode");
+  const derivedExperience: ConversationExperience = conciergeModuleActive ? "concierge" : "menu_first";
+
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
-  const [voiceTogglePending, startVoiceToggleTransition] = useTransition();
-  const [optimisticVoiceEnabled, setOptimisticVoiceEnabled] = useOptimistic(
-    clinic.voiceResponseEnabled,
-    (_state: boolean, next: boolean) => next,
+  const [ttsConfig, setTtsConfig] = useState<{ provider: string; speed: number }>(
+    voiceMod?.config
+      ? { provider: (voiceMod.config.provider as string) ?? "nova", speed: Number(voiceMod.config.speed ?? 1.0) }
+      : { provider: "nova", speed: TTS_SPEED_DEFAULTS.nova },
   );
-  const [ttsConfig, setTtsConfig] = useState(clinic.ttsConfig ?? { provider: "nova", speed: TTS_SPEED_DEFAULTS.nova });
   const [ttsConfigPending, startTtsConfigTransition] = useTransition();
 
-  const initialExperience = clinic.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const customMenuRef = useRef(clinic.menuItems !== null);
   const [greetingMessage, setGreetingMessage] = useState(clinic.greetingMessage ?? "");
-  const [conversationExperience, setConversationExperience] = useState<ConversationExperience>(initialExperience);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(clinic.menuItems ?? defaultMenuItemsForExperience(initialExperience));
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(clinic.menuItems ?? defaultMenuItemsForExperience(derivedExperience));
   const [businessHours, setBusinessHours] = useState(clinic.businessHours ?? "");
   const [receptionistPhone, setReceptionistPhone] = useState(clinic.receptionistPhone ?? "");
   const [takeoverTtlHours, setTakeoverTtlHours] = useState(clinic.takeoverTtlHours ?? 4);
@@ -471,34 +474,25 @@ function GeralTab({
   const takeoverInputRef = useRef<HTMLInputElement>(null);
   const bufferInputRef = useRef<HTMLInputElement>(null);
 
-  function handleVoiceToggle() {
-    const next = !optimisticVoiceEnabled;
-    startVoiceToggleTransition(async () => {
-      setOptimisticVoiceEnabled(next);
-      await updateClinicOperationalSettings({ voiceResponseEnabled: next });
-    });
-  }
-
   function handleTtsProviderChange(provider: TtsProvider) {
     const next = { provider, speed: TTS_SPEED_DEFAULTS[provider] };
     setTtsConfig(next);
     startTtsConfigTransition(async () => {
-      await updateClinicOperationalSettings({ ttsConfig: next });
+      await updateVoiceModuleConfig(next);
     });
   }
 
   function handleTtsSpeedChange(speed: number) {
-    const next = { ...ttsConfig, speed };
+    const next = { ...(ttsConfig as { provider: TtsProvider; speed: number }), speed };
     setTtsConfig(next);
     startTtsConfigTransition(async () => {
-      await updateClinicOperationalSettings({ ttsConfig: next });
+      await updateVoiceModuleConfig(next);
     });
   }
 
   const triggerSave = useCallback((patch: {
     greetingMessage?: string;
     menuItems?: MenuItem[];
-    conversationExperience?: ConversationExperience;
     businessHours?: string;
     takeoverTtlHours?: number;
     postAppointmentBufferMinutes?: number;
@@ -514,7 +508,6 @@ function GeralTab({
       await updateClinicOperationalSettings({
         greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
         menuItems: patch.menuItems ?? menuItems,
-        conversationExperience: patch.conversationExperience ?? conversationExperience,
         businessHours: (patch.businessHours ?? businessHours) || null,
         takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
         postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
@@ -529,7 +522,7 @@ function GeralTab({
       setSaving(false);
       setSaved(true);
     }, 1200);
-  }, [greetingMessage, menuItems, conversationExperience, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, receptionistPhone, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours]);
+  }, [greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, receptionistPhone, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours]);
 
   function handleToggle() {
     const next = !enabled;
@@ -541,13 +534,6 @@ function GeralTab({
     customMenuRef.current = true;
     setMenuItems(next);
     triggerSave({ menuItems: next });
-  }
-
-  function handleExperienceChange(next: ConversationExperience) {
-    const nextMenuItems = customMenuRef.current ? menuItems : defaultMenuItemsForExperience(next);
-    setConversationExperience(next);
-    setMenuItems(nextMenuItems);
-    triggerSave({ conversationExperience: next, menuItems: nextMenuItems });
   }
 
   useEffect(() => {
@@ -612,29 +598,28 @@ function GeralTab({
 
       {/* Resposta por voz */}
       <div className="ia-status-card" style={cardStyle}>
-        {/* wrapper column garante que header e config de voz empilham verticalmente */}
         <div style={{ display: "flex", flexDirection: "column", width: "100%", minWidth: 0 }}>
-        <div className="ia-status-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "14px" }}>
-          <div className="ia-status-main" style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
-            <div style={iconBoxStyle}>
-              <Mic size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Resposta por Voz</strong>
-                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(optimisticVoiceEnabled ? { background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
-                  {optimisticVoiceEnabled ? "Ativa" : "Desativada"}
-                </span>
+          <div className="ia-status-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "14px" }}>
+            <div className="ia-status-main" style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
+              <div style={iconBoxStyle}>
+                <Mic size={16} strokeWidth={1.8} style={{ color: "#34d399" }} />
               </div>
-              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>IA envia áudios de voz em vez de texto</p>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Resposta por Voz</strong>
+                  <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(voiceModuleActive ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
+                    {voiceModuleActive ? "Ativa" : "Inativa"}
+                  </span>
+                </div>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>
+                  {voiceModuleActive ? "IA envia áudios de voz em vez de texto" : "Para ativar este módulo, fale com o suporte"}
+                </p>
+              </div>
             </div>
+            <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />
           </div>
-          <button onClick={handleVoiceToggle} disabled={voiceTogglePending} style={{ width: "44px", height: "24px", borderRadius: "12px", border: "none", background: optimisticVoiceEnabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: voiceTogglePending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: voiceTogglePending ? 0.7 : 1 }}>
-            <span style={{ position: "absolute", top: "3px", left: optimisticVoiceEnabled ? "23px" : "3px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
-          </button>
-        </div>
 
-        {optimisticVoiceEnabled && (
+        {voiceModuleActive && (
           <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "12px" }}>
             {/* Seletor de provider — empilhado, funciona em qualquer largura */}
             <div>
@@ -698,35 +683,30 @@ function GeralTab({
             </div>
           </div>
         )}
-        </div>{/* fim wrapper column */}
+        </div>
       </div>
 
       {/* Experiência da conversa */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div className="ia-section-heading" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={iconBoxStyle}>
-            <Sparkles size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+      <div className="ia-status-card" style={cardStyle}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
+            <div style={iconBoxStyle}>
+              <Sparkles size={15} strokeWidth={1.8} style={{ color: "#34d399" }} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Experiência da conversa</strong>
+                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" }}>
+                  {conciergeModuleActive ? "Concierge" : "Menu-first"}
+                </span>
+              </div>
+              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>
+                {conciergeModuleActive ? "IA conversa naturalmente, sem menu" : "IA apresenta menu de opções ao lead"}
+              </p>
+              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#3f3f46" }}>Para alterar o modo, fale com o suporte</p>
+            </div>
           </div>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Experiência da conversa</p>
-            <p style={{ margin: "1px 0 0", fontSize: "12px", color: "#52525b" }}>Define como a IA inicia e conduz leads no WhatsApp</p>
-          </div>
-        </div>
-        <div className="ia-choice-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px" }}>
-          <button
-            type="button"
-            onClick={() => handleExperienceChange("concierge")}
-            style={conversationExperience === "concierge" ? activeBtnStyle : outlineBtnStyle}
-          >
-            <Sparkles size={14} /> Concierge
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExperienceChange("menu_first")}
-            style={conversationExperience === "menu_first" ? activeBtnStyle : outlineBtnStyle}
-          >
-            <ListChecks size={14} /> Menu-first
-          </button>
+          <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />
         </div>
       </div>
 

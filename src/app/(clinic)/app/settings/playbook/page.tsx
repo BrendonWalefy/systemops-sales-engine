@@ -6,20 +6,18 @@ import { clinics, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
-import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
-import { DEFAULT_CONVERSATION_EXPERIENCE, ttsConfigFromVoice, DEFAULT_TTS_CONFIG } from "@/domain/entities/clinic";
-import type { TtsConfig } from "@/domain/entities/tts-config";
+import type { MenuItem } from "@/domain/entities/clinic";
+import { getClinicModules } from "@/application/modules/module-gate";
 
 async function getData() {
   const clinicId = await requireSessionClinicId();
-  const [clinic, versions, treatments] = await Promise.all([
+  const [clinic, versions, treatments, activeModules] = await Promise.all([
     db
       .select({
         name: clinics.name,
         autoReplyEnabled: clinics.autoReplyEnabled,
         takeoverTtlHours: clinics.takeoverTtlHours,
         postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
-        conversationExperience: clinics.conversationExperience,
         businessHours: clinics.businessHours,
         greetingMessage: clinics.greetingMessage,
         menuItems: clinics.menuItems,
@@ -28,9 +26,6 @@ async function getData() {
         slotLookaheadDays: clinics.slotLookaheadDays,
         mediaTakeoverTtlHours: clinics.mediaTakeoverTtlHours,
         installmentRates: clinics.installmentRates,
-        voiceResponseEnabled: clinics.voiceResponseEnabled,
-        ttsVoice: clinics.ttsVoice,
-        ttsConfig: clinics.ttsConfig,
       })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
@@ -47,12 +42,13 @@ async function getData() {
       .where(eq(playbookVersions.clinicId, clinicId))
       .orderBy(desc(playbookVersions.updatedAt)),
     new DrizzleTreatmentRepository().listByClinic(clinicId),
+    getClinicModules(clinicId),
   ]);
-  return { clinic, versions, treatments };
+  return { clinic, versions, treatments, activeModules };
 }
 
 export default async function PlaybookPage() {
-  const { clinic, versions, treatments } = await getData();
+  const { clinic, versions, treatments, activeModules } = await getData();
 
   return (
     <IASettingsClient
@@ -61,7 +57,6 @@ export default async function PlaybookPage() {
         autoReplyEnabled: clinic?.autoReplyEnabled ?? false,
         takeoverTtlHours: clinic?.takeoverTtlHours ?? 4,
         postAppointmentBufferMinutes: clinic?.postAppointmentBufferMinutes ?? 60,
-        conversationExperience: (clinic?.conversationExperience as ConversationExperience | null) ?? DEFAULT_CONVERSATION_EXPERIENCE,
         businessHours: clinic?.businessHours ?? null,
         greetingMessage: clinic?.greetingMessage ?? null,
         menuItems: (clinic?.menuItems as MenuItem[] | null) ?? null,
@@ -70,8 +65,7 @@ export default async function PlaybookPage() {
         slotLookaheadDays: clinic?.slotLookaheadDays ?? 14,
         mediaTakeoverTtlHours: clinic?.mediaTakeoverTtlHours ?? null,
         installmentRates: (clinic?.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
-        voiceResponseEnabled: clinic?.voiceResponseEnabled ?? false,
-        ttsConfig: (clinic?.ttsConfig as TtsConfig | null) ?? ttsConfigFromVoice(clinic?.ttsVoice ?? "nova") ?? DEFAULT_TTS_CONFIG,
+        activeModules,
       }}
       versions={versions.map((v) => ({
         id: v.id,

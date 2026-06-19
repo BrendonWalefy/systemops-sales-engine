@@ -29,6 +29,7 @@ import { hashPassword } from "../src/lib/password";
 import { resolveClinicCommercialSettings } from "../src/application/onboarding/clinic-commercial-settings";
 import { resolveInitialClinicOperationalStatus } from "../src/application/clinics/clinic-operational-status";
 import { encryptCredentialNullable } from "../src/infrastructure/crypto/credential-vault";
+import { syncModulesForPlan } from "../src/application/modules/module-gate";
 
 type NewClinicConfig = {
   name: string;
@@ -237,6 +238,9 @@ async function main() {
     }
   }
   console.log(`${cfg.admins.length} admin(s) vinculado(s).`);
+
+  await syncModulesForPlan(clinicId, commercialSettings.plan, "create-clinic");
+  console.log(`Módulos sincronizados para plano ${commercialSettings.plan}.`);
 
   console.log("\n✅ Onboarding concluído.");
   console.log(`   clinicId: ${clinicId}`);

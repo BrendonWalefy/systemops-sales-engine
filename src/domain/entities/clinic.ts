@@ -43,7 +43,6 @@ export type Clinic = {
   city: string | null;
   address: string | null;
   timezone: string;
-  conversationExperience: ConversationExperience;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;
   businessHours: string | null;
@@ -63,8 +62,6 @@ export type Clinic = {
   mediaTakeoverTtlHours: number | null;
   rapidThrottleMs: number;
   messageDebounceMs: number | null;
-  voiceResponseEnabled: boolean;
-  ttsConfig: import("./tts-config").TtsConfig;
   createdAt: Date;
   updatedAt: Date;
 };

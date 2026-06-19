@@ -321,7 +321,6 @@ async function main() {
     .set({
       specialty: SPECIALTY,
       greetingMessage: GREETING_MESSAGE,
-      conversationExperience: "concierge",
       menuItems: CONCIERGE_MENU_ITEMS,
       updatedAt: new Date(),
     })

@@ -7,13 +7,12 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type {
-  ConversationExperience,
-  MenuItem,
-} from "@/domain/entities/clinic";
+import type { MenuItem } from "@/domain/entities/clinic";
+import type { ModuleKey } from "@/application/modules/module-catalog";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -139,10 +138,6 @@ export const clinics = pgTable("clinics", {
   city: text("city"),
   address: text("address"),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
-  conversationExperience: text("conversation_experience")
-    .$type<ConversationExperience>()
-    .notNull()
-    .default("menu_first"),
   greetingMessage: text("greeting_message"),
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),
   businessHours: text("business_hours"),
@@ -183,13 +178,6 @@ export const clinics = pgTable("clinics", {
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
   messageDebounceMs: integer("message_debounce_ms"),
-  voiceResponseEnabled: boolean("voice_response_enabled")
-    .notNull()
-    .default(false),
-  ttsVoice: text("tts_voice").notNull().default("nova"),
-  // Configuração completa de TTS por clínica. Substitui ttsVoice logicamente.
-  // Null = derivar de ttsVoice para compatibilidade retroativa.
-  ttsConfig: jsonb("tts_config").$type<{ provider: string; speed: number }>(),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──
@@ -766,5 +754,29 @@ export const clinicMembers = pgTable(
       table.clinicId,
     ),
     emailIdx: index("clinic_members_email_idx").on(table.email),
+  }),
+);
+
+// ── Módulos por clínica: feature flags vinculados ao plano de assinatura ──
+// Cada linha representa um módulo ativado/desativado para uma clínica.
+// O catálogo e as regras de plano vivem em src/application/modules/.
+export const clinicModules = pgTable(
+  "clinic_modules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id, { onDelete: "cascade" }),
+    moduleKey: text("module_key").notNull().$type<ModuleKey>(),
+    isActive: boolean("is_active").notNull().default(true),
+    config: jsonb("config"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedBy: text("updated_by"),
+  },
+  (t) => ({
+    uniq: unique().on(t.clinicId, t.moduleKey),
+    activeIdx: index("idx_clinic_modules_clinic").on(t.clinicId),
   }),
 );
