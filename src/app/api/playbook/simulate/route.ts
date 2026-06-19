@@ -18,6 +18,7 @@ import {
 } from "@/domain/entities/clinic";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import { getClinicModules } from "@/application/modules/module-gate";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
@@ -446,30 +447,33 @@ export async function POST(req: NextRequest) {
     // ── Dados da clínica (timezone, nome, businessHours, menuItems, address) ──
     const clinicLookupId = body.clinicId ?? (await getSessionClinicId());
     if (!clinicLookupId) return NextResponse.json({ error: "clinicId required" }, { status: 400 });
-    const clinic = await db
-      .select({
-        name: clinics.name,
-        timezone: clinics.timezone,
-        businessHours: clinics.businessHours,
-        defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
-        conversationExperience: clinics.conversationExperience,
-        menuItems: clinics.menuItems,
-        address: clinics.address,
-      })
-      .from(clinics)
-      .where(eq(clinics.id, clinicLookupId))
-      .limit(1)
-      .then((r) => r[0]);
+    const [clinic, activeModules] = await Promise.all([
+      db
+        .select({
+          name: clinics.name,
+          timezone: clinics.timezone,
+          businessHours: clinics.businessHours,
+          defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
+          menuItems: clinics.menuItems,
+          address: clinics.address,
+        })
+        .from(clinics)
+        .where(eq(clinics.id, clinicLookupId))
+        .limit(1)
+        .then((r) => r[0]),
+      getClinicModules(clinicLookupId),
+    ]);
 
     const timezone = new ClinicTimezone(clinic?.timezone ?? "America/Sao_Paulo");
     const clinicName = clinic?.name ?? "Clínica";
     const businessHours = clinic?.businessHours ?? null;
     const durationMinutes = clinic?.defaultAppointmentDurationMinutes ?? 60;
     const clinicAddress = clinic?.address ?? null;
+    const dbExperience: ConversationExperience = activeModules.some((m) => m.key === "concierge_mode")
+      ? "concierge"
+      : "menu_first";
     const conversationExperience: ConversationExperience =
-      body.playbook?.conversationExperience ??
-      clinic?.conversationExperience ??
-      DEFAULT_CONVERSATION_EXPERIENCE;
+      body.playbook?.conversationExperience ?? dbExperience;
     const menuItems: MenuItem[] = (clinic?.menuItems as MenuItem[] | null) ?? defaultMenuItemsForExperience(conversationExperience);
     const menuText = menuItems.filter((i) => i.enabled).map((i) => `${i.number}. ${i.label}`).join("\n");
     const isFirst = history.length === 0;

@@ -716,7 +716,6 @@ function buildClinic(row: ClinicRow): Clinic {
     city: row.city,
     address: row.address ?? null,
     timezone: row.timezone,
-    conversationExperience: row.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
     greetingMessage: row.greetingMessage ?? null,
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,
     businessHours: row.businessHours,
@@ -736,8 +735,6 @@ function buildClinic(row: ClinicRow): Clinic {
     mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
     rapidThrottleMs: row.rapidThrottleMs,
     messageDebounceMs: row.messageDebounceMs ?? null,
-    voiceResponseEnabled: row.voiceResponseEnabled ?? false,
-    ttsConfig: (row.ttsConfig as TtsConfig | null) ?? ttsConfigFromVoice(row.ttsVoice ?? "nova"),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

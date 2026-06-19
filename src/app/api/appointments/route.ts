@@ -11,7 +11,6 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
-import { type TtsConfig, DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +157,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         city: clinicRow.city,
         address: clinicRow.address,
         timezone: clinicRow.timezone,
-        conversationExperience: clinicRow.conversationExperience,
         greetingMessage: clinicRow.greetingMessage,
         menuItems: clinicRow.menuItems,
         businessHours: clinicRow.businessHours,
@@ -177,8 +175,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         mediaTakeoverTtlHours: clinicRow.mediaTakeoverTtlHours ?? null,
         rapidThrottleMs: clinicRow.rapidThrottleMs,
         messageDebounceMs: clinicRow.messageDebounceMs ?? null,
-        voiceResponseEnabled: clinicRow.voiceResponseEnabled ?? false,
-        ttsConfig: (clinicRow.ttsConfig as TtsConfig | null) ?? DEFAULT_TTS_CONFIG,
         createdAt: clinicRow.createdAt,
         updatedAt: clinicRow.updatedAt,
       },

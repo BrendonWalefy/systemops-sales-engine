@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { hashPassword } from "@/lib/password";
 import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
+import { clinicHasModule } from "@/application/modules/module-gate";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
 import {
   getClinicOperationalStatusColors,
@@ -151,7 +152,6 @@ async function activateClinicGoLive(clinicId: string) {
       metaPhoneNumberId: true,
       metaAccessToken: true,
       operationalStatus: true,
-      ttsConfig: true,
     },
   });
 
@@ -160,7 +160,8 @@ async function activateClinicGoLive(clinicId: string) {
     redirect(`/owner/clinics/${clinicId}?goLiveError=cancelled`);
   }
 
-  const [activePlaybook, clinicTreatments] = await Promise.all([
+  const [hasVoiceTts, activePlaybook, clinicTreatments] = await Promise.all([
+    clinicHasModule(clinicId, "voice_tts"),
     db.query.playbookVersions.findFirst({
       where: and(
         eq(playbookVersions.clinicId, clinicId),
@@ -184,7 +185,7 @@ async function activateClinicGoLive(clinicId: string) {
   ]);
 
   const blueprint = buildClinicBlueprint({
-    clinic: { ...clinic, hasTtsConfig: clinic.ttsConfig != null },
+    clinic: { ...clinic, hasTtsConfig: hasVoiceTts },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,
       commercialPolicy: activePlaybook?.commercialPolicy ?? null,
@@ -264,14 +265,14 @@ export default async function ClinicDetailPage({
       zapiToken: clinics.zapiToken,
       metaPhoneNumberId: clinics.metaPhoneNumberId,
       metaAccessToken: clinics.metaAccessToken,
-      ttsConfig: clinics.ttsConfig,
     })
     .from(clinics)
     .where(eq(clinics.id, clinicId))
     .limit(1);
   if (!clinic) notFound();
 
-  const [activePlaybook, clinicTreatments] = await Promise.all([
+  const [hasVoiceTtsMain, activePlaybook, clinicTreatments] = await Promise.all([
+    clinicHasModule(clinicId, "voice_tts"),
     db.query.playbookVersions.findFirst({
       where: and(
         eq(playbookVersions.clinicId, clinicId),
@@ -295,7 +296,7 @@ export default async function ClinicDetailPage({
   ]);
 
   const blueprint = buildClinicBlueprint({
-    clinic: { ...clinic, hasTtsConfig: clinic.ttsConfig != null },
+    clinic: { ...clinic, hasTtsConfig: hasVoiceTtsMain },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,
       commercialPolicy: activePlaybook?.commercialPolicy ?? null,

@@ -11,10 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type {
-  ConversationExperience,
-  MenuItem,
-} from "@/domain/entities/clinic";
+import type { MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 
 export const channelEnum = pgEnum("channel", [
@@ -141,10 +138,6 @@ export const clinics = pgTable("clinics", {
   city: text("city"),
   address: text("address"),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
-  conversationExperience: text("conversation_experience")
-    .$type<ConversationExperience>()
-    .notNull()
-    .default("menu_first"),
   greetingMessage: text("greeting_message"),
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),
   businessHours: text("business_hours"),
@@ -185,13 +178,6 @@ export const clinics = pgTable("clinics", {
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
   messageDebounceMs: integer("message_debounce_ms"),
-  voiceResponseEnabled: boolean("voice_response_enabled")
-    .notNull()
-    .default(false),
-  ttsVoice: text("tts_voice").notNull().default("nova"),
-  // Configuração completa de TTS por clínica. Substitui ttsVoice logicamente.
-  // Null = derivar de ttsVoice para compatibilidade retroativa.
-  ttsConfig: jsonb("tts_config").$type<{ provider: string; speed: number }>(),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──

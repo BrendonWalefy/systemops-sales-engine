@@ -10,7 +10,6 @@ import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/driz
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { cancelPendingFollowUps } from "@/application/use-cases/leads/cancel-pending-follow-ups";
-import { type TtsConfig, DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +136,6 @@ export async function POST(
           city: clinic.city,
           address: clinic.address,
           timezone: clinic.timezone,
-          conversationExperience: clinic.conversationExperience,
           greetingMessage: clinic.greetingMessage,
           menuItems: clinic.menuItems,
           businessHours: clinic.businessHours,
@@ -156,8 +154,6 @@ export async function POST(
           mediaTakeoverTtlHours: clinic.mediaTakeoverTtlHours ?? null,
           rapidThrottleMs: clinic.rapidThrottleMs,
           messageDebounceMs: clinic.messageDebounceMs ?? null,
-          voiceResponseEnabled: clinic.voiceResponseEnabled ?? false,
-          ttsConfig: (clinic.ttsConfig as TtsConfig | null) ?? DEFAULT_TTS_CONFIG,
           createdAt: clinic.createdAt,
           updatedAt: clinic.updatedAt,
         },

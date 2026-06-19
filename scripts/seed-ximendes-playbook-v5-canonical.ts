@@ -273,7 +273,6 @@ async function main() {
     .set({
       specialty: "Odontologia Estética e Reabilitação Oral",
       greetingMessage: "Olá! Sou a recepcionista virtual da Ximendes Odontologia. Como posso ajudar?",
-      conversationExperience: "concierge",
       menuItems: CONCIERGE_MENU_ITEMS,
       updatedAt: new Date(),
     })
