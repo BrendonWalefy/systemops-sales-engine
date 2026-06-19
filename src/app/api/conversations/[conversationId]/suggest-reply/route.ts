@@ -7,8 +7,6 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 
 export const dynamic = "force-dynamic";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
@@ -48,6 +46,7 @@ export async function GET(
   const leadName = lead?.name ?? "cliente";
   const interest = lead?.treatmentInterest ?? "tratamento odontológico";
 
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
