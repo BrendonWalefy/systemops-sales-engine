@@ -4798,6 +4798,10 @@ textarea:focus {
   /* Quando em conversa: main sem padding (conv-root é fixed, sai do fluxo) */
   .clinic-layout:has(.conv-root) > main {
     padding-bottom: 0;
+    /* Remove overflow-y:auto quando o chat está aberto — no iOS Safari, um elemento
+       com overflow:auto captura eventos de toque antes do conv-root fixo (bug WebKit),
+       tornando cliques impossíveis mesmo com z-index correto. */
+    overflow: hidden;
   }
 
   /* Nav inferior some na tela de conversa — há o ← Inbox no header */
@@ -4827,6 +4831,7 @@ textarea:focus {
     bottom: var(--keyboard-height, 0px);
     height: auto;
     overflow: hidden;
+    background: var(--bg);
     /* Garante que o conv-root fique acima do pill nav (z-index: 200) e do body::after (199) */
     z-index: 210;
   }
@@ -4885,6 +4890,10 @@ textarea:focus {
   /* Painel de info do lead some — chat ocupa tela toda */
   .conv-body {
     grid-template-columns: 1fr;
+    /* grid-template-rows:1fr garante que o único track de linha preencha
+       toda a altura do conv-body (que já tem flex:1 dentro do conv-root).
+       Sem isso, a row fica auto-sized (content-height) e deixa gap preto abaixo do composer. */
+    grid-template-rows: 1fr;
   }
 
   .conv-lead-panel {
