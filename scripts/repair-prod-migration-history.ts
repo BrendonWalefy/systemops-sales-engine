@@ -94,8 +94,14 @@ async function ensureSchema(): Promise<void> {
 
   await db.execute(sql.raw(`
     ALTER TABLE "clinics" DROP COLUMN IF EXISTS "voice_response_enabled";
+  `));
+  await db.execute(sql.raw(`
     ALTER TABLE "clinics" DROP COLUMN IF EXISTS "tts_voice";
+  `));
+  await db.execute(sql.raw(`
     ALTER TABLE "clinics" DROP COLUMN IF EXISTS "tts_config";
+  `));
+  await db.execute(sql.raw(`
     ALTER TABLE "clinics" DROP COLUMN IF EXISTS "conversation_experience";
   `));
 
