@@ -8,6 +8,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { migrate } from "drizzle-orm/neon-http/migrator";
 import path from "path";
 import { fileURLToPath } from "url";
+import { assertDrizzleMetaIsSane } from "./check-drizzle-meta";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +17,8 @@ if (!connectionString) {
   console.error("DATABASE_URL não definida");
   process.exit(1);
 }
+
+assertDrizzleMetaIsSane();
 
 const db = drizzle(neon(connectionString));
 

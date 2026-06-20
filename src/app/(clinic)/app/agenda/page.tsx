@@ -5,8 +5,7 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile } from "@/application/tenancy/member-role";
 import { redirect } from "next/navigation";
 import { AgendaClient } from "./AgendaClient";
-import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
-import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
+import { getCachedProfessionals, getCachedTreatmentsForAgenda } from "@/app/(clinic)/app/settings/server-data";
 import { db } from "@/infrastructure/db/client";
 import { clinics } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
@@ -21,13 +20,13 @@ export default async function AgendaPage({
   if (!clinicId) redirect("/login");
 
   const [professionals, clinicRow, treatments, memberProfile] = await Promise.all([
-    new DrizzleProfessionalRepository().listByClinic(clinicId),
+    getCachedProfessionals(clinicId),
     db
       .select({ timezone: clinics.timezone, serviceNoun: clinics.serviceNoun })
       .from(clinics)
       .where(eq(clinics.id, clinicId))
       .limit(1),
-    new DrizzleTreatmentRepository().listByClinic(clinicId),
+    getCachedTreatmentsForAgenda(clinicId),
     getSessionMemberProfile(clinicId),
   ]);
   const timezone = clinicRow[0]?.timezone ?? "America/Sao_Paulo";

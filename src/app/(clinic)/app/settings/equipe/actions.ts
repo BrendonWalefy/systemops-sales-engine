@@ -1,11 +1,12 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canEditPrices } from "@/application/tenancy/member-role";
 import { db } from "@/infrastructure/db/client";
 import { clinicMembers } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { hashPassword } from "@/lib/password";
+import { clinicEquipeTag } from "@/lib/cache-tags";
 
 export type EquipeActionState = { success: boolean; error?: string } | null;
 
@@ -59,6 +60,7 @@ export async function addMember(
         },
       });
     revalidatePath("/app/settings/equipe");
+    revalidateTag(clinicEquipeTag(clinicId), "max");
     return { success: true };
   } catch (err) {
     console.error("[addMember]", err);
@@ -82,4 +84,5 @@ export async function removeMember(formData: FormData): Promise<void> {
     .where(and(eq(clinicMembers.id, memberId), eq(clinicMembers.clinicId, clinicId)));
 
   revalidatePath("/app/settings/equipe");
+  revalidateTag(clinicEquipeTag(clinicId), "max");
 }

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { cookies } from "next/headers";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
+import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
+import { clinicProfessionalsTag, clinicEquipeTag } from "@/lib/cache-tags";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +21,8 @@ type RouteParams = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) return NextResponse.json({ error: "Sem clínica resolvida para a sessão" }, { status: 500 });
 
   const { id } = await params;
 
@@ -42,6 +47,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
       ...(body.isActive !== undefined && { isActive: body.isActive }),
       ...(body.googleCalendarId !== undefined && { googleCalendarId: body.googleCalendarId }),
     });
+    revalidateTag(clinicProfessionalsTag(clinicId), "max");
+    revalidateTag(clinicEquipeTag(clinicId), "max");
     return NextResponse.json({ professional: updated });
   } catch (err) {
     console.error("[professionals PATCH]", err);
@@ -52,11 +59,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
 export async function DELETE(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) return NextResponse.json({ error: "Sem clínica resolvida para a sessão" }, { status: 500 });
 
   const { id } = await params;
 
   try {
     await repo.delete(id);
+    revalidateTag(clinicProfessionalsTag(clinicId), "max");
+    revalidateTag(clinicEquipeTag(clinicId), "max");
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[professionals DELETE]", err);

@@ -3,13 +3,13 @@ export const dynamic = "force-dynamic";
 import "./profissionais.css";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
-import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 import { ProfissionaisClient } from "./ProfissionaisClient";
+import { getCachedProfessionals } from "../server-data";
 
 export default async function ProfissionaisPage() {
   const clinicId = await getSessionClinicId();
   if (!clinicId) redirect("/login");
-  const professionals = await new DrizzleProfessionalRepository().listByClinic(clinicId);
+  const professionals = await getCachedProfessionals(clinicId);
 
   return (
     <ProfissionaisClient

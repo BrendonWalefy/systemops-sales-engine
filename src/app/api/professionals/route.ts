@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
+import { clinicProfessionalsTag, clinicEquipeTag } from "@/lib/cache-tags";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +60,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       googleCalendarId: null,
       isActive: true,
     });
+    revalidateTag(clinicProfessionalsTag(clinicId), "max");
+    revalidateTag(clinicEquipeTag(clinicId), "max");
     return NextResponse.json({ professional }, { status: 201 });
   } catch (err) {
     console.error("[professionals POST]", err);
