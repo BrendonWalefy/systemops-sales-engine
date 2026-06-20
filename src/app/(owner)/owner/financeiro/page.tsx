@@ -5,6 +5,7 @@ import { db } from "@/infrastructure/db/client";
 import {
   clinics,
   aiUsageCosts,
+  ttsUsageCosts,
   whatsappMessageCosts,
 } from "@/infrastructure/db/schema";
 import { eq, sum, and, gte } from "drizzle-orm";
@@ -80,6 +81,7 @@ type ClinicFinancial = {
   monthlyRevenueBrl: number;
   billingStartedAt: Date | null;
   aiCostMicros: number;
+  ttsCostMicros: number;
   waCostMicros: number;
   isTest: boolean;
 };
@@ -102,7 +104,7 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
 
   return Promise.all(
     allClinics.map(async (clinic) => {
-      const [aiResult, waResult] = await Promise.all([
+      const [aiResult, ttsResult, waResult] = await Promise.all([
         db
           .select({ total: sum(aiUsageCosts.estimatedCostUsdMicros) })
           .from(aiUsageCosts)
@@ -110,6 +112,16 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
             and(
               eq(aiUsageCosts.clinicId, clinic.id),
               gte(aiUsageCosts.createdAt, monthStart),
+            ),
+          ),
+
+        db
+          .select({ total: sum(ttsUsageCosts.estimatedCostUsdMicros) })
+          .from(ttsUsageCosts)
+          .where(
+            and(
+              eq(ttsUsageCosts.clinicId, clinic.id),
+              gte(ttsUsageCosts.createdAt, monthStart),
             ),
           ),
 
@@ -134,6 +146,7 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
           ? new Date(clinic.billingStartedAt)
           : null,
         aiCostMicros: Number(aiResult[0]?.total ?? 0),
+        ttsCostMicros: Number(ttsResult[0]?.total ?? 0),
         waCostMicros: Number(waResult[0]?.total ?? 0),
         isTest: clinic.isTest,
       };
@@ -172,9 +185,9 @@ export default async function FinanceiroPage() {
   const infraVar = nProdClinics * INFRA_FIXED_BRL.zapi_per_clinic;
   const infraTotal = infraFixed + infraVar;
 
-  // Custos variáveis de IA+WA de produção
+  // Custos variáveis de IA+TTS+WA de produção
   const aiWaTotal = billableClinics.reduce(
-    (s, c) => s + microsBrlCents(c.aiCostMicros + c.waCostMicros),
+    (s, c) => s + microsBrlCents(c.aiCostMicros + c.ttsCostMicros + c.waCostMicros),
     0,
   );
 
@@ -185,7 +198,7 @@ export default async function FinanceiroPage() {
   // Custo de testes
   const testZapiCost = nTestClinics * INFRA_FIXED_BRL.zapi_per_clinic;
   const testAiWaCost = testClinics.reduce(
-    (s, c) => s + microsBrlCents(c.aiCostMicros + c.waCostMicros),
+    (s, c) => s + microsBrlCents(c.aiCostMicros + c.ttsCostMicros + c.waCostMicros),
     0,
   );
   const totalTestCost = testZapiCost + testAiWaCost;
@@ -468,6 +481,13 @@ export default async function FinanceiroPage() {
                 ),
               },
               {
+                label: "ElevenLabs (B-WAVE)",
+                note: "variável · ~$0,30/1k chars",
+                value: microsBrlCents(
+                  billableClinics.reduce((s, c) => s + c.ttsCostMicros, 0),
+                ),
+              },
+              {
                 label: "WhatsApp (Meta msgs)",
                 note: "variável",
                 value: microsBrlCents(
@@ -625,7 +645,7 @@ export default async function FinanceiroPage() {
             <div style={{ display: "flex", flexDirection: "column" }}>
               {billableClinics.map((clinic, i) => {
                 const aiWaBrl = microsBrlCents(
-                  clinic.aiCostMicros + clinic.waCostMicros,
+                  clinic.aiCostMicros + clinic.ttsCostMicros + clinic.waCostMicros,
                 );
                 const planLabel = PLAN_LABEL[clinic.plan] ?? clinic.plan;
                 const planDefault = PLAN_PRICE_BRL[clinic.plan] ?? 0;
@@ -700,8 +720,8 @@ export default async function FinanceiroPage() {
                           fontFamily: "monospace",
                         }}
                       >
-                        IA+WA:{" "}
-                        {formatUsd(clinic.aiCostMicros + clinic.waCostMicros)} ·{" "}
+                        IA+TTS+WA:{" "}
+                        {formatUsd(clinic.aiCostMicros + clinic.ttsCostMicros + clinic.waCostMicros)} ·{" "}
                         {formatBrl(aiWaBrl)}
                       </span>
                       {clinic.billingStartedAt && (
@@ -843,7 +863,7 @@ export default async function FinanceiroPage() {
             <div style={{ display: "flex", flexDirection: "column" }}>
               {testClinics.map((clinic, i) => {
                 const aiWaBrl = microsBrlCents(
-                  clinic.aiCostMicros + clinic.waCostMicros,
+                  clinic.aiCostMicros + clinic.ttsCostMicros + clinic.waCostMicros,
                 );
                 const clinicTotal = INFRA_FIXED_BRL.zapi_per_clinic + aiWaBrl;
 

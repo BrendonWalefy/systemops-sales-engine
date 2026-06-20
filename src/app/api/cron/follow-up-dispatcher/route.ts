@@ -211,7 +211,7 @@ async function processOneFollowUp(
   });
 
   const { msgId: zapiMessageId, deliveryFormat } = await withTimeout(
-    sendVoiceOrText(channelAddress, composed.text, defaultChannelConfig, deps.voiceEnabled, deps.ttsConfig),
+    sendVoiceOrText(channelAddress, composed.text, defaultChannelConfig, deps.voiceEnabled, deps.ttsConfig, clinic.id),
     SEND_TIMEOUT_MS,
     `follow-up ${followUp.id} lead=${lead.phone}`,
   );

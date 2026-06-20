@@ -11,6 +11,13 @@ export type TrackAiUsageInput = {
   outputTokens: number;
 };
 
+export type TrackTtsUsageInput = {
+  clinicId: string;
+  provider: "elevenlabs" | "openai_tts";
+  model: string;
+  characterCount: number;
+};
+
 export type TrackWhatsAppCostInput = {
   clinicId: string;
   provider: "meta_cloud_api";
@@ -21,6 +28,7 @@ export type TrackWhatsAppCostInput = {
 
 export type UsageCostTracker = {
   trackAiUsage(input: TrackAiUsageInput): Promise<void>;
+  trackTtsUsage(input: TrackTtsUsageInput): Promise<void>;
   trackWhatsAppCost(input: TrackWhatsAppCostInput): Promise<void>;
 };
 

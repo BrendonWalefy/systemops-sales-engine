@@ -91,7 +91,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         isFirstMessage: false,
       });
 
-      await sendVoiceOrText(channelAddress, composed.text, channelConfig, voiceEnabled, ttsConfig);
+      await sendVoiceOrText(channelAddress, composed.text, channelConfig, voiceEnabled, ttsConfig, clinic.id);
       await appointmentRepository.save({ ...appointment, reminderSentAt: now, updatedAt: now });
 
       // Registra estado de confirmação pendente na conversa do lead (TTL: 24h)

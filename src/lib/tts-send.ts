@@ -8,11 +8,31 @@ import {
   sendMediaMessage,
   sendTextMessage,
 } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
+import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
 import type { ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 
 const DEFAULT_TTS_CONFIG: TtsConfig = { provider: "nova", speed: 0.92 };
+
+// Fire-and-forget: nunca bloqueia o envio em caso de falha no tracking.
+export function trackTtsCostAsync(clinicId: string, text: string, ttsConfig: TtsConfig): void {
+  if (ttsConfig.provider !== "elevenlabs") return;
+  const tracker = new DefaultUsageCostTracker({
+    usageCostRepository: new DrizzleUsageCostRepository(),
+    idGenerator: randomUUID,
+    now: () => new Date(),
+  });
+  tracker
+    .trackTtsUsage({
+      clinicId,
+      provider: "elevenlabs",
+      model: "eleven_flash_v2_5",
+      characterCount: text.length,
+    })
+    .catch((err) => console.error("[TTS] Falha ao registrar custo ElevenLabs:", err));
+}
 
 export type VoiceConfig = {
   voiceEnabled: boolean;
@@ -38,7 +58,7 @@ export async function resolveClinicVoiceConfig(clinicId: string): Promise<VoiceC
   if (elRow) {
     const conf = (elRow.config ?? {}) as Partial<VoiceElevenLabsConfig>;
     return {
-      voiceEnabled: true,
+      voiceEnabled: conf.voiceOutputEnabled !== false,
       ttsConfig: {
         provider: "elevenlabs",
         speed: conf.speed ?? 1.0,
@@ -53,7 +73,7 @@ export async function resolveClinicVoiceConfig(clinicId: string): Promise<VoiceC
   if (basicRow) {
     const conf = (basicRow.config ?? {}) as Partial<VoiceTtsConfig>;
     return {
-      voiceEnabled: true,
+      voiceEnabled: conf.voiceOutputEnabled !== false,
       ttsConfig: { provider: conf.provider ?? "nova", speed: conf.speed ?? 0.92 },
     };
   }
@@ -75,6 +95,7 @@ export async function sendVoiceOrText(
   config: ClinicChannelConfig,
   voiceEnabled: boolean,
   ttsConfig: TtsConfig = DEFAULT_TTS_CONFIG,
+  clinicId?: string,
 ): Promise<SendVoiceResult> {
   if (voiceEnabled) {
     try {
@@ -87,6 +108,7 @@ export async function sendVoiceOrText(
         { contentType },
       );
       const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
+      if (clinicId) trackTtsCostAsync(clinicId, text, ttsConfig);
       return { msgId, deliveryFormat: "audio" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

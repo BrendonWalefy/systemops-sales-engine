@@ -196,6 +196,29 @@ export async function updateClinicOperationalSettings(data: {
   revalidatePath("/app/settings/playbook");
 }
 
+export async function toggleVoiceOutput(
+  moduleKey: "voice_tts" | "voice_elevenlabs",
+  voiceOutputEnabled: boolean,
+) {
+  const CLINIC_ID = await requireSessionClinicId();
+  const [row] = await db
+    .select({ config: clinicModules.config })
+    .from(clinicModules)
+    .where(and(eq(clinicModules.clinicId, CLINIC_ID), eq(clinicModules.moduleKey, moduleKey)))
+    .limit(1);
+
+  if (!row) return;
+  await db
+    .update(clinicModules)
+    .set({
+      config: { ...(row.config ?? {}), voiceOutputEnabled },
+      updatedAt: new Date(),
+      updatedBy: "clinic_admin",
+    })
+    .where(and(eq(clinicModules.clinicId, CLINIC_ID), eq(clinicModules.moduleKey, moduleKey)));
+  revalidatePath("/app/settings/playbook");
+}
+
 export async function updateVoiceModuleConfig(config: VoiceTtsConfig) {
   const CLINIC_ID = await requireSessionClinicId();
   await db

@@ -1,5 +1,6 @@
 import type {
   TrackAiUsageInput,
+  TrackTtsUsageInput,
   TrackWhatsAppCostInput,
 } from "@/application/ports/usage-cost-tracker";
 
@@ -39,6 +40,19 @@ export function estimateAiCostUsdMicros(input: TrackAiUsageInput): number {
     (input.outputTokens / 1_000_000) * price.outputUsdMicrosPerMillionTokens;
 
   return Math.ceil(inputCost + outputCost);
+}
+
+// ElevenLabs Flash v2.5: ~$0.30/1000 chars (Creator plan, jun/2026).
+// Atualizar se migrar de plano.
+const TTS_PRICE_USD_MICROS_PER_CHAR: Record<string, number> = {
+  eleven_flash_v2_5: 300,
+  default: 300,
+};
+
+export function estimateTtsCostUsdMicros(input: TrackTtsUsageInput): number {
+  if (input.provider === "openai_tts") return 0;
+  const pricePerChar = TTS_PRICE_USD_MICROS_PER_CHAR[input.model] ?? TTS_PRICE_USD_MICROS_PER_CHAR.default;
+  return Math.ceil(input.characterCount * pricePerChar);
 }
 
 export function estimateWhatsAppCostUsdMicros(input: TrackWhatsAppCostInput): number {

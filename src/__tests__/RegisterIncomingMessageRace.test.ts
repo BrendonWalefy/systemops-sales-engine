@@ -207,6 +207,7 @@ class SimpleConversationRepository implements ConversationRepository {
 
 const usageCostTracker: UsageCostTracker = {
   async trackAiUsage() {},
+  async trackTtsUsage() {},
   async trackWhatsAppCost() {},
 };
 

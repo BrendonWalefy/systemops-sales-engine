@@ -4,6 +4,7 @@ import type { VoiceMode } from "@/domain/entities/voice-mode";
 export type VoiceTtsConfig = {
   provider: TtsProvider;
   speed: number;
+  voiceOutputEnabled?: boolean; // default true; false = envia só texto mesmo com módulo ativo
 };
 
 export type VoiceElevenLabsConfig = {
@@ -12,6 +13,7 @@ export type VoiceElevenLabsConfig = {
   similarityBoost: number;
   speed: number;      // 0.7–1.2; configurável pela clínica
   mode: VoiceMode;    // impact | mix | full; configurado pelo owner
+  voiceOutputEnabled?: boolean; // default true; false = envia só texto mesmo com módulo ativo
 };
 
 export type ModuleConfigMap = {

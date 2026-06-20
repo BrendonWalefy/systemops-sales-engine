@@ -3,7 +3,7 @@ import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { FollowUp } from "@/domain/entities/follow-up";
 import type { Lead } from "@/domain/entities/lead";
-import type { AiUsageCost, WhatsAppMessageCost } from "@/domain/entities/usage-cost";
+import type { AiUsageCost, TtsUsageCost, WhatsAppMessageCost } from "@/domain/entities/usage-cost";
 import type {
   AgentRecommendationRepository,
   HumanDecision,
@@ -30,6 +30,7 @@ export class InMemoryDemoStore
   readonly followUps = new Map<string, FollowUp>();
   readonly appointments = new Map<string, Appointment>();
   readonly aiUsageCosts: AiUsageCost[] = [];
+  readonly ttsUsageCosts: TtsUsageCost[] = [];
   readonly whatsappMessageCosts: WhatsAppMessageCost[] = [];
   readonly humanDecisions = new Map<
     string,
@@ -262,6 +263,10 @@ export class InMemoryDemoStore
 
   async recordAiUsage(cost: AiUsageCost): Promise<void> {
     this.aiUsageCosts.push(cost);
+  }
+
+  async recordTtsUsage(cost: TtsUsageCost): Promise<void> {
+    this.ttsUsageCosts.push(cost);
   }
 
   async recordWhatsAppMessageCost(cost: WhatsAppMessageCost): Promise<void> {

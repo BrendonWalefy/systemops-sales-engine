@@ -14,6 +14,16 @@ export type AiUsageCost = {
   createdAt: Date;
 };
 
+export type TtsUsageCost = {
+  id: string;
+  clinicId: string;
+  provider: "elevenlabs" | "openai_tts";
+  model: string;
+  characterCount: number;
+  estimatedCostUsdMicros: number;
+  createdAt: Date;
+};
+
 export type WhatsAppMessageCost = {
   id: string;
   clinicId: string;

@@ -13,6 +13,7 @@ import {
   updateVoiceModuleConfig,
   updateBWaveConfig,
   updateBWaveSpeed,
+  toggleVoiceOutput,
 } from "./playbook-version-actions";
 import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
 import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
@@ -450,11 +451,17 @@ function GeralTab({
   const audioResponseActive = voiceModuleActive || bwaveActive;
   const bwaveConfig = bwaveMod?.config as VoiceElevenLabsConfig | null | undefined;
   const bwaveMode: VoiceMode = bwaveConfig?.mode ?? "impact";
+  const bwaveOutputEnabledInit = bwaveConfig?.voiceOutputEnabled !== false;
+  const ttsOutputEnabledInit = (voiceMod?.config as { voiceOutputEnabled?: boolean } | null)?.voiceOutputEnabled !== false;
   const conciergeModuleActive = clinic.activeModules.some((m) => m.key === "concierge_mode");
   const derivedExperience: ConversationExperience = conciergeModuleActive ? "concierge" : "menu_first";
 
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
+  const [bwaveOutputEnabled, setBwaveOutputEnabled] = useState(bwaveOutputEnabledInit);
+  const [bwaveOutputPending, startBwaveOutputTransition] = useTransition();
+  const [ttsOutputEnabled, setTtsOutputEnabled] = useState(ttsOutputEnabledInit);
+  const [ttsOutputPending, startTtsOutputTransition] = useTransition();
   const [bwaveDraft, setBwaveDraft] = useState<VoiceElevenLabsConfig>({
     voiceId: bwaveConfig?.voiceId ?? "",
     stability: bwaveConfig?.stability ?? 0.5,
@@ -465,6 +472,18 @@ function GeralTab({
   const [bwaveSpeed, setBwaveSpeed] = useState(bwaveConfig?.speed ?? 1.0);
   const [bwaveSpeedPending, startBwaveSpeedTransition] = useTransition();
   const [bwaveConfigPending, startBwaveConfigTransition] = useTransition();
+
+  function handleBwaveOutputToggle() {
+    const next = !bwaveOutputEnabled;
+    setBwaveOutputEnabled(next);
+    startBwaveOutputTransition(async () => { await toggleVoiceOutput("voice_elevenlabs", next); });
+  }
+
+  function handleTtsOutputToggle() {
+    const next = !ttsOutputEnabled;
+    setTtsOutputEnabled(next);
+    startTtsOutputTransition(async () => { await toggleVoiceOutput("voice_tts", next); });
+  }
 
   function handleBwaveSpeedChange(speed: number) {
     setBwaveSpeed(speed);
@@ -641,15 +660,29 @@ function GeralTab({
                   </span>
                 </div>
                 <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>
-                  {bwaveActive
-                    ? "B-WAVE Voice está ativa e tem prioridade sobre a voz básica."
-                    : voiceModuleActive
-                      ? "IA envia áudios de voz em vez de texto."
-                      : "Para ativar este módulo, fale com o suporte."}
+                  {bwaveActive && !bwaveOutputEnabled
+                    ? "B-WAVE Voice instalada · saída de áudio pausada (modo texto)."
+                    : bwaveActive
+                      ? "B-WAVE Voice está ativa e tem prioridade sobre a voz básica."
+                      : voiceModuleActive && !ttsOutputEnabled
+                        ? "Voz instalada · saída de áudio pausada (modo texto)."
+                        : voiceModuleActive
+                          ? "IA envia áudios de voz em vez de texto."
+                          : "Para ativar este módulo, fale com o suporte."}
                 </p>
               </div>
             </div>
             {!audioResponseActive && <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />}
+            {voiceModuleActive && !bwaveActive && (
+              <button
+                onClick={handleTtsOutputToggle}
+                disabled={ttsOutputPending}
+                title={ttsOutputEnabled ? "Desativar envio de áudio" : "Ativar envio de áudio"}
+                style={{ width: "40px", height: "22px", borderRadius: "11px", border: "none", background: ttsOutputEnabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: ttsOutputPending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: ttsOutputPending ? 0.7 : 1 }}
+              >
+                <span style={{ position: "absolute", top: "3px", left: ttsOutputEnabled ? "21px" : "3px", width: "16px", height: "16px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
+              </button>
+            )}
           </div>
 
         {voiceModuleActive && !bwaveActive && (
@@ -765,6 +798,16 @@ function GeralTab({
               </div>
             </div>
             {!bwaveActive && <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />}
+            {bwaveActive && (
+              <button
+                onClick={handleBwaveOutputToggle}
+                disabled={bwaveOutputPending}
+                title={bwaveOutputEnabled ? "Pausar envio de áudio B-WAVE" : "Ativar envio de áudio B-WAVE"}
+                style={{ width: "40px", height: "22px", borderRadius: "11px", border: "none", background: bwaveOutputEnabled ? "#10b981" : "rgba(255,255,255,0.1)", cursor: bwaveOutputPending ? "default" : "pointer", position: "relative", transition: "background 200ms", flexShrink: 0, opacity: bwaveOutputPending ? 0.7 : 1 }}
+              >
+                <span style={{ position: "absolute", top: "3px", left: bwaveOutputEnabled ? "21px" : "3px", width: "16px", height: "16px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
+              </button>
+            )}
           </div>
 
           {/* Estado ativo — controles da clínica */}

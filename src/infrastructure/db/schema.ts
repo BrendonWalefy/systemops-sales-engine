@@ -77,6 +77,8 @@ export const followUpStatusEnum = pgEnum("follow_up_status", [
 
 export const aiProviderEnum = pgEnum("ai_provider", ["openai"]);
 
+export const ttsProviderEnum = pgEnum("tts_provider", ["elevenlabs", "openai_tts"]);
+
 export const aiOperationEnum = pgEnum("ai_operation", [
   "sales_conversation_analysis",
   "conversation_summary",
@@ -580,6 +582,29 @@ export const aiUsageCosts = pgTable(
   },
   (table) => ({
     clinicCreatedAtIdx: index("ai_usage_costs_clinic_created_at_idx").on(
+      table.clinicId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const ttsUsageCosts = pgTable(
+  "tts_usage_costs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    provider: ttsProviderEnum("provider").notNull(),
+    model: text("model").notNull(),
+    characterCount: integer("character_count").notNull(),
+    estimatedCostUsdMicros: integer("estimated_cost_usd_micros").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicCreatedAtIdx: index("tts_usage_costs_clinic_created_at_idx").on(
       table.clinicId,
       table.createdAt,
     ),

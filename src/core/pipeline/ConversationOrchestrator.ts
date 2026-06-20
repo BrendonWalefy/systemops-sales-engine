@@ -36,6 +36,7 @@ import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, type TtsCon
 import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voice-mode";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
+import { trackTtsCostAsync } from "@/lib/tts-send";
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -812,6 +813,7 @@ async function sendReply(
   config: ClinicChannelConfig,
   voiceEnabled: boolean,
   ttsConfig: TtsConfig = DEFAULT_TTS_CONFIG,
+  clinicId?: string,
 ): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text" }> {
   if (voiceEnabled) {
     try {
@@ -825,6 +827,7 @@ async function sendReply(
       );
       const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
       // Blob não é deletado aqui — cleanup via GitHub Actions (cleanup-tts-blobs.yml, 2h TTL)
+      if (clinicId) trackTtsCostAsync(clinicId, text, ttsConfig);
       return { msgId, deliveryFormat: "audio" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1233,7 +1236,7 @@ export class ConversationOrchestrator {
             });
             const photoNow = new Date();
             const photoAgentId = randomUUID();
-            const { msgId: photoMsgId, deliveryFormat: photoDeliveryFormat } = await sendReply(outboundAddress, photoComposed.text, channelConfig, voiceEnabled, ttsConf);
+            const { msgId: photoMsgId, deliveryFormat: photoDeliveryFormat } = await sendReply(outboundAddress, photoComposed.text, channelConfig, voiceEnabled, ttsConf, clinicId);
             await this.conversationRepo.appendMessage({
               id: photoAgentId,
               conversationId: conversation.id,
@@ -1291,7 +1294,7 @@ export class ConversationOrchestrator {
       }).where(eq(conversationsTable.id, conversation.id));
 
       const mediaAgentId = randomUUID();
-      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, voiceEnabled, ttsConf);
+      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, voiceEnabled, ttsConf, clinicId);
       await this.conversationRepo.appendMessage({
         id: mediaAgentId,
         conversationId: conversation.id,
@@ -1471,7 +1474,7 @@ export class ConversationOrchestrator {
               isFirstMessage: false,
             }).then((c) => c.text);
           }
-          const { msgId: confirmMsgId, deliveryFormat: confirmFormat } = await sendReply(outboundAddress, confirmReplyText, channelConfig, voiceEnabled, ttsConf);
+          const { msgId: confirmMsgId, deliveryFormat: confirmFormat } = await sendReply(outboundAddress, confirmReplyText, channelConfig, voiceEnabled, ttsConf, clinicId);
           await this.conversationRepo.appendMessage({
             id: randomUUID(),
             conversationId: conversation.id,
@@ -2672,7 +2675,7 @@ export class ConversationOrchestrator {
       });
     } else {
       const useVoice = resolveVoiceForReply(intent, replyText);
-      const result = await sendReply(outboundAddress, replyText, channelConfig, useVoice, ttsConf);
+      const result = await sendReply(outboundAddress, replyText, channelConfig, useVoice, ttsConf, clinicId);
       zapiMessageId = result.msgId;
       deliveryFormat = result.deliveryFormat;
     }
