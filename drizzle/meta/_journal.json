@@ -183,6 +183,13 @@
       "when": 1750377600000,
       "tag": "0030_drop_voice_experience_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1750464000000,
+      "tag": "0032_prod_schema_restore",
+      "breakpoints": true
     }
   ]
 }
