@@ -42,6 +42,9 @@ export type ActionResult =
   | { type: "slot_taken_reoffered"; newSlots: FormattedSlot[] }
   | { type: "reengagement"; lastAppointmentLabel: string }
   | { type: "appointment_reminder"; appointmentLabel: string }
+  | { type: "appointment_reminder_with_confirmation"; appointmentLabel: string }
+  | { type: "appointment_confirmation_accepted"; appointmentLabel: string }
+  | { type: "appointment_confirmation_rejected" }
   | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] }
   | { type: "patient_arrived"; appointmentTime: Date | null }
   | { type: "media_received"; mediaType: "image" | "video" | "document" }
@@ -160,6 +163,9 @@ function isSchedulingOutputAllowed(type: ActionResult["type"]): boolean {
     "slot_taken_reoffered",
     "evaluation_redirect",
     "appointment_reminder",
+    "appointment_reminder_with_confirmation",
+    "appointment_confirmation_accepted",
+    "appointment_confirmation_rejected",
   ].includes(type);
 }
 
@@ -264,7 +270,7 @@ REGRAS ABSOLUTAS:
 1. Máximo 2 parágrafos curtos — exceto quando as ORIENTAÇÕES DA CLÍNICA definirem uma sequência com mais blocos (ex: trigger com múltiplas etapas), caso em que siga a estrutura exata do playbook. Sem bullet points exceto quando a instrução da ação indicar FORMATO: tópicos. Escreva como pessoa real.
 2. NUNCA invente horários, datas ou informações que não estão no contexto fornecido.
 3. Se houver horários disponíveis na ação, os mencione EXATAMENTE como fornecidos — não reformule datas.
-4. Use o nome do lead com naturalidade, não em toda frase.
+4. Use o nome do lead no máximo UMA VEZ por resposta. NUNCA use o nome logo após uma palavra de reconhecimento ("Entendo, Flavia" → PROIBIDO se o nome já aparece logo antes ou depois de forma redundante). Se já usou o nome na abertura, não repita no corpo. Padrão proibido: "Entendo. [Nome]. [continuação]" — integre em uma frase fluida em vez disso.
 5. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
 6. Saudações: se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.
 7. FIDELIDADE EDITORIAL: se a política comercial ou as orientações da clínica exigirem valores, condições, nomes de técnicas ou limites explícitos para o assunto perguntado, preserve esses dados na resposta. Não resuma removendo preços, quantidades ou condições autorizadas.
@@ -399,6 +405,7 @@ case "general_question":
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
+PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
 Responda de forma informativa e acolhedora. ${isConcierge ? "Só conduza para avaliação após cumprir eventuais passos do playbook ou quando não houver sequência definida para o assunto." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
@@ -437,9 +444,15 @@ ${slotList}`;
     }
 
     case "reengagement":
-      return `AÇÃO EXECUTADA: Mensagem de re-engajamento para paciente com histórico na clínica.
-ÚLTIMA CONSULTA: ${result.lastAppointmentLabel}
-Envie uma mensagem calorosa e breve lembrando que pode estar na hora de agendar um retorno ou verificar se pode ajudar. Não mencione que a mensagem é automática. Máximo 2 frases.`;
+      return `AÇÃO EXECUTADA: Mensagem de re-engajamento para lead que interagiu anteriormente mas não converteu.
+ÚLTIMA CONSULTA/CONTATO: ${result.lastAppointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Leia o histórico de conversa acima com atenção antes de redigir — use o que o lead demonstrou interesse (procedimento, objeção, dúvida específica) para personalizar a mensagem. NÃO escreva algo genérico se o histórico revelar um interesse concreto.
+2. Máximo 2 frases curtas. Tom caloroso e natural, como se fosse uma mensagem espontânea da recepcionista.
+3. NÃO mencione que a mensagem é automática ou que é um follow-up programado.
+4. Se o lead mencionou um procedimento específico no histórico, faça referência a ele de forma natural (ex: "Lembrei de você ao ver que ainda temos horários disponíveis para avaliação de lentes").
+5. Se o lead levantou uma objeção (preço, distância, tempo), reconheça indiretamente sem ser óbvio.
+6. Termine com uma pergunta simples e direta que incentive resposta (ex: "Posso verificar os horários disponíveis para você?").`;
 
     case "evaluation_redirect": {
       const slotList = result.evaluationSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
@@ -491,15 +504,42 @@ Exemplos de tom:
 - "Passou a ver o vídeo? Ainda temos agenda disponível — posso checar o horário que fica melhor para você."`;
 
     case "appointment_reminder":
-      return `AÇÃO EXECUTADA: Lembrete de consulta agendada para amanhã.
+      return `AÇÃO EXECUTADA: Lembrete de atendimento agendado para amanhã.
 CONSULTA: ${result.appointmentLabel}
 REGRAS OBRIGATÓRIAS:
 1. Mencione o horário EXATAMENTE como fornecido em CONSULTA — não reformule.
 2. Seja caloroso, breve e direto. Máximo 2 frases curtas.
-3. Não peça confirmação (a consulta já está confirmada). Apenas lembre.
+3. Não peça confirmação. Apenas lembre que a equipe estará esperando.
 4. Não mencione que a mensagem é automática.
-5. Inclua um toque humano — transmita que a equipe estará esperando.
 Exemplo de tom: "Olá [nome]! Lembrando que sua consulta é amanhã, [horário]. A equipe estará esperando por você 😊"`;
+
+    case "appointment_reminder_with_confirmation":
+      return `AÇÃO EXECUTADA: Lembrete de atendimento agendado para amanhã com pedido de confirmação de presença.
+CONSULTA: ${result.appointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Mencione o horário EXATAMENTE como fornecido em CONSULTA — não reformule.
+2. Seja caloroso, breve e direto. Máximo 3 frases curtas.
+3. Solicite explicitamente uma confirmação: peça para responder SIM para confirmar ou avisar caso precise cancelar ou remarcar.
+4. Não mencione que a mensagem é automática. Tom natural, como se fosse a recepcionista.
+5. Deixe claro que é fácil responder — uma palavra basta.
+Exemplo de tom: "Olá [nome]! Lembrando que sua consulta é amanhã, [horário]. Confirma a presença? Responda SIM ou avise se precisar remarcar 😊"`;
+
+    case "appointment_confirmation_accepted":
+      return `AÇÃO EXECUTADA: Lead confirmou presença no atendimento de amanhã.
+CONSULTA: ${result.appointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Agradeça a confirmação de forma calorosa e breve. Máximo 2 frases.
+2. Transmita que a equipe estará esperando e que será um prazer atendê-lo(a).
+3. Não mencione que a mensagem é automática.
+Exemplo de tom: "Perfeito! Presença confirmada — a equipe estará te esperando amanhã no horário combinado 😊"`;
+
+    case "appointment_confirmation_rejected":
+      return `AÇÃO EXECUTADA: Lead informou que não poderá comparecer ao atendimento agendado.
+REGRAS OBRIGATÓRIAS:
+1. Demonstre compreensão e ofereça-se para ajudar a remarcar. Máximo 2 frases.
+2. Tom compreensivo e prestativo — sem cobranças.
+3. Não mencione que a mensagem é automática.
+Exemplo de tom: "Tudo bem, sem problemas! Quando quiser remarcar é só avisar — estamos aqui para te ajudar 😊"`;
   }
 }
 

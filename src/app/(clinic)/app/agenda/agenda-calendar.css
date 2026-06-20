@@ -75,7 +75,7 @@
   min-height: 0;
   /* Fit 14 hours (07:00–21:00) in viewport without vertical scrolling.
      Formula: (100dvh - outer_header - stats_header - sx_sticky_header - date_axis) / 14 = (100dvh - 346px) / 14 */
-  --sx-week-grid-hour-height: clamp(36px, calc((100dvh - 346px) / 14), 52px);
+  --sx-week-grid-hour-height: clamp(36px, calc((100dvh - 346px) / 14), 44px);
   --sx-week-grid-height: calc(var(--sx-week-grid-hour-height) * 14);
 }
 
@@ -2243,6 +2243,50 @@ select.field-input option {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.agenda-sidebar-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.agenda-sidebar-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
+}
+
+.agenda-sidebar-quick-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.agenda-sidebar-quick-btn--complete {
+  border-color: color-mix(in srgb, var(--agenda-accent) 28%, transparent);
+  background: var(--agenda-accent-soft);
+  color: var(--agenda-accent-strong);
+}
+
+.agenda-sidebar-quick-btn--complete:hover:not(:disabled) {
+  background: rgba(0, 212, 170, 0.22);
+}
+
+.agenda-sidebar-quick-btn--noshow {
+  border-color: rgba(245, 180, 81, 0.24);
+  background: rgba(245, 180, 81, 0.1);
+  color: var(--agenda-warm);
+}
+
+.agenda-sidebar-quick-btn--noshow:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.18);
 }
 
 /* Profissionais list */

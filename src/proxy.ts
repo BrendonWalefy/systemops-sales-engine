@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
   const session = await getSession(request);
 
-  // Redirect authenticated users away from /login
   if (pathname === "/login" || pathname.startsWith("/login?")) {
     if (session) {
       return NextResponse.redirect(
@@ -16,7 +14,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Old routes: redirect to new paths (no auth required here — middleware runs before render)
   if (pathname.startsWith("/dashboard")) {
     return NextResponse.redirect(new URL("/app/dashboard", request.url));
   }
@@ -29,13 +26,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`/app/settings${rest}`, request.url));
   }
 
-  // /app/* — requires any authenticated session
   if (pathname.startsWith("/app/")) {
     if (!session) return redirectToLogin(request, pathname);
     return NextResponse.next();
   }
 
-  // /owner/* — requires role = owner
   if (pathname.startsWith("/owner")) {
     if (!session) return redirectToLogin(request, pathname);
     if (session.role !== "owner") {

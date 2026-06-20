@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, PauseCircle, PlayCircle, Send, AlertCircle, CalendarPlus } from "lucide-react";
+import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag } from "lucide-react";
 import { pauseAi, resumeAi } from "./actions";
 
 interface Props {
@@ -38,10 +38,13 @@ function deriveNextAction(params: {
   return "Qualificar interesse e identificar tratamento";
 }
 
+const DISCOUNT_PRESETS = [200, 300, 500] as const;
+
 export function ConvComposer({
   conversationId,
   leadId,
   aiPaused,
+  leadName,
   treatmentInterest,
   temperature,
   leadStatus,
@@ -56,6 +59,8 @@ export function ConvComposer({
   const [isAiToggling, startAiToggle] = useTransition();
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountCustom, setDiscountCustom] = useState("");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
   const [schedDuration, setSchedDuration] = useState(String(defaultDurationMinutes));
@@ -169,6 +174,15 @@ export function ConvComposer({
     });
   }
 
+  function applyDiscount(amount: number) {
+    const greeting = leadName ? `Oi, ${leadName}!` : "Oi!";
+    const subject = treatmentInterest ?? "nossos procedimentos";
+    const msg = `${greeting} Tenho uma condição especial disponível por tempo limitado: R$${amount} de desconto em ${subject}. Quer aproveitar e já marcar sua avaliação?`;
+    fillTemplate(msg);
+    setDiscountOpen(false);
+    setDiscountCustom("");
+  }
+
   const proposalTemplate = treatmentInterest
     ? `Ótimo! Posso preparar uma proposta personalizada para ${treatmentInterest}. Você prefere receber por aqui ou quer agendar uma consulta de avaliação sem compromisso?`
     : `Ótimo! Posso preparar uma proposta personalizada para você. Qual é a melhor forma de te enviar?`;
@@ -223,17 +237,13 @@ export function ConvComposer({
         </button>
 
         <button
-          className={`conv-chip${aiPaused ? "" : ""}`}
-          onClick={handleAiToggle}
-          disabled={isAiToggling}
-          title={aiPaused ? "Retomar IA" : "Pausar IA"}
-          style={aiPaused
-            ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" }
-            : { borderColor: "color-mix(in srgb, var(--warning) 35%, transparent)", color: "var(--warning)" }
-          }
+          className="conv-chip"
+          onClick={() => { setDiscountOpen((v) => !v); setScheduleOpen(false); }}
+          title="Enviar oferta com desconto"
+          style={discountOpen ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" } : undefined}
         >
-          {aiPaused ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
-          {isAiToggling ? "…" : aiPaused ? "Retomar IA" : "Pausar IA"}
+          <Tag size={12} />
+          Desconto
         </button>
       </div>
 
@@ -276,6 +286,45 @@ export function ConvComposer({
               </button>
               <button className="secondary-button" onClick={() => setScheduleOpen(false)} disabled={isScheduling}>
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {discountOpen && (
+        <div className="conv-schedule-panel">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0 4px" }}>
+            <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Selecione o valor do desconto</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {DISCOUNT_PRESETS.map((amount) => (
+                <button
+                  key={amount}
+                  className="secondary-button"
+                  style={{ fontSize: 13, padding: "5px 14px" }}
+                  onClick={() => applyDiscount(amount)}
+                >
+                  R${amount}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="number"
+                min={50}
+                placeholder="Outro valor (R$)"
+                value={discountCustom}
+                onChange={(e) => setDiscountCustom(e.target.value)}
+                style={{ ...inputStyle, flex: 1 }}
+                onKeyDown={(e) => { if (e.key === "Enter" && discountCustom) applyDiscount(Number(discountCustom)); }}
+              />
+              <button
+                className="primary-button"
+                style={{ flexShrink: 0 }}
+                disabled={!discountCustom || Number(discountCustom) < 50}
+                onClick={() => applyDiscount(Number(discountCustom))}
+              >
+                Aplicar
               </button>
             </div>
           </div>

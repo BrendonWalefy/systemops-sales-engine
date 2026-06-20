@@ -7,6 +7,8 @@ import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { clinics } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
+import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
+import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
@@ -36,6 +38,8 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
 
   const appointmentRepository = new DrizzleAppointmentRepository();
   const leadRepository = new DrizzleLeadRepository();
+  const conversationRepository = new DrizzleConversationRepository();
+  const stateMachine = new ConversationStateMachine();
   const composer = new ResponseComposer();
   const timezone = new ClinicTimezone(clinic.timezone);
 
@@ -69,7 +73,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
       }).format(appointment.startsAt);
 
       const composed = await composer.compose({
-        actionResult: { type: "appointment_reminder", appointmentLabel },
+        actionResult: { type: "appointment_reminder_with_confirmation", appointmentLabel },
         conversationHistory: [],
         clinic: {
           name: clinic.name,
@@ -86,6 +90,21 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
 
       await sendTextMessage(channelAddress, composed.text, channelConfig);
       await appointmentRepository.save({ ...appointment, reminderSentAt: now, updatedAt: now });
+
+      // Registra estado de confirmação pendente na conversa do lead (TTL: 24h)
+      try {
+        const conversation = await conversationRepository.findByLeadId(lead.id);
+        if (conversation) {
+          await stateMachine.offerAppointmentConfirmation(
+            conversation.id,
+            appointment.id,
+            appointmentLabel,
+          );
+        }
+      } catch (stateErr) {
+        console.warn("[AppointmentReminder] Falha ao registrar estado de confirmação:", stateErr);
+      }
+
       sent++;
     } catch (err) {
       console.error("[AppointmentReminder] Failed for appointment:", appointment.id, err);

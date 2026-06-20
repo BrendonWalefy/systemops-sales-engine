@@ -197,6 +197,16 @@ function isIsolatedGreeting(message: string): boolean {
   return patterns.some((p) => n === p || n === p + "!" || n === p + "." || n === p + "?");
 }
 
+// Detecta se o lead está confirmando ou cancelando a presença numa consulta (resposta ao lembrete D-1).
+function detectAppointmentConfirmation(message: string): "yes" | "no" | "ambiguous" {
+  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  const yesTokens = ["sim", "confirmo", "confirmado", "confirma", "vou", "vou sim", "estarei", "estarei la", "ok", "combinado", "perfeito", "claro", "com certeza", "pode contar", "to la", "ta", "blz", "beleza", "pode", "vou la", "confirmei", "certo", "certinho", "te vejo", "até la", "ate la", "estou confirmado", "estou confirmada"];
+  const noTokens = ["nao", "não", "cancelar", "cancela", "remarcar", "remarca", "nao posso", "não posso", "nao vou", "não vou", "nao consigo", "não consigo", "impossivel", "impossível", "infelizmente", "preciso cancelar", "preciso remarcar", "quero cancelar", "quero remarcar", "nao irei", "não irei", "nao vou conseguir", "não vou conseguir", "nao dou conta", "nao vou poder", "não vou poder"];
+  if (yesTokens.some((t) => n === t || n.startsWith(t + " ") || n.startsWith(t + ",") || n.startsWith(t + "!") || n.startsWith(t + "."))) return "yes";
+  if (noTokens.some((t) => n === t || n.startsWith(t + " ") || n.startsWith(t + ",") || n.startsWith(t + "!") || n.startsWith(t + "."))) return "no";
+  return "ambiguous";
+}
+
 // Comando de reset — uso exclusivo para testes, zera estado e reinicia saudação.
 function isResetCommand(message: string): boolean {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
@@ -546,7 +556,7 @@ function getDayGreeting(timezone: ClinicTimezone): string {
   return getTimeGreeting(hour);
 }
 const SLOTS_WITH_DATE_AND_TIME = 2;
-const SLOTS_WITH_DATE_ONLY = 3;
+const SLOTS_WITH_DATE_ONLY = 5;
 
 const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
 
@@ -1347,6 +1357,76 @@ export class ConversationOrchestrator {
     const allMessagesForContext = lastResetAt
       ? allMessages.filter((m) => m.sentAt >= new Date(lastResetAt))
       : allMessages;
+
+    // ── 8.6. Resposta do lead ao pedido de confirmação de presença (lembrete D-1) ──
+    if (currentConversationState?.state === "awaiting_appointment_confirmation") {
+      const confirmPayload = currentConversationState.payload as { appointmentId: string; appointmentLabel: string } | null;
+      if (confirmPayload?.appointmentId) {
+        const confirmationSignal = detectAppointmentConfirmation(messageText);
+        if (confirmationSignal !== "ambiguous") {
+          await this.stateMachine.invalidate(conversation.id);
+          const appt = await this.appointmentRepo.findById(confirmPayload.appointmentId);
+          let confirmReplyText: string;
+          if (confirmationSignal === "yes") {
+            if (appt) {
+              await this.appointmentRepo.save({ ...appt, status: "confirmed", updatedAt: new Date() });
+            }
+            confirmReplyText = await this.responseComposer.compose({
+              actionResult: { type: "appointment_confirmation_accepted", appointmentLabel: confirmPayload.appointmentLabel },
+              conversationHistory: allMessages.slice(-4),
+              clinic: {
+                name: clinic.name,
+                specialty: editorial?.specialty ?? clinic.specialty,
+                toneOfVoice: editorial?.toneOfVoice ?? null,
+                playbook: editorial?.playbookText ?? null,
+                commercialPolicy: editorial?.commercialPolicy ?? null,
+                receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+              },
+              leadName: lead.name,
+              timezone,
+              isFirstMessage: false,
+            }).then((c) => c.text);
+          } else {
+            if (appt) {
+              await this.appointmentRepo.save({ ...appt, status: "cancelled", updatedAt: new Date() });
+            }
+            await db
+              .update(conversationsTable)
+              .set({ aiPaused: true, needsAttention: true, attentionReason: "Lead cancelou a consulta — reagendamento necessário", updatedAt: new Date() })
+              .where(eq(conversationsTable.id, conversation.id));
+            confirmReplyText = await this.responseComposer.compose({
+              actionResult: { type: "appointment_confirmation_rejected" },
+              conversationHistory: allMessages.slice(-4),
+              clinic: {
+                name: clinic.name,
+                specialty: editorial?.specialty ?? clinic.specialty,
+                toneOfVoice: editorial?.toneOfVoice ?? null,
+                playbook: editorial?.playbookText ?? null,
+                commercialPolicy: editorial?.commercialPolicy ?? null,
+                receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+              },
+              leadName: lead.name,
+              timezone,
+              isFirstMessage: false,
+            }).then((c) => c.text);
+          }
+          const { msgId: confirmMsgId, deliveryFormat: confirmFormat } = await sendReply(outboundAddress, confirmReplyText, channelConfig, voiceEnabled, ttsConf);
+          await this.conversationRepo.appendMessage({
+            id: randomUUID(),
+            conversationId: conversation.id,
+            author: "agent",
+            body: confirmReplyText,
+            sentAt: new Date(),
+            externalId: confirmMsgId,
+            intent: confirmationSignal === "yes" ? "appointment_confirmed" : "appointment_cancelled",
+            deliveryFormat: confirmFormat,
+          });
+          await this.releaseConversationClaim(conversation.id);
+          return { replied: true };
+        }
+      }
+    }
+
     const isMenuActive = currentConversationState?.state === "menu_offered";
     const isProcedureListActive = currentConversationState?.state === "procedure_list_offered";
     const clinicMenuItems = getMenuItemsForExperience(clinic, experience);
@@ -1772,9 +1852,16 @@ export class ConversationOrchestrator {
           identifiedTreatment: slotPreference.identifiedTreatment ?? null,
         });
 
-        // Resolve tratamento e duração do slot
+        // Resolve tratamento e duração do slot.
+        // Usa lead.treatmentInterest como fallback para evitar pedir "qual procedimento?"
+        // quando o tratamento já foi estabelecido em mensagens anteriores da conversa.
+        const effectiveTreatment =
+          schedulingTreatment?.name ??
+          slotPreference.identifiedTreatment ??
+          lead.treatmentInterest ??
+          null;
         const resolution = resolveTreatmentDuration(
-          schedulingTreatment?.name ?? slotPreference.identifiedTreatment ?? null,
+          effectiveTreatment,
           clinicTreatments,
           clinic.defaultAppointmentDurationMinutes,
           classification.shouldAskClarification,
@@ -2792,6 +2879,15 @@ export class ConversationOrchestrator {
           const bHour = timezone.toLocalParts(b.startsAt).hour;
           return Math.abs(aHour - preferredHour!) - Math.abs(bHour - preferredHour!);
         });
+        // Filtra para slots dentro de uma janela de 2h a partir do horário pedido.
+        // Sem isso, selectBestSlots usa round-robin por período (manhã/tarde) e inclui
+        // slots de manhã mesmo quando o lead pediu explicitamente um horário da tarde.
+        const windowEnd = Math.min(preferredHour + 2, businessHours.endHour - 1);
+        const inWindow = allSlots.filter((s) => {
+          const h = timezone.toLocalParts(s.startsAt).hour;
+          return h >= preferredHour! && h <= windowEnd;
+        });
+        if (inWindow.length >= 2) allSlots = inWindow;
       }
     }
 

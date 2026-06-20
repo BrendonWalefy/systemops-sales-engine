@@ -12,6 +12,7 @@ type Props = {
   treatments: TreatmentOption[];
   memberRole: string;
   serviceNoun: string;
+  initialCompletedModalOpen?: boolean;
   onClose: () => void;
   onUpdated: () => void;
 };
@@ -52,17 +53,42 @@ function reaisToMaybeCents(str: string): number | null {
   return Math.round(val * 100);
 }
 
-export function AppointmentDrawer({ event, conversationId, treatments, memberRole, serviceNoun, onClose, onUpdated }: Props) {
+function buildCompletedModalState(
+  event: AppointmentEvent,
+  treatments: TreatmentOption[],
+  open: boolean,
+): CompletedModalState {
+  const preselected = treatments.find((t) =>
+    event.leadTreatmentInterest
+      ? t.name.toLowerCase().includes(event.leadTreatmentInterest.toLowerCase())
+      : false,
+  ) ?? treatments[0];
+
+  return {
+    open,
+    treatmentId: preselected?.id ?? "",
+    valueStr: formatCents(preselected?.priceCents ?? null),
+  };
+}
+
+export function AppointmentDrawer({
+  event,
+  conversationId,
+  treatments,
+  memberRole,
+  serviceNoun,
+  initialCompletedModalOpen = false,
+  onClose,
+  onUpdated,
+}: Props) {
   const [loading, setLoading] = useState<Action | null>(null);
   const [completingLoading, setCompletingLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [completedModal, setCompletedModal] = useState<CompletedModalState>({
-    open: false,
-    treatmentId: treatments[0]?.id ?? "",
-    valueStr: "",
-  });
+  const [completedModal, setCompletedModal] = useState<CompletedModalState>(() =>
+    buildCompletedModalState(event, treatments, initialCompletedModalOpen),
+  );
 
   const serviceNounCapitalized = serviceNoun.charAt(0).toUpperCase() + serviceNoun.slice(1);
   const canSeeValue = memberRole !== "receptionist";
@@ -100,18 +126,7 @@ export function AppointmentDrawer({ event, conversationId, treatments, memberRol
   }
 
   function openCompletedModal() {
-    // Tenta inferir tratamento pelo lead.treatmentInterest
-    const preselected = treatments.find((t) =>
-      event.leadTreatmentInterest
-        ? t.name.toLowerCase().includes(event.leadTreatmentInterest.toLowerCase())
-        : false,
-    ) ?? treatments[0];
-
-    setCompletedModal({
-      open: true,
-      treatmentId: preselected?.id ?? "",
-      valueStr: formatCents(preselected?.priceCents ?? null),
-    });
+    setCompletedModal(buildCompletedModalState(event, treatments, true));
     setError(null);
   }
 

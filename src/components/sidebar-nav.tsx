@@ -30,6 +30,7 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
       ...NAV_PRIMARY.map((item) => item.href),
       "/app/agenda?new=1",
       ...NAV_CONFIG.map((item) => item.href),
+      "/app/settings/equipe",
     ];
 
     for (const route of routes) {

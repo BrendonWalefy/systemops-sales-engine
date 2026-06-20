@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
 import { Play, FileText } from "lucide-react";
 
 type Msg = {
@@ -133,10 +133,13 @@ interface Props {
   conversationId: string;
   leadName: string | null;
   leadPhone: string | null;
+  hasOlderMessages?: boolean;
 }
 
-export function ChatWindow({ initialMessages, conversationId, leadName, leadPhone }: Props) {
+export function ChatWindow({ initialMessages, conversationId, leadName, leadPhone, hasOlderMessages = false }: Props) {
   const [messages, setMessages] = useState<Msg[]>(initialMessages);
+  const [canLoadOlder, setCanLoadOlder] = useState(hasOlderMessages);
+  const [isPending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const latestMessageIdRef = useRef<string | null>(initialMessages.at(-1)?.id ?? null);
@@ -206,6 +209,31 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
 
   useEffect(() => { scrollToBottom(false); }, [messages.length, scrollToBottom]);
 
+  const loadOlderMessages = useCallback(() => {
+    const firstId = messages[0]?.id;
+    if (!firstId || !canLoadOlder) return;
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/conversations/${conversationId}/messages?before=${firstId}`);
+        if (!res.ok) return;
+        const data: { messages: Msg[] } = await res.json();
+        if (data.messages.length === 0) { setCanLoadOlder(false); return; }
+        const el = containerRef.current;
+        const prevHeight = el?.scrollHeight ?? 0;
+        setMessages((prev) => {
+          const knownIds = new Set(prev.map((m) => m.id));
+          const older = data.messages.filter((m) => !knownIds.has(m.id));
+          return older.length > 0 ? [...older, ...prev] : prev;
+        });
+        setCanLoadOlder(data.messages.length >= 60);
+        // Preserve scroll position after prepend
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = el.scrollHeight - prevHeight;
+        });
+      } catch { /* ignore */ }
+    });
+  }, [messages, conversationId, canLoadOlder]);
+
   useEffect(() => {
     const vp = window.visualViewport;
     if (!vp) return;
@@ -234,6 +262,27 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
   return (
     <div ref={containerRef} className="conv-messages">
       <div className="chat-window" style={{ flex: 1, maxHeight: "none", minHeight: 0 }}>
+        {canLoadOlder && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+            <button
+              onClick={loadOlderMessages}
+              disabled={isPending}
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 20,
+                color: "rgba(255,255,255,0.6)",
+                fontSize: 12,
+                padding: "5px 14px",
+                cursor: isPending ? "default" : "pointer",
+                opacity: isPending ? 0.5 : 1,
+              }}
+            >
+              {isPending ? "Carregando..." : "Ver mensagens anteriores"}
+            </button>
+          </div>
+        )}
+
         {messages.length === 0 && (
           <div className="empty-conversation" style={{ margin: "auto" }}>
             <strong>Sem mensagens</strong>

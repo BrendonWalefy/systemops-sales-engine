@@ -61,18 +61,21 @@ export default async function InboxPage() {
   // tiveram o status do lead atualizado para "won".
   const recentPast = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-  const [lastMessages, appointmentRows] = await Promise.all([
-    Promise.all(
-      rows.map(async (r) => {
-        const [msg] = await db
-          .select({ body: messages.body, author: messages.author })
+  const conversationIds = rows.map((row) => row.convId);
+
+  const [lastMessageRows, appointmentRows] = await Promise.all([
+    conversationIds.length > 0
+      ? db
+          .selectDistinctOn([messages.conversationId], {
+            conversationId: messages.conversationId,
+            body: messages.body,
+            author: messages.author,
+            sentAt: messages.sentAt,
+          })
           .from(messages)
-          .where(eq(messages.conversationId, r.convId))
-          .orderBy(desc(messages.sentAt))
-          .limit(1);
-        return { convId: r.convId, body: msg?.body ?? "", author: msg?.author ?? "" };
-      }),
-    ),
+          .where(inArray(messages.conversationId, conversationIds))
+          .orderBy(messages.conversationId, desc(messages.sentAt))
+      : Promise.resolve([]),
     scheduledLeadIds.length > 0
       ? db
           .select({ leadId: appointments.leadId, startsAt: appointments.startsAt })
@@ -88,7 +91,15 @@ export default async function InboxPage() {
       : Promise.resolve([]),
   ]);
 
-  const lastMsgMap = Object.fromEntries(lastMessages.map((m) => [m.convId, { body: m.body, author: m.author }]));
+  const lastMsgMap: Record<string, { body: string; author: string }> = {};
+  for (const msg of lastMessageRows) {
+    if (!lastMsgMap[msg.conversationId]) {
+      lastMsgMap[msg.conversationId] = {
+        body: msg.body ?? "",
+        author: msg.author ?? "",
+      };
+    }
+  }
 
   const appointmentMap: Record<string, Date> = {};
   for (const appt of appointmentRows) {

@@ -14,7 +14,8 @@ export type ConversationStateType =
   | "booking_pending"
   | "menu_offered"
   | "procedure_list_offered"
-  | "treatment_pipeline_active";
+  | "treatment_pipeline_active"
+  | "awaiting_appointment_confirmation";
 
 export type FormattedSlot = {
   index: number;       // 1, 2, 3 — o número que o lead vê
@@ -51,7 +52,12 @@ export type TreatmentPipelinePayload = {
   photoReceived: boolean;
 };
 
-type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | Record<string, unknown>;
+export type AppointmentConfirmationPayload = {
+  appointmentId: string;
+  appointmentLabel: string;
+};
+
+type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | AppointmentConfirmationPayload | Record<string, unknown>;
 
 export type ConversationStateRow = {
   id: string;
@@ -331,5 +337,30 @@ export class ConversationStateMachine {
   // Encerra o pipeline. O fluxo reativo normal assume a partir daqui.
   async exitTreatmentPipeline(conversationId: string): Promise<void> {
     await this.invalidate(conversationId);
+  }
+
+  // ─── Confirmação de presença pelo lead (resposta ao lembrete D-1) ────────────
+
+  // Registra que o lead recebeu o lembrete com pedido de confirmação. TTL: 24h.
+  async offerAppointmentConfirmation(
+    conversationId: string,
+    appointmentId: string,
+    appointmentLabel: string,
+    ttlMinutes = 1440,
+  ): Promise<void> {
+    const payload: AppointmentConfirmationPayload = { appointmentId, appointmentLabel };
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "awaiting_appointment_confirmation",
+      payload,
+      expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+    });
+  }
+
+  // Retorna o payload da confirmação pendente, ou null se não há confirmação aguardando.
+  async getAppointmentConfirmationState(conversationId: string): Promise<AppointmentConfirmationPayload | null> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "awaiting_appointment_confirmation") return null;
+    return state.payload as AppointmentConfirmationPayload;
   }
 }

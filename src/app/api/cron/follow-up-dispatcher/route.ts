@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
+import type { Message } from "@/domain/entities/conversation";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
@@ -124,6 +125,16 @@ async function processOneFollowUp(
   }
 
   const isVideoFollowUp = followUp.reason.startsWith("video_sent:");
+
+  // Don't re-engage a lead whose appointment already happened but status wasn't updated to won.
+  // appointment_scheduled + no future appointment = attended or no-show, either way not a cold lead.
+  if (lead.status === "appointment_scheduled" && !upcomingAppt && !isVideoFollowUp) {
+    await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+    console.log(
+      `[FollowUpDispatcher] follow-up ${followUp.id} cancelado — lead com appointment_scheduled sem consulta futura`,
+    );
+    return "skipped";
+  }
   const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;
 
   let actionResult: Parameters<typeof composer.compose>[0]["actionResult"];
@@ -143,9 +154,42 @@ async function processOneFollowUp(
     actionResult = { type: "reengagement", lastAppointmentLabel };
   }
 
+  // Fetch conversation and recent messages so the LLM can personalise the reactivation
+  // based on what the lead was actually discussing, not just a generic template.
+  const [conv] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.leadId, followUp.leadId))
+    .limit(1);
+
+  const conversationHistory: Message[] = conv
+    ? await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conv.id))
+        .orderBy(desc(messages.sentAt))
+        .limit(8)
+        .then((rows) =>
+          rows.reverse().map(
+            (m): Message => ({
+              id: m.id,
+              conversationId: m.conversationId,
+              author: m.author as Message["author"],
+              body: m.body,
+              mediaUrl: m.mediaUrl,
+              mediaType: m.mediaType as Message["mediaType"],
+              sentAt: m.sentAt,
+              externalId: m.externalId,
+              intent: m.intent,
+              deliveryFormat: m.deliveryFormat as Message["deliveryFormat"],
+            }),
+          ),
+        )
+    : [];
+
   const composed = await composer.compose({
     actionResult,
-    conversationHistory: [],
+    conversationHistory,
     clinic: {
       name: clinic.name,
       specialty: editorial?.specialty ?? clinic.specialty,
@@ -156,7 +200,7 @@ async function processOneFollowUp(
     },
     leadName: lead.name,
     timezone,
-    isFirstMessage: true,
+    isFirstMessage: false,
   });
 
   const zapiMessageId = await withTimeout(
@@ -167,11 +211,6 @@ async function processOneFollowUp(
 
   // Persist the outbound message so the Z-API echo is recognised as already
   // processed and does not re-trigger the Orchestrator.
-  const [conv] = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(eq(conversations.leadId, followUp.leadId))
-    .limit(1);
   if (conv) {
     await db
       .insert(messages)
