@@ -2792,6 +2792,15 @@ export class ConversationOrchestrator {
           const bHour = timezone.toLocalParts(b.startsAt).hour;
           return Math.abs(aHour - preferredHour!) - Math.abs(bHour - preferredHour!);
         });
+        // Filtra para slots dentro de uma janela de 2h a partir do horário pedido.
+        // Sem isso, selectBestSlots usa round-robin por período (manhã/tarde) e inclui
+        // slots de manhã mesmo quando o lead pediu explicitamente um horário da tarde.
+        const windowEnd = Math.min(preferredHour + 2, businessHours.endHour - 1);
+        const inWindow = allSlots.filter((s) => {
+          const h = timezone.toLocalParts(s.startsAt).hour;
+          return h >= preferredHour! && h <= windowEnd;
+        });
+        if (inWindow.length >= 2) allSlots = inWindow;
       }
     }
 

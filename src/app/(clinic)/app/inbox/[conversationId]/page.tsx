@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
 import { appointments, clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, count as drizzleCount } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { AiPauseButton } from "./AiPauseButton";
 import { ChatWindow } from "./ChatWindow";
@@ -42,11 +42,19 @@ export default async function ConversationPage({
   const [lead] = await db.select().from(leads).where(eq(leads.id, conv.leadId)).limit(1);
   if (!lead) notFound();
 
-  const msgs = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(asc(messages.sentAt));
+  const MSG_LIMIT = 60;
+  const [totalMsgsRow, recentMsgs] = await Promise.all([
+    db.select({ total: drizzleCount() }).from(messages).where(eq(messages.conversationId, conversationId)),
+    db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(desc(messages.sentAt))
+      .limit(MSG_LIMIT)
+      .then((rows) => rows.reverse()),
+  ]);
+  const msgs = recentMsgs;
+  const hasOlderMessages = (totalMsgsRow[0]?.total ?? 0) > MSG_LIMIT;
 
   const [appointment] = await db
     .select()
@@ -137,6 +145,7 @@ export default async function ConversationPage({
             conversationId={conversationId}
             leadName={lead.name ?? null}
             leadPhone={lead.phone ?? null}
+            hasOlderMessages={hasOlderMessages}
           />
 
           <ConvComposer
