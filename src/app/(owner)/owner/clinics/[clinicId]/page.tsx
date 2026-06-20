@@ -598,10 +598,10 @@ export default async function ClinicDetailPage({
   }
 
   return (
-    <div>
+    <div style={{ minWidth: 0, overflow: "hidden" }}>
       {/* ── TOPBAR ────────────────────────────────────────────── */}
       <div className="product-topbar">
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: 1 }}>
           <Link
             href="/owner"
             style={{
@@ -618,15 +618,15 @@ export default async function ClinicDetailPage({
             <ArrowLeft size={14} />
             Visão geral
           </Link>
-          <span style={{ color: "var(--line-strong)" }}>·</span>
-          <div>
-            <h1 style={{ margin: 0 }}>{clinic.name}</h1>
+          <span style={{ color: "var(--line-strong)", flexShrink: 0 }}>·</span>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{clinic.name}</h1>
             <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>
               {[clinic.specialty, clinic.city].filter(Boolean).join(" · ") || "Clínica"}
             </p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
           {clinic.isTest && (
             <span style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(99,102,241,0.35)", borderRadius: 999, background: "rgba(99,102,241,0.1)", color: "#818cf8", fontSize: 11, fontWeight: 700, padding: "3px 10px" }}>
               <FlaskConical size={11} /> Teste
@@ -669,7 +669,7 @@ export default async function ClinicDetailPage({
         </div>
       </div>
 
-      <div className="page-content" style={{ paddingBottom: 60, display: "grid", gap: 16 }}>
+      <div className="page-content" style={{ paddingBottom: 60, display: "grid", gap: 16, minWidth: 0 }}>
 
         {/* ── FLASH ALERTS ────────────────────────────────────── */}
         {goLiveOk && (
@@ -756,14 +756,14 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* ── ZONA 2: PERFORMANCE ─────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 200px", gap: 12, alignItems: "start" }}>
           {/* KPIs */}
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px" }}>
             <p className="eyebrow" style={{ margin: "0 0 14px" }}>
               Performance ·{" "}
               {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 0, borderTop: "1px solid var(--line)", borderLeft: "1px solid var(--line)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 0, borderTop: "1px solid var(--line)", borderLeft: "1px solid var(--line)" }}>
               {[
                 { label: "Leads", value: String(leadsCount), ctx: "mês atual", highlight: true },
                 { label: "Agendamentos", value: String(scheduledCount), ctx: "no mês", highlight: false },
@@ -812,7 +812,7 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* ── ZONA 3: SAÚDE + VOLUME ──────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
 
           {/* Saúde operacional */}
           <div style={{ display: "grid", gap: 10 }}>
@@ -946,7 +946,7 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* ── ZONA 4: ADMINISTRAÇÃO ───────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
 
           {/* Acesso da clínica */}
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>

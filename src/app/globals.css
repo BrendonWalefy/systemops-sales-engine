@@ -3318,7 +3318,7 @@ textarea:focus {
   }
 
   .product-topbar {
-    padding: 20px max(18px, env(safe-area-inset-right)) 14px max(18px, env(safe-area-inset-left));
+    padding: max(20px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 14px max(18px, env(safe-area-inset-left));
   }
 
   .after-hours-banner {
@@ -4827,6 +4827,13 @@ textarea:focus {
     bottom: var(--keyboard-height, 0px);
     height: auto;
     overflow: hidden;
+    /* Garante que o conv-root fique acima do pill nav (z-index: 200) e do body::after (199) */
+    z-index: 210;
+  }
+
+  /* Remove a faixa escura de safe-area quando o chat está aberto */
+  body:has(.conv-root)::after {
+    display: none;
   }
 
   .conv-header {
@@ -5551,7 +5558,7 @@ textarea:focus {
   }
 
   .inbox-topbar {
-    padding: 16px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;

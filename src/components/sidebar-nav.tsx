@@ -52,7 +52,7 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false }
             <Link
               href="/owner"
               onClick={() => haptic()}
-              className="side-nav-item"
+              className="side-nav-item nav-mobile-hidden"
               style={{ color: "#818cf8" }}
             >
               <LayoutGrid size={15} strokeWidth={2} />
