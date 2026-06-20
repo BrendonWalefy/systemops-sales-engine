@@ -124,6 +124,16 @@ async function processOneFollowUp(
   }
 
   const isVideoFollowUp = followUp.reason.startsWith("video_sent:");
+
+  // Don't re-engage a lead whose appointment already happened but status wasn't updated to won.
+  // appointment_scheduled + no future appointment = attended or no-show, either way not a cold lead.
+  if (lead.status === "appointment_scheduled" && !upcomingAppt && !isVideoFollowUp) {
+    await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+    console.log(
+      `[FollowUpDispatcher] follow-up ${followUp.id} cancelado — lead com appointment_scheduled sem consulta futura`,
+    );
+    return "skipped";
+  }
   const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;
 
   let actionResult: Parameters<typeof composer.compose>[0]["actionResult"];
