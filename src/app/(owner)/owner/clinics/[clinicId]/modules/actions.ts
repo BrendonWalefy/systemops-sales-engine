@@ -1,13 +1,13 @@
 "use server";
 
 import { db } from "@/infrastructure/db/client";
-import { clinicModules } from "@/infrastructure/db/schema";
+import { clinicModules, clinics } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import type { ModuleKey } from "@/application/modules/module-catalog";
-import { syncModulesForPlan } from "@/application/modules/module-gate";
+import { applyClinicPlanPreset } from "@/application/modules/module-gate";
 import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
 
 async function assertOwnerSession() {
@@ -52,8 +52,13 @@ export async function updateModuleConfig(
   revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }
 
-export async function syncPlanModules(clinicId: string, plan: ClinicPlan) {
+export async function updateClinicPlan(clinicId: string, plan: ClinicPlan) {
   await assertOwnerSession();
-  await syncModulesForPlan(clinicId, plan, "owner_sync");
+  await db
+    .update(clinics)
+    .set({ plan, updatedAt: new Date() })
+    .where(eq(clinics.id, clinicId));
+  await applyClinicPlanPreset(clinicId, plan, "owner_modules");
+  revalidatePath(`/owner/clinics/${clinicId}`);
   revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }

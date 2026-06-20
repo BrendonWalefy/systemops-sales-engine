@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { hashPassword } from "@/lib/password";
 import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
-import { clinicHasModule, syncModulesForPlan } from "@/application/modules/module-gate";
+import { applyClinicPlanPreset, clinicHasModule } from "@/application/modules/module-gate";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
 import {
   getClinicOperationalStatusColors,
@@ -110,10 +110,7 @@ async function updateClinicPlan(clinicId: string, formData: FormData) {
     .update(clinics)
     .set({ plan: typedPlan, updatedAt: new Date() })
     .where(eq(clinics.id, clinicId));
-  // Sync module flags to match the new plan.
-  // custom = owner manages manually; all others activate the plan's default set.
-  // Config (e.g. B-WAVE Voice ID) is preserved — only isActive changes.
-  await syncModulesForPlan(clinicId, typedPlan, "owner");
+  await applyClinicPlanPreset(clinicId, typedPlan, "owner");
   redirect(`/owner/clinics/${clinicId}?planOk=1`);
 }
 

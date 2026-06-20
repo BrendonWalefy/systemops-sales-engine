@@ -1,9 +1,16 @@
 import { db } from "@/infrastructure/db/client";
-import { clinicModules } from "@/infrastructure/db/schema";
+import { clinicModules, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
-import { MODULE_CATALOG } from "./module-catalog";
 import type { ModuleKey } from "./module-catalog";
 import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
+import type { VoiceElevenLabsConfig } from "./module-configs";
+import {
+  applyPlanActivations,
+  mergeRedeBWaveConfig,
+  REDE_RECOMMENDED_TONE,
+  resolvePlanModules,
+  shouldApplyRedeToneRecommendation,
+} from "./plan-presets";
 
 export type ActiveModule = {
   key: ModuleKey;
@@ -86,18 +93,97 @@ export async function syncModulesForPlan(
 ): Promise<void> {
   if (plan === "custom") return;
 
-  const modulesForPlan = MODULE_CATALOG
-    .filter((m) => m.plans.includes(plan))
-    .map((m) => m.key);
+  const currentRows = await db
+    .select({
+      moduleKey: clinicModules.moduleKey,
+      isActive: clinicModules.isActive,
+    })
+    .from(clinicModules)
+    .where(eq(clinicModules.clinicId, clinicId));
 
-  for (const def of MODULE_CATALOG) {
-    const shouldBeActive = modulesForPlan.includes(def.key);
+  const currentState = Object.fromEntries(
+    currentRows.map((row) => [row.moduleKey as ModuleKey, row.isActive]),
+  ) as Partial<Record<ModuleKey, boolean>>;
+  const nextState = applyPlanActivations(currentState, plan);
+
+  for (const key of resolvePlanModules(plan)) {
+    const shouldBeActive = nextState[key] ?? true;
     await db
       .insert(clinicModules)
-      .values({ clinicId, moduleKey: def.key, isActive: shouldBeActive, updatedBy })
+      .values({ clinicId, moduleKey: key, isActive: shouldBeActive, updatedBy })
       .onConflictDoUpdate({
         target: [clinicModules.clinicId, clinicModules.moduleKey],
         set: { isActive: shouldBeActive, updatedBy, updatedAt: new Date() },
       });
+  }
+}
+
+export async function applyClinicPlanPreset(
+  clinicId: string,
+  plan: ClinicPlan,
+  updatedBy: string,
+): Promise<void> {
+  await syncModulesForPlan(clinicId, plan, updatedBy);
+
+  if (plan !== "rede") return;
+
+  const [bwaveModule, activePlaybook] = await Promise.all([
+    db
+      .select({ config: clinicModules.config })
+      .from(clinicModules)
+      .where(
+        and(
+          eq(clinicModules.clinicId, clinicId),
+          eq(clinicModules.moduleKey, "voice_elevenlabs"),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    db.query.playbookVersions.findFirst({
+      where: and(
+        eq(playbookVersions.clinicId, clinicId),
+        eq(playbookVersions.status, "active"),
+      ),
+      columns: {
+        id: true,
+        toneOfVoice: true,
+      },
+    }),
+  ]);
+
+  const nextBWaveConfig = mergeRedeBWaveConfig(
+    (bwaveModule?.config as Partial<VoiceElevenLabsConfig> | null) ?? null,
+  );
+
+  await db
+    .insert(clinicModules)
+    .values({
+      clinicId,
+      moduleKey: "voice_elevenlabs",
+      isActive: true,
+      config: nextBWaveConfig,
+      updatedBy,
+    })
+    .onConflictDoUpdate({
+      target: [clinicModules.clinicId, clinicModules.moduleKey],
+      set: {
+        isActive: true,
+        config: nextBWaveConfig,
+        updatedBy,
+        updatedAt: new Date(),
+      },
+    });
+
+  if (
+    activePlaybook?.id &&
+    shouldApplyRedeToneRecommendation(activePlaybook.toneOfVoice)
+  ) {
+    await db
+      .update(playbookVersions)
+      .set({
+        toneOfVoice: REDE_RECOMMENDED_TONE,
+        updatedAt: new Date(),
+      })
+      .where(eq(playbookVersions.id, activePlaybook.id));
   }
 }

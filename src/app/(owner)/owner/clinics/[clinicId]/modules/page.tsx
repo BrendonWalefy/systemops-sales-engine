@@ -10,8 +10,11 @@ import { MODULE_CATALOG } from "@/application/modules/module-catalog";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
 import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import { REDE_RECOMMENDED_BWAVE_CONFIG } from "@/application/modules/plan-presets";
 import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
-import { toggleModule, syncPlanModules, updateModuleConfig } from "./actions";
+import { toggleModule, updateClinicPlan, updateModuleConfig } from "./actions";
+
+const PLAN_OPTIONS = ["essencial", "clinica", "rede", "custom"] as const;
 
 async function getData(clinicId: string) {
   const [clinic, moduleRows] = await Promise.all([
@@ -62,20 +65,42 @@ export default async function ClinicModulesPage({
             <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "#fafafa" }}>{clinic.name} — Módulos</h1>
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#71717a" }}>
               Plano: <span style={{ color: "#34d399", fontWeight: 600, textTransform: "capitalize" }}>{plan}</span>
-              <span style={{ color: "#3f3f46", marginLeft: "8px" }}>· Como owner, você pode ativar qualquer módulo independente do plano.</span>
+              <span style={{ color: "#3f3f46", marginLeft: "8px" }}>· Custom não mexe em nada; Rede também prepara a recomendação premium de voz.</span>
             </p>
           </div>
           <form
-            action={async () => {
+            action={async (formData: FormData) => {
               "use server";
-              await syncPlanModules(clinicId, plan);
+              const rawPlan = String(formData.get("plan") ?? plan);
+              const nextPlan = PLAN_OPTIONS.includes(rawPlan as ClinicPlan)
+                ? (rawPlan as ClinicPlan)
+                : plan;
+              await updateClinicPlan(clinicId, nextPlan);
             }}
+            style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}
           >
+            <select
+              name="plan"
+              defaultValue={plan}
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                color: "#fafafa",
+                fontSize: "13px",
+                padding: "8px 10px",
+              }}
+            >
+              <option value="essencial">Essencial</option>
+              <option value="clinica">Clínica</option>
+              <option value="rede">Rede</option>
+              <option value="custom">Custom</option>
+            </select>
             <button
               type="submit"
               style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#fafafa", fontSize: "13px", cursor: "pointer" }}
             >
-              Sincronizar com plano
+              Salvar
             </button>
           </form>
         </div>
@@ -90,7 +115,8 @@ export default async function ClinicModulesPage({
 
           const voiceTtsConfig = def.key === "voice_tts" ? (config as VoiceTtsConfig | null) : null;
           const elevenLabsConfig = def.key === "voice_elevenlabs" ? (config as VoiceElevenLabsConfig | null) : null;
-          const hasConfigPanel = isActive && (def.key === "voice_tts" || def.key === "voice_elevenlabs");
+          const hasConfigPanel =
+            isActive && (def.key === "voice_tts" || def.key === "voice_elevenlabs");
 
           return (
             <div
@@ -232,10 +258,10 @@ export default async function ClinicModulesPage({
                   action={async (formData: FormData) => {
                     "use server";
                     const voiceId = String(formData.get("voiceId") ?? "").trim();
-                    const stability = Math.min(1, Math.max(0, parseFloat(String(formData.get("stability") ?? "0.5"))));
-                    const similarityBoost = Math.min(1, Math.max(0, parseFloat(String(formData.get("similarityBoost") ?? "0.75"))));
-                    const speed = Math.min(1.2, Math.max(0.7, parseFloat(String(formData.get("speed") ?? "1.0"))));
-                    const mode = (String(formData.get("mode") ?? "impact")) as VoiceMode;
+                    const stability = Math.min(1, Math.max(0, parseFloat(String(formData.get("stability") ?? String(REDE_RECOMMENDED_BWAVE_CONFIG.stability)))));
+                    const similarityBoost = Math.min(1, Math.max(0, parseFloat(String(formData.get("similarityBoost") ?? String(REDE_RECOMMENDED_BWAVE_CONFIG.similarityBoost)))));
+                    const speed = Math.min(1.2, Math.max(0.7, parseFloat(String(formData.get("speed") ?? String(REDE_RECOMMENDED_BWAVE_CONFIG.speed)))));
+                    const mode = (String(formData.get("mode") ?? REDE_RECOMMENDED_BWAVE_CONFIG.mode)) as VoiceMode;
                     await updateModuleConfig(clinicId, "voice_elevenlabs", { voiceId, stability, similarityBoost, speed, mode });
                   }}
                   style={{
@@ -280,8 +306,8 @@ export default async function ClinicModulesPage({
                     <label style={{ fontSize: "11px", color: "#52525b" }}>Modo de operação</label>
                     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                       {(["impact", "mix", "full"] as VoiceMode[]).map((m) => (
-                        <label key={m} style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 10px", borderRadius: "6px", background: (elevenLabsConfig?.mode ?? "impact") === m ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)", border: (elevenLabsConfig?.mode ?? "impact") === m ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
-                          <input type="radio" name="mode" value={m} defaultChecked={(elevenLabsConfig?.mode ?? "impact") === m} style={{ marginTop: "2px", accentColor: "#10b981" }} />
+                        <label key={m} style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 10px", borderRadius: "6px", background: (elevenLabsConfig?.mode ?? REDE_RECOMMENDED_BWAVE_CONFIG.mode) === m ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)", border: (elevenLabsConfig?.mode ?? REDE_RECOMMENDED_BWAVE_CONFIG.mode) === m ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
+                          <input type="radio" name="mode" value={m} defaultChecked={(elevenLabsConfig?.mode ?? REDE_RECOMMENDED_BWAVE_CONFIG.mode) === m} style={{ marginTop: "2px", accentColor: "#10b981" }} />
                           <div>
                             <div style={{ fontSize: "12px", fontWeight: 600, color: "#fafafa" }}>{VOICE_MODE_LABELS[m].label}</div>
                             <div style={{ fontSize: "11px", color: "#52525b", marginTop: "1px" }}>{VOICE_MODE_LABELS[m].description}</div>
@@ -295,17 +321,17 @@ export default async function ClinicModulesPage({
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                       <label style={{ fontSize: "11px", color: "#52525b" }}>Stability (0–1)</label>
-                      <input name="stability" type="number" min="0" max="1" step="0.05" defaultValue={elevenLabsConfig?.stability ?? 0.5}
+                      <input name="stability" type="number" min="0" max="1" step="0.05" defaultValue={elevenLabsConfig?.stability ?? REDE_RECOMMENDED_BWAVE_CONFIG.stability}
                         style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fafafa", fontSize: "12px", padding: "6px 10px", width: "100%", boxSizing: "border-box" }} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                       <label style={{ fontSize: "11px", color: "#52525b" }}>Similarity Boost (0–1)</label>
-                      <input name="similarityBoost" type="number" min="0" max="1" step="0.05" defaultValue={elevenLabsConfig?.similarityBoost ?? 0.75}
+                      <input name="similarityBoost" type="number" min="0" max="1" step="0.05" defaultValue={elevenLabsConfig?.similarityBoost ?? REDE_RECOMMENDED_BWAVE_CONFIG.similarityBoost}
                         style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fafafa", fontSize: "12px", padding: "6px 10px", width: "100%", boxSizing: "border-box" }} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                       <label style={{ fontSize: "11px", color: "#52525b" }}>Velocidade (0.7–1.2)</label>
-                      <input name="speed" type="number" min="0.7" max="1.2" step="0.05" defaultValue={elevenLabsConfig?.speed ?? 1.0}
+                      <input name="speed" type="number" min="0.7" max="1.2" step="0.05" defaultValue={elevenLabsConfig?.speed ?? REDE_RECOMMENDED_BWAVE_CONFIG.speed}
                         style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fafafa", fontSize: "12px", padding: "6px 10px", width: "100%", boxSizing: "border-box" }} />
                     </div>
                   </div>
