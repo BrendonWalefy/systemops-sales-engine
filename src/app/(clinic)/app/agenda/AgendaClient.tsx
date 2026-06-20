@@ -81,9 +81,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
   const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<View>(() =>
-    typeof window !== "undefined" && window.innerWidth < 640 ? "day" : "week"
-  );
+  const [view, setView] = useState<View>("month");
   const [resourceDate, setResourceDate] = useState(() => new Date());
 
   const [appointmentModal, setAppointmentModal] = useState<{

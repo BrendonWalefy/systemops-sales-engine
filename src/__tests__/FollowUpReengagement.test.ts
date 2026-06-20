@@ -95,6 +95,12 @@ describe("calculateFollowUpDueAt", () => {
     expect(due.getMonth()).toBe((ref.getMonth() + 6) % 12);
   });
 
+  it("appointment_cancelled → +2 dias", () => {
+    const due = calculateFollowUpDueAt("appointment_cancelled", ref);
+    const expectedMs = 2 * 24 * 60 * 60 * 1000;
+    expect(due.getTime() - ref.getTime()).toBe(expectedMs);
+  });
+
   it("no_show → +7 dias", () => {
     const due = calculateFollowUpDueAt("no_show", ref);
     const expectedMs = 7 * 24 * 60 * 60 * 1000;
@@ -150,6 +156,21 @@ describe("scheduleFollowUp", () => {
 
     const saved = repo.save.mock.calls[0][0];
     expect(saved.reason).toBe("Retorno de rotina");
+  });
+
+  it("salva follow-up com reason correto para trigger appointment_cancelled", async () => {
+    const repo = makeFollowUpRepository();
+
+    await scheduleFollowUp({
+      clinicId: "clinic-1",
+      leadId: "lead-1",
+      trigger: "appointment_cancelled",
+      referenceDate: new Date("2026-01-01"),
+      followUpRepository: repo,
+    });
+
+    const saved = repo.save.mock.calls[0][0];
+    expect(saved.reason).toBe("Lead cancelou a consulta");
   });
 
   it("salva follow-up com reason correto para trigger no_show", async () => {

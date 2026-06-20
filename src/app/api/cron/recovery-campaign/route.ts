@@ -54,6 +54,7 @@ async function findUnattendedLeads(clinicId: string): Promise<UnattendedLead[]> 
     FROM leads l
     JOIN conversations c ON c.lead_id = l.id
     WHERE l.clinic_id = ${clinicId}
+      AND c.category = 'sales'
       AND l.status NOT IN ('lost', 'won', 'appointment_scheduled')
       AND (l.phone IS NOT NULL OR l.whatsapp_lid IS NOT NULL)
       AND (

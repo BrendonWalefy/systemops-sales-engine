@@ -9,9 +9,12 @@ export type InboxSnapshotRow = {
   aiPaused: boolean;
   needsAttention: boolean;
   takeoverExpiresAt: DateLike;
+  conversationCategory: string | null;
   leadStatus: string | null;
   leadTemperature: string | null;
   appointmentStartsAt: DateLike;
+  latestAppointmentStatus: string | null;
+  latestAppointmentUpdatedAt: DateLike;
 };
 
 function serializeDate(value: DateLike): string {
@@ -40,9 +43,12 @@ export function buildInboxSnapshotSignature(
       row.aiPaused ? "1" : "0",
       row.needsAttention ? "1" : "0",
       serializeDate(row.takeoverExpiresAt),
+      row.conversationCategory ?? "",
       row.leadStatus ?? "",
       row.leadTemperature ?? "",
       serializeDate(row.appointmentStartsAt),
+      row.latestAppointmentStatus ?? "",
+      serializeDate(row.latestAppointmentUpdatedAt),
     ].join("|"));
 
   return [clinicPart, ...rowParts].join("\n");

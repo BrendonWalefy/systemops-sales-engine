@@ -35,6 +35,14 @@ export const leadStatusEnum = pgEnum("lead_status", [
   "won",
 ]);
 
+export const conversationCategoryEnum = pgEnum("conversation_category", [
+  "sales",
+  "operational",
+  "vendor",
+  "spam",
+  "archived",
+]);
+
 export const leadTemperatureEnum = pgEnum("lead_temperature", [
   "cold",
   "warm",
@@ -300,6 +308,7 @@ export const conversations = pgTable(
       .notNull()
       .references(() => leads.id),
     channel: channelEnum("channel").notNull(),
+    category: conversationCategoryEnum("category").notNull().default("sales"),
     externalThreadId: text("external_thread_id"),
     summary: text("summary"),
     aiPaused: boolean("ai_paused").notNull().default(false),
@@ -324,6 +333,10 @@ export const conversations = pgTable(
   },
   (table) => ({
     leadIdx: uniqueIndex("conversations_lead_idx").on(table.leadId),
+    clinicCategoryIdx: index("conversations_clinic_category_idx").on(
+      table.clinicId,
+      table.category,
+    ),
     externalThreadIdx: index("conversations_external_thread_idx").on(
       table.externalThreadId,
     ),

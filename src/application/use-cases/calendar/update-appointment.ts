@@ -3,7 +3,10 @@ import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import { cancelPendingFollowUps } from "@/application/use-cases/leads/cancel-pending-follow-ups";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
-import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
+import {
+  calculateFollowUpDueAt,
+  scheduleFollowUp,
+} from "@/application/use-cases/leads/schedule-follow-up";
 
 export type UpdateAppointmentInput = {
   appointmentId: string;
@@ -86,8 +89,22 @@ export async function updateAppointment(
     try {
       const lead = await deps.leadRepository.findById(existing.leadId);
       if (lead) {
-        if (input.status === "completed") {
-          await deps.leadRepository.save({ ...lead, status: "won", updatedAt: new Date() });
+        if (input.status === "scheduled" || input.status === "confirmed") {
+          if (lead.status !== "appointment_scheduled" || lead.nextActionAt !== null) {
+            await deps.leadRepository.save({
+              ...lead,
+              status: "appointment_scheduled",
+              nextActionAt: null,
+              updatedAt: new Date(),
+            });
+          }
+        } else if (input.status === "completed") {
+          await deps.leadRepository.save({
+            ...lead,
+            status: "won",
+            nextActionAt: null,
+            updatedAt: new Date(),
+          });
           if (deps.followUpRepository) {
             await scheduleFollowUp({
               clinicId: existing.clinicId,
@@ -98,7 +115,13 @@ export async function updateAppointment(
             });
           }
         } else if (input.status === "no_show") {
-          await deps.leadRepository.save({ ...lead, status: "in_conversation", updatedAt: new Date() });
+          const dueAt = calculateFollowUpDueAt("no_show", new Date());
+          await deps.leadRepository.save({
+            ...lead,
+            status: "follow_up_due",
+            nextActionAt: dueAt,
+            updatedAt: new Date(),
+          });
           if (deps.followUpRepository) {
             await scheduleFollowUp({
               clinicId: existing.clinicId,

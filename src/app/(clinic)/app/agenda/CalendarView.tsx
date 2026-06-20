@@ -10,6 +10,7 @@ import "@schedule-x/theme-default/dist/index.css";
 import type { AppointmentEvent } from "./types";
 
 const DEFAULT_TIMEZONE = "America/Sao_Paulo";
+const FULL_DAY_BLOCK_MINUTES = 12 * 60;
 
 const CALENDAR_STATUS_COLORS = {
   scheduled: {
@@ -101,6 +102,34 @@ function toDateTimeParts(value: unknown, timezone: string): { date: string; time
 
 export function CalendarView({ initialEvents, currentView, timezone = DEFAULT_TIMEZONE, onSlotClick, onEventClick, onEventUpdate }: Props) {
   const eventsService = useMemo(() => createEventsServicePlugin(), []);
+  const backgroundEvents = useMemo(
+    () =>
+      initialEvents
+        .filter((event) => {
+          if (event.status !== "block") return false;
+          const startsAt = new Date(event.startsAt);
+          const endsAt = new Date(event.endsAt);
+          return (endsAt.getTime() - startsAt.getTime()) / 60_000 >= FULL_DAY_BLOCK_MINUTES;
+        })
+        .map((event) => {
+          const zonedStart = toZonedDateTime(event.startsAt, timezone);
+          const zonedEnd = toZonedDateTime(event.endsAt, timezone);
+          const startDate = Temporal.PlainDate.from(zonedStart.toPlainDate().toString());
+          const endDate = Temporal.PlainDate.from(zonedEnd.toPlainDate().toString());
+
+          return {
+            start: startDate,
+            end: endDate,
+            title: event.leadName ?? "Agenda bloqueada",
+            style: {
+              background:
+                "linear-gradient(180deg, rgba(245,180,81,0.18), rgba(245,180,81,0.08))",
+              border: "1px solid rgba(245,180,81,0.16)",
+            },
+          };
+        }),
+    [initialEvents, timezone],
+  );
 
   const toCalendarEvent = useCallback((e: AppointmentEvent) => {
     const isBlock = e.status === "block";
@@ -134,13 +163,14 @@ export function CalendarView({ initialEvents, currentView, timezone = DEFAULT_TI
     timezone,
     dayBoundaries: { start: "07:00", end: "21:00" },
     views: [createViewWeek(), createViewDay(), createViewMonthGrid()],
-    defaultView: createViewWeek().name,
+    defaultView: currentView ?? createViewMonthGrid().name,
     plugins: [
       eventsService,
       createDragAndDropPlugin(15),
     ],
     calendars: CALENDAR_STATUS_COLORS,
     events: initialEvents.map(toCalendarEvent),
+    backgroundEvents,
     callbacks: {
       onEventClick(event) {
         if (onEventClick && event._meta) {
@@ -211,6 +241,17 @@ export function CalendarView({ initialEvents, currentView, timezone = DEFAULT_TI
   useEffect(() => {
     eventsService.set(initialEvents.map(toCalendarEvent));
   }, [initialEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    // Schedule-X does not expose a background-events service plugin.
+    // Updating the internal signal keeps month/day highlights in sync after refreshes.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const $app = (calendar as any)?.$app;
+    if ($app?.calendarEvents?.backgroundEvents) {
+      // eslint-disable-next-line react-hooks/immutability
+      $app.calendarEvents.backgroundEvents.value = backgroundEvents;
+    }
+  }, [calendar, backgroundEvents]);
 
   return (
     <div className="sx-calendar-wrapper">

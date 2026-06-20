@@ -3,16 +3,16 @@
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag } from "lucide-react";
-import { pauseAi, resumeAi } from "./actions";
+import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 
 interface Props {
   conversationId: string;
-  leadId: string;
   aiPaused: boolean;
   leadName: string | null;
   treatmentInterest: string | null;
   temperature: string | null;
   leadStatus: string | null;
+  conversationCategory: string;
   needsAttention: boolean;
   attentionReason: string | null;
   defaultDurationMinutes: number;
@@ -42,12 +42,12 @@ const DISCOUNT_PRESETS = [200, 300, 500] as const;
 
 export function ConvComposer({
   conversationId,
-  leadId,
   aiPaused,
   leadName,
   treatmentInterest,
   temperature,
   leadStatus,
+  conversationCategory,
   needsAttention,
   attentionReason,
   defaultDurationMinutes,
@@ -56,7 +56,6 @@ export function ConvComposer({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
-  const [isAiToggling, startAiToggle] = useTransition();
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -68,8 +67,11 @@ export function ConvComposer({
   const [isScheduling, startSchedule] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
+  const isSalesConversation = isSalesConversationCategory(conversationCategory);
 
-  const nextAction = deriveNextAction({ temperature, status: leadStatus, needsAttention, attentionReason, aiPaused });
+  const nextAction = isSalesConversation
+    ? deriveNextAction({ temperature, status: leadStatus, needsAttention, attentionReason, aiPaused })
+    : null;
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -125,13 +127,6 @@ export function ConvComposer({
     } finally {
       setIsSuggesting(false);
     }
-  };
-
-  const handleAiToggle = () => {
-    startAiToggle(() => {
-      if (aiPaused) return resumeAi(conversationId);
-      return pauseAi(conversationId, leadId);
-    });
   };
 
   function fillTemplate(template: string) {
@@ -200,54 +195,63 @@ export function ConvComposer({
         </div>
       )}
 
-      <div className="conv-chips-row">
-        <button
-          className="conv-chip chip-ai"
-          onClick={handleSuggestAi}
-          disabled={isSuggesting}
-          title="Gera uma sugestão de resposta com IA"
-        >
-          <Sparkles size={12} />
-          {isSuggesting ? "Gerando…" : "Sugerir IA"}
-        </button>
+      {isSalesConversation ? (
+        <div className="conv-chips-row">
+          <button
+            className="conv-chip chip-ai"
+            onClick={handleSuggestAi}
+            disabled={isSuggesting}
+            title="Gera uma sugestão de resposta com IA"
+          >
+            <Sparkles size={12} />
+            {isSuggesting ? "Gerando…" : "Sugerir IA"}
+          </button>
 
-        <button
-          className="conv-chip"
-          onClick={() => fillTemplate(casesTemplate)}
-          title="Pré-preenche resposta sobre casos reais"
-        >
-          Casos reais
-        </button>
+          <button
+            className="conv-chip"
+            onClick={() => fillTemplate(casesTemplate)}
+            title="Pré-preenche resposta sobre casos reais"
+          >
+            Casos reais
+          </button>
 
-        <button
-          className="conv-chip"
-          onClick={() => fillTemplate(proposalTemplate)}
-          title="Pré-preenche template de proposta"
-        >
-          Proposta
-        </button>
+          <button
+            className="conv-chip"
+            onClick={() => fillTemplate(proposalTemplate)}
+            title="Pré-preenche template de proposta"
+          >
+            Proposta
+          </button>
 
-        <button
-          className="conv-chip"
-          onClick={handleOpenSchedule}
-          title="Registrar agendamento"
-        >
-          <Calendar size={12} />
-          Agendar
-        </button>
+          <button
+            className="conv-chip"
+            onClick={handleOpenSchedule}
+            title="Registrar agendamento"
+          >
+            <Calendar size={12} />
+            Agendar
+          </button>
 
-        <button
-          className="conv-chip"
-          onClick={() => { setDiscountOpen((v) => !v); setScheduleOpen(false); }}
-          title="Enviar oferta com desconto"
-          style={discountOpen ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" } : undefined}
-        >
-          <Tag size={12} />
-          Desconto
-        </button>
-      </div>
+          <button
+            className="conv-chip"
+            onClick={() => { setDiscountOpen((v) => !v); setScheduleOpen(false); }}
+            title="Enviar oferta com desconto"
+            style={discountOpen ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" } : undefined}
+          >
+            <Tag size={12} />
+            Desconto
+          </button>
+        </div>
+      ) : (
+        <div className="conv-next-action-bar" style={{ marginTop: 6 }}>
+          <AlertCircle size={12} color="var(--warning)" />
+          <span className="conv-next-action-label">
+            Conversa fora do funil comercial. Chips de venda e automações estão desativados.
+          </span>
+        </div>
+      )}
 
-      {scheduleOpen && (
+      {isSalesConversation && scheduleOpen && (
         <div className="conv-schedule-panel">
           <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0 4px" }}>
             {schedError && (
@@ -292,7 +296,7 @@ export function ConvComposer({
         </div>
       )}
 
-      {discountOpen && (
+      {isSalesConversation && discountOpen && (
         <div className="conv-schedule-panel">
           <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0 4px" }}>
             <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Selecione o valor do desconto</span>

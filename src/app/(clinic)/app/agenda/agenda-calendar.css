@@ -385,6 +385,20 @@
   background: rgba(0, 212, 170, 0.04);
 }
 
+.sx-calendar-wrapper .sx__month-grid-background-event,
+.sx-calendar-wrapper .sx__date-grid-background-event {
+  inset: 0;
+  border-radius: 0;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.sx-calendar-wrapper .sx__month-grid-background-event {
+  background:
+    linear-gradient(180deg, rgba(245, 180, 81, 0.16), rgba(245, 180, 81, 0.06)) !important;
+  box-shadow: inset 0 0 0 1px rgba(245, 180, 81, 0.16);
+}
+
 .sx-calendar-wrapper .sx__view-container > * {
   min-height: 100%;
 }

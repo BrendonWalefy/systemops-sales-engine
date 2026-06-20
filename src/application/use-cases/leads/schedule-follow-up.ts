@@ -1,10 +1,16 @@
 import { randomUUID } from "crypto";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 
-export type ScheduleFollowUpTrigger = "appointment_completed" | "no_show" | "lost" | "video_sent";
+export type ScheduleFollowUpTrigger =
+  | "appointment_completed"
+  | "appointment_cancelled"
+  | "no_show"
+  | "lost"
+  | "video_sent";
 
 export const FOLLOW_UP_REASONS: Record<Exclude<ScheduleFollowUpTrigger, "video_sent">, string> = {
   appointment_completed: "Retorno de rotina",
+  appointment_cancelled: "Lead cancelou a consulta",
   no_show: "Lead não compareceu à consulta",
   lost: "Lead inativo — segunda chance",
 };
@@ -25,6 +31,7 @@ export function shouldCancelFollowUpOnLeadReengagement(reason: string): boolean 
     reason.startsWith("video_sent:") ||
     reason === "video_sent" ||
     reason === FOLLOW_UP_REASONS.lost ||
+    reason === FOLLOW_UP_REASONS.appointment_cancelled ||
     reason === FOLLOW_UP_REASONS.no_show
   );
 }
@@ -47,6 +54,8 @@ export function calculateFollowUpDueAt(trigger: ScheduleFollowUpTrigger, referen
   switch (trigger) {
     case "appointment_completed":
       return addMonths(referenceDate, 6);
+    case "appointment_cancelled":
+      return addDays(referenceDate, 2);
     case "no_show":
       return addDays(referenceDate, 7);
     case "lost":

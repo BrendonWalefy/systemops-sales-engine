@@ -35,6 +35,7 @@ export class DrizzleLeadRepository implements LeadRepository {
       .where(
         and(
           eq(leads.clinicId, params.clinicId),
+          eq(conversations.category, "sales"),
           notInArray(leads.status, ["lost", "won", "appointment_scheduled"]),
           lt(
             sql`COALESCE(${conversations.lastMessageAt}, ${conversations.updatedAt})`,
@@ -150,6 +151,7 @@ export class DrizzleLeadRepository implements LeadRepository {
       await db
         .update(conversations)
         .set({
+          category: canonicalConv.category,
           lastMessageAt,
           aiPaused: canonicalConv.aiPaused || duplicateConv.aiPaused,
           takeoverExpiresAt,
