@@ -210,9 +210,9 @@ function trendTone(current: number, previous: number): string {
 
 function chartGeometry(series: FlowPoint[]) {
   const width = 640;
-  const height = 200;
+  const height = 130;
   const paddingX = 18;
-  const paddingY = 22;
+  const paddingY = 16;
   const max = Math.max(...series.map((point) => point.count), 1);
   const usableWidth = width - paddingX * 2;
   const usableHeight = height - paddingY * 2;
@@ -401,6 +401,7 @@ async function fetchDashboardData(period: string) {
     db
       .select({
         id: leads.id,
+        convId: conversations.id,
         name: leads.name,
         phone: leads.phone,
         channel: leads.channel,
@@ -1000,9 +1001,10 @@ export default async function DashboardPage({
                   </feMerge>
                 </filter>
               </defs>
-              <line x1="18" x2="622" y1="64" y2="64" className="dashboard-chart-gridline" />
-              <line x1="18" x2="622" y1="130" y2="130" className="dashboard-chart-gridline" />
-              <line x1="18" x2="622" y1="196" y2="196" className="dashboard-chart-gridline" />
+              <line x1="18" x2="622" y1="16" y2="16" className="dashboard-chart-gridline" />
+              <line x1="18" x2="622" y1="49" y2="49" className="dashboard-chart-gridline" />
+              <line x1="18" x2="622" y1="82" y2="82" className="dashboard-chart-gridline" />
+              <line x1="18" x2="622" y1="114" y2="114" className="dashboard-chart-gridline" />
               <path d={flowChart.areaPath} fill="url(#dashboardChartFill)" />
               <path d={flowChart.path} className="dashboard-chart-line" filter="url(#dashboardGlow)" />
               {flowChart.points.map((point) => (
@@ -1057,70 +1059,33 @@ export default async function DashboardPage({
               Nenhum lead registrado ainda.
             </div>
           ) : (
-            <>
-              <div className="dashboard-table-wrap">
-                <table className="dashboard-leads-table">
-                  <thead>
-                    <tr>
-                      {["Lead", "Status", "Temperatura", "Data"].map((col) => (
-                        <th key={col}>{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.recentLeads.map((lead) => (
-                      <tr key={lead.id}>
-                        <td>
-                          <div className="dashboard-lead-cell">
-                            <div className="dashboard-avatar">{nameInitial(lead.name, lead.phone)}</div>
-                            <div>
-                              <strong>{lead.name ?? "Sem nome"}</strong>
-                              <span>{channelLabel(lead.channel)}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`dashboard-status-pill ${statusTone(lead.status)}`}>
-                            {statusLabel(lead.status)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`temp-badge ${temperatureClass(lead.temperature)}`}>
-                            {temperatureLabel(lead.temperature)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="dashboard-date-cell">{formatDate(lead.createdAt)}</span>
-                          <small>{relativeTime(lead.createdAt)}</small>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="dashboard-mobile-leads">
-                {data.recentLeads.map((lead) => (
-                  <article key={lead.id} className={`dashboard-mobile-lead ${temperatureClass(lead.temperature)}`}>
-                    <div className="dashboard-mobile-lead-main">
-                      <div className="dashboard-avatar">{nameInitial(lead.name, lead.phone)}</div>
-                      <div>
-                        <strong>{lead.name ?? "Sem nome"}</strong>
-                        <span>{channelLabel(lead.channel)} · {relativeTime(lead.createdAt)}</span>
-                      </div>
-                    </div>
-                    <div className="dashboard-mobile-lead-tags">
-                      <span className={`dashboard-status-pill ${statusTone(lead.status)}`}>
-                        {statusLabel(lead.status)}
-                      </span>
-                      <span className={`temp-badge ${temperatureClass(lead.temperature)}`}>
-                        {temperatureLabel(lead.temperature)}
-                      </span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </>
+            <div className="dashboard-leads-list">
+              {data.recentLeads.map((lead) => (
+                <Link
+                  key={lead.id}
+                  href={`/app/inbox/${lead.convId}`}
+                  className="dashboard-lead-row"
+                  style={{ textDecoration: "none" }}
+                >
+                  <div className={`dashboard-avatar-temp ${temperatureClass(lead.temperature)}`}>
+                    {nameInitial(lead.name, lead.phone)}
+                  </div>
+                  <div className="dashboard-lead-info">
+                    <strong>{lead.name ?? "Sem nome"}</strong>
+                    <span>{channelLabel(lead.channel)}</span>
+                  </div>
+                  <span className={`dashboard-status-pill ${statusTone(lead.status)}`}>
+                    {statusLabel(lead.status)}
+                  </span>
+                  <span className={`temp-badge ${temperatureClass(lead.temperature)}`}>
+                    {temperatureLabel(lead.temperature)}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {relativeTime(lead.createdAt)}
+                  </span>
+                </Link>
+              ))}
+            </div>
           )}
         </section>
 

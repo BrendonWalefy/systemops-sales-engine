@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Search, Inbox, RefreshCw, Send, X, CalendarCheck } from "lucide-react";
+import { Search, Inbox, RefreshCw, Send, X, CalendarCheck, Tag } from "lucide-react";
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recovery-actions";
+import { setConversationCategory } from "./[conversationId]/actions";
 import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import {
   isRecoveryCandidate,
@@ -40,6 +41,104 @@ export type ConvRow = {
 
 const PIPELINE_STEPS = ["Novo", "Qualific.", "Proposta", "Agendar", "Fechado"] as const;
 type InboxCategoryScope = ConversationCategory;
+
+const MOVE_OPTIONS: { key: ConversationCategory; label: string }[] = [
+  { key: "sales", label: "Comercial" },
+  { key: "operational", label: "Operacional" },
+  { key: "vendor", label: "Fornecedores" },
+  { key: "spam", label: "Spam" },
+  { key: "archived", label: "Arquivar" },
+];
+
+function CategoryMoveButton({
+  convId,
+  currentCategory,
+}: {
+  convId: string;
+  currentCategory: ConversationCategory;
+}) {
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        title="Mover para..."
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: "2px 5px",
+          color: open ? "var(--accent-strong)" : "var(--muted)",
+          display: "flex",
+          alignItems: "center",
+          borderRadius: 4,
+          opacity: isPending ? 0.5 : 1,
+          transition: "color 120ms",
+        }}
+      >
+        <Tag size={12} />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            right: 0,
+            zIndex: 200,
+            background: "var(--surface-raised)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: 4,
+            minWidth: 148,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
+          }}
+        >
+          {MOVE_OPTIONS.filter((o) => o.key !== currentCategory).map((option) => (
+            <button
+              key={option.key}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(false);
+                startTransition(async () => {
+                  await setConversationCategory(convId, option.key);
+                });
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "7px 10px",
+                fontSize: 12,
+                color: "var(--text)",
+                textAlign: "left",
+                borderRadius: 6,
+                width: "100%",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-soft)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "none";
+              }}
+            >
+              → {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function formatWaitTime(hours: number): string {
   if (hours < 1) return "< 1h";
@@ -277,33 +376,38 @@ function RecoveryCard({
         className="inbox-card-v2"
         style={{ borderLeft: "3px solid #f59e0b" }}
       >
-        <div className="inbox-card-v2-top">
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b" }}>{reason}</span>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>
-            {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
-          </span>
-        </div>
+        <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none", display: "block" }}>
+          <div className="inbox-card-v2-top">
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b" }}>{reason}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
+              </span>
+              <CategoryMoveButton convId={row.convId} currentCategory={row.conversationCategory} />
+            </div>
+          </div>
 
-        <div className="inbox-card-v2-body">
-          <div
-            className="avatar-v2"
-            style={{
-              background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
-              borderColor: accentColor,
-              color: accentColor,
-            }}
-          >
-            {initial}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {displayName}
+          <div className="inbox-card-v2-body">
+            <div
+              className="avatar-v2"
+              style={{
+                background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
+                borderColor: accentColor,
+                color: accentColor,
+              }}
+            >
+              {initial}
             </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {lastMsg.body ? `"${lastMsg.body.slice(0, 48)}${lastMsg.body.length > 48 ? "…" : ""}"` : "Sem mensagens"}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {displayName}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {lastMsg.body ? `"${lastMsg.body.slice(0, 48)}${lastMsg.body.length > 48 ? "…" : ""}"` : "Sem mensagens"}
+              </div>
             </div>
           </div>
-        </div>
+        </Link>
 
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <Link
@@ -445,6 +549,7 @@ function InboxCard({
             <span className={`temp-badge-v2 temp-badge-v2-${tk}`}>{tLabel}</span>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <CategoryMoveButton convId={row.convId} currentCategory={row.conversationCategory} />
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
               {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
             </span>
@@ -578,6 +683,7 @@ export function InboxClient({
   const salesRows = categoryRows(rows, "sales");
   const { handoff, active, paused, recovery } = segmentRows(salesRows, lastMsgMap);
   const allLive = [...handoff, ...active, ...paused];
+  const attentionRows = salesRows.filter((r) => r.needsAttention);
   const totalActive = handoff.length + active.length;
   const totalAll = rows.length;
 
@@ -598,8 +704,12 @@ export function InboxClient({
     );
   }
 
+  const nonClosedSalesCount = salesRows.filter(
+    (r) => r.leadStatus !== "won" && r.leadStatus !== "lost",
+  ).length;
+
   const CATEGORY_TABS: { key: InboxCategoryScope; label: string; count: number }[] = [
-    { key: "sales", label: "Comercial", count: salesRows.length },
+    { key: "sales", label: "Comercial", count: nonClosedSalesCount },
     { key: "operational", label: "Operacional", count: categoryRows(rows, "operational").length },
     { key: "vendor", label: "Fornecedores", count: categoryRows(rows, "vendor").length },
     { key: "spam", label: "Spam", count: categoryRows(rows, "spam").length },
@@ -609,7 +719,7 @@ export function InboxClient({
   const TABS: { key: LiveInboxTabFilter | "recovery"; label: string; count: number }[] = [
     { key: "all",       label: "Todas",       count: allLive.length },
     { key: "hot",       label: "Quentes",     count: allLive.filter((r) => r.leadTemperature === "hot").length },
-    { key: "attention", label: "Atenção",     count: allLive.filter((r) => r.needsAttention).length },
+    { key: "attention", label: "Atenção",     count: attentionRows.length },
     { key: "paused",    label: "Pausados",    count: paused.length },
     { key: "cold",      label: "Resfriadas",  count: allLive.filter((r) => r.leadTemperature === "cold").length },
     { key: "recovery",  label: "Recuperação", count: recovery.length },
@@ -620,6 +730,8 @@ export function InboxClient({
   const scopedRows = isSalesScope ? allLive : categoryRows(rows, scope);
   const baseRows = isRecoveryTab
     ? []
+    : tab === "attention" && isSalesScope
+    ? attentionRows
     : (isSalesScope ? filterLiveRowsByTab(scopedRows, tab as LiveInboxTabFilter) : scopedRows);
   const sortedRows = isRecoveryTab ? [] : sortInboxRowsByRecency(filterBySearch(baseRows, search));
   const scopeLabel = conversationCategoryLabel(scope).toLowerCase();
