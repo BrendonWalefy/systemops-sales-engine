@@ -44,8 +44,9 @@ export function resolveAppointmentLifecycleState(
   }
 
   const outcomeUpdatedAt = row.latestAppointmentUpdatedAt;
+  // conversations.lastMessageAt só é atualizado quando o lead envia mensagem (appendMessage),
+  // então se lastMessageAt > outcomeUpdatedAt, o lead já respondeu — não precisamos checar author.
   const leadRepliedAfterOutcome =
-    lastMsg?.author === "lead" &&
     outcomeUpdatedAt instanceof Date &&
     row.lastMessageAt instanceof Date &&
     row.lastMessageAt.getTime() > outcomeUpdatedAt.getTime();
