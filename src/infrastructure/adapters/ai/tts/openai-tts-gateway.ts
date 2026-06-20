@@ -15,6 +15,35 @@ const SPEED_DEFAULT = 0.92;
  */
 export function sanitizeForTts(text: string): string {
   return text
+    // Converte R$ <valor> por extenso (ex: R$2.500 -> 2.500 reais) para melhor pronúncia no TTS
+    .replace(/R\$\s*(\d+(?:\.\d{3})*)(?:,(\d{2}))?\b/gi, (match, integerPart, centsPart) => {
+      const rawInt = integerPart.replace(/\./g, "");
+      const valInt = parseInt(rawInt, 10);
+      if (isNaN(valInt)) return match;
+
+      const isSingularInt = valInt === 1;
+      const isZeroInt = valInt === 0;
+
+      let result = "";
+      if (!isZeroInt) {
+        result += `${integerPart} ${isSingularInt ? "real" : "reais"}`;
+      }
+
+      if (centsPart && centsPart !== "00") {
+        const valCents = parseInt(centsPart, 10);
+        const isSingularCents = valCents === 1;
+        const centsText = `${valCents} ${isSingularCents ? "centavo" : "centavos"}`;
+        if (result) {
+          result += ` e ${centsText}`;
+        } else {
+          result = centsText;
+        }
+      } else if (isZeroInt) {
+        result = "0 reais";
+      }
+
+      return result;
+    })
     // Remove emojis (blocos Unicode de símbolos e pictogramas)
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}]/gu, "")
     // Remove marcação WhatsApp: *negrito*, _itálico_, ~tachado~, `código`
