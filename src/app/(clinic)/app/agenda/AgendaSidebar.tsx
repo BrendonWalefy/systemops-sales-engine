@@ -42,6 +42,16 @@ export function AgendaSidebar({
 }: Props) {
   const now = new Date();
 
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
+
+  const todayEvents = events
+    .filter((e) => {
+      if (e.status === "block" || e.status === "cancelled") return false;
+      const d = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date(e.startsAt));
+      return d === todayStr;
+    })
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
   const upcoming = events
     .filter(
       (e) =>
@@ -90,6 +100,48 @@ export function AgendaSidebar({
               </button>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ── Consultas de Hoje ── */}
+      {todayEvents.length > 0 && (
+        <section className="agenda-sidebar-section">
+          <h3 className="agenda-sidebar-heading">
+            Hoje
+            <span style={{ marginLeft: 6, background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent-strong)", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>
+              {todayEvents.length}
+            </span>
+          </h3>
+          <ul className="agenda-sidebar-list">
+            {todayEvents.map((event) => {
+              const isPast = new Date(event.endsAt) < now;
+              return (
+                <li
+                  key={event.id}
+                  className="agenda-sidebar-card"
+                  onClick={() => onEventClick(event)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === "Enter" && onEventClick(event)}
+                  style={{ opacity: isPast ? 0.5 : 1 }}
+                >
+                  <span
+                    className="agenda-sidebar-status-dot"
+                    style={{ background: STATUS_COLORS[event.status] ?? "#64748b" }}
+                  />
+                  <div className="agenda-sidebar-card-body">
+                    <span className="agenda-sidebar-card-name">
+                      {event.leadName ?? event.leadPhone ?? "Paciente"}
+                    </span>
+                    <span className="agenda-sidebar-card-meta">
+                      {formatLocalTime(event.startsAt, timezone)}
+                      {event.professionalName && ` · ${event.professionalName}`}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
 

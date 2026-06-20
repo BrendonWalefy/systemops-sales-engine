@@ -1,0 +1,144 @@
+=================================================================
+LEAD: Karen | 5511979663668
+Status: waiting_response | Temperatura: —
+Criado em: 06/06/2026, 10:19:50
+=================================================================
+
+  CONVERSA a1ac5b91
+  Criada: 06/06/2026, 10:19:50
+  Última msg: 06/06/2026, 12:55:01
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [20:59:57] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [09:22:12] 👨‍⚕️ Op.  
+          Bom dia Karen seja bem vinda! 😃
+
+  [09:22:28] 👨‍⚕️ Op.  
+          Como posso te ajudar ?
+
+  [10:19:44] 👤 Lead 
+          Bom dia,
+          Gostaria de saber onde vocês estão localizados
+
+  [10:20:18] 👤 Lead 
+          Há já vi aqui é no Butantã
+
+  [10:20:48] 👤 Lead 
+          Queria mas informações de lentes dentais
+
+  [10:21:12] 👤 Lead 
+          Valores etc
+
+  [10:21:24] 👨‍⚕️ Op.  
+          Na verdade aparece Butanta na localização, mas estamos no Brooklin
+
+  [10:21:30] 👨‍⚕️ Op.  
+          Próximo à estação Berrini
+
+  [10:21:40] 👨‍⚕️ Op.  
+          Conhece ?
+
+  [10:21:53] 👤 Lead 
+          Sim,
+
+  [10:23:45] 👤 Lead 
+          Tem como passar  o valor em média das lentes, e qual a diferença entre lentes estratificadas ou composta
+
+  [10:23:55] 👤 Lead 
+          Eu quero presentear meu esposo
+
+  [10:24:33] 👤 Lead 
+          E se parcela no cartão,
+
+  [10:24:40] 👨‍⚕️ Op.  
+          Ah legal
+
+  [10:24:47] 👨‍⚕️ Op.  
+          Vou te encaminhar
+
+  [10:25:02] 👨‍⚕️ Op.  
+          Trabalhamos com duas técnicas que são simplificada e estratificadas 
+          
+          🔹 Técnica Simplificada: utiliza resina de alta qualidade para proporcionar um sorriso harmonioso e bonito, com excelente resultado estético. Por empregar uma abordagem mais prática e materiais de menor custo, é uma opção mais acessível para quem deseja transformar o sorriso.
+          
+          🔹 Técnica Estratificada: realizada com resina premium aplicada em múltiplas camadas, permitindo reproduzir com maior precisão os detalhes naturais dos dentes, como translucidez, profundidade e brilho. O resultado é um sorriso mais refinado, natural e altamente personalizado.
+          
+          A principal diferença entre as técnicas está no nível de detalhamento estético e na personalização do resultado final, permitindo escolher a opção que melhor atende às suas expectativas e necessidades.
+
+  [10:26:04] 👨‍⚕️ Op.  
+          Valores para 20 lentes sorriso completo! 
+          
+          * Simplificada - 2.500,00 
+          * ⁠Estratificada - 5.000,00
+
+  [10:26:25] 👨‍⚕️ Op.  
+          Parcelamos em até 21x com juros da máquina
+
+  [10:27:43] 👤 Lead 
+          Estamos bem próximos,
+
+  [10:27:56] 👤 Lead 
+          E sem juros até quantas vezes
+
+  [10:33:13] 👨‍⚕️ Op.  
+          Não temos essa opção, mas posso vê se consigo alguma condição para você
+
+  [10:33:18] 👨‍⚕️ Op.  
+          Qual técnica gostaria ?
+
+  [10:33:41] 👨‍⚕️ Op.  
+          Consegue enviar uma fotografia nítida do sorriso dele ?
+
+  [10:34:01] 👤 Lead 
+          Simplificada
+
+  [10:35:02] 👤 Lead 
+          Só tenho essa
+
+  [10:36:27] 👨‍⚕️ Op.  
+          Os dentes não são 100% alinhado?
+
+  [10:40:01] 👤 Lead 
+          A arcada de cima os incisivos  são um pouco pra tras
+
+  [10:40:39] 👤 Lead 
+          Isso impede de ser feito o tratamento ??
+
+  [10:44:44] 👨‍⚕️ Op.  
+          Dependendo do nível sim, é que na foto não está muito nítido, seria interessante tirar uma foto assim que possível ou poderíamos agendar uma avaliação geral.
+
+  [10:46:57] 👤 Lead 
+          Entendi
+
+  [10:54:51] 👨‍⚕️ Op.  
+          Vamos agendar ?
+
+  [11:18:46] 👤 Lead 
+          Essa avaliação seria gratuita ?
+
+  [11:24:50] 👨‍⚕️ Op.  
+          Ela tem o custo de 100,00 reais, porém é abatido no valor total do tratamento se desejar prosseguir.
+
+  [11:30:53] 👤 Lead 
+          Entendi
+
+  [11:31:22] 👤 Lead 
+          Eu vou ver direitinho que dia ele pode ir fazer avaliação ok
+
+  [12:54:43] 👨‍⚕️ Op.  
+          Sem problemas
+
+  [12:54:47] 👨‍⚕️ Op.  
+          Bom final de semana
+
+  [12:54:48] 👨‍⚕️ Op.  
+          Até
+
+  [12:55:01] 👤 Lead 
+          Obg igualmente
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Olá, tudo bem? Estou aqui para ajudar com a avaliação do sorriso que você mencionou. Quando você tiver um tempinho, podemos conversar mais sobre isso!
+

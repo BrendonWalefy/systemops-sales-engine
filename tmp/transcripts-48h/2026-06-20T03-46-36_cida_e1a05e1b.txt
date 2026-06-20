@@ -1,0 +1,24 @@
+=================================================================
+LEAD: Cida | 5511999526308
+Status: waiting_response | Temperatura: —
+Criado em: 07/06/2026, 10:31:12
+=================================================================
+
+  CONVERSA a1803239
+  Criada: 07/06/2026, 10:31:12
+  Última msg: 15/06/2026, 13:11:39
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [10:31:05] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [10:44:37] 👨‍⚕️ Op.  
+          Olá Cida bom dia, tudo bem ?
+          Como posso te ajudar ?
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Oi Cida, tudo bem? Vi que você estava interessada em saber mais sobre nossos serviços de odontologia estética e reabilitação oral. Estou aqui para te ajudar com qualquer informação que precisar!
+
+  [13:11:36] 👨‍⚕️ Op.  
+          Lentes em resina com 500,00 reais de desconto para o sorriso completo!! 🚨🚨🚨
+

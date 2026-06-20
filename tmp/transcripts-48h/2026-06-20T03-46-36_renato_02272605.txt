@@ -1,0 +1,25 @@
+=================================================================
+LEAD: Renato | 5511953602049
+Status: waiting_response | Temperatura: —
+Criado em: 07/06/2026, 18:03:56
+=================================================================
+
+  CONVERSA 24e41307
+  Criada: 07/06/2026, 18:03:56
+  Última msg: 15/06/2026, 13:11:38
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [18:03:50] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [18:04:20] 👨‍⚕️ Op.  
+          Boa noite Renato, seja bem vindo!!!
+          
+          Como posso te ajudar ?
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Olá Renato! Fico feliz que tenha nos procurado para saber mais sobre nossos serviços de Odontologia Estética e Reabilitação Oral. Estou aqui para te ajudar com todas as informações que precisar!
+
+  [13:11:36] 👨‍⚕️ Op.  
+          Lentes em resina com 500,00 reais de desconto para o sorriso completo!! 🚨🚨🚨
+

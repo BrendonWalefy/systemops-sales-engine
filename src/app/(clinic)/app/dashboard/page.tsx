@@ -8,7 +8,7 @@ import { getSessionMemberProfile, canViewFinancials, canViewOwnRevenue } from "@
 import { redirect } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
 import { leads, conversations, messages, clinicMembers, appointments, treatments, clinics } from "@/infrastructure/db/schema";
-import { eq, count, and, desc, sql, gte, lt, notInArray, inArray, isNotNull } from "drizzle-orm";
+import { eq, count, and, desc, sql, gte, lt, notInArray, inArray, isNotNull, asc } from "drizzle-orm";
 import Link from "next/link";
 import { Suspense } from "react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
@@ -25,6 +25,7 @@ import {
   Snowflake,
   Thermometer,
   Users,
+  RefreshCw,
 } from "lucide-react";
 
 const DASHBOARD_TZ = "America/Sao_Paulo";
@@ -36,6 +37,14 @@ type FlowPoint = {
   label: string;
   count: number;
 };
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: DASHBOARD_TZ,
+  });
+}
 
 function formatDate(date: Date): string {
   return date.toLocaleDateString("pt-BR", {
@@ -359,6 +368,8 @@ async function fetchDashboardData(period: string) {
     currentFlowLeadsResult,
     previousLeadPeriodResult,
     memberResult,
+    todayAppointmentsResult,
+    coldLeadsResult,
   ] = await Promise.all([
     db.select({ count: count() }).from(leads).where(eq(leads.clinicId, CLINIC_ID)),
     db
@@ -459,6 +470,43 @@ async function fetchDashboardData(period: string) {
           .where(and(eq(clinicMembers.email, userEmail), eq(clinicMembers.clinicId, CLINIC_ID)))
           .limit(1)
       : Promise.resolve([] as Array<{ avatarUrl: string | null }>),
+    // Agendamentos de hoje (fuso da clínica) excluindo cancelados
+    db
+      .select({
+        id: appointments.id,
+        startsAt: appointments.startsAt,
+        endsAt: appointments.endsAt,
+        status: appointments.status,
+        leadName: leads.name,
+        leadPhone: leads.phone,
+      })
+      .from(appointments)
+      .leftJoin(leads, eq(appointments.leadId, leads.id))
+      .where(and(
+        eq(appointments.clinicId, CLINIC_ID),
+        notInArray(appointments.status, ["cancelled"]),
+        sql`(${appointments.startsAt} AT TIME ZONE 'America/Sao_Paulo')::date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,
+      ))
+      .orderBy(asc(appointments.startsAt))
+      .limit(8),
+    // Leads frios para painel de reativação
+    db
+      .select({
+        id: leads.id,
+        name: leads.name,
+        phone: leads.phone,
+        treatmentInterest: leads.treatmentInterest,
+        status: leads.status,
+        updatedAt: leads.updatedAt,
+      })
+      .from(leads)
+      .where(and(
+        eq(leads.clinicId, CLINIC_ID),
+        eq(leads.temperature, "cold"),
+        notInArray(leads.status, ["won", "appointment_scheduled", "lost"]),
+      ))
+      .orderBy(desc(leads.updatedAt))
+      .limit(5),
   ]);
 
   return {
@@ -483,6 +531,8 @@ async function fetchDashboardData(period: string) {
     memberProfile,
     flowStart,
     CLINIC_ID,
+    todayAppointments: todayAppointmentsResult,
+    coldLeads: coldLeadsResult,
   };
 }
 
@@ -502,6 +552,8 @@ export default async function DashboardPage({
   const ownRevenueOnly = memberProfile ? canViewOwnRevenue(memberProfile) : false;
   const showRoi = memberProfile ? canViewFinancials(memberProfile) : false;
 
+  const todayApptCount = data.todayAppointments.length;
+  const coldLeadCount = data.coldLeads.length;
   const revenueData = showRevenue
     ? await fetchRevenueData(
         data.CLINIC_ID,
@@ -626,6 +678,18 @@ export default async function DashboardPage({
           <strong>{data.tempCounts.hot}</strong>
           <small>ativos no funil · {data.activeHotCount} em conversa agora</small>
         </article>
+
+        <article className="dashboard-kpi-card" style={{ borderColor: todayApptCount > 0 ? "color-mix(in srgb, var(--accent) 30%, transparent)" : undefined }}>
+          <div className="dashboard-kpi-header">
+            <span className="dashboard-kpi-icon">
+              <Calendar size={16} />
+            </span>
+            <span>Consultas Hoje</span>
+            {todayApptCount > 0 && <span className="dashboard-trend positive">hoje</span>}
+          </div>
+          <strong style={{ color: todayApptCount > 0 ? "var(--accent-strong)" : undefined }}>{todayApptCount}</strong>
+          <small>{todayApptCount === 0 ? "nenhuma consulta agendada" : `${todayApptCount} consulta${todayApptCount !== 1 ? "s" : ""} na agenda`}</small>
+        </article>
       </section>
 
       {/* ── Pipeline de Receita ─────────────────────────────────────────── */}
@@ -747,6 +811,73 @@ export default async function DashboardPage({
               <br />
               <small>Cadastre preços nos procedimentos e marque consultas como realizadas para ver o pipeline.</small>
             </p>
+          )}
+        </section>
+      )}
+
+      {/* ── Consultas de Hoje + Leads para Reativar ──────────────────────── */}
+      {(todayApptCount > 0 || coldLeadCount > 0) && (
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: todayApptCount > 0 && coldLeadCount > 0 ? "1fr 1fr" : "1fr",
+            gap: "14px",
+          }}
+        >
+          {/* Consultas de hoje */}
+          {todayApptCount > 0 && (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-soft)", padding: "16px 18px" }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 10px" }}>
+                Consultas de Hoje
+              </p>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                {data.todayAppointments.map((appt) => {
+                  const statusColors: Record<string, string> = { scheduled: "var(--muted)", confirmed: "var(--accent-strong)", completed: "var(--success, #22c55e)" };
+                  const dot = statusColors[appt.status] ?? "var(--muted)";
+                  return (
+                    <li key={appt.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600, color: "var(--text)", minWidth: 42, flexShrink: 0 }}>
+                        {formatTime(appt.startsAt)}
+                      </span>
+                      <span style={{ color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {appt.leadName ?? appt.leadPhone ?? "Paciente"}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Link href="/app/agenda" style={{ fontSize: 11, color: "var(--accent-strong)", textDecoration: "none", display: "block", marginTop: 10, fontWeight: 600 }}>
+                Ver agenda completa →
+              </Link>
+            </div>
+          )}
+
+          {/* Leads para Reativar */}
+          {coldLeadCount > 0 && (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-soft)", padding: "16px 18px" }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 10px" }}>
+                Leads para Reativar
+              </p>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                {data.coldLeads.map((lead) => (
+                  <li key={lead.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    <RefreshCw size={12} color="var(--cold, #64748b)" style={{ flexShrink: 0 }} />
+                    <span style={{ color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
+                      {lead.name ?? lead.phone ?? "Lead"}
+                    </span>
+                    {lead.treatmentInterest && (
+                      <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {lead.treatmentInterest}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/app/inbox?filter=cold" style={{ fontSize: 11, color: "var(--muted)", textDecoration: "none", display: "block", marginTop: 10, fontWeight: 600 }}>
+                Ver no Inbox →
+              </Link>
+            </div>
           )}
         </section>
       )}

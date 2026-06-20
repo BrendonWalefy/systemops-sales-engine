@@ -75,7 +75,7 @@
   min-height: 0;
   /* Fit 14 hours (07:00–21:00) in viewport without vertical scrolling.
      Formula: (100dvh - outer_header - stats_header - sx_sticky_header - date_axis) / 14 = (100dvh - 346px) / 14 */
-  --sx-week-grid-hour-height: clamp(36px, calc((100dvh - 346px) / 14), 52px);
+  --sx-week-grid-hour-height: clamp(36px, calc((100dvh - 346px) / 14), 44px);
   --sx-week-grid-height: calc(var(--sx-week-grid-hour-height) * 14);
 }
 

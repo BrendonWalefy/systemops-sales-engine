@@ -1,0 +1,26 @@
+=================================================================
+LEAD: Brasil Donna | 553899991165
+Status: waiting_response | Temperatura: —
+Criado em: 07/06/2026, 17:12:36
+=================================================================
+
+  CONVERSA 0041002b
+  Criada: 07/06/2026, 17:12:36
+  Última msg: 15/06/2026, 13:11:38
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [17:12:29] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [17:14:49] 👨‍⚕️ Op.  
+          Boa tarde seja bem vindo!!
+
+  [17:14:53] 👨‍⚕️ Op.  
+          Como posso te ajudar ?
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Olá, Brasil Donna! Que bom que você nos procurou para saber mais sobre nossos serviços de Odontologia Estética e Reabilitação Oral. Estou aqui para te ajudar com todas as informações que você precisar!
+
+  [13:11:36] 👨‍⚕️ Op.  
+          Lentes em resina com 500,00 reais de desconto para o sorriso completo!! 🚨🚨🚨
+

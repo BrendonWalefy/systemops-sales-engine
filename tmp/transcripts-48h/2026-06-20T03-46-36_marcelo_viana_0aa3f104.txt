@@ -1,0 +1,20 @@
+=================================================================
+LEAD: Marcelo Viana | 5511983011622
+Status: waiting_response | Temperatura: —
+Criado em: 05/06/2026, 18:14:57
+=================================================================
+
+  CONVERSA 6a29b916
+  Criada: 05/06/2026, 18:14:57
+  Última msg: 05/06/2026, 18:20:01
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [18:14:51] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [18:20:01] 👤 Lead 
+          Gostaria de saber mais informações sobre a lente de resina tempo de duração, se é muito artificial e valores
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Olá, Marcelo Viana! Que bom que você entrou em contato. Sobre as lentes de resina, posso te explicar sobre a durabilidade, a aparência e os valores. Vamos lá?
+

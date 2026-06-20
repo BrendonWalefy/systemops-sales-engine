@@ -1,0 +1,62 @@
+=================================================================
+LEAD: EMERSON   | 5511970352672
+Status: lost | Temperatura: —
+Criado em: 29/05/2026, 08:07:41
+=================================================================
+
+  CONVERSA 9c1781f8
+  Criada: 29/05/2026, 08:07:41
+  Última msg: 29/05/2026, 18:57:41
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [08:07:36] 👤 Lead 
+          Bom dia doutor já me encontro a caminho
+
+  [08:07:47] 🤖 IA   
+          Bom dia! Fico feliz em saber que você está a caminho. Qualquer coisa é só chamar 😊.
+
+  [08:12:33] 👤 Lead 
+          👍🏽
+
+  [08:12:41] 🤖 IA   
+          Bom dia! Estou aqui se precisar de algo 😊.
+
+  [17:29:48] 👤 Lead 
+          Doutor depois me enviar as fotos por favor
+
+  [17:29:55] 🤖 IA   
+          Claro! Assim que possível, vou enviar as fotos para você.
+
+  [18:55:52] 👤 Lead 
+          Mano sem palavras , que serviço de vossa excelência super recomendo
+
+  [18:56:01] 🤖 IA   
+          Fico muito feliz em ouvir isso! Estou aqui se precisar de mais alguma coisa. 😊
+
+  [18:56:06] 👤 Lead 
+          Irmão vou compartilhar resposta domingo tudo bem? Por ser meu aniversário
+
+  [18:56:12] 🤖 IA   
+          Sem problemas! Aproveite seu aniversário e qualquer coisa, estou por aqui. 😊
+
+  [18:56:38] 👨‍⚕️ Op.  
+          Valeu mano
+
+  [18:56:44] 👤 Lead 
+          Obrigado bom término bom final de semana
+
+  [18:56:45] 👨‍⚕️ Op.  
+          Obrigado
+
+  [18:57:01] 👨‍⚕️ Op.  
+          Demoro,
+
+  [18:57:10] 👨‍⚕️ Op.  
+          Precisar estamos aqui
+
+  [18:57:28] 👨‍⚕️ Op.  
+          Para você tbm, bom aniversário 🫡👍🏼
+
+  [18:57:41] 👤 Lead 
+          Blz obrigado
+

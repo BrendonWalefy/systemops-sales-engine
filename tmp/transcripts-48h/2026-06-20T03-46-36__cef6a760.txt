@@ -1,0 +1,37 @@
+=================================================================
+LEAD: . | 5511979996697
+Status: waiting_response | Temperatura: —
+Criado em: 07/06/2026, 16:37:12
+=================================================================
+
+  CONVERSA c78a14e3
+  Criada: 07/06/2026, 16:37:12
+  Última msg: 15/06/2026, 13:11:39
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [16:37:06] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [16:37:51] 👨‍⚕️ Op.  
+          Boa tarde sem bem vindo!
+
+  [16:37:55] 👨‍⚕️ Op.  
+          Como posso te ajudar ?
+
+  [16:38:05] 👤 Lead 
+          Boa tarde
+
+  [16:38:14] 👤 Lead 
+          Qual valor da lente em cima
+
+  [16:39:35] 👨‍⚕️ Op.  
+          10 lentes simplificadas - 1500,00
+          
+          10 lentes estratificadas - 2.500,00
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Olá! Espero que você esteja bem. Sobre as lentes que você perguntou, temos opções de 10 lentes simplificadas por R$ 1.500,00 e 10 lentes estratificadas por R$ 2.500,00. Estou à disposição para esclarecer qualquer dúvida!
+
+  [13:11:36] 👨‍⚕️ Op.  
+          Lentes em resina com 500,00 reais de desconto para o sorriso completo!! 🚨🚨🚨
+

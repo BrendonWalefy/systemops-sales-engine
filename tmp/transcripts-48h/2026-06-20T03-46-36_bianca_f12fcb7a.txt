@@ -1,0 +1,193 @@
+=================================================================
+LEAD: Bianca | 5511958234917
+Status: appointment_scheduled | Temperatura: hot
+Criado em: 29/05/2026, 19:18:00
+=================================================================
+
+  CONVERSA 2073d634
+  Criada: 29/05/2026, 19:18:00
+  Última msg: 18/06/2026, 10:25:51
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [19:17:57] 👤 Lead 
+          Olá
+
+  [19:18:04] 🤖 IA   
+          Oi, Bianca! Estou aqui se você precisar de algo.
+
+  [19:18:08] 👤 Lead 
+          Quais procedimentos voces realizam ?
+
+  [19:18:14] 🤖 IA   
+          Nós realizamos uma variedade de procedimentos odontológicos, incluindo restaurações, limpeza, tratamento de canal, extrações e implantes dentários. Também oferecemos lentes de resina composta, que são uma ótima opção para quem quer melhorar o sorriso sem desgastar os dentes. Se você tiver algum procedimento específico em mente ou algo que gostaria de mudar no seu sorriso, me conta!
+
+  [19:22:46] 👤 Lead 
+          Gostaria de realizar um procedimento de lentes em resina
+
+  [19:22:52] 👤 Lead 
+          Como funciona ?
+
+  [19:22:55] 🤖 IA   
+          Que ótimo que você está interessada nas lentes de resina, Bianca! Elas são uma excelente opção para melhorar o sorriso de forma natural e preservando os dentes. Para dar continuidade, podemos agendar uma avaliação. Aqui estão os horários disponíveis:
+          
+          1. Seg 01/06 às 14h  
+          2. Ter 02/06 às 14h  
+          3. Ter 02/06 às 10h  
+          4. Sex 05/06 às 14h  
+          5. Sex 05/06 às 10h  
+          
+          Me avise qual horário funciona melhor para você!
+
+  [19:22:56] 👤 Lead 
+          E os valores ?
+
+  [19:22:58] 🤖 IA   
+          Claro, Bianca! O que você gostaria de saber especificamente sobre o procedimento de lentes de resina? Estou aqui para esclarecer suas dúvidas!
+
+  [19:23:06] 🤖 IA   
+          O valor das lentes de resina pode variar de acordo com cada caso, por isso é importante fazer uma avaliação. Nela, poderemos entender melhor suas necessidades e expectativas, além de te explicar tudo detalhadamente. Posso agendar um horário para você?
+
+  [19:24:39] 👤 Lead 
+          Gostaria de saber o tempo que o procedimento leva para ser concluído, e se há algum tipo de dor no ato do procedimento
+
+  [19:24:45] 🤖 IA   
+          O procedimento de lentes de resina geralmente leva de 2 a 4 horas e, na maioria dos casos, não é necessário usar anestesia. Isso porque a aplicação é feita diretamente sobre o esmalte do dente, preservando a estrutura dental. Assim, a experiência costuma ser bem tranquila! 
+          
+          Se você estiver interessada, podemos agendar uma avaliação para conversar mais sobre isso e tirar todas as suas dúvidas. Que tal?
+
+  [19:26:00] 👤 Lead 
+          Os horários informados nao se enquadra aos meus, vocês teria como abrir uma excessao e me atender as 10:30 na sexta feira ?
+
+  [19:26:06] 🤖 IA   
+          Entendo, Bianca! No momento, não temos como abrir uma exceção para o horário que você pediu, mas temos algumas opções disponíveis na próxima sexta-feira. Veja se algum desses horários funciona para você:
+          
+          1. Sex 05/06 às 10h  
+          2. Sex 05/06 às 14h  
+          
+          Me avise qual você prefere!
+
+  [19:29:07] 👤 Lead 
+          Pode ser as 10 hrs mesmo
+
+  [19:29:15] 👤 Lead 
+          Quais seriam as formas de pagamento?
+
+  [19:29:15] 🤖 IA   
+          Perfeito, Bianca! Seu agendamento está confirmado para sexta-feira, 05/06, às 10h. A equipe estará esperando por você e ficará feliz em te receber. Se surgir qualquer dúvida até lá, é só me chamar!
+
+  [19:29:21] 🤖 IA   
+          As formas de pagamento geralmente incluem opções como cartão de crédito, débito e à vista. Na avaliação, você pode conversar com a equipe sobre as melhores opções para o seu caso específico. Lembre-se que o valor da avaliação é R$100, mas esse valor é integralmente abatido se você decidir avançar com o tratamento. 
+          
+          Se precisar de mais alguma informação ou tiver alguma dúvida, estou por aqui!
+
+  [19:29:54] 👤 Lead 
+          Somente isso, obrigado.
+
+  [19:30:00] 🤖 IA   
+          De nada, Bianca! Qualquer coisa é só chamar. 😊
+
+  [19:30:11] 👤 Lead 
+          Qual seria o endereço da clínica?
+
+  [19:30:16] 🤖 IA   
+          O endereço é Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP. Se precisar de mais informações ou quiser agendar sua avaliação, é só avisar! Estou aqui para ajudar.
+
+  [19:51:10] 👤 Lead 
+          Ola
+
+  [19:51:19] 👤 Lead 
+          Vcs fazem botox ?
+
+  [19:51:22] 🤖 IA   
+          Oi, Bianca! Estou aqui se precisar de algo. 😊
+
+  [19:51:26] 🤖 IA   
+          Oi, Bianca! Sim, fazemos aplicação de Botox, que é indicado para relaxamento muscular e pode ajudar com bruxismo, rugas de expressão e assimetrias. Se você tiver interesse, podemos agendar uma avaliação para discutir suas necessidades e expectativas. Estou à disposição para ajudar!
+
+  [19:13:58] 👤 Lead 
+          Olá
+
+  [19:14:10] 🤖 IA    [acknowledgment]
+          Boa noite, Bianca. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: lentes, avaliação, valores ou algum tratamento específico?
+
+  [19:14:40] 👤 Lead 
+          Lentes
+
+  [19:14:51] 🤖 IA    [general_question]
+          A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo.
+
+  [19:14:55] 🤖 IA    [general_question]
+          Lentes – Técnica Simplificada
+
+  [19:14:58] 🤖 IA    [general_question]
+          A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético.
+
+  [19:15:01] 🤖 IA    [general_question]
+          Lentes – Técnica Estratificada
+
+  [19:15:28] 👤 Lead 
+          Gostaria de saber sobre valores
+
+  [19:15:42] 🤖 IA    [price_inquiry]
+          As lentes de resina composta têm os seguintes valores a partir de:
+          
+          - Técnica Simplificada: R$2.500 para 20 elementos.
+          - Técnica Estratificada: R$5.000 para 20 elementos.
+          
+          Cada caso é avaliado individualmente, e o valor final pode variar conforme a necessidade.
+          
+          Além disso, a clínica oferece parcelamento em até 12 vezes. Aqui estão algumas simulações:
+          
+          **Técnica Simplificada:**
+          - 4x R$672
+          - 5x R$541
+          - 10x R$281
+          - 12x R$237
+          
+          **Técnica Estratificada:**
+          - 4x R$1.344
+          - 5x R$1.081
+          - 10x R$562
+          - 12x R$474
+          
+          Posso te ajudar a agendar uma avaliação com o Dr. Gregorie? Ele fará uma análise detalhada do seu sorriso e indicará a melhor opção.
+
+  [19:16:47] 👤 Lead 
+          Gostaria de agendar um horário
+
+  [19:16:58] 🤖 IA    [book_appointment]
+          Fico feliz em ajudar com o agendamento! Aqui estão os horários disponíveis para a avaliação:
+          
+          1. Seg 15/06 às 10h
+          2. Seg 15/06 às 12h
+          3. Ter 16/06 às 8h
+          4. Ter 16/06 às 12h
+          5. Sex 19/06 às 12h
+          
+          Por favor, responda com o número do horário que você prefere. Esses horários ficam disponíveis por 15 minutos aguardando sua resposta.
+
+  [19:17:27] 👤 Lead 
+          5
+
+  [19:17:42] 🤖 IA    [confirm_slot]
+          Seu agendamento está confirmado para sexta-feira, 19 de junho, às 12h.
+          
+          A equipe estará esperando por você na Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP. Se precisar de mais alguma informação antes da sua visita, estou à disposição!
+
+  [19:18:08] 👤 Lead 
+          Vcs fazem botox
+
+  [19:18:11] 👤 Lead 
+          ?
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Oi, Bianca! 😊 Claro, fazemos aplicação de Botox, que pode ajudar com bruxismo e rugas de expressão. Se precisar, posso te passar mais informações sobre valores e como funciona o procedimento!
+
+  [13:04:23] 👨‍⚕️ Op.  
+          Lentes em resina com 500,00 reais de desconto para o sorriso completo!! 🚨🚨🚨
+
+  [10:25:46] 👨‍⚕️ Op.  
+          Olá, Bianca! Lembrando que sua consulta é amanhã, às 12:00. A equipe estará esperando por você! 😊
+

@@ -65,14 +65,21 @@ async function findUnattendedLeads(clinicId: string): Promise<UnattendedLead[]> 
           AND c.last_message_at < NOW() - INTERVAL '2 hours'
           AND (SELECT m2.author FROM messages m2 WHERE m2.conversation_id = c.id ORDER BY m2.sent_at DESC LIMIT 1) = 'lead')
       )
-      -- Não reenviar para quem já recebeu campanha de recuperação
+      -- Respeitar janela de 7 dias entre mensagens de recuperação para o mesmo lead
       AND NOT EXISTS (
         SELECT 1 FROM follow_ups f
         WHERE f.lead_id = l.id
           AND f.reason = 'recovery_campaign'
           AND f.status IN ('pending', 'done')
-          AND f.created_at > NOW() - INTERVAL '24 hours'
+          AND f.created_at > NOW() - INTERVAL '7 days'
       )
+      -- Limite de 3 campanhas de recuperação por lead (lifetime) para não queimar o contato
+      AND (
+        SELECT COUNT(*) FROM follow_ups f2
+        WHERE f2.lead_id = l.id
+          AND f2.reason = 'recovery_campaign'
+          AND f2.status = 'done'
+      ) < 3
     ORDER BY hours_silent ASC
   `);
 
