@@ -546,7 +546,7 @@ function getDayGreeting(timezone: ClinicTimezone): string {
   return getTimeGreeting(hour);
 }
 const SLOTS_WITH_DATE_AND_TIME = 2;
-const SLOTS_WITH_DATE_ONLY = 3;
+const SLOTS_WITH_DATE_ONLY = 5;
 
 const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
 

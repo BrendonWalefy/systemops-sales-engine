@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, PauseCircle, PlayCircle, Send, AlertCircle, CalendarPlus } from "lucide-react";
+import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus } from "lucide-react";
 import { pauseAi, resumeAi } from "./actions";
 
 interface Props {
@@ -220,20 +220,6 @@ export function ConvComposer({
         >
           <Calendar size={12} />
           Agendar
-        </button>
-
-        <button
-          className={`conv-chip${aiPaused ? "" : ""}`}
-          onClick={handleAiToggle}
-          disabled={isAiToggling}
-          title={aiPaused ? "Retomar IA" : "Pausar IA"}
-          style={aiPaused
-            ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" }
-            : { borderColor: "color-mix(in srgb, var(--warning) 35%, transparent)", color: "var(--warning)" }
-          }
-        >
-          {aiPaused ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
-          {isAiToggling ? "…" : aiPaused ? "Retomar IA" : "Pausar IA"}
         </button>
       </div>
 
