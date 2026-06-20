@@ -1,7 +1,8 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
+import { clinicTreatmentsTag } from "@/lib/cache-tags";
 
 const repo = new DrizzleTreatmentRepository();
 
@@ -42,10 +43,12 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     maxPriceCents: null,
   });
   revalidatePath("/app/settings/playbook");
+  revalidateTag(clinicTreatmentsTag(clinicId), "max");
   return { success: true };
 }
 
 export async function updateTreatment(prevState: ActionState, formData: FormData): Promise<ActionState> {
+  const clinicId = await requireSessionClinicId();
   const id = formData.get("id") as string;
   const name = (formData.get("name") as string)?.trim();
   const durationMinutes = parseInt(formData.get("durationMinutes") as string, 10);
@@ -68,13 +71,16 @@ export async function updateTreatment(prevState: ActionState, formData: FormData
 
   await repo.update(id, { name, durationMinutes, priceCents, minPriceCents, maxPriceCents });
   revalidatePath("/app/settings/playbook");
+  revalidateTag(clinicTreatmentsTag(clinicId), "max");
   return { success: true };
 }
 
 export async function deleteTreatment(formData: FormData): Promise<void> {
+  const clinicId = await requireSessionClinicId();
   const id = formData.get("id") as string;
   if (!id) return;
 
   await repo.delete(id);
   revalidatePath("/app/settings/playbook");
+  revalidateTag(clinicTreatmentsTag(clinicId), "max");
 }

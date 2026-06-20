@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { ChevronRight, Workflow, AlertCircle, CheckCircle2 } from "lucide-react";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
+import { getCachedPipelineTreatments } from "../server-data";
 
 const STEP_TYPE_LABELS: Record<string, string> = {
   content: "Conteúdo",
@@ -16,7 +16,7 @@ const STEP_TYPE_LABELS: Record<string, string> = {
 
 export default async function PipelinePage() {
   const clinicId = await requireSessionClinicId();
-  const treatments = await new DrizzleTreatmentRepository().listByClinic(clinicId);
+  const treatments = await getCachedPipelineTreatments(clinicId);
 
   const configured = treatments.filter((t) => (t.pipelineSteps?.length ?? 0) > 0).length;
   const total = treatments.length;

@@ -17,6 +17,11 @@ import { AppointmentDrawer } from "./AppointmentDrawer";
 import { AgendaSidebar } from "./AgendaSidebar";
 import { AgendaStatsHeader } from "./AgendaStatsHeader";
 import { useRealtimeEvents } from "@/components/realtime-events-provider";
+import {
+  getCachedJson,
+  hasFreshJsonCache,
+  invalidateJsonCacheByPrefix,
+} from "@/lib/client-json-cache";
 import type { AppointmentEvent, BlockEvent, Professional } from "./types";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 
@@ -101,26 +106,46 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
   const [range, setRange] = useState({ from: initialFrom, to: initialTo });
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string | null>(null);
 
-  const fetchEvents = useCallback(async (from: string, to: string) => {
-    setLoading(true);
+  const fetchEvents = useCallback(async (
+    from: string,
+    to: string,
+    options?: { force?: boolean },
+  ) => {
+    const query = `/api/appointments?from=${from}&to=${to}`;
+    const shouldShowLoading = options?.force || !hasFreshJsonCache(query);
+    if (shouldShowLoading) {
+      setLoading(true);
+    }
+
     try {
-      const res = await fetch(`/api/appointments?from=${from}&to=${to}`);
-      if (res.ok) {
-        const data = await res.json();
-        setEvents(
-          (data.appointments ?? []).map((a: Record<string, unknown>) => ({
-            ...a,
-            startsAt:
-              typeof a.startsAt === "string"
-                ? a.startsAt
-                : new Date(a.startsAt as string).toISOString(),
-            endsAt:
-              typeof a.endsAt === "string"
-                ? a.endsAt
-                : new Date(a.endsAt as string).toISOString(),
-          })),
-        );
-      }
+      const data = await getCachedJson(
+        query,
+        async () => {
+          const res = await fetch(query);
+          if (!res.ok) {
+            throw new Error(`Falha ao buscar agenda (${res.status})`);
+          }
+          return res.json();
+        },
+        { ttlMs: 20_000, force: options?.force },
+      );
+
+      setEvents(
+        ((data as { appointments?: Record<string, unknown>[] }).appointments ?? []).map(
+          (a) =>
+            ({
+              ...(a as AppointmentEvent),
+              startsAt:
+                typeof a.startsAt === "string"
+                  ? a.startsAt
+                  : new Date(a.startsAt as string).toISOString(),
+              endsAt:
+                typeof a.endsAt === "string"
+                  ? a.endsAt
+                  : new Date(a.endsAt as string).toISOString(),
+            }) satisfies AppointmentEvent,
+        ),
+      );
     } catch (err) {
       console.error("[AgendaClient] fetchEvents error:", err);
     } finally {
@@ -128,21 +153,32 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     }
   }, []);
 
-  const fetchBlocks = useCallback(async () => {
+  const fetchBlocks = useCallback(async (options?: { force?: boolean }) => {
+    const query = "/api/calendar/blocks";
     try {
-      const res = await fetch("/api/calendar/blocks");
-      if (res.ok) {
-        const data = await res.json();
-        setBlocks(data.blocks ?? []);
-      }
+      const data = await getCachedJson(
+        query,
+        async () => {
+          const res = await fetch(query);
+          if (!res.ok) {
+            throw new Error(`Falha ao buscar bloqueios (${res.status})`);
+          }
+          return res.json();
+        },
+        { ttlMs: 30_000, force: options?.force },
+      );
+
+      setBlocks((data as { blocks?: BlockEvent[] }).blocks ?? []);
     } catch (err) {
       console.error("[AgendaClient] fetchBlocks error:", err);
     }
   }, []);
 
   const refreshAll = useCallback(() => {
-    fetchEvents(range.from, range.to);
-    fetchBlocks();
+    invalidateJsonCacheByPrefix("/api/appointments?");
+    invalidateJsonCacheByPrefix("/api/calendar/blocks");
+    fetchEvents(range.from, range.to, { force: true });
+    fetchBlocks({ force: true });
   }, [fetchEvents, fetchBlocks, range]);
 
   useEffect(() => {
@@ -180,7 +216,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     }
     if (agendaSignature !== agendaSignatureRef.current) {
       agendaSignatureRef.current = agendaSignature;
-      fetchEvents(range.from, range.to);
+      fetchEvents(range.from, range.to, { force: true });
     }
   }, [agendaSignature, range, fetchEvents]);
 
@@ -190,7 +226,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
 
     const id = setInterval(() => {
       if (document.hidden) return;
-      fetchEvents(range.from, range.to);
+      fetchEvents(range.from, range.to, { force: true });
     }, 30_000);
     return () => clearInterval(id);
   }, [connected, range, fetchEvents]);
@@ -218,7 +254,8 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     } catch (err) {
       console.error("[AgendaClient] drag-drop update error:", err);
     } finally {
-      fetchEvents(range.from, range.to);
+      invalidateJsonCacheByPrefix("/api/appointments?");
+      fetchEvents(range.from, range.to, { force: true });
     }
   }
 

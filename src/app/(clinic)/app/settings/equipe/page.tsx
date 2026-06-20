@@ -3,12 +3,10 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canEditPrices } from "@/application/tenancy/member-role";
-import { db } from "@/infrastructure/db/client";
-import { clinicMembers, professionals as professionalsTable } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
 import { EquipeClient } from "./EquipeClient";
+import { getCachedEquipeData } from "../server-data";
 
-async function getData() {
+export default async function EquipePage() {
   const clinicId = await requireSessionClinicId();
   const memberProfile = await getSessionMemberProfile(clinicId);
 
@@ -16,28 +14,7 @@ async function getData() {
     redirect("/app/dashboard");
   }
 
-  const [members, professionals] = await Promise.all([
-    db
-      .select({
-        id: clinicMembers.id,
-        email: clinicMembers.email,
-        role: clinicMembers.role,
-        professionalId: clinicMembers.professionalId,
-        avatarUrl: clinicMembers.avatarUrl,
-      })
-      .from(clinicMembers)
-      .where(eq(clinicMembers.clinicId, clinicId)),
-    db
-      .select({ id: professionalsTable.id, name: professionalsTable.name })
-      .from(professionalsTable)
-      .where(eq(professionalsTable.clinicId, clinicId)),
-  ]);
-
-  return { members, professionals };
-}
-
-export default async function EquipePage() {
-  const { members, professionals } = await getData();
+  const { members, professionals } = await getCachedEquipeData(clinicId);
 
   return (
     <EquipeClient
