@@ -1772,9 +1772,16 @@ export class ConversationOrchestrator {
           identifiedTreatment: slotPreference.identifiedTreatment ?? null,
         });
 
-        // Resolve tratamento e duração do slot
+        // Resolve tratamento e duração do slot.
+        // Usa lead.treatmentInterest como fallback para evitar pedir "qual procedimento?"
+        // quando o tratamento já foi estabelecido em mensagens anteriores da conversa.
+        const effectiveTreatment =
+          schedulingTreatment?.name ??
+          slotPreference.identifiedTreatment ??
+          lead.treatmentInterest ??
+          null;
         const resolution = resolveTreatmentDuration(
-          schedulingTreatment?.name ?? slotPreference.identifiedTreatment ?? null,
+          effectiveTreatment,
           clinicTreatments,
           clinic.defaultAppointmentDurationMinutes,
           classification.shouldAskClarification,
