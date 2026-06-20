@@ -1,7 +1,6 @@
-import { and, between, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { appointments, clinics, conversations, leads } from "@/infrastructure/db/schema";
-import { getAppointmentBadgeWindow } from "@/app/(clinic)/app/inbox/inbox-visibility";
 import { buildInboxSnapshotSignature, type InboxSnapshotRow } from "@/app/(clinic)/app/inbox/inbox-snapshot";
 
 export async function getInboxSnapshotSignature(clinicId: string): Promise<string> {
@@ -25,6 +24,7 @@ export async function getInboxSnapshotSignature(clinicId: string): Promise<strin
         aiPaused: conversations.aiPaused,
         needsAttention: conversations.needsAttention,
         takeoverExpiresAt: conversations.takeoverExpiresAt,
+        conversationCategory: conversations.category,
         leadStatus: leads.status,
         leadTemperature: leads.temperature,
       })
@@ -33,29 +33,63 @@ export async function getInboxSnapshotSignature(clinicId: string): Promise<strin
       .where(eq(conversations.clinicId, clinicId)),
   ]);
 
-  const appointmentBadgeWindow = getAppointmentBadgeWindow();
-  const scheduledLeadIds = rows
-    .filter((row) => row.leadStatus === "appointment_scheduled")
+  const now = new Date();
+  const salesLeadIds = rows
+    .filter((row) => row.conversationCategory === "sales")
     .map((row) => row.leadId);
 
-  const appointmentRows = scheduledLeadIds.length > 0
-    ? await db
-        .select({ leadId: appointments.leadId, startsAt: appointments.startsAt })
+  const [upcomingAppointmentRows, latestOutcomeRows] = salesLeadIds.length > 0
+    ? await Promise.all([
+      db
+        .selectDistinctOn([appointments.leadId], {
+          leadId: appointments.leadId,
+          status: appointments.status,
+          startsAt: appointments.startsAt,
+          updatedAt: appointments.updatedAt,
+        })
         .from(appointments)
         .where(
           and(
-            inArray(appointments.leadId, scheduledLeadIds),
+            inArray(appointments.leadId, salesLeadIds),
             inArray(appointments.status, ["scheduled", "confirmed"]),
-            between(appointments.startsAt, appointmentBadgeWindow.startsAtFrom, appointmentBadgeWindow.startsAtTo),
+            gte(appointments.endsAt, now),
           ),
         )
-        .orderBy(desc(appointments.startsAt))
-    : [];
+        .orderBy(appointments.leadId, appointments.startsAt),
+      db
+        .selectDistinctOn([appointments.leadId], {
+          leadId: appointments.leadId,
+          status: appointments.status,
+          startsAt: appointments.startsAt,
+          updatedAt: appointments.updatedAt,
+        })
+        .from(appointments)
+        .where(
+          and(
+            inArray(appointments.leadId, salesLeadIds),
+            inArray(appointments.status, ["cancelled", "completed", "no_show"]),
+          ),
+        )
+        .orderBy(appointments.leadId, desc(appointments.updatedAt), desc(appointments.startsAt)),
+    ])
+    : [[], []];
 
   const appointmentMap: Record<string, Date> = {};
-  for (const appointment of appointmentRows) {
+  const latestAppointmentStatusMap: Record<string, string> = {};
+  const latestAppointmentUpdatedAtMap: Record<string, Date> = {};
+
+  for (const appointment of upcomingAppointmentRows) {
     if (appointment.leadId && !appointmentMap[appointment.leadId]) {
       appointmentMap[appointment.leadId] = appointment.startsAt;
+      latestAppointmentStatusMap[appointment.leadId] = appointment.status;
+      latestAppointmentUpdatedAtMap[appointment.leadId] = appointment.updatedAt;
+    }
+  }
+
+  for (const appointment of latestOutcomeRows) {
+    if (appointment.leadId && !latestAppointmentStatusMap[appointment.leadId]) {
+      latestAppointmentStatusMap[appointment.leadId] = appointment.status;
+      latestAppointmentUpdatedAtMap[appointment.leadId] = appointment.updatedAt;
     }
   }
 
@@ -68,9 +102,12 @@ export async function getInboxSnapshotSignature(clinicId: string): Promise<strin
     aiPaused: row.aiPaused,
     needsAttention: row.needsAttention,
     takeoverExpiresAt: row.takeoverExpiresAt,
+    conversationCategory: row.conversationCategory,
     leadStatus: row.leadStatus,
     leadTemperature: row.leadTemperature,
     appointmentStartsAt: appointmentMap[row.leadId] ?? null,
+    latestAppointmentStatus: latestAppointmentStatusMap[row.leadId] ?? null,
+    latestAppointmentUpdatedAt: latestAppointmentUpdatedAtMap[row.leadId] ?? null,
   }));
 
   return buildInboxSnapshotSignature(snapshotRows, {

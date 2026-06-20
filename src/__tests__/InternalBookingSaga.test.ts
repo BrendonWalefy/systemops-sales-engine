@@ -236,6 +236,7 @@ describe("BookingService — modo interno", () => {
     expect(appts.saved[0].calendarEventId).toBeNull();
     expect(appts.saved[0].source).toBe("app");
     expect(leads.saved[0].status).toBe("appointment_scheduled");
+    expect(leads.saved[0].nextActionAt).toBeNull();
   });
 
   it("cancela follow-ups pendentes do lead antes de agendar o retorno de rotina", async () => {
@@ -258,7 +259,8 @@ describe("BookingService — modo interno", () => {
     const { svc } = reservationService(null); // segundo lead não consegue reservar
     const appts = apptRepo([]);
 
-    const service = new BookingService(gateway, appts.repo, leads.repo, svc);
+    const followUps = followUpRepo();
+    const service = new BookingService(gateway, appts.repo, leads.repo, svc, followUps.repo);
     const result = await service.book({ clinic, lead, startsAt, endsAt });
 
     expect(result.success).toBe(false);
@@ -302,7 +304,8 @@ describe("BookingService — modo interno", () => {
     const { gateway, calls } = internalGateway();
     const { svc } = reservationService(aReservation);
     const appts = apptRepo([]);
-    const service = new BookingService(gateway, appts.repo, leads.repo, svc);
+    const followUps = followUpRepo();
+    const service = new BookingService(gateway, appts.repo, leads.repo, svc, followUps.repo);
 
     const appointment: Appointment = {
       id: "appt-internal-1",
@@ -327,7 +330,8 @@ describe("BookingService — modo interno", () => {
 
     expect(result.success).toBe(true);
     expect(appts.saved.at(-1)?.status).toBe("cancelled");
-    expect(leads.saved.at(-1)?.status).toBe("in_conversation");
+    expect(leads.saved.at(-1)?.status).toBe("follow_up_due");
+    expect(followUps.saved.at(-1)?.reason).toBe("Lead cancelou a consulta");
     // Sem calendarEventId, o gateway externo não é chamado.
     expect(calls.cancelAppointment).toBe(0);
   });

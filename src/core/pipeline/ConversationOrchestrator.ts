@@ -49,6 +49,7 @@ import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
+import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 import { getClinicModules } from "@/application/modules/module-gate";
@@ -556,7 +557,7 @@ function getDayGreeting(timezone: ClinicTimezone): string {
   return getTimeGreeting(hour);
 }
 const SLOTS_WITH_DATE_AND_TIME = 2;
-const SLOTS_WITH_DATE_ONLY = 3;
+const SLOTS_WITH_DATE_ONLY = 5;
 
 const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
 
@@ -1090,6 +1091,21 @@ export class ConversationOrchestrator {
     }
 
     try {
+
+    if (!isSalesConversationCategory(conversation.category)) {
+      const displayName = lead.name ?? phone;
+      const preview = params.mediaType
+        ? `Nova mensagem ${params.mediaType === "image" ? "com imagem" : `com ${params.mediaType}`}`
+        : messageText.slice(0, 100);
+      await this.notifier
+        .execute(clinicId, {
+          title: displayName,
+          body: preview,
+          url: `/app/inbox/${conversation.id}`,
+        })
+        .catch((err) => console.error("[Orchestrator] Push falhou:", err));
+      return { replied: false };
+    }
 
     // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
     // Rehospeda no Blob (persistência), encaminha para o doutor no WhatsApp e pausa a IA.
@@ -1852,9 +1868,16 @@ export class ConversationOrchestrator {
           identifiedTreatment: slotPreference.identifiedTreatment ?? null,
         });
 
-        // Resolve tratamento e duração do slot
+        // Resolve tratamento e duração do slot.
+        // Usa lead.treatmentInterest como fallback para evitar pedir "qual procedimento?"
+        // quando o tratamento já foi estabelecido em mensagens anteriores da conversa.
+        const effectiveTreatment =
+          schedulingTreatment?.name ??
+          slotPreference.identifiedTreatment ??
+          lead.treatmentInterest ??
+          null;
         const resolution = resolveTreatmentDuration(
-          schedulingTreatment?.name ?? slotPreference.identifiedTreatment ?? null,
+          effectiveTreatment,
           clinicTreatments,
           clinic.defaultAppointmentDurationMinutes,
           classification.shouldAskClarification,
@@ -2872,6 +2895,15 @@ export class ConversationOrchestrator {
           const bHour = timezone.toLocalParts(b.startsAt).hour;
           return Math.abs(aHour - preferredHour!) - Math.abs(bHour - preferredHour!);
         });
+        // Filtra para slots dentro de uma janela de 2h a partir do horário pedido.
+        // Sem isso, selectBestSlots usa round-robin por período (manhã/tarde) e inclui
+        // slots de manhã mesmo quando o lead pediu explicitamente um horário da tarde.
+        const windowEnd = Math.min(preferredHour + 2, businessHours.endHour - 1);
+        const inWindow = allSlots.filter((s) => {
+          const h = timezone.toLocalParts(s.startsAt).hour;
+          return h >= preferredHour! && h <= windowEnd;
+        });
+        if (inWindow.length >= 2) allSlots = inWindow;
       }
     }
 

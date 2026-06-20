@@ -11,8 +11,8 @@ export function DashboardRingMetrics({
   afterHoursCount,
   scheduledCount,
 }: Props) {
-  // SVG ring chart math
-  const radius = 19;
+  // SVG ring chart math — viewBox 0 0 48 48, radius fits stroke-width 4
+  const radius = 20;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (automationRate / 100) * circumference;
 

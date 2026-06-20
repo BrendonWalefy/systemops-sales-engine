@@ -46,11 +46,16 @@ export class RegisterIncomingMessage {
     });
 
     const leadStatus =
-      resolvedLead.status === "new" ? "waiting_response" : resolvedLead.status;
+      resolvedLead.status === "new"
+        ? "waiting_response"
+        : resolvedLead.status === "follow_up_due" || resolvedLead.status === "lost"
+          ? "in_conversation"
+          : resolvedLead.status;
 
     await this.deps.leadRepository.save({
       ...resolvedLead,
       status: leadStatus,
+      nextActionAt: leadStatus === "in_conversation" ? null : resolvedLead.nextActionAt,
       updatedAt: now,
     });
 
@@ -76,6 +81,7 @@ export class RegisterIncomingMessage {
       (await this.deps.leadRepository.findById(resolvedLead.id)) ?? {
         ...resolvedLead,
         status: leadStatus,
+        nextActionAt: leadStatus === "in_conversation" ? null : resolvedLead.nextActionAt,
         updatedAt: now,
       };
 
@@ -92,6 +98,7 @@ export class RegisterIncomingMessage {
         clinicId: input.clinicId,
         leadId: lead.id,
         channel: input.message.channel,
+        category: "sales",
         externalThreadId: threadId,
         summary: null,
         aiPaused: false,

@@ -4,15 +4,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
 import { appointments, clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, desc, count as drizzleCount } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
+import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { AiPauseButton } from "./AiPauseButton";
 import { ChatWindow } from "./ChatWindow";
 import { ConvComposer } from "./ConvComposer";
 import { ManualAppointmentForm } from "./ManualAppointmentForm";
 import { ConversationReadMarker } from "./ConversationReadMarker";
-import { tempLabel, statusLabel, channelLabel, avatarColor } from "../inbox-utils";
+import { tempLabel, statusLabel, channelLabel, avatarColor, conversationCategoryLabel } from "../inbox-utils";
 import { LeadAvatar } from "./LeadAvatar";
+import { ConversationCategoryControl } from "./ConversationCategoryControl";
 
 const TZ = "America/Sao_Paulo";
 
@@ -42,11 +44,19 @@ export default async function ConversationPage({
   const [lead] = await db.select().from(leads).where(eq(leads.id, conv.leadId)).limit(1);
   if (!lead) notFound();
 
-  const msgs = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(asc(messages.sentAt));
+  const MSG_LIMIT = 60;
+  const [totalMsgsRow, recentMsgs] = await Promise.all([
+    db.select({ total: drizzleCount() }).from(messages).where(eq(messages.conversationId, conversationId)),
+    db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(desc(messages.sentAt))
+      .limit(MSG_LIMIT)
+      .then((rows) => rows.reverse()),
+  ]);
+  const msgs = recentMsgs;
+  const hasOlderMessages = (totalMsgsRow[0]?.total ?? 0) > MSG_LIMIT;
 
   const [appointment] = await db
     .select()
@@ -69,6 +79,7 @@ export default async function ConversationPage({
   const temp = tempLabel(lead.temperature ?? null);
   const { label: sLabel } = statusLabel(lead.status);
   const accentColor = avatarColor(lead.temperature ?? null);
+  const isSalesConversation = isSalesConversationCategory(conv.category);
 
   return (
     <div className="conv-root">
@@ -104,14 +115,16 @@ export default async function ConversationPage({
               <Phone size={15} />
             </a>
           )}
-          <div className="ai-mobile-toggle">
-            <AiPauseButton
-              conversationId={conversationId}
-              leadId={lead.id}
-              aiPaused={conv.aiPaused}
-              compact
-            />
-          </div>
+          {isSalesConversation && (
+            <div className="ai-mobile-toggle">
+              <AiPauseButton
+                conversationId={conversationId}
+                leadId={lead.id}
+                aiPaused={conv.aiPaused}
+                compact
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -137,16 +150,17 @@ export default async function ConversationPage({
             conversationId={conversationId}
             leadName={lead.name ?? null}
             leadPhone={lead.phone ?? null}
+            hasOlderMessages={hasOlderMessages}
           />
 
           <ConvComposer
             conversationId={conversationId}
-            leadId={lead.id}
             aiPaused={conv.aiPaused}
             leadName={lead.name ?? null}
             treatmentInterest={lead.treatmentInterest ?? null}
             temperature={lead.temperature ?? null}
             leadStatus={lead.status}
+            conversationCategory={conv.category}
             needsAttention={conv.needsAttention}
             attentionReason={conv.attentionReason ?? null}
             defaultDurationMinutes={clinic?.defaultAppointmentDurationMinutes ?? 60}
@@ -181,6 +195,10 @@ export default async function ConversationPage({
               <span>Status</span>
               <strong>{sLabel}</strong>
             </div>
+            <div className="signal">
+              <span>Categoria</span>
+              <strong>{conversationCategoryLabel(conv.category)}</strong>
+            </div>
             {lead.treatmentInterest && (
               <div className="signal">
                 <span>Interesse</span>
@@ -213,7 +231,12 @@ export default async function ConversationPage({
             </div>
           </div>
 
-          {appointment && (appointment.status === "scheduled" || appointment.status === "confirmed") && (
+          <ConversationCategoryControl
+            conversationId={conversationId}
+            category={conv.category}
+          />
+
+          {isSalesConversation && appointment && (appointment.status === "scheduled" || appointment.status === "confirmed") && (
             <div style={{ display: "grid", gap: 8 }}>
               <p className="eyebrow" style={{ margin: 0 }}>Agendamento</p>
               <div className="signal">
@@ -245,17 +268,21 @@ export default async function ConversationPage({
             </div>
           )}
 
-          <ManualAppointmentForm
-            conversationId={conversationId}
-            defaultDurationMinutes={clinic?.defaultAppointmentDurationMinutes ?? 60}
-            timezone={clinic?.timezone ?? "America/Sao_Paulo"}
-          />
+          {isSalesConversation && (
+            <>
+              <ManualAppointmentForm
+                conversationId={conversationId}
+                defaultDurationMinutes={clinic?.defaultAppointmentDurationMinutes ?? 60}
+                timezone={clinic?.timezone ?? "America/Sao_Paulo"}
+              />
 
-          <AiPauseButton
-            conversationId={conversationId}
-            leadId={lead.id}
-            aiPaused={conv.aiPaused}
-          />
+              <AiPauseButton
+                conversationId={conversationId}
+                leadId={lead.id}
+                aiPaused={conv.aiPaused}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>

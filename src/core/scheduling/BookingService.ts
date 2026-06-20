@@ -20,7 +20,10 @@ import type { Lead } from "@/domain/entities/lead";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import { SlotReservationService, type SlotReservation } from "./SlotReservationService";
 import { cancelPendingFollowUps } from "@/application/use-cases/leads/cancel-pending-follow-ups";
-import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
+import {
+  calculateFollowUpDueAt,
+  scheduleFollowUp,
+} from "@/application/use-cases/leads/schedule-follow-up";
 
 export type BookingResult =
   | { success: true; appointment: Appointment }
@@ -168,6 +171,7 @@ export class BookingService {
       await this.leadRepo.save({
         ...lead,
         status: "appointment_scheduled",
+        nextActionAt: null,
         updatedAt: new Date(),
       });
     } catch (err) {
@@ -230,9 +234,30 @@ export class BookingService {
     // Atualiza status do lead
     await this.leadRepo.save({
       ...lead,
-      status: "in_conversation",
+      status: "follow_up_due",
+      nextActionAt: this.followUpRepository
+        ? calculateFollowUpDueAt("appointment_cancelled", new Date())
+        : new Date(),
       updatedAt: new Date(),
     });
+
+    if (this.followUpRepository) {
+      try {
+        await cancelPendingFollowUps({
+          leadId: lead.id,
+          followUpRepository: this.followUpRepository,
+        });
+        await scheduleFollowUp({
+          clinicId: appointment.clinicId,
+          leadId: lead.id,
+          trigger: "appointment_cancelled",
+          referenceDate: new Date(),
+          followUpRepository: this.followUpRepository,
+        });
+      } catch (err) {
+        console.error("[BookingService] Failed to schedule cancellation follow-up:", err);
+      }
+    }
 
     return { success: true };
   }

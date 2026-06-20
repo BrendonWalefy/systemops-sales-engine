@@ -102,6 +102,14 @@ export function ResourceDayView({ professionals, events, selectedDate, onPrevDay
     if (headerColsRef.current) headerColsRef.current.scrollLeft = e.currentTarget.scrollLeft;
   }
 
+  // Filter day events (exclude cancelled for visual clarity)
+  const dayEvents = events.filter((e) => {
+    if (e.status === "cancelled") return false;
+    return toSpDateStr(new Date(e.startsAt)) === selectedStr;
+  });
+
+  const hasUnassignedEvents = dayEvents.some((event) => !event.professionalId);
+
   const columns: Col[] = [
     ...professionals.filter((p) => p.isActive !== false).map((p) => ({
       id: p.id,
@@ -109,14 +117,10 @@ export function ResourceDayView({ professionals, events, selectedDate, onPrevDay
       color: p.color,
       specialty: p.specialty,
     })),
-    { id: null, name: "Sem profissional", color: "#52525b", specialty: null },
+    ...(hasUnassignedEvents
+      ? [{ id: null, name: "Sem profissional", color: "#52525b", specialty: null }]
+      : []),
   ];
-
-  // Filter day events (exclude cancelled for visual clarity)
-  const dayEvents = events.filter((e) => {
-    if (e.status === "cancelled") return false;
-    return toSpDateStr(new Date(e.startsAt)) === selectedStr;
-  });
 
   // Distribute events per column
   const byCol = new Map<string | null, AppointmentEvent[]>();
@@ -166,7 +170,11 @@ export function ResourceDayView({ professionals, events, selectedDate, onPrevDay
         <div className="rdv-corner" />
         <div className="rdv-col-headers" ref={headerColsRef}>
           {columns.map((col) => (
-            <div key={col.id ?? "__none__"} className="rdv-col-header">
+            <div
+              key={col.id ?? "__none__"}
+              className="rdv-col-header"
+              style={{ width: COL_MIN, minWidth: COL_MIN }}
+            >
               <div className="rdv-col-header-inner">
                 <span className="rdv-col-dot" style={{ background: col.color }} />
                 <div>

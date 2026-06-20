@@ -61,7 +61,6 @@ export function AgendaSidebar({
       setLoadingAction(null);
     }
   }
-
   const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
 
   const todayEvents = events

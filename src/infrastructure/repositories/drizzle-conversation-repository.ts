@@ -21,6 +21,7 @@ export class DrizzleConversationRepository implements ConversationRepository {
         clinicId: conversation.clinicId,
         leadId: conversation.leadId,
         channel: conversation.channel,
+        category: conversation.category,
         externalThreadId: conversation.externalThreadId,
         summary: conversation.summary,
         lastMessageAt: conversation.lastMessageAt,
@@ -30,6 +31,7 @@ export class DrizzleConversationRepository implements ConversationRepository {
       .onConflictDoUpdate({
         target: conversations.leadId,
         set: {
+          category: conversation.category,
           externalThreadId: conversation.externalThreadId,
           summary: conversation.summary,
           lastMessageAt: conversation.lastMessageAt,
@@ -108,6 +110,7 @@ function mapConversationRow(row: typeof conversations.$inferSelect): Conversatio
     clinicId: row.clinicId,
     leadId: row.leadId,
     channel: row.channel,
+    category: row.category,
     externalThreadId: row.externalThreadId,
     summary: row.summary,
     aiPaused: row.aiPaused,

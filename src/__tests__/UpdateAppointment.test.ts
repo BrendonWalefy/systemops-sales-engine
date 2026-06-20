@@ -266,7 +266,7 @@ describe("updateAppointment", () => {
   });
 
   describe("status: no_show", () => {
-    it("updates lead status to in_conversation", async () => {
+    it("updates lead status to follow_up_due", async () => {
       const leadRepo = makeLeadRepo();
       await updateAppointment(
         { appointmentId: "appt-1", clinicId: "clinic-1", status: "no_show" },
@@ -277,7 +277,7 @@ describe("updateAppointment", () => {
         },
       );
       expect(leadRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "in_conversation" }),
+        expect.objectContaining({ status: "follow_up_due" }),
       );
     });
 
@@ -327,6 +327,21 @@ describe("updateAppointment", () => {
         },
       );
       expect(leadRepo.save).not.toHaveBeenCalled();
+    });
+
+    it("restores appointment_scheduled when o lead estava em recuperação", async () => {
+      const leadRepo = makeLeadRepo(makeLead({ status: "follow_up_due", nextActionAt: new Date("2026-06-17T10:00:00.000Z") }));
+      await updateAppointment(
+        { appointmentId: "appt-1", clinicId: "clinic-1", status: "confirmed" },
+        {
+          appointmentRepository: makeApptRepo(),
+          calendarGateway: makeGateway(),
+          leadRepository: leadRepo,
+        },
+      );
+      expect(leadRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "appointment_scheduled", nextActionAt: null }),
+      );
     });
   });
 

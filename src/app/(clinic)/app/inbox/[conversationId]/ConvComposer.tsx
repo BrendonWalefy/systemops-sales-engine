@@ -2,17 +2,17 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, PauseCircle, PlayCircle, Send, AlertCircle, CalendarPlus } from "lucide-react";
-import { pauseAi, resumeAi } from "./actions";
+import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag } from "lucide-react";
+import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 
 interface Props {
   conversationId: string;
-  leadId: string;
   aiPaused: boolean;
   leadName: string | null;
   treatmentInterest: string | null;
   temperature: string | null;
   leadStatus: string | null;
+  conversationCategory: string;
   needsAttention: boolean;
   attentionReason: string | null;
   defaultDurationMinutes: number;
@@ -38,13 +38,16 @@ function deriveNextAction(params: {
   return "Qualificar interesse e identificar tratamento";
 }
 
+const DISCOUNT_PRESETS = [200, 300, 500] as const;
+
 export function ConvComposer({
   conversationId,
-  leadId,
   aiPaused,
+  leadName,
   treatmentInterest,
   temperature,
   leadStatus,
+  conversationCategory,
   needsAttention,
   attentionReason,
   defaultDurationMinutes,
@@ -53,9 +56,10 @@ export function ConvComposer({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
-  const [isAiToggling, startAiToggle] = useTransition();
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountCustom, setDiscountCustom] = useState("");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
   const [schedDuration, setSchedDuration] = useState(String(defaultDurationMinutes));
@@ -63,8 +67,11 @@ export function ConvComposer({
   const [isScheduling, startSchedule] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
+  const isSalesConversation = isSalesConversationCategory(conversationCategory);
 
-  const nextAction = deriveNextAction({ temperature, status: leadStatus, needsAttention, attentionReason, aiPaused });
+  const nextAction = isSalesConversation
+    ? deriveNextAction({ temperature, status: leadStatus, needsAttention, attentionReason, aiPaused })
+    : null;
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -122,13 +129,6 @@ export function ConvComposer({
     }
   };
 
-  const handleAiToggle = () => {
-    startAiToggle(() => {
-      if (aiPaused) return resumeAi(conversationId);
-      return pauseAi(conversationId, leadId);
-    });
-  };
-
   function fillTemplate(template: string) {
     setText(template);
     textareaRef.current?.focus();
@@ -169,6 +169,15 @@ export function ConvComposer({
     });
   }
 
+  function applyDiscount(amount: number) {
+    const greeting = leadName ? `Oi, ${leadName}!` : "Oi!";
+    const subject = treatmentInterest ?? "nossos procedimentos";
+    const msg = `${greeting} Tenho uma condição especial disponível por tempo limitado: R$${amount} de desconto em ${subject}. Quer aproveitar e já marcar sua avaliação?`;
+    fillTemplate(msg);
+    setDiscountOpen(false);
+    setDiscountCustom("");
+  }
+
   const proposalTemplate = treatmentInterest
     ? `Ótimo! Posso preparar uma proposta personalizada para ${treatmentInterest}. Você prefere receber por aqui ou quer agendar uma consulta de avaliação sem compromisso?`
     : `Ótimo! Posso preparar uma proposta personalizada para você. Qual é a melhor forma de te enviar?`;
@@ -186,58 +195,63 @@ export function ConvComposer({
         </div>
       )}
 
-      <div className="conv-chips-row">
-        <button
-          className="conv-chip chip-ai"
-          onClick={handleSuggestAi}
-          disabled={isSuggesting}
-          title="Gera uma sugestão de resposta com IA"
-        >
-          <Sparkles size={12} />
-          {isSuggesting ? "Gerando…" : "Sugerir IA"}
-        </button>
+      {isSalesConversation ? (
+        <div className="conv-chips-row">
+          <button
+            className="conv-chip chip-ai"
+            onClick={handleSuggestAi}
+            disabled={isSuggesting}
+            title="Gera uma sugestão de resposta com IA"
+          >
+            <Sparkles size={12} />
+            {isSuggesting ? "Gerando…" : "Sugerir IA"}
+          </button>
 
-        <button
-          className="conv-chip"
-          onClick={() => fillTemplate(casesTemplate)}
-          title="Pré-preenche resposta sobre casos reais"
-        >
-          Casos reais
-        </button>
+          <button
+            className="conv-chip"
+            onClick={() => fillTemplate(casesTemplate)}
+            title="Pré-preenche resposta sobre casos reais"
+          >
+            Casos reais
+          </button>
 
-        <button
-          className="conv-chip"
-          onClick={() => fillTemplate(proposalTemplate)}
-          title="Pré-preenche template de proposta"
-        >
-          Proposta
-        </button>
+          <button
+            className="conv-chip"
+            onClick={() => fillTemplate(proposalTemplate)}
+            title="Pré-preenche template de proposta"
+          >
+            Proposta
+          </button>
 
-        <button
-          className="conv-chip"
-          onClick={handleOpenSchedule}
-          title="Registrar agendamento"
-        >
-          <Calendar size={12} />
-          Agendar
-        </button>
+          <button
+            className="conv-chip"
+            onClick={handleOpenSchedule}
+            title="Registrar agendamento"
+          >
+            <Calendar size={12} />
+            Agendar
+          </button>
 
-        <button
-          className={`conv-chip${aiPaused ? "" : ""}`}
-          onClick={handleAiToggle}
-          disabled={isAiToggling}
-          title={aiPaused ? "Retomar IA" : "Pausar IA"}
-          style={aiPaused
-            ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" }
-            : { borderColor: "color-mix(in srgb, var(--warning) 35%, transparent)", color: "var(--warning)" }
-          }
-        >
-          {aiPaused ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
-          {isAiToggling ? "…" : aiPaused ? "Retomar IA" : "Pausar IA"}
-        </button>
-      </div>
+          <button
+            className="conv-chip"
+            onClick={() => { setDiscountOpen((v) => !v); setScheduleOpen(false); }}
+            title="Enviar oferta com desconto"
+            style={discountOpen ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" } : undefined}
+          >
+            <Tag size={12} />
+            Desconto
+          </button>
+        </div>
+      ) : (
+        <div className="conv-next-action-bar" style={{ marginTop: 6 }}>
+          <AlertCircle size={12} color="var(--warning)" />
+          <span className="conv-next-action-label">
+            Conversa fora do funil comercial. Chips de venda e automações estão desativados.
+          </span>
+        </div>
+      )}
 
-      {scheduleOpen && (
+      {isSalesConversation && scheduleOpen && (
         <div className="conv-schedule-panel">
           <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0 4px" }}>
             {schedError && (
@@ -276,6 +290,45 @@ export function ConvComposer({
               </button>
               <button className="secondary-button" onClick={() => setScheduleOpen(false)} disabled={isScheduling}>
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSalesConversation && discountOpen && (
+        <div className="conv-schedule-panel">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0 4px" }}>
+            <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Selecione o valor do desconto</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {DISCOUNT_PRESETS.map((amount) => (
+                <button
+                  key={amount}
+                  className="secondary-button"
+                  style={{ fontSize: 13, padding: "5px 14px" }}
+                  onClick={() => applyDiscount(amount)}
+                >
+                  R${amount}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="number"
+                min={50}
+                placeholder="Outro valor (R$)"
+                value={discountCustom}
+                onChange={(e) => setDiscountCustom(e.target.value)}
+                style={{ ...inputStyle, flex: 1 }}
+                onKeyDown={(e) => { if (e.key === "Enter" && discountCustom) applyDiscount(Number(discountCustom)); }}
+              />
+              <button
+                className="primary-button"
+                style={{ flexShrink: 0 }}
+                disabled={!discountCustom || Number(discountCustom) < 50}
+                onClick={() => applyDiscount(Number(discountCustom))}
+              >
+                Aplicar
               </button>
             </div>
           </div>

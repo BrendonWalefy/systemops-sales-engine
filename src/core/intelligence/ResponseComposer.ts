@@ -270,7 +270,7 @@ REGRAS ABSOLUTAS:
 1. Máximo 2 parágrafos curtos — exceto quando as ORIENTAÇÕES DA CLÍNICA definirem uma sequência com mais blocos (ex: trigger com múltiplas etapas), caso em que siga a estrutura exata do playbook. Sem bullet points exceto quando a instrução da ação indicar FORMATO: tópicos. Escreva como pessoa real.
 2. NUNCA invente horários, datas ou informações que não estão no contexto fornecido.
 3. Se houver horários disponíveis na ação, os mencione EXATAMENTE como fornecidos — não reformule datas.
-4. Use o nome do lead com naturalidade, não em toda frase.
+4. Use o nome do lead no máximo UMA VEZ por resposta. NUNCA use o nome logo após uma palavra de reconhecimento ("Entendo, Flavia" → PROIBIDO se o nome já aparece logo antes ou depois de forma redundante). Se já usou o nome na abertura, não repita no corpo. Padrão proibido: "Entendo. [Nome]. [continuação]" — integre em uma frase fluida em vez disso.
 5. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
 6. Saudações: se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.
 7. FIDELIDADE EDITORIAL: se a política comercial ou as orientações da clínica exigirem valores, condições, nomes de técnicas ou limites explícitos para o assunto perguntado, preserve esses dados na resposta. Não resuma removendo preços, quantidades ou condições autorizadas.
@@ -405,6 +405,7 @@ case "general_question":
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
+PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
 Responda de forma informativa e acolhedora. ${isConcierge ? "Só conduza para avaliação após cumprir eventuais passos do playbook ou quando não houver sequência definida para o assunto." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
@@ -443,9 +444,15 @@ ${slotList}`;
     }
 
     case "reengagement":
-      return `AÇÃO EXECUTADA: Mensagem de re-engajamento para paciente com histórico na clínica.
-ÚLTIMA CONSULTA: ${result.lastAppointmentLabel}
-Envie uma mensagem calorosa e breve lembrando que pode estar na hora de agendar um retorno ou verificar se pode ajudar. Não mencione que a mensagem é automática. Máximo 2 frases.`;
+      return `AÇÃO EXECUTADA: Mensagem de re-engajamento para lead que interagiu anteriormente mas não converteu.
+ÚLTIMA CONSULTA/CONTATO: ${result.lastAppointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Leia o histórico de conversa acima com atenção antes de redigir — use o que o lead demonstrou interesse (procedimento, objeção, dúvida específica) para personalizar a mensagem. NÃO escreva algo genérico se o histórico revelar um interesse concreto.
+2. Máximo 2 frases curtas. Tom caloroso e natural, como se fosse uma mensagem espontânea da recepcionista.
+3. NÃO mencione que a mensagem é automática ou que é um follow-up programado.
+4. Se o lead mencionou um procedimento específico no histórico, faça referência a ele de forma natural (ex: "Lembrei de você ao ver que ainda temos horários disponíveis para avaliação de lentes").
+5. Se o lead levantou uma objeção (preço, distância, tempo), reconheça indiretamente sem ser óbvio.
+6. Termine com uma pergunta simples e direta que incentive resposta (ex: "Posso verificar os horários disponíveis para você?").`;
 
     case "evaluation_redirect": {
       const slotList = result.evaluationSlots.map((s) => `${s.index}. ${s.label}`).join("\n");

@@ -357,15 +357,22 @@ export default async function ClinicDetailPage({
     db
       .select({ count: count() })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(
-        and(eq(leads.clinicId, clinicId), gte(leads.createdAt, monthStart)),
+        and(
+          eq(leads.clinicId, clinicId),
+          eq(conversations.category, "sales"),
+          gte(leads.createdAt, monthStart),
+        ),
       ),
     db
       .select({ count: count() })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(
         and(
           eq(leads.clinicId, clinicId),
+          eq(conversations.category, "sales"),
           eq(leads.status, "appointment_scheduled"),
           gte(leads.createdAt, monthStart),
         ),
@@ -391,15 +398,30 @@ export default async function ClinicDetailPage({
     db
       .select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "hot"))),
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(and(
+        eq(leads.clinicId, clinicId),
+        eq(conversations.category, "sales"),
+        eq(leads.temperature, "hot"),
+      )),
     db
       .select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "warm"))),
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(and(
+        eq(leads.clinicId, clinicId),
+        eq(conversations.category, "sales"),
+        eq(leads.temperature, "warm"),
+      )),
     db
       .select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.clinicId, clinicId), eq(leads.temperature, "cold"))),
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(and(
+        eq(leads.clinicId, clinicId),
+        eq(conversations.category, "sales"),
+        eq(leads.temperature, "cold"),
+      )),
   ]);
 
   const leadsCount = leadsMonthResult[0]?.count ?? 0;
@@ -421,7 +443,12 @@ export default async function ClinicDetailPage({
       count: count(),
     })
     .from(leads)
-    .where(and(eq(leads.clinicId, clinicId), gte(leads.createdAt, thirtyDays)))
+    .innerJoin(conversations, eq(conversations.leadId, leads.id))
+    .where(and(
+      eq(leads.clinicId, clinicId),
+      eq(conversations.category, "sales"),
+      gte(leads.createdAt, thirtyDays),
+    ))
     .groupBy(sql`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo')`)
     .orderBy(
       sql`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo') DESC`,
@@ -437,6 +464,7 @@ export default async function ClinicDetailPage({
     .where(
       and(
         eq(conversations.clinicId, clinicId),
+        eq(conversations.category, "sales"),
         gte(messages.sentAt, thirtyDays),
       ),
     )
@@ -490,6 +518,7 @@ export default async function ClinicDetailPage({
     .where(
       and(
         eq(conversations.clinicId, clinicId),
+        eq(conversations.category, "sales"),
         sql`${conversations.lastMessageAt} < NOW() - INTERVAL '1 hour'`,
         notInArray(leads.status, ["won", "lost", "appointment_scheduled"]),
       ),
