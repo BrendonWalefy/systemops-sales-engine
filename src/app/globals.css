@@ -5049,6 +5049,22 @@ textarea:focus {
   }
 }
 
+/* ─── Owner Clinic Detail — responsive grids ─────────────────── */
+
+@media (max-width: 640px) {
+  .clinic-detail-perf-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .clinic-detail-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .clinic-detail-two-col-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* ─── Mobile Clinic Cards (Owner Overview) ───────────────────── */
 
 .mobile-clinic-cards {

@@ -756,14 +756,14 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* ── ZONA 2: PERFORMANCE ─────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 200px", gap: 12, alignItems: "start" }}>
+        <div className="clinic-detail-perf-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 200px", gap: 12, alignItems: "start" }}>
           {/* KPIs */}
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px" }}>
             <p className="eyebrow" style={{ margin: "0 0 14px" }}>
               Performance ·{" "}
               {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 0, borderTop: "1px solid var(--line)", borderLeft: "1px solid var(--line)" }}>
+            <div className="clinic-detail-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 0, borderTop: "1px solid var(--line)", borderLeft: "1px solid var(--line)" }}>
               {[
                 { label: "Leads", value: String(leadsCount), ctx: "mês atual", highlight: true },
                 { label: "Agendamentos", value: String(scheduledCount), ctx: "no mês", highlight: false },
@@ -812,7 +812,7 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* ── ZONA 3: SAÚDE + VOLUME ──────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+        <div className="clinic-detail-two-col-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
 
           {/* Saúde operacional */}
           <div style={{ display: "grid", gap: 10 }}>
@@ -946,7 +946,7 @@ export default async function ClinicDetailPage({
         </div>
 
         {/* ── ZONA 4: ADMINISTRAÇÃO ───────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+        <div className="clinic-detail-two-col-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
 
           {/* Acesso da clínica */}
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
