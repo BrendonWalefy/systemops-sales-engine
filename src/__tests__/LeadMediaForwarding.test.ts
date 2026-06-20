@@ -108,4 +108,16 @@ describe("sanitizeForTts", () => {
     expect(result).toContain("Boa tarde");
     expect(result).toContain("Karen");
   });
+
+  it("converte símbolos de moeda (R$) e valores em texto por extenso", () => {
+    expect(sanitizeForTts("O valor é R$2.500 para 20 elementos.")).toBe("O valor é 2.500 reais para 20 elementos.");
+    expect(sanitizeForTts("O valor é R$ 5.000 para 20 elementos.")).toBe("O valor é 5.000 reais para 20 elementos.");
+    expect(sanitizeForTts("Fica por R$ 150")).toBe("Fica por 150 reais");
+    expect(sanitizeForTts("Total de R$ 150,00.")).toBe("Total de 150 reais.");
+    expect(sanitizeForTts("Total de R$ 150,50.")).toBe("Total de 150 reais e 50 centavos.");
+    expect(sanitizeForTts("Total de R$ 0,50.")).toBe("Total de 50 centavos.");
+    expect(sanitizeForTts("Valor R$ 1,00.")).toBe("Valor 1 real.");
+    expect(sanitizeForTts("Valor r$ 100.")).toBe("Valor 100 reais.");
+    expect(sanitizeForTts("Valor de R$ 0,00")).toBe("Valor de 0 reais");
+  });
 });
