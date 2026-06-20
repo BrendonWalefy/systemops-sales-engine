@@ -377,6 +377,8 @@ button:disabled {
 
 .footer-label {
   font-size: 12.5px;
+  flex: 1;
+  min-width: 0;
 }
 
 .live-dot {

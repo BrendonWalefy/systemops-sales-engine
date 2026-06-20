@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
+import { BellToggle } from "./bell-toggle";
 import { haptic } from "@/lib/haptic";
 
 const NAV_PRIMARY = [
@@ -125,6 +126,7 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
         <div className="sidebar-footer">
           <div className="live-dot" />
           <span className="footer-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={email}>{email ?? "SystemOps"}</span>
+          <BellToggle />
         </div>
       </div>
 

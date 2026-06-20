@@ -41,8 +41,8 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
   },
   {
     key: "voice_elevenlabs",
-    label: "Resposta por Voz Pro (ElevenLabs)",
-    description: "Voz clonada do profissional via ElevenLabs",
+    label: "B-WAVE Voice",
+    description: "Voz hiper-realista via ElevenLabs — atendimento que soa humano no WhatsApp",
     plans: ["rede", "custom"],
   },
   {

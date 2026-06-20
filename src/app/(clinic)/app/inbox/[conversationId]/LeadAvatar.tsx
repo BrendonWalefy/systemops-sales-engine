@@ -14,6 +14,7 @@ type Props = {
 
 export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, className, style }: Props) {
   const [open, setOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const canUsePortal = typeof document !== "undefined";
 
   useEffect(() => {
@@ -23,7 +24,7 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const avatar = profilePicUrl ? (
+  const avatar = profilePicUrl && !imgError ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={profilePicUrl}
@@ -31,6 +32,7 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
       className={className}
       style={{ objectFit: "cover", borderColor: accentColor, cursor: "pointer", ...style }}
       onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(true); }}
+      onError={() => setImgError(true)}
     />
   ) : (
     <div

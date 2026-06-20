@@ -12,10 +12,10 @@ import { ConversationStateMachine } from "@/core/conversation/ConversationStateM
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import { sendVoiceOrText, resolveClinicVoiceConfig } from "@/lib/tts-send";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,10 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
     return { clinicId, sent: 0, failed: 0, total: 0 };
   }
 
-  const editorial = await resolveActiveEditorialConfig(clinicId);
+  const [editorial, { voiceEnabled, ttsConfig }] = await Promise.all([
+    resolveActiveEditorialConfig(clinicId),
+    resolveClinicVoiceConfig(clinicId),
+  ]);
   const defaultChannelConfig = resolveChannelConfig(clinic);
 
   const appointmentRepository = new DrizzleAppointmentRepository();
@@ -88,7 +91,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         isFirstMessage: false,
       });
 
-      await sendTextMessage(channelAddress, composed.text, channelConfig);
+      await sendVoiceOrText(channelAddress, composed.text, channelConfig, voiceEnabled, ttsConfig);
       await appointmentRepository.save({ ...appointment, reminderSentAt: now, updatedAt: now });
 
       // Registra estado de confirmação pendente na conversa do lead (TTL: 24h)

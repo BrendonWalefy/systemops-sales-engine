@@ -11,7 +11,10 @@ import {
   createPlaybookVersion,
   updateClinicOperationalSettings,
   updateVoiceModuleConfig,
+  updateBWaveSpeed,
 } from "./playbook-version-actions";
+import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
+import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import { toggleAutoReply } from "./actions";
 import type { ConversationExperience, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import { CONCIERGE_MENU_ITEMS, DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
@@ -20,7 +23,6 @@ import type { TtsProvider } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { AddTreatmentForm } from "../tratamentos/AddTreatmentForm";
-import { PushNotificationSettingsCard } from "@/components/push-notification-settings-card";
 import type { ActiveModule } from "@/application/modules/module-gate";
 
 type Version = {
@@ -442,11 +444,23 @@ function GeralTab({
   // Deriva estado de módulos
   const voiceMod = clinic.activeModules.find((m) => m.key === "voice_tts");
   const voiceModuleActive = !!voiceMod;
+  const bwaveMod = clinic.activeModules.find((m) => m.key === "voice_elevenlabs");
+  const bwaveActive = !!bwaveMod;
+  const bwaveConfig = bwaveMod?.config as VoiceElevenLabsConfig | null | undefined;
+  const bwaveMode: VoiceMode = bwaveConfig?.mode ?? "impact";
   const conciergeModuleActive = clinic.activeModules.some((m) => m.key === "concierge_mode");
   const derivedExperience: ConversationExperience = conciergeModuleActive ? "concierge" : "menu_first";
 
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
+  const [bwaveSpeed, setBwaveSpeed] = useState(bwaveConfig?.speed ?? 1.0);
+  const [bwaveSpeedPending, startBwaveSpeedTransition] = useTransition();
+
+  function handleBwaveSpeedChange(speed: number) {
+    setBwaveSpeed(speed);
+    startBwaveSpeedTransition(async () => { await updateBWaveSpeed(speed); });
+  }
+
   const [ttsConfig, setTtsConfig] = useState<{ provider: string; speed: number }>(
     voiceMod?.config
       ? { provider: (voiceMod.config.provider as string) ?? "nova", speed: Number(voiceMod.config.speed ?? 1.0) }
@@ -594,8 +608,6 @@ function GeralTab({
         </div>
       </div>
 
-      <PushNotificationSettingsCard />
-
       {/* Resposta por voz */}
       <div className="ia-status-card" style={cardStyle}>
         <div style={{ display: "flex", flexDirection: "column", width: "100%", minWidth: 0 }}>
@@ -683,6 +695,106 @@ function GeralTab({
             </div>
           </div>
         )}
+        </div>
+      </div>
+
+      {/* B-WAVE Voice */}
+      <div className="ia-status-card" style={{
+        ...cardStyle,
+        ...(bwaveActive
+          ? { border: "1px solid rgba(16,185,129,0.2)", background: "rgba(16,185,129,0.03)" }
+          : { border: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }),
+      }}>
+        <div style={{ display: "flex", flexDirection: "column", width: "100%", minWidth: 0 }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
+              <div style={{ ...iconBoxStyle, background: bwaveActive ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.04)" }}>
+                {/* B-WAVE waveform icon */}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: bwaveActive ? "#34d399" : "#52525b" }}>
+                  <path d="M2 12 Q4 4, 6 12 Q8 20, 10 12 Q12 4, 14 12 Q16 20, 18 12 Q20 4, 22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                </svg>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: "14px", fontWeight: 700, color: "#fafafa", letterSpacing: "-0.01em" }}>B-WAVE Voice</strong>
+                  {bwaveActive ? (
+                    <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" }}>
+                      {VOICE_MODE_LABELS[bwaveMode].label}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.2)" }}>
+                      Plano Rede+
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>
+                  {bwaveActive
+                    ? VOICE_MODE_LABELS[bwaveMode].description
+                    : "Voz hiper-realista que atende, converte e conquista — soa como uma recepcionista humana."}
+                </p>
+              </div>
+            </div>
+            {!bwaveActive && <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />}
+          </div>
+
+          {/* Estado ativo — controles da clínica */}
+          {bwaveActive && (
+            <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(16,185,129,0.1)", display: "flex", flexDirection: "column", gap: "14px" }}>
+              {/* Info de modo (somente leitura) */}
+              <div style={{ padding: "8px 12px", borderRadius: "8px", background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: "#34d399", flexShrink: 0 }}>
+                  <path d="M2 12 Q4 4, 6 12 Q8 20, 10 12 Q12 4, 14 12 Q16 20, 18 12 Q20 4, 22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                </svg>
+                <span style={{ fontSize: "12px", color: "#34d399", fontWeight: 600 }}>{VOICE_MODE_LABELS[bwaveMode].label}</span>
+                <span style={{ fontSize: "11px", color: "#52525b" }}>· configurado pela equipe SystemOps</span>
+              </div>
+
+              {/* Speed slider */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <p style={{ margin: 0, fontSize: "11px", color: "#71717a", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Velocidade da voz</p>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#34d399", fontVariantNumeric: "tabular-nums" }}>
+                    {bwaveSpeed.toFixed(2)}×
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.7}
+                  max={1.2}
+                  step={0.05}
+                  value={bwaveSpeed}
+                  disabled={bwaveSpeedPending}
+                  onChange={(e) => handleBwaveSpeedChange(Number(e.target.value))}
+                  onPointerUp={(e) => handleBwaveSpeedChange(Number((e.target as HTMLInputElement).value))}
+                  style={{ width: "100%", accentColor: "#10b981", cursor: bwaveSpeedPending ? "default" : "pointer", touchAction: "none" }}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
+                  <span style={{ fontSize: "10px", color: "#3f3f46" }}>mais calma</span>
+                  <span style={{ fontSize: "10px", color: "#3f3f46" }}>mais dinâmica</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Estado locked — teaser */}
+          {!bwaveActive && (
+            <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", gap: "8px" }}>
+              {[
+                "Voz responde leads quentes em áudio no WhatsApp",
+                "Nota de voz nativa — aparece com waveform como humano",
+                "IA decide quando usar voz para maximizar conversão",
+              ].map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#3f3f46", flexShrink: 0 }} />
+                  <span style={{ fontSize: "12px", color: "#3f3f46" }}>{item}</span>
+                </div>
+              ))}
+              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#3f3f46" }}>
+                Disponível no plano Rede. Fale com o suporte para ativar.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { MenuItem } from "@/domain/entities/clinic";
 import { publishablePlaybookSchema } from "@/application/config/editorial-config";
-import type { VoiceTtsConfig } from "@/application/modules/module-configs";
+import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 
 
 type PlaybookVersionData = {
@@ -204,6 +204,40 @@ export async function updateVoiceModuleConfig(config: VoiceTtsConfig) {
       and(
         eq(clinicModules.clinicId, CLINIC_ID),
         eq(clinicModules.moduleKey, "voice_tts"),
+      ),
+    );
+  revalidatePath("/app/settings/playbook");
+}
+
+// Clínica pode ajustar apenas velocidade — voiceId e mode são controlados pelo owner
+export async function updateBWaveSpeed(speed: number) {
+  const CLINIC_ID = await requireSessionClinicId();
+  const [row] = await db
+    .select({ config: clinicModules.config })
+    .from(clinicModules)
+    .where(
+      and(
+        eq(clinicModules.clinicId, CLINIC_ID),
+        eq(clinicModules.moduleKey, "voice_elevenlabs"),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return;
+  const current = (row.config ?? {}) as Partial<VoiceElevenLabsConfig>;
+  const clampedSpeed = Math.min(1.2, Math.max(0.7, speed));
+
+  await db
+    .update(clinicModules)
+    .set({
+      config: { ...current, speed: clampedSpeed },
+      updatedAt: new Date(),
+      updatedBy: "clinic_admin",
+    })
+    .where(
+      and(
+        eq(clinicModules.clinicId, CLINIC_ID),
+        eq(clinicModules.moduleKey, "voice_elevenlabs"),
       ),
     );
   revalidatePath("/app/settings/playbook");

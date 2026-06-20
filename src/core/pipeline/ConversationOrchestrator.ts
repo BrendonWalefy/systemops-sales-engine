@@ -32,7 +32,9 @@ import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure
 import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 import { createLogger, type Logger } from "@/infrastructure/logging/logger";
 import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
-import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, type TtsConfig } from "@/domain/entities/tts-config";
+import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, type TtsConfig } from "@/domain/entities/tts-config";
+import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voice-mode";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
@@ -805,9 +807,7 @@ async function sendReply(
         { contentType },
       );
       const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
-      await storage.delete(blobUrl).catch((e) =>
-        console.warn("[TTS] Blob delete failed:", e),
-      );
+      // Blob não é deletado aqui — cleanup via GitHub Actions (cleanup-tts-blobs.yml, 2h TTL)
       return { msgId, deliveryFormat: "audio" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1013,11 +1013,39 @@ export class ConversationOrchestrator {
     const channelConfig = resolveChannelConfig(clinicRows[0]);
 
     // Derivados de módulos — usados em todo o método no lugar dos campos legados
+    const elevenLabsMod = activeModules.find((m) => m.key === "voice_elevenlabs");
     const voiceMod = activeModules.find((m) => m.key === "voice_tts");
-    const voiceEnabled = !!voiceMod;
-    const ttsConf: TtsConfig = voiceMod?.config
-      ? ttsConfigFromVoice(String(voiceMod.config.provider ?? "nova"))
-      : DEFAULT_TTS_CONFIG;
+    const bwaveEnabled = !!elevenLabsMod;
+    const voiceBasicEnabled = !!voiceMod;
+    // voiceEnabled: flag global indicando que ALGUMA voz está disponível (usado para hasInterleavedMedia)
+    const voiceEnabled = bwaveEnabled || voiceBasicEnabled;
+
+    // inputWasAudio: detectado pelo prefixo [áudio] que o WhisperGateway adiciona
+    const inputWasAudio = messageText.startsWith("[áudio]");
+
+    let ttsConf: TtsConfig;
+    let bwaveMode: VoiceMode = "impact";
+    if (elevenLabsMod?.config) {
+      const elConf = elevenLabsMod.config as VoiceElevenLabsConfig;
+      bwaveMode = elConf.mode ?? "impact";
+      ttsConf = {
+        provider: "elevenlabs",
+        speed: elConf.speed ?? TTS_SPEED_DEFAULTS.elevenlabs,
+        elevenLabsVoiceId: elConf.voiceId,
+        elevenLabsStability: elConf.stability,
+        elevenLabsSimilarityBoost: elConf.similarityBoost,
+      };
+    } else if (voiceMod?.config) {
+      ttsConf = ttsConfigFromVoice(String(voiceMod.config.provider ?? "nova"));
+    } else {
+      ttsConf = DEFAULT_TTS_CONFIG;
+    }
+
+    // Resolve voz por mensagem: B-WAVE usa lógica inteligente; voz básica é global
+    function resolveVoiceForReply(messageIntent: IntentType, responseText: string): boolean {
+      if (bwaveEnabled) return shouldUseBWaveForMessage(bwaveMode, messageIntent, responseText, inputWasAudio);
+      return voiceBasicEnabled;
+    }
     const clinicExperience: ConversationExperience = activeModules.some((m) => m.key === "concierge_mode")
       ? "concierge"
       : "menu_first";
@@ -2626,7 +2654,8 @@ export class ConversationOrchestrator {
         onMediaSent: persistSentMedia,
       });
     } else {
-      const result = await sendReply(outboundAddress, replyText, channelConfig, voiceEnabled, ttsConf);
+      const useVoice = resolveVoiceForReply(intent, replyText);
+      const result = await sendReply(outboundAddress, replyText, channelConfig, useVoice, ttsConf);
       zapiMessageId = result.msgId;
       deliveryFormat = result.deliveryFormat;
     }

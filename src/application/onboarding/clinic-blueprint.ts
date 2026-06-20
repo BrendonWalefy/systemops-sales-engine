@@ -24,6 +24,8 @@ export type ClinicBlueprintInput = {
     metaPhoneNumberId?: string | null;
     metaAccessToken?: string | null;
     hasTtsConfig?: boolean;
+    hasElevenLabsTts?: boolean;
+    elevenLabsNeedsVoiceId?: boolean;
   };
   playbook: {
     toneOfVoice?: string | null;
@@ -222,10 +224,19 @@ export function buildClinicBlueprint(
     createSection(
       "tts",
       "Voz da IA",
-      clinic.hasTtsConfig
-        ? "Configuração de TTS personalizada ativa."
-        : "Usando voz padrão (nova). Configure TTS para personalizar a experiência.",
-      [!clinic.hasTtsConfig ? "configuração de voz personalizada (TTS)" : null],
+      clinic.hasElevenLabsTts
+        ? "ElevenLabs Pro ativa — voz profissional de alta fidelidade."
+        : clinic.elevenLabsNeedsVoiceId
+          ? "ElevenLabs Pro ativado mas Voice ID não configurado."
+          : clinic.hasTtsConfig
+            ? "Voz básica ativa (OpenAI nova). Configure ElevenLabs Pro para máxima naturalidade."
+            : "Usando voz padrão do sistema. Nenhum módulo de voz ativo.",
+      [
+        clinic.elevenLabsNeedsVoiceId ? "configurar Voice ID do ElevenLabs" : null,
+        !clinic.hasTtsConfig && !clinic.hasElevenLabsTts && !clinic.elevenLabsNeedsVoiceId
+          ? "ativar módulo de voz (voice_tts ou ElevenLabs Pro)"
+          : null,
+      ],
     ),
   ];
 

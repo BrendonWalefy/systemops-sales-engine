@@ -13,11 +13,12 @@ import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/driz
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { selectOneFollowUpPerLead } from "@/application/use-cases/leads/follow-up-dispatch-policy";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import { sendVoiceOrText, resolveClinicVoiceConfig } from "@/lib/tts-send";
+import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { FollowUp } from "@/domain/entities/follow-up";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,8 @@ type DispatchDeps = {
   defaultChannelConfig: ReturnType<typeof resolveChannelConfig>;
   timezone: ClinicTimezone;
   now: Date;
+  voiceEnabled: boolean;
+  ttsConfig: TtsConfig;
   // deferred: used to cancel stale video follow-ups for the same lead after dispatch
   deferred: FollowUp[];
 };
@@ -207,8 +210,8 @@ async function processOneFollowUp(
     isFirstMessage: false,
   });
 
-  const zapiMessageId = await withTimeout(
-    sendTextMessage(channelAddress, composed.text, defaultChannelConfig),
+  const { msgId: zapiMessageId, deliveryFormat } = await withTimeout(
+    sendVoiceOrText(channelAddress, composed.text, defaultChannelConfig, deps.voiceEnabled, deps.ttsConfig),
     SEND_TIMEOUT_MS,
     `follow-up ${followUp.id} lead=${lead.phone}`,
   );
@@ -226,7 +229,7 @@ async function processOneFollowUp(
         sentAt: now,
         externalId: zapiMessageId ?? null,
         intent: "reengagement" as const,
-        deliveryFormat: "text",
+        deliveryFormat,
       })
       .onConflictDoNothing();
   }
@@ -255,7 +258,10 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
     return { clinicId, dispatched: 0, failed: 0, total: 0 };
   }
 
-  const editorial = await resolveActiveEditorialConfig(clinicId);
+  const [editorial, { voiceEnabled, ttsConfig }] = await Promise.all([
+    resolveActiveEditorialConfig(clinicId),
+    resolveClinicVoiceConfig(clinicId),
+  ]);
   const defaultChannelConfig = resolveChannelConfig(clinic);
 
   const followUpRepository = new DrizzleFollowUpRepository();
@@ -287,6 +293,8 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
     defaultChannelConfig,
     timezone,
     now,
+    voiceEnabled,
+    ttsConfig,
     deferred: dispatchPlan.deferred,
   };
 

@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2 } from "lucide-react";
+import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2, Bell } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { uploadAvatar, removeAvatar } from "@/app/(clinic)/app/settings/profile/actions";
+import { BellToggle } from "./bell-toggle";
 import { haptic } from "@/lib/haptic";
 
 type Props = {
@@ -276,6 +277,18 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
             <span className="mobile-sheet-email" title={email}>{email}</span>
             <span className="mobile-sheet-role">Clinic Admin</span>
           </div>
+        </div>
+
+        {/* Notifications toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="mobile-sheet-item-icon">
+            <Bell size={16} strokeWidth={1.8} />
+          </div>
+          <div className="mobile-sheet-item-text" style={{ flex: 1 }}>
+            <span>Notificações</span>
+            <small>Alertas de inbox neste dispositivo</small>
+          </div>
+          <BellToggle />
         </div>
 
         {/* Nav items */}
