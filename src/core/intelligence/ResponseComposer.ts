@@ -438,9 +438,15 @@ ${slotList}`;
     }
 
     case "reengagement":
-      return `AÇÃO EXECUTADA: Mensagem de re-engajamento para paciente com histórico na clínica.
-ÚLTIMA CONSULTA: ${result.lastAppointmentLabel}
-Envie uma mensagem calorosa e breve lembrando que pode estar na hora de agendar um retorno ou verificar se pode ajudar. Não mencione que a mensagem é automática. Máximo 2 frases.`;
+      return `AÇÃO EXECUTADA: Mensagem de re-engajamento para lead que interagiu anteriormente mas não converteu.
+ÚLTIMA CONSULTA/CONTATO: ${result.lastAppointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Leia o histórico de conversa acima com atenção antes de redigir — use o que o lead demonstrou interesse (procedimento, objeção, dúvida específica) para personalizar a mensagem. NÃO escreva algo genérico se o histórico revelar um interesse concreto.
+2. Máximo 2 frases curtas. Tom caloroso e natural, como se fosse uma mensagem espontânea da recepcionista.
+3. NÃO mencione que a mensagem é automática ou que é um follow-up programado.
+4. Se o lead mencionou um procedimento específico no histórico, faça referência a ele de forma natural (ex: "Lembrei de você ao ver que ainda temos horários disponíveis para avaliação de lentes").
+5. Se o lead levantou uma objeção (preço, distância, tempo), reconheça indiretamente sem ser óbvio.
+6. Termine com uma pergunta simples e direta que incentive resposta (ex: "Posso verificar os horários disponíveis para você?").`;
 
     case "evaluation_redirect": {
       const slotList = result.evaluationSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
