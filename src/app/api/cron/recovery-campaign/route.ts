@@ -54,7 +54,7 @@ async function findUnattendedLeads(clinicId: string): Promise<UnattendedLead[]> 
     FROM leads l
     JOIN conversations c ON c.lead_id = l.id
     WHERE l.clinic_id = ${clinicId}
-      AND l.status NOT IN ('lost', 'won')
+      AND l.status NOT IN ('lost', 'won', 'appointment_scheduled')
       AND (l.phone IS NOT NULL OR l.whatsapp_lid IS NOT NULL)
       AND (
         -- Takeover expirado: IA foi pausada pelo humano e o prazo passou
@@ -84,6 +84,7 @@ async function composeRecoveryMessage(
   receptionistName: string,
   clinicName: string,
   specialty: string,
+  treatmentNames: string[],
   leadName: string | null,
   convId: string,
 ): Promise<string | null> {
@@ -111,7 +112,7 @@ async function composeRecoveryMessage(
       {
         role: "user",
         content: `Você é ${receptionistName}, recepcionista virtual da ${clinicName}, especializada em ${specialty}.
-
+${treatmentNames.length > 0 ? `\nPROCEDIMENTOS DA CLÍNICA (use EXATAMENTE esses nomes, nunca invente variações): ${treatmentNames.join(", ")}.\n` : ""}
 HISTÓRICO DA CONVERSA:
 ${historyText}
 
@@ -121,11 +122,12 @@ Escreva UMA mensagem curta e calorosa de retomada de conversa. Regras:
 - Máximo 3 frases
 - Mencione especificamente o que o lead perguntou ou demonstrou interesse
 - NÃO mencione que houve falha, demora ou problema técnico
-- NÃO prometa agendamento, não confirme horários
+- NÃO prometa agendamento, não confirme horários, não liste datas ou horários disponíveis
 - Seja natural, como se fosse uma continuação orgânica
 - Use o nome ${leadName ?? "do lead"} se disponível
 - Tom: caloroso, profissional, conciso
 - Se o lead pediu preço e não recebeu resposta, mencione que pode ajudar com os valores
+- Use APENAS os nomes exatos dos procedimentos listados acima — nunca "lentes de contato dental", "facetas de contato" ou variações não cadastradas
 
 Responda APENAS com o texto da mensagem, sem aspas.`,
       },
@@ -158,6 +160,7 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
   const channelConfig = resolveChannelConfig(clinic);
   const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? "Marina";
   const specialty = editorial?.specialty ?? clinic.specialty ?? "odontologia estética";
+  const treatmentNames = (editorial?.procedures ?? []).map((p) => p.name);
   const now = new Date();
 
   const unattended = await findUnattendedLeads(clinicId);
@@ -190,6 +193,7 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
         receptionistName,
         clinic.name,
         specialty,
+        treatmentNames,
         lead.name,
         lead.conv_id,
       );

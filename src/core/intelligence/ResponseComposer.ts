@@ -399,6 +399,7 @@ case "general_question":
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
+PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
 Responda de forma informativa e acolhedora. ${isConcierge ? "Só conduza para avaliação após cumprir eventuais passos do playbook ou quando não houver sequência definida para o assunto." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
