@@ -24,6 +24,10 @@ export type ZApiInboundPayload = {
   image?: { imageUrl: string; caption?: string; mimeType: string };
   video?: { videoUrl: string; caption?: string; mimeType: string };
   document?: { documentUrl: string; fileName: string; mimeType: string };
+  sticker?: { stickerUrl: string; mimeType: string };
+  reaction?: { emoji?: string; reaction?: string; text?: string; message?: string };
+  reactionText?: string;
+  emoji?: string;
   isGroupMsg: boolean;
   isStatusReply: boolean;
   isEdit: boolean;

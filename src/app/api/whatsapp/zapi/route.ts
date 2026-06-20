@@ -16,6 +16,7 @@ import { findConversationByWhatsAppContact } from "@/application/whatsapp/find-c
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { resolveLeadInboundContent, resolveUnsupportedInboundPlaceholder } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -161,17 +162,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Mensagem enviada pela instância Z-API (fromMe: true)
   // Pode ser: (a) echo da IA enviando via API ou (b) operador enviando do celular (texto ou mídia)
   if (body.fromMe) {
-    // Áudio fromMe (TTS/voz da IA ou áudio do operador) → ignora (não persiste echo de áudio)
-    if (body.audio?.audioUrl && !body.text?.message) return new NextResponse("OK", { status: 200 });
-
     // Sticker, reação, ou payload sem conteúdo reconhecível → ignora
     const hasText = Boolean(body.text?.message);
     const hasMedia =
       Boolean(body.video?.videoUrl) ||
       Boolean(body.image?.imageUrl) ||
       Boolean(body.document?.documentUrl);
+    const operatorPlaceholder = resolveUnsupportedInboundPlaceholder(body, "operator");
 
-    if (!hasText && !hasMedia) return new NextResponse("OK", { status: 200 });
+    if (!hasText && !hasMedia && !operatorPlaceholder) return new NextResponse("OK", { status: 200 });
 
     try {
       // 1ª verificação: messageId já registrado → echo ou mensagem duplicada → ignora
@@ -276,6 +275,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       if (operatorMedia) {
         await saveOperatorOutbound(body, conv.id, ttlHours, operatorMedia);
+      } else if (operatorPlaceholder) {
+        await saveOperatorOutbound(body, conv.id, ttlHours, {
+          kind: "text",
+          body: operatorPlaceholder,
+        });
       }
     } catch (err) {
       console.error("[ZApi] Erro ao processar mensagem fromMe:", err);
@@ -302,52 +306,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     `[ZApi] inbound phone=${body.phone} senderPhoto=${body.senderPhoto ? "presente" : "AUSENTE"}`,
   );
 
-  // Mensagem inbound do lead: texto digitado, áudio transcrito, ou mídia (imagem/vídeo/documento).
-  let messageText: string | null = null;
-  let inboundMediaUrl: string | null = null;
-  let inboundMediaType: "image" | "video" | "audio" | "document" | null = null;
-
-  if (body.text?.message) {
-    messageText = body.text.message;
-  } else if (body.audio?.audioUrl) {
-    inboundMediaUrl = body.audio.audioUrl;
-    inboundMediaType = "audio";
-    if (!replyEnabled) {
-      messageText = "[áudio recebido]";
-    } else {
-      try {
-        const audioRes = await fetch(body.audio.audioUrl, {
-          signal: AbortSignal.timeout(5_000),
-        });
-        if (!audioRes.ok)
-          throw new Error(`Audio download failed (${audioRes.status})`);
-        const audioBuffer = await audioRes.arrayBuffer();
-        const transcription = await getWhisperGateway().transcribe(
-          audioBuffer,
-          body.audio.mimeType,
-        );
-        messageText = `[áudio] ${transcription}`;
-      } catch (err) {
-        console.error("[ZApi] Falha ao transcrever áudio:", err);
-        messageText =
-          "[áudio] Transcrição automática indisponível. O lead enviou um áudio, mas não foi possível baixar ou transcrever. Peça para ele escrever a mensagem.";
+  const inboundContent = await resolveLeadInboundContent({
+    payload: body,
+    replyEnabled,
+    transcribeAudio: async (audioUrl, mimeType) => {
+      const audioRes = await fetch(audioUrl, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!audioRes.ok) {
+        throw new Error(`Audio download failed (${audioRes.status})`);
       }
-    }
-  } else if (body.image?.imageUrl) {
-    inboundMediaUrl = body.image.imageUrl;
-    inboundMediaType = "image";
-    messageText = body.image.caption?.trim() || "[imagem recebida]";
-  } else if (body.video?.videoUrl) {
-    inboundMediaUrl = body.video.videoUrl;
-    inboundMediaType = "video";
-    messageText = body.video.caption?.trim() || "[vídeo recebido]";
-  } else if (body.document?.documentUrl) {
-    inboundMediaUrl = body.document.documentUrl;
-    inboundMediaType = "document";
-    messageText = `[documento] ${body.document.fileName ?? "arquivo recebido"}`;
-  } else {
-    // Sticker, reação ou tipo não suportado — ignora silenciosamente
+      const audioBuffer = await audioRes.arrayBuffer();
+      return getWhisperGateway().transcribe(audioBuffer, mimeType);
+    },
+  });
+
+  if (!inboundContent) {
     return new NextResponse("OK", { status: 200 });
+  }
+
+  if (!inboundContent.shouldReply && !inboundContent.mediaType) {
+    console.warn("[ZApi] Persistindo placeholder para inbound não textual", {
+      messageId: body.messageId,
+      phone: body.phone,
+      hasSticker: Boolean(body.sticker?.stickerUrl),
+      hasReaction: Boolean(body.reaction || body.reactionText || body.emoji),
+    });
   }
 
   // Retorna 200 imediatamente para o Z-API não retentar (timeout curto de resposta).
@@ -358,14 +342,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         clinicId,
         phone: body.phone,
         whatsappLid: body.chatLid ?? null,
-        messageText,
+        messageText: inboundContent.messageText,
         messageId: body.messageId,
         senderName: body.senderName || undefined,
         senderPhoto: body.senderPhoto ?? null,
         timestamp: body.momment ? new Date(body.momment) : new Date(),
-        replyEnabled,
-        mediaUrl: inboundMediaUrl ?? undefined,
-        mediaType: inboundMediaType ?? undefined,
+        replyEnabled: inboundContent.shouldReply,
+        mediaUrl: inboundContent.mediaUrl,
+        mediaType: inboundContent.mediaType,
       })
       .catch((error) => console.error("[ZApi] Webhook error:", error)),
   );
