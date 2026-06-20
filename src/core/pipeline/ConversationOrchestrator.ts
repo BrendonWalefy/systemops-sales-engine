@@ -49,6 +49,7 @@ import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
+import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 import { getClinicModules } from "@/application/modules/module-gate";
@@ -1090,6 +1091,21 @@ export class ConversationOrchestrator {
     }
 
     try {
+
+    if (!isSalesConversationCategory(conversation.category)) {
+      const displayName = lead.name ?? phone;
+      const preview = params.mediaType
+        ? `Nova mensagem ${params.mediaType === "image" ? "com imagem" : `com ${params.mediaType}`}`
+        : messageText.slice(0, 100);
+      await this.notifier
+        .execute(clinicId, {
+          title: displayName,
+          body: preview,
+          url: `/app/inbox/${conversation.id}`,
+        })
+        .catch((err) => console.error("[Orchestrator] Push falhou:", err));
+      return { replied: false };
+    }
 
     // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
     // Rehospeda no Blob (persistência), encaminha para o doutor no WhatsApp e pausa a IA.

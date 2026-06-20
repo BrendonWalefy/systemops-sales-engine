@@ -105,6 +105,16 @@ async function processOneFollowUp(
     return "skipped";
   }
 
+  const [conv] = await db
+    .select({ id: conversations.id, category: conversations.category })
+    .from(conversations)
+    .where(eq(conversations.leadId, followUp.leadId))
+    .limit(1);
+  if (!conv || conv.category !== "sales") {
+    await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+    return "skipped";
+  }
+
   const channelAddress = resolveWhatsAppChannelAddress({
     phone: lead.phone,
     whatsappLid: lead.whatsappLid,
@@ -156,12 +166,6 @@ async function processOneFollowUp(
 
   // Fetch conversation and recent messages so the LLM can personalise the reactivation
   // based on what the lead was actually discussing, not just a generic template.
-  const [conv] = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(eq(conversations.leadId, followUp.leadId))
-    .limit(1);
-
   const conversationHistory: Message[] = conv
     ? await db
         .select()

@@ -1,3 +1,5 @@
+import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
+
 export type TempKey = "hot" | "warm" | "cold";
 
 export function tempKey(temp: string | null): TempKey {
@@ -43,7 +45,7 @@ export function statusLabel(status: string): { label: string; handoff: boolean }
     new:                    { label: "Novo",             handoff: false },
     waiting_response:       { label: "Aguardando",       handoff: false },
     in_conversation:        { label: "Em conversa",      handoff: false },
-    follow_up_due:          { label: "Follow-up",        handoff: true  },
+    follow_up_due:          { label: "Recuperação",      handoff: true  },
     appointment_scheduled:  { label: "Agendado",         handoff: false },
     lost:                   { label: "Perdido",          handoff: true  },
     won:                    { label: "Ganho",            handoff: false },
@@ -63,4 +65,15 @@ export function channelLabel(channel: string): string {
     manual:       "Manual",
   };
   return map[channel] ?? channel;
+}
+
+export function conversationCategoryLabel(category: ConversationCategory | string): string {
+  const map: Record<string, string> = {
+    sales: "Comercial",
+    operational: "Operacional",
+    vendor: "Fornecedor",
+    spam: "Spam",
+    archived: "Arquivada",
+  };
+  return map[category] ?? category;
 }

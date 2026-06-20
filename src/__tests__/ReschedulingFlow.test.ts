@@ -210,7 +210,7 @@ describe("ReschedulingFlow — cancelamento de appointment interno", () => {
     expect(savedAppt?.status).toBe("cancelled");
   });
 
-  it("atualiza lead para in_conversation após cancelamento", async () => {
+  it("atualiza lead para follow_up_due após cancelamento", async () => {
     const { gateway } = makeInternalGateway();
     const { svc } = makeReservationService(pendingReservation);
     const appts = makeApptRepo();
@@ -219,7 +219,7 @@ describe("ReschedulingFlow — cancelamento de appointment interno", () => {
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
     await service.cancel({ lead, appointment: existingAppt });
 
-    expect(leads.saved.at(-1)?.status).toBe("in_conversation");
+    expect(leads.saved.at(-1)?.status).toBe("follow_up_due");
   });
 
   it("libera o slot reservado para que possa ser reoferecido", async () => {
@@ -251,7 +251,7 @@ describe("ReschedulingFlow — reagendamento no modo interno", () => {
     expect(gwCalls.cancelAppointment).toBe(0); // sem chamada externa
 
     // Passo 2: reagenda com novo horário
-    const cancelledLead = { ...lead, status: "in_conversation" as const };
+    const cancelledLead = { ...lead, status: "follow_up_due" as const };
     const result = await service.book({
       clinic,
       lead: cancelledLead,

@@ -86,7 +86,7 @@ function statusLabel(status: string): string {
     new: "Novo",
     waiting_response: "Aguardando",
     in_conversation: "Em conversa",
-    follow_up_due: "Follow-up",
+    follow_up_due: "Recuperação",
     appointment_scheduled: "Agendado",
     lost: "Perdido",
     won: "Ganho",
@@ -210,7 +210,7 @@ function trendTone(current: number, previous: number): string {
 
 function chartGeometry(series: FlowPoint[]) {
   const width = 640;
-  const height = 260;
+  const height = 200;
   const paddingX = 18;
   const paddingY = 22;
   const max = Math.max(...series.map((point) => point.count), 1);
@@ -369,19 +369,31 @@ async function fetchDashboardData(period: string) {
     previousLeadPeriodResult,
     memberResult,
     todayAppointmentsResult,
-    coldLeadsResult,
+    recoveryLeadsResult,
+    attentionLeadsResult,
   ] = await Promise.all([
-    db.select({ count: count() }).from(leads).where(eq(leads.clinicId, CLINIC_ID)),
     db
       .select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.clinicId, CLINIC_ID), eq(leads.status, "appointment_scheduled"))),
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(and(eq(leads.clinicId, CLINIC_ID), eq(conversations.category, "sales"))),
     db
       .select({ count: count() })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(and(
+        eq(leads.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
+        eq(leads.status, "appointment_scheduled"),
+      )),
+    db
+      .select({ count: count() })
+      .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(
         and(
           eq(leads.clinicId, CLINIC_ID),
+          eq(conversations.category, "sales"),
           eq(leads.temperature, "hot"),
           eq(leads.status, "in_conversation"),
         ),
@@ -397,43 +409,61 @@ async function fetchDashboardData(period: string) {
         createdAt: leads.createdAt,
       })
       .from(leads)
-      .where(eq(leads.clinicId, CLINIC_ID))
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(and(eq(leads.clinicId, CLINIC_ID), eq(conversations.category, "sales")))
       .orderBy(desc(leads.createdAt))
       .limit(8),
     db
       .select({ count: count() })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(and(
         eq(leads.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
         eq(leads.temperature, "hot"),
         notInArray(leads.status, ["appointment_scheduled", "won", "lost"]),
       )),
     db
       .select({ count: count() })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(and(
         eq(leads.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
         eq(leads.temperature, "warm"),
         notInArray(leads.status, ["appointment_scheduled", "won", "lost"]),
       )),
     db
       .select({ count: count() })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(and(
         eq(leads.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
         eq(leads.temperature, "cold"),
         notInArray(leads.status, ["appointment_scheduled", "won", "lost"]),
       )),
-    db.select({ count: count() }).from(conversations).where(eq(conversations.clinicId, CLINIC_ID)),
     db
       .select({ count: count() })
       .from(conversations)
-      .where(and(eq(conversations.clinicId, CLINIC_ID), eq(conversations.needsAttention, true))),
+      .where(and(eq(conversations.clinicId, CLINIC_ID), eq(conversations.category, "sales"))),
+    db
+      .select({ count: count() })
+      .from(conversations)
+      .where(and(
+        eq(conversations.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
+        eq(conversations.needsAttention, true),
+      )),
     db
       .select({ count: count() })
       .from(messages)
       .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-      .where(and(eq(conversations.clinicId, CLINIC_ID), eq(messages.author, "agent"))),
+      .where(and(
+        eq(conversations.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
+        eq(messages.author, "agent"),
+      )),
     db
       .select({ count: count() })
       .from(messages)
@@ -441,6 +471,7 @@ async function fetchDashboardData(period: string) {
       .where(
         and(
           eq(conversations.clinicId, CLINIC_ID),
+          eq(conversations.category, "sales"),
           eq(messages.author, "lead"),
           gte(messages.sentAt, flowStart),
           sql`(
@@ -452,13 +483,20 @@ async function fetchDashboardData(period: string) {
     db
       .select({ createdAt: leads.createdAt })
       .from(leads)
-      .where(and(eq(leads.clinicId, CLINIC_ID), gte(leads.createdAt, flowStart))),
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(and(
+        eq(leads.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
+        gte(leads.createdAt, flowStart),
+      )),
     db
       .select({ count: count() })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(
         and(
           eq(leads.clinicId, CLINIC_ID),
+          eq(conversations.category, "sales"),
           gte(leads.createdAt, previousStart),
           lt(leads.createdAt, flowStart),
         ),
@@ -489,7 +527,7 @@ async function fetchDashboardData(period: string) {
       ))
       .orderBy(asc(appointments.startsAt))
       .limit(8),
-    // Leads frios para painel de reativação
+    // Leads em recuperação para o painel operacional
     db
       .select({
         id: leads.id,
@@ -500,12 +538,31 @@ async function fetchDashboardData(period: string) {
         updatedAt: leads.updatedAt,
       })
       .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
       .where(and(
         eq(leads.clinicId, CLINIC_ID),
-        eq(leads.temperature, "cold"),
-        notInArray(leads.status, ["won", "appointment_scheduled", "lost"]),
+        eq(conversations.category, "sales"),
+        eq(leads.status, "follow_up_due"),
       ))
       .orderBy(desc(leads.updatedAt))
+      .limit(5),
+    db
+      .select({
+        id: leads.id,
+        name: leads.name,
+        phone: leads.phone,
+        treatmentInterest: leads.treatmentInterest,
+        status: leads.status,
+        updatedAt: conversations.updatedAt,
+      })
+      .from(conversations)
+      .innerJoin(leads, eq(conversations.leadId, leads.id))
+      .where(and(
+        eq(conversations.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
+        eq(conversations.needsAttention, true),
+      ))
+      .orderBy(desc(conversations.updatedAt))
       .limit(5),
   ]);
 
@@ -532,7 +589,8 @@ async function fetchDashboardData(period: string) {
     flowStart,
     CLINIC_ID,
     todayAppointments: todayAppointmentsResult,
-    coldLeads: coldLeadsResult,
+    recoveryLeads: recoveryLeadsResult,
+    attentionLeads: attentionLeadsResult,
   };
 }
 
@@ -553,7 +611,8 @@ export default async function DashboardPage({
   const showRoi = memberProfile ? canViewFinancials(memberProfile) : false;
 
   const todayApptCount = data.todayAppointments.length;
-  const coldLeadCount = data.coldLeads.length;
+  const recoveryLeadCount = data.recoveryLeads.length;
+  const attentionLeadCount = data.attentionLeads.length;
   const revenueData = showRevenue
     ? await fetchRevenueData(
         data.CLINIC_ID,
@@ -815,12 +874,12 @@ export default async function DashboardPage({
         </section>
       )}
 
-      {/* ── Consultas de Hoje + Leads para Reativar ──────────────────────── */}
-      {(todayApptCount > 0 || coldLeadCount > 0) && (
+      {/* ── Prioridades Operacionais ──────────────────────────────────────── */}
+      {(todayApptCount > 0 || recoveryLeadCount > 0 || attentionLeadCount > 0) && (
         <section
           style={{
             display: "grid",
-            gridTemplateColumns: todayApptCount > 0 && coldLeadCount > 0 ? "1fr 1fr" : "1fr",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: "14px",
           }}
         >
@@ -853,16 +912,16 @@ export default async function DashboardPage({
             </div>
           )}
 
-          {/* Leads para Reativar */}
-          {coldLeadCount > 0 && (
+          {/* Recuperação prioritária */}
+          {recoveryLeadCount > 0 && (
             <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-soft)", padding: "16px 18px" }}>
               <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 10px" }}>
-                Leads para Reativar
+                Recuperação Prioritária
               </p>
               <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                {data.coldLeads.map((lead) => (
+                {data.recoveryLeads.map((lead) => (
                   <li key={lead.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                    <RefreshCw size={12} color="var(--cold, #64748b)" style={{ flexShrink: 0 }} />
+                    <RefreshCw size={12} color="var(--warm, #f59e0b)" style={{ flexShrink: 0 }} />
                     <span style={{ color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
                       {lead.name ?? lead.phone ?? "Lead"}
                     </span>
@@ -874,8 +933,35 @@ export default async function DashboardPage({
                   </li>
                 ))}
               </ul>
-              <Link href="/app/inbox?filter=cold" style={{ fontSize: 11, color: "var(--muted)", textDecoration: "none", display: "block", marginTop: 10, fontWeight: 600 }}>
-                Ver no Inbox →
+              <Link href="/app/inbox?filter=recovery" style={{ fontSize: 11, color: "var(--muted)", textDecoration: "none", display: "block", marginTop: 10, fontWeight: 600 }}>
+                Ver fila de recuperação →
+              </Link>
+            </div>
+          )}
+
+          {/* Intervenção humana */}
+          {attentionLeadCount > 0 && (
+            <div style={{ border: "1px solid color-mix(in srgb, var(--danger, #fb7185) 35%, var(--line))", borderRadius: 12, background: "var(--surface-soft)", padding: "16px 18px" }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 10px" }}>
+                Intervenção Humana
+              </p>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                {data.attentionLeads.map((lead) => (
+                  <li key={lead.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    <AlertTriangle size={12} color="var(--danger, #fb7185)" style={{ flexShrink: 0 }} />
+                    <span style={{ color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
+                      {lead.name ?? lead.phone ?? "Lead"}
+                    </span>
+                    {lead.treatmentInterest && (
+                      <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {lead.treatmentInterest}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/app/inbox?filter=attention" style={{ fontSize: 11, color: "var(--danger, #fb7185)", textDecoration: "none", display: "block", marginTop: 10, fontWeight: 600 }}>
+                Abrir atendimentos críticos →
               </Link>
             </div>
           )}

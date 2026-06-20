@@ -12,6 +12,7 @@ function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
     needsAttention: false,
     attentionReason: null,
     aiPaused: false,
+    conversationCategory: "sales",
     leadName: "Lead",
     leadPhone: "5511999999999",
     leadStatus: "new",

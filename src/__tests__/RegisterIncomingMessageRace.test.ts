@@ -364,4 +364,46 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     expect(result.message.author).toBe("lead");
     expect(conversationRepository.messages.get(result.conversation.id)).toHaveLength(1);
   });
+
+  it("reabre lead em recuperação para in_conversation quando ele volta a responder", async () => {
+    const leadRepository = new SimpleLeadRepository();
+    const conversationRepository = new SimpleConversationRepository();
+    const existingLead: Lead = {
+      id: "lead-recovery",
+      clinicId: "ximendes",
+      name: "Larissa Sales",
+      phone: "5511986905114",
+      whatsappLid: null,
+      email: null,
+      channel: "whatsapp",
+      campaignId: null,
+      treatmentInterest: "Lentes",
+      profilePicUrl: null,
+      status: "follow_up_due",
+      temperature: "hot",
+      assignedToUserId: null,
+      nextActionAt: new Date("2026-06-13T10:00:00.000Z"),
+      lostReason: null,
+      createdAt: new Date("2026-06-01T12:00:00.000Z"),
+      updatedAt: new Date("2026-06-11T12:00:00.000Z"),
+    };
+
+    leadRepository.leads.set(existingLead.id, existingLead);
+
+    const useCase = new RegisterIncomingMessage({
+      leadRepository,
+      conversationRepository,
+      usageCostTracker,
+      idGenerator: () => crypto.randomUUID(),
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    });
+
+    const result = await useCase.execute({
+      clinicId: "ximendes",
+      message: makeMessage("Quero remarcar", "zapi-recovery-1", new Date("2026-06-12T11:59:30.000Z")),
+    });
+
+    expect(result.lead.status).toBe("in_conversation");
+    expect(result.lead.nextActionAt).toBeNull();
+  });
 });

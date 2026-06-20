@@ -106,9 +106,11 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
         db
           .select({ count: count() })
           .from(leads)
+          .innerJoin(conversations, eq(conversations.leadId, leads.id))
           .where(
             and(
               eq(leads.clinicId, clinic.id),
+              eq(conversations.category, "sales"),
               gte(leads.createdAt, monthStart),
             ),
           ),
@@ -116,9 +118,11 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
         db
           .select({ count: count() })
           .from(leads)
+          .innerJoin(conversations, eq(conversations.leadId, leads.id))
           .where(
             and(
               eq(leads.clinicId, clinic.id),
+              eq(conversations.category, "sales"),
               eq(leads.status, "appointment_scheduled"),
               gte(leads.createdAt, monthStart),
             ),

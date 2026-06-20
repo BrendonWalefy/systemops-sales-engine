@@ -1,4 +1,5 @@
 import type { Channel } from "../value-objects/channel";
+import type { ConversationCategory } from "../value-objects/conversation-category";
 
 export type MessageAuthor = "lead" | "clinic_user" | "agent" | "system";
 
@@ -22,6 +23,7 @@ export type Conversation = {
   clinicId: string;
   leadId: string;
   channel: Channel;
+  category: ConversationCategory;
   externalThreadId: string | null;
   summary: string | null;
   aiPaused: boolean;
@@ -33,4 +35,3 @@ export type Conversation = {
   createdAt: Date;
   updatedAt: Date;
 };
-

@@ -3,10 +3,17 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Search, Inbox, RefreshCw, Send, X, CalendarCheck } from "lucide-react";
+import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
+import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recovery-actions";
 import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
+import {
+  isRecoveryCandidate,
+  resolveAppointmentLifecycleState,
+  resolvePipelineIndex,
+} from "./inbox-presentation";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
-import { tempKey, tempLabel, avatarColor, relativeTime } from "./inbox-utils";
+import { tempKey, tempLabel, avatarColor, relativeTime, conversationCategoryLabel } from "./inbox-utils";
 import { LeadAvatar } from "./[conversationId]/LeadAvatar";
 
 export type ConvRow = {
@@ -17,6 +24,7 @@ export type ConvRow = {
   needsAttention: boolean;
   attentionReason: string | null;
   aiPaused: boolean;
+  conversationCategory: ConversationCategory;
   takeoverExpiresAt?: Date | null;
   leadName: string | null;
   leadPhone: string | null;
@@ -25,25 +33,13 @@ export type ConvRow = {
   leadTreatmentInterest: string | null;
   leadProfilePicUrl: string | null;
   appointmentStartsAt?: Date | null;
+  latestAppointmentStatus?: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show" | null;
+  latestAppointmentUpdatedAt?: Date | null;
   hoursWaiting?: number;
 };
 
 const PIPELINE_STEPS = ["Novo", "Qualific.", "Proposta", "Agendar", "Fechado"] as const;
-
-const RECOVERY_WAIT_HOURS = 2;
-
-function isRecoveryCandidate(
-  row: ConvRow,
-  lastMsg: { author: string } | undefined,
-): boolean {
-  if (row.leadStatus === "lost" || row.leadStatus === "won") return false;
-  const hours = row.hoursWaiting ?? 0;
-  // Takeover expirado mas cron ainda não rodou (até 1h de gap)
-  if (row.aiPaused && row.takeoverExpiresAt && new Date(row.takeoverExpiresAt) < new Date()) return true;
-  // IA ativa mas lead esperando 2h+ sem resposta do agente
-  if (!row.aiPaused && lastMsg?.author === "lead" && hours >= RECOVERY_WAIT_HOURS) return true;
-  return false;
-}
+type InboxCategoryScope = ConversationCategory;
 
 function formatWaitTime(hours: number): string {
   if (hours < 1) return "< 1h";
@@ -355,20 +351,14 @@ function RecoveryCard({
 
 function cardBorderClass(row: ConvRow, lastAuthor: string): string {
   if (row.needsAttention) return "card-border-attention";
+  if (!isSalesConversationCategory(row.conversationCategory)) return "card-border-default";
+  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastAuthor });
+  if (appointmentState === "no_show") return "card-border-attention";
+  if (appointmentState === "cancelled") return "card-border-paused";
+  if (appointmentState === "scheduled" || appointmentState === "confirmed") return "card-border-scheduled";
   if (row.aiPaused) return "card-border-paused";
-  if (row.leadStatus === "appointment_scheduled") return "card-border-scheduled";
   if (lastAuthor === "agent") return "card-border-ai-active";
   return "card-border-default";
-}
-
-function pipelineIndex(status: string): number {
-  if (status === "new") return 0;
-  if (status === "waiting_response" || status === "in_conversation") return 1;
-  if (status === "follow_up_due") return 2;
-  // appointment_scheduled avança para o último step ("Fechado") — todos os passos
-  // anteriores, incluindo "Agendar", ficam marcados como concluídos.
-  if (status === "appointment_scheduled") return 4;
-  return 4;
 }
 
 function formatApptDate(date: Date): string {
@@ -388,11 +378,18 @@ function convStatusBadge(
   row: ConvRow,
   lastAuthor: string,
 ): { label: string; variant: "hot" | "warm" | "accent" | "muted" } {
+  if (!isSalesConversationCategory(row.conversationCategory)) {
+    return { label: conversationCategoryLabel(row.conversationCategory), variant: "muted" };
+  }
+  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastAuthor });
   if (row.needsAttention) return { label: "Requer humano", variant: "hot" };
+  if (appointmentState === "confirmed") return { label: "Consulta confirmada", variant: "accent" };
+  if (appointmentState === "scheduled") return { label: "Consulta marcada", variant: "accent" };
+  if (appointmentState === "completed") return { label: "Atendido", variant: "accent" };
+  if (appointmentState === "cancelled") return { label: "Cancelou", variant: "muted" };
+  if (appointmentState === "no_show") return { label: "Não compareceu", variant: "hot" };
+  if (row.leadStatus === "follow_up_due") return { label: "Em recuperação", variant: "warm" };
   if (row.aiPaused) return { label: "Aguardando retorno", variant: "warm" };
-  // Consulta marcada tem precedência sobre o estado da última mensagem — o operador
-  // precisa saber o contexto (paciente já convertido) antes de qualquer outra coisa.
-  if (row.leadStatus === "appointment_scheduled") return { label: "Consulta marcada", variant: "accent" };
   if (lastAuthor === "agent") return { label: "IA respondendo", variant: "accent" };
   if (lastAuthor === "lead") return { label: "Aguardando resposta", variant: "warm" };
   return { label: "Em conversa", variant: "muted" };
@@ -417,12 +414,13 @@ function InboxCard({
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
   const tk = tempKey(row.leadTemperature);
   const { label: tLabel } = tempLabel(row.leadTemperature);
-  const pipeStep = pipelineIndex(row.leadStatus);
+  const isSalesRow = isSalesConversationCategory(row.conversationCategory);
   const hasUnread = isConversationUnreadByClinic({
     lastAuthor: lastMsg.author,
     lastMessageAt: row.lastMessageAt,
     lastReadAt: row.lastReadAt,
   });
+  const pipeStep = resolvePipelineIndex(row, { author: lastMsg.author });
   const badge = convStatusBadge(row, lastMsg.author);
   const borderClass = cardBorderClass(row, lastMsg.author);
   const treatment =
@@ -475,6 +473,18 @@ function InboxCard({
             >
               {displayName}
             </div>
+            {!isSalesRow && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--accent-strong)",
+                  marginTop: 3,
+                  fontWeight: 600,
+                }}
+              >
+                {conversationCategoryLabel(row.conversationCategory)}
+              </div>
+            )}
             {treatment && (
               <div
                 style={{
@@ -492,28 +502,30 @@ function InboxCard({
           </div>
         </div>
 
-        <div className="pipeline-v2">
-          {PIPELINE_STEPS.map((step, i) => {
-            const isDone = i < pipeStep;
-            const isActive = i === pipeStep;
-            return (
-              <div
-                key={step}
-                className={`pipeline-v2-step${isActive ? " active" : isDone ? " done" : ""}`}
-                style={
-                  isActive
-                    ? ({ "--step-color": accentColor } as React.CSSProperties)
-                    : undefined
-                }
-              >
-                <div className="pipeline-v2-dot" />
-                <span className="pipeline-v2-label">{step}</span>
-              </div>
-            );
-          })}
-        </div>
+        {isSalesRow && (
+          <div className="pipeline-v2">
+            {PIPELINE_STEPS.map((step, i) => {
+              const isDone = i < pipeStep;
+              const isActive = i === pipeStep;
+              return (
+                <div
+                  key={step}
+                  className={`pipeline-v2-step${isActive ? " active" : isDone ? " done" : ""}`}
+                  style={
+                    isActive
+                      ? ({ "--step-color": accentColor } as React.CSSProperties)
+                      : undefined
+                  }
+                >
+                  <div className="pipeline-v2-dot" />
+                  <span className="pipeline-v2-label">{step}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
-        {row.appointmentStartsAt && (
+        {isSalesRow && row.appointmentStartsAt && (
           <div className="appointment-date-chip">
             <CalendarCheck size={10} />
             <span>Consulta: {formatApptDate(new Date(row.appointmentStartsAt))}</span>
@@ -534,30 +546,40 @@ function InboxCard({
 }
 
 function segmentRows(rows: ConvRow[], lastMsgMap: Record<string, { body: string; author: string }>) {
-  const handoff  = rows.filter((r) => r.aiPaused && r.needsAttention);
-  const active   = rows.filter((r) => !r.aiPaused && r.leadStatus !== "lost" && r.leadStatus !== "won");
-  const paused   = rows.filter((r) => r.aiPaused && !r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won");
+  const handoff  = rows.filter((r) => r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won");
+  const active   = rows.filter((r) => !r.aiPaused && !r.needsAttention && !isRecoveryCandidate(r, lastMsgMap[r.convId]) && r.leadStatus !== "lost" && r.leadStatus !== "won");
+  const paused   = rows.filter((r) => r.aiPaused && !r.needsAttention && !isRecoveryCandidate(r, lastMsgMap[r.convId]) && r.leadStatus !== "lost" && r.leadStatus !== "won");
   const closed   = rows.filter((r) => r.leadStatus === "won" || r.leadStatus === "lost");
   const recovery = rows.filter((r) => isRecoveryCandidate(r, lastMsgMap[r.convId]));
   return { handoff, active, paused, closed, recovery };
+}
+
+function categoryRows(rows: ConvRow[], category: InboxCategoryScope): ConvRow[] {
+  return rows.filter((row) => row.conversationCategory === category);
 }
 
 export function InboxClient({
   rows,
   lastMsgMap,
   autoReplyEnabled,
+  initialScope = "sales",
+  initialTab = "all",
 }: {
   rows: ConvRow[];
   lastMsgMap: Record<string, { body: string; author: string }>;
   autoReplyEnabled: boolean;
+  initialScope?: InboxCategoryScope;
+  initialTab?: LiveInboxTabFilter | "recovery";
 }) {
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<LiveInboxTabFilter | "recovery">("all");
+  const [scope, setScope] = useState<InboxCategoryScope>(initialScope);
+  const [tab, setTab] = useState<LiveInboxTabFilter | "recovery">(initialTab);
 
-  const { handoff, active, paused, closed, recovery } = segmentRows(rows, lastMsgMap);
+  const salesRows = categoryRows(rows, "sales");
+  const { handoff, active, paused, recovery } = segmentRows(salesRows, lastMsgMap);
   const allLive = [...handoff, ...active, ...paused];
   const totalActive = handoff.length + active.length;
-  const totalAll = allLive.length + closed.length;
+  const totalAll = rows.length;
 
   if (totalAll === 0) {
     return (
@@ -576,6 +598,14 @@ export function InboxClient({
     );
   }
 
+  const CATEGORY_TABS: { key: InboxCategoryScope; label: string; count: number }[] = [
+    { key: "sales", label: "Comercial", count: salesRows.length },
+    { key: "operational", label: "Operacional", count: categoryRows(rows, "operational").length },
+    { key: "vendor", label: "Fornecedores", count: categoryRows(rows, "vendor").length },
+    { key: "spam", label: "Spam", count: categoryRows(rows, "spam").length },
+    { key: "archived", label: "Arquivadas", count: categoryRows(rows, "archived").length },
+  ];
+
   const TABS: { key: LiveInboxTabFilter | "recovery"; label: string; count: number }[] = [
     { key: "all",       label: "Todas",       count: allLive.length },
     { key: "hot",       label: "Quentes",     count: allLive.filter((r) => r.leadTemperature === "hot").length },
@@ -585,9 +615,14 @@ export function InboxClient({
     { key: "recovery",  label: "Recuperação", count: recovery.length },
   ];
 
-  const isRecoveryTab = tab === "recovery";
-  const baseRows = isRecoveryTab ? [] : filterLiveRowsByTab(allLive, tab as LiveInboxTabFilter);
+  const isSalesScope = scope === "sales";
+  const isRecoveryTab = isSalesScope && tab === "recovery";
+  const scopedRows = isSalesScope ? allLive : categoryRows(rows, scope);
+  const baseRows = isRecoveryTab
+    ? []
+    : (isSalesScope ? filterLiveRowsByTab(scopedRows, tab as LiveInboxTabFilter) : scopedRows);
   const sortedRows = isRecoveryTab ? [] : sortInboxRowsByRecency(filterBySearch(baseRows, search));
+  const scopeLabel = conversationCategoryLabel(scope).toLowerCase();
 
   return (
     <>
@@ -610,22 +645,44 @@ export function InboxClient({
         </div>
       </div>
 
-      <div className="inbox-tabs-bar">
-        {TABS.map(({ key, label, count }) => (
+      <div className="inbox-tabs-bar" style={{ paddingBottom: 0 }}>
+        {CATEGORY_TABS.map(({ key, label, count }) => (
           <button
             key={key}
-            className={`inbox-tab-pill${tab === key ? " active" : ""}`}
-            onClick={() => setTab(key)}
+            className={`inbox-tab-pill${scope === key ? " active" : ""}`}
+            onClick={() => {
+              setScope(key);
+              setTab("all");
+            }}
           >
             {label}
             {count > 0 && (
-              <span className={`inbox-tab-count${tab === key ? " active" : ""}`}>
+              <span className={`inbox-tab-count${scope === key ? " active" : ""}`}>
                 {count}
               </span>
             )}
           </button>
         ))}
       </div>
+
+      {isSalesScope && (
+        <div className="inbox-tabs-bar">
+          {TABS.map(({ key, label, count }) => (
+            <button
+              key={key}
+              className={`inbox-tab-pill${tab === key ? " active" : ""}`}
+              onClick={() => setTab(key)}
+            >
+              {label}
+              {count > 0 && (
+                <span className={`inbox-tab-count${tab === key ? " active" : ""}`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="inbox-search-bar">
         <Search size={13} style={{ color: "var(--muted)", flexShrink: 0 }} />
@@ -668,7 +725,9 @@ export function InboxClient({
               size={28}
               style={{ margin: "0 auto 12px", display: "block", opacity: 0.3 }}
             />
-            <p style={{ margin: 0 }}>Nenhuma conversa encontrada.</p>
+            <p style={{ margin: 0 }}>
+              {isSalesScope ? "Nenhuma conversa encontrada." : `Nenhuma conversa em ${scopeLabel}.`}
+            </p>
           </div>
         ) : (
           <div className="conversation-grid">
