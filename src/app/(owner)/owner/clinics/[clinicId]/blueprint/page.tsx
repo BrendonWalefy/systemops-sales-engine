@@ -28,8 +28,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { buildClinicBlueprint, type BlueprintSection } from "@/application/onboarding/clinic-blueprint";
-import { clinicHasModule, getModuleConfig } from "@/application/modules/module-gate";
-import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import { getClinicVoiceBlueprintState } from "@/application/modules/module-gate";
 
 type Params = Promise<{ clinicId: string }>;
 
@@ -149,9 +148,8 @@ export default async function BlueprintPage({ params }: { params: Params }) {
 
   if (!clinic) notFound();
 
-  const [hasVoiceTts, elevenLabsConfig, activePlaybook, clinicTreatments] = await Promise.all([
-    clinicHasModule(clinicId, "voice_tts"),
-    getModuleConfig<VoiceElevenLabsConfig>(clinicId, "voice_elevenlabs"),
+  const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
+    getClinicVoiceBlueprintState(clinicId),
     db.query.playbookVersions.findFirst({
       where: and(
         eq(playbookVersions.clinicId, clinicId),
@@ -172,15 +170,10 @@ export default async function BlueprintPage({ params }: { params: Params }) {
     }),
   ]);
 
-  const hasElevenLabsTts = !!elevenLabsConfig?.voiceId;
-  const elevenLabsNeedsVoiceId = elevenLabsConfig !== null && !elevenLabsConfig?.voiceId;
-
   const blueprint = buildClinicBlueprint({
     clinic: {
       ...clinic,
-      hasTtsConfig: hasVoiceTts,
-      hasElevenLabsTts,
-      elevenLabsNeedsVoiceId,
+      ...voiceState,
     },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,

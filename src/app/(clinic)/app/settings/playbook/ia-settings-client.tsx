@@ -11,6 +11,7 @@ import {
   createPlaybookVersion,
   updateClinicOperationalSettings,
   updateVoiceModuleConfig,
+  updateBWaveConfig,
   updateBWaveSpeed,
 } from "./playbook-version-actions";
 import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
@@ -446,6 +447,7 @@ function GeralTab({
   const voiceModuleActive = !!voiceMod;
   const bwaveMod = clinic.activeModules.find((m) => m.key === "voice_elevenlabs");
   const bwaveActive = !!bwaveMod;
+  const audioResponseActive = voiceModuleActive || bwaveActive;
   const bwaveConfig = bwaveMod?.config as VoiceElevenLabsConfig | null | undefined;
   const bwaveMode: VoiceMode = bwaveConfig?.mode ?? "impact";
   const conciergeModuleActive = clinic.activeModules.some((m) => m.key === "concierge_mode");
@@ -453,12 +455,27 @@ function GeralTab({
 
   const [enabled, setEnabled] = useState(clinic.autoReplyEnabled ?? false);
   const [togglePending, startToggleTransition] = useTransition();
+  const [bwaveDraft, setBwaveDraft] = useState<VoiceElevenLabsConfig>({
+    voiceId: bwaveConfig?.voiceId ?? "",
+    stability: bwaveConfig?.stability ?? 0.5,
+    similarityBoost: bwaveConfig?.similarityBoost ?? 0.75,
+    speed: bwaveConfig?.speed ?? 1.0,
+    mode: bwaveConfig?.mode ?? "impact",
+  });
   const [bwaveSpeed, setBwaveSpeed] = useState(bwaveConfig?.speed ?? 1.0);
   const [bwaveSpeedPending, startBwaveSpeedTransition] = useTransition();
+  const [bwaveConfigPending, startBwaveConfigTransition] = useTransition();
 
   function handleBwaveSpeedChange(speed: number) {
     setBwaveSpeed(speed);
+    setBwaveDraft((current) => ({ ...current, speed }));
     startBwaveSpeedTransition(async () => { await updateBWaveSpeed(speed); });
+  }
+
+  function handleSaveBwaveConfig() {
+    startBwaveConfigTransition(async () => {
+      await updateBWaveConfig(bwaveDraft);
+    });
   }
 
   const [ttsConfig, setTtsConfig] = useState<{ provider: string; speed: number }>(
@@ -619,19 +636,23 @@ function GeralTab({
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                   <strong style={{ fontSize: "14px", fontWeight: 600, color: "#fafafa" }}>Resposta por Voz</strong>
-                  <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(voiceModuleActive ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
-                    {voiceModuleActive ? "Ativa" : "Inativa"}
+                  <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "5px", ...(audioResponseActive ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" } : { background: "rgba(255,255,255,0.05)", color: "#71717a", border: "1px solid rgba(255,255,255,0.08)" }) }}>
+                    {audioResponseActive ? "Ativa" : "Inativa"}
                   </span>
                 </div>
                 <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>
-                  {voiceModuleActive ? "IA envia áudios de voz em vez de texto" : "Para ativar este módulo, fale com o suporte"}
+                  {bwaveActive
+                    ? "B-WAVE Voice está ativa e tem prioridade sobre a voz básica."
+                    : voiceModuleActive
+                      ? "IA envia áudios de voz em vez de texto."
+                      : "Para ativar este módulo, fale com o suporte."}
                 </p>
               </div>
             </div>
-            <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />
+            {!audioResponseActive && <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />}
           </div>
 
-        {voiceModuleActive && (
+        {voiceModuleActive && !bwaveActive && (
           <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: "12px" }}>
             {/* Seletor de provider — empilhado, funciona em qualquer largura */}
             <div>
@@ -695,6 +716,14 @@ function GeralTab({
             </div>
           </div>
         )}
+
+        {bwaveActive && !voiceModuleActive && (
+          <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <p style={{ margin: 0, fontSize: "11px", color: "#34d399", fontWeight: 600 }}>
+              O áudio está sendo gerenciado pelo B-WAVE Voice abaixo.
+            </p>
+          </div>
+        )}
         </div>
       </div>
 
@@ -741,13 +770,75 @@ function GeralTab({
           {/* Estado ativo — controles da clínica */}
           {bwaveActive && (
             <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(16,185,129,0.1)", display: "flex", flexDirection: "column", gap: "14px" }}>
-              {/* Info de modo (somente leitura) */}
-              <div style={{ padding: "8px 12px", borderRadius: "8px", background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)", display: "flex", alignItems: "center", gap: "8px" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: "#34d399", flexShrink: 0 }}>
-                  <path d="M2 12 Q4 4, 6 12 Q8 20, 10 12 Q12 4, 14 12 Q16 20, 18 12 Q20 4, 22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
-                </svg>
-                <span style={{ fontSize: "12px", color: "#34d399", fontWeight: 600 }}>{VOICE_MODE_LABELS[bwaveMode].label}</span>
-                <span style={{ fontSize: "11px", color: "#52525b" }}>· configurado pela equipe SystemOps</span>
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: "10px" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <span style={{ fontSize: "11px", color: "#71717a", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Voice ID</span>
+                  <input
+                    value={bwaveDraft.voiceId}
+                    onChange={(e) => setBwaveDraft((current) => ({ ...current, voiceId: e.target.value }))}
+                    placeholder="GM2UA3fbsIaLHcswCDX9"
+                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#fafafa", fontSize: "12px", padding: "8px 10px", fontFamily: "monospace" }}
+                  />
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <span style={{ fontSize: "11px", color: "#71717a", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Stability</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={bwaveDraft.stability}
+                    onChange={(e) => setBwaveDraft((current) => ({ ...current, stability: Number(e.target.value) }))}
+                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#fafafa", fontSize: "12px", padding: "8px 10px" }}
+                  />
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <span style={{ fontSize: "11px", color: "#71717a", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Similarity Boost</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={bwaveDraft.similarityBoost}
+                    onChange={(e) => setBwaveDraft((current) => ({ ...current, similarityBoost: Number(e.target.value) }))}
+                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#fafafa", fontSize: "12px", padding: "8px 10px" }}
+                  />
+                </label>
+              </div>
+
+              <div>
+                <p style={{ margin: "0 0 8px", fontSize: "11px", color: "#71717a", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Modo B-WAVE</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {(["impact", "mix", "full"] as VoiceMode[]).map((mode) => {
+                    const selected = bwaveDraft.mode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setBwaveDraft((current) => ({ ...current, mode }))}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "10px",
+                          padding: "10px 12px",
+                          borderRadius: "8px",
+                          border: selected ? "1px solid rgba(16,185,129,0.22)" : "1px solid rgba(255,255,255,0.06)",
+                          background: selected ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ width: "8px", height: "8px", marginTop: "5px", borderRadius: "999px", background: selected ? "#34d399" : "#3f3f46", flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontSize: "12px", fontWeight: 600, color: "#fafafa" }}>{VOICE_MODE_LABELS[mode].label}</div>
+                          <div style={{ fontSize: "11px", color: "#71717a", marginTop: "2px" }}>{VOICE_MODE_LABELS[mode].description}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Speed slider */}
@@ -773,6 +864,27 @@ function GeralTab({
                   <span style={{ fontSize: "10px", color: "#3f3f46" }}>mais calma</span>
                   <span style={{ fontSize: "10px", color: "#3f3f46" }}>mais dinâmica</span>
                 </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={handleSaveBwaveConfig}
+                  disabled={bwaveConfigPending}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    border: "1px solid rgba(16,185,129,0.28)",
+                    background: "rgba(16,185,129,0.08)",
+                    color: "#34d399",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: bwaveConfigPending ? "default" : "pointer",
+                    opacity: bwaveConfigPending ? 0.7 : 1,
+                  }}
+                >
+                  {bwaveConfigPending ? "Salvando..." : "Salvar configuração B-WAVE"}
+                </button>
               </div>
             </div>
           )}
@@ -815,10 +927,12 @@ function GeralTab({
               <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#52525b" }}>
                 {conciergeModuleActive ? "IA conversa naturalmente, sem menu" : "IA apresenta menu de opções ao lead"}
               </p>
-              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#3f3f46" }}>Para alterar o modo, fale com o suporte</p>
+              <p style={{ margin: "4px 0 0", fontSize: "11px", color: conciergeModuleActive ? "#34d399" : "#3f3f46" }}>
+                {conciergeModuleActive ? "Modo concierge liberado e ativo no seu plano." : "Para alterar o modo, fale com o suporte."}
+              </p>
             </div>
           </div>
-          <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />
+          {!conciergeModuleActive && <Lock size={14} style={{ color: "#3f3f46", flexShrink: 0 }} />}
         </div>
       </div>
 

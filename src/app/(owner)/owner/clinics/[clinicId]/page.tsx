@@ -33,7 +33,10 @@ import {
 } from "lucide-react";
 import { hashPassword } from "@/lib/password";
 import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
-import { applyClinicPlanPreset, clinicHasModule } from "@/application/modules/module-gate";
+import {
+  applyClinicPlanPreset,
+  getClinicVoiceBlueprintState,
+} from "@/application/modules/module-gate";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
 import {
   getClinicOperationalStatusColors,
@@ -178,8 +181,8 @@ async function activateClinicGoLive(clinicId: string) {
     redirect(`/owner/clinics/${clinicId}?goLiveError=cancelled`);
   }
 
-  const [hasVoiceTts, activePlaybook, clinicTreatments] = await Promise.all([
-    clinicHasModule(clinicId, "voice_tts"),
+  const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
+    getClinicVoiceBlueprintState(clinicId),
     db.query.playbookVersions.findFirst({
       where: and(
         eq(playbookVersions.clinicId, clinicId),
@@ -203,7 +206,7 @@ async function activateClinicGoLive(clinicId: string) {
   ]);
 
   const blueprint = buildClinicBlueprint({
-    clinic: { ...clinic, hasTtsConfig: hasVoiceTts },
+    clinic: { ...clinic, ...voiceState },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,
       commercialPolicy: activePlaybook?.commercialPolicy ?? null,
@@ -290,8 +293,8 @@ export default async function ClinicDetailPage({
     .limit(1);
   if (!clinic) notFound();
 
-  const [hasVoiceTtsMain, activePlaybook, clinicTreatments] = await Promise.all([
-    clinicHasModule(clinicId, "voice_tts"),
+  const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
+    getClinicVoiceBlueprintState(clinicId),
     db.query.playbookVersions.findFirst({
       where: and(
         eq(playbookVersions.clinicId, clinicId),
@@ -315,7 +318,7 @@ export default async function ClinicDetailPage({
   ]);
 
   const blueprint = buildClinicBlueprint({
-    clinic: { ...clinic, hasTtsConfig: hasVoiceTtsMain },
+    clinic: { ...clinic, ...voiceState },
     playbook: {
       toneOfVoice: activePlaybook?.toneOfVoice ?? null,
       commercialPolicy: activePlaybook?.commercialPolicy ?? null,

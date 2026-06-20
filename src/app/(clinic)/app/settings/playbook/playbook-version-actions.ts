@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import type { MenuItem } from "@/domain/entities/clinic";
 import { publishablePlaybookSchema } from "@/application/config/editorial-config";
 import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import type { VoiceMode } from "@/domain/entities/voice-mode";
 
 
 type PlaybookVersionData = {
@@ -241,6 +242,37 @@ export async function updateBWaveSpeed(speed: number) {
       ),
     );
   revalidatePath("/app/settings/playbook");
+}
+
+export async function updateBWaveConfig(config: VoiceElevenLabsConfig) {
+  const CLINIC_ID = await requireSessionClinicId();
+  const mode: VoiceMode =
+    config.mode === "mix" || config.mode === "full" ? config.mode : "impact";
+
+  await db
+    .update(clinicModules)
+    .set({
+      config: {
+        voiceId: config.voiceId.trim(),
+        stability: Math.min(1, Math.max(0, config.stability)),
+        similarityBoost: Math.min(1, Math.max(0, config.similarityBoost)),
+        speed: Math.min(1.2, Math.max(0.7, config.speed)),
+        mode,
+      },
+      updatedAt: new Date(),
+      updatedBy: "clinic_admin",
+    })
+    .where(
+      and(
+        eq(clinicModules.clinicId, CLINIC_ID),
+        eq(clinicModules.moduleKey, "voice_elevenlabs"),
+      ),
+    );
+
+  revalidatePath("/app/settings/playbook");
+  revalidatePath(`/owner/clinics/${CLINIC_ID}`);
+  revalidatePath(`/owner/clinics/${CLINIC_ID}/blueprint`);
+  revalidatePath(`/owner/clinics/${CLINIC_ID}/modules`);
 }
 
 export async function deletePlaybookVersion(id: string) {

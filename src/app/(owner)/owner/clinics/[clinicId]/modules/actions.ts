@@ -31,6 +31,8 @@ export async function toggleModule(
       target: [clinicModules.clinicId, clinicModules.moduleKey],
       set: { isActive, updatedBy: "owner", updatedAt: new Date() },
     });
+  revalidatePath(`/owner/clinics/${clinicId}`);
+  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
   revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }
 
@@ -49,6 +51,8 @@ export async function updateModuleConfig(
         eq(clinicModules.moduleKey, moduleKey),
       ),
     );
+  revalidatePath(`/owner/clinics/${clinicId}`);
+  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
   revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }
 
@@ -60,5 +64,6 @@ export async function updateClinicPlan(clinicId: string, plan: ClinicPlan) {
     .where(eq(clinics.id, clinicId));
   await applyClinicPlanPreset(clinicId, plan, "owner_modules");
   revalidatePath(`/owner/clinics/${clinicId}`);
+  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
   revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }

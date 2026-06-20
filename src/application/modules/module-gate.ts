@@ -17,6 +17,12 @@ export type ActiveModule = {
   config: Record<string, unknown> | null;
 };
 
+export type ClinicVoiceBlueprintState = {
+  hasTtsConfig: boolean;
+  hasElevenLabsTts: boolean;
+  elevenLabsNeedsVoiceId: boolean;
+};
+
 /**
  * Retorna todos os módulos ativos para uma clínica.
  * Chamada única por request — guarde o resultado em variável local.
@@ -79,6 +85,25 @@ export async function getModuleConfig<T = Record<string, unknown>>(
     .limit(1);
 
   return (row?.config as T) ?? null;
+}
+
+export async function getClinicVoiceBlueprintState(
+  clinicId: string,
+): Promise<ClinicVoiceBlueprintState> {
+  const [hasTtsConfig, hasElevenLabsModule, elevenLabsConfig] =
+    await Promise.all([
+      clinicHasModule(clinicId, "voice_tts"),
+      clinicHasModule(clinicId, "voice_elevenlabs"),
+      getModuleConfig<VoiceElevenLabsConfig>(clinicId, "voice_elevenlabs"),
+    ]);
+
+  const hasVoiceId = Boolean(elevenLabsConfig?.voiceId?.trim());
+
+  return {
+    hasTtsConfig,
+    hasElevenLabsTts: hasElevenLabsModule && hasVoiceId,
+    elevenLabsNeedsVoiceId: hasElevenLabsModule && !hasVoiceId,
+  };
 }
 
 /**

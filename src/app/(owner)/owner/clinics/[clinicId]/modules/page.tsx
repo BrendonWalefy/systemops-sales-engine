@@ -15,6 +15,20 @@ import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode"
 import { toggleModule, updateClinicPlan, updateModuleConfig } from "./actions";
 
 const PLAN_OPTIONS = ["essencial", "clinica", "rede", "custom"] as const;
+const CONFIGURABLE_MODULE_KEYS = ["voice_tts", "voice_elevenlabs"] as const;
+
+type ConfigurableModuleKey = (typeof CONFIGURABLE_MODULE_KEYS)[number];
+
+function resolveOpenModuleKey(value: string | undefined): ConfigurableModuleKey | null {
+  if ((CONFIGURABLE_MODULE_KEYS as readonly string[]).includes(value ?? "")) {
+    return value as ConfigurableModuleKey;
+  }
+  return null;
+}
+
+function isConfigurableModuleKey(key: ModuleKey): key is ConfigurableModuleKey {
+  return (CONFIGURABLE_MODULE_KEYS as readonly string[]).includes(key);
+}
 
 async function getData(clinicId: string) {
   const [clinic, moduleRows] = await Promise.all([
@@ -40,15 +54,21 @@ async function getData(clinicId: string) {
 
 export default async function ClinicModulesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ clinicId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { clinicId } = await params;
+  const sp = await searchParams;
   const { clinic, moduleRows } = await getData(clinicId);
   if (!clinic) notFound();
 
   const plan = clinic.plan as ClinicPlan;
   const moduleMap = new Map(moduleRows.map((r) => [r.moduleKey, r]));
+  const openModuleKey = resolveOpenModuleKey(
+    typeof sp.open === "string" ? sp.open : undefined,
+  );
 
   return (
     <div style={{ maxWidth: "680px", margin: "0 auto", padding: "24px 16px" }}>
@@ -115,12 +135,19 @@ export default async function ClinicModulesPage({
 
           const voiceTtsConfig = def.key === "voice_tts" ? (config as VoiceTtsConfig | null) : null;
           const elevenLabsConfig = def.key === "voice_elevenlabs" ? (config as VoiceElevenLabsConfig | null) : null;
-          const hasConfigPanel =
-            isActive && (def.key === "voice_tts" || def.key === "voice_elevenlabs");
+          const isConfigurable = isConfigurableModuleKey(def.key);
+          const showConfigPanel = isActive && isConfigurable && (
+            openModuleKey === def.key ||
+            (!openModuleKey && def.key === "voice_elevenlabs" && !elevenLabsConfig?.voiceId)
+          );
+          const configHref = openModuleKey === def.key
+            ? `/owner/clinics/${clinicId}/modules#module-${def.key}`
+            : `/owner/clinics/${clinicId}/modules?open=${def.key}#module-${def.key}`;
 
           return (
             <div
               key={def.key}
+              id={`module-${def.key}`}
               style={{
                 borderRadius: "10px",
                 border: "1px solid rgba(255,255,255,0.07)",
@@ -161,42 +188,66 @@ export default async function ClinicModulesPage({
                   <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#52525b" }}>{def.description}</p>
                 </div>
 
-                <form
-                  action={async () => {
-                    "use server";
-                    await toggleModule(clinicId, def.key as ModuleKey, !isActive);
-                  }}
-                >
-                  <button
-                    type="submit"
-                    style={{
-                      width: "44px",
-                      height: "24px",
-                      borderRadius: "12px",
-                      border: "none",
-                      background: isActive ? "#10b981" : "rgba(255,255,255,0.1)",
-                      cursor: "pointer",
-                      position: "relative",
-                      transition: "background 200ms",
-                      flexShrink: 0,
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+                  {isActive && isConfigurable && (
+                    <Link
+                      href={configHref}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: "8px",
+                        border: openModuleKey === def.key
+                          ? "1px solid rgba(16,185,129,0.28)"
+                          : "1px solid rgba(255,255,255,0.09)",
+                        background: openModuleKey === def.key
+                          ? "rgba(16,185,129,0.08)"
+                          : "rgba(255,255,255,0.03)",
+                        color: openModuleKey === def.key ? "#34d399" : "#a1a1aa",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                      }}
+                    >
+                      {openModuleKey === def.key ? "Ocultar" : "Configurar"}
+                    </Link>
+                  )}
+
+                  <form
+                    action={async () => {
+                      "use server";
+                      await toggleModule(clinicId, def.key as ModuleKey, !isActive);
                     }}
                   >
-                    <span style={{
-                      position: "absolute",
-                      top: "3px",
-                      left: isActive ? "23px" : "3px",
-                      width: "18px",
-                      height: "18px",
-                      borderRadius: "50%",
-                      background: "#fff",
-                      transition: "left 200ms",
-                    }} />
-                  </button>
-                </form>
+                    <button
+                      type="submit"
+                      style={{
+                        width: "44px",
+                        height: "24px",
+                        borderRadius: "12px",
+                        border: "none",
+                        background: isActive ? "#10b981" : "rgba(255,255,255,0.1)",
+                        cursor: "pointer",
+                        position: "relative",
+                        transition: "background 200ms",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span style={{
+                        position: "absolute",
+                        top: "3px",
+                        left: isActive ? "23px" : "3px",
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "50%",
+                        background: "#fff",
+                        transition: "left 200ms",
+                      }} />
+                    </button>
+                  </form>
+                </div>
               </div>
 
               {/* Config panel — voice_tts */}
-              {hasConfigPanel && def.key === "voice_tts" && (
+              {showConfigPanel && def.key === "voice_tts" && (
                 <form
                   action={async (formData: FormData) => {
                     "use server";
@@ -253,7 +304,7 @@ export default async function ClinicModulesPage({
               )}
 
               {/* Config panel — B-WAVE Voice */}
-              {hasConfigPanel && def.key === "voice_elevenlabs" && (
+              {showConfigPanel && def.key === "voice_elevenlabs" && (
                 <form
                   action={async (formData: FormData) => {
                     "use server";
