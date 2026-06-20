@@ -55,11 +55,24 @@ Branch atual: `feat/inbox-conversation-categories`
 
 ### 1. Produção
 
-- Fazer commit da branch atual
-- Equalizar com `develop`
-- Promover para `main`
-- Aplicar migrate em produção se necessário
-- Verificar deploy final
+- Status final:
+  - branch de trabalho consolidada em `develop`
+  - `develop` promovida para `main`
+  - produção publicada em:
+    - commit `c79428f`
+    - deploy Vercel `dpl_CeDWM91vRwohMhXtEFLN8xKpb2h1`
+    - URL canônica: `https://systemops-core.vercel.app`
+- Migração de produção:
+  - o ambiente estava com `SKIP_VERCEL_MIGRATIONS=true`, então a migration não rodava no build
+  - a execução direta de `scripts/migrate.ts` falhou inicialmente por drift antigo no ledger do Drizzle
+  - foi criado o script operacional `scripts/repair-prod-migration-history.ts`
+  - repair executado com sucesso via GitHub Actions:
+    - run `27865851429`
+  - validação do trilho normal de migrations executada com sucesso em seguida:
+    - run `27865873148`
+- Tentativas anteriores que falharam e já estão superadas:
+  - run `27865636973`
+  - run `27865775298`
 
 ### 2. Regras de negócio do funil pós-agendamento
 
@@ -123,6 +136,10 @@ QA pendente em produção:
 - validar densidade visual do dashboard com dados reais
 - validar se a tabela `Leads Recentes` ainda precisa virar uma lista mais acionável
 - validar se a ordem dos cards operacionais faz sentido para o doutor
+- avaliar, com uso real, se vale trocar parte da tabela por:
+  - ranking de recuperação
+  - gargalos do dia
+  - leads com maior chance de reagendamento
 
 ### 4. Agenda
 
@@ -146,6 +163,36 @@ QA pendente em produção:
 - Confirmar que chip de desconto aparece em desktop e mobile
 - Confirmar que `Pausar IA` não reaparece no composer
 - Confirmar que links do dashboard abrem o inbox já filtrado
+
+## Estado final desta entrega
+
+- `cancelled` e `no_show` agora alimentam recuperação em vez de permanecerem como conversa comercial ativa
+- conversas não comerciais agora podem ser categorizadas como:
+  - `operational`
+  - `vendor`
+  - `spam`
+  - `archived`
+- chips comerciais e automações foram limitados a `sales`
+- agenda abre em `Mês` por padrão
+- visão `Profissionais` ficou alinhada
+- bloqueios longos/full-day ficaram visualmente mais claros
+- dashboard entrou em produção com cards operacionais mais úteis
+- produção está publicada e com schema compatível
+
+## Oportunidades futuras
+
+- separar explicitamente no modelo:
+  - estágio comercial do lead
+  - outcome operacional do agendamento
+  - bucket visual do inbox
+- criar automações/atalhos para limpar ruído comercial:
+  - arquivar fornecedor
+  - marcar spam
+  - mover assunto operacional sem deixar contaminar funil
+- aprofundar dashboard para conversão:
+  - taxa de reagendamento pós no-show
+  - taxa de recuperação pós cancelamento
+  - fila diária de prioridades ordenada por impacto comercial
 
 ## Observações de arquitetura
 
