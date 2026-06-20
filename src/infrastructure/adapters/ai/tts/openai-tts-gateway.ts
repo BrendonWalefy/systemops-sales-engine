@@ -44,6 +44,28 @@ export function sanitizeForTts(text: string): string {
 
       return result;
     })
+    // Converte datas abreviadas por extenso (ex: 22/06 -> 22 de junho, 22/06/2026 -> 22 de junho de 2026)
+    .replace(/\b([0-2]?\d|3[01])\/(0?\d|1[0-2])(?:\/(\d{2,4}))?\b/g, (match, dayStr, monthStr, yearStr) => {
+      const day = parseInt(dayStr, 10);
+      const month = parseInt(monthStr, 10);
+      if (day === 0 || month === 0) return match;
+
+      // Evita confundir frações simples como "1/2" ou "3/4" com datas, a menos que venham com ano (ex: "1/2/26")
+      const isSingleDigitFraction = dayStr.length === 1 && monthStr.length === 1 && !yearStr;
+      if (isSingleDigitFraction) return match;
+
+      const monthsFull = [
+        "", "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+        "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+      ];
+
+      let result = `${day} de ${monthsFull[month]}`;
+      if (yearStr) {
+        const year = yearStr.length === 2 ? `20${yearStr}` : yearStr;
+        result += ` de ${year}`;
+      }
+      return result;
+    })
     // Remove emojis (blocos Unicode de símbolos e pictogramas)
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}]/gu, "")
     // Remove marcação WhatsApp: *negrito*, _itálico_, ~tachado~, `código`
