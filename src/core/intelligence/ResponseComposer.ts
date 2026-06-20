@@ -42,6 +42,9 @@ export type ActionResult =
   | { type: "slot_taken_reoffered"; newSlots: FormattedSlot[] }
   | { type: "reengagement"; lastAppointmentLabel: string }
   | { type: "appointment_reminder"; appointmentLabel: string }
+  | { type: "appointment_reminder_with_confirmation"; appointmentLabel: string }
+  | { type: "appointment_confirmation_accepted"; appointmentLabel: string }
+  | { type: "appointment_confirmation_rejected" }
   | { type: "evaluation_redirect"; treatmentName: string; evaluationSlots: FormattedSlot[] }
   | { type: "patient_arrived"; appointmentTime: Date | null }
   | { type: "media_received"; mediaType: "image" | "video" | "document" }
@@ -160,6 +163,9 @@ function isSchedulingOutputAllowed(type: ActionResult["type"]): boolean {
     "slot_taken_reoffered",
     "evaluation_redirect",
     "appointment_reminder",
+    "appointment_reminder_with_confirmation",
+    "appointment_confirmation_accepted",
+    "appointment_confirmation_rejected",
   ].includes(type);
 }
 
@@ -491,15 +497,42 @@ Exemplos de tom:
 - "Passou a ver o vídeo? Ainda temos agenda disponível — posso checar o horário que fica melhor para você."`;
 
     case "appointment_reminder":
-      return `AÇÃO EXECUTADA: Lembrete de consulta agendada para amanhã.
+      return `AÇÃO EXECUTADA: Lembrete de atendimento agendado para amanhã.
 CONSULTA: ${result.appointmentLabel}
 REGRAS OBRIGATÓRIAS:
 1. Mencione o horário EXATAMENTE como fornecido em CONSULTA — não reformule.
 2. Seja caloroso, breve e direto. Máximo 2 frases curtas.
-3. Não peça confirmação (a consulta já está confirmada). Apenas lembre.
+3. Não peça confirmação. Apenas lembre que a equipe estará esperando.
 4. Não mencione que a mensagem é automática.
-5. Inclua um toque humano — transmita que a equipe estará esperando.
 Exemplo de tom: "Olá [nome]! Lembrando que sua consulta é amanhã, [horário]. A equipe estará esperando por você 😊"`;
+
+    case "appointment_reminder_with_confirmation":
+      return `AÇÃO EXECUTADA: Lembrete de atendimento agendado para amanhã com pedido de confirmação de presença.
+CONSULTA: ${result.appointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Mencione o horário EXATAMENTE como fornecido em CONSULTA — não reformule.
+2. Seja caloroso, breve e direto. Máximo 3 frases curtas.
+3. Solicite explicitamente uma confirmação: peça para responder SIM para confirmar ou avisar caso precise cancelar ou remarcar.
+4. Não mencione que a mensagem é automática. Tom natural, como se fosse a recepcionista.
+5. Deixe claro que é fácil responder — uma palavra basta.
+Exemplo de tom: "Olá [nome]! Lembrando que sua consulta é amanhã, [horário]. Confirma a presença? Responda SIM ou avise se precisar remarcar 😊"`;
+
+    case "appointment_confirmation_accepted":
+      return `AÇÃO EXECUTADA: Lead confirmou presença no atendimento de amanhã.
+CONSULTA: ${result.appointmentLabel}
+REGRAS OBRIGATÓRIAS:
+1. Agradeça a confirmação de forma calorosa e breve. Máximo 2 frases.
+2. Transmita que a equipe estará esperando e que será um prazer atendê-lo(a).
+3. Não mencione que a mensagem é automática.
+Exemplo de tom: "Perfeito! Presença confirmada — a equipe estará te esperando amanhã no horário combinado 😊"`;
+
+    case "appointment_confirmation_rejected":
+      return `AÇÃO EXECUTADA: Lead informou que não poderá comparecer ao atendimento agendado.
+REGRAS OBRIGATÓRIAS:
+1. Demonstre compreensão e ofereça-se para ajudar a remarcar. Máximo 2 frases.
+2. Tom compreensivo e prestativo — sem cobranças.
+3. Não mencione que a mensagem é automática.
+Exemplo de tom: "Tudo bem, sem problemas! Quando quiser remarcar é só avisar — estamos aqui para te ajudar 😊"`;
   }
 }
 
