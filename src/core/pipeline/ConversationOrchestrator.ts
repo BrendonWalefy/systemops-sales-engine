@@ -378,6 +378,11 @@ function findTreatmentByIdOrName(
   const normalizedName = params.treatmentName ? normalizeFreeText(params.treatmentName) : null;
   if (!normalizedName) return null;
 
+  const byAlias = treatments.find((t) =>
+    (t.aliases ?? []).some((alias) => normalizeFreeText(alias) === normalizedName),
+  );
+  if (byAlias) return byAlias;
+
   return (
     treatments.find((t) => normalizeFreeText(t.name) === normalizedName) ??
     null
@@ -444,16 +449,28 @@ export function resolveInformationalTreatmentTarget(params: {
     : null;
   if (selectedTreatment) return selectedTreatment;
 
-  const classifiedTreatment = findTreatmentByIdOrName(params.treatments, {
-    treatmentName: params.identifiedTreatment ?? null,
-  });
-  if (classifiedTreatment) return classifiedTreatment;
-
-  return resolveDirectTreatmentMention(
+  const directMentionTreatment = resolveDirectTreatmentMention(
     params.message,
     params.treatments,
     params.lastAgentMessage,
   );
+
+  const classifiedTreatment = findTreatmentByIdOrName(params.treatments, {
+    treatmentName: params.identifiedTreatment ?? null,
+  });
+  if (classifiedTreatment) {
+    if (
+      directMentionTreatment &&
+      directMentionTreatment.id !== classifiedTreatment.id &&
+      directMentionTreatment.pipelineSteps?.length &&
+      !classifiedTreatment.pipelineSteps?.length
+    ) {
+      return directMentionTreatment;
+    }
+    return classifiedTreatment;
+  }
+
+  return directMentionTreatment;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.

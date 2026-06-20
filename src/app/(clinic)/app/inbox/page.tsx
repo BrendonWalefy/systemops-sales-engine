@@ -111,12 +111,13 @@ export default async function InboxPage({
       : Promise.resolve([]),
   ]);
 
-  const lastMsgMap: Record<string, { body: string; author: string }> = {};
+  const lastMsgMap: Record<string, { body: string; author: string; sentAt: Date | null }> = {};
   for (const msg of lastMessageRows) {
     if (!lastMsgMap[msg.conversationId]) {
       lastMsgMap[msg.conversationId] = {
         body: msg.body ?? "",
         author: msg.author ?? "",
+        sentAt: msg.sentAt ?? null,
       };
     }
   }
@@ -145,6 +146,7 @@ export default async function InboxPage({
     appointmentStartsAt: appointmentMap[r.leadId] ?? null,
     latestAppointmentStatus: latestAppointmentStatusMap[r.leadId] ?? null,
     latestAppointmentUpdatedAt: latestAppointmentUpdatedAtMap[r.leadId] ?? null,
+    latestMessageAt: lastMsgMap[r.convId]?.sentAt ?? r.lastMessageAt,
     hoursWaiting: r.lastMessageAt
       ? (now.getTime() - new Date(r.lastMessageAt).getTime()) / 3_600_000
       : 0,
@@ -155,6 +157,8 @@ export default async function InboxPage({
     conversationUpdatedAt: row.conversationUpdatedAt,
     leadUpdatedAt: row.leadUpdatedAt,
     lastMessageAt: row.lastMessageAt,
+    latestMessageAt: lastMsgMap[row.convId]?.sentAt ?? row.lastMessageAt,
+    latestMessageAuthor: lastMsgMap[row.convId]?.author ?? null,
     lastReadAt: row.lastReadAt,
     aiPaused: row.aiPaused,
     needsAttention: row.needsAttention,

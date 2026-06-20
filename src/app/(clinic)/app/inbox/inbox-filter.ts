@@ -15,7 +15,9 @@ export function filterBySearch(rows: ConvRow[], search: string): ConvRow[] {
 
 export function sortInboxRowsByRecency(rows: ConvRow[]): ConvRow[] {
   return [...rows].sort((a, b) => {
-    const diff = (b.lastMessageAt?.getTime() ?? 0) - (a.lastMessageAt?.getTime() ?? 0);
+    const diff =
+      (b.latestMessageAt?.getTime() ?? b.lastMessageAt?.getTime() ?? 0) -
+      (a.latestMessageAt?.getTime() ?? a.lastMessageAt?.getTime() ?? 0);
     if (diff !== 0) return diff;
 
     return a.convId.localeCompare(b.convId);

@@ -5,6 +5,8 @@ export type InboxSnapshotRow = {
   conversationUpdatedAt: DateLike;
   leadUpdatedAt: DateLike;
   lastMessageAt: DateLike;
+  latestMessageAt?: DateLike;
+  latestMessageAuthor?: string | null;
   lastReadAt: DateLike;
   aiPaused: boolean;
   needsAttention: boolean;
@@ -39,6 +41,8 @@ export function buildInboxSnapshotSignature(
       serializeDate(row.conversationUpdatedAt),
       serializeDate(row.leadUpdatedAt),
       serializeDate(row.lastMessageAt),
+      serializeDate(row.latestMessageAt),
+      row.latestMessageAuthor ?? "",
       serializeDate(row.lastReadAt),
       row.aiPaused ? "1" : "0",
       row.needsAttention ? "1" : "0",

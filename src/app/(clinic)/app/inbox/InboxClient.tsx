@@ -21,6 +21,7 @@ export type ConvRow = {
   convId: string;
   leadId: string;
   lastMessageAt: Date | null;
+  latestMessageAt?: Date | null;
   lastReadAt: Date | null;
   needsAttention: boolean;
   attentionReason: string | null;
@@ -152,7 +153,7 @@ function RecoveryModal({
   onClose,
 }: {
   row: ConvRow;
-  lastMsg: { body: string; author: string };
+  lastMsg: { body: string; author: string; sentAt?: Date | null };
   onClose: () => void;
 }) {
   const [message, setMessage] = useState("");
@@ -353,7 +354,7 @@ function RecoveryCard({
   lastMsg,
 }: {
   row: ConvRow;
-  lastMsg: { body: string; author: string };
+  lastMsg: { body: string; author: string; sentAt?: Date | null };
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
@@ -381,23 +382,24 @@ function RecoveryCard({
             <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b" }}>{reason}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
+                {row.latestMessageAt
+                  ? relativeTime(new Date(row.latestMessageAt))
+                  : row.lastMessageAt
+                    ? relativeTime(new Date(row.lastMessageAt))
+                    : "—"}
               </span>
               <CategoryMoveButton convId={row.convId} currentCategory={row.conversationCategory} />
             </div>
           </div>
 
           <div className="inbox-card-v2-body">
-            <div
+            <LeadAvatar
+              profilePicUrl={row.leadProfilePicUrl}
+              displayName={displayName}
+              initial={initial}
+              accentColor={accentColor}
               className="avatar-v2"
-              style={{
-                background: `linear-gradient(145deg, color-mix(in srgb, ${accentColor} 22%, transparent), var(--surface-raised))`,
-                borderColor: accentColor,
-                color: accentColor,
-              }}
-            >
-              {initial}
-            </div>
+            />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {displayName}
@@ -511,7 +513,7 @@ function InboxCard({
   lastMsg,
 }: {
   row: ConvRow;
-  lastMsg: { body: string; author: string };
+  lastMsg: { body: string; author: string; sentAt?: Date | null };
 }) {
   const initial =
     row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0]?.toUpperCase() ?? "?";
@@ -551,7 +553,11 @@ function InboxCard({
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <CategoryMoveButton convId={row.convId} currentCategory={row.conversationCategory} />
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
-              {row.lastMessageAt ? relativeTime(new Date(row.lastMessageAt)) : "—"}
+              {row.latestMessageAt
+                ? relativeTime(new Date(row.latestMessageAt))
+                : row.lastMessageAt
+                  ? relativeTime(new Date(row.lastMessageAt))
+                  : "—"}
             </span>
             {hasUnread && <span className="unread-dot-v2" />}
           </div>
@@ -650,7 +656,7 @@ function InboxCard({
   );
 }
 
-function segmentRows(rows: ConvRow[], lastMsgMap: Record<string, { body: string; author: string }>) {
+function segmentRows(rows: ConvRow[], lastMsgMap: Record<string, { body: string; author: string; sentAt?: Date | null }>) {
   const handoff  = rows.filter((r) => r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won");
   const active   = rows.filter((r) => !r.aiPaused && !r.needsAttention && !isRecoveryCandidate(r, lastMsgMap[r.convId]) && r.leadStatus !== "lost" && r.leadStatus !== "won");
   const paused   = rows.filter((r) => r.aiPaused && !r.needsAttention && !isRecoveryCandidate(r, lastMsgMap[r.convId]) && r.leadStatus !== "lost" && r.leadStatus !== "won");
@@ -671,7 +677,7 @@ export function InboxClient({
   initialTab = "all",
 }: {
   rows: ConvRow[];
-  lastMsgMap: Record<string, { body: string; author: string }>;
+  lastMsgMap: Record<string, { body: string; author: string; sentAt?: Date | null }>;
   autoReplyEnabled: boolean;
   initialScope?: InboxCategoryScope;
   initialTab?: LiveInboxTabFilter | "recovery";
@@ -734,6 +740,7 @@ export function InboxClient({
     ? attentionRows
     : (isSalesScope ? filterLiveRowsByTab(scopedRows, tab as LiveInboxTabFilter) : scopedRows);
   const sortedRows = isRecoveryTab ? [] : sortInboxRowsByRecency(filterBySearch(baseRows, search));
+  const sortedRecovery = sortInboxRowsByRecency(filterBySearch(recovery, search));
   const scopeLabel = conversationCategoryLabel(scope).toLowerCase();
 
   return (
@@ -809,7 +816,7 @@ export function InboxClient({
 
       <div className="inbox-content">
         {isRecoveryTab ? (
-          recovery.length === 0 ? (
+          sortedRecovery.length === 0 ? (
             <div className="empty-state">
               <RefreshCw
                 size={28}
@@ -822,11 +829,11 @@ export function InboxClient({
             </div>
           ) : (
             <div className="conversation-grid">
-              {recovery.map((row) => (
+              {sortedRecovery.map((row) => (
                 <RecoveryCard
                   key={row.convId}
                   row={row}
-                  lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "" }}
+                  lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null }}
                 />
               ))}
             </div>
@@ -847,7 +854,7 @@ export function InboxClient({
               <InboxCard
                 key={row.convId}
                 row={row}
-                lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "" }}
+                lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null }}
               />
             ))}
           </div>

@@ -84,8 +84,7 @@ export function isRecoveryCandidate(
   const appointmentState = resolveAppointmentLifecycleState(row, lastMsg);
   if (row.leadStatus === "lost" || row.leadStatus === "won") return false;
   if (appointmentState === "cancelled" || appointmentState === "no_show") return true;
-  if (row.leadStatus === "follow_up_due") return true;
+  if (row.leadStatus === "follow_up_due") return lastMsg?.author !== "lead";
   if (row.aiPaused && row.takeoverExpiresAt && new Date(row.takeoverExpiresAt) < new Date()) return true;
   return !row.aiPaused && lastMsg?.author === "lead" && (row.hoursWaiting ?? 0) >= RECOVERY_WAIT_HOURS;
 }
-

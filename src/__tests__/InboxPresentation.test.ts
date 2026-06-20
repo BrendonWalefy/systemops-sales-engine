@@ -46,6 +46,16 @@ describe("inbox presentation rules", () => {
     expect(isRecoveryCandidate(row, { author: "lead" })).toBe(false);
   });
 
+  it("não mantém lead em recuperação quando ele voltou a falar após follow-up", () => {
+    const row = makeRow({
+      leadStatus: "follow_up_due",
+      lastMessageAt: new Date("2026-06-20T12:15:00.000Z"),
+      hoursWaiting: 0.1,
+    });
+
+    expect(isRecoveryCandidate(row, { author: "lead" })).toBe(false);
+  });
+
   it("leva consulta futura confirmada até o fim do pipeline", () => {
     const row = makeRow({
       leadStatus: "appointment_scheduled",
@@ -56,4 +66,3 @@ describe("inbox presentation rules", () => {
     expect(resolvePipelineIndex(row, { author: "agent" })).toBe(4);
   });
 });
-

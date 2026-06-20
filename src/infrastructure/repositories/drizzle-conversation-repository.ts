@@ -71,6 +71,15 @@ export class DrizzleConversationRepository implements ConversationRepository {
           deliveryFormat: message.deliveryFormat ?? null,
         })
         .onConflictDoNothing();
+
+      await db
+        .update(conversations)
+        .set(
+          message.author === "lead"
+            ? { lastMessageAt: message.sentAt, updatedAt: new Date() }
+            : { updatedAt: new Date() },
+        )
+        .where(eq(conversations.id, message.conversationId));
     } catch (err) {
       // Código 23503 = foreign_key_violation no PostgreSQL.
       // Ocorre quando a conversa foi deletada concorrentemente (ex: reset E2E)

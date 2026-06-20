@@ -8,6 +8,7 @@ function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
   return {
     leadId: "lead-1",
     lastMessageAt: new Date(),
+    latestMessageAt: undefined,
     lastReadAt: null,
     needsAttention: false,
     attentionReason: null,
@@ -112,6 +113,23 @@ describe("sortInboxRowsByRecency", () => {
     const result = sortInboxRowsByRecency([noTimestamp, recent]);
 
     expect(result.map((item) => item.convId)).toEqual(["recent", "no-ts"]);
+  });
+
+  it("prefere a atividade mais recente da conversa mesmo quando o último inbound do lead é mais antigo", () => {
+    const responded = row({
+      convId: "responded",
+      lastMessageAt: new Date("2026-06-11T10:00:00.000Z"),
+      latestMessageAt: new Date("2026-06-11T12:00:00.000Z"),
+    });
+    const waiting = row({
+      convId: "waiting",
+      lastMessageAt: new Date("2026-06-11T11:00:00.000Z"),
+      latestMessageAt: new Date("2026-06-11T11:00:00.000Z"),
+    });
+
+    const result = sortInboxRowsByRecency([waiting, responded]);
+
+    expect(result.map((item) => item.convId)).toEqual(["responded", "waiting"]);
   });
 });
 

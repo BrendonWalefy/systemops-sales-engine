@@ -7,7 +7,7 @@ import {
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 import type { Treatment } from "@/domain/entities/treatment";
 
-function treatment(name: string): Treatment {
+function treatment(name: string, overrides: Partial<Treatment> = {}): Treatment {
   return {
     id: name.toLowerCase().replace(/\s+/g, "-"),
     clinicId: "clinic-1",
@@ -26,6 +26,7 @@ function treatment(name: string): Treatment {
     maxPriceCents: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
   };
 }
 
@@ -114,6 +115,28 @@ describe("resolveInformationalTreatmentTarget", () => {
       identifiedTreatment: "Lentes de resina composta",
     });
     expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("prefere o tratamento com pipeline quando o classificador caiu em uma variante sem pipeline", () => {
+    const pipelineTreatment = treatment("Lentes de resina composta simplificada", {
+      aliases: ["lentes", "lente", "lentes de contato dental", "simplificada", "estratificada"],
+      pipelineSteps: [
+        {
+          type: "content",
+          label: "Intro",
+          blocks: [{ kind: "text", content: "Explicação consultiva das técnicas." }],
+        },
+      ],
+    });
+    const noPipelineVariant = treatment("Lentes de resina composta estratificada");
+
+    const result = resolveInformationalTreatmentTarget({
+      message: "lentes",
+      treatments: [pipelineTreatment, noPipelineVariant],
+      identifiedTreatment: "Lentes de resina composta estratificada",
+    });
+
+    expect(result?.name).toBe("Lentes de resina composta simplificada");
   });
 });
 

@@ -120,6 +120,48 @@ describe("buildInboxSnapshotSignature", () => {
     expect(changed).not.toBe(base);
   });
 
+  it("muda a assinatura quando muda a última atividade ou o autor da última mensagem", () => {
+    const base = buildInboxSnapshotSignature([{
+      convId: "a",
+      conversationUpdatedAt: "2026-06-16T11:00:00.000Z",
+      leadUpdatedAt: "2026-06-16T11:00:00.000Z",
+      lastMessageAt: "2026-06-16T10:55:00.000Z",
+      latestMessageAt: "2026-06-16T11:00:00.000Z",
+      latestMessageAuthor: "lead",
+      lastReadAt: null,
+      aiPaused: false,
+      needsAttention: false,
+      takeoverExpiresAt: null,
+      conversationCategory: "sales",
+      leadStatus: "active",
+      leadTemperature: "warm",
+      appointmentStartsAt: null,
+      latestAppointmentStatus: null,
+      latestAppointmentUpdatedAt: null,
+    }]);
+
+    const changed = buildInboxSnapshotSignature([{
+      convId: "a",
+      conversationUpdatedAt: "2026-06-16T11:00:00.000Z",
+      leadUpdatedAt: "2026-06-16T11:00:00.000Z",
+      lastMessageAt: "2026-06-16T10:55:00.000Z",
+      latestMessageAt: "2026-06-16T11:05:00.000Z",
+      latestMessageAuthor: "agent",
+      lastReadAt: null,
+      aiPaused: false,
+      needsAttention: false,
+      takeoverExpiresAt: null,
+      conversationCategory: "sales",
+      leadStatus: "active",
+      leadTemperature: "warm",
+      appointmentStartsAt: null,
+      latestAppointmentStatus: null,
+      latestAppointmentUpdatedAt: null,
+    }]);
+
+    expect(changed).not.toBe(base);
+  });
+
   it("muda a assinatura quando a categoria da conversa muda", () => {
     const sales = buildInboxSnapshotSignature([{
       convId: "a",

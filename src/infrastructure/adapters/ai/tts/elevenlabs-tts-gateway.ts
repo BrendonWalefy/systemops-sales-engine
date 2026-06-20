@@ -6,8 +6,8 @@ const ELEVENLABS_API = "https://api.elevenlabs.io/v1/text-to-speech";
 const DEFAULT_VOICE_ID = "GM2UA3fbsIaLHcswCDX9";
 const MODEL_ID = "eleven_flash_v2_5";
 const TIMEOUT_MS = 25_000;
-// OGG/OPUS: aparece como nota de voz nativa no WhatsApp (waveform + ícone microfone)
-const OUTPUT_FORMAT = "ogg_48000_128";
+// OPUS em container OGG: formato suportado pela ElevenLabs e aceito como nota de voz no WhatsApp.
+const OUTPUT_FORMAT = "opus_48000_128";
 
 export class ElevenLabsTtsGateway implements TtsGateway {
   constructor(
