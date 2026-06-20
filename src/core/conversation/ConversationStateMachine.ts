@@ -158,12 +158,13 @@ export class ConversationStateMachine {
     treatmentName?: string,
     durationMinutes?: number,
     ttlMinutes?: number,
+    voiceEnabled?: boolean,
   ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
       startsAt: s.startsAt.toISOString(),
       endsAt: s.endsAt.toISOString(),
-      label: timezone.formatForHuman(s.startsAt),
+      label: voiceEnabled ? timezone.formatForVoice(s.startsAt) : timezone.formatForHuman(s.startsAt),
     }));
 
     const expiresAt = new Date(Date.now() + (ttlMinutes ?? SLOT_OFFER_TTL_MINUTES) * 60_000);

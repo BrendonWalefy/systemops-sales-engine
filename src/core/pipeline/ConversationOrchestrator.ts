@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
-import { eq, and, or, count, gte, lt, isNull } from "drizzle-orm";
+import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
   resolveWhatsAppChannelAddress,
@@ -1615,6 +1615,31 @@ export class ConversationOrchestrator {
 
     const { intent, slotPreference } = classification;
 
+    // ── Interceptor: resposta de tratamento após clarificação de agendamento ──
+    // Quando a AI perguntou "qual procedimento você gostaria de realizar?" e o lead
+    // respondeu com um nome de tratamento (ex: "lentes"), o IntentClassifier classifica
+    // como general_question porque a mensagem sozinha parece informativa. Aqui detectamos
+    // esse padrão e redirecionamos para check_availability para buscar slots reais — sem
+    // isso, o ResponseComposer alucinaria horários inventados.
+    let effectiveIntent = intent;
+    let clarificationTreatmentName: string | null = null;
+    if (
+      intent === "general_question" &&
+      !hasPendingOffer &&
+      !pipelineState &&
+      didAgentAskForProcedure(lastAgentMessage?.body)
+    ) {
+      const matchedFromClarification = matchTreatmentByNormalizedMessage(
+        normalizeFreeText(messageText),
+        clinicTreatments,
+        TREATMENT_SCHEDULING_STOPWORDS,
+      );
+      if (matchedFromClarification) {
+        effectiveIntent = "check_availability";
+        clarificationTreatmentName = matchedFromClarification.name;
+      }
+    }
+
     // ── 7. Executa ação e compõe resposta ──
     let replyText = "";
     let composerInputTokens = 0;
@@ -1708,7 +1733,7 @@ export class ConversationOrchestrator {
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
-    } else switch (intent) {
+    } else switch (effectiveIntent) {
       // ── Confirmação de slot ──
       case "confirm_slot": {
         // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
@@ -1726,9 +1751,10 @@ export class ConversationOrchestrator {
               const { slots: redirectSlots, preferredDayEmpty: rdEmpty, outsideBookingWindow: rdOutside, outsideBusinessHours: rdNotOpen, preferredPeriodUnavailable: rdPeriod } = await this.fetchAndOfferSlots(
                 conversation.id, clinic, calendarGateway, timezone, businessHours,
                 slotPreference.preferredDate, slotPreference.preferredPeriod ?? undefined,
+                undefined, undefined, undefined, voiceEnabled,
               );
               if (rdOutside) {
-                replyText = await compose({ type: "clarification_needed", question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?" });
+                replyText = await compose({ type: "clarification_needed", question: "Só consigo ver horários com até ${clinic.slotLookaheadDays} dias de antecedência. Tem algum dia mais próximo que funcione para você?" });
               } else if (rdNotOpen) {
                 replyText = await compose({ type: "clarification_needed", question: "O atendimento de hoje já encerrou. Posso verificar os horários de amanhã ou outro dia para você?" });
               } else if (rdPeriod) {
@@ -1762,6 +1788,7 @@ export class ConversationOrchestrator {
               calendarGateway,
               timezone,
               businessHours,
+              undefined, undefined, undefined, undefined, undefined, voiceEnabled,
             );
             replyText = freshSlots.length > 0
               ? await compose({ type: "slots_expired", freshSlots })
@@ -1816,6 +1843,7 @@ export class ConversationOrchestrator {
             calendarGateway,
             timezone,
             businessHours,
+            undefined, undefined, undefined, undefined, undefined, voiceEnabled,
           );
           if (newSlots.length > 0) {
             replyText = await compose({ type: "slot_taken_reoffered", newSlots });
@@ -1850,11 +1878,12 @@ export class ConversationOrchestrator {
             undefined,
             previousTreatment?.treatmentName,
             previousTreatment?.durationMinutes,
+            voiceEnabled,
           );
           if (rejectOutside) {
             replyText = await compose({
               type: "clarification_needed",
-              question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?",
+              question: "Só consigo ver horários com até ${clinic.slotLookaheadDays} dias de antecedência. Tem algum dia mais próximo que funcione para você?",
             });
           } else if (rejectNotOpen) {
             replyText = await compose({
@@ -1917,11 +1946,12 @@ export class ConversationOrchestrator {
         });
 
         // Resolve tratamento e duração do slot.
-        // Usa lead.treatmentInterest como fallback para evitar pedir "qual procedimento?"
-        // quando o tratamento já foi estabelecido em mensagens anteriores da conversa.
+        // clarificationTreatmentName: tratamento extraído quando a AI perguntou "qual procedimento?"
+        // e o lead respondeu com o nome — não é detectado pelo resolveSchedulingTreatmentTarget normal.
         const effectiveTreatment =
           schedulingTreatment?.name ??
           slotPreference.identifiedTreatment ??
+          clarificationTreatmentName ??
           lead.treatmentInterest ??
           null;
         const resolution = resolveTreatmentDuration(
@@ -1955,6 +1985,7 @@ export class ConversationOrchestrator {
               slotPreference.preferredTime ?? undefined,
               evalName,
               evalDuration,
+              voiceEnabled,
             );
             replyText = evalSlots.length > 0
               ? await compose({ type: "evaluation_redirect", treatmentName: resolution.treatmentName, evaluationSlots: evalSlots })
@@ -1977,12 +2008,13 @@ export class ConversationOrchestrator {
           slotPreference.preferredTime ?? undefined,
           resolvedTreatmentName,
           resolvedDurationMinutes,
+          voiceEnabled,
         );
 
         if (outsideBookingWindow) {
           replyText = await compose({
             type: "clarification_needed",
-            question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?",
+            question: "Só consigo ver horários com até ${clinic.slotLookaheadDays} dias de antecedência. Tem algum dia mais próximo que funcione para você?",
           });
         } else if (outsideBusinessHours) {
           replyText = await compose({
@@ -2063,12 +2095,13 @@ export class ConversationOrchestrator {
           slotPreference.preferredTime ?? undefined,
           rescheduleOfferedTreatment?.treatmentName,
           rescheduleOfferedTreatment?.durationMinutes,
+          voiceEnabled,
         );
 
         if (rescheduleOutside) {
           replyText = await compose({
             type: "clarification_needed",
-            question: "Só consigo ver horários com até 14 dias de antecedência. Tem algum dia mais próximo que funcione para você?",
+            question: "Só consigo ver horários com até ${clinic.slotLookaheadDays} dias de antecedência. Tem algum dia mais próximo que funcione para você?",
           });
         } else if (rescheduleNotOpen) {
           replyText = await compose({
@@ -2841,6 +2874,7 @@ export class ConversationOrchestrator {
     preferredTime?: string,
     treatmentName?: string,
     slotDurationMinutes?: number,
+    voiceEnabled?: boolean,
   ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean; outsideBookingWindow: boolean; outsideBusinessHours: boolean; preferredPeriodUnavailable: boolean }> {
     const from = this.slotWindowStart();
     const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
@@ -2855,13 +2889,14 @@ export class ConversationOrchestrator {
 
     // Remove slots que conflitam com appointments locais (inclui blocos sintéticos de E2E
     // que não existem no Google Calendar e appointments reais como defesa contra lag da API).
+    // Inclui "confirmed" porque appointments confirmados via fluxo D-1 também bloqueiam o slot.
     const localAppointments = await db
       .select({ startsAt: appointmentsTable.startsAt, endsAt: appointmentsTable.endsAt })
       .from(appointmentsTable)
       .where(
         and(
           eq(appointmentsTable.clinicId, clinic.id),
-          eq(appointmentsTable.status, "scheduled"),
+          inArray(appointmentsTable.status, ["scheduled", "confirmed"]),
           lt(appointmentsTable.startsAt, to),
           gte(appointmentsTable.endsAt, from),
         ),
@@ -2975,12 +3010,12 @@ export class ConversationOrchestrator {
         index: i + 1,
         startsAt: s.startsAt.toISOString(),
         endsAt: s.endsAt.toISOString(),
-        label: timezone.formatForHuman(s.startsAt),
+        label: voiceEnabled ? timezone.formatForVoice(s.startsAt) : timezone.formatForHuman(s.startsAt),
       }));
       return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
     }
 
-    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes);
+    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes, voiceEnabled);
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 

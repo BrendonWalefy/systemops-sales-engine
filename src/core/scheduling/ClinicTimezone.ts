@@ -31,6 +31,16 @@ const WEEKDAY_PT: Record<number, string> = {
   0: "Dom", 1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex", 6: "Sáb",
 };
 
+const WEEKDAY_FULL_PT: Record<number, string> = {
+  0: "Domingo", 1: "Segunda-feira", 2: "Terça-feira", 3: "Quarta-feira",
+  4: "Quinta-feira", 5: "Sexta-feira", 6: "Sábado",
+};
+
+const MONTH_FULL_PT: Record<number, string> = {
+  1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril", 5: "maio", 6: "junho",
+  7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro",
+};
+
 // Meses em pt-BR normalizados (sem acento) → índice 0-based
 const MONTH_NAME_PT: Record<string, number> = {
   janeiro: 0, fevereiro: 1, marco: 2, abril: 3, maio: 4, junho: 5,
@@ -124,6 +134,17 @@ export class ClinicTimezone {
     const m = String(month).padStart(2, "0");
     const time = p.minute === 0 ? `${p.hour}h` : `${p.hour}h${String(p.minute).padStart(2, "0")}`;
     return `${WEEKDAY_PT[p.weekday]} ${d}/${m} às ${time}`;
+  }
+
+  // "Segunda-feira, 22 de junho, às 8 horas" — para TTS/voz (evita abreviações que o ElevenLabs lê mal)
+  formatForVoice(utc: Date): string {
+    const p = this.toLocalParts(utc);
+    const month = MONTH_FULL_PT[p.month + 1];
+    const day = WEEKDAY_FULL_PT[p.weekday];
+    const time = p.minute === 0
+      ? `${p.hour} horas`
+      : `${p.hour} horas e ${String(p.minute).padStart(2, "0")} minutos`;
+    return `${day}, ${p.day} de ${month}, às ${time}`;
   }
 
   // "segunda-feira, 26 de maio às 14h" — para confirmações mais formais
