@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2, Bell } from "lucide-react";
+import { Settings2, Workflow, Users, LogOut, Camera, X, ChevronRight, Loader2, Bell, LayoutGrid } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { uploadAvatar, removeAvatar } from "@/app/(clinic)/app/settings/profile/actions";
 import { BellToggle } from "./bell-toggle";
@@ -13,6 +13,7 @@ type Props = {
   email?: string;
   avatarUrl?: string | null;
   settingsMode?: boolean;
+  isOwner?: boolean;
 };
 
 const SHEET_ITEMS = [
@@ -92,7 +93,7 @@ function LogoutSection() {
   );
 }
 
-export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsMode }: Props) {
+export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsMode, isOwner = false }: Props) {
   const [open, setOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
   const [isPending, startTransition] = useTransition();
@@ -275,9 +276,30 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
 
           <div className="mobile-sheet-user-info">
             <span className="mobile-sheet-email" title={email}>{email}</span>
-            <span className="mobile-sheet-role">Clinic Admin</span>
+            <span className="mobile-sheet-role">{isOwner ? "Owner" : "Clinic Admin"}</span>
           </div>
         </div>
+
+        {/* Owner back link */}
+        {isOwner && (
+          <Link
+            href="/owner"
+            onClick={() => {
+              haptic("medium");
+              setOpen(false);
+            }}
+            style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", textDecoration: "none", background: "rgba(129,140,248,0.06)" }}
+          >
+            <div className="mobile-sheet-item-icon" style={{ color: "#818cf8" }}>
+              <LayoutGrid size={16} strokeWidth={1.8} />
+            </div>
+            <div className="mobile-sheet-item-text" style={{ flex: 1 }}>
+              <span style={{ color: "#818cf8", fontWeight: 700 }}>Painel Owner</span>
+              <small>Voltar ao painel de controle</small>
+            </div>
+            <ChevronRight size={14} strokeWidth={2} style={{ opacity: 0.5, color: "#818cf8", flexShrink: 0 }} />
+          </Link>
+        )}
 
         {/* Notifications toggle */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>

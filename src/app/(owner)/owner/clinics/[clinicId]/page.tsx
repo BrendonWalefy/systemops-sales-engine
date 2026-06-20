@@ -28,6 +28,8 @@ import {
   KeyRound,
   UserPlus,
   Workflow,
+  AlertTriangle,
+  Layers,
 } from "lucide-react";
 import { hashPassword } from "@/lib/password";
 import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
@@ -96,6 +98,23 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
   redirect(`/owner/clinics/${clinicId}?memberOk=1`);
 }
 
+async function updateClinicPlan(clinicId: string, formData: FormData) {
+  "use server";
+  const plan = formData.get("plan") as string;
+  const valid = ["essencial", "clinica", "rede", "custom"] as const;
+  if (!(valid as readonly string[]).includes(plan)) {
+    redirect(`/owner/clinics/${clinicId}`);
+  }
+  await db
+    .update(clinics)
+    .set({
+      plan: plan as "essencial" | "clinica" | "rede" | "custom",
+      updatedAt: new Date(),
+    })
+    .where(eq(clinics.id, clinicId));
+  redirect(`/owner/clinics/${clinicId}?planOk=1`);
+}
+
 function formatCurrency(micros: number): string {
   return "$" + (micros / 1_000_000).toFixed(4);
 }
@@ -117,9 +136,9 @@ function startOfMonth(): Date {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
-function thirtyDaysAgo(): Date {
+function fourteenDaysAgo(): Date {
   const d = new Date();
-  d.setDate(d.getDate() - 30);
+  d.setDate(d.getDate() - 14);
   return d;
 }
 
@@ -237,6 +256,7 @@ export default async function ClinicDetailPage({
   const memberError = sp.memberError === "1";
   const goLiveOk = sp.goLiveOk === "1";
   const goLiveError = sp.goLiveError;
+  const planOk = sp.planOk === "1";
 
   const [clinic] = await db
     .select({
@@ -317,6 +337,7 @@ export default async function ClinicDetailPage({
         : 0,
     })),
   });
+
   const operationalColors = getClinicOperationalStatusColors(
     clinic.operationalStatus,
   );
@@ -331,6 +352,7 @@ export default async function ClinicDetailPage({
   const toggleTestAction = toggleIsTest.bind(null, clinic.id, clinic.isTest);
   const activateGoLiveAction = activateClinicGoLive.bind(null, clinic.id);
   const upsertMemberAction = upsertMemberPassword.bind(null, clinic.id);
+  const updatePlanAction = updateClinicPlan.bind(null, clinic.id);
 
   const members = await db
     .select({
@@ -343,7 +365,7 @@ export default async function ClinicDetailPage({
     .where(eq(clinicMembers.clinicId, clinicId));
 
   const monthStart = startOfMonth();
-  const thirtyDays = thirtyDaysAgo();
+  const fourteenDays = fourteenDaysAgo();
 
   const [
     leadsMonthResult,
@@ -436,7 +458,7 @@ export default async function ClinicDetailPage({
     cold: tempColdResult[0]?.count ?? 0,
   };
 
-  // Daily volume (last 30 days): leads created per day + messages sent per day
+  // Daily volume (last 14 days)
   const dailyLeadsResult = await db
     .select({
       day: sql<string>`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo')`,
@@ -447,7 +469,7 @@ export default async function ClinicDetailPage({
     .where(and(
       eq(leads.clinicId, clinicId),
       eq(conversations.category, "sales"),
-      gte(leads.createdAt, thirtyDays),
+      gte(leads.createdAt, fourteenDays),
     ))
     .groupBy(sql`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo')`)
     .orderBy(
@@ -465,7 +487,7 @@ export default async function ClinicDetailPage({
       and(
         eq(conversations.clinicId, clinicId),
         eq(conversations.category, "sales"),
-        gte(messages.sentAt, thirtyDays),
+        gte(messages.sentAt, fourteenDays),
       ),
     )
     .groupBy(sql`DATE(${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo')`)
@@ -473,7 +495,6 @@ export default async function ClinicDetailPage({
       sql`DATE(${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo') DESC`,
     );
 
-  // Merge daily data
   const dailyLeadsMap = Object.fromEntries(
     dailyLeadsResult.map((r) => [r.day, r.count]),
   );
@@ -484,7 +505,6 @@ export default async function ClinicDetailPage({
     new Set([...Object.keys(dailyLeadsMap), ...Object.keys(dailyMsgMap)]),
   ).sort((a, b) => b.localeCompare(a));
 
-  // Handoff conversations (join with leads para mostrar nome)
   const handoffConvs = await db
     .select({
       convId: agentRecommendations.conversationId,
@@ -504,7 +524,6 @@ export default async function ClinicDetailPage({
     .orderBy(desc(agentRecommendations.createdAt))
     .limit(10);
 
-  // Conversas paradas: só leads ainda ativos (não finalizados), sem resposta há +1h
   const staleConvs = await db
     .select({
       id: conversations.id,
@@ -526,14 +545,61 @@ export default async function ClinicDetailPage({
     .orderBy(desc(conversations.lastMessageAt))
     .limit(8);
 
+  // ── Style helpers ────────────────────────────────────────────────
+  const inputStyle = {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--line)",
+    background: "var(--surface-soft)",
+    color: "var(--text)",
+    fontSize: 13,
+  } as const;
+
+  const btnStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 12px",
+    border: "1px solid var(--line)",
+    borderRadius: 8,
+    background: "var(--surface-soft)",
+    color: "var(--text-soft)" as string,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  };
+
+  const blueprintBorderColor =
+    blueprint.status === "complete"
+      ? "1px solid rgba(16,185,129,0.22)"
+      : blueprint.status === "attention"
+        ? "1px solid rgba(245,158,11,0.22)"
+        : "1px solid rgba(99,102,241,0.26)";
+  const blueprintBg =
+    blueprint.status === "complete"
+      ? "rgba(16,185,129,0.03)"
+      : blueprint.status === "attention"
+        ? "rgba(245,158,11,0.03)"
+        : "rgba(99,102,241,0.03)";
+  const blueprintProgressColor =
+    blueprint.status === "complete"
+      ? "#34d399"
+      : blueprint.status === "attention"
+        ? "#f59e0b"
+        : "#818cf8";
+
+  function sectionChipColor(status: string) {
+    if (status === "complete") return { color: "#34d399", bg: "rgba(16,185,129,0.12)" };
+    if (status === "attention") return { color: "#f59e0b", bg: "rgba(245,158,11,0.12)" };
+    return { color: "#818cf8", bg: "rgba(99,102,241,0.12)" };
+  }
+
   return (
     <div>
-      {/* Header */}
+      {/* ── TOPBAR ────────────────────────────────────────────── */}
       <div className="product-topbar">
-        <div
-          className="clinic-header-left"
-          style={{ display: "flex", alignItems: "center", gap: 14 }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Link
             href="/owner"
             style={{
@@ -550,116 +616,50 @@ export default async function ClinicDetailPage({
             <ArrowLeft size={14} />
             Visão geral
           </Link>
-          <span
-            className="clinic-header-sep"
-            style={{ color: "var(--line-strong)" }}
-          >
-            ·
-          </span>
-          <div className="clinic-header-title">
+          <span style={{ color: "var(--line-strong)" }}>·</span>
+          <div>
             <h1 style={{ margin: 0 }}>{clinic.name}</h1>
-            <p
-              style={{ margin: "3px 0 0", fontSize: 13, color: "var(--muted)" }}
-            >
-              Drill-down da clínica
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>
+              {[clinic.specialty, clinic.city].filter(Boolean).join(" · ") || "Clínica"}
             </p>
           </div>
         </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {clinic.isTest && (
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                border: "1px solid rgba(99,102,241,0.35)",
-                borderRadius: 999,
-                background: "rgba(99,102,241,0.1)",
-                color: "#818cf8",
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "3px 10px",
-              }}
-            >
+            <span style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(99,102,241,0.35)", borderRadius: 999, background: "rgba(99,102,241,0.1)", color: "#818cf8", fontSize: 11, fontWeight: 700, padding: "3px 10px" }}>
               <FlaskConical size={11} /> Teste
             </span>
           )}
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              border: `1px solid ${operationalColors.border}`,
-              borderRadius: 999,
-              background: operationalColors.background,
-              color: operationalColors.text,
-              fontSize: 11,
-              fontWeight: 700,
-              padding: "3px 10px",
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: operationalColors.text,
-                flexShrink: 0,
-              }}
-            />
+          <span style={{ display: "flex", alignItems: "center", gap: 5, border: `1px solid ${operationalColors.border}`, borderRadius: 999, background: operationalColors.background, color: operationalColors.text, fontSize: 11, fontWeight: 700, padding: "3px 10px" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: operationalColors.text, flexShrink: 0 }} />
             {getClinicOperationalStatusLabel(clinic.operationalStatus)}
           </span>
           {clinic.autoReplyEnabled ? (
-            <span
-              className="status-pill"
-              style={{ fontSize: 11, padding: "3px 10px" }}
-            >
+            <span className="status-pill" style={{ fontSize: 11, padding: "3px 10px" }}>
               <span className="status-dot" /> IA Ativa
             </span>
           ) : (
-            <span
-              className="status-pill status-handoff"
-              style={{ fontSize: 11, padding: "3px 10px" }}
-            >
+            <span className="status-pill status-handoff" style={{ fontSize: 11, padding: "3px 10px" }}>
               <span className="status-dot" /> IA Pausada
             </span>
           )}
           <Link
+            href={`/owner/clinics/${clinic.id}/modules`}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)" }}
+          >
+            <Layers size={13} />
+            Módulos
+          </Link>
+          <Link
             href={`/owner/onboarding/${clinic.id}`}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--muted)",
-              textDecoration: "none",
-              padding: "6px 12px",
-              borderRadius: "8px",
-              border: "1px solid rgba(255,255,255,0.1)",
-            }}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)" }}
           >
             <Workflow size={13} />
             Onboarding
           </Link>
           <Link
             href="/app/inbox"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--accent-strong)",
-              textDecoration: "none",
-            }}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--accent-strong)", textDecoration: "none" }}
           >
             <ExternalLink size={13} />
             Inbox
@@ -667,459 +667,259 @@ export default async function ClinicDetailPage({
         </div>
       </div>
 
-      <div
-        className="page-content"
-        style={{ paddingBottom: "60px", display: "grid", gap: 32 }}
-      >
+      <div className="page-content" style={{ paddingBottom: 60, display: "grid", gap: 16 }}>
+
+        {/* ── FLASH ALERTS ────────────────────────────────────── */}
         {goLiveOk && (
-          <div
-            style={{
-              padding: "12px 16px",
-              borderRadius: 12,
-              border: "1px solid rgba(16,185,129,0.24)",
-              background: "rgba(16,185,129,0.08)",
-              color: "#34d399",
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            Go-live ativado. A clínica entrou em produção com automação
-            liberada.
+          <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.24)", background: "rgba(16,185,129,0.08)", color: "#34d399", fontSize: 13, fontWeight: 600 }}>
+            Go-live ativado. A clínica entrou em produção com automação liberada.
           </div>
         )}
-
         {goLiveError && (
-          <div
-            style={{
-              padding: "12px 16px",
-              borderRadius: 12,
-              border: "1px solid rgba(245,158,11,0.24)",
-              background: "rgba(245,158,11,0.08)",
-              color: "#f59e0b",
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
+          <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.24)", background: "rgba(245,158,11,0.08)", color: "#f59e0b", fontSize: 13, fontWeight: 600 }}>
             {goLiveError === "incomplete"
-              ? "O go-live foi bloqueado porque ainda existem lacunas obrigatórias no blueprint."
+              ? "Go-live bloqueado — existem lacunas obrigatórias no blueprint."
               : goLiveError === "cancelled"
                 ? "Clínica cancelada não pode ser promovida para go-live."
                 : "Não foi possível concluir o go-live desta clínica."}
           </div>
         )}
+        {planOk && (
+          <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.24)", background: "rgba(16,185,129,0.08)", color: "#34d399", fontSize: 13, fontWeight: 600 }}>
+            Plano atualizado com sucesso.
+          </div>
+        )}
 
-        <div
-          style={{
-            border:
-              blueprint.status === "complete"
-                ? "1px solid rgba(16,185,129,0.22)"
-                : blueprint.status === "attention"
-                  ? "1px solid rgba(245,158,11,0.22)"
-                  : "1px solid rgba(99,102,241,0.26)",
-            borderRadius: 16,
-            overflow: "hidden",
-            background:
-              blueprint.status === "complete"
-                ? "rgba(16,185,129,0.04)"
-                : blueprint.status === "attention"
-                  ? "rgba(245,158,11,0.04)"
-                  : "rgba(99,102,241,0.04)",
-          }}
-        >
-          <div
-            style={{
-              padding: "18px 20px 16px",
-              borderBottom: "1px solid var(--line)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <p className="eyebrow" style={{ margin: 0 }}>
-                Clinic Blueprint
-              </p>
-              <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>
-                Prontidão de implantação: {blueprint.readinessPercent}%
-              </h2>
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: 13,
-                  color: "var(--muted)",
-                  lineHeight: 1.5,
-                }}
-              >
-                Uma leitura rápida do que já está pronto para venda, setup e
-                go-live desta clínica.
-              </p>
+        {/* ── ZONA 1: BLUEPRINT COMPACTO ──────────────────────── */}
+        <div style={{ border: blueprintBorderColor, borderRadius: 14, overflow: "hidden", background: blueprintBg }}>
+          <div style={{ padding: "16px 20px", borderBottom: staleConvs.length > 0 || goLiveBlockingIssues.length > 0 ? "1px solid var(--line)" : undefined, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
+            {/* Left: progress + chips */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <p className="eyebrow" style={{ margin: 0, flex: 1 }}>Clinic Blueprint</p>
+                <strong style={{ fontSize: 13, color: blueprintProgressColor, fontWeight: 800 }}>
+                  {blueprint.readinessPercent}%
+                </strong>
+              </div>
+              <div style={{ marginTop: 8, height: 5, borderRadius: 999, background: "rgba(255,255,255,0.07)" }}>
+                <div style={{ height: 5, borderRadius: 999, width: `${blueprint.readinessPercent}%`, background: blueprintProgressColor }} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
+                {blueprint.sections
+                  .filter((s) => s.id !== "go_live")
+                  .map((section) => {
+                    const chip = sectionChipColor(section.status);
+                    return (
+                      <span key={section.id} style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: chip.color, background: chip.bg }}>
+                        {section.title}
+                      </span>
+                    );
+                  })}
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {/* Right: CTA + links */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
+              {canActivateGoLive ? (
+                <form action={activateGoLiveAction}>
+                  <button type="submit" style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#000", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                    Promover para active →
+                  </button>
+                </form>
+              ) : clinic.operationalStatus === "active" ? (
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>Clínica ativa</span>
+              ) : null}
               <Link
                 href={`/owner/clinics/${clinic.id}/blueprint`}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "9px 14px",
-                  borderRadius: 10,
-                  textDecoration: "none",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "#10b981",
-                  border: "1px solid rgba(16,185,129,0.22)",
-                  background: "rgba(16,185,129,0.06)",
-                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 700, color: "var(--muted)", border: "1px solid var(--line)", background: "var(--surface-soft)" }}
               >
-                <Building2 size={14} />
+                <Building2 size={12} />
                 Ver Blueprint
-              </Link>
-              <Link
-                href={`/owner/onboarding/${clinic.id}`}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "9px 14px",
-                  borderRadius: 10,
-                  textDecoration: "none",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "var(--accent-strong)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  background: "var(--surface-soft)",
-                }}
-              >
-                <Workflow size={14} />
-                Abrir onboarding
               </Link>
             </div>
           </div>
-
-          <div style={{ padding: "18px 20px", display: "grid", gap: 18 }}>
-            <div
-              style={{
-                border: "1px solid var(--line)",
-                borderRadius: 12,
-                padding: "14px 16px",
-                background: "rgba(255,255,255,0.02)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div>
-                  <p className="eyebrow" style={{ margin: 0 }}>
-                    Checklist de go-live
-                  </p>
-                  <p
-                    style={{
-                      margin: "8px 0 0",
-                      fontSize: 13,
-                      color: "var(--muted)",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    A clínica só deve ir para `active` quando o blueprint
-                    estiver completo e a operação estiver pronta para produção.
-                  </p>
-                </div>
-                {canActivateGoLive ? (
-                  <form action={activateGoLiveAction}>
-                    <button
-                      type="submit"
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "none",
-                        background: "var(--accent)",
-                        color: "#000",
-                        fontSize: 13,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Promover para active
-                    </button>
-                  </form>
-                ) : (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: "var(--muted)",
-                    }}
-                  >
-                    Go-live ainda bloqueado
-                  </span>
-                )}
+          {/* Blocking issues footer */}
+          {goLiveBlockingIssues.length > 0 && (
+            <div style={{ padding: "10px 20px", background: "rgba(245,158,11,0.04)", borderTop: "1px solid rgba(245,158,11,0.12)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <AlertTriangle size={12} style={{ color: "#f59e0b" }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>Bloqueios de go-live</span>
               </div>
-
-              <div
-                style={{
-                  marginTop: 14,
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                {goLiveBlockingIssues.length === 0 ? (
-                  <span
-                    style={{
-                      fontSize: 13,
-                      color: "#34d399",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Nenhum bloqueio restante. A clínica está pronta para
-                    go-live.
-                  </span>
-                ) : (
-                  goLiveBlockingIssues.slice(0, 6).map((item) => (
-                    <span
-                      key={item}
-                      style={{ fontSize: 13, color: "var(--muted)" }}
-                    >
-                      • {item}
-                    </span>
-                  ))
-                )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 20px" }}>
+                {goLiveBlockingIssues.slice(0, 6).map((item) => (
+                  <span key={item} style={{ fontSize: 12, color: "var(--muted)" }}>· {item}</span>
+                ))}
               </div>
             </div>
+          )}
+        </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 12,
-              }}
-            >
-              {blueprint.sections.map((section) => (
-                <div
-                  key={section.id}
-                  style={{
-                    border: "1px solid var(--line)",
-                    borderRadius: 12,
-                    padding: "14px 14px 12px",
-                    background: "var(--surface-soft)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                    }}
-                  >
-                    <strong style={{ fontSize: 14 }}>{section.title}</strong>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        color:
-                          section.status === "complete"
-                            ? "#34d399"
-                            : section.status === "attention"
-                              ? "#f59e0b"
-                              : "#818cf8",
-                        background:
-                          section.status === "complete"
-                            ? "rgba(16,185,129,0.12)"
-                            : section.status === "attention"
-                              ? "rgba(245,158,11,0.12)"
-                              : "rgba(99,102,241,0.12)",
-                      }}
-                    >
-                      {section.status === "complete"
-                        ? "Completo"
-                        : section.status === "attention"
-                          ? "Atenção"
-                          : "Pendente"}
-                    </span>
-                  </div>
-                  <p
-                    style={{
-                      margin: "10px 0 0",
-                      fontSize: 12,
-                      color: "var(--muted)",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {section.summary}
+        {/* ── ZONA 2: PERFORMANCE ─────────────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, alignItems: "start" }}>
+          {/* KPIs */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px" }}>
+            <p className="eyebrow" style={{ margin: "0 0 14px" }}>
+              Performance ·{" "}
+              {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 0, borderTop: "1px solid var(--line)", borderLeft: "1px solid var(--line)" }}>
+              {[
+                { label: "Leads", value: String(leadsCount), ctx: "mês atual", highlight: true },
+                { label: "Agendamentos", value: String(scheduledCount), ctx: "no mês", highlight: false },
+                { label: "Conversão", value: `${conversion}%`, ctx: "agend./leads", highlight: false },
+                { label: "Custo IA", value: formatCurrency(aiCost), ctx: "OpenAI", mono: true },
+                { label: "Custo WA", value: formatCurrency(waCost), ctx: "Z-API / Meta", mono: true },
+              ].map(({ label, value, ctx, highlight, mono }) => (
+                <div key={label} style={{ padding: "12px 14px", borderRight: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>{label}</p>
+                  <p style={{ margin: "5px 0 0", fontSize: 20, fontWeight: 800, color: highlight ? "var(--accent)" : "var(--text)", fontFamily: mono ? "monospace" : undefined }}>
+                    {value}
                   </p>
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 6,
-                    }}
-                  >
-                    {section.missing.length === 0 ? (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          color: "#34d399",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Nenhum item crítico em aberto.
-                      </span>
-                    ) : (
-                      section.missing.slice(0, 3).map((item) => (
-                        <span
-                          key={item}
-                          style={{ fontSize: 12, color: "var(--muted)" }}
-                        >
-                          • {item}
-                        </span>
-                      ))
-                    )}
-                  </div>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--muted)" }}>{ctx}</p>
                 </div>
               ))}
             </div>
+          </div>
 
-            {blueprint.criticalMissing.length > 0 && (
-              <div
-                style={{
-                  border: "1px solid var(--line)",
-                  borderRadius: 12,
-                  padding: "14px 16px",
-                  background: "rgba(255,255,255,0.02)",
-                }}
-              >
-                <p className="eyebrow" style={{ margin: 0 }}>
-                  Próximas lacunas para fechar
-                </p>
-                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  {blueprint.criticalMissing.slice(0, 6).map((item) => (
-                    <span
-                      key={item}
-                      style={{ fontSize: 13, color: "var(--muted)" }}
+          {/* Temperatura */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 18px" }}>
+            <p className="eyebrow" style={{ margin: "0 0 12px" }}>Temperatura</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.16)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Flame size={12} style={{ color: "#ef4444" }} />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Quentes</span>
+                </div>
+                <strong style={{ fontSize: 16, color: "#ef4444" }}>{tempCounts.hot}</strong>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.16)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Thermometer size={12} style={{ color: "#f59e0b" }} />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Mornos</span>
+                </div>
+                <strong style={{ fontSize: 16, color: "#f59e0b" }}>{tempCounts.warm}</strong>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.16)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Snowflake size={12} style={{ color: "#60a5fa" }} />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Frios</span>
+                </div>
+                <strong style={{ fontSize: 16, color: "#60a5fa" }}>{tempCounts.cold}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── ZONA 3: SAÚDE + VOLUME ──────────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+
+          {/* Saúde operacional */}
+          <div style={{ display: "grid", gap: 10 }}>
+
+            {/* Conversas paradas */}
+            <div style={{ border: staleConvs.length > 0 ? "1px solid rgba(245,158,11,0.3)" : "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: staleConvs.length > 0 ? "rgba(245,158,11,0.03)" : "transparent" }}>
+              <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: staleConvs.length > 0 ? "rgba(245,158,11,0.07)" : "var(--surface-soft)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {staleConvs.length > 0 && <AlertTriangle size={12} style={{ color: "#f59e0b" }} />}
+                  <p className="eyebrow" style={{ margin: 0, color: staleConvs.length > 0 ? "#f59e0b" : "var(--muted)" }}>
+                    Conversas paradas
+                  </p>
+                </div>
+                {staleConvs.length > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.15)", padding: "2px 8px", borderRadius: 999 }}>
+                    {staleConvs.length}
+                  </span>
+                )}
+              </div>
+              {staleConvs.length === 0 ? (
+                <div style={{ padding: "13px 14px", fontSize: 13, color: "var(--muted)" }}>
+                  Nenhuma conversa parada detectada.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {staleConvs.map((c, i) => (
+                    <div
+                      key={c.id}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < staleConvs.length - 1 ? "1px solid var(--line)" : "none", background: i % 2 === 1 ? "rgba(245,158,11,0.02)" : "transparent" }}
                     >
-                      • {item}
-                    </span>
+                      <div>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>
+                          {c.leadName ?? c.leadPhone ?? "Lead desconhecido"}
+                        </span>
+                        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#f59e0b" }}>
+                          {c.lastMessageAt ? relativeTime(new Date(c.lastMessageAt)) : "—"}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/app/inbox/${c.id}`}
+                        style={{ fontSize: 12, color: "var(--accent-strong)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}
+                      >
+                        <ExternalLink size={11} /> Ver
+                      </Link>
+                    </div>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* Handoffs */}
+            <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <p className="eyebrow" style={{ margin: 0 }}>Handoffs ativos</p>
+                {handoffConvs.length > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", background: "rgba(255,255,255,0.06)", padding: "2px 8px", borderRadius: 999 }}>
+                    {handoffConvs.length}
+                  </span>
+                )}
               </div>
-            )}
+              {handoffConvs.length === 0 ? (
+                <div style={{ padding: "13px 14px", fontSize: 13, color: "var(--muted)" }}>
+                  Nenhum handoff registrado.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {handoffConvs.slice(0, 6).map((h, i) => (
+                    <div
+                      key={`${h.convId}-${i}`}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < Math.min(handoffConvs.length, 6) - 1 ? "1px solid var(--line)" : "none", background: i % 2 === 1 ? "var(--surface-soft)" : "transparent" }}
+                    >
+                      <div>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>
+                          {h.leadName ?? h.leadPhone ?? "Lead desconhecido"}
+                        </span>
+                        <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>
+                          {relativeTime(new Date(h.createdAt))}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/app/inbox/${h.convId}`}
+                        style={{ fontSize: 12, color: "var(--accent-strong)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}
+                      >
+                        <ExternalLink size={11} /> Ver
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* KPIs */}
-        <div className="kpi-strip" style={{ marginLeft: 0 }}>
-          <div className="metric metric-highlight">
-            <div className="metric-header">
-              <span className="metric-label">Leads no mês</span>
+          {/* Volume 14 dias */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)" }}>
+              <p className="eyebrow" style={{ margin: 0 }}>Volume — últimos 14 dias</p>
             </div>
-            <span className="metric-value">{leadsCount}</span>
-            <span className="metric-context">mês atual</span>
-          </div>
-          <div className="metric">
-            <div className="metric-header">
-              <span className="metric-label">Agendamentos</span>
-            </div>
-            <span className="metric-value">{scheduledCount}</span>
-            <span className="metric-context">no mês</span>
-          </div>
-          <div className="metric">
-            <div className="metric-header">
-              <span className="metric-label">Conversão</span>
-            </div>
-            <span className="metric-value">{conversion}%</span>
-            <span className="metric-context">agend. / leads</span>
-          </div>
-          <div className="metric">
-            <div className="metric-header">
-              <span className="metric-label">Custo IA</span>
-            </div>
-            <span
-              className="metric-value"
-              style={{ fontFamily: "monospace", fontSize: 16 }}
-            >
-              {formatCurrency(aiCost)}
-            </span>
-            <span className="metric-context">OpenAI no mês</span>
-          </div>
-          <div className="metric">
-            <div className="metric-header">
-              <span className="metric-label">Custo WhatsApp</span>
-            </div>
-            <span
-              className="metric-value"
-              style={{ fontFamily: "monospace", fontSize: 16 }}
-            >
-              {formatCurrency(waCost)}
-            </span>
-            <span className="metric-context">Z-API / Meta no mês</span>
-          </div>
-        </div>
-
-        {/* Daily volume */}
-        <div
-          style={{
-            border: "1px solid var(--line)",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "14px 18px 12px",
-              borderBottom: "1px solid var(--line)",
-              background: "var(--surface-soft)",
-            }}
-          >
-            <p className="eyebrow" style={{ margin: 0 }}>
-              Volume diário — últimos 30 dias
-            </p>
-          </div>
-          {allDays.length === 0 ? (
-            <div
-              className="empty-state compact"
-              style={{ borderRadius: 0, border: "none" }}
-            >
-              Sem dados no período.
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                }}
-              >
+            {allDays.length === 0 ? (
+              <div style={{ padding: "13px 14px", fontSize: 13, color: "var(--muted)" }}>
+                Sem dados no período.
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
-                  <tr
-                    style={{
-                      background: "var(--surface-soft)",
-                      borderBottom: "1px solid var(--line)",
-                    }}
-                  >
-                    {["Data", "Leads", "Mensagens"].map((col) => (
+                  <tr style={{ background: "var(--surface-soft)", borderBottom: "1px solid var(--line)" }}>
+                    {["Data", "Leads", "Msgs"].map((col) => (
                       <th
                         key={col}
-                        style={{
-                          padding: "10px 16px",
-                          textAlign: "left",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: "0.06em",
-                          textTransform: "uppercase",
-                          color: "var(--muted)",
-                        }}
+                        style={{ padding: "8px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}
                       >
                         {col}
                       </th>
@@ -1127,588 +927,159 @@ export default async function ClinicDetailPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {allDays.slice(0, 30).map((day, i) => (
+                  {allDays.slice(0, 14).map((day, i) => (
                     <tr
                       key={day}
-                      style={{
-                        background:
-                          i % 2 === 1 ? "var(--surface-soft)" : "transparent",
-                        borderBottom:
-                          i < Math.min(allDays.length, 30) - 1
-                            ? "1px solid var(--line)"
-                            : "none",
-                      }}
+                      style={{ background: i % 2 === 1 ? "var(--surface-soft)" : "transparent", borderBottom: i < Math.min(allDays.length, 14) - 1 ? "1px solid var(--line)" : "none" }}
                     >
-                      <td
-                        style={{
-                          padding: "10px 16px",
-                          color: "var(--text-soft)",
-                        }}
-                      >
-                        {day}
-                      </td>
-                      <td style={{ padding: "10px 16px", fontWeight: 600 }}>
-                        {dailyLeadsMap[day] ?? 0}
-                      </td>
-                      <td
-                        style={{
-                          padding: "10px 16px",
-                          color: "var(--text-soft)",
-                        }}
-                      >
-                        {dailyMsgMap[day] ?? 0}
-                      </td>
+                      <td style={{ padding: "9px 14px", color: "var(--text-soft)" }}>{day}</td>
+                      <td style={{ padding: "9px 14px", fontWeight: 600 }}>{dailyLeadsMap[day] ?? 0}</td>
+                      <td style={{ padding: "9px 14px", color: "var(--text-soft)" }}>{dailyMsgMap[day] ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-        </div>
-
-        {/* Distribuição de temperatura */}
-        <div>
-          <p className="eyebrow">Distribuição de temperatura</p>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 10,
-            }}
-          >
-            <div className="metric">
-              <div className="metric-header">
-                <span className="metric-icon">
-                  <Flame size={14} />
-                </span>
-                <span className="metric-label">Quentes</span>
-              </div>
-              <span className="metric-value temp-hot">{tempCounts.hot}</span>
-              <span className="metric-context">
-                <span className="temp-badge temp-hot">Quente</span>
-              </span>
-            </div>
-            <div className="metric">
-              <div className="metric-header">
-                <span className="metric-icon">
-                  <Thermometer size={14} />
-                </span>
-                <span className="metric-label">Mornos</span>
-              </div>
-              <span className="metric-value temp-warm">{tempCounts.warm}</span>
-              <span className="metric-context">
-                <span className="temp-badge temp-warm">Morno</span>
-              </span>
-            </div>
-            <div className="metric">
-              <div className="metric-header">
-                <span className="metric-icon">
-                  <Snowflake size={14} />
-                </span>
-                <span className="metric-label">Frios</span>
-              </div>
-              <span className="metric-value temp-cold">{tempCounts.cold}</span>
-              <span className="metric-context">
-                <span className="temp-badge temp-cold">Frio</span>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Handoff conversations */}
-        <div
-          style={{
-            border: "1px solid var(--line)",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "14px 18px 12px",
-              borderBottom: "1px solid var(--line)",
-              background: "var(--surface-soft)",
-            }}
-          >
-            <p className="eyebrow" style={{ margin: 0 }}>
-              Conversas com handoff
-            </p>
-          </div>
-          {handoffConvs.length === 0 ? (
-            <div
-              className="empty-state compact"
-              style={{ borderRadius: 0, border: "none" }}
-            >
-              Nenhum handoff registrado.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {handoffConvs.map((h, i) => (
-                <div
-                  key={`${h.convId}-${i}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "12px 16px",
-                    borderBottom:
-                      i < handoffConvs.length - 1
-                        ? "1px solid var(--line)"
-                        : "none",
-                    background:
-                      i % 2 === 1 ? "var(--surface-soft)" : "transparent",
-                  }}
-                >
-                  <div>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "var(--text)",
-                      }}
-                    >
-                      {h.leadName ?? h.leadPhone ?? "Lead desconhecido"}
-                    </span>
-                    {h.leadPhone && h.leadName && (
-                      <span
-                        style={{
-                          marginLeft: 8,
-                          fontSize: 12,
-                          color: "var(--muted)",
-                        }}
-                      >
-                        {h.leadPhone}
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 12 }}
-                  >
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                      {relativeTime(new Date(h.createdAt))}
-                    </span>
-                    <Link
-                      href={`/app/inbox/${h.convId}`}
-                      style={{
-                        fontSize: 12,
-                        color: "var(--accent-strong)",
-                        textDecoration: "none",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <ExternalLink size={12} /> Ver conversa
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Stale conversations (AI non-response proxy) */}
-        <div
-          style={{
-            border: "1px solid var(--line)",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "14px 18px 12px",
-              borderBottom: "1px solid var(--line)",
-              background: "var(--surface-soft)",
-            }}
-          >
-            <p className="eyebrow" style={{ margin: 0 }}>
-              Possíveis falhas da IA — leads ativos sem resposta há +1h
-            </p>
-          </div>
-          {staleConvs.length === 0 ? (
-            <div
-              className="empty-state compact"
-              style={{ borderRadius: 0, border: "none" }}
-            >
-              Nenhuma conversa parada detectada.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {staleConvs.map((c, i) => (
-                <div
-                  key={c.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "12px 16px",
-                    borderBottom:
-                      i < staleConvs.length - 1
-                        ? "1px solid var(--line)"
-                        : "none",
-                    background:
-                      i % 2 === 1 ? "var(--surface-soft)" : "transparent",
-                  }}
-                >
-                  <div>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "var(--text)",
-                      }}
-                    >
-                      {c.leadName ?? c.leadPhone ?? "Lead desconhecido"}
-                    </span>
-                    {c.leadPhone && c.leadName && (
-                      <span
-                        style={{
-                          marginLeft: 8,
-                          fontSize: 12,
-                          color: "var(--muted)",
-                        }}
-                      >
-                        {c.leadPhone}
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        marginLeft: 10,
-                        fontSize: 11,
-                        color: "var(--danger)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {c.lastMessageAt
-                        ? relativeTime(new Date(c.lastMessageAt))
-                        : "—"}
-                    </span>
-                  </div>
-                  <Link
-                    href={`/app/inbox/${c.id}`}
-                    style={{
-                      fontSize: 12,
-                      color: "var(--accent-strong)",
-                      textDecoration: "none",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <ExternalLink size={12} /> Ver conversa
-                  </Link>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Toggle produção / teste */}
-        <div
-          style={{
-            border: clinic.isTest
-              ? "1px solid rgba(99,102,241,0.3)"
-              : "1px solid var(--line)",
-            borderRadius: 12,
-            padding: "18px 20px",
-            background: clinic.isTest ? "rgba(99,102,241,0.05)" : "transparent",
-          }}
-        >
-          <p
-            className="eyebrow"
-            style={{
-              margin: "0 0 6px",
-              color: clinic.isTest ? "#818cf8" : "var(--muted)",
-              opacity: 0.9,
-            }}
-          >
-            {clinic.isTest ? "Ambiente de testes" : "Clínica em produção"}
-          </p>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-              flexWrap: "wrap",
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                fontSize: 13,
-                color: "var(--muted)",
-                lineHeight: 1.5,
-              }}
-            >
-              {clinic.isTest
-                ? "Esta clínica está marcada como ambiente de testes. Custos e leads são excluídos dos KPIs de produção."
-                : "Esta clínica está em produção. Leads e receita entram nos KPIs do painel financeiro."}
-            </p>
-            <form action={toggleTestAction}>
-              <button
-                type="submit"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  padding: "8px 16px",
-                  border: "1px solid var(--line)",
-                  borderRadius: 8,
-                  background: "var(--surface-soft)",
-                  color: "var(--text-soft)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {clinic.isTest ? (
-                  <>
-                    <Building2 size={13} /> Mover para produção
-                  </>
-                ) : (
-                  <>
-                    <FlaskConical size={13} /> Marcar como teste
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* Membros e senhas */}
-        <div
-          style={{
-            border: "1px solid var(--line)",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "14px 18px 12px",
-              borderBottom: "1px solid var(--line)",
-              background: "var(--surface-soft)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <KeyRound size={13} style={{ color: "var(--muted)" }} />
-            <p className="eyebrow" style={{ margin: 0 }}>
-              Acesso da clínica
-            </p>
-          </div>
-          <div
-            style={{
-              padding: "16px 18px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-            }}
-          >
-            {memberOk && (
-              <div
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  background: "rgba(16,185,129,0.08)",
-                  border: "1px solid rgba(16,185,129,0.2)",
-                  color: "#34d399",
-                  fontSize: 13,
-                }}
-              >
-                Senha salva com sucesso.
-              </div>
             )}
-            {memberError && (
-              <div
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.2)",
-                  color: "var(--danger)",
-                  fontSize: 13,
-                }}
-              >
-                Senha inválida — mínimo 8 caracteres.
-              </div>
-            )}
+          </div>
+        </div>
 
-            {/* Membros existentes */}
-            {members.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "var(--muted)",
-                  }}
-                >
-                  Membros cadastrados
-                </p>
-                {members.map((m) => (
-                  <div
-                    key={m.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      background: "var(--surface-soft)",
-                      border: "1px solid var(--line)",
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>
-                        {m.email}
-                      </span>
-                      <span
-                        style={{
-                          marginLeft: 8,
-                          fontSize: 11,
-                          color: "var(--muted)",
-                        }}
-                      >
-                        {m.role}
+        {/* ── ZONA 4: ADMINISTRAÇÃO ───────────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+
+          {/* Acesso da clínica */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", alignItems: "center", gap: 7 }}>
+              <KeyRound size={13} style={{ color: "var(--muted)" }} />
+              <p className="eyebrow" style={{ margin: 0 }}>Acesso da clínica</p>
+            </div>
+            <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+              {memberOk && (
+                <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399", fontSize: 13 }}>
+                  Senha salva com sucesso.
+                </div>
+              )}
+              {memberError && (
+                <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)", fontSize: 13 }}>
+                  Senha inválida — mínimo 8 caracteres.
+                </div>
+              )}
+              {members.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
+                    Membros cadastrados
+                  </p>
+                  {members.map((m) => (
+                    <div
+                      key={m.id}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 8, background: "var(--surface-soft)", border: "1px solid var(--line)" }}
+                    >
+                      <div>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{m.email}</span>
+                        <span style={{ marginLeft: 7, fontSize: 11, color: "var(--muted)" }}>{m.role}</span>
+                      </div>
+                      <span style={{ fontSize: 11, color: m.hasPassword ? "#34d399" : "#f59e0b", fontWeight: 700 }}>
+                        {m.hasPassword ? "Senha ✓" : "Sem senha"}
                       </span>
                     </div>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: m.hasPassword ? "#34d399" : "#f59e0b",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {m.hasPassword ? "Senha definida" : "Sem senha (usa env)"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+              <form action={upsertMemberAction} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
+                  Adicionar / redefinir senha
+                </p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    name="email"
+                    type="email"
+                    placeholder="admin@clinica.com"
+                    required
+                    style={{ ...inputStyle, flex: "1 1 160px" }}
+                  />
+                  <input
+                    name="password"
+                    type="password"
+                    placeholder="Senha (mín. 8)"
+                    required
+                    minLength={8}
+                    style={{ ...inputStyle, flex: "1 1 130px" }}
+                  />
+                  <button type="submit" style={btnStyle}>
+                    <UserPlus size={13} /> Salvar
+                  </button>
+                </div>
+                <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
+                  Se o e-mail já for membro, apenas a senha é atualizada.
+                </p>
+              </form>
+            </div>
+          </div>
 
-            {/* Formulário para criar/atualizar membro */}
-            <form
-              action={upsertMemberAction}
-              style={{ display: "flex", flexDirection: "column", gap: 10 }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  color: "var(--muted)",
-                }}
-              >
-                Adicionar / redefinir senha
-              </p>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  name="email"
-                  type="email"
-                  placeholder="admin@clinica.com"
-                  required
-                  style={{
-                    flex: "1 1 200px",
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid var(--line)",
-                    background: "var(--surface-soft)",
-                    color: "var(--text)",
-                    fontSize: 13,
-                  }}
-                />
-                <input
-                  name="password"
-                  type="password"
-                  placeholder="Senha (mín. 8 caracteres)"
-                  required
-                  minLength={8}
-                  style={{
-                    flex: "1 1 200px",
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid var(--line)",
-                    background: "var(--surface-soft)",
-                    color: "var(--text)",
-                    fontSize: 13,
-                  }}
-                />
-                <button
-                  type="submit"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    border: "1px solid var(--line)",
-                    background: "var(--surface-soft)",
-                    color: "var(--text-soft)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
+          {/* Controles */}
+          <div style={{ display: "grid", gap: 10 }}>
+
+            {/* Plano */}
+            <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px" }}>
+              <p className="eyebrow" style={{ margin: "0 0 12px" }}>Plano de assinatura</p>
+              <form action={updatePlanAction} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <select
+                  name="plan"
+                  defaultValue={clinic.plan}
+                  style={{ ...inputStyle, flex: 1 }}
                 >
-                  <UserPlus size={13} /> Salvar
-                </button>
-              </div>
-              <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-                Se o e-mail já for membro, apenas a senha é atualizada. Se for
-                novo, cria vínculo com role clinic_admin.
+                  <option value="essencial">Essencial — R$897/mês</option>
+                  <option value="clinica">Clínica — R$1.497/mês</option>
+                  <option value="rede">Rede — R$2.997/mês</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <button type="submit" style={btnStyle}>Salvar</button>
+              </form>
+              {clinic.billingStartedAt && (
+                <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--muted)" }}>
+                  Cobrança iniciada em{" "}
+                  {new Date(clinic.billingStartedAt).toLocaleDateString("pt-BR")}.
+                </p>
+              )}
+            </div>
+
+            {/* Produção / Teste */}
+            <div style={{ border: clinic.isTest ? "1px solid rgba(99,102,241,0.3)" : "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", background: clinic.isTest ? "rgba(99,102,241,0.04)" : "transparent" }}>
+              <p className="eyebrow" style={{ margin: "0 0 8px", color: clinic.isTest ? "#818cf8" : "var(--muted)" }}>
+                {clinic.isTest ? "Ambiente de testes" : "Clínica em produção"}
               </p>
-            </form>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                  {clinic.isTest
+                    ? "Custos e leads excluídos dos KPIs de produção."
+                    : "Leads e receita entram nos KPIs do painel financeiro."}
+                </p>
+                <form action={toggleTestAction}>
+                  <button type="submit" style={btnStyle}>
+                    {clinic.isTest ? (
+                      <><Building2 size={12} /> Para produção</>
+                    ) : (
+                      <><FlaskConical size={12} /> Marcar teste</>
+                    )}
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Zona de risco */}
+            <div style={{ border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "14px 16px", background: "rgba(239,68,68,0.03)" }}>
+              <p className="eyebrow" style={{ margin: "0 0 8px", color: "var(--danger)", opacity: 0.8 }}>
+                Zona de risco
+              </p>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                  Apaga todos os leads, conversas e agendamentos de teste.
+                </p>
+                <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Danger zone */}
-        <div
-          style={{
-            border: "1px solid rgba(239,68,68,0.2)",
-            borderRadius: 12,
-            padding: "18px 20px",
-            background: "rgba(239,68,68,0.03)",
-          }}
-        >
-          <p
-            className="eyebrow"
-            style={{ margin: "0 0 6px", color: "var(--danger)", opacity: 0.7 }}
-          >
-            Zona de risco
-          </p>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-              flexWrap: "wrap",
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                fontSize: 13,
-                color: "var(--muted)",
-                lineHeight: 1.5,
-              }}
-            >
-              Apaga todos os leads, conversas e agendamentos de teste. As
-              configurações da clínica são preservadas.
-            </p>
-            <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
-          </div>
-        </div>
       </div>
     </div>
   );

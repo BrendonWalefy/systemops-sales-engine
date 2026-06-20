@@ -41,7 +41,7 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
   return (
     <RealtimeEventsProvider>
       <div className="clinic-layout">
-        <SidebarNav email={session?.email} avatarUrl={avatarUrl} inboxBadge={inboxBadge} />
+        <SidebarNav email={session?.email} avatarUrl={avatarUrl} inboxBadge={inboxBadge} isOwner={session?.role === "owner"} />
         <main style={{ minWidth: 0, overflowX: "hidden" }}>{children}</main>
         <PushNotificationSetup />
       </div>

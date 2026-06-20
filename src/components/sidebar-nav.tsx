@@ -2,7 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus } from "lucide-react";
+import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus, LayoutGrid } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
 import { BellToggle } from "./bell-toggle";
@@ -20,9 +20,9 @@ const NAV_CONFIG: { href: string; label: string; Icon: React.ElementType; mobile
   { href: "/app/settings/pipeline", label: "Pipeline", Icon: Workflow, mobileHidden: true },
 ];
 
-type Props = { email?: string; avatarUrl?: string | null; inboxBadge?: number };
+type Props = { email?: string; avatarUrl?: string | null; inboxBadge?: number; isOwner?: boolean };
 
-export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
+export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false }: Props) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -47,6 +47,20 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
       </div>
 
       <nav className="side-nav">
+        {isOwner && (
+          <>
+            <Link
+              href="/owner"
+              onClick={() => haptic()}
+              className="side-nav-item"
+              style={{ color: "#818cf8" }}
+            >
+              <LayoutGrid size={15} strokeWidth={2} />
+              <span className="nav-label">Owner</span>
+            </Link>
+            <div className="nav-separator" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", margin: "4px 0" }} />
+          </>
+        )}
         {NAV_PRIMARY.slice(0, 1).map(({ href, label, Icon }) => (
           <Link
             key={href}
@@ -131,7 +145,7 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0 }: Props) {
       </div>
 
       {/* Mobile only: settings/avatar menu (rendered last → far right in pill) */}
-      <MobileAvatarMenu email={email} avatarUrl={avatarUrl} settingsMode />
+      <MobileAvatarMenu email={email} avatarUrl={avatarUrl} settingsMode isOwner={isOwner} />
     </aside>
   );
 }
