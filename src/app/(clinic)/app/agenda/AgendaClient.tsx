@@ -99,7 +99,11 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     time?: string;
   }>({ open: false });
 
-  const [drawer, setDrawer] = useState<{ open: boolean; event?: AppointmentEvent }>({
+  const [drawer, setDrawer] = useState<{
+    open: boolean;
+    event?: AppointmentEvent;
+    initialCompletedModalOpen?: boolean;
+  }>({
     open: false,
   });
 
@@ -259,6 +263,37 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     }
   }
 
+  function openDrawer(event: AppointmentEvent, options?: { initialCompletedModalOpen?: boolean }) {
+    setDrawer({
+      open: true,
+      event,
+      initialCompletedModalOpen: options?.initialCompletedModalOpen ?? false,
+    });
+  }
+
+  async function handleSidebarQuickAction(
+    event: AppointmentEvent,
+    action: "complete" | "no_show",
+  ): Promise<void> {
+    if (action === "complete") {
+      openDrawer(event, { initialCompletedModalOpen: true });
+      return;
+    }
+
+    const res = await fetch(`/api/appointments/${event.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "no_show" }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Erro ao marcar no-show");
+    }
+
+    refreshAll();
+  }
+
   const hasProfs = professionals.length > 0;
   const isScheduleView = view !== "resource";
 
@@ -381,7 +416,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
               initialEvents={filteredCalendarEvents}
               timezone={timezone}
               onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
-              onEventClick={(event) => setDrawer({ open: true, event })}
+              onEventClick={(event) => openDrawer(event)}
               onEventUpdate={handleEventUpdate}
             />
           ) : (
@@ -403,7 +438,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
               onSlotClick={(date, time, professionalId) =>
                 setAppointmentModal({ open: true, date, time, professionalId })
               }
-              onEventClick={(event) => setDrawer({ open: true, event })}
+              onEventClick={(event) => openDrawer(event)}
             />
           )}
         </div>
@@ -413,7 +448,8 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
           professionals={professionals}
           selectedProfessionalId={selectedProfessionalId}
           onSelectProfessional={setSelectedProfessionalId}
-          onEventClick={(event) => setDrawer({ open: true, event })}
+          onEventClick={(event) => openDrawer(event)}
+          onQuickAction={handleSidebarQuickAction}
           timezone={timezone}
         />
       </div>
@@ -450,12 +486,14 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
 
       {drawer.open && drawer.event && (
         <AppointmentDrawer
+          key={`${drawer.event.id}:${drawer.initialCompletedModalOpen ? "complete" : "view"}`}
           event={drawer.event}
           conversationId={drawer.event.conversationId ?? undefined}
           treatments={treatments}
           memberRole={memberRole}
           serviceNoun={serviceNoun}
-          onClose={() => setDrawer({ open: false })}
+          initialCompletedModalOpen={drawer.initialCompletedModalOpen}
+          onClose={() => setDrawer({ open: false, event: undefined, initialCompletedModalOpen: false })}
           onUpdated={refreshAll}
         />
       )}

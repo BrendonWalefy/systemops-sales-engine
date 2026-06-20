@@ -1,5 +1,7 @@
 "use client";
 
+import { CheckCircle2, Loader2, UserX } from "lucide-react";
+import { useState } from "react";
 import type { AppointmentEvent, Professional } from "./types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -29,6 +31,10 @@ type Props = {
   selectedProfessionalId: string | null;
   onSelectProfessional: (id: string | null) => void;
   onEventClick: (event: AppointmentEvent) => void;
+  onQuickAction: (
+    event: AppointmentEvent,
+    action: "complete" | "no_show",
+  ) => Promise<void>;
   timezone?: string;
 };
 
@@ -38,9 +44,24 @@ export function AgendaSidebar({
   selectedProfessionalId,
   onSelectProfessional,
   onEventClick,
+  onQuickAction,
   timezone = "America/Sao_Paulo",
 }: Props) {
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const now = new Date();
+
+  async function handleQuickAction(
+    event: AppointmentEvent,
+    action: "complete" | "no_show",
+  ) {
+    const key = `${event.id}:${action}`;
+    setLoadingAction(key);
+    try {
+      await onQuickAction(event, action);
+    } finally {
+      setLoadingAction(null);
+    }
+  }
 
   const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
 
@@ -115,6 +136,9 @@ export function AgendaSidebar({
           <ul className="agenda-sidebar-list">
             {todayEvents.map((event) => {
               const isPast = new Date(event.endsAt) < now;
+              const canQuickAct =
+                isPast &&
+                (event.status === "scheduled" || event.status === "confirmed");
               return (
                 <li
                   key={event.id}
@@ -137,6 +161,40 @@ export function AgendaSidebar({
                       {formatLocalTime(event.startsAt, timezone)}
                       {event.professionalName && ` · ${event.professionalName}`}
                     </span>
+                    {canQuickAct && (
+                      <div className="agenda-sidebar-card-actions">
+                        <button
+                          className="agenda-sidebar-quick-btn agenda-sidebar-quick-btn--complete"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleQuickAction(event, "complete");
+                          }}
+                          disabled={loadingAction !== null}
+                        >
+                          {loadingAction === `${event.id}:complete` ? (
+                            <Loader2 size={12} className="spin" />
+                          ) : (
+                            <CheckCircle2 size={12} />
+                          )}
+                          Concluir
+                        </button>
+                        <button
+                          className="agenda-sidebar-quick-btn agenda-sidebar-quick-btn--noshow"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleQuickAction(event, "no_show");
+                          }}
+                          disabled={loadingAction !== null}
+                        >
+                          {loadingAction === `${event.id}:no_show` ? (
+                            <Loader2 size={12} className="spin" />
+                          ) : (
+                            <UserX size={12} />
+                          )}
+                          No-show
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </li>
               );
