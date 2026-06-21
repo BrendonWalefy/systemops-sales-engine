@@ -1,5 +1,4 @@
 import type { TtsGateway, TtsRequest } from "@/application/ports/tts-gateway";
-import { sanitizeForTts } from "./openai-tts-gateway";
 
 const ELEVENLABS_API = "https://api.elevenlabs.io/v1/text-to-speech";
 // Nina M. — voz PT-BR feminina, calorosa e profissional
@@ -20,7 +19,6 @@ export class ElevenLabsTtsGateway implements TtsGateway {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) throw new Error("ELEVENLABS_API_KEY must be set");
 
-    const cleanText = sanitizeForTts(text);
     // speed: 0.7 (lento) a 1.2 (rápido); Flash v2.5 suporta via voice_settings
     const speed = Math.min(1.2, Math.max(0.7, options?.speed ?? 1.0));
 
@@ -38,7 +36,7 @@ export class ElevenLabsTtsGateway implements TtsGateway {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            text: cleanText,
+            text,
             model_id: MODEL_ID,
             // Fixa português para evitar code-switch (siglas/nomes lidos com sotaque inglês).
             language_code: "pt",

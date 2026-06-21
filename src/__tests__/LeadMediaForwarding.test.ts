@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { buildActionContext } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult } from "@/core/intelligence/ResponseComposer";
-import { sanitizeForTts } from "@/infrastructure/adapters/ai/tts/openai-tts-gateway";
+import { sanitizeForTts } from "@/infrastructure/adapters/ai/tts/tts-text-normalizer";
 
 // ─── buildActionContext para media_received ────────────────────────────────────
 
