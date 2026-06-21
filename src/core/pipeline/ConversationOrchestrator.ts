@@ -201,11 +201,21 @@ function isIsolatedGreeting(message: string): boolean {
   return patterns.some((p) => n === p || n === p + "!" || n === p + "." || n === p + "?");
 }
 
-// Detecta se o lead está confirmando ou cancelando a presença numa consulta (resposta ao lembrete D-1).
-function detectAppointmentConfirmation(message: string): "yes" | "no" | "ambiguous" {
+// Detecta a intenção do lead ao responder o lembrete D-1: confirmar presença ("yes"),
+// remarcar ("reschedule"), cancelar/não comparecer ("no") ou resposta inconclusiva ("ambiguous").
+export function detectAppointmentConfirmation(
+  message: string,
+): "yes" | "no" | "reschedule" | "ambiguous" {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+  // Remarcar tem prioridade: é o caminho mais prestativo. Sinais fortes ("remarc",
+  // "reagend", "outro dia"…) valem em qualquer posição — "não posso nesse dia, dá pra
+  // remarcar?" deve oferecer novos horários em vez de cancelar e acionar atendimento humano.
+  const rescheduleSignals = ["remarc", "reagend", "outro dia", "outro horario", "noutro dia", "mudar o dia", "mudar a data", "mudar o horario", "mudar de horario", "mudar pra outro", "trocar o dia", "trocar o horario", "trocar de dia", "adiar", "antecipar", "pode ser outro", "tem outro horario", "tem outro dia", "transferir a consulta"];
+  if (rescheduleSignals.some((t) => n.includes(t))) return "reschedule";
+
   const yesTokens = ["sim", "confirmo", "confirmado", "confirma", "vou", "vou sim", "estarei", "estarei la", "ok", "combinado", "perfeito", "claro", "com certeza", "pode contar", "to la", "ta", "blz", "beleza", "pode", "vou la", "confirmei", "certo", "certinho", "te vejo", "até la", "ate la", "estou confirmado", "estou confirmada"];
-  const noTokens = ["nao", "não", "cancelar", "cancela", "remarcar", "remarca", "nao posso", "não posso", "nao vou", "não vou", "nao consigo", "não consigo", "impossivel", "impossível", "infelizmente", "preciso cancelar", "preciso remarcar", "quero cancelar", "quero remarcar", "nao irei", "não irei", "nao vou conseguir", "não vou conseguir", "nao dou conta", "nao vou poder", "não vou poder"];
+  const noTokens = ["nao", "não", "cancelar", "cancela", "desmarcar", "desmarca", "nao posso", "não posso", "nao vou", "não vou", "nao consigo", "não consigo", "impossivel", "impossível", "infelizmente", "preciso cancelar", "quero cancelar", "nao irei", "não irei", "nao vou conseguir", "não vou conseguir", "nao dou conta", "nao vou poder", "não vou poder"];
   if (yesTokens.some((t) => n === t || n.startsWith(t + " ") || n.startsWith(t + ",") || n.startsWith(t + "!") || n.startsWith(t + "."))) return "yes";
   if (noTokens.some((t) => n === t || n.startsWith(t + " ") || n.startsWith(t + ",") || n.startsWith(t + "!") || n.startsWith(t + "."))) return "no";
   return "ambiguous";
@@ -1423,11 +1433,19 @@ export class ConversationOrchestrator {
       : allMessages;
 
     // ── 8.6. Resposta do lead ao pedido de confirmação de presença (lembrete D-1) ──
+    // Quando o lead pede para remarcar, sinalizamos aqui e deixamos o fluxo seguir para o
+    // intent `reschedule_appointment` (rebooking automatizado), em vez de cancelar e acionar
+    // atendimento humano. Mantém o lead num caminho self-service de ponta a ponta.
+    let rescheduleAfterReminder = false;
     if (currentConversationState?.state === "awaiting_appointment_confirmation") {
       const confirmPayload = currentConversationState.payload as { appointmentId: string; appointmentLabel: string } | null;
       if (confirmPayload?.appointmentId) {
         const confirmationSignal = detectAppointmentConfirmation(messageText);
-        if (confirmationSignal !== "ambiguous") {
+        if (confirmationSignal === "reschedule") {
+          // Encerra o estado de confirmação e roteia para a remarcação automatizada abaixo.
+          await this.stateMachine.invalidate(conversation.id);
+          rescheduleAfterReminder = true;
+        } else if (confirmationSignal !== "ambiguous") {
           await this.stateMachine.invalidate(conversation.id);
           const appt = await this.appointmentRepo.findById(confirmPayload.appointmentId);
           let confirmReplyText: string;
@@ -1507,6 +1525,7 @@ export class ConversationOrchestrator {
 
     if (
       procedureSelection === null &&
+      !rescheduleAfterReminder &&
       shouldThrottleRapidLeadMessage({
         messages: allMessages,
         currentExternalId: messageId,
@@ -1529,7 +1548,7 @@ export class ConversationOrchestrator {
 
     // Gap de inatividade: se o lead sumiu por ≥ CONVERSATION_RESTART_HOURS, recomeça
     let isStaleConversation = false;
-    if (!isFirstMessage && !isMenuActive && !resetRequested && !menuReRequested) {
+    if (!isFirstMessage && !isMenuActive && !resetRequested && !menuReRequested && !rescheduleAfterReminder) {
       const prevLeadMsgs = allMessages.filter((m) => m.author === "lead");
       if (prevLeadMsgs.length >= 2) {
         const prev = prevLeadMsgs[prevLeadMsgs.length - 2];
@@ -1578,7 +1597,18 @@ export class ConversationOrchestrator {
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
-    const classification = procedureSelection
+    const classification = rescheduleAfterReminder
+      ? {
+          // Lead respondeu ao lembrete D-1 pedindo para remarcar: roteia direto para o
+          // rebooking automatizado, sem depender do LLM (resposta curta e determinística).
+          intent: "reschedule_appointment" as IntentType,
+          slotPreference: nullSlotPref,
+          confidence: 1,
+          shouldAskClarification: false,
+          clarificationQuestion: null as null,
+          handoffReason: null as null,
+        }
+      : procedureSelection
       ? {
           intent: "general_question" as IntentType,
           slotPreference: nullSlotPref,
