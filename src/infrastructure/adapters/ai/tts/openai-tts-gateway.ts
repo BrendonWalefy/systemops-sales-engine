@@ -13,6 +13,10 @@ const SPEED_DEFAULT = 0.92;
  * WhatsApp usa *negrito*, _itálico_ e emojis — o modelo TTS lê esses caracteres
  * literalmente ou produz pausas indesejadas.
  */
+// Ordinais 1º..10º / 1ª..10ª por extenso (índice = número).
+const ORDINAIS_MASC = ["", "primeiro", "segundo", "terceiro", "quarto", "quinto", "sexto", "sétimo", "oitavo", "nono", "décimo"];
+const ORDINAIS_FEM = ["", "primeira", "segunda", "terceira", "quarta", "quinta", "sexta", "sétima", "oitava", "nona", "décima"];
+
 export function sanitizeForTts(text: string): string {
   return text
     // Converte R$ <valor> por extenso (ex: R$2.500 -> 2.500 reais) para melhor pronúncia no TTS
@@ -65,6 +69,34 @@ export function sanitizeForTts(text: string): string {
         result += ` de ${year}`;
       }
       return result;
+    })
+    // Converte horários para a forma falada (ex: 14h -> "14 horas", 14h30 -> "14 horas e 30 minutos",
+    // 9:00 -> "9 horas"). Sem isso o TTS lê "14h" como "catorze agá" e erra "14:30".
+    .replace(/\b([01]?\d|2[0-3])(?:h([0-5]\d)?|:([0-5]\d))(?![a-zA-Z\d])/g, (match, hStr, hMin, colonMin) => {
+      const hour = parseInt(hStr, 10);
+      const minStr = hMin ?? colonMin;
+      const hourWord = hour === 1 ? "hora" : "horas";
+      if (!minStr || minStr === "00") return `${hour} ${hourWord}`;
+      const min = parseInt(minStr, 10);
+      const minWord = min === 1 ? "minuto" : "minutos";
+      return `${hour} ${hourWord} e ${min} ${minWord}`;
+    })
+    // Títulos e abreviações comuns (exigem o ponto para não estragar nomes como "Drummond")
+    .replace(/\bDra\./gi, "doutora")
+    .replace(/\bDr\./gi, "doutor")
+    .replace(/\bSra\./gi, "senhora")
+    .replace(/\bSr\./gi, "senhor")
+    // "nº 5" / "n° 5" -> "número 5" (só o símbolo ordinal, nunca a palavra "no")
+    .replace(/n[º°]\s*(?=\d)/gi, "número ")
+    // "50%" -> "50 por cento"
+    .replace(/(\d+)\s*%/g, "$1 por cento")
+    // "A & B" -> "A e B"
+    .replace(/\s*&\s*/g, " e ")
+    // Ordinais 1º..10º / 1ª..10ª por extenso (fora dessa faixa fica inalterado)
+    .replace(/\b(\d{1,2})([ºª°])/g, (match, numStr, marker) => {
+      const num = parseInt(numStr, 10);
+      if (num < 1 || num > 10) return match;
+      return marker === "ª" ? ORDINAIS_FEM[num] : ORDINAIS_MASC[num];
     })
     // Remove emojis (blocos Unicode de símbolos e pictogramas)
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}]/gu, "")

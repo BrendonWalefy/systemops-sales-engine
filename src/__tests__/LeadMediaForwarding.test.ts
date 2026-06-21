@@ -123,8 +123,8 @@ describe("sanitizeForTts", () => {
 
   it("converte datas abreviadas em texto por extenso", () => {
     expect(sanitizeForTts("Agendado para 22/06.")).toBe("Agendado para 22 de junho.");
-    expect(sanitizeForTts("Será no dia 22/06/2026 às 14h.")).toBe("Será no dia 22 de junho de 2026 às 14h.");
-    expect(sanitizeForTts("Dia 5/5/25 às 9h")).toBe("Dia 5 de maio de 2025 às 9h");
+    expect(sanitizeForTts("Será no dia 22/06/2026 às 14h.")).toBe("Será no dia 22 de junho de 2026 às 14 horas.");
+    expect(sanitizeForTts("Dia 5/5/25 às 9h")).toBe("Dia 5 de maio de 2025 às 9 horas");
     expect(sanitizeForTts("Consulta em 01/12/26")).toBe("Consulta em 1 de dezembro de 2026");
     expect(sanitizeForTts("Dia 22/6.")).toBe("Dia 22 de junho.");
     expect(sanitizeForTts("Dia 5/12.")).toBe("Dia 5 de dezembro.");

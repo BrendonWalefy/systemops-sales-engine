@@ -40,6 +40,8 @@ export class ElevenLabsTtsGateway implements TtsGateway {
           body: JSON.stringify({
             text: cleanText,
             model_id: MODEL_ID,
+            // Fixa português para evitar code-switch (siglas/nomes lidos com sotaque inglês).
+            language_code: "pt",
             voice_settings: {
               stability: this.stability,
               similarity_boost: this.similarityBoost,
