@@ -21,4 +21,19 @@ describe("ElevenLabsTtsGateway", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toContain("output_format=opus_48000_128");
   });
+
+  it("fixa o idioma português para evitar pronúncia em inglês", async () => {
+    process.env.ELEVENLABS_API_KEY = "test-key";
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const gateway = new ElevenLabsTtsGateway("voice-id");
+    await gateway.synthesize("Olá, tudo bem?");
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.language_code).toBe("pt");
+  });
 });

@@ -214,7 +214,7 @@ Esse caminho é confiável para pouco volume, mas é frágil para produção mai
 | --- | --- |
 | Demora para responder tudo | `zapi/route.ts` e `ConversationOrchestrator.ts` |
 | Áudio demora demais | download do Z-API + `WhisperGateway` + `sendReply()` |
-| TTS fala estranho | `ResponseComposer.ts` modo áudio + `sanitizeForTts()` |
+| TTS fala estranho | `ResponseComposer.ts` modo áudio + `normalizeForTts()` (via `NormalizingTtsGateway`) |
 | Resposta duplicada | dedupe no webhook + dedupe do orquestrador + debounce |
 | Mensagem sumiu | `messages.externalId`, logs do Z-API e `sendReply()` |
 | Lead mandou mídia e a IA “morreu” | `mediaTakeoverTtlHours` e flags `aiPaused` |
