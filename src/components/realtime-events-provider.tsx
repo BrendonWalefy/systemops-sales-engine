@@ -18,7 +18,7 @@ export function useRealtimeEvents(): RealtimeState {
   return useContext(RealtimeContext);
 }
 
-const RECONNECT_DELAY_MS = 3_000;
+const POLL_INTERVAL_MS = 5_000;
 
 export function RealtimeEventsProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<RealtimeState>({
@@ -27,75 +27,64 @@ export function RealtimeEventsProvider({ children }: { children: ReactNode }) {
     connected: false,
   });
 
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stoppedRef = useRef(false);
 
   useEffect(() => {
-    let stopped = false;
-    let source: EventSource | null = null;
-
-    const connect = () => {
-      if (stopped || document.hidden) return;
-
-      source = new EventSource("/api/events/stream");
-
-      source.onopen = () => {
-        setState((prev) => ({ ...prev, connected: true }));
-      };
-
-      source.addEventListener("inbox", (event) => {
-        const data: { signature?: string } = JSON.parse((event as MessageEvent).data);
-        if (data.signature) {
-          setState((prev) => ({ ...prev, inboxSignature: data.signature ?? prev.inboxSignature }));
+    const poll = async () => {
+      if (stoppedRef.current || document.hidden) return;
+      try {
+        const res = await fetch("/api/events/stream", { cache: "no-store" });
+        if (!res.ok) {
+          setState((prev) => ({ ...prev, connected: false }));
+          return;
         }
-      });
-
-      source.addEventListener("agenda", (event) => {
-        const data: { signature?: string } = JSON.parse((event as MessageEvent).data);
-        if (data.signature) {
-          setState((prev) => ({ ...prev, agendaSignature: data.signature ?? prev.agendaSignature }));
-        }
-      });
-
-      source.onerror = () => {
-        source?.close();
+        const data: { inboxSignature?: string; agendaSignature?: string } = await res.json();
+        setState((prev) => ({
+          inboxSignature: data.inboxSignature ?? prev.inboxSignature,
+          agendaSignature: data.agendaSignature ?? prev.agendaSignature,
+          connected: true,
+        }));
+      } catch {
         setState((prev) => ({ ...prev, connected: false }));
-        if (!stopped) {
-          reconnectTimerRef.current = setTimeout(connect, RECONNECT_DELAY_MS);
-        }
-      };
+      }
     };
 
-    connect();
+    const start = () => {
+      if (stoppedRef.current || document.hidden) return;
+      if (intervalRef.current) return;
+      void poll();
+      intervalRef.current = setInterval(() => {
+        void poll();
+      }, POLL_INTERVAL_MS);
+    };
 
-    // Fecha a conexão quando a aba some de vista — sem isso o stream fica
-    // ligado em segundo plano (até ~270s) mantendo o compute do Neon acordado
-    // sem necessidade. Reconecta quando a aba volta a ficar visível.
+    const stop = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setState((prev) => ({ ...prev, connected: false }));
+    };
+
     const onVisibilityChange = () => {
       if (document.hidden) {
-        if (reconnectTimerRef.current) {
-          clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
-        source?.close();
-        source = null;
-        setState((prev) => ({ ...prev, connected: false }));
-        return;
-      }
-
-      if (!source || source.readyState === EventSource.CLOSED) {
-        connect();
+        stop();
+      } else {
+        start();
       }
     };
+
+    start();
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("focus", onVisibilityChange);
 
     return () => {
-      stopped = true;
-      source?.close();
+      stoppedRef.current = true;
+      stop();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("focus", onVisibilityChange);
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     };
   }, []);
 
