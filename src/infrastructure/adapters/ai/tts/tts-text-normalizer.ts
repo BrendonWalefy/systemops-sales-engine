@@ -14,7 +14,7 @@
 const ORDINAIS_MASC = ["", "primeiro", "segundo", "terceiro", "quarto", "quinto", "sexto", "sétimo", "oitavo", "nono", "décimo"];
 const ORDINAIS_FEM = ["", "primeira", "segunda", "terceira", "quarta", "quinta", "sexta", "sétima", "oitava", "nona", "décima"];
 
-export function sanitizeForTts(text: string): string {
+export function normalizeForTts(text: string): string {
   return text
     // Converte R$ <valor> por extenso (ex: R$2.500 -> 2.500 reais) para melhor pronúncia no TTS
     .replace(/R\$\s*(\d+(?:\.\d{3})*)(?:,(\d{2}))?\b/gi, (match, integerPart, centsPart) => {

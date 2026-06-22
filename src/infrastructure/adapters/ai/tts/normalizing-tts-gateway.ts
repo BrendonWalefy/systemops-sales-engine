@@ -1,5 +1,5 @@
 import type { TtsGateway, TtsRequest } from "@/application/ports/tts-gateway";
-import { sanitizeForTts } from "./tts-text-normalizer";
+import { normalizeForTts } from "./tts-text-normalizer";
 
 /**
  * Decorator que normaliza o texto para fala antes de delegar a qualquer gateway de TTS.
@@ -12,6 +12,6 @@ export class NormalizingTtsGateway implements TtsGateway {
   constructor(private readonly inner: TtsGateway) {}
 
   synthesize(text: string, options?: TtsRequest): Promise<ArrayBuffer> {
-    return this.inner.synthesize(sanitizeForTts(text), options);
+    return this.inner.synthesize(normalizeForTts(text), options);
   }
 }
