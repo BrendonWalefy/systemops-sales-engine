@@ -1,4 +1,4 @@
-# Demo & Marketing — Clínica fictícia "Aura Dental Studio"
+# Demo & Marketing — Clínica fictícia "Odonto Marques"
 
 > Documento vivo. Objetivo: ter uma base controlada para **gravar conteúdo de
 > marketing** (vídeos, anúncios, demonstrações em reunião, treinamento) sem
@@ -38,12 +38,12 @@ Avaliamos duas opções:
 
 **`scripts/seed-demo.ts`** + comando **`npm run seed:demo`**.
 
-- Cria a **Aura Dental Studio** como tenant real, idempotente (reseta e
+- Cria a **Odonto Marques** como tenant real, idempotente (reseta e
   re-data tudo a cada execução, pro painel ficar "fresco" no dia da gravação).
 - Marcada `isTest: true` e `autoReplyEnabled: false` → **fica fora dos crons,
   do digest e de qualquer envio real** (segurança: nunca toca produção viva).
 - Login da clínica para gravar como dona:
-  `helena@auradental.com.br` / `AuraDemo2026!`
+  `helena@odontomarques.com.br` / `OdontoMarques2026!`
 
 ### Como usar
 ```bash
@@ -51,9 +51,9 @@ npm run seed:demo   # cria/reseta a clínica demo e re-data os registros
 ```
 
 ### Conteúdo gerado (kit de marketing)
-- **Clínica:** Aura Dental Studio · São Paulo/SP · seg–sex 08–19h, sáb 08–13h ·
+- **Clínica:** Odonto Marques · São Paulo/SP · seg–sex 08–19h, sáb 08–13h ·
   IA **Marina** · tom consultivo/acolhedor/premium · menu com labels curtos.
-- **4 profissionais** com cor: Dra. Helena Martins (verde), Dr. Rafael Nogueira
+- **4 profissionais** com cor: Dra. Helena Marques (verde), Dr. Rafael Nogueira
   (azul), Dra. Camila Torres (roxo), Dr. André Vilela (dourado).
 - **7 procedimentos** com preço (avaliação R$ 150, lentes a partir de R$ 1.800
   por dente, clareamento R$ 690, implante R$ 2.900, alinhadores R$ 350/mês,
@@ -132,7 +132,7 @@ significado ou layout) · 🔴 alto (toca lógica de negócio — evitar).
 ### 3.4 🟡 Labels do menu truncados ("...len", "...pagamer")
 - **Origem:** opções cortadas matam a percepção premium.
 - **Estado atual na demo:** já usamos **labels curtos** no seed (`menuItems`),
-  então na Aura não trunca.
+  então na Odonto Marques não trunca.
 - **Onde investigar:** onde `menuItems` é renderizado (simulador de playbook /
   preview do menu) — provável `text-overflow: ellipsis` com largura fixa.
 - **O que muda (proposta):** permitir quebra de linha ou aumentar a largura do
@@ -190,7 +190,7 @@ significado ou layout) · 🔴 alto (toca lógica de negócio — evitar).
 
 | Item | Risco | Status |
 |---|---|---|
-| `scripts/seed-demo.ts` (Aura Dental Studio) | — | ✅ entregue |
+| `scripts/seed-demo.ts` (Odonto Marques) | — | ✅ entregue |
 | 3.1 Data sem ano | 🟢 | a decidir |
 | 3.2 Autonomia arredondada | 🟢 | a decidir |
 | 3.3 Saudação "Dra. Helena" | 🟡 | discutir (talvez migration) |

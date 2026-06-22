@@ -1,5 +1,5 @@
 /**
- * SEED DEMO — Clínica fictícia premium "Aura Dental Studio" para conteúdo
+ * SEED DEMO — Clínica fictícia premium "Odonto Marques" para conteúdo
  * comercial, gravação de tela, demonstração em reunião e treinamento.
  *
  * É um TENANT REAL (não há "modo demo" paralelo): o dashboard, o inbox e a
@@ -71,10 +71,10 @@ const db = drizzle(sql);
 // ─────────────────────────────────────────────────────────────────────────
 // Configuração
 // ─────────────────────────────────────────────────────────────────────────
-const SLUG = "aura";
-const CLINIC_NAME = "Aura Dental Studio";
-const ADMIN_EMAIL = "helena@auradental.com.br";
-const ADMIN_PASSWORD = "AuraDemo2026!";
+const SLUG = "odonto-marques";
+const CLINIC_NAME = "Odonto Marques";
+const ADMIN_EMAIL = "helena@odontomarques.com.br";
+const ADMIN_PASSWORD = "OdontoMarques2026!";
 const PLAN = "clinica" as const;
 
 const COLORS = {
@@ -386,7 +386,7 @@ async function main(): Promise<void> {
     timezone: "America/Sao_Paulo",
     businessHours: "Seg–sex 08h–19h · Sáb 08h–13h",
     greetingMessage:
-      "Olá! Seja bem-vindo à Aura Dental Studio. Sou a Marina, assistente virtual da clínica. " +
+      "Olá! Seja bem-vindo à Odonto Marques. Sou a Marina, assistente virtual da clínica. " +
       "Posso te ajudar com informações, avaliação, horários disponíveis e dúvidas sobre tratamentos. Como posso te ajudar hoje?",
     menuItems: [
       { number: 1, label: "Lentes de porcelana", intent: "procedures", enabled: true, treatmentKeyword: "lentes" },
@@ -414,7 +414,7 @@ async function main(): Promise<void> {
   const profCamila = uuid();
   const profAndre = uuid();
   await db.insert(professionals).values([
-    { id: profHelena, clinicId, name: "Dra. Helena Martins", specialty: "Lentes, estética e clareamento", color: COLORS.verde },
+    { id: profHelena, clinicId, name: "Dra. Helena Marques", specialty: "Lentes, estética e clareamento", color: COLORS.verde },
     { id: profRafael, clinicId, name: "Dr. Rafael Nogueira", specialty: "Implantes e cirurgia", color: COLORS.azul },
     { id: profCamila, clinicId, name: "Dra. Camila Torres", specialty: "Ortodontia e alinhadores", color: COLORS.roxo },
     { id: profAndre, clinicId, name: "Dr. André Vilela", specialty: "Avaliação geral e harmonização", color: COLORS.dourado },
@@ -490,7 +490,7 @@ async function main(): Promise<void> {
   // 5) playbook ativo
   await db.insert(playbookVersions).values({
     clinicId,
-    name: "Aura Dental Studio — demo",
+    name: "Odonto Marques — demo",
     status: "active",
     specialty: "Odontologia estética e reabilitação oral",
     procedureDescription:
@@ -640,7 +640,7 @@ async function main(): Promise<void> {
       channel: "whatsapp",
       thread: [
         { author: "lead", body: "Queria entender melhor o parcelamento.", at: spAt(0, 11, i), intent: "price_inquiry" },
-        { author: "clinic_user", body: "Oi! Aqui é a recepção da Aura, vou te explicar certinho 😊", at: spAt(0, 12, i), intent: "small_talk" },
+        { author: "clinic_user", body: "Oi! Aqui é a recepção da Odonto Marques, vou te explicar certinho 😊", at: spAt(0, 12, i), intent: "small_talk" },
       ],
     });
   }
@@ -699,7 +699,7 @@ async function main(): Promise<void> {
         { author: "lead", body: pick(LEAD_OPENERS[treatment] ?? LEAD_OPENERS["Avaliação estética"], i), at: new Date(apptCreated.getTime() - 2 * 3600_000), intent: "price_inquiry" },
         { author: "agent", body: "Perfeito! Vou te mostrar os horários disponíveis 😊", at: new Date(apptCreated.getTime() - 1 * 3600_000), intent: "scheduling" },
         { author: "lead", body: "Esse horário fica ótimo!", at: new Date(apptCreated.getTime() - 30 * 60_000), intent: "scheduling" },
-        { author: "agent", body: "Agendamento confirmado ✅ Te espero na Aura Dental Studio!", at: apptCreated, intent: "confirmation" },
+        { author: "agent", body: "Agendamento confirmado ✅ Te espero na Odonto Marques!", at: apptCreated, intent: "confirmation" },
       ],
     });
 
@@ -836,7 +836,7 @@ async function main(): Promise<void> {
   // ───────────────────────────────────────────────────────────────────────
   // Relatório
   // ───────────────────────────────────────────────────────────────────────
-  console.log("\n✅ Clínica demo semeada: Aura Dental Studio");
+  console.log("\n✅ Clínica demo semeada: Odonto Marques");
   console.log(`   clinicId: ${clinicId}`);
   console.log(`   slug:     ${SLUG}`);
   console.log("\n   Login da clínica (para gravar como Dra. Helena):");
