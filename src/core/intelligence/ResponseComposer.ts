@@ -297,14 +297,13 @@ ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}
 ${voiceResponseEnabled ? `
-MODO ÁUDIO — REGRAS ABSOLUTAS DE VOZ:
-Esta resposta será convertida em áudio e enviada pelo WhatsApp. Siga rigorosamente:
+MODO ÁUDIO — REGRAS DE VOZ:
+Esta resposta será convertida em áudio e enviada pelo WhatsApp. Cuide apenas da estrutura e do tom:
 1. Máximo 60 palavras no texto falado — as tags [MEDIA:id] NÃO contam como palavras, adicione-as normalmente.
-2. Prosa corrida apenas — sem listas numeradas, traços, bullets ou símbolos de qualquer tipo.
-3. Para horários disponíveis: mencione em linguagem natural, não em lista ("temos segunda às catorze horas e terça às nove da manhã, qual fica melhor?").
-4. Português brasileiro natural — fale como uma pessoa real, sem linguagem de call center.
-5. Sem emojis. Sem asteriscos. Sem markdown de nenhum tipo.
-6. Quando houver vídeos relevantes na biblioteca, inclua o token [MEDIA:id] ao final (ex: "[MEDIA:abc123]") — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.` : ""}`;
+2. Prosa corrida — sem listas numeradas, tabelas ou tópicos. Para horários, mencione em linguagem natural ("temos segunda às catorze horas ou terça às nove, qual fica melhor?"), nunca em lista.
+3. Português brasileiro natural e conversacional — fale como uma pessoa real, sem linguagem de call center.
+4. Quando houver vídeos relevantes na biblioteca, inclua o token [MEDIA:id] ao final (ex: "[MEDIA:abc123]") — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.
+(Não se preocupe com markdown, emojis, símbolos, abreviações, horários ou valores: são normalizados automaticamente antes da síntese de voz.)` : ""}`;
 }
 
 export function buildActionContext(
