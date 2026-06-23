@@ -1574,9 +1574,12 @@ export class ConversationOrchestrator {
     // Lead digitou um número de item válido do menu sem o menu estar ativo (ex: escolheu opção 4,
     // a IA respondeu, e mandou "1" sem ter voltado ao menu). Reapresenta o menu sem chamar o LLM
     // para evitar o false-positive de confirm_slot que gera a mensagem de "horário indisponível".
+    // Permite disparar mesmo com pendingOffer ativo quando o número não corresponde a nenhum slot
+    // oferecido — ex: slots [1,2,3] ativos mas lead digita "4" (item de menu válido).
+    const numberMatchesPendingSlot = pendingSlots?.some(s => String(s.index) === nMsg) ?? false;
     const isOrphanedMenuNumber =
       !isMenuActive &&
-      !hasPendingOffer &&
+      (!hasPendingOffer || !numberMatchesPendingSlot) &&
       !isProcedureListActive &&
       !resetRequested &&
       !menuReRequested &&
