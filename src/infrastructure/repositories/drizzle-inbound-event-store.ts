@@ -48,6 +48,29 @@ export class DrizzleInboundEventStore implements InboundEventStore {
     return { event: mapInboundEvent(existing), isNew: false };
   }
 
+  async findInboundEvent(id: string): Promise<InboundEvent | null> {
+    const [event] = await db
+      .select()
+      .from(inboundEvents)
+      .where(eq(inboundEvents.id, id))
+      .limit(1);
+    return event ? mapInboundEvent(event) : null;
+  }
+
+  async markInboundEventProcessing(id: string): Promise<void> {
+    await db
+      .update(inboundEvents)
+      .set({ processingStatus: "processing" })
+      .where(eq(inboundEvents.id, id));
+  }
+
+  async markInboundEventPending(id: string): Promise<void> {
+    await db
+      .update(inboundEvents)
+      .set({ processingStatus: "pending" })
+      .where(eq(inboundEvents.id, id));
+  }
+
   async markInboundEventProcessed(id: string, processedAt = new Date()): Promise<void> {
     await db
       .update(inboundEvents)

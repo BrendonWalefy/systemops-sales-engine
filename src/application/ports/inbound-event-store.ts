@@ -41,6 +41,9 @@ export type RecordInboundEventResult = {
 
 export type InboundEventStore = {
   recordInboundEvent(input: RecordInboundEventInput): Promise<RecordInboundEventResult>;
+  findInboundEvent(id: string): Promise<InboundEvent | null>;
+  markInboundEventProcessing(id: string): Promise<void>;
+  markInboundEventPending(id: string): Promise<void>;
   markInboundEventProcessed(id: string, processedAt?: Date): Promise<void>;
   markInboundEventFailed(id: string): Promise<void>;
   markInboundEventIgnored(id: string, processedAt?: Date): Promise<void>;

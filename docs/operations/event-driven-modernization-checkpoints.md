@@ -22,7 +22,7 @@ Se uma sessao acabar por limite de tokens, retome daqui:
 - [x] Checkpoint 1 - Schema da fila, inbox e outbox
 - [x] Checkpoint 2 - Abstracoes e repositorios
 - [x] Checkpoint 3 - Webhook fino
-- [ ] Checkpoint 4 - Conversation worker
+- [x] Checkpoint 4 - Conversation worker
 - [ ] Checkpoint 5 - Sender worker
 - [ ] Checkpoint 6 - Realtime barato por versao
 - [ ] Checkpoint 7 - Observabilidade operacional
@@ -172,6 +172,12 @@ Concluido quando:
 - a conversa puder ser processada fora da request;
 - job handler tiver entrada e saida claras;
 - retries nao duplicarem a resposta de negocio.
+
+Operacao temporaria:
+
+- `/api/cron/message-worker` drena ate tres jobs `message.process` por minuto, protegido por `CRON_SECRET`;
+- a resposta da conversa e persistida antes do envio pelo orquestrador atual;
+- a outbox e o sender dedicado permanecem no Checkpoint 5.
 
 Validacao minima:
 
