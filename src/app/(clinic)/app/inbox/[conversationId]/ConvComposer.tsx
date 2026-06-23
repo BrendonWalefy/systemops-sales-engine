@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag } from "lucide-react";
+import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 
 interface Props {
@@ -57,6 +57,7 @@ export function ConvComposer({
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountCustom, setDiscountCustom] = useState("");
@@ -133,6 +134,24 @@ export function ConvComposer({
     setText(template);
     textareaRef.current?.focus();
   }
+
+  const handleLoadSlots = async () => {
+    if (isLoadingSlots) return;
+    setIsLoadingSlots(true);
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/available-slots`);
+      if (!res.ok) throw new Error("Erro");
+      const data: { text?: string } = await res.json();
+      if (data.text) {
+        setText(data.text);
+        textareaRef.current?.focus();
+      }
+    } catch {
+      setError("Não foi possível buscar horários. Tente novamente.");
+    } finally {
+      setIsLoadingSlots(false);
+    }
+  };
 
   function handleOpenSchedule() {
     if (!scheduleOpen) {
@@ -213,6 +232,16 @@ export function ConvComposer({
             title="Pré-preenche resposta sobre casos reais"
           >
             Casos reais
+          </button>
+
+          <button
+            className="conv-chip"
+            onClick={handleLoadSlots}
+            disabled={isLoadingSlots}
+            title="Busca os próximos horários disponíveis e pré-preenche o campo"
+          >
+            <Clock size={12} />
+            {isLoadingSlots ? "Buscando…" : "Horários"}
           </button>
 
           <button

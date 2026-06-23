@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
@@ -91,21 +92,35 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         isFirstMessage: false,
       });
 
-      await sendVoiceOrText(channelAddress, composed.text, channelConfig, voiceEnabled, ttsConfig, clinic.id);
+      const sendResult = await sendVoiceOrText(channelAddress, composed.text, channelConfig, voiceEnabled, ttsConfig, clinic.id);
       await appointmentRepository.save({ ...appointment, reminderSentAt: now, updatedAt: now });
 
-      // Registra estado de confirmação pendente na conversa do lead (TTL: 24h)
-      try {
-        const conversation = await conversationRepository.findByLeadId(lead.id);
-        if (conversation) {
+      // Persiste a mensagem do lembrete no banco para aparecer no Inbox
+      const conversation = await conversationRepository.findByLeadId(lead.id);
+      if (conversation) {
+        await conversationRepository.appendMessage({
+          id: randomUUID(),
+          conversationId: conversation.id,
+          author: "agent",
+          body: composed.text,
+          mediaUrl: sendResult.deliveryFormat === "audio" ? (sendResult.blobUrl ?? null) : null,
+          mediaType: sendResult.deliveryFormat === "audio" ? "audio" : null,
+          sentAt: now,
+          externalId: sendResult.msgId ?? null,
+          intent: "appointment_reminder",
+          deliveryFormat: sendResult.deliveryFormat,
+        });
+
+        // Registra estado de confirmação pendente na conversa do lead (TTL: 24h)
+        try {
           await stateMachine.offerAppointmentConfirmation(
             conversation.id,
             appointment.id,
             appointmentLabel,
           );
+        } catch (stateErr) {
+          console.warn("[AppointmentReminder] Falha ao registrar estado de confirmação:", stateErr);
         }
-      } catch (stateErr) {
-        console.warn("[AppointmentReminder] Falha ao registrar estado de confirmação:", stateErr);
       }
 
       sent++;

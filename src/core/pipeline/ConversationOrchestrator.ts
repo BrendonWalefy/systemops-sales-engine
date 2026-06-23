@@ -98,6 +98,13 @@ function getMenuItemsForExperience(clinic: Clinic, experience: ConversationExper
   return clinic.menuItems ?? (experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS);
 }
 
+// Retorna apenas o primeiro nome do lead para saudações — evita usar nome completo
+// ou apelidos de contato como "Tânia Mara/Sinal Verde" na conversa.
+function extractFirstName(fullName: string | null | undefined): string | null {
+  if (!fullName) return null;
+  return fullName.split(/[\s\/]+/)[0] ?? null;
+}
+
 // Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
 // com a saudação temporal que o Orchestrator prepende no primeiro contato.
 // Conservador: só remove openers de uma palavra — não toca frases compostas como
@@ -160,7 +167,8 @@ function shouldSendConciergeStarter(experience: ConversationExperience, intent: 
 
 function buildConciergeStarter(clinic: Clinic, timezone: ClinicTimezone, leadName?: string | null): string {
   const salutation = getDayGreeting(timezone);
-  const nameGreeting = leadName ? `, ${leadName}` : "";
+  const firstName = extractFirstName(leadName);
+  const nameGreeting = firstName ? `, ${firstName}` : "";
   const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage);
   const intro = receptionistName
     ? `Sou a ${receptionistName}, assistente virtual da ${clinic.name}.`
@@ -604,7 +612,9 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
 
 export function buildLocationClinicContext(address: string | null): string {
   const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
-  if (address) return `${base}\nEndereço: ${address}.`;
+  if (address) {
+    return `${base}\nEndereço: ${address}.\nATENÇÃO CRÍTICA: A clínica possui SOMENTE este endereço. NÃO confirme presença em outros bairros, ruas ou cidades — mesmo que o lead mencione um local diferente na mensagem. Se o lead perguntar sobre outro bairro, responda que a clínica está localizada no endereço acima.`;
+  }
   // Endereço não cadastrado — instrução explícita para não inventar
   return `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
 }
@@ -814,7 +824,7 @@ async function sendReply(
   voiceEnabled: boolean,
   ttsConfig: TtsConfig = DEFAULT_TTS_CONFIG,
   clinicId?: string,
-): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text" }> {
+): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text"; blobUrl: string | null }> {
   if (voiceEnabled) {
     try {
       const { gateway, format, contentType, speed } = createTtsProvider(ttsConfig);
@@ -828,14 +838,14 @@ async function sendReply(
       const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
       // Blob não é deletado aqui — cleanup via GitHub Actions (cleanup-tts-blobs.yml, 2h TTL)
       if (clinicId) trackTtsCostAsync(clinicId, text, ttsConfig);
-      return { msgId, deliveryFormat: "audio" };
+      return { msgId, deliveryFormat: "audio", blobUrl };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[TTS] Falhou (provider=${ttsConfig.provider} speed=${ttsConfig.speed}): ${msg}`);
     }
   }
   const msgId = await sendTextMessage(to, text, config);
-  return { msgId, deliveryFormat: "text" };
+  return { msgId, deliveryFormat: "text", blobUrl: null };
 }
 
 // Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
@@ -1228,7 +1238,7 @@ export class ConversationOrchestrator {
                 installmentTable: null,
                 receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
               },
-              leadName: lead.name,
+              leadName: extractFirstName(lead.name),
               timezone,
               isFirstMessage: false,
               conversationExperience: clinicExperience,
@@ -1446,7 +1456,7 @@ export class ConversationOrchestrator {
                 commercialPolicy: editorial?.commercialPolicy ?? null,
                 receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
               },
-              leadName: lead.name,
+              leadName: extractFirstName(lead.name),
               timezone,
               isFirstMessage: false,
             }).then((c) => c.text);
@@ -1469,7 +1479,7 @@ export class ConversationOrchestrator {
                 commercialPolicy: editorial?.commercialPolicy ?? null,
                 receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
               },
-              leadName: lead.name,
+              leadName: extractFirstName(lead.name),
               timezone,
               isFirstMessage: false,
             }).then((c) => c.text);
@@ -1574,7 +1584,9 @@ export class ConversationOrchestrator {
       /^\d+$/.test(nMsg) &&
       clinicMenuItems.some(i => i.enabled && nMsg === String(i.number));
 
-    const skipLlm = procedureSelection !== null || menuReRequested || isStaleConversation || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
+    // isStaleConversation não está aqui: o LLM sempre classifica para capturar intents
+    // explícitas (ex: "quero saber sobre custo") mesmo após longo silêncio.
+    const skipLlm = procedureSelection !== null || menuReRequested || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
@@ -1687,7 +1699,7 @@ export class ConversationOrchestrator {
             mediaLibrary: editorial?.mediaLibrary ?? [],
             receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
-          leadName: lead.name,
+          leadName: extractFirstName(lead.name),
           timezone,
           isFirstMessage,
           conversationExperience: experience,
@@ -1703,7 +1715,7 @@ export class ConversationOrchestrator {
 
     if (isFirstMessage && shouldShowInitialMenu(experience, intent)) {
       const salutation = getDayGreeting(timezone);
-      const nameGreeting = lead.name ? `, ${lead.name}` : "";
+      const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (isFirstMessage && shouldSendConciergeStarter(experience, intent)) {
@@ -1713,19 +1725,19 @@ export class ConversationOrchestrator {
       await this.stateMachine.markResetBoundary(conversation.id);
       if (experience === "menu_first") {
         const salutation = getDayGreeting(timezone);
-        const nameGreeting = lead.name ? `, ${lead.name}` : "";
+        const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else {
         replyText = buildConciergeStarter(clinic, timezone, lead.name);
       }
-    } else if (menuReRequested || isStaleConversation || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
+    } else if (menuReRequested || (isStaleConversation && (intent === "greeting" || intent === "acknowledgment" || intent === "unclear")) || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
       if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
         replyText = buildMenuBody(clinic, "reoffer", experience);
         await this.stateMachine.offerMenu(conversation.id);
       } else if (experience === "menu_first") {
         const salutation = getDayGreeting(timezone);
-        const nameGreeting = lead.name ? `, ${lead.name}` : "";
+        const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "stale", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else if (isStaleConversation) {
@@ -2208,7 +2220,7 @@ export class ConversationOrchestrator {
       case "greeting": {
         if (experience === "menu_first") {
           const salutation = getDayGreeting(timezone);
-          const nameGreeting = lead.name ? `, ${lead.name}` : "";
+          const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
           replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "reoffer", experience)}`;
           await this.stateMachine.offerMenu(conversation.id);
         } else {
@@ -2711,17 +2723,18 @@ export class ConversationOrchestrator {
       const result = await sendReply(outboundAddress, replyText, channelConfig, useVoice, ttsConf, clinicId);
       zapiMessageId = result.msgId;
       deliveryFormat = result.deliveryFormat;
-    }
-
-    if (!hasInterleavedMedia) {
-      await db
-        .update(messagesTable)
-        .set({
-          ...(zapiMessageId ? { externalId: zapiMessageId } : {}),
-          deliveryFormat,
-        })
-        .where(eq(messagesTable.id, agentMessageId))
-        .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
+      if (!hasInterleavedMedia) {
+        await db
+          .update(messagesTable)
+          .set({
+            ...(zapiMessageId ? { externalId: zapiMessageId } : {}),
+            deliveryFormat,
+            // Salva blobUrl para exibir player de áudio no Inbox (blob vive 2h via cleanup cron)
+            ...(result.blobUrl ? { mediaUrl: result.blobUrl, mediaType: "audio" } : {}),
+          })
+          .where(eq(messagesTable.id, agentMessageId))
+          .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
+      }
     }
 
     // ── 9.2 Envia mídias no modo TTS (áudio primeiro, vídeos depois) ──
