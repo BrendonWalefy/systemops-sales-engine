@@ -1,37 +1,25 @@
-// Thin adapter: normaliza payload Z-API e delega ao ConversationOrchestrator.
-// Toda a lógica de negócio, agenda e IA está no Orchestrator.
+// Thin adapter: valida, resolve tenant e persiste a entrada antes de enfileirar.
 
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { db } from "@/infrastructure/db/client";
 import { clinics, conversations, messages } from "@/infrastructure/db/schema";
 import { and, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
-import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 import { buildContactIdentifiersFromWebhook } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { isInternalOperationalWhatsAppMessage } from "@/core/whatsapp/InternalWhatsAppOperationalMessage";
 import { findConversationByWhatsAppContact } from "@/application/whatsapp/find-conversation-by-whatsapp-contact";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
-import { resolveLeadInboundContent, resolveUnsupportedInboundPlaceholder } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
+import { resolveUnsupportedInboundPlaceholder } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
+import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
+import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { buildZApiInboundEvent } from "@/infrastructure/adapters/channels/whatsapp/zapi-inbound-event";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-let orchestrator: ConversationOrchestrator | null = null;
-function getOrchestrator() {
-  if (!orchestrator) orchestrator = new ConversationOrchestrator();
-  return orchestrator;
-}
-
-let whisperGateway: WhisperGateway | null = null;
-function getWhisperGateway() {
-  if (!whisperGateway) whisperGateway = new WhisperGateway();
-  return whisperGateway;
-}
 
 async function resolveWebhookClinic(
   body: ZApiInboundPayload,
@@ -132,8 +120,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const [clinicRow] = await db
     .select({
-      autoReplyEnabled: clinics.autoReplyEnabled,
-      operationalStatus: clinics.operationalStatus,
       receptionistPhone: clinics.receptionistPhone,
       takeoverTtlHours: clinics.takeoverTtlHours,
     })
@@ -288,71 +274,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const replyEnabled = shouldSendAutomatedClinicOutbound(clinicRow);
-
-  // Dedup: messageId já registrado no banco (ex: echo de mensagem enviada pelo dispatcher)
-  if (body.messageId) {
-    const [dup] = await db
-      .select({ id: messages.id })
-      .from(messages)
-      .where(eq(messages.externalId, body.messageId))
-      .limit(1);
-    if (dup) return new NextResponse("OK", { status: 200 });
+  if (!body.messageId) {
+    console.error("[ZApi] Payload inbound sem messageId");
+    return new NextResponse("Bad Request", { status: 400 });
   }
 
-  // Diagnóstico foto de perfil: confirma se a Z-API está enviando `senderPhoto` no webhook.
-  // Sem foto aqui → leads.profile_pic_url fica null → inbox mostra só as iniciais.
-  console.log(
-    `[ZApi] inbound phone=${body.phone} senderPhoto=${body.senderPhoto ? "presente" : "AUSENTE"}`,
-  );
-
-  const inboundContent = await resolveLeadInboundContent({
-    payload: body,
-    replyEnabled,
-    transcribeAudio: async (audioUrl, mimeType) => {
-      const audioRes = await fetch(audioUrl, {
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!audioRes.ok) {
-        throw new Error(`Audio download failed (${audioRes.status})`);
-      }
-      const audioBuffer = await audioRes.arrayBuffer();
-      return getWhisperGateway().transcribe(audioBuffer, mimeType);
-    },
-  });
-
-  if (!inboundContent) {
-    return new NextResponse("OK", { status: 200 });
+  try {
+    await persistInboundEventAndEnqueue(
+      buildZApiInboundEvent({ clinicId, payload: body }),
+      {
+        inboundEventStore: new DrizzleInboundEventStore(),
+        jobQueue: new DrizzleJobQueue(),
+      },
+    );
+  } catch (error) {
+    // Returning an error asks Z-API to retry. A duplicate event retries only
+    // the idempotent enqueue, repairing a prior persistence/enqueue split.
+    console.error("[ZApi] Falha ao persistir ou enfileirar inbound:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
   }
-
-  if (!inboundContent.shouldReply && !inboundContent.mediaType) {
-    console.warn("[ZApi] Persistindo placeholder para inbound não textual", {
-      messageId: body.messageId,
-      phone: body.phone,
-      hasSticker: Boolean(body.sticker?.stickerUrl),
-      hasReaction: Boolean(body.reaction || body.reactionText || body.emoji),
-    });
-  }
-
-  // Retorna 200 imediatamente para o Z-API não retentar (timeout curto de resposta).
-  // `after` garante que o pipeline complete dentro do mesmo invocation serverless.
-  after(
-    getOrchestrator()
-      .handle({
-        clinicId,
-        phone: body.phone,
-        whatsappLid: body.chatLid ?? null,
-        messageText: inboundContent.messageText,
-        messageId: body.messageId,
-        senderName: body.senderName || undefined,
-        senderPhoto: body.senderPhoto ?? null,
-        timestamp: body.momment ? new Date(body.momment) : new Date(),
-        replyEnabled: inboundContent.shouldReply,
-        mediaUrl: inboundContent.mediaUrl,
-        mediaType: inboundContent.mediaType,
-      })
-      .catch((error) => console.error("[ZApi] Webhook error:", error)),
-  );
 
   return new NextResponse("OK", { status: 200 });
 }

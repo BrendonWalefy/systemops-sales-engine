@@ -21,7 +21,7 @@ Se uma sessao acabar por limite de tokens, retome daqui:
 - [x] Plano mestre da modernizacao criado
 - [x] Checkpoint 1 - Schema da fila, inbox e outbox
 - [x] Checkpoint 2 - Abstracoes e repositorios
-- [ ] Checkpoint 3 - Webhook fino
+- [x] Checkpoint 3 - Webhook fino
 - [ ] Checkpoint 4 - Conversation worker
 - [ ] Checkpoint 5 - Sender worker
 - [ ] Checkpoint 6 - Realtime barato por versao
@@ -121,6 +121,12 @@ Concluido quando:
 - webhook nao chamar mais a jornada completa diretamente;
 - `after(...)` nao for mais a estrategia principal de processamento;
 - entrada ficar reprocessavel.
+
+Ordem de deploy:
+
+- nao liberar este checkpoint sozinho em producao: ele apenas persiste e cria `message.process`;
+- disponibilizar o worker do Checkpoint 4 na mesma release, ou antes de apontar trafego para este webhook;
+- rollback seguro: reverter este commit interrompe novas filas; eventos ja persistidos permanecem auditaveis para replay.
 
 Validacao minima:
 
