@@ -30,6 +30,8 @@ import {
 import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 import { probeClinicChannelHealth } from "@/application/health/channel-health";
 import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
+import { isDemoSeedEnabled } from "@/application/demo/seed-demo-clinic";
+import { LoadDemoClinicButton } from "./LoadDemoClinicButton";
 
 const USD_TO_BRL = 5.5;
 
@@ -385,6 +387,7 @@ export default async function OwnerPage() {
           <Link href="/owner/clinics/new" className="primary-button">
             Clínica completa
           </Link>
+          {isDemoSeedEnabled() && <LoadDemoClinicButton />}
         </div>
       </div>
 

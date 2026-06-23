@@ -2181,7 +2181,7 @@ export class ConversationOrchestrator {
           replyText = await compose({
             type: "appointments_listed",
             appointments: activeAppointments.map((a) => ({
-              label: timezone.formatForConfirmation(a.startsAt),
+              label: voiceEnabled ? timezone.formatForVoice(a.startsAt) : timezone.formatForConfirmation(a.startsAt),
               status: a.status,
             })),
           });

@@ -7,7 +7,7 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canViewFinancials, canViewOwnRevenue } from "@/application/tenancy/member-role";
 import { redirect } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
-import { leads, conversations, messages, clinicMembers, appointments, treatments, clinics } from "@/infrastructure/db/schema";
+import { leads, conversations, messages, clinicMembers, appointments, treatments, clinics, professionals } from "@/infrastructure/db/schema";
 import { eq, count, and, desc, sql, gte, lt, notInArray, inArray, isNotNull, asc } from "drizzle-orm";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -126,7 +126,6 @@ function todayFormatted(): string {
     weekday: "long",
     day: "2-digit",
     month: "long",
-    year: "numeric",
     timeZone: DASHBOARD_TZ,
   });
 }
@@ -199,6 +198,17 @@ function emailToFirstName(email: string): string {
   const local = email.split("@")[0];
   const first = local.split(/[._\-0-9]/)[0];
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
+// Saudação amigável a partir do nome do profissional vinculado ao membro.
+// "Dra. Helena Marques" → "Dra. Helena"; "João Pereira" → "João".
+function greetingFromProfessionalName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "você";
+  if (/^(dr|dra)\.?$/i.test(parts[0]) && parts[1]) {
+    return `${parts[0]} ${parts[1]}`;
+  }
+  return parts[0];
 }
 
 function trendTone(current: number, previous: number): string {
@@ -504,11 +514,12 @@ async function fetchDashboardData(period: string) {
       ),
     userEmail
       ? db
-          .select({ avatarUrl: clinicMembers.avatarUrl })
+          .select({ avatarUrl: clinicMembers.avatarUrl, professionalName: professionals.name })
           .from(clinicMembers)
+          .leftJoin(professionals, eq(professionals.id, clinicMembers.professionalId))
           .where(and(eq(clinicMembers.email, userEmail), eq(clinicMembers.clinicId, CLINIC_ID)))
           .limit(1)
-      : Promise.resolve([] as Array<{ avatarUrl: string | null }>),
+      : Promise.resolve([] as Array<{ avatarUrl: string | null; professionalName: string | null }>),
     // Agendamentos de hoje (fuso da clínica) excluindo cancelados
     db
       .select({
@@ -586,6 +597,7 @@ async function fetchDashboardData(period: string) {
     },
     userEmail,
     avatarUrl: memberResult[0]?.avatarUrl ?? null,
+    professionalName: memberResult[0]?.professionalName ?? null,
     memberProfile,
     flowStart,
     CLINIC_ID,
@@ -622,6 +634,9 @@ export default async function DashboardPage({
       )
     : null;
   const firstName = data.userEmail ? emailToFirstName(data.userEmail) : "você";
+  const greetingName = data.professionalName
+    ? greetingFromProfessionalName(data.professionalName)
+    : firstName;
   const conversionRate = data.totalLeads > 0 ? (data.scheduledCount / data.totalLeads) * 100 : 0;
   const conversionTone = conversionRate >= 10 ? "positive" : conversionRate >= 4 ? "neutral" : "negative";
   const automationRate =
@@ -660,7 +675,7 @@ export default async function DashboardPage({
             initial={firstName[0]?.toUpperCase() ?? "?"}
           />
         </div>
-        <p className="dashboard-mobile-greeting">Olá, {firstName}!</p>
+        <p className="dashboard-mobile-greeting">Olá, {greetingName}!</p>
         <p className="dashboard-mobile-date">{todayFormatted()}</p>
       </div>
 
@@ -802,11 +817,13 @@ export default async function DashboardPage({
                 <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>ROI</p>
                 <strong style={{ fontSize: "22px", fontWeight: 800, color: "var(--text)" }}>
                   {revenueData.monthlyRevenueBrl > 0
-                    ? `${Math.round((revenueData.confirmedCents / 100 / (revenueData.monthlyRevenueBrl / 100)) * 100)}%`
+                    ? `${(revenueData.confirmedCents / revenueData.monthlyRevenueBrl)
+                        .toFixed(1)
+                        .replace(".", ",")}x`
                     : "—"}
                 </strong>
                 <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
-                  da receita mensal
+                  sobre a mensalidade
                 </p>
               </div>
             )}
