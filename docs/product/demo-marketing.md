@@ -191,13 +191,19 @@ significado ou layout) · 🔴 alto (toca lógica de negócio — evitar).
 | Item | Risco | Status |
 |---|---|---|
 | `scripts/seed-demo.ts` (Odonto Marques) | — | ✅ entregue |
-| 3.1 Data sem ano | 🟢 | a decidir |
-| 3.2 Autonomia arredondada | 🟢 | a decidir |
-| 3.3 Saudação "Dra. Helena" | 🟡 | discutir (talvez migration) |
-| 3.4 Menu truncado | 🟡 | investigar componente |
-| 3.5 ROI "4,8x" | 🟡 | discutir notação |
-| 3.6 Estados vazios | 🟢 | baixa prioridade |
+| 3.1 Data sem ano | 🟢 | ✅ aplicado |
+| 3.2 Autonomia arredondada (98%) | 🟢 | ✅ aplicado |
+| 3.3 Saudação "Dra. Helena" | 🟢 | ✅ aplicado **sem migration** (via profissional vinculado) |
+| 3.4 Menu truncado | 🟡 | 🔎 investigado — só no editor; demo ok; sem ação |
+| 3.5 ROI "4,8x" | 🟡 | ✅ aplicado ("4,8x sobre a mensalidade") |
+| 3.6 Estados vazios | 🟢 | resolvido na demo; baixa prioridade |
 | Botão "Carregar clínica demo" | 🟡 | futuro |
+
+> **Nota 3.3:** A saudação "Olá, Dra. Helena!" foi resolvida **sem mudança de
+> banco**. O membro já tem `professionalId`; o dashboard agora deriva a
+> saudação do nome do profissional vinculado ("Dra. Helena Marques" → "Dra.
+> Helena"), com fallback para o email. Mais seguro que a coluna nova
+> cogitada — não toca em schema/migration, então não há risco de CI/produção.
 
 > Forma de trabalho: escolhemos um item, eu mostro o componente e o preview,
 > validamos juntos, aí sim aplico — em mudança pequena e isolada.
