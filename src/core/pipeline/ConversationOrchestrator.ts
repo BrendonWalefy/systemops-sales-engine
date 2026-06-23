@@ -23,20 +23,14 @@ import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzl
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { sendTextMessage, sendMediaMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
-import {
-  OutboundDeliveryService,
-  type OutboundPart,
-  type OutboundMediaPart,
-} from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
+import type { OutboundPart } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 import { createLogger, type Logger } from "@/infrastructure/logging/logger";
-import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
 import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, type TtsConfig } from "@/domain/entities/tts-config";
 import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voice-mode";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
-import { trackTtsCostAsync } from "@/lib/tts-send";
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -51,7 +45,6 @@ import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDura
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
-import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
@@ -66,10 +59,14 @@ import {
   DEFAULT_MENU_ITEMS,
 } from "@/domain/entities/clinic";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
-import {
-  buildAgentMessageFromOutboundPart,
-  buildInitialAgentMessage,
-} from "./outbound-message-persistence";
+import { buildInitialAgentMessage } from "./outbound-message-persistence";
+import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import type {
+  ConversationOutboundPayload,
+  PipelineAdvance,
+} from "@/application/jobs/conversation-outbound-payload";
+import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -821,43 +818,6 @@ async function rehostLeadMedia(
   }
 }
 
-/**
- * Envia a resposta da IA. Se voiceEnabled, sintetiza áudio via TTS, faz upload
- * no Vercel Blob, envia o áudio e deleta o blob logo após. Em caso de falha no
- * TTS, cai silenciosamente para o envio de texto.
- * Retorna o messageId do Z-API e o formato de entrega real ("audio" | "text").
- */
-async function sendReply(
-  to: string,
-  text: string,
-  config: ClinicChannelConfig,
-  voiceEnabled: boolean,
-  ttsConfig: TtsConfig = DEFAULT_TTS_CONFIG,
-  clinicId?: string,
-): Promise<{ msgId: string | null; deliveryFormat: "audio" | "text"; blobUrl: string | null }> {
-  if (voiceEnabled) {
-    try {
-      const { gateway, format, contentType, speed } = createTtsProvider(ttsConfig);
-      const storage = new VercelBlobStorageGateway();
-      const audioBuffer = await gateway.synthesize(text, { format, speed });
-      const blobUrl = await storage.upload(
-        `tts/${randomUUID()}.${format}`,
-        audioBuffer,
-        { contentType },
-      );
-      const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
-      // Blob não é deletado aqui — cleanup via GitHub Actions (cleanup-tts-blobs.yml, 2h TTL)
-      if (clinicId) trackTtsCostAsync(clinicId, text, ttsConfig);
-      return { msgId, deliveryFormat: "audio", blobUrl };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[TTS] Falhou (provider=${ttsConfig.provider} speed=${ttsConfig.speed}): ${msg}`);
-    }
-  }
-  const msgId = await sendTextMessage(to, text, config);
-  return { msgId, deliveryFormat: "text", blobUrl: null };
-}
-
 // Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
 // produzindo partes prontas para entrega. IDs ausentes são logados como erro crítico
 // (vídeo perdido silenciosamente é pior do que log ruidoso) e pulados.
@@ -943,8 +903,6 @@ export class ConversationOrchestrator {
   private stateMachine = new ConversationStateMachine();
   private intentClassifier = new IntentClassifier();
   private responseComposer = new ResponseComposer();
-
-  private outboundDelivery = new OutboundDeliveryService();
 
   private leadRepo = new DrizzleLeadRepository();
   private conversationRepo = new DrizzleConversationRepository();
@@ -1256,22 +1214,32 @@ export class ConversationOrchestrator {
             });
             const photoNow = new Date();
             const photoAgentId = randomUUID();
-            const { msgId: photoMsgId, deliveryFormat: photoDeliveryFormat } = await sendReply(outboundAddress, photoComposed.text, channelConfig, voiceEnabled, ttsConf, clinicId);
             await this.conversationRepo.appendMessage({
               id: photoAgentId,
               conversationId: conversation.id,
               author: "agent",
               body: photoComposed.text,
               sentAt: photoNow,
-              externalId: photoMsgId ?? null,
+              externalId: null,
               intent: "check_availability",
-              deliveryFormat: photoDeliveryFormat,
+              deliveryFormat: null,
             });
-            if (next) {
-              await this.stateMachine.advancePipelineStep(conversation.id, next.index);
-            } else {
-              await this.stateMachine.exitTreatmentPipeline(conversation.id);
-            }
+            await this.enqueueConversationReply(clinicId, conversation.id, {
+              version: 1,
+              kind: "conversation_reply",
+              to: outboundAddress,
+              agentMessageId: photoAgentId,
+              replyText: photoComposed.text,
+              intent: "check_availability",
+              useVoice: voiceEnabled,
+              ttsConfig: ttsConf,
+              interleavedParts: [],
+              mediaParts: [],
+              leadId: lead.id,
+              pipelineAdvance: next
+                ? { action: "advance", nextStepIndex: next.index }
+                : { action: "exit" },
+            });
             return { replied: true };
           }
         }
@@ -1314,16 +1282,29 @@ export class ConversationOrchestrator {
       }).where(eq(conversationsTable.id, conversation.id));
 
       const mediaAgentId = randomUUID();
-      const { msgId: zapiMediaMsgId, deliveryFormat: mediaDeliveryFormat } = await sendReply(outboundAddress, mediaReplyText, channelConfig, voiceEnabled, ttsConf, clinicId);
       await this.conversationRepo.appendMessage({
         id: mediaAgentId,
         conversationId: conversation.id,
         author: "agent",
         body: mediaReplyText,
         sentAt: now,
-        externalId: zapiMediaMsgId ?? null,
+        externalId: null,
         intent: "needs_human",
-        deliveryFormat: mediaDeliveryFormat,
+        deliveryFormat: null,
+      });
+      await this.enqueueConversationReply(clinicId, conversation.id, {
+        version: 1,
+        kind: "conversation_reply",
+        to: outboundAddress,
+        agentMessageId: mediaAgentId,
+        replyText: mediaReplyText,
+        intent: "needs_human",
+        useVoice: voiceEnabled,
+        ttsConfig: ttsConf,
+        interleavedParts: [],
+        mediaParts: [],
+        leadId: lead.id,
+        pipelineAdvance: null,
       });
 
       return { replied: true };
@@ -1502,18 +1483,31 @@ export class ConversationOrchestrator {
               isFirstMessage: false,
             }).then((c) => c.text);
           }
-          const { msgId: confirmMsgId, deliveryFormat: confirmFormat } = await sendReply(outboundAddress, confirmReplyText, channelConfig, voiceEnabled, ttsConf, clinicId);
+          const confirmAgentId = randomUUID();
           await this.conversationRepo.appendMessage({
-            id: randomUUID(),
+            id: confirmAgentId,
             conversationId: conversation.id,
             author: "agent",
             body: confirmReplyText,
             sentAt: new Date(),
-            externalId: confirmMsgId,
-            intent: confirmationSignal === "yes" ? "appointment_confirmed" : "appointment_cancelled",
-            deliveryFormat: confirmFormat,
+            externalId: null,
+            intent: null,
+            deliveryFormat: null,
           });
-          await this.releaseConversationClaim(conversation.id);
+          await this.enqueueConversationReply(clinicId, conversation.id, {
+            version: 1,
+            kind: "conversation_reply",
+            to: outboundAddress,
+            agentMessageId: confirmAgentId,
+            replyText: confirmReplyText,
+            intent: null,
+            useVoice: voiceEnabled,
+            ttsConfig: ttsConf,
+            interleavedParts: [],
+            mediaParts: [],
+            leadId: lead.id,
+            pipelineAdvance: null,
+          });
           return { replied: true };
         }
       }
@@ -1713,7 +1707,7 @@ export class ConversationOrchestrator {
     // Avanço de pipeline adiado: executado APÓS todo o conteúdo ser enviado para evitar
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
-    let pendingPipelineAdvance: (() => Promise<void>) | null = null;
+    let pendingPipelineAdvance: PipelineAdvance | null = null;
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
     ) => {
@@ -2286,14 +2280,10 @@ export class ConversationOrchestrator {
                   .filter((p): p is { type: "media"; id: string } => p.type === "media")
                   .map((p) => p.id);
                 replyText = pipelineText ? `${greetingText}\n\n${pipelineText}` : greetingText;
-                pendingPipelineAdvance = async () => {
-                  const next = nextActivePipelineStep(greetingTreatment.pipelineSteps!, firstActive.index + 1);
-                  if (next) {
-                    await this.stateMachine.advancePipelineStep(conversation.id, next.index);
-                  } else {
-                    await this.stateMachine.exitTreatmentPipeline(conversation.id);
-                  }
-                };
+                const next = nextActivePipelineStep(greetingTreatment.pipelineSteps!, firstActive.index + 1);
+                pendingPipelineAdvance = next
+                  ? { action: "advance", nextStepIndex: next.index }
+                  : { action: "exit" };
                 break;
               }
               // Para step type "qa": saudação normal — pipeline ativo aguarda próxima msg
@@ -2421,14 +2411,10 @@ export class ConversationOrchestrator {
                   .join("\n\n");
                 clinicContext = "";
                 // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
-                pendingPipelineAdvance = async () => {
-                  const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1);
-                  if (next) {
-                    await this.stateMachine.advancePipelineStep(conversation.id, next.index);
-                  } else {
-                    await this.stateMachine.exitTreatmentPipeline(conversation.id);
-                  }
-                };
+                const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1);
+                pendingPipelineAdvance = next
+                  ? { action: "advance", nextStepIndex: next.index }
+                  : { action: "exit" };
                 break;
               } else if (firstActive.step.type === "qa") {
                 clinicContext = [
@@ -2508,11 +2494,10 @@ export class ConversationOrchestrator {
                     composedMediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
                     replyText = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
                     clinicContext = "";
-                    pendingPipelineAdvance = async () => {
-                      const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1);
-                      if (next) await this.stateMachine.advancePipelineStep(conversation.id, next.index);
-                      else await this.stateMachine.exitTreatmentPipeline(conversation.id);
-                    };
+                    const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1);
+                    pendingPipelineAdvance = next
+                      ? { action: "advance", nextStepIndex: next.index }
+                      : { action: "exit" };
                     break;
                   }
                 }
@@ -2649,8 +2634,7 @@ export class ConversationOrchestrator {
       ? resolveOutboundParts(composedParts, editorial?.mediaLibrary, deliveryLog)
       : [];
 
-    // ── 9. Salva mensagem do agente ANTES de enviar — garante inbox mesmo se envio falhar ──
-    // deliveryFormat será atualizado após envio com o formato real (audio ou text).
+    // ── 9. Persiste resposta e outbox antes do envio técnico ──
     const agentMessageId = randomUUID();
     const agentSentAt = new Date();
     await this.conversationRepo.appendMessage(
@@ -2665,136 +2649,28 @@ export class ConversationOrchestrator {
       }),
     );
 
-    // ── 9.1 Envia resposta — intercalada (texto→vídeo→texto) ou simples ──
-    let zapiMessageId: string | null = null;
-    let deliveryFormat: "audio" | "text" = "text";
-
-    // Persistência de mídia enviada + follow-up pós-vídeo — compartilhado entre
-    // o modo intercalado (9.1) e o modo TTS (9.2).
-    const persistSentMedia = async (
-      {
-        part,
-        msgId,
-        isFirst = false,
-      }: { part: OutboundMediaPart; msgId: string | null; isFirst?: boolean },
-    ) => {
-      const sentAt = new Date();
-      if (isFirst && hasInterleavedMedia) {
-        await db
-          .update(messagesTable)
-          .set({
-            body: part.title,
-            mediaUrl: part.url,
-            mediaType: part.mediaType,
-            ...(msgId ? { externalId: msgId } : {}),
-            deliveryFormat: "text",
-          })
-          .where(eq(messagesTable.id, agentMessageId));
-      } else {
-        await this.conversationRepo.appendMessage(
-          buildAgentMessageFromOutboundPart({
-            id: randomUUID(),
-            conversationId: conversation.id,
-            part,
-            sentAt,
-            intent: intent ?? null,
-            externalId: msgId,
-            deliveryFormat: "text",
-          }),
-        );
-      }
-      if (part.mediaType === "video") {
-        const activeAppt = await this.appointmentRepo.findActiveByLeadId(lead.id).catch(() => null);
-        if (!activeAppt) {
-          await scheduleFollowUp({
-            clinicId,
-            leadId: lead.id,
-            trigger: "video_sent",
-            videoTitle: part.title,
-            followUpRepository: new DrizzleFollowUpRepository(),
-          }).catch((err) => deliveryLog.warn("falha ao agendar follow-up pós-vídeo", { error: String(err) }));
-        }
-      }
-    };
-
-    if (hasInterleavedMedia) {
-      await this.outboundDelivery.deliver({
-        to: outboundAddress,
-        parts: outboundParts,
-        config: channelConfig,
-        log: deliveryLog,
-        sendText: (content) => sendReply(outboundAddress, content, channelConfig, false, ttsConf),
-        onTextSent: async ({ content, msgId, deliveryFormat: partFormat, isFirst }) => {
-          if (isFirst) {
-            zapiMessageId = msgId;
-            deliveryFormat = partFormat;
-            await db
-              .update(messagesTable)
-              .set({
-                body: content,
-                ...(msgId ? { externalId: msgId } : {}),
-                deliveryFormat: partFormat,
-              })
-              .where(eq(messagesTable.id, agentMessageId));
-          } else {
-            await this.conversationRepo.appendMessage({
-              id: randomUUID(),
-              conversationId: conversation.id,
-              author: "agent",
-              body: content,
-              sentAt: new Date(),
-              externalId: msgId,
-              intent: intent ?? null,
-              deliveryFormat: partFormat,
-            });
-          }
-        },
-        onMediaSent: persistSentMedia,
-      });
-    } else {
-      const useVoice = resolveVoiceForReply(intent, replyText);
-      const result = await sendReply(outboundAddress, replyText, channelConfig, useVoice, ttsConf, clinicId);
-      zapiMessageId = result.msgId;
-      deliveryFormat = result.deliveryFormat;
-      if (!hasInterleavedMedia) {
-        await db
-          .update(messagesTable)
-          .set({
-            ...(zapiMessageId ? { externalId: zapiMessageId } : {}),
-            deliveryFormat,
-            // Salva blobUrl para exibir player de áudio no Inbox (blob vive 2h via cleanup cron)
-            ...(result.blobUrl ? { mediaUrl: result.blobUrl, mediaType: "audio" } : {}),
-          })
-          .where(eq(messagesTable.id, agentMessageId))
-          .catch((err) => console.warn("[Orchestrator] Falha ao atualizar externalId/deliveryFormat:", err));
-      }
-    }
-
-    // ── 9.2 Envia mídias no modo TTS (áudio primeiro, vídeos depois) ──
-    if (!hasInterleavedMedia && composedMediaIds.length > 0 && editorial?.mediaLibrary) {
-      const mediaOnlyParts = resolveOutboundParts(
-        composedParts.filter((p) => p.type === "media"),
-        editorial.mediaLibrary,
-        deliveryLog,
-      );
-      await this.outboundDelivery.deliver({
-        to: outboundAddress,
-        parts: mediaOnlyParts,
-        config: channelConfig,
-        log: deliveryLog,
-        // Sem partes de texto neste modo — o áudio já foi enviado em 9.1.
-        sendText: () => Promise.resolve({ msgId: null, deliveryFormat: "text" as const }),
-        onTextSent: async () => {},
-        onMediaSent: async ({ part, msgId }) => persistSentMedia({ part, msgId }),
-      });
-    }
-
-    // ── 9.3 Avança pipeline para o próximo step (somente após todo o conteúdo ser entregue) ──
-    if (pendingPipelineAdvance) {
-      await pendingPipelineAdvance().catch((err) =>
-        console.warn("[Orchestrator] Falha ao avançar pipeline:", err),
-      );
-    }
+    const mediaParts =
+      !hasInterleavedMedia && composedMediaIds.length > 0 && editorial?.mediaLibrary
+        ? resolveOutboundParts(
+            composedParts.filter((part) => part.type === "media"),
+            editorial.mediaLibrary,
+            deliveryLog,
+          )
+        : [];
+    await this.enqueueConversationReply(clinicId, conversation.id, {
+      version: 1,
+      kind: "conversation_reply",
+      to: outboundAddress,
+      agentMessageId,
+      replyText,
+      intent: intent ?? null,
+      useVoice: resolveVoiceForReply(intent, replyText),
+      ttsConfig: ttsConf,
+      interleavedParts: hasInterleavedMedia ? outboundParts : [],
+      mediaParts,
+      leadId: lead.id,
+      pipelineAdvance: pendingPipelineAdvance,
+    });
 
     // ── 9.4 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;
@@ -2822,21 +2698,35 @@ export class ConversationOrchestrator {
 
     } catch (err) {
       console.error("[Orchestrator] Falha no processamento:", err);
-      // Garante que o lead sempre recebe resposta — evita silêncio em erros de Calendar/LLM.
+      // Persistir o fallback antes de entregar evita recomputar a conversa em retry técnico.
       try {
         const fallback = "Ops, tive um problema técnico por aqui. Pode tentar novamente? 🙏";
-        const fallbackMsgId = await sendTextMessage(outboundAddress, fallback, channelConfig);
+        const fallbackAgentId = randomUUID();
         await this.conversationRepo.appendMessage({
-          id: randomUUID(),
+          id: fallbackAgentId,
           conversationId: conversation.id,
           author: "agent",
           body: fallback,
           sentAt: new Date(),
-          externalId: fallbackMsgId ?? null,
+          externalId: null,
           intent: null,
         });
+        await this.enqueueConversationReply(clinicId, conversation.id, {
+          version: 1,
+          kind: "conversation_reply",
+          to: outboundAddress,
+          agentMessageId: fallbackAgentId,
+          replyText: fallback,
+          intent: null,
+          useVoice: false,
+          ttsConfig: ttsConf,
+          interleavedParts: [],
+          mediaParts: [],
+          leadId: lead.id,
+          pipelineAdvance: null,
+        });
       } catch (fallbackErr) {
-        console.error("[Orchestrator] Fallback também falhou:", fallbackErr);
+        console.error("[Orchestrator] Fallback não foi persistido:", fallbackErr);
       }
       return { replied: false };
     }
@@ -2844,6 +2734,27 @@ export class ConversationOrchestrator {
     } finally {
       await this.releaseConversationClaim(conversation.id);
     }
+  }
+
+  private async enqueueConversationReply(
+    clinicId: string,
+    conversationId: string,
+    payload: ConversationOutboundPayload,
+  ): Promise<void> {
+    await enqueueOutboundMessage(
+      {
+        clinicId,
+        conversationId,
+        channel: "whatsapp",
+        payload,
+        deliveryKind: "text",
+        dedupeKey: `agent-message:${payload.agentMessageId}`,
+      },
+      {
+        outboundMessageStore: new DrizzleOutboundMessageStore(),
+        jobQueue: new DrizzleJobQueue(),
+      },
+    );
   }
 
   // ── Claim de processamento por conversa (CAS single-statement) ──────────────
