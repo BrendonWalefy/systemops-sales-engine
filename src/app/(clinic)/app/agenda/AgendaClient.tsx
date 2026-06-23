@@ -16,7 +16,6 @@ import { BlockModal } from "./BlockModal";
 import { AppointmentDrawer } from "./AppointmentDrawer";
 import { AgendaSidebar } from "./AgendaSidebar";
 import { AgendaStatsHeader } from "./AgendaStatsHeader";
-import { useRealtimeEvents } from "@/components/realtime-events-provider";
 import {
   getCachedJson,
   hasFreshJsonCache,
@@ -199,39 +198,40 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     }
   }, [resourceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tempo real: agenda atualiza automaticamente quando IA agenda/cancela via WhatsApp.
-  // A assinatura vem do SSE compartilhado (layout); só refaz o fetch completo
-  // de eventos quando ela mudar. Bloqueios ficam fora pois só mudam por ação
-  // manual nesta própria tela (refreshAll cobre isso via onCreated/onUpdated).
-  const { agendaSignature, connected } = useRealtimeEvents();
-  const agendaSignatureRef = useRef<string | null>(null);
+  const agendaVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
-    agendaSignatureRef.current = null;
+    agendaVersionRef.current = null;
   }, [range]);
 
   useEffect(() => {
-    if (!agendaSignature) return;
-    if (agendaSignatureRef.current === null) {
-      agendaSignatureRef.current = agendaSignature;
-      return;
-    }
-    if (agendaSignature !== agendaSignatureRef.current) {
-      agendaSignatureRef.current = agendaSignature;
-      fetchEvents(range.from, range.to, { force: true });
-    }
-  }, [agendaSignature, range, fetchEvents]);
-
-  // Fallback: se a conexão SSE cair, volta a checar periodicamente até reconectar.
-  useEffect(() => {
-    if (connected) return;
-
-    const id = setInterval(() => {
+    const check = async () => {
       if (document.hidden) return;
-      fetchEvents(range.from, range.to, { force: true });
-    }, 30_000);
+      try {
+        const query = `/api/agenda/check?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+        const res = await fetch(query, { cache: "no-store" });
+        if (!res.ok) return;
+        const data: { version?: string } = await res.json();
+        if (!data.version) return;
+        if (agendaVersionRef.current === null) {
+          agendaVersionRef.current = data.version;
+          return;
+        }
+        if (data.version !== agendaVersionRef.current) {
+          agendaVersionRef.current = data.version;
+          fetchEvents(range.from, range.to, { force: true });
+        }
+      } catch {
+        // Ignora falhas transitórias e tenta novamente no próximo ciclo.
+      }
+    };
+
+    void check();
+    const id = setInterval(() => {
+      void check();
+    }, 10_000);
     return () => clearInterval(id);
-  }, [connected, range, fetchEvents]);
+  }, [range, fetchEvents]);
 
   async function handleEventUpdate(id: string, startsAt: string, endsAt: string) {
     const [date, time] = startsAt.split(" ");

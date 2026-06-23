@@ -8,7 +8,7 @@ import { and, eq, desc, inArray, gte } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
-import { buildInboxSnapshotSignature, type InboxSnapshotRow } from "./inbox-snapshot";
+import { getInboxVersion } from "./get-inbox-version";
 
 export default async function InboxPage({
   searchParams,
@@ -152,29 +152,7 @@ export default async function InboxPage({
       : 0,
   }));
 
-  const snapshotRows: InboxSnapshotRow[] = rows.map((row) => ({
-    convId: row.convId,
-    conversationUpdatedAt: row.conversationUpdatedAt,
-    leadUpdatedAt: row.leadUpdatedAt,
-    lastMessageAt: row.lastMessageAt,
-    latestMessageAt: lastMsgMap[row.convId]?.sentAt ?? row.lastMessageAt,
-    latestMessageAuthor: lastMsgMap[row.convId]?.author ?? null,
-    lastReadAt: row.lastReadAt,
-    aiPaused: row.aiPaused,
-    needsAttention: row.needsAttention,
-    takeoverExpiresAt: row.takeoverExpiresAt,
-    conversationCategory: row.conversationCategory,
-    leadStatus: row.leadStatus,
-    leadTemperature: row.leadTemperature,
-    appointmentStartsAt: appointmentMap[row.leadId] ?? null,
-    latestAppointmentStatus: latestAppointmentStatusMap[row.leadId] ?? null,
-    latestAppointmentUpdatedAt: latestAppointmentUpdatedAtMap[row.leadId] ?? null,
-  }));
-
-  const initialSignature = buildInboxSnapshotSignature(snapshotRows, {
-    autoReplyEnabled: clinicRows[0]?.autoReplyEnabled ?? false,
-    clinicUpdatedAt: clinicRows[0]?.updatedAt ?? null,
-  });
+  const initialVersion = await getInboxVersion(clinicId);
 
   const filter = Array.isArray(params.filter) ? params.filter[0] : params.filter;
   const scopeParam = Array.isArray(params.scope) ? params.scope[0] : params.scope;
@@ -196,7 +174,7 @@ export default async function InboxPage({
 
   return (
     <div className="inbox-shell">
-      <InboxPoller initialSignature={initialSignature} />
+      <InboxPoller initialVersion={initialVersion} />
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 28px 0" }}>
         <EnableNotificationsButton />
       </div>

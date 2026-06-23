@@ -2,26 +2,24 @@
 
 import { useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useRealtimeEvents } from "@/components/realtime-events-provider";
 
 const FORCED_REFRESH_INTERVAL_MS = 60_000;
-const FALLBACK_POLL_INTERVAL_MS = 15_000;
+const POLL_INTERVAL_MS = 5_000;
 
 type Props = {
-  initialSignature: string;
+  initialVersion: string;
 };
 
-export function InboxPoller({ initialSignature }: Props) {
+export function InboxPoller({ initialVersion }: Props) {
   const router = useRouter();
-  const { inboxSignature, connected } = useRealtimeEvents();
   const [, startTransition] = useTransition();
-  const signatureRef = useRef(initialSignature);
+  const versionRef = useRef(initialVersion);
   const refreshAtRef = useRef(0);
 
   useEffect(() => {
-    signatureRef.current = initialSignature;
+    versionRef.current = initialVersion;
     refreshAtRef.current = Date.now();
-  }, [initialSignature]);
+  }, [initialVersion]);
 
   const refreshInbox = () => {
     refreshAtRef.current = Date.now();
@@ -30,17 +28,8 @@ export function InboxPoller({ initialSignature }: Props) {
     });
   };
 
-  // Atualização via SSE: assim que o servidor detecta mudança, refaz o RSC.
   useEffect(() => {
-    if (!inboxSignature || inboxSignature === signatureRef.current) return;
-    signatureRef.current = inboxSignature;
-    refreshInbox();
-  }, [inboxSignature]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fallback: força refresh a cada 60s mesmo sem mudança (estados dependentes
-  // da passagem do tempo) e faz um poll leve se a conexão SSE estiver caída.
-  useEffect(() => {
-    const tick = async () => {
+    const check = async () => {
       if (document.hidden) return;
 
       if (Date.now() - refreshAtRef.current >= FORCED_REFRESH_INTERVAL_MS) {
@@ -48,14 +37,12 @@ export function InboxPoller({ initialSignature }: Props) {
         return;
       }
 
-      if (connected) return;
-
       try {
         const response = await fetch("/api/inbox/check", { cache: "no-store" });
         if (!response.ok) return;
-        const data: { signature?: string } = await response.json();
-        if (data.signature && data.signature !== signatureRef.current) {
-          signatureRef.current = data.signature;
+        const data: { version?: string } = await response.json();
+        if (data.version && data.version !== versionRef.current) {
+          versionRef.current = data.version;
           refreshInbox();
         }
       } catch {
@@ -63,12 +50,13 @@ export function InboxPoller({ initialSignature }: Props) {
       }
     };
 
+    void check();
     const id = window.setInterval(() => {
-      void tick();
-    }, FALLBACK_POLL_INTERVAL_MS);
+      void check();
+    }, POLL_INTERVAL_MS);
 
     return () => clearInterval(id);
-  }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }

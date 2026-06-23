@@ -2,6 +2,10 @@
 
 Objetivo: fazer o app parecer instantaneo nas rotas operacionais sem violar a arquitetura central do produto.
 
+Documento complementar para realtime, escala e custo:
+
+- `docs/operations/realtime-scale-cost-plan.md`
+
 ## Metas
 
 - Feedback visual ao clique em ate `100ms`.
