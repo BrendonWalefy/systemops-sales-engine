@@ -175,14 +175,25 @@ significado ou layout) · 🔴 alto (toca lógica de negócio — evitar).
 
 ---
 
-## 5. Ideia futura (opcional)
+## 5. Botão "Carregar clínica demo" no painel owner ✅
 
-**Botão "Carregar clínica demo" no painel owner** que dispara o mesmo
-`seed-demo` sob demanda (sem terminal). Útil para reset rápido antes de gravar.
-- Só faz sentido **depois** que o seed estiver maduro e usado algumas vezes.
-- Deve ficar **restrito ao owner** e **bloqueado em produção** por flag, para
-  nunca rodar acidentalmente contra dados reais.
-- Não é prioridade: o comando `npm run seed:demo` já destrava a gravação hoje.
+Dispara o mesmo seed sob demanda, sem terminal — útil para reset rápido antes
+de gravar.
+
+- **Fonte única:** a lógica vive em `src/application/demo/seed-demo-clinic.ts`.
+  Tanto o CLI (`npm run seed:demo`) quanto o botão chamam `seedDemoClinic()` —
+  nunca divergem.
+- **Dupla trava de segurança:** o botão (e a server action) só funcionam se
+  **(a)** o usuário for `owner` **e (b)** o ambiente tiver `ALLOW_DEMO_SEED=true`.
+  A flag é **desligada por padrão em todos os ambientes, inclusive produção**,
+  então nunca roda acidentalmente contra dados reais. O botão nem aparece sem a
+  flag.
+- **Confirmação:** pede confirmação antes de apagar/recriar os dados.
+- **Onde:** topo do `/owner` (ao lado de "Diagnóstico rápido" / "Clínica
+  completa"). Mostra o login da Dra. Helena ao concluir.
+
+> Para habilitar no ambiente de gravação: defina `ALLOW_DEMO_SEED=true` (ex.: no
+> `.env.local` ou nas variáveis do projeto). Para desligar, remova a variável.
 
 ---
 
@@ -197,7 +208,7 @@ significado ou layout) · 🔴 alto (toca lógica de negócio — evitar).
 | 3.4 Menu truncado | 🟡 | 🔎 investigado — só no editor; demo ok; sem ação |
 | 3.5 ROI "4,8x" | 🟡 | ✅ aplicado ("4,8x sobre a mensalidade") |
 | 3.6 Estados vazios | 🟢 | resolvido na demo; baixa prioridade |
-| Botão "Carregar clínica demo" | 🟡 | futuro |
+| Botão "Carregar clínica demo" (owner) | 🟡 | ✅ aplicado (flag `ALLOW_DEMO_SEED`) |
 
 > **Nota 3.3:** A saudação "Olá, Dra. Helena!" foi resolvida **sem mudança de
 > banco**. O membro já tem `professionalId`; o dashboard agora deriva a
