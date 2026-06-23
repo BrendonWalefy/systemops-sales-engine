@@ -1327,6 +1327,10 @@ select.field-input option {
 .rdv-scroll {
   flex: 1;
   overflow: auto;
+  /* iOS: garante o gesto de rolagem horizontal (ver demais profissionais) */
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
 }
 
 /* Column bodies */
