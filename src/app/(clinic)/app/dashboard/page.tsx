@@ -729,10 +729,10 @@ export default async function DashboardPage({
             <span style={{ fontSize: "12px", color: "var(--muted)" }}>{periodLabel(safePeriod)}</span>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: showRoi ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
-            <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+            <div style={{ minWidth: 0, border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
               <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Potencial</p>
-              <strong style={{ fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--accent-strong)", display: "block", lineHeight: 1.1 }}>
+              <strong style={{ display: "block", fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--accent-strong)", lineHeight: 1.1, wordBreak: "break-word" }}>
                 {formatBRL(revenueData.potentialCents)}
               </strong>
               <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
@@ -740,9 +740,9 @@ export default async function DashboardPage({
               </p>
             </div>
 
-            <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
+            <div style={{ minWidth: 0, border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
               <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Confirmado</p>
-              <strong style={{ fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", display: "block", lineHeight: 1.1 }}>
+              <strong style={{ display: "block", fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", lineHeight: 1.1, wordBreak: "break-word" }}>
                 {formatBRL(revenueData.confirmedCents)}
               </strong>
               <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
@@ -751,9 +751,9 @@ export default async function DashboardPage({
             </div>
 
             {showRoi && (
-              <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
+              <div style={{ minWidth: 0, border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
                 <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>ROI</p>
-                <strong style={{ fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", display: "block", lineHeight: 1.1 }}>
+                <strong style={{ display: "block", fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", lineHeight: 1.1, wordBreak: "break-word" }}>
                   {revenueData.monthlyRevenueBrl > 0
                     ? `${(revenueData.confirmedCents / revenueData.monthlyRevenueBrl)
                         .toFixed(1)
