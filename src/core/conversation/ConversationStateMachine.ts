@@ -84,8 +84,12 @@ export class ConversationStateMachine {
     if (rows.length === 0) return null;
 
     const row = rows[0];
-    // Verifica expiração
+    // Verifica expiração explícita
     if (row.expiresAt && row.expiresAt < new Date()) return null;
+    // slots_offered sem expiresAt (rows criadas antes do TTL ser implementado) expiram pelo createdAt
+    if (!row.expiresAt && row.state === "slots_offered") {
+      if (Date.now() - row.createdAt.getTime() > SLOT_OFFER_TTL_MINUTES * 60_000) return null;
+    }
 
     return {
       id: row.id,
