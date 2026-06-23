@@ -392,14 +392,25 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     "Avaliação geral": profAndre,
   };
 
-  // 3) membro admin (login da Dra. Helena → "Olá, Dra. Helena!" + financeiro)
-  await db.insert(clinicMembers).values({
-    clinicId,
-    email: DEMO_ADMIN_EMAIL,
-    role: "clinic_admin",
-    professionalId: profHelena,
-    passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
-  });
+  // 3) membros admin
+  await db.insert(clinicMembers).values([
+    // Login principal da demo (Dra. Helena → "Olá, Dra. Helena!" no dashboard)
+    {
+      clinicId,
+      email: DEMO_ADMIN_EMAIL,
+      role: "clinic_admin",
+      professionalId: profHelena,
+      passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
+    },
+    // Owner do sistema — acesso direto à visão de clínica sem trocar de conta
+    {
+      clinicId,
+      email: "brendonwalefyom@gmail.com",
+      role: "clinic_admin",
+      professionalId: null,
+      passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
+    },
+  ]);
 
   // 4) procedimentos
   const treatmentIds: Record<string, string> = {};
