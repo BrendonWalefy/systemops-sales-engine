@@ -20,7 +20,7 @@ Se uma sessao acabar por limite de tokens, retome daqui:
 
 - [x] Plano mestre da modernizacao criado
 - [x] Checkpoint 1 - Schema da fila, inbox e outbox
-- [ ] Checkpoint 2 - Abstracoes e repositorios
+- [x] Checkpoint 2 - Abstracoes e repositorios
 - [ ] Checkpoint 3 - Webhook fino
 - [ ] Checkpoint 4 - Conversation worker
 - [ ] Checkpoint 5 - Sender worker
