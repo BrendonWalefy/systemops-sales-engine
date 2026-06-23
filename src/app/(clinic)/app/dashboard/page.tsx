@@ -20,8 +20,8 @@ import {
   Bot,
   Calendar,
   CheckCircle2,
-  Clock,
   Flame,
+  Moon,
   Snowflake,
   Thermometer,
   Users,
@@ -690,69 +690,7 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      <section className="dashboard-kpis" aria-label="Indicadores principais">
-        <article className="dashboard-kpi-card">
-          <div className="dashboard-kpi-header">
-            <span className="dashboard-kpi-icon">
-              <Users size={16} />
-            </span>
-            <span>Total de Leads</span>
-            <span className={`dashboard-trend ${leadTrendTone}`}>{leadTrend}</span>
-          </div>
-          <strong>{data.totalLeads}</strong>
-          <small>{data.currentPeriodLeadCount} nos últimos {periodLabel(safePeriod)}</small>
-        </article>
-
-        <article className="dashboard-kpi-card featured">
-          <div className="dashboard-kpi-header">
-            <span className="dashboard-kpi-icon">
-              <Calendar size={16} />
-            </span>
-            <span>Consultas Marcadas</span>
-            <span className={`dashboard-trend ${conversionTone}`}>{formatPercent(conversionRate)}%</span>
-          </div>
-          <strong>{data.scheduledCount}</strong>
-          <small>{formatPercent(conversionRate)}% de conversão · foto atual</small>
-        </article>
-
-        <article className="dashboard-kpi-card">
-          <div className="dashboard-kpi-header">
-            <span className="dashboard-kpi-icon">
-              <Clock size={16} />
-            </span>
-            <span>Economia de Tempo</span>
-            <span className="dashboard-trend positive">{data.agentMessageCount} msgs</span>
-          </div>
-          <strong>{formatTimeSaved(estimatedTimeSavedMinutes)}</strong>
-          <small>~2min economizados por resposta da IA</small>
-        </article>
-
-        <article className="dashboard-kpi-card">
-          <div className="dashboard-kpi-header">
-            <span className="dashboard-kpi-icon hot">
-              <Flame size={16} />
-            </span>
-            <span>Leads Quentes</span>
-            <span className="dashboard-trend neutral">{data.activeHotCount} em conversa</span>
-          </div>
-          <strong>{data.tempCounts.hot}</strong>
-          <small>ativos no funil · {data.activeHotCount} em conversa agora</small>
-        </article>
-
-        <article className="dashboard-kpi-card" style={{ borderColor: todayApptCount > 0 ? "color-mix(in srgb, var(--accent) 30%, transparent)" : undefined }}>
-          <div className="dashboard-kpi-header">
-            <span className="dashboard-kpi-icon">
-              <Calendar size={16} />
-            </span>
-            <span>Consultas Hoje</span>
-            {todayApptCount > 0 && <span className="dashboard-trend positive">hoje</span>}
-          </div>
-          <strong style={{ color: todayApptCount > 0 ? "var(--accent-strong)" : undefined }}>{todayApptCount}</strong>
-          <small>{todayApptCount === 0 ? "nenhuma consulta agendada" : `${todayApptCount} consulta${todayApptCount !== 1 ? "s" : ""} na agenda`}</small>
-        </article>
-      </section>
-
-      {/* ── Pipeline de Receita ─────────────────────────────────────────── */}
+      {/* ── Pipeline de Receita (primeiro dado que o doutor vê) ─────────── */}
       {revenueData && (
         <section
           style={{
@@ -779,7 +717,7 @@ export default async function DashboardPage({
           <div style={{ display: "grid", gridTemplateColumns: showRoi ? "1fr 1fr 1fr" : "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
             <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
               <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Potencial</p>
-              <strong style={{ fontSize: "22px", fontWeight: 800, color: "var(--accent-strong)" }}>
+              <strong style={{ fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--accent-strong)", display: "block", lineHeight: 1.1 }}>
                 {formatBRL(revenueData.potentialCents)}
               </strong>
               <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
@@ -789,7 +727,7 @@ export default async function DashboardPage({
 
             <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
               <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Confirmado</p>
-              <strong style={{ fontSize: "22px", fontWeight: 800, color: "var(--text)" }}>
+              <strong style={{ fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", display: "block", lineHeight: 1.1 }}>
                 {formatBRL(revenueData.confirmedCents)}
               </strong>
               <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
@@ -800,7 +738,7 @@ export default async function DashboardPage({
             {showRoi && (
               <div style={{ border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
                 <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>ROI</p>
-                <strong style={{ fontSize: "22px", fontWeight: 800, color: "var(--text)" }}>
+                <strong style={{ fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", display: "block", lineHeight: 1.1 }}>
                   {revenueData.monthlyRevenueBrl > 0
                     ? `${Math.round((revenueData.confirmedCents / 100 / (revenueData.monthlyRevenueBrl / 100)) * 100)}%`
                     : "—"}
@@ -874,6 +812,125 @@ export default async function DashboardPage({
           )}
         </section>
       )}
+
+      {/* ── KPIs: atalhos rápidos para o doutor ─────────────────────────── */}
+      <section className="dashboard-kpis" aria-label="Indicadores principais">
+
+        {/* 1. Consultas Hoje → agenda */}
+        <Link
+          href="/app/agenda"
+          className={`dashboard-kpi-card${todayApptCount > 0 ? " featured" : ""}`}
+          style={{
+            textDecoration: "none",
+            borderColor: todayApptCount > 0 ? "color-mix(in srgb, var(--accent) 30%, transparent)" : undefined,
+          }}
+        >
+          <div className="dashboard-kpi-header">
+            <span className="dashboard-kpi-icon"><Calendar size={16} /></span>
+            <span>Consultas Hoje</span>
+            {todayApptCount > 0 && <span className="dashboard-trend positive">hoje</span>}
+          </div>
+          <strong style={{ color: todayApptCount > 0 ? "var(--accent-strong)" : undefined }}>
+            {todayApptCount}
+          </strong>
+          <small>
+            {todayApptCount === 0 ? "nenhuma agendada" : `${todayApptCount} na agenda`}
+          </small>
+          <span className="dashboard-kpi-cta">Ver agenda →</span>
+        </Link>
+
+        {/* 2. Precisa Atenção → inbox filtrado */}
+        <Link
+          href="/app/inbox?filter=attention"
+          className="dashboard-kpi-card"
+          style={{
+            textDecoration: "none",
+            borderColor: data.needsAttentionCount > 0
+              ? "color-mix(in srgb, var(--danger, #fb7185) 35%, var(--line))"
+              : undefined,
+          }}
+        >
+          <div className="dashboard-kpi-header">
+            <span
+              className="dashboard-kpi-icon"
+              style={data.needsAttentionCount > 0 ? {
+                borderColor: "color-mix(in srgb, var(--danger, #fb7185) 32%, transparent)",
+                background: "color-mix(in srgb, var(--danger, #fb7185) 12%, transparent)",
+                color: "var(--danger, #fb7185)",
+              } : undefined}
+            >
+              <AlertTriangle size={16} />
+            </span>
+            <span>Precisa Atenção</span>
+            {data.needsAttentionCount > 0 && (
+              <span className="dashboard-trend negative">urgente</span>
+            )}
+          </div>
+          <strong style={{ color: data.needsAttentionCount > 0 ? "var(--danger, #fb7185)" : undefined }}>
+            {data.needsAttentionCount}
+          </strong>
+          <small>
+            {data.needsAttentionCount === 0
+              ? "tudo sob controle"
+              : `${data.needsAttentionCount} conversa${data.needsAttentionCount !== 1 ? "s" : ""} parada${data.needsAttentionCount !== 1 ? "s" : ""}`}
+          </small>
+          <span
+            className="dashboard-kpi-cta"
+            style={{ color: data.needsAttentionCount > 0 ? "var(--danger, #fb7185)" : undefined }}
+          >
+            {data.needsAttentionCount > 0 ? "Abrir inbox →" : "Ver inbox →"}
+          </span>
+        </Link>
+
+        {/* 3. Agendamentos → agenda */}
+        <Link
+          href="/app/agenda"
+          className="dashboard-kpi-card featured"
+          style={{ textDecoration: "none" }}
+        >
+          <div className="dashboard-kpi-header">
+            <span className="dashboard-kpi-icon"><CheckCircle2 size={16} /></span>
+            <span>Agendamentos</span>
+            <span className={`dashboard-trend ${conversionTone}`}>{formatPercent(conversionRate)}%</span>
+          </div>
+          <strong>{data.scheduledCount}</strong>
+          <small>{formatPercent(conversionRate)}% de conversão</small>
+          <span className="dashboard-kpi-cta">Ver agenda →</span>
+        </Link>
+
+        {/* 4. Leads Quentes → inbox */}
+        <Link
+          href="/app/inbox"
+          className="dashboard-kpi-card"
+          style={{ textDecoration: "none" }}
+        >
+          <div className="dashboard-kpi-header">
+            <span className="dashboard-kpi-icon hot"><Flame size={16} /></span>
+            <span>Leads Quentes</span>
+            <span className="dashboard-trend neutral">{data.activeHotCount} ativos</span>
+          </div>
+          <strong>{data.tempCounts.hot}</strong>
+          <small>{data.activeHotCount} em conversa agora</small>
+          <span className="dashboard-kpi-cta">Ver leads →</span>
+        </Link>
+
+        {/* 5. Fora de Hora → inbox (ocupa linha toda) */}
+        <Link
+          href="/app/inbox"
+          className="dashboard-kpi-card"
+          style={{ textDecoration: "none" }}
+        >
+          <div className="dashboard-kpi-header">
+            <span className="dashboard-kpi-icon"><Moon size={16} /></span>
+            <span>Fora de Hora</span>
+            <span className="dashboard-trend positive">{data.afterHoursCount} msgs</span>
+          </div>
+          <strong>{data.afterHoursCount}</strong>
+          <small>msgs atendidas pela IA fora do expediente</small>
+          <span className="dashboard-kpi-cta">Ver conversas →</span>
+        </Link>
+
+      </section>
 
       {/* ── Prioridades Operacionais ──────────────────────────────────────── */}
       {(todayApptCount > 0 || recoveryLeadCount > 0 || attentionLeadCount > 0) && (
