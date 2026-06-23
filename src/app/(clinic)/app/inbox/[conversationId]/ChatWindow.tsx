@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
 import { Play, FileText } from "lucide-react";
+import { useResourceVersion } from "@/components/use-resource-version";
 
 type Msg = {
   id: string;
@@ -184,28 +185,29 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
     latestMessageIdRef.current = messages.at(-1)?.id ?? null;
   }, [messages]);
 
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const params = new URLSearchParams();
-        if (latestMessageIdRef.current) params.set("after", latestMessageIdRef.current);
-        const query = params.toString();
-        const res = await fetch(`/api/conversations/${conversationId}/messages${query ? `?${query}` : ""}`);
-        if (!res.ok) return;
-        const data: { messages: Msg[] } = await res.json();
-        if (data.messages.length === 0) return;
-        setMessages((prev) => {
-          const knownIds = new Set(prev.map((m) => m.id));
-          const next = data.messages.filter((m) => !knownIds.has(m.id));
-          return next.length > 0 ? [...prev, ...next] : prev;
-        });
-      } catch {
-        // ignore network errors between polls
-      }
-    };
-    const id = setInterval(poll, 3000);
-    return () => clearInterval(id);
+  const loadNewMessages = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (latestMessageIdRef.current) params.set("after", latestMessageIdRef.current);
+      const query = params.toString();
+      const res = await fetch(`/api/conversations/${conversationId}/messages${query ? `?${query}` : ""}`);
+      if (!res.ok) return;
+      const data: { messages: Msg[] } = await res.json();
+      if (data.messages.length === 0) return;
+      setMessages((prev) => {
+        const knownIds = new Set(prev.map((m) => m.id));
+        const next = data.messages.filter((m) => !knownIds.has(m.id));
+        return next.length > 0 ? [...prev, ...next] : prev;
+      });
+    } catch {
+      // Ignore network errors; the next version check retries safely.
+    }
   }, [conversationId]);
+
+  useResourceVersion(`/api/conversations/${conversationId}/version`, {
+    intervalMs: 5_000,
+    onChange: loadNewMessages,
+  });
 
   useEffect(() => { scrollToBottom(false); }, [messages.length, scrollToBottom]);
 

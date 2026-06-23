@@ -24,7 +24,7 @@ Se uma sessao acabar por limite de tokens, retome daqui:
 - [x] Checkpoint 3 - Webhook fino
 - [x] Checkpoint 4 - Conversation worker
 - [x] Checkpoint 5 - Sender worker
-- [ ] Checkpoint 6 - Realtime barato por versao
+- [x] Checkpoint 6 - Realtime barato por versao
 - [ ] Checkpoint 7 - Observabilidade operacional
 
 ## Checkpoint 1 - Schema da fila, inbox e outbox
@@ -266,6 +266,14 @@ Commit sugerido:
 ```text
 fix(realtime): replace global polling with lightweight version checks
 ```
+
+Operacao:
+
+- inbox consulta somente `/api/inbox/check` a cada 15 segundos quando a tela esta ativa;
+- agenda consulta a versao da janela visivel a cada 20 segundos e busca eventos completos somente quando ela muda;
+- conversa aberta consulta `/api/conversations/:id/version` a cada 5 segundos e busca mensagens somente apos mudanca;
+- todos os polls acima param com a aba oculta e verificam novamente ao voltar ao foco;
+- o endpoint global `/api/events/stream` e o provider compartilhado foram removidos.
 
 ## Checkpoint 7 - Observabilidade operacional
 

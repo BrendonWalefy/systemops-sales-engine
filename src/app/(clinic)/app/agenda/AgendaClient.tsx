@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Ban,
   Calendar,
@@ -16,7 +16,7 @@ import { BlockModal } from "./BlockModal";
 import { AppointmentDrawer } from "./AppointmentDrawer";
 import { AgendaSidebar } from "./AgendaSidebar";
 import { AgendaStatsHeader } from "./AgendaStatsHeader";
-import { useRealtimeEvents } from "@/components/realtime-events-provider";
+import { useResourceVersion } from "@/components/use-resource-version";
 import {
   getCachedJson,
   hasFreshJsonCache,
@@ -199,39 +199,13 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     }
   }, [resourceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tempo real: agenda atualiza automaticamente quando IA agenda/cancela via WhatsApp.
-  // A assinatura vem do SSE compartilhado (layout); só refaz o fetch completo
-  // de eventos quando ela mudar. Bloqueios ficam fora pois só mudam por ação
-  // manual nesta própria tela (refreshAll cobre isso via onCreated/onUpdated).
-  const { agendaSignature, connected } = useRealtimeEvents();
-  const agendaSignatureRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    agendaSignatureRef.current = null;
-  }, [range]);
-
-  useEffect(() => {
-    if (!agendaSignature) return;
-    if (agendaSignatureRef.current === null) {
-      agendaSignatureRef.current = agendaSignature;
-      return;
-    }
-    if (agendaSignature !== agendaSignatureRef.current) {
-      agendaSignatureRef.current = agendaSignature;
-      fetchEvents(range.from, range.to, { force: true });
-    }
-  }, [agendaSignature, range, fetchEvents]);
-
-  // Fallback: se a conexão SSE cair, volta a checar periodicamente até reconectar.
-  useEffect(() => {
-    if (connected) return;
-
-    const id = setInterval(() => {
-      if (document.hidden) return;
-      fetchEvents(range.from, range.to, { force: true });
-    }, 30_000);
-    return () => clearInterval(id);
-  }, [connected, range, fetchEvents]);
+  // Consulta apenas a versão da janela visível. O payload completo é buscado
+  // somente depois que a agenda realmente mudou.
+  const agendaVersionUrl = `/api/appointments/check?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+  useResourceVersion(agendaVersionUrl, {
+    intervalMs: 20_000,
+    onChange: () => fetchEvents(range.from, range.to, { force: true }),
+  });
 
   async function handleEventUpdate(id: string, startsAt: string, endsAt: string) {
     const [date, time] = startsAt.split(" ");
