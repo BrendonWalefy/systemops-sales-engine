@@ -19,7 +19,7 @@ Se uma sessao acabar por limite de tokens, retome daqui:
 ## Estado atual
 
 - [x] Plano mestre da modernizacao criado
-- [ ] Checkpoint 1 - Schema da fila, inbox e outbox
+- [x] Checkpoint 1 - Schema da fila, inbox e outbox
 - [ ] Checkpoint 2 - Abstracoes e repositorios
 - [ ] Checkpoint 3 - Webhook fino
 - [ ] Checkpoint 4 - Conversation worker
@@ -296,4 +296,3 @@ sed -n '1,260p' docs/operations/change-control.md
 sed -n '1,320p' docs/operations/event-driven-modernization-plan.md
 sed -n '1,320p' docs/operations/event-driven-modernization-checkpoints.md
 ```
-

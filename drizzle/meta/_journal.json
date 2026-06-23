@@ -260,6 +260,13 @@
       "when": 1750464001000,
       "tag": "0036_tts_usage_costs",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1782254264185,
+      "tag": "0037_good_legion",
+      "breakpoints": true
     }
   ]
 }
