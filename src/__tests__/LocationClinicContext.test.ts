@@ -15,9 +15,11 @@ describe("buildLocationClinicContext", () => {
     expect(result).toContain("não cadastrado no sistema");
   });
 
-  it("appends address line when address is provided", () => {
+  it("appends address line and anti-hallucination guardrail when address is provided", () => {
     const result = buildLocationClinicContext("Rua das Flores, 123 - Centro");
-    expect(result).toBe(`${BASE}\nEndereço: Rua das Flores, 123 - Centro.`);
+    expect(result).toContain("Rua das Flores, 123 - Centro");
+    expect(result).toContain("SOMENTE este endereço");
+    expect(result).toContain("NÃO confirme presença em outros bairros");
   });
 
   it("always contains directive to suppress scheduling invitation", () => {

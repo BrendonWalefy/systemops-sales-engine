@@ -42,6 +42,7 @@ export type VoiceConfig = {
 export type SendVoiceResult = {
   msgId: string | null;
   deliveryFormat: "audio" | "text";
+  blobUrl: string | null;
 };
 
 /**
@@ -109,7 +110,7 @@ export async function sendVoiceOrText(
       );
       const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
       if (clinicId) trackTtsCostAsync(clinicId, text, ttsConfig);
-      return { msgId, deliveryFormat: "audio" };
+      return { msgId, deliveryFormat: "audio", blobUrl };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[TTS] Falhou (provider=${ttsConfig.provider}): ${msg} — enviando texto`);
@@ -117,5 +118,5 @@ export async function sendVoiceOrText(
   }
 
   const msgId = await sendTextMessage(to, text, config);
-  return { msgId, deliveryFormat: "text" };
+  return { msgId, deliveryFormat: "text", blobUrl: null };
 }

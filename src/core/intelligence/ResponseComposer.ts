@@ -275,6 +275,7 @@ REGRAS ABSOLUTAS:
 6. Saudações: se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.
 7. FIDELIDADE EDITORIAL: se a política comercial ou as orientações da clínica exigirem valores, condições, nomes de técnicas ou limites explícitos para o assunto perguntado, preserve esses dados na resposta. Não resuma removendo preços, quantidades ou condições autorizadas.
 8. VOCABULÁRIO COMERCIAL: use sempre "investimento" no lugar de "custo" ao falar sobre valores e preços dos procedimentos.
+9. ANTI-REDUNDÂNCIA: antes de responder, leia o histórico da conversa. Se a mesma informação (preço, procedimento, diferença entre técnicas, condições de pagamento) já foi explicada nesta sessão, NÃO repita o bloco inteiro — faça referência breve ("como comentei antes, ...") e avance para o próximo passo ou pergunta. Repetir informação que o lead já recebeu transmite falta de atenção e prejudica a experiência.
 
 ${experienceRules}
 
@@ -405,7 +406,7 @@ CONTEXTO DA CLÍNICA: ${result.clinicContext}
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
 PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
-Responda de forma informativa e acolhedora. ${isConcierge ? "Só conduza para avaliação após cumprir eventuais passos do playbook ou quando não houver sequência definida para o assunto." : "Não reapresente menu quando a pergunta do lead for clara."}`;
+Responda de forma informativa e acolhedora. ${isConcierge ? "Após responder a dúvida, conduza ativamente para o próximo passo: se o assunto for um procedimento estético ou de alto valor e o lead demonstrou interesse genuíno, ofereça gentilmente uma avaliação presencial como próximo passo natural — sem pressionar, sem mencionar horários específicos. Só pule esta etapa se as ORIENTAÇÕES DA CLÍNICA definirem uma sequência diferente para este momento." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
     case "greeting":
