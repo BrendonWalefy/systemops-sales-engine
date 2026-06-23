@@ -126,7 +126,6 @@ function todayFormatted(): string {
     weekday: "long",
     day: "2-digit",
     month: "long",
-    year: "numeric",
     timeZone: DASHBOARD_TZ,
   });
 }
