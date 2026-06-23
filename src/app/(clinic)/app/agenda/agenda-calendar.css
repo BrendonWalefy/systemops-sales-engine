@@ -1327,6 +1327,10 @@ select.field-input option {
 .rdv-scroll {
   flex: 1;
   overflow: auto;
+  /* iOS: garante o gesto de rolagem horizontal (ver demais profissionais) */
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
 }
 
 /* Column bodies */
@@ -1720,26 +1724,39 @@ select.field-input option {
     gap: 1px;
   }
 
-  /* Mês mobile: pills → strips coloridos — texto ilegível nessa escala,
-     a cor do status já comunica o essencial; toque ainda abre o drawer */
+  /* Mês mobile estilo Google Agenda: chips compactos com o nome do paciente.
+     (horário + nome não cabe em 7 colunas; o nome truncado é o mais legível,
+     como no Google). Toque no dia/evento abre o drawer com os detalhes. */
   .sx-calendar-wrapper .sx__month-grid-event {
-    height: 5px !important;
-    min-height: 0 !important;
-    font-size: 0 !important;
-    padding: 0 2px !important;
-    border-radius: 2px !important;
+    height: auto !important;
+    min-height: 15px !important;
+    font-size: 9px !important;
+    line-height: 1.25 !important;
+    padding: 1px 4px !important;
+    border-radius: 4px !important;
     border: none !important;
     box-shadow: none !important;
     margin-bottom: 2px !important;
-    line-height: 0 !important;
   }
 
-  .sx-calendar-wrapper .sx__month-grid-event-title,
   .sx-calendar-wrapper .sx__month-grid-event-time {
-    display: none !important;
+    display: none !important; /* como o Google: o mês mostra só o título */
   }
 
-  /* Mais células visíveis por linha — menos padding por célula */
+  .sx-calendar-wrapper .sx__month-grid-event-title {
+    display: block !important;
+    font-size: 9px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* Linhas do mês um pouco mais altas para caber ~3 chips + "+N" */
+  .sx-calendar-wrapper .sx__month-grid-week {
+    min-height: 92px;
+  }
+
   .sx-calendar-wrapper .sx__month-grid-day__events {
     gap: 2px;
     padding: 2px 3px 3px;
@@ -2500,4 +2517,24 @@ select.field-input option {
   -webkit-box-orient: vertical;
   font-size: 11px;
   line-height: 1.3;
+}
+
+/* ── Celular em paisagem: a altura fica curta e o cabeçalho engole a agenda.
+   Em vez de travar em 100dvh com overflow:hidden (recorta a agenda), deixamos
+   a PÁGINA rolar e damos uma altura mínima útil ao calendário. ────────────── */
+@media (orientation: landscape) and (max-height: 600px) {
+  .agenda-v2 {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .agenda-v2-body {
+    min-height: 78vh;
+  }
+
+  .rdv-wrapper,
+  .sx-calendar-wrapper {
+    min-height: 78vh;
+  }
 }
