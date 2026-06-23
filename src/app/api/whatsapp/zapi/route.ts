@@ -17,6 +17,7 @@ import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-in
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { buildZApiInboundEvent } from "@/infrastructure/adapters/channels/whatsapp/zapi-inbound-event";
+import { createLogger } from "@/infrastructure/logging/logger";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -74,6 +75,7 @@ async function saveOperatorOutbound(
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const startedAt = Date.now();
   // Validação de origem: a Z-API não assina webhooks, então o contrato é um
   // secret compartilhado embutido na URL configurada no painel
   // (.../api/whatsapp/zapi?secret=<ZAPI_WEBHOOK_SECRET>). Só é exigido quando
@@ -93,6 +95,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .json()
     .catch(() => null)) as ZApiInboundPayload | null;
   if (!body) return new NextResponse("Bad Request", { status: 400 });
+  const log = createLogger({
+    scope: "ZApiWebhook",
+    route: "/api/whatsapp/zapi",
+    traceId: body.messageId || randomUUID(),
+    correlationId: body.messageId || undefined,
+  });
 
   // Roteamento E2E via query param ?clinicId=<id>
   const url = new URL(request.url);
@@ -113,10 +121,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const resolution = await resolveWebhookClinic(body, clinicIdOverride);
   if (!resolution) {
-    console.error("[ZApi] Nenhuma clínica resolvida para a instância");
+    log.error("webhook.rejected", new Error("clinic_not_resolved"), { durationMs: Date.now() - startedAt });
     return new NextResponse("Server misconfigured", { status: 500 });
   }
   const clinicId = resolution;
+  const clinicLog = log.child({ clinicId });
 
   const [clinicRow] = await db
     .select({
@@ -128,7 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .limit(1);
 
   if (!clinicRow) {
-    console.error("[ZApi] Clínica de destino não encontrada");
+    clinicLog.error("webhook.rejected", new Error("clinic_not_found"), { durationMs: Date.now() - startedAt });
     return new NextResponse("Server misconfigured", { status: 500 });
   }
 
@@ -280,17 +289,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await persistInboundEventAndEnqueue(
+    const result = await persistInboundEventAndEnqueue(
       buildZApiInboundEvent({ clinicId, payload: body }),
       {
         inboundEventStore: new DrizzleInboundEventStore(),
         jobQueue: new DrizzleJobQueue(),
       },
     );
+    clinicLog.info("webhook.enqueued", {
+      inboundEventId: result.inboundEventId,
+      eventWasNew: result.eventWasNew,
+      jobWasNew: result.jobWasNew,
+      durationMs: Date.now() - startedAt,
+    });
   } catch (error) {
     // Returning an error asks Z-API to retry. A duplicate event retries only
     // the idempotent enqueue, repairing a prior persistence/enqueue split.
-    console.error("[ZApi] Falha ao persistir ou enfileirar inbound:", error);
+    clinicLog.error("webhook.enqueue.failed", error, { durationMs: Date.now() - startedAt });
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 

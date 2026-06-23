@@ -25,7 +25,7 @@ Se uma sessao acabar por limite de tokens, retome daqui:
 - [x] Checkpoint 4 - Conversation worker
 - [x] Checkpoint 5 - Sender worker
 - [x] Checkpoint 6 - Realtime barato por versao
-- [ ] Checkpoint 7 - Observabilidade operacional
+- [x] Checkpoint 7 - Observabilidade operacional
 
 ## Checkpoint 1 - Schema da fila, inbox e outbox
 
@@ -304,6 +304,13 @@ Commit sugerido:
 ```text
 chore(obs): add tracing fields and job execution metrics
 ```
+
+Operacao:
+
+- consultar `docs/operations/event-driven-observability.md` para os campos de correlacao, budgets e fluxo de diagnostico;
+- `/api/health`, dashboard owner e digest operacional incluem estado da fila;
+- jobs mortos, pendentes vencidos por mais de 10 minutos e processing por mais de 5 minutos sao criticos;
+- jobs pendentes com erro e tres ou mais tentativas geram alerta de falha repetida.
 
 ## Regras de handoff entre agentes
 

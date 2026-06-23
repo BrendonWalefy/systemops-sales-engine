@@ -6,6 +6,7 @@ import {
   type ResolvedLeadInboundContent,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { createLogger } from "@/infrastructure/logging/logger";
 
 type ConversationHandler = {
   handle(input: {
@@ -59,19 +60,35 @@ export class ProcessMessageJobHandler {
       throw new Error(`message.process job ${job.id} has no inboundEventId`);
     }
 
+    const log = createLogger({
+      scope: "ProcessMessageJob",
+      jobId: job.id,
+      queue: job.queue,
+      traceId: inboundEventId,
+    });
+    const startedAt = Date.now();
+
     const event = await this.deps.inboundEventStore.findInboundEvent(inboundEventId);
     if (!event || event.processingStatus === "processed" || event.processingStatus === "ignored") {
+      log.info("job.ignored", { reason: "event_terminal_or_missing", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId };
     }
 
+    const eventLog = log.child({
+      clinicId: event.clinicId,
+      correlationId: event.providerMessageId,
+    });
+
     if (event.provider !== "z_api" || !isZApiInboundPayload(event.payload)) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
+      eventLog.warn("job.ignored", { reason: "unsupported_provider_payload", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
 
     const payload = event.payload;
     if (payload.fromMe || payload.isGroupMsg || payload.isStatusReply) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
+      eventLog.info("job.ignored", { reason: "non_lead_message", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
 
@@ -85,6 +102,7 @@ export class ProcessMessageJobHandler {
 
     if (!content) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
+      eventLog.info("job.ignored", { reason: "unsupported_content", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
 
@@ -103,6 +121,7 @@ export class ProcessMessageJobHandler {
     });
 
     await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
+    eventLog.info("job.processed", { durationMs: Date.now() - startedAt });
     return { outcome: "processed", inboundEventId: event.id };
   }
 }

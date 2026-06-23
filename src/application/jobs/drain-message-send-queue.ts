@@ -1,6 +1,7 @@
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import { getJobRetryAt } from "@/application/services/job-retry-policy";
+import { createLogger } from "@/infrastructure/logging/logger";
 
 export type MessageSendJobHandler = {
   processJob(job: {
@@ -39,6 +40,11 @@ export async function drainMessageSendQueue(params: {
       olderThan: new Date(now.getTime() - 5 * 60_000),
     }),
   };
+  const log = createLogger({
+    scope: "MessageSendDrain",
+    workerId: params.workerId,
+    queue: "message.send",
+  });
 
   for (let index = 0; index < params.maxJobs; index++) {
     const job = await params.jobQueue.claimNextJob({
@@ -48,6 +54,9 @@ export async function drainMessageSendQueue(params: {
     });
     if (!job) break;
     result.claimed++;
+    const jobLog = log.child({ jobId: job.id, traceId: getOutboundMessageId(job.payload) ?? undefined });
+    const startedAt = Date.now();
+    jobLog.info("job.claimed", { attempt: job.attempts });
 
     let processingOutcome: "sent" | "ignored" | "deferred" | null = null;
     try {
@@ -59,6 +68,7 @@ export async function drainMessageSendQueue(params: {
           new Date(Date.now() + 1_000),
         );
         result.deferred++;
+        jobLog.info("job.deferred", { durationMs: Date.now() - startedAt });
         continue;
       }
 
@@ -66,11 +76,15 @@ export async function drainMessageSendQueue(params: {
       if (!completed) continue;
       if (processingOutcome === "sent") result.sent++;
       else result.ignored++;
+      jobLog.info("job.completed", {
+        outcome: processingOutcome,
+        durationMs: Date.now() - startedAt,
+      });
     } catch (error) {
       // The outbox is already terminal after a successful provider send. A
       // missing queue acknowledgement must not schedule a duplicate delivery.
       if (processingOutcome === "sent") {
-        console.error("[SenderWorker] Job acknowledgement failed after delivery:", error);
+        jobLog.error("job.acknowledgement.failed", error, { durationMs: Date.now() - startedAt });
         continue;
       }
 
@@ -91,6 +105,10 @@ export async function drainMessageSendQueue(params: {
       }
       if (status === "pending") result.retried++;
       else if (status === "dead") result.dead++;
+      jobLog.error("job.failed", error, {
+        status,
+        durationMs: Date.now() - startedAt,
+      });
     }
   }
 

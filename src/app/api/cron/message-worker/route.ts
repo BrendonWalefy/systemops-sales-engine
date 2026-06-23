@@ -9,6 +9,7 @@ import { ZApiAudioTranscriber } from "@/infrastructure/adapters/channels/whatsap
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { createLogger } from "@/infrastructure/logging/logger";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,6 +21,15 @@ const MAX_JOBS_PER_RUN = 3;
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireCronAuthorization(request);
   if (unauthorized) return unauthorized;
+
+  const workerId = `message-worker:${randomUUID()}`;
+  const log = createLogger({
+    scope: "MessageWorkerRoute",
+    route: "/api/cron/message-worker",
+    workerId,
+    queue: "message.process",
+  });
+  const startedAt = Date.now();
 
   const inboundEventStore = new DrizzleInboundEventStore();
   const jobQueue = new DrizzleJobQueue();
@@ -36,12 +46,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       jobQueue,
       inboundEventStore,
       handler,
-      workerId: `message-worker:${randomUUID()}`,
+      workerId,
       maxJobs: MAX_JOBS_PER_RUN,
     });
+    log.info("worker.run.completed", { ...result, durationMs: Date.now() - startedAt });
     return NextResponse.json(result);
   } catch (error) {
-    console.error("[MessageWorker] Falha ao drenar jobs:", error);
+    log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
     return NextResponse.json({ error: "message_worker_failed" }, { status: 500 });
   }
 }

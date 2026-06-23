@@ -29,7 +29,8 @@ import {
 } from "@/application/clinics/clinic-operational-status-presentation";
 import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 import { probeClinicChannelHealth } from "@/application/health/channel-health";
-import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
+import { appendOperationalAlerts, evaluateOperationalAlerts } from "@/application/health/operational-alerts";
+import { inspectQueueHealth, mapQueueHealthAlertsToOperationalAlerts } from "@/application/health/queue-health";
 
 const USD_TO_BRL = 5.5;
 
@@ -191,12 +192,16 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
 }
 
 async function fetchOperationalAlertReport(clinicRows: ClinicRow[]) {
+  const queueHealth = await inspectQueueHealth();
   const activeClinics = clinicRows.filter(
     (clinic) => clinic.operationalStatus === "active",
   );
 
   if (activeClinics.length === 0) {
-    return evaluateOperationalAlerts([], new Date());
+    return appendOperationalAlerts(
+      evaluateOperationalAlerts([], new Date()),
+      mapQueueHealthAlertsToOperationalAlerts(queueHealth.alerts),
+    );
   }
 
   const clinicIds = activeClinics.map((clinic) => clinic.id);
@@ -238,47 +243,54 @@ async function fetchOperationalAlertReport(clinicRows: ClinicRow[]) {
     }
   });
 
-  return evaluateOperationalAlerts(
-    await Promise.all(activeClinics.map(async (clinic) => {
-      const latestMetric = latestMetricMap.get(clinic.id);
+  const clinicAlertReport = evaluateOperationalAlerts(
+    await Promise.all(
+      activeClinics.map(async (clinic) => {
+        const latestMetric = latestMetricMap.get(clinic.id);
 
-      return {
-        clinicId: clinic.id,
-        clinicName: clinic.name,
-        operationalStatus: clinic.operationalStatus,
-        channelProvider: clinic.channelProvider,
-        zapiInstanceId: clinic.zapiInstanceId,
-        zapiToken: clinic.zapiToken,
-        zapiClientToken: clinic.zapiClientToken,
-        metaPhoneNumberId: clinic.metaPhoneNumberId,
-        metaAccessToken: clinic.metaAccessToken,
-        hasActivePlaybook: playbookClinicIds.has(clinic.id),
-        latestMetricAt: latestMetric?.createdAt ?? null,
-        channelStatus: await probeClinicChannelHealth({
+        return {
           clinicId: clinic.id,
           clinicName: clinic.name,
+          operationalStatus: clinic.operationalStatus,
           channelProvider: clinic.channelProvider,
           zapiInstanceId: clinic.zapiInstanceId,
           zapiToken: clinic.zapiToken,
           zapiClientToken: clinic.zapiClientToken,
           metaPhoneNumberId: clinic.metaPhoneNumberId,
           metaAccessToken: clinic.metaAccessToken,
-        }),
-        latestMetricData:
-          latestMetric && typeof latestMetric.data === "object"
-            ? (latestMetric.data as {
-                totalConversations?: number | null;
-                alerts?: Array<{
-                  metric: string;
-                  value: number;
-                  threshold: number;
-                  level: "warn" | "critical";
-                }> | null;
-                })
-            : null,
-      };
-    })),
+          hasActivePlaybook: playbookClinicIds.has(clinic.id),
+          latestMetricAt: latestMetric?.createdAt ?? null,
+          channelStatus: await probeClinicChannelHealth({
+            clinicId: clinic.id,
+            clinicName: clinic.name,
+            channelProvider: clinic.channelProvider,
+            zapiInstanceId: clinic.zapiInstanceId,
+            zapiToken: clinic.zapiToken,
+            zapiClientToken: clinic.zapiClientToken,
+            metaPhoneNumberId: clinic.metaPhoneNumberId,
+            metaAccessToken: clinic.metaAccessToken,
+          }),
+          latestMetricData:
+            latestMetric && typeof latestMetric.data === "object"
+              ? (latestMetric.data as {
+                  totalConversations?: number | null;
+                  alerts?: Array<{
+                    metric: string;
+                    value: number;
+                    threshold: number;
+                    level: "warn" | "critical";
+                  }> | null;
+                  })
+              : null,
+        };
+      }),
+    ),
     new Date(),
+  );
+
+  return appendOperationalAlerts(
+    clinicAlertReport,
+    mapQueueHealthAlertsToOperationalAlerts(queueHealth.alerts),
   );
 }
 

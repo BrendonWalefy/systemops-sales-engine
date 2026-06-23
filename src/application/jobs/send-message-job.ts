@@ -37,18 +37,33 @@ export class SendMessageJobHandler {
     this.delivery = deps.delivery ?? deliverConversationOutbound;
   }
 
-  async processJob(job: { payload: unknown }): Promise<"sent" | "ignored" | "deferred"> {
+  async processJob(job: { id?: string; payload: unknown }): Promise<"sent" | "ignored" | "deferred"> {
     const outboundMessageId = getOutboundMessageId(job.payload);
     if (!outboundMessageId) throw new Error("message.send job has no outboundMessageId");
 
+    const log = createLogger({
+      scope: "SendMessageJob",
+      jobId: job.id,
+      queue: "message.send",
+      traceId: outboundMessageId,
+    });
+    const startedAt = Date.now();
+
     const outbound = await this.deps.outboundMessageStore.findOutboundMessage(outboundMessageId);
     if (!outbound || outbound.status === "sent" || outbound.status === "cancelled" || outbound.status === "dead") {
+      log.info("job.ignored", { reason: "outbound_terminal_or_missing", durationMs: Date.now() - startedAt });
       return "ignored";
     }
+    const outboundLog = log.child({
+      clinicId: outbound.clinicId,
+      conversationId: outbound.conversationId,
+    });
     if (await this.deps.outboundMessageStore.hasEarlierActiveMessage(outbound)) {
+      outboundLog.info("job.deferred", { reason: "earlier_message_active", durationMs: Date.now() - startedAt });
       return "deferred";
     }
     if (!(await this.deps.outboundMessageStore.markOutboundProcessing(outbound.id))) {
+      outboundLog.info("job.ignored", { reason: "outbound_claim_lost", durationMs: Date.now() - startedAt });
       return "ignored";
     }
     if (!isConversationOutboundPayload(outbound.payload)) {
@@ -64,6 +79,7 @@ export class SendMessageJobHandler {
       id: outbound.id,
       providerMessageId,
     });
+    outboundLog.info("job.sent", { durationMs: Date.now() - startedAt, providerMessageId });
     return "sent";
   }
 }

@@ -5,6 +5,7 @@ import {
   getInboundEventId,
   type JobResult,
 } from "@/application/jobs/process-message-job";
+import { createLogger } from "@/infrastructure/logging/logger";
 
 export type MessageProcessJobHandler = {
   processJob(job: Parameters<typeof getInboundEventId>[0]): Promise<JobResult>;
@@ -40,6 +41,11 @@ export async function drainMessageProcessQueue(params: {
       olderThan: new Date(now.getTime() - staleAfterMs),
     }),
   };
+  const log = createLogger({
+    scope: "MessageProcessDrain",
+    workerId: params.workerId,
+    queue: "message.process",
+  });
 
   for (let index = 0; index < params.maxJobs; index++) {
     const job = await params.jobQueue.claimNextJob({
@@ -50,6 +56,9 @@ export async function drainMessageProcessQueue(params: {
     if (!job) break;
 
     result.claimed++;
+    const jobLog = log.child({ jobId: job.id, traceId: getInboundEventId(job) ?? undefined });
+    const startedAt = Date.now();
+    jobLog.info("job.claimed", { attempt: job.attempts });
     let processingResult: JobResult | null = null;
     try {
       processingResult = await params.handler.processJob(job);
@@ -58,12 +67,16 @@ export async function drainMessageProcessQueue(params: {
 
       if (processingResult.outcome === "processed") result.processed++;
       else result.ignored++;
+      jobLog.info("job.completed", {
+        outcome: processingResult.outcome,
+        durationMs: Date.now() - startedAt,
+      });
     } catch (error) {
       // The domain journey may already have persisted its result. If only the
       // queue acknowledgement failed, keep the event terminal; stale recovery
       // will claim the job and complete it without replaying the conversation.
       if (processingResult?.outcome === "processed") {
-        console.error("[MessageWorker] Job acknowledgement failed after processing:", error);
+        jobLog.error("job.acknowledgement.failed", error, { durationMs: Date.now() - startedAt });
         continue;
       }
 
@@ -84,6 +97,10 @@ export async function drainMessageProcessQueue(params: {
 
       if (status === "pending") result.retried++;
       else if (status === "dead") result.dead++;
+      jobLog.error("job.failed", error, {
+        status,
+        durationMs: Date.now() - startedAt,
+      });
     }
   }
 
