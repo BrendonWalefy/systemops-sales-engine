@@ -94,7 +94,7 @@ function spAt(daysFromNow: number, spHour: number, spMin = 0): Date {
   return d;
 }
 
-function pick<T>(arr: T[], i: number): T {
+function pick<T>(arr: readonly T[], i: number): T {
   return arr[((i % arr.length) + arr.length) % arr.length];
 }
 
@@ -354,7 +354,6 @@ async function insertChunked<T>(
   size = 400,
 ): Promise<void> {
   for (let i = 0; i < rows.length; i += size) {
-    // @ts-expect-error drizzle aceita array de inferInsert
     await db.insert(table).values(rows.slice(i, i + size));
   }
 }
