@@ -6,6 +6,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/sender-worker",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/stale-conversations",
       "schedule": "0 6 * * *"
     },

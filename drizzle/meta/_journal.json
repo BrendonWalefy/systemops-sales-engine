@@ -267,6 +267,13 @@
       "when": 1782254264185,
       "tag": "0037_good_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1782256188624,
+      "tag": "0038_silent_franklin_richards",
+      "breakpoints": true
     }
   ]
 }

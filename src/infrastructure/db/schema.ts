@@ -357,6 +357,8 @@ export const conversations = pgTable(
     // Adquirido via UPDATE condicional (CAS de single-statement — neon-http não
     // suporta transações interativas). NULL ou passado = livre.
     processingUntil: timestamp("processing_until", { withTimezone: true }),
+    // Sequência monotônica para preservar a ordem de entregas na outbox.
+    nextOutboundSequence: integer("next_outbound_sequence").notNull().default(0),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -496,6 +498,7 @@ export const outboundMessages = pgTable(
     channel: channelEnum("channel").notNull(),
     payload: jsonb("payload").notNull(),
     deliveryKind: outboundMessageDeliveryKindEnum("delivery_kind").notNull(),
+    sequence: integer("sequence").notNull(),
     status: outboundMessageStatusEnum("status").notNull().default("pending"),
     providerMessageId: text("provider_message_id"),
     dedupeKey: text("dedupe_key"),
@@ -510,6 +513,9 @@ export const outboundMessages = pgTable(
     conversationCreatedAtIdx: index(
       "outbound_messages_conversation_created_at_idx",
     ).on(table.conversationId, table.createdAt),
+    conversationSequenceIdx: uniqueIndex(
+      "outbound_messages_conversation_sequence_idx",
+    ).on(table.conversationId, table.sequence),
     statusCreatedAtIdx: index("outbound_messages_status_created_at_idx").on(
       table.status,
       table.createdAt,

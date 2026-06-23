@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import type {
   CreateOutboundMessageInput,
   CreateOutboundMessageResult,
@@ -7,12 +7,37 @@ import type {
   OutboundMessageStore,
 } from "@/application/ports/outbound-message-store";
 import { db } from "@/infrastructure/db/client";
-import { outboundMessages } from "@/infrastructure/db/schema";
+import { conversations, outboundMessages } from "@/infrastructure/db/schema";
 
 export class DrizzleOutboundMessageStore implements OutboundMessageStore {
   async createOutboundMessage(
     input: CreateOutboundMessageInput,
   ): Promise<CreateOutboundMessageResult> {
+    if (input.dedupeKey) {
+      const [existing] = await db
+        .select()
+        .from(outboundMessages)
+        .where(
+          and(
+            eq(outboundMessages.conversationId, input.conversationId),
+            eq(outboundMessages.dedupeKey, input.dedupeKey),
+          ),
+        )
+        .limit(1);
+      if (existing) return { message: mapOutboundMessage(existing), isNew: false };
+    }
+
+    // A single-row UPDATE reserves an order even with concurrent workers. A
+    // gap after a failed insert is harmless; reordering is not.
+    const [conversation] = await db
+      .update(conversations)
+      .set({ nextOutboundSequence: sql`${conversations.nextOutboundSequence} + 1` })
+      .where(eq(conversations.id, input.conversationId))
+      .returning({ nextOutboundSequence: conversations.nextOutboundSequence });
+    if (!conversation) {
+      throw new Error(`Conversation not found for outbound message: ${input.conversationId}`);
+    }
+
     const [created] = await db
       .insert(outboundMessages)
       .values({
@@ -21,6 +46,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
         channel: input.channel,
         payload: input.payload,
         deliveryKind: input.deliveryKind,
+        sequence: conversation.nextOutboundSequence,
         dedupeKey: input.dedupeKey,
       })
       .onConflictDoNothing({
@@ -52,6 +78,30 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     return { message: mapOutboundMessage(existing), isNew: false };
   }
 
+  async findOutboundMessage(id: string): Promise<OutboundMessage | null> {
+    const [message] = await db
+      .select()
+      .from(outboundMessages)
+      .where(eq(outboundMessages.id, id))
+      .limit(1);
+    return message ? mapOutboundMessage(message) : null;
+  }
+
+  async hasEarlierActiveMessage(message: OutboundMessage): Promise<boolean> {
+    const [earlier] = await db
+      .select({ id: outboundMessages.id })
+      .from(outboundMessages)
+      .where(
+        and(
+          eq(outboundMessages.conversationId, message.conversationId),
+          lt(outboundMessages.sequence, message.sequence),
+          inArray(outboundMessages.status, ["pending", "processing"]),
+        ),
+      )
+      .limit(1);
+    return Boolean(earlier);
+  }
+
   async markOutboundProcessing(id: string): Promise<boolean> {
     const rows = await db
       .update(outboundMessages)
@@ -62,6 +112,13 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
       .where(and(eq(outboundMessages.id, id), eq(outboundMessages.status, "pending")))
       .returning({ id: outboundMessages.id });
     return rows.length > 0;
+  }
+
+  async markOutboundPending(id: string, error: string): Promise<void> {
+    await db
+      .update(outboundMessages)
+      .set({ status: "pending", lastError: error })
+      .where(and(eq(outboundMessages.id, id), eq(outboundMessages.status, "processing")));
   }
 
   async markOutboundDelivered(input: MarkOutboundDeliveredInput): Promise<void> {
@@ -82,6 +139,13 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
       .set({ status: "failed", lastError: error })
       .where(eq(outboundMessages.id, id));
   }
+
+  async markOutboundDead(id: string, error: string): Promise<void> {
+    await db
+      .update(outboundMessages)
+      .set({ status: "dead", lastError: error })
+      .where(eq(outboundMessages.id, id));
+  }
 }
 
 function mapOutboundMessage(row: typeof outboundMessages.$inferSelect): OutboundMessage {
@@ -92,6 +156,7 @@ function mapOutboundMessage(row: typeof outboundMessages.$inferSelect): Outbound
     channel: row.channel,
     payload: row.payload,
     deliveryKind: row.deliveryKind,
+    sequence: row.sequence,
     status: row.status,
     providerMessageId: row.providerMessageId,
     dedupeKey: row.dedupeKey,

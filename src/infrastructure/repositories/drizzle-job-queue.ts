@@ -103,6 +103,33 @@ export class DrizzleJobQueue implements JobQueue {
     return rows.length > 0;
   }
 
+  async releaseJob(
+    jobId: string,
+    workerId: string,
+    runAt: Date,
+    now = new Date(),
+  ): Promise<boolean> {
+    const rows = await db
+      .update(jobs)
+      .set({
+        status: "pending",
+        runAt,
+        lockedAt: null,
+        lockedBy: null,
+        attempts: sql`GREATEST(${jobs.attempts} - 1, 0)`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          eq(jobs.status, "processing"),
+          eq(jobs.lockedBy, workerId),
+        ),
+      )
+      .returning({ id: jobs.id });
+    return rows.length > 0;
+  }
+
   async failJob(input: FailJobInput): Promise<JobStatus | null> {
     const now = input.now ?? new Date();
     const terminal = input.job.attempts >= input.job.maxAttempts;

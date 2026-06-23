@@ -17,6 +17,7 @@ export type OutboundMessage = {
   channel: Channel;
   payload: unknown;
   deliveryKind: OutboundMessageDeliveryKind;
+  sequence: number;
   status: OutboundMessageStatus;
   providerMessageId: string | null;
   dedupeKey: string | null;
@@ -48,7 +49,11 @@ export type MarkOutboundDeliveredInput = {
 
 export type OutboundMessageStore = {
   createOutboundMessage(input: CreateOutboundMessageInput): Promise<CreateOutboundMessageResult>;
+  findOutboundMessage(id: string): Promise<OutboundMessage | null>;
+  hasEarlierActiveMessage(message: OutboundMessage): Promise<boolean>;
   markOutboundProcessing(id: string): Promise<boolean>;
+  markOutboundPending(id: string, error: string): Promise<void>;
   markOutboundDelivered(input: MarkOutboundDeliveredInput): Promise<void>;
   markOutboundFailed(id: string, error: string): Promise<void>;
+  markOutboundDead(id: string, error: string): Promise<void>;
 };

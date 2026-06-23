@@ -23,7 +23,7 @@ Se uma sessao acabar por limite de tokens, retome daqui:
 - [x] Checkpoint 2 - Abstracoes e repositorios
 - [x] Checkpoint 3 - Webhook fino
 - [x] Checkpoint 4 - Conversation worker
-- [ ] Checkpoint 5 - Sender worker
+- [x] Checkpoint 5 - Sender worker
 - [ ] Checkpoint 6 - Realtime barato por versao
 - [ ] Checkpoint 7 - Observabilidade operacional
 
@@ -209,6 +209,12 @@ Concluido quando:
 - orchestrator nao enviar direto ao canal;
 - falha de envio nao exigir recomputar a conversa;
 - ordem por conversa estiver sob controle.
+
+Operacao temporaria:
+
+- `/api/cron/sender-worker` drena ate cinco jobs `message.send` por minuto, protegido por `CRON_SECRET`;
+- respostas de lead usam sequencia duravel por conversa; alertas operacionais para a equipe continuam no caminho direto;
+- deployar a migration `0038_silent_franklin_richards.sql` antes de liberar os workers.
 
 Validacao minima:
 

@@ -59,6 +59,7 @@ describe("event-driven modernization schema contract", () => {
 
     expect(outboundMessages.conversationId.name).toBe("conversation_id");
     expect(outboundMessages.deliveryKind.name).toBe("delivery_kind");
+    expect(outboundMessages.sequence.name).toBe("sequence");
     expect(outboundMessages.providerMessageId.name).toBe("provider_message_id");
   });
 });

@@ -49,6 +49,7 @@ export type JobQueue = {
   enqueueJob(input: EnqueueJobInput): Promise<EnqueueJobResult>;
   claimNextJob(input: ClaimNextJobInput): Promise<JobRecord | null>;
   completeJob(jobId: string, workerId: string, now?: Date): Promise<boolean>;
+  releaseJob(jobId: string, workerId: string, runAt: Date, now?: Date): Promise<boolean>;
   failJob(input: FailJobInput): Promise<JobStatus | null>;
   recoverStaleJobs(input: { olderThan: Date }): Promise<number>;
 };
