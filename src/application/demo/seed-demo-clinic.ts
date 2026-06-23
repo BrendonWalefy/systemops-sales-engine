@@ -41,15 +41,6 @@ export const DEMO_ADMIN_EMAIL = "helena@odontomarques.com.br";
 export const DEMO_ADMIN_PASSWORD = "OdontoMarques2026!";
 const PLAN = "clinica" as const;
 
-/**
- * Trava de segurança: o seed só roda via painel quando explicitamente
- * habilitado por env. Desligado por padrão em TODOS os ambientes (inclusive
- * produção) para nunca rodar acidentalmente contra dados reais.
- */
-export function isDemoSeedEnabled(): boolean {
-  return process.env.ALLOW_DEMO_SEED === "true";
-}
-
 export type DemoSeedResult = {
   clinicId: string;
   slug: string;

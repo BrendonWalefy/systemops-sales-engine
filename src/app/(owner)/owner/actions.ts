@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import {
   seedDemoClinic,
-  isDemoSeedEnabled,
   type DemoSeedResult,
 } from "@/application/demo/seed-demo-clinic";
 
@@ -22,24 +21,12 @@ export type LoadDemoState = {
   result?: DemoSeedResult;
 };
 
-/**
- * Carrega/reseta a clínica demo "Odonto Marques".
- * Dupla trava: precisa ser owner E ter ALLOW_DEMO_SEED=true no ambiente —
- * nunca roda acidentalmente contra dados reais de produção.
- */
 export async function loadDemoClinic(
   _prev: LoadDemoState,
   _formData: FormData,
 ): Promise<LoadDemoState> {
   if (!(await requireOwner())) {
     return { ok: false, message: "Apenas o owner pode carregar a clínica demo." };
-  }
-  if (!isDemoSeedEnabled()) {
-    return {
-      ok: false,
-      message:
-        "Recurso desativado. Defina ALLOW_DEMO_SEED=true neste ambiente para liberar.",
-    };
   }
 
   try {
