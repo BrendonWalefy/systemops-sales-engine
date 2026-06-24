@@ -788,6 +788,31 @@ export const whatsappMessageCosts = pgTable(
   }),
 );
 
+// Eventos de orçamento da infraestrutura compartilhada. Não pertencem a uma
+// clínica específica porque o plano Vercel é custo da plataforma.
+export const platformSpendAlerts = pgTable(
+  "platform_spend_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").$type<"vercel">().notNull(),
+    teamId: text("team_id").notNull(),
+    budgetAmountUsd: integer("budget_amount_usd").notNull(),
+    currentSpendUsd: integer("current_spend_usd").notNull(),
+    thresholdPercent: integer("threshold_percent").$type<50 | 75 | 100>().notNull(),
+    eventKey: text("event_key").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    providerReceivedAtIdx: index("platform_spend_alerts_provider_received_at_idx").on(
+      table.provider,
+      table.receivedAt,
+    ),
+    eventKeyIdx: uniqueIndex("platform_spend_alerts_event_key_idx").on(table.eventKey),
+  }),
+);
+
 // Estado explícito de conversa — substitui marcadores de texto em mensagens
 export const conversationStates = pgTable(
   "conversation_states",

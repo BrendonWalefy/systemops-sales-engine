@@ -9,6 +9,13 @@ import {
   whatsappMessageCosts,
 } from "@/infrastructure/db/schema";
 import { eq, sum, and, gte } from "drizzle-orm";
+import { DrizzlePlatformSpendAlertStore } from "@/infrastructure/repositories/drizzle-platform-spend-alert-store";
+import {
+  USD_TO_BRL,
+  VERCEL_PRO_PLATFORM_FEE_USD_CENTS,
+  usdCentsToBrlCents,
+  vercelSpendUsdToBrlCents,
+} from "@/application/finance/platform-billing";
 import {
   TrendingUp,
   DollarSign,
@@ -24,12 +31,11 @@ import {
 } from "@/application/clinics/clinic-operational-status-presentation";
 import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 
-// Custos de infra mensais em BRL (centavos) — auditados em jun/2026
-// Vercel: Hobby plan (gratuito). Neon: Free tier (gratuito, DB < 30 MB).
+// Custos de infra mensais em BRL (centavos) — auditados em jun/2026.
+// O excedente do Vercel Pro é recebido pelo webhook de Spend Management.
 // Z-API: R$79,99/instância (fatura 24/05/2026, plano "Meu número").
-// Estes valores devem ser revisados ao migrar de plano.
 const INFRA_FIXED_BRL = {
-  vercel: 0, // Hobby (gratuito até ~20 clínicas)
+  vercel: usdCentsToBrlCents(VERCEL_PRO_PLATFORM_FEE_USD_CENTS),
   neon: 0, // Free tier (gratuito até 512 MB / 100 CU-hrs)
   zapi_per_clinic: 7999, // R$ 79,99 por instância (confirmado fatura jun/2026)
 };
@@ -66,11 +72,16 @@ function startOfMonth(): Date {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
-// Cotação USD/BRL aproximada (fallback estático)
-const USD_TO_BRL = 5.15;
-
 function microsBrlCents(micros: number): number {
   return Math.round((micros / 1_000_000) * USD_TO_BRL * 100);
+}
+
+function formatUsdAmount(usd: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+  }).format(usd);
 }
 
 type ClinicFinancial = {
@@ -155,7 +166,11 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
 }
 
 export default async function FinanceiroPage() {
-  const allClinics = await fetchClinicFinancials();
+  const monthStart = startOfMonth();
+  const [allClinics, vercelSpendAlert] = await Promise.all([
+    fetchClinicFinancials(),
+    new DrizzlePlatformSpendAlertStore().findLatest("vercel", monthStart),
+  ]);
 
   const billableClinics = allClinics.filter((c) =>
     isBillableOperationalStatus(c.operationalStatus),
@@ -181,9 +196,12 @@ export default async function FinanceiroPage() {
   const mrr = billableClinics.reduce((s, c) => s + c.monthlyRevenueBrl, 0);
 
   // Custos de infra de produção este mês (BRL centavos)
+  const vercelOverageBrl = vercelSpendAlert
+    ? vercelSpendUsdToBrlCents(vercelSpendAlert.currentSpendUsd)
+    : 0;
   const infraFixed = INFRA_FIXED_BRL.vercel + INFRA_FIXED_BRL.neon;
   const infraVar = nProdClinics * INFRA_FIXED_BRL.zapi_per_clinic;
-  const infraTotal = infraFixed + infraVar;
+  const infraTotal = infraFixed + infraVar + vercelOverageBrl;
 
   // Custos variáveis de IA+TTS+WA de produção
   const aiWaTotal = billableClinics.reduce(
@@ -338,6 +356,53 @@ export default async function FinanceiroPage() {
           </div>
         )}
 
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            border: `1px solid ${
+              vercelSpendAlert?.thresholdPercent === 100
+                ? "rgba(239,68,68,0.35)"
+                : vercelSpendAlert?.thresholdPercent === 75
+                  ? "rgba(245,158,11,0.35)"
+                  : "var(--line)"
+            }`,
+            borderRadius: 12,
+            background:
+              vercelSpendAlert?.thresholdPercent === 100
+                ? "rgba(239,68,68,0.06)"
+                : vercelSpendAlert?.thresholdPercent === 75
+                  ? "rgba(245,158,11,0.06)"
+                  : "var(--surface-soft)",
+            padding: "14px 18px",
+          }}
+        >
+          <AlertCircle
+            size={16}
+            style={{
+              color:
+                vercelSpendAlert?.thresholdPercent === 100
+                  ? "var(--danger)"
+                  : vercelSpendAlert?.thresholdPercent === 75
+                    ? "var(--warning)"
+                    : "var(--accent-strong)",
+              flexShrink: 0,
+              marginTop: 1,
+            }}
+          />
+          <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)" }}>
+            <strong>Vercel Pro:</strong> custo base de {formatBrl(INFRA_FIXED_BRL.vercel)} / mês ({formatUsdAmount(VERCEL_PRO_PLATFORM_FEE_USD_CENTS / 100)}).
+            {vercelSpendAlert ? (
+              <>
+                {" "}O Spend Management sinalizou {vercelSpendAlert.thresholdPercent}% do teto: {formatUsdAmount(vercelSpendAlert.currentSpendUsd)} de {formatUsdAmount(vercelSpendAlert.budgetAmountUsd)} em excedente, recebido em {vercelSpendAlert.receivedAt.toLocaleDateString("pt-BR")}.
+              </>
+            ) : (
+              " Nenhum excedente foi sinalizado ainda. Configure o webhook de Spend Management para registrar os alertas de 50%, 75% e 100%."
+            )}
+          </p>
+        </div>
+
         {/* KPIs financeiros — produção */}
         <div className="kpi-strip">
           <div className="metric metric-highlight">
@@ -460,8 +525,10 @@ export default async function FinanceiroPage() {
             {[
               {
                 label: "Vercel",
-                note: "Hobby — gratuito",
-                value: INFRA_FIXED_BRL.vercel,
+                note: vercelSpendAlert
+                  ? `Pro ${formatUsdAmount(VERCEL_PRO_PLATFORM_FEE_USD_CENTS / 100)} + excedente alertado ${formatUsdAmount(vercelSpendAlert.currentSpendUsd)}`
+                  : `Pro ${formatUsdAmount(VERCEL_PRO_PLATFORM_FEE_USD_CENTS / 100)} · sem excedente alertado`,
+                value: INFRA_FIXED_BRL.vercel + vercelOverageBrl,
               },
               {
                 label: "Neon (PostgreSQL)",
@@ -1005,8 +1072,8 @@ export default async function FinanceiroPage() {
             {[
               {
                 label: "Custo total/mês",
-                value: "R$ 82,49",
-                note: "Z-API R$79,99 + OpenAI R$2,50",
+                value: "R$ 185,49",
+                note: "Vercel Pro R$103 + Z-API R$79,99 + OpenAI R$2,50",
               },
               {
                 label: "Receita (Starter)",
@@ -1015,8 +1082,8 @@ export default async function FinanceiroPage() {
               },
               {
                 label: "Margem bruta",
-                value: "91%",
-                note: "R$ 814/mês de lucro bruto",
+                value: "79%",
+                note: "R$ 712/mês de lucro bruto",
                 highlight: true,
               },
               {
@@ -1080,9 +1147,9 @@ export default async function FinanceiroPage() {
             }}
           >
             <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-              Projeção para 5 clínicas: ~R$415/mês de custo · ~R$4.485/mês MRR ·
-              margem ~91%. Vercel e Neon permanecem gratuitos até ~15 clínicas
-              ativas.
+              Projeção para 5 clínicas: ~R$518/mês de custo · ~R$4.485/mês MRR ·
+              margem ~88%. Inclui Vercel Pro; Neon permanece no free tier enquanto
+              a franquia comportar a operação.
             </p>
           </div>
         </div>
@@ -1093,8 +1160,9 @@ export default async function FinanceiroPage() {
           estática). Custos de IA em USD são convertidos apenas para referência.
           {(nTestClinics > 0 || prospectClinics.length > 0) &&
             " Clínicas de teste e prospect são excluídas do MRR e da margem."}{" "}
-          Custos de infra auditados em jun/2026: Vercel Hobby (R$0), Neon Free
-          (R$0), Z-API R$79,99/instância.
+          Custos de infra auditados em jun/2026: Vercel Pro ({formatBrl(INFRA_FIXED_BRL.vercel)}), Neon Free
+          (R$0), Z-API R$79,99/instância. O Spend Management da Vercel mede
+          apenas excedente de uso, não a mensalidade do plano.
         </p>
       </div>
     </div>
