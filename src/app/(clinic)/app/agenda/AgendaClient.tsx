@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import { CalendarView } from "./CalendarView";
 import { ResourceDayView } from "./ResourceDayView";
+import { MobileMonthView } from "./MobileMonthView";
+import { MobileWeekView } from "./MobileWeekView";
+import { MobileDayView } from "./MobileDayView";
 import { AppointmentModal } from "./AppointmentModal";
 import { BlockModal } from "./BlockModal";
 import { AppointmentDrawer } from "./AppointmentDrawer";
@@ -106,6 +109,18 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
 
   const [range, setRange] = useState({ from: initialFrom, to: initialTo });
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string | null>(null);
+
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 640px)").matches;
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const fetchEvents = useCallback(async (
     from: string,
@@ -292,6 +307,19 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     refreshAll();
   }
 
+  async function handleQuickConfirm(event: AppointmentEvent): Promise<void> {
+    const res = await fetch(`/api/appointments/${event.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "confirmed" }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error ?? "Erro ao confirmar");
+    }
+    refreshAll();
+  }
+
   const hasProfs = professionals.length > 0;
   const isScheduleView = view !== "resource";
 
@@ -347,10 +375,11 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
             onClick={() => setView("day")}
           >
             <Calendar size={12} />
-            Dia
+            <span className="tab-label-full">Dia</span>
+            <span className="tab-label-short">Hoje</span>
           </button>
           <button
-            className={`agenda-view-tab agenda-tab--week${view === "week" ? " active" : ""}`}
+            className={`agenda-view-tab${view === "week" ? " active" : ""}`}
             onClick={() => setView("week")}
           >
             <CalendarDays size={12} />
@@ -365,7 +394,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
           </button>
           {hasProfs && (
             <button
-              className={`agenda-view-tab${view === "resource" ? " active" : ""}`}
+              className={`agenda-view-tab agenda-tab--resource${view === "resource" ? " active" : ""}`}
               onClick={() => setView("resource")}
             >
               <Users size={12} />
@@ -408,6 +437,29 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
         <div className="agenda-v2-calendar">
           {loading && events.length === 0 ? (
             <div className="calendar-loading">Carregando agenda...</div>
+          ) : view === "month" && isMobile ? (
+            <MobileMonthView
+              events={events}
+              timezone={timezone}
+              onEventClick={(event) => openDrawer(event)}
+              onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
+              onNewAppointment={() => setAppointmentModal({ open: true })}
+            />
+          ) : view === "week" && isMobile ? (
+            <MobileWeekView
+              events={events}
+              timezone={timezone}
+              onEventClick={(event) => openDrawer(event)}
+              onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
+            />
+          ) : view === "day" && isMobile ? (
+            <MobileDayView
+              events={events}
+              timezone={timezone}
+              onEventClick={(event) => openDrawer(event)}
+              onQuickConfirm={handleQuickConfirm}
+              onNewAppointment={() => setAppointmentModal({ open: true })}
+            />
           ) : isScheduleView ? (
             <CalendarView
               currentView={SX_VIEW_NAMES[view as ScheduleView]}
