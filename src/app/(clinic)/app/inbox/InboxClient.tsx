@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Search, Inbox, RefreshCw, Send, X, CalendarCheck, Tag } from "lucide-react";
+import { Search, Inbox, RefreshCw, Send, X, CalendarCheck, Tag, ChevronDown } from "lucide-react";
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recovery-actions";
@@ -685,6 +685,19 @@ export function InboxClient({
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<InboxCategoryScope>(initialScope);
   const [tab, setTab] = useState<LiveInboxTabFilter | "recovery">(initialTab);
+  const [othersOpen, setOthersOpen] = useState(false);
+  const othersRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!othersOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (othersRef.current && !othersRef.current.contains(e.target as Node)) {
+        setOthersOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [othersOpen]);
 
   const salesRows = categoryRows(rows, "sales");
   const { handoff, active, paused, recovery } = segmentRows(salesRows, lastMsgMap);
@@ -764,24 +777,78 @@ export function InboxClient({
         </div>
       </div>
 
-      <div className="inbox-tabs-bar" style={{ paddingBottom: 0 }}>
-        {CATEGORY_TABS.map(({ key, label, count }) => (
+      <div className="inbox-tabs-bar" style={{ paddingBottom: 0, alignItems: "center" }}>
+        {/* Comercial sempre visível */}
+        {CATEGORY_TABS.slice(0, 1).map(({ key, label, count }) => (
           <button
             key={key}
             className={`inbox-tab-pill${scope === key ? " active" : ""}`}
-            onClick={() => {
-              setScope(key);
-              setTab("all");
-            }}
+            onClick={() => { setScope(key); setTab("all"); }}
           >
             {label}
             {count > 0 && (
-              <span className={`inbox-tab-count${scope === key ? " active" : ""}`}>
-                {count}
-              </span>
+              <span className={`inbox-tab-count${scope === key ? " active" : ""}`}>{count}</span>
             )}
           </button>
         ))}
+
+        {/* Outros → dropdown com Operacional, Fornecedores, Spam, Arquivadas */}
+        <div ref={othersRef} style={{ position: "relative" }}>
+          <button
+            className={`inbox-tab-pill${CATEGORY_TABS.slice(1).some(t => t.key === scope) ? " active" : ""}`}
+            onClick={() => setOthersOpen(o => !o)}
+            style={{ display: "flex", alignItems: "center", gap: 4 }}
+          >
+            {CATEGORY_TABS.slice(1).find(t => t.key === scope)?.label ?? "Outros"}
+            {CATEGORY_TABS.slice(1).reduce((sum, t) => sum + t.count, 0) > 0 && !CATEGORY_TABS.slice(1).some(t => t.key === scope) && (
+              <span className="inbox-tab-count">
+                {CATEGORY_TABS.slice(1).reduce((sum, t) => sum + t.count, 0)}
+              </span>
+            )}
+            <ChevronDown size={11} style={{ opacity: 0.7, transform: othersOpen ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+          </button>
+          {othersOpen && (
+            <div style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              background: "var(--surface-raised)",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              padding: "4px",
+              zIndex: 50,
+              minWidth: 160,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+            }}>
+              {CATEGORY_TABS.slice(1).map(({ key, label, count }) => (
+                <button
+                  key={key}
+                  onClick={() => { setScope(key); setTab("all"); setOthersOpen(false); }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: scope === key ? "var(--accent-soft)" : "transparent",
+                    border: "none",
+                    borderRadius: 7,
+                    color: scope === key ? "var(--accent-strong)" : "var(--text)",
+                    fontSize: 13,
+                    fontWeight: scope === key ? 700 : 500,
+                    cursor: "pointer",
+                    gap: 8,
+                  }}
+                >
+                  {label}
+                  {count > 0 && (
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>{count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {isSalesScope && (

@@ -731,7 +731,7 @@ export default async function DashboardPage({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: "12px", marginBottom: "20px" }}>
             <div style={{ minWidth: 0, border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
               <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Potencial</p>
-              <strong style={{ display: "block", fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--accent-strong)", lineHeight: 1.1, wordBreak: "break-word" }}>
+              <strong style={{ display: "block", fontSize: "clamp(13px, 3.6vw, 20px)", fontWeight: 800, color: "var(--accent-strong)", lineHeight: 1.1, whiteSpace: "nowrap" }}>
                 {formatBRL(revenueData.potentialCents)}
               </strong>
               <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
@@ -741,7 +741,7 @@ export default async function DashboardPage({
 
             <div style={{ minWidth: 0, border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
               <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>Confirmado</p>
-              <strong style={{ display: "block", fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", lineHeight: 1.1, wordBreak: "break-word" }}>
+              <strong style={{ display: "block", fontSize: "clamp(13px, 3.6vw, 20px)", fontWeight: 800, color: "var(--text)", lineHeight: 1.1, whiteSpace: "nowrap" }}>
                 {formatBRL(revenueData.confirmedCents)}
               </strong>
               <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
@@ -752,7 +752,7 @@ export default async function DashboardPage({
             {showRoi && (
               <div style={{ minWidth: 0, border: "1px solid var(--line)", borderRadius: "10px", padding: "14px 16px", background: "var(--surface-raised)" }}>
                 <p style={{ fontSize: "11px", color: "var(--muted)", margin: "0 0 6px", fontWeight: 600 }}>ROI</p>
-                <strong style={{ display: "block", fontSize: "clamp(15px, 4.2vw, 22px)", fontWeight: 800, color: "var(--text)", lineHeight: 1.1, wordBreak: "break-word" }}>
+                <strong style={{ display: "block", fontSize: "clamp(13px, 3.6vw, 20px)", fontWeight: 800, color: "var(--text)", lineHeight: 1.1, whiteSpace: "nowrap" }}>
                   {revenueData.monthlyRevenueBrl > 0
                     ? `${(revenueData.confirmedCents / revenueData.monthlyRevenueBrl)
                         .toFixed(1)
@@ -800,18 +800,15 @@ export default async function DashboardPage({
                 const maxTotal = revenueData.byTreatment[0]?.total ?? 1;
                 const barWidth = Math.round((row.total / maxTotal) * 100);
                 return (
-                  <div key={row.treatmentName} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "13px", color: "var(--text)", minWidth: "140px", flexShrink: 0 }}>
+                  <div key={row.treatmentName} style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                    <span style={{ fontSize: "13px", color: "var(--text)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {row.treatmentName}
                     </span>
-                    <div style={{ flex: 1, height: "6px", borderRadius: "3px", background: "var(--line-strong)", overflow: "hidden" }}>
+                    <div style={{ flex: "0 0 48px", height: "6px", borderRadius: "3px", background: "var(--line-strong)", overflow: "hidden" }}>
                       <div style={{ width: `${barWidth}%`, height: "100%", background: "var(--accent)", borderRadius: "3px" }} />
                     </div>
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text)", minWidth: "80px", textAlign: "right" }}>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>
                       {formatBRL(row.total)}
-                    </span>
-                    <span style={{ fontSize: "11px", color: "var(--muted)", minWidth: "60px", textAlign: "right" }}>
-                      {row.count} cons.
                     </span>
                   </div>
                 );

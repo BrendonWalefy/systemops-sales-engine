@@ -88,7 +88,7 @@ export function TreatmentRow({
         name="name"
         defaultValue={treatment.name}
         required
-        style={{ margin: 0, fontSize: "16px" }}
+        style={{ margin: 0, fontSize: "14px" }}
       />
       <label style={{ display: "flex", alignItems: "center", gap: "6px", margin: 0 }}>
         <input

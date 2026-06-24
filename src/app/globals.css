@@ -4121,18 +4121,9 @@ textarea:focus {
     font-size: 16px !important;
   }
 
-  /* Preenche o gap entre o pill nav e a borda inferior da tela (safe-area) */
+  /* Safe-area gap agora coberto pelo próprio sidebar estendido — pseudo-element removido */
   body::after {
-    content: "";
-    display: block;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: max(0px, calc(env(safe-area-inset-bottom) - 16px));
-    background: rgba(8, 10, 14, 0.95);
-    z-index: 199;
-    pointer-events: none;
+    display: none;
   }
 
   /* Layout: sidebar vira bottom tab bar nativo */
@@ -4145,14 +4136,15 @@ textarea:focus {
     padding-bottom: calc(62px + env(safe-area-inset-bottom) + 4px);
   }
 
-  /* Sidebar → pill glassmorphism flutuante próximo ao fundo */
+  /* Sidebar → pill glassmorphism estendido até o bottom, cobrindo safe-area */
   .sidebar {
     position: fixed;
-    bottom: max(0px, calc(env(safe-area-inset-bottom) - 16px));
+    bottom: 0;
     left: 14px;
     right: 14px;
     top: auto;
-    height: 60px;
+    height: calc(60px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
     border-radius: 20px;
     background: rgba(8, 10, 14, 0.90);
     backdrop-filter: blur(36px) saturate(200%);
