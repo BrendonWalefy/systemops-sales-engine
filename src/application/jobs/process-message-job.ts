@@ -79,13 +79,12 @@ export class ProcessMessageJobHandler {
       correlationId: event.providerMessageId,
     });
 
-    if (event.provider !== "z_api" || !isZApiInboundPayload(event.payload)) {
+    const payload = event.provider === "z_api" ? normalizeZApiInboundPayload(event.payload) : null;
+    if (!payload) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
       eventLog.warn("job.ignored", { reason: "unsupported_provider_payload", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
-
-    const payload = event.payload;
     if (payload.fromMe || payload.isGroupMsg || payload.isStatusReply) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
       eventLog.info("job.ignored", { reason: "non_lead_message", durationMs: Date.now() - startedAt });
@@ -132,15 +131,57 @@ export function getInboundEventId(job: JobRecord): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-function isZApiInboundPayload(payload: unknown): payload is ZApiInboundPayload {
-  if (!payload || typeof payload !== "object") return false;
-  const value = payload as Record<string, unknown>;
-  return (
-    typeof value.phone === "string" &&
-    typeof value.instanceId === "string" &&
-    typeof value.messageId === "string" &&
-    typeof value.fromMe === "boolean" &&
-    typeof value.isGroupMsg === "boolean" &&
-    typeof value.isStatusReply === "boolean"
-  );
+function normalizeZApiInboundPayload(payload: unknown): ZApiInboundPayload | null {
+  const parsed = parseJsonObject(payload);
+  if (!parsed) return null;
+
+  const phone = coerceNonEmptyString(parsed.phone);
+  const instanceId = coerceNonEmptyString(parsed.instanceId);
+  const messageId = coerceNonEmptyString(parsed.messageId);
+
+  if (!phone || !instanceId || !messageId) return null;
+
+  return {
+    ...(parsed as Partial<ZApiInboundPayload>),
+    phone,
+    instanceId,
+    messageId,
+    fromMe: coerceBoolean(parsed.fromMe) ?? false,
+    isGroupMsg: coerceBoolean(parsed.isGroupMsg) ?? false,
+    isStatusReply: coerceBoolean(parsed.isStatusReply) ?? false,
+    isEdit: coerceBoolean(parsed.isEdit) ?? false,
+  };
+}
+
+function parseJsonObject(payload: unknown): Record<string, unknown> | null {
+  if (typeof payload === "string") {
+    try {
+      const parsed = JSON.parse(payload) as unknown;
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)
+    : null;
+}
+
+function coerceNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function coerceBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return null;
 }

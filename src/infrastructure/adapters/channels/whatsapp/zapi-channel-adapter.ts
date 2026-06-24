@@ -14,10 +14,10 @@ export type ZApiInboundPayload = {
   chatLid?: string | null;
   instanceId: string;
   messageId: string;
-  momment: number; // Z-API typo — kept as-is
-  status: string;
-  chatName: string;
-  senderName: string;
+  momment?: number; // Z-API typo — kept as-is
+  status?: string;
+  chatName?: string;
+  senderName?: string;
   senderPhoto?: string;
   text?: { message: string };
   audio?: { audioUrl: string; mimeType: string; seconds?: number };
@@ -28,10 +28,10 @@ export type ZApiInboundPayload = {
   reaction?: { emoji?: string; reaction?: string; text?: string; message?: string };
   reactionText?: string;
   emoji?: string;
-  isGroupMsg: boolean;
-  isStatusReply: boolean;
-  isEdit: boolean;
-  fromMe: boolean;
+  isGroupMsg?: boolean;
+  isStatusReply?: boolean;
+  isEdit?: boolean;
+  fromMe?: boolean;
 };
 
 export class ZApiChannelAdapter implements ChannelAdapter {
