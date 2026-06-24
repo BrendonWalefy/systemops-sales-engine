@@ -4140,7 +4140,9 @@ textarea:focus {
      safe-area (home indicator). Altura fixa = sem faixa escura sobrando. */
   .sidebar {
     position: fixed;
-    bottom: calc(env(safe-area-inset-bottom) + 6px);
+    /* Minimamente descolado: encosta logo acima do home indicator em vez de
+       flutuar ~34px acima dele (o que deixava uma faixa preta da safe-area). */
+    bottom: max(6px, calc(env(safe-area-inset-bottom) - 14px));
     left: 14px;
     right: 14px;
     top: auto;
@@ -4353,12 +4355,12 @@ textarea:focus {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     flex: 1;
     align-self: stretch;
-    height: auto;
+    height: 100%;
     min-height: unset;
-    padding: 10px 10px 0;
+    padding: 0 6px;
     border-radius: 0;
     border: 1px solid transparent;
     background: transparent;
@@ -4376,14 +4378,29 @@ textarea:focus {
   .mobile-settings-btn.active::before {
     content: '';
     position: absolute;
-    top: 14px;
+    top: 0;
     left: 50%;
     transform: translateX(-50%);
-    width: 44px;
-    height: 26px;
-    background: rgba(16, 185, 129, 0.18);
-    border-radius: 999px;
-    border: 1px solid rgba(16, 185, 129, 0.18);
+    width: 28px;
+    height: 2.5px;
+    background: var(--accent-strong);
+    border-radius: 0 0 4px 4px;
+    box-shadow:
+      0 0 8px rgba(0, 212, 170, 0.9),
+      0 0 20px rgba(0, 212, 170, 0.45);
+    pointer-events: none;
+  }
+
+  .mobile-settings-btn.active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 80% 90% at 50% 44%,
+      rgba(0, 212, 170, 0.13) 0%,
+      rgba(0, 212, 170, 0.05) 50%,
+      transparent 72%
+    );
     pointer-events: none;
   }
 

@@ -155,7 +155,7 @@ export function MobileAvatarMenu({ email, avatarUrl: initialAvatarUrl, settingsM
           className={`mobile-settings-btn${isActive ? " active" : ""}`}
           aria-label="Ajustes"
         >
-          <Settings2 size={18} strokeWidth={2} />
+          <Settings2 size={15} strokeWidth={2} />
           <span className="nav-label">Ajustes</span>
         </button>
       ) : (
