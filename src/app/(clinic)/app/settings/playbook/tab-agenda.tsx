@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Clock, Phone, Timer } from "lucide-react";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import { S, SettingsCard, SettingsSection, SaveStatus, SettingsInput } from "./settings-primitives";
@@ -139,23 +139,31 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
     }, 1000);
   }, [businessHours, receptionistPhone, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours]);
 
-  // Focus target support (deep-linked from header pills)
-  const processedFocus = useRef<SettingsFocusTarget | null>(null);
-  if (focusTarget && processedFocus.current !== focusTarget) {
-    processedFocus.current = focusTarget;
+  // Scroll and focus are side effects, so refs must be read after render.
+  useEffect(() => {
+    if (!focusTarget) return;
     const targets = {
       hours: { section: businessHoursSectionRef.current, input: businessHoursInputRef.current },
       takeover: { section: takeoverSectionRef.current, input: takeoverInputRef.current },
       buffer: { section: bufferSectionRef.current, input: bufferInputRef.current },
     };
     const t = targets[focusTarget];
-    if (t) {
-      setTimeout(() => {
-        t.section?.scrollIntoView({ behavior: "smooth", block: "center" });
-        setTimeout(() => { t.input?.focus(); onFocusHandled(); }, 220);
-      }, 50);
-    }
-  }
+    if (!t) return;
+
+    let focusTimeout: ReturnType<typeof setTimeout> | null = null;
+    const scrollTimeout = setTimeout(() => {
+      t.section?.scrollIntoView({ behavior: "smooth", block: "center" });
+      focusTimeout = setTimeout(() => {
+        t.input?.focus();
+        onFocusHandled();
+      }, 220);
+    }, 50);
+
+    return () => {
+      clearTimeout(scrollTimeout);
+      if (focusTimeout) clearTimeout(focusTimeout);
+    };
+  }, [focusTarget, onFocusHandled]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: S.sectionGap, maxWidth: "660px" }}>
