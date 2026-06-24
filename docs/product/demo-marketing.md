@@ -216,5 +216,14 @@ de gravar.
 > Helena"), com fallback para o email. Mais seguro que a coluna nova
 > cogitada — não toca em schema/migration, então não há risco de CI/produção.
 
+> **Atualização 3.3 (solução geral):** o vínculo de profissional só resolve
+> clínicas cujo login está ligado a um profissional. Logins genéricos (ex.: a
+> Ximendes, com e-mail `ximendesodonto@…` → "Ximendesodonto") caíam no e-mail.
+> Foi adicionada a coluna `clinic_members.display_name` (migration
+> `0040_member_display_name`) com prioridade **display_name → profissional →
+> e-mail** (`src/app/(clinic)/app/dashboard/greeting.ts`). Para definir o nome
+> de uma clínica: `npx tsx scripts/set-member-display-name.ts --clinic <slug>
+> --email <login> --name "<nome>"`. Ex.: Ximendes → "Dr. Gregorie".
+
 > Forma de trabalho: escolhemos um item, eu mostro o componente e o preview,
 > validamos juntos, aí sim aplico — em mudança pequena e isolada.

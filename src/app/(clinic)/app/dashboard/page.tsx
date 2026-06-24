@@ -14,6 +14,7 @@ import { Suspense } from "react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
 import { DashboardPeriodToggle, type PeriodKey } from "./DashboardPeriodToggle";
 import { DashboardRingMetrics } from "./DashboardRingMetrics";
+import { emailToFirstName, resolveGreetingName } from "./greeting";
 import {
   Activity,
   AlertTriangle,
@@ -192,23 +193,6 @@ function trendLabel(current: number, previous: number): string {
   if (previous === 0) return current > 0 ? "novo" : "0%";
   const value = Math.round(((current - previous) / previous) * 100);
   return `${value > 0 ? "+" : ""}${value}%`;
-}
-
-function emailToFirstName(email: string): string {
-  const local = email.split("@")[0];
-  const first = local.split(/[._\-0-9]/)[0];
-  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
-}
-
-// Saudação amigável a partir do nome do profissional vinculado ao membro.
-// "Dra. Helena Marques" → "Dra. Helena"; "João Pereira" → "João".
-function greetingFromProfessionalName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "você";
-  if (/^(dr|dra)\.?$/i.test(parts[0]) && parts[1]) {
-    return `${parts[0]} ${parts[1]}`;
-  }
-  return parts[0];
 }
 
 function trendTone(current: number, previous: number): string {
@@ -514,12 +498,22 @@ async function fetchDashboardData(period: string) {
       ),
     userEmail
       ? db
-          .select({ avatarUrl: clinicMembers.avatarUrl, professionalName: professionals.name })
+          .select({
+            avatarUrl: clinicMembers.avatarUrl,
+            displayName: clinicMembers.displayName,
+            professionalName: professionals.name,
+          })
           .from(clinicMembers)
           .leftJoin(professionals, eq(professionals.id, clinicMembers.professionalId))
           .where(and(eq(clinicMembers.email, userEmail), eq(clinicMembers.clinicId, CLINIC_ID)))
           .limit(1)
-      : Promise.resolve([] as Array<{ avatarUrl: string | null; professionalName: string | null }>),
+      : Promise.resolve(
+          [] as Array<{
+            avatarUrl: string | null;
+            displayName: string | null;
+            professionalName: string | null;
+          }>,
+        ),
     // Agendamentos de hoje (fuso da clínica) excluindo cancelados
     db
       .select({
@@ -597,6 +591,7 @@ async function fetchDashboardData(period: string) {
     },
     userEmail,
     avatarUrl: memberResult[0]?.avatarUrl ?? null,
+    displayName: memberResult[0]?.displayName ?? null,
     professionalName: memberResult[0]?.professionalName ?? null,
     memberProfile,
     flowStart,
@@ -634,9 +629,13 @@ export default async function DashboardPage({
       )
     : null;
   const firstName = data.userEmail ? emailToFirstName(data.userEmail) : "você";
-  const greetingName = data.professionalName
-    ? greetingFromProfessionalName(data.professionalName)
-    : firstName;
+  // Prioridade: display_name explícito → profissional vinculado → e-mail.
+  // Garante o nome correto para qualquer clínica (ver ./greeting).
+  const greetingName = resolveGreetingName({
+    displayName: data.displayName,
+    professionalName: data.professionalName,
+    email: data.userEmail,
+  });
   const conversionRate = data.totalLeads > 0 ? (data.scheduledCount / data.totalLeads) * 100 : 0;
   const conversionTone = conversionRate >= 10 ? "positive" : conversionRate >= 4 ? "neutral" : "negative";
   const automationRate =

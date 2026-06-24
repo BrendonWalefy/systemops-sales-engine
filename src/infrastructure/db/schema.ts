@@ -973,6 +973,9 @@ export const clinicMembers = pgTable(
       .references(() => clinics.id),
     email: text("email").notNull(),
     role: memberRoleEnum("role").notNull().default("clinic_admin"),
+    // Nome de exibição amigável usado na saudação do dashboard (ex.: "Dr. Gregorie").
+    // Quando preenchido, tem prioridade sobre o profissional vinculado e o e-mail.
+    displayName: text("display_name"),
     professionalId: uuid("professional_id").references(() => professionals.id),
     passwordHash: text("password_hash"),
     avatarUrl: text("avatar_url"),
