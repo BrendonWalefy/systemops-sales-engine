@@ -1185,8 +1185,8 @@ export default async function DashboardPage({
                 return (
                   <div key={key} className={`dashboard-temp-row ${temperatureClass(key)}`}>
                     <span>
-                      <Icon size={14} />
-                      {label}
+                      <Icon size={14} style={{ flexShrink: 0 }} />
+                      <span className="dashboard-temp-label">{label}</span>
                     </span>
                     <strong>{formatPercent(percent)}%</strong>
                     <small>{value}</small>

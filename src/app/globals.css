@@ -1296,12 +1296,20 @@ button:disabled {
 }
 
 .dashboard-temp-row span {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
+  overflow: hidden;
   color: var(--text-soft);
   font-weight: 700;
+}
+
+.dashboard-temp-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .dashboard-temp-row strong {
