@@ -7,7 +7,7 @@
  * Variáveis de ambiente:
  *   DATABASE_URL       — conexão Postgres (para validação e cleanup)
  *   E2E_WEBHOOK_URL    — URL completa (ex: https://systemops-core.vercel.app/api/whatsapp/zapi?secret=XXX)
- *   E2E_WAIT_MS        — espera após cada POST em ms (default: 12000)
+ *   E2E_WAIT_MS        — timeout para cada asserção E2E em ms (default: 12000)
  *   E2E_SKIP_CLEANUP   — se "true", não deleta os leads de teste ao fim
  */
 
@@ -40,6 +40,7 @@ function getArg(flag: string): string | undefined {
 
 const clinicId = getArg("--clinicId");
 const skipCleanup = args.includes("--skip-cleanup") || process.env.E2E_SKIP_CLEANUP === "true";
+const smoke = args.includes("--smoke");
 
 if (!clinicId) {
   console.error("Uso: npx tsx scripts/e2e-webhook-test.ts --clinicId <uuid>");
@@ -95,14 +96,19 @@ type ZApiPayload = {
   audio?: { audioUrl: string; mimeType: string };
   image?: { imageUrl: string; caption?: string; mimeType: string };
   document?: { documentUrl: string; fileName: string; mimeType: string };
-  isGroupMsg: boolean;
-  isStatusReply: boolean;
-  isEdit: boolean;
-  fromMe: boolean;
+  isGroupMsg?: boolean;
+  isStatusReply?: boolean;
+  isEdit?: boolean;
+  fromMe?: boolean;
   chatLid?: string | null;
 };
 
-function textPayload(instanceId: string, phone: string, text: string): ZApiPayload {
+function textPayload(
+  instanceId: string,
+  phone: string,
+  text: string,
+  options?: { omitOptionalFlags?: boolean },
+): ZApiPayload {
   return {
     phone,
     instanceId,
@@ -112,10 +118,14 @@ function textPayload(instanceId: string, phone: string, text: string): ZApiPaylo
     chatName: "E2E",
     senderName: "E2E Lead",
     text: { message: text },
-    isGroupMsg: false,
-    isStatusReply: false,
-    isEdit: false,
-    fromMe: false,
+    ...(options?.omitOptionalFlags
+      ? {}
+      : {
+          isGroupMsg: false,
+          isStatusReply: false,
+          isEdit: false,
+          fromMe: false,
+        }),
   };
 }
 
@@ -166,6 +176,16 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
 
 function assert(condition: boolean, msg: string): void {
   if (!condition) throw new Error(msg);
+}
+
+async function waitFor<T>(description: string, check: () => Promise<T | null>): Promise<T> {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    const result = await check();
+    if (result) return result;
+    await sleep(1_000);
+  }
+  throw new Error(`${description} não foi concluído em ${waitMs}ms`);
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────────
@@ -255,6 +275,24 @@ const instanceId = clinic.zapiInstanceId;
 // Limpa leads E2E anteriores antes de começar
 await cleanupE2eLeads();
 
+if (smoke) {
+  console.log("📋 Smoke — webhook Z-API sem flags opcionais");
+  const phone = makeE2ePhone(Date.now());
+
+  await test("S1: payload sem flags opcionais cria conversa e resposta", async () => {
+    await postWebhook(textPayload(instanceId, phone, "oi", { omitOptionalFlags: true }));
+
+    const conv = await waitFor("Conversa do payload sem flags", async () => {
+      const candidate = await getConversation(phone);
+      if (!candidate) return null;
+      if (!clinic.autoReplyEnabled) return candidate;
+      const agentMessages = await getAgentMessages(candidate.id);
+      return agentMessages.length > 0 ? candidate : null;
+    });
+
+    assert(conv !== null, "Conversa não criada no DB");
+  });
+} else {
 // ── Grupo A — Fluxo básico concierge ──────────────────────────────────────────
 
 console.log("📋 Grupo A — Fluxo básico concierge");
@@ -392,6 +430,7 @@ await test("C2: após needs_human explícito, IA pausa (aiPaused=true)", async (
   assert(conv !== null, "Conversa C não encontrada");
   assert(conv!.aiPaused, `Esperava aiPaused=true após needs_human. aiPaused=${conv!.aiPaused}`);
 });
+}
 
 // ── Cleanup ───────────────────────────────────────────────────────────────────
 
