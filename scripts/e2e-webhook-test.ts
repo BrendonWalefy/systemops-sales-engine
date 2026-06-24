@@ -16,13 +16,16 @@ config({ path: ".env.local" });
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, inArray, like, and } from "drizzle-orm";
+import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   clinics,
   leads,
   conversations,
+  inboundEvents,
+  jobs,
   messages,
+  outboundMessages,
   appointments,
   conversationStates,
   followUps,
@@ -226,14 +229,50 @@ async function cleanupE2eLeads(): Promise<void> {
   if (e2eLeads.length === 0) return;
 
   const leadIds = e2eLeads.map((l) => l.id);
+  const e2ePhones = e2eLeads.flatMap((lead) => (lead.phone ? [lead.phone] : []));
   const convRows = await db.select({ id: conversations.id }).from(conversations).where(inArray(conversations.leadId, leadIds));
   const convIds = convRows.map((c) => c.id);
+  const outboundRows = convIds.length
+    ? await db
+        .select({ id: outboundMessages.id })
+        .from(outboundMessages)
+        .where(inArray(outboundMessages.conversationId, convIds))
+    : [];
+  const inboundRows = e2ePhones.length
+    ? await db
+        .select({ id: inboundEvents.id })
+        .from(inboundEvents)
+        .where(
+          and(
+            eq(inboundEvents.clinicId, clinicId!),
+            inArray(inboundEvents.conversationKey, e2ePhones),
+          ),
+        )
+    : [];
+  const outboundIds = outboundRows.map((row) => row.id);
+  const inboundIds = inboundRows.map((row) => row.id);
+
+  if (inboundIds.length > 0 || outboundIds.length > 0) {
+    const jobReferences = [
+      ...(inboundIds.length > 0
+        ? [inArray(sql<string>`${jobs.payload}->>'inboundEventId'`, inboundIds)]
+        : []),
+      ...(outboundIds.length > 0
+        ? [inArray(sql<string>`${jobs.payload}->>'outboundMessageId'`, outboundIds)]
+        : []),
+    ];
+    await db.delete(jobs).where(or(...jobReferences));
+  }
 
   if (convIds.length > 0) {
+    await db.delete(outboundMessages).where(inArray(outboundMessages.conversationId, convIds));
     await db.delete(messages).where(inArray(messages.conversationId, convIds));
     await db.delete(conversationStates).where(inArray(conversationStates.conversationId, convIds));
   }
 
+  if (inboundIds.length > 0) {
+    await db.delete(inboundEvents).where(inArray(inboundEvents.id, inboundIds));
+  }
   await db.delete(slotReservations).where(inArray(slotReservations.leadId, leadIds));
   await db.delete(appointments).where(inArray(appointments.leadId, leadIds));
   await db.delete(followUps).where(inArray(followUps.leadId, leadIds));
