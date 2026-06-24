@@ -4131,36 +4131,37 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  /* Espaço para o pill (58px) + offset (6px) + safe-area + respiro */
+  /* Espaço para a barra (58px) + safe-area preenchida + respiro */
   .clinic-layout > main {
-    padding-bottom: calc(58px + env(safe-area-inset-bottom) + 18px);
+    padding-bottom: calc(58px + env(safe-area-inset-bottom) + 16px);
   }
 
-  /* Sidebar → pill flutuante que abraça os ícones e fica logo acima da
-     safe-area (home indicator). Altura fixa = sem faixa escura sobrando. */
+  /* Sidebar → bottom tab bar de vidro ancorada na borda inferior, igual ao
+     WhatsApp: o próprio vidro preenche a safe-area (home indicator), então
+     NÃO sobra faixa preta abaixo. Os ícones ficam centralizados nos 58px
+     visíveis (acima da safe-area), não grudados no topo. */
   .sidebar {
     position: fixed;
-    /* Minimamente descolado: encosta logo acima do home indicator em vez de
-       flutuar ~34px acima dele (o que deixava uma faixa preta da safe-area). */
-    bottom: max(6px, calc(env(safe-area-inset-bottom) - 14px));
-    left: 14px;
-    right: 14px;
+    left: 0;
+    right: 0;
+    bottom: 0;
     top: auto;
-    height: 58px;
-    border-radius: 20px;
-    background: rgba(8, 10, 14, 0.90);
+    height: calc(58px + env(safe-area-inset-bottom));
+    /* padding-bottom = safe-area → conteúdo fica nos 58px de cima; o vidro
+       continua descendo por baixo até a borda da tela */
+    padding: 0 8px env(safe-area-inset-bottom);
+    border-radius: 22px 22px 0 0;
+    background: rgba(8, 10, 14, 0.82);
     backdrop-filter: blur(36px) saturate(200%);
     -webkit-backdrop-filter: blur(36px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    /* filter respeita o shape real do elemento (incluindo overflow de filhos) */
-    filter:
-      drop-shadow(0 -4px 14px rgba(0, 0, 0, 0.55))
-      drop-shadow(0 8px 28px rgba(0, 0, 0, 0.7));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-bottom: 0;
+    box-shadow:
+      0 -6px 22px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
     flex-direction: row;
     align-items: center;
     justify-content: space-around;
-    padding: 0 6px;
     gap: 0;
     border-right: 0;
     z-index: 200;
