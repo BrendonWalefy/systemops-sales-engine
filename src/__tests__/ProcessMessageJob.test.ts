@@ -92,6 +92,78 @@ describe("ProcessMessageJobHandler", () => {
     expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
   });
 
+  it.each([
+    [
+      "objeto JSONB sem flags opcionais da Z-API",
+      {
+        phone: "5511999999999",
+        instanceId: "instance-1",
+        messageId: "message-1",
+        text: { message: "Olá" },
+      },
+    ],
+    [
+      "JSON serializado sem flags opcionais da Z-API",
+      JSON.stringify({
+        phone: "5511999999999",
+        instanceId: "instance-1",
+        messageId: "message-1",
+        text: { message: "Olá" },
+      }),
+    ],
+  ])("processa payload como %s", async (_description, payload) => {
+    const inboundEventStore = {
+      findInboundEvent: vi.fn().mockResolvedValue({ ...event, payload }),
+      markInboundEventProcessing: vi.fn().mockResolvedValue(undefined),
+      markInboundEventProcessed: vi.fn().mockResolvedValue(undefined),
+      markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
+    };
+    const { handler, conversationHandler } = makeHandler({
+      inboundEventStore: inboundEventStore as never,
+    });
+
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "processed",
+      inboundEventId: "event-1",
+    });
+
+    expect(conversationHandler.handle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phone: "5511999999999",
+        messageId: "message-1",
+      }),
+    );
+    expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
+  });
+
+  it("continua ignorando payload fromMe serializado como string", async () => {
+    const inboundEventStore = {
+      findInboundEvent: vi.fn().mockResolvedValue({
+        ...event,
+        payload: {
+          phone: "5511999999999",
+          instanceId: "instance-1",
+          messageId: "message-1",
+          fromMe: "true",
+        },
+      }),
+      markInboundEventProcessing: vi.fn().mockResolvedValue(undefined),
+      markInboundEventProcessed: vi.fn().mockResolvedValue(undefined),
+      markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
+    };
+    const { handler, conversationHandler } = makeHandler({
+      inboundEventStore: inboundEventStore as never,
+    });
+
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "ignored",
+      inboundEventId: "event-1",
+    });
+
+    expect(inboundEventStore.markInboundEventIgnored).toHaveBeenCalledWith("event-1");
+    expect(conversationHandler.handle).not.toHaveBeenCalled();
+  });
+
   it("marca eventos sem conteúdo reconhecível como ignorados sem chamar a jornada", async () => {
     const { handler, inboundEventStore, conversationHandler } = makeHandler({
       resolveInboundContent: vi.fn().mockResolvedValue(null),
