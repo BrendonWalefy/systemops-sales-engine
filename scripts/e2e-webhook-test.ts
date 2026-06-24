@@ -7,7 +7,7 @@
  * Variáveis de ambiente:
  *   DATABASE_URL       — conexão Postgres (para validação e cleanup)
  *   E2E_WEBHOOK_URL    — URL completa (ex: https://systemops-core.vercel.app/api/whatsapp/zapi?secret=XXX)
- *   E2E_WAIT_MS        — espera após cada POST em ms (default: 12000)
+ *   E2E_WAIT_MS        — timeout para cada asserção E2E em ms (default: 12000)
  *   E2E_SKIP_CLEANUP   — se "true", não deleta os leads de teste ao fim
  */
 
@@ -16,13 +16,16 @@ config({ path: ".env.local" });
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, inArray, like, and } from "drizzle-orm";
+import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   clinics,
   leads,
   conversations,
+  inboundEvents,
+  jobs,
   messages,
+  outboundMessages,
   appointments,
   conversationStates,
   followUps,
@@ -40,6 +43,7 @@ function getArg(flag: string): string | undefined {
 
 const clinicId = getArg("--clinicId");
 const skipCleanup = args.includes("--skip-cleanup") || process.env.E2E_SKIP_CLEANUP === "true";
+const smoke = args.includes("--smoke");
 
 if (!clinicId) {
   console.error("Uso: npx tsx scripts/e2e-webhook-test.ts --clinicId <uuid>");
@@ -95,14 +99,19 @@ type ZApiPayload = {
   audio?: { audioUrl: string; mimeType: string };
   image?: { imageUrl: string; caption?: string; mimeType: string };
   document?: { documentUrl: string; fileName: string; mimeType: string };
-  isGroupMsg: boolean;
-  isStatusReply: boolean;
-  isEdit: boolean;
-  fromMe: boolean;
+  isGroupMsg?: boolean;
+  isStatusReply?: boolean;
+  isEdit?: boolean;
+  fromMe?: boolean;
   chatLid?: string | null;
 };
 
-function textPayload(instanceId: string, phone: string, text: string): ZApiPayload {
+function textPayload(
+  instanceId: string,
+  phone: string,
+  text: string,
+  options?: { omitOptionalFlags?: boolean },
+): ZApiPayload {
   return {
     phone,
     instanceId,
@@ -112,10 +121,14 @@ function textPayload(instanceId: string, phone: string, text: string): ZApiPaylo
     chatName: "E2E",
     senderName: "E2E Lead",
     text: { message: text },
-    isGroupMsg: false,
-    isStatusReply: false,
-    isEdit: false,
-    fromMe: false,
+    ...(options?.omitOptionalFlags
+      ? {}
+      : {
+          isGroupMsg: false,
+          isStatusReply: false,
+          isEdit: false,
+          fromMe: false,
+        }),
   };
 }
 
@@ -168,6 +181,16 @@ function assert(condition: boolean, msg: string): void {
   if (!condition) throw new Error(msg);
 }
 
+async function waitFor<T>(description: string, check: () => Promise<T | null>): Promise<T> {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    const result = await check();
+    if (result) return result;
+    await sleep(1_000);
+  }
+  throw new Error(`${description} não foi concluído em ${waitMs}ms`);
+}
+
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 async function getConversation(phone: string): Promise<{ id: string; aiPaused: boolean; needsAttention: boolean } | null> {
@@ -206,14 +229,50 @@ async function cleanupE2eLeads(): Promise<void> {
   if (e2eLeads.length === 0) return;
 
   const leadIds = e2eLeads.map((l) => l.id);
+  const e2ePhones = e2eLeads.flatMap((lead) => (lead.phone ? [lead.phone] : []));
   const convRows = await db.select({ id: conversations.id }).from(conversations).where(inArray(conversations.leadId, leadIds));
   const convIds = convRows.map((c) => c.id);
+  const outboundRows = convIds.length
+    ? await db
+        .select({ id: outboundMessages.id })
+        .from(outboundMessages)
+        .where(inArray(outboundMessages.conversationId, convIds))
+    : [];
+  const inboundRows = e2ePhones.length
+    ? await db
+        .select({ id: inboundEvents.id })
+        .from(inboundEvents)
+        .where(
+          and(
+            eq(inboundEvents.clinicId, clinicId!),
+            inArray(inboundEvents.conversationKey, e2ePhones),
+          ),
+        )
+    : [];
+  const outboundIds = outboundRows.map((row) => row.id);
+  const inboundIds = inboundRows.map((row) => row.id);
+
+  if (inboundIds.length > 0 || outboundIds.length > 0) {
+    const jobReferences = [
+      ...(inboundIds.length > 0
+        ? [inArray(sql<string>`${jobs.payload}->>'inboundEventId'`, inboundIds)]
+        : []),
+      ...(outboundIds.length > 0
+        ? [inArray(sql<string>`${jobs.payload}->>'outboundMessageId'`, outboundIds)]
+        : []),
+    ];
+    await db.delete(jobs).where(or(...jobReferences));
+  }
 
   if (convIds.length > 0) {
+    await db.delete(outboundMessages).where(inArray(outboundMessages.conversationId, convIds));
     await db.delete(messages).where(inArray(messages.conversationId, convIds));
     await db.delete(conversationStates).where(inArray(conversationStates.conversationId, convIds));
   }
 
+  if (inboundIds.length > 0) {
+    await db.delete(inboundEvents).where(inArray(inboundEvents.id, inboundIds));
+  }
   await db.delete(slotReservations).where(inArray(slotReservations.leadId, leadIds));
   await db.delete(appointments).where(inArray(appointments.leadId, leadIds));
   await db.delete(followUps).where(inArray(followUps.leadId, leadIds));
@@ -255,6 +314,24 @@ const instanceId = clinic.zapiInstanceId;
 // Limpa leads E2E anteriores antes de começar
 await cleanupE2eLeads();
 
+if (smoke) {
+  console.log("📋 Smoke — webhook Z-API sem flags opcionais");
+  const phone = makeE2ePhone(Date.now());
+
+  await test("S1: payload sem flags opcionais cria conversa e resposta", async () => {
+    await postWebhook(textPayload(instanceId, phone, "oi", { omitOptionalFlags: true }));
+
+    const conv = await waitFor("Conversa do payload sem flags", async () => {
+      const candidate = await getConversation(phone);
+      if (!candidate) return null;
+      if (!clinic.autoReplyEnabled) return candidate;
+      const agentMessages = await getAgentMessages(candidate.id);
+      return agentMessages.length > 0 ? candidate : null;
+    });
+
+    assert(conv !== null, "Conversa não criada no DB");
+  });
+} else {
 // ── Grupo A — Fluxo básico concierge ──────────────────────────────────────────
 
 console.log("📋 Grupo A — Fluxo básico concierge");
@@ -392,6 +469,7 @@ await test("C2: após needs_human explícito, IA pausa (aiPaused=true)", async (
   assert(conv !== null, "Conversa C não encontrada");
   assert(conv!.aiPaused, `Esperava aiPaused=true após needs_human. aiPaused=${conv!.aiPaused}`);
 });
+}
 
 // ── Cleanup ───────────────────────────────────────────────────────────────────
 
