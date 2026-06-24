@@ -713,7 +713,6 @@ export default async function DashboardPage({
             borderRadius: "14px",
             background: "var(--surface-soft)",
             padding: "20px 24px",
-            marginTop: "0",
           }}
           aria-label="Pipeline de receita"
         >
