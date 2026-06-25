@@ -61,7 +61,7 @@ Branch atual: `feat/inbox-conversation-categories`
   - produção publicada em:
     - commit `c79428f`
     - deploy Vercel `dpl_CeDWM91vRwohMhXtEFLN8xKpb2h1`
-    - URL canônica: `https://systemops-core.vercel.app`
+    - URL canônica: `https://app.systemops.com.br`
 - Migração de produção:
   - o ambiente estava com `SKIP_VERCEL_MIGRATIONS=true`, então a migration não rodava no build
   - a execução direta de `scripts/migrate.ts` falhou inicialmente por drift antigo no ledger do Drizzle
