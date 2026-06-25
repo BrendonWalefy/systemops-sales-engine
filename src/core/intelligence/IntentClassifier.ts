@@ -85,6 +85,12 @@ Use "patient_arrived" quando o paciente indica presença física na clínica ou 
 - Confirmação de presença: "só confirmando que estarei aí", "estarei no horário", "confirmo minha presença"
 - Não use quando o paciente está pedindo para agendar, cancelar ou remarcar — nesses casos use o intent específico.
 
+REGRA PARA clinical_urgency (PRIORIDADE ALTA — avalie antes de unclear):
+Use "clinical_urgency" quando o lead relatar dor, urgência médica OU problema físico com trabalho odontológico já realizado. Exemplos:
+- Dor/urgência: "dor", "urgência", "emergência", "urgente", "está doendo", "dor forte"
+- Problema com trabalho existente: "trincou", "quebrou", "fraturou", "caiu a lente", "soltou o dente", "a prótese caiu", "a restauração caiu", "a coroa soltou", "está lascado", "está rachado", "soltou o implante"
+- Use clinical_urgency nesses casos mesmo que o lead não mencione dor — um trabalho físico danificado requer avaliação presencial urgente.
+
 REGRA PARA needs_human (PRIORIDADE ALTA — avalie antes de unclear):
 Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou decidir. Exemplos:
 - Documentos/comprovantes: "pode enviar o orçamento por escrito", "me manda o comprovante", "me envia o resultado"
@@ -93,7 +99,8 @@ Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou de
 - Falar com humano: "quero falar com um especialista", "preciso falar com alguém", "pode me ligar?", "me passa o número do responsável"
 - Negociação/exceção: "preciso de um desconto", "tem como parcelar diferente?", "tenho uma situação especial", "consigo condição especial?"
 - Acordo/troca informal: lead propõe permuta de serviços, menciona combinado anterior com a equipe ou situação negociada fora do fluxo padrão — qualquer proposta de troca ou referência a acordo pessoal com a clínica.
-- Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do resultado pessoal", "Lead quer falar com especialista", "Lead pediu condição especial de pagamento", "Lead propôs acordo de troca de serviços"). Máximo 60 caracteres.
+- Paciente pós-procedimento perguntando sobre preço de manutenção/ajuste/acompanhamento para serviço que já realizou, especialmente quando menciona restrição logística (mora longe, não pode ir em dois dias diferentes, quer fazer tudo no mesmo dia) → needs_human com handoffReason descrevendo a situação.
+- Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do resultado pessoal", "Lead quer falar com especialista", "Lead pediu condição especial de pagamento", "Lead propôs acordo de troca de serviços", "Paciente pós-procedimento — preços de manutenção e restrição logística"). Máximo 60 caracteres.
 
 REGRA PARA unclear:
 - Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.

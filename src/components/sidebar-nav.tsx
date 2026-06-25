@@ -1,36 +1,44 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus, LayoutGrid } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus, LayoutGrid, RefreshCw } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
 import { BellToggle } from "./bell-toggle";
 import { haptic } from "@/lib/haptic";
 
-const NAV_PRIMARY = [
-  { href: "/app/dashboard", label: "Inicio", Icon: Home },
+const NAV_ITEMS: { href: string; label: string; Icon: React.ElementType; mobileHidden?: boolean }[] = [
+  { href: "/app/dashboard", label: "Início", Icon: Home },
   { href: "/app/inbox", label: "Inbox", Icon: Inbox },
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
-];
-
-const NAV_CONFIG: { href: string; label: string; Icon: React.ElementType; mobileHidden?: boolean }[] = [
-  { href: "/app/settings/playbook", label: "Configurações", Icon: Settings2, mobileHidden: true },
-  { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users, mobileHidden: true },
   { href: "/app/settings/pipeline", label: "Pipeline", Icon: Workflow, mobileHidden: true },
+  { href: "/app/inbox?filter=recovery", label: "Recuperação", Icon: RefreshCw, mobileHidden: true },
+  { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users, mobileHidden: true },
+  { href: "/app/settings/playbook", label: "Configurações", Icon: Settings2, mobileHidden: true },
 ];
 
-type Props = { email?: string; avatarUrl?: string | null; inboxBadge?: number; isOwner?: boolean };
+type Props = { email?: string; avatarUrl?: string | null; inboxBadge?: number; isOwner?: boolean; clinicName?: string };
 
-export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false }: Props) {
+function initials(value: string | undefined): string {
+  if (!value) return "SO";
+  return value
+    .split(/[.\s@_-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "SO";
+}
+
+export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false, clinicName = "SystemOps" }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
 
   React.useEffect(() => {
     const routes = [
-      ...NAV_PRIMARY.map((item) => item.href),
+      ...NAV_ITEMS.map((item) => item.href),
       "/app/agenda?new=1",
-      ...NAV_CONFIG.map((item) => item.href),
       "/app/settings/equipe",
     ];
 
@@ -39,11 +47,31 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false }
     }
   }, [router]);
 
+  const activeFor = (href: string) => {
+    const [path, query = ""] = href.split("?");
+    const isRecovery = path === "/app/inbox" && query.includes("filter=recovery");
+
+    if (isRecovery) {
+      return pathname === "/app/inbox" && searchParams.get("filter") === "recovery";
+    }
+
+    if (path === "/app/inbox") {
+      return pathname === "/app/inbox" && searchParams.get("filter") !== "recovery";
+    }
+
+    return pathname.startsWith(path);
+  };
+
   return (
     <aside className="sidebar">
-      {/* Desktop only: brand mark */}
-      <div className="brand-mark">
-        <Zap size={18} strokeWidth={2.5} />
+      <div className="brand-block">
+        <div className="brand-mark">
+          <Zap size={18} strokeWidth={2.5} />
+        </div>
+        <div className="brand-copy">
+          <strong>SystemOps</strong>
+          <span>Command Center</span>
+        </div>
       </div>
 
       <nav className="side-nav">
@@ -61,31 +89,22 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false }
             <div className="nav-separator" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", margin: "4px 0" }} />
           </>
         )}
-        {NAV_PRIMARY.slice(0, 1).map(({ href, label, Icon }) => (
+        {NAV_ITEMS.slice(0, 2).map(({ href, label, Icon, mobileHidden }) => (
           <Link
             key={href}
             href={href}
             prefetch
             onClick={() => haptic()}
-            className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}`}
+            className={`side-nav-item${activeFor(href) ? " active" : ""}${mobileHidden ? " nav-mobile-hidden" : ""}`}
           >
-            <Icon size={15} strokeWidth={2} />
+            <span className="nav-icon-wrap">
+              <Icon size={15} strokeWidth={2} />
+              {href === "/app/inbox" && inboxBadge > 0 && <span className="nav-inbox-dot" />}
+            </span>
             <span className="nav-label">{label}</span>
+            {href === "/app/inbox" && inboxBadge > 0 && <span className="nav-count">{inboxBadge}</span>}
           </Link>
         ))}
-        {/* Inbox with badge */}
-        <Link
-          href="/app/inbox"
-          prefetch
-          onClick={() => haptic()}
-          className={`side-nav-item${pathname.startsWith("/app/inbox") ? " active" : ""}`}
-        >
-          <span className="nav-icon-wrap">
-            <Inbox size={15} strokeWidth={2} />
-            {inboxBadge > 0 && <span className="nav-inbox-dot" />}
-          </span>
-          <span className="nav-label">Inbox</span>
-        </Link>
         <Link
           href="/app/agenda?new=1"
           prefetch
@@ -96,26 +115,13 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false }
           <Plus size={20} strokeWidth={2.5} />
           <span className="nav-label">Novo</span>
         </Link>
-        {NAV_PRIMARY.slice(2).map(({ href, label, Icon }) => (
+        {NAV_ITEMS.slice(2).map(({ href, label, Icon, mobileHidden }) => (
           <Link
             key={href}
             href={href}
             prefetch
             onClick={() => haptic()}
-            className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}`}
-          >
-            <Icon size={15} strokeWidth={2} />
-            <span className="nav-label">{label}</span>
-          </Link>
-        ))}
-        <div className="nav-separator" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", margin: "6px 0" }} />
-        {NAV_CONFIG.map(({ href, label, Icon, mobileHidden }) => (
-          <Link
-            key={href}
-            href={href}
-            prefetch
-            onClick={() => haptic()}
-            className={`side-nav-item${pathname.startsWith(href) ? " active" : ""}${mobileHidden ? " nav-mobile-hidden" : ""}`}
+            className={`side-nav-item${activeFor(href) ? " active" : ""}${mobileHidden ? " nav-mobile-hidden" : ""}`}
           >
             <Icon size={15} strokeWidth={2} />
             <span className="nav-label">{label}</span>
@@ -138,8 +144,11 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false }
         </form>
 
         <div className="sidebar-footer">
-          <div className="live-dot" />
-          <span className="footer-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={email}>{email ?? "SystemOps"}</span>
+          <div className="sidebar-account-avatar">{initials(clinicName)}</div>
+          <span className="footer-label" title={`${clinicName} · ${email ?? "SystemOps"}`}>
+            <strong>{clinicName}</strong>
+            <small>{email ?? "SystemOps"}</small>
+          </span>
           <BellToggle />
         </div>
       </div>
