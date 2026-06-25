@@ -6,7 +6,7 @@
  *
  * Variáveis de ambiente:
  *   DATABASE_URL       — conexão Postgres (para validação e cleanup)
- *   E2E_WEBHOOK_URL    — URL completa (ex: https://systemops-core.vercel.app/api/whatsapp/zapi?secret=XXX)
+ *   E2E_WEBHOOK_URL    — URL completa (ex: https://app.systemops.com.br/api/whatsapp/zapi?secret=XXX)
  *   E2E_WAIT_MS        — timeout para cada asserção E2E em ms (default: 12000)
  *   E2E_SKIP_CLEANUP   — se "true", não deleta os leads de teste ao fim
  */
@@ -52,7 +52,7 @@ if (!clinicId) {
 
 const webhookUrl = process.env.E2E_WEBHOOK_URL;
 if (!webhookUrl) {
-  console.error("E2E_WEBHOOK_URL não definida. Exemplo: https://systemops-core.vercel.app/api/whatsapp/zapi?secret=XXX");
+  console.error("E2E_WEBHOOK_URL não definida. Exemplo: https://app.systemops.com.br/api/whatsapp/zapi?secret=XXX");
   process.exit(1);
 }
 

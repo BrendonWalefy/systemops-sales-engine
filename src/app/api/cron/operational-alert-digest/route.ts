@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://systemops-core.vercel.app");
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://app.systemops.com.br");
 
   const activeClinics = await db
     .select({

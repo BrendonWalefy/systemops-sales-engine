@@ -57,7 +57,7 @@ describe("buildAlertDigestEmail", () => {
   });
 
   it("html contém link para o dashboard", () => {
-    const url = "https://systemops-core.vercel.app/owner";
+    const url = "https://app.systemops.com.br/owner";
     const { html } = buildAlertDigestEmail(BASE_REPORT, url);
     expect(html).toContain(url);
   });
