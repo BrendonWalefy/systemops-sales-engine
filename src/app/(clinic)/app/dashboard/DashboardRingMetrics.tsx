@@ -33,7 +33,7 @@ export function DashboardRingMetrics({
             />
           </svg>
           <span className="dashboard-ring-value">
-            {automationRate.toFixed(1)}%
+            {Math.round(automationRate)}%
           </span>
         </div>
         <span className="dashboard-ring-label">Autonomia IA</span>

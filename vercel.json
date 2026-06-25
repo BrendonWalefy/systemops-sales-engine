@@ -2,6 +2,14 @@
   "buildCommand": "npm run vercel:build",
   "crons": [
     {
+      "path": "/api/cron/message-worker",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sender-worker",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/stale-conversations",
       "schedule": "0 6 * * *"
     },
@@ -26,7 +34,7 @@
       "schedule": "0 12 * * 1-6"
     },
     {
-      "path": "/api/cron/recovery-campaign",
+      "path": "/api/cron/recovery-campaign-evening",
       "schedule": "0 21 * * 1-5"
     },
     {

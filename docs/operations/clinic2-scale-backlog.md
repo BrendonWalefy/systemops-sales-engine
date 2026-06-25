@@ -84,6 +84,9 @@ Escalar o SystemOps da clínica piloto para a segunda clínica sem quebrar a ope
 
 - [ ] Implementar `webhook fino -> inbox -> fila -> worker -> outbox -> sender`.
 - [ ] Manter no mesmo repositório por enquanto.
+- [ ] Executar a arquitetura em slices pequenas seguindo `docs/operations/event-driven-modernization-plan.md` e `docs/operations/event-driven-modernization-checkpoints.md`.
+- [ ] Começar por Postgres queue e outbox antes de qualquer mensageria externa.
+- [ ] Tratar realtime barato e observabilidade como parte da mesma modernização, não como trabalho paralelo.
 
 ## Ordem recomendada de execução
 

@@ -96,10 +96,12 @@ export function AppointmentDrawer({
   const startsAt = new Date(event.startsAt);
   const endsAt = new Date(event.endsAt);
 
-  const dateStr = startsAt.toLocaleDateString("pt-BR", {
-    weekday: "long", day: "2-digit", month: "long", year: "numeric",
-    timeZone: "America/Sao_Paulo",
-  });
+  const _tz = "America/Sao_Paulo";
+  const _weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long",  timeZone: _tz }).format(startsAt);
+  const _day     = new Intl.DateTimeFormat("pt-BR", { day: "numeric",   timeZone: _tz }).format(startsAt);
+  const _month   = new Intl.DateTimeFormat("pt-BR", { month: "long",    timeZone: _tz }).format(startsAt);
+  const _year    = new Intl.DateTimeFormat("pt-BR", { year: "numeric",  timeZone: _tz }).format(startsAt);
+  const dateStr  = `${_weekday.charAt(0).toUpperCase() + _weekday.slice(1)}, ${_day} de ${_month} de ${_year}`;
   const timeStr = `${startsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} – ${endsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`;
 
   async function updateStatus(status: Action) {

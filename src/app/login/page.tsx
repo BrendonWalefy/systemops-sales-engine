@@ -1,4 +1,3 @@
-import { Zap } from "lucide-react";
 import { LoginForm } from "./LoginForm";
 
 export default async function LoginPage({
@@ -9,104 +8,303 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div
-      className="login-dark-page"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "100vh",
-        padding: 24,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* Ambient glow orbs */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          background:
-            "radial-gradient(circle at 20% 10%, rgba(16,185,129,0.14) 0%, transparent 50%), " +
-            "radial-gradient(circle at 80% 80%, rgba(99,102,241,0.10) 0%, transparent 45%)",
-        }}
-      />
+    <>
+      <style>{`
+        html, body { margin: 0; padding: 0; background: #09090b; color-scheme: dark; }
 
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 380,
-          display: "flex",
-          flexDirection: "column",
-          gap: 28,
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        {/* Brand */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-          <div className="brand-mark" style={{ width: 52, height: 52, boxShadow: "0 0 32px rgba(16,185,129,0.3)" }}>
-            <Zap size={24} strokeWidth={2.5} />
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 24,
-                fontWeight: 800,
-                letterSpacing: "-0.03em",
-                color: "#fafafa",
-              }}
-            >
+        .lp-root {
+          display: flex;
+          min-height: 100vh;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+          color: #fafafa;
+          --background: #09090b;
+          --surface: rgba(17,17,19,0.88);
+          --surface-raised: rgba(255,255,255,0.05);
+          --text: #fafafa;
+          --muted: #a1a1aa;
+          --line: rgba(255,255,255,0.08);
+          --accent: #10b981;
+          --accent-strong: #34d399;
+          --accent-soft: rgba(16,185,129,0.12);
+          --danger: #ef4444;
+          color-scheme: dark;
+        }
+
+        /* ── BRAND PANEL ── */
+        .lp-brand {
+          flex: 0 0 58%;
+          position: relative;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          padding: 36px 52px 36px 48px;
+          background: #09090b;
+        }
+
+        .lp-brand::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image: radial-gradient(circle, rgba(255,255,255,0.065) 1px, transparent 1px);
+          background-size: 28px 28px;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .lp-brand::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(ellipse 70% 50% at 0% 0%, rgba(16,185,129,0.13) 0%, transparent 65%),
+            radial-gradient(ellipse 55% 55% at 100% 100%, rgba(99,102,241,0.09) 0%, transparent 65%);
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .lp-brand-top,
+        .lp-brand-center,
+        .lp-brand-bottom {
+          position: relative;
+          z-index: 1;
+        }
+
+        .lp-wordmark {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          font-size: 14px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: rgba(250,250,250,0.8);
+          text-decoration: none;
+        }
+
+        /* ── S MARK ── */
+        .lp-s-wrap {
+          position: relative;
+          width: 150px;
+          height: 150px;
+          margin-bottom: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .lp-s-glow {
+          position: absolute;
+          inset: -50px;
+          border-radius: 50%;
+          background: radial-gradient(circle at center, rgba(16,185,129,0.22) 0%, rgba(16,185,129,0.05) 50%, transparent 70%);
+          animation: lp-breathe 5s ease-in-out infinite;
+        }
+
+        .lp-s-svg {
+          position: relative;
+          z-index: 1;
+          filter: drop-shadow(0 0 18px rgba(52,211,153,0.38));
+          animation: lp-float 7s ease-in-out infinite;
+        }
+
+        @keyframes lp-breathe {
+          0%, 100% { opacity: 0.65; transform: scale(0.94); }
+          50% { opacity: 1; transform: scale(1.06); }
+        }
+
+        @keyframes lp-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+
+        /* ── COPY ── */
+        .lp-brand-center {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .lp-headline {
+          font-size: clamp(36px, 3.8vw, 52px);
+          font-weight: 800;
+          letter-spacing: -0.045em;
+          line-height: 1.08;
+          margin: 0 0 18px;
+          color: #fafafa;
+        }
+
+        .lp-headline em {
+          font-style: normal;
+          background: linear-gradient(125deg, #34d399 10%, #10b981 55%, #059669 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .lp-subtext {
+          font-size: 15px;
+          line-height: 1.68;
+          color: rgba(161,161,170,0.68);
+          margin: 0;
+          max-width: 400px;
+        }
+
+        /* ── STATUS ── */
+        .lp-status {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: rgba(161,161,170,0.55);
+        }
+
+        .lp-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #10b981;
+          flex-shrink: 0;
+          animation: lp-pulse-dot 2.2s ease-in-out infinite;
+        }
+
+        @keyframes lp-pulse-dot {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.55); }
+          50% { box-shadow: 0 0 0 5px rgba(16,185,129,0); }
+        }
+
+        /* ── FORM PANEL ── */
+        .lp-form {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 48px 44px;
+          background: #0a0a0d;
+          border-left: 1px solid rgba(255,255,255,0.055);
+        }
+
+        .lp-form-inner {
+          width: 100%;
+          max-width: 340px;
+          display: flex;
+          flex-direction: column;
+          gap: 28px;
+        }
+
+        .lp-form-header h2 {
+          margin: 0 0 8px;
+          font-size: 22px;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          color: #fafafa;
+        }
+
+        .lp-form-header p {
+          margin: 0;
+          font-size: 14px;
+          color: rgba(161,161,170,0.62);
+          line-height: 1.55;
+        }
+
+        /* ── MOBILE ── */
+        @media (max-width: 720px) {
+          .lp-root { flex-direction: column; }
+
+          .lp-brand {
+            flex: none;
+            padding: 28px 24px 40px;
+          }
+
+          .lp-s-wrap {
+            width: 90px;
+            height: 90px;
+            margin-bottom: 24px;
+          }
+
+          .lp-headline { font-size: 30px; }
+
+          .lp-form {
+            flex: 1;
+            border-left: none;
+            border-top: 1px solid rgba(255,255,255,0.055);
+            padding: 36px 24px 52px;
+            align-items: flex-start;
+          }
+        }
+      `}</style>
+
+      <div className="lp-root">
+        {/* ── LEFT: Atmospheric brand panel ── */}
+        <aside className="lp-brand">
+          <div className="lp-brand-top">
+            <span className="lp-wordmark">
+              <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="7" fill="#18181b" />
+                <defs>
+                  <linearGradient id="lp-wm" x1="21" y1="9" x2="11" y2="23" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#34d399" />
+                    <stop offset="100%" stopColor="#059669" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M21 9C21 5.5 11 5.5 11 11C11 16.5 21 15.5 21 21C21 26.5 11 26.5 11 23"
+                  stroke="url(#lp-wm)"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                />
+              </svg>
               SystemOps
+            </span>
+          </div>
+
+          <div className="lp-brand-center">
+            <div className="lp-s-wrap">
+              <div className="lp-s-glow" aria-hidden="true" />
+              <svg className="lp-s-svg" width="116" height="116" viewBox="0 0 32 32" fill="none">
+                <defs>
+                  <linearGradient id="lp-sbig" x1="21" y1="9" x2="11" y2="23" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#34d399" />
+                    <stop offset="100%" stopColor="#059669" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M21 9C21 5.5 11 5.5 11 11C11 16.5 21 15.5 21 21C21 26.5 11 26.5 11 23"
+                  stroke="url(#lp-sbig)"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+
+            <h1 className="lp-headline">
+              Sua recepção<br />
+              <em>nunca para.</em>
             </h1>
-            <p style={{ margin: "5px 0 0", fontSize: 13, color: "rgba(161,161,170,0.9)", letterSpacing: "0.01em" }}>
-              Recepcionista autônoma para clínicas
+            <p className="lp-subtext">
+              Leads qualificados, agenda em movimento e operação
+              sob controle — mesmo quando você não está por aqui.
             </p>
           </div>
-        </div>
 
-        {/* Glassmorphism card with gradient border */}
-        <div
-          style={{
-            borderRadius: 22,
-            padding: "1.5px",
-            background:
-              "linear-gradient(135deg, rgba(16,185,129,0.4) 0%, rgba(99,102,241,0.25) 50%, rgba(255,255,255,0.06) 100%)",
-            boxShadow: "0 24px 60px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(255,255,255,0.04) inset",
-          }}
-        >
-          <div
-            style={{
-              borderRadius: 21,
-              background: "rgba(14,14,16,0.80)",
-              backdropFilter: "blur(28px)",
-              WebkitBackdropFilter: "blur(28px)",
-              padding: 28,
-              display: "flex",
-              flexDirection: "column",
-              gap: 20,
-            }}
-          >
-            <div>
-              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "#fafafa" }}>
-                Entrar
-              </h2>
-              <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(161,161,170,0.8)" }}>
-                Use suas credenciais de acesso
-              </p>
+          <div className="lp-brand-bottom">
+            <div className="lp-status">
+              <span className="lp-dot" />
+              IA ativa · Atendendo agora
+            </div>
+          </div>
+        </aside>
+
+        {/* ── RIGHT: Login form ── */}
+        <main className="lp-form">
+          <div className="lp-form-inner">
+            <div className="lp-form-header">
+              <h2>Bem-vindo de volta.</h2>
+              <p>Entre para ver o que aconteceu<br />enquanto você estava fora.</p>
             </div>
 
             <LoginForm error={error} />
           </div>
-        </div>
-
-        <p style={{ textAlign: "center", fontSize: 12, color: "rgba(161,161,170,0.5)", margin: 0 }}>
-          SystemOps © {new Date().getFullYear()}
-        </p>
+        </main>
       </div>
-    </div>
+    </>
   );
 }

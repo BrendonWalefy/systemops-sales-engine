@@ -19,7 +19,7 @@ export type ClinicOperationalAlertInput = ClinicHealthInput & {
 export type OperationalAlert = {
   clinicId: string;
   clinicName: string;
-  source: "configuration" | "cron" | "quality" | "webhook" | "channel";
+  source: "configuration" | "cron" | "quality" | "webhook" | "channel" | "queue";
   level: "warn" | "critical";
   title: string;
   detail: string;
@@ -33,6 +33,33 @@ export type OperationalAlertReport = {
   warnCount: number;
   alerts: OperationalAlert[];
 };
+
+function sortAlerts(alerts: OperationalAlert[]): OperationalAlert[] {
+  return [...alerts].sort((a, b) => {
+    if (a.level !== b.level) {
+      return a.level === "critical" ? -1 : 1;
+    }
+
+    return a.clinicName.localeCompare(b.clinicName, "pt-BR");
+  });
+}
+
+export function appendOperationalAlerts(
+  report: OperationalAlertReport,
+  additionalAlerts: OperationalAlert[],
+): OperationalAlertReport {
+  const alerts = sortAlerts([...report.alerts, ...additionalAlerts]);
+  const criticalCount = alerts.filter((alert) => alert.level === "critical").length;
+
+  return {
+    ...report,
+    status: criticalCount > 0 ? "degraded" : "ok",
+    alertCount: alerts.length,
+    criticalCount,
+    warnCount: alerts.length - criticalCount,
+    alerts,
+  };
+}
 
 function formatMetricValue(value: number): string {
   if (Number.isFinite(value) && value >= 0 && value <= 1) {
@@ -164,23 +191,15 @@ export function evaluateOperationalAlerts(
     });
   });
 
-  alerts.sort((a, b) => {
-    if (a.level !== b.level) {
-      return a.level === "critical" ? -1 : 1;
-    }
-
-    return a.clinicName.localeCompare(b.clinicName, "pt-BR");
-  });
-
-  const criticalCount = alerts.filter((alert) => alert.level === "critical").length;
-  const warnCount = alerts.length - criticalCount;
-
-  return {
-    status: criticalCount > 0 ? "degraded" : "ok",
-    activeClinicCount: activeClinics.length,
-    alertCount: alerts.length,
-    criticalCount,
-    warnCount,
+  return appendOperationalAlerts(
+    {
+      status: "ok",
+      activeClinicCount: activeClinics.length,
+      alertCount: 0,
+      criticalCount: 0,
+      warnCount: 0,
+      alerts: [],
+    },
     alerts,
-  };
+  );
 }

@@ -715,6 +715,9 @@ button:disabled {
     var(--background);
   color: var(--text);
   padding: 22px 24px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .dashboard-topbar {
@@ -722,7 +725,6 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 12px;
 }
 
 .dashboard-title {
@@ -796,7 +798,6 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
-  margin-bottom: 10px;
 }
 
 .dashboard-kpi-card {
@@ -810,6 +811,21 @@ button:disabled {
   padding: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.13);
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  /* alinhamento uniforme entre cards */
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-kpi-cta {
+  display: block;
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent-strong);
+  letter-spacing: 0.01em;
 }
 
 .dashboard-kpi-card:hover {
@@ -1280,12 +1296,20 @@ button:disabled {
 }
 
 .dashboard-temp-row span {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
+  overflow: hidden;
   color: var(--text-soft);
   font-weight: 700;
+}
+
+.dashboard-temp-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .dashboard-temp-row strong {
@@ -1503,6 +1527,7 @@ button:disabled {
   .dashboard-shell {
     padding: calc(env(safe-area-inset-top) + 16px) max(14px, env(safe-area-inset-right))
       calc(24px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    gap: 14px;
   }
 
   .dashboard-sync-pill,
@@ -1520,14 +1545,19 @@ button:disabled {
     margin-bottom: 10px;
   }
 
+  /* último card sozinho na linha → largura total */
+  .dashboard-kpi-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
   .dashboard-kpi-card {
     padding: 10px 10px 9px;
   }
 
   .dashboard-kpi-header {
     flex-wrap: nowrap;
-    align-items: center;
-    gap: 6px;
+    align-items: flex-start;
+    gap: 5px;
     margin-bottom: 4px;
   }
 
@@ -1536,31 +1566,48 @@ button:disabled {
     height: 20px;
     flex: 0 0 20px;
     border-radius: 6px;
+    margin-top: 1px;
   }
 
+  /* título: permite 2 linhas em vez de truncar */
   .dashboard-kpi-header > span:nth-child(2) {
+    flex: 1 1 0;
+    min-width: 0;
     font-size: 10.5px;
     font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
+    line-height: 1.25;
+    white-space: normal;
     overflow: hidden;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
+  /* badge de tendência: largura máxima para não sufocar o título */
   .dashboard-trend {
     display: inline-flex;
-    font-size: 9.5px;
-    padding: 2px 6px;
+    flex-shrink: 0;
+    max-width: 60px;
+    font-size: 9px;
+    padding: 2px 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .dashboard-kpi-card strong {
-    font-size: 22px;
+    font-size: 20px;
     margin-bottom: 1px;
   }
 
   .dashboard-kpi-card small {
     font-size: 10px;
     line-height: 1.25;
+  }
+
+  .dashboard-kpi-cta {
+    font-size: 9.5px;
+    padding-top: 6px;
   }
 
   .dashboard-panel-header {
@@ -4074,18 +4121,9 @@ textarea:focus {
     font-size: 16px !important;
   }
 
-  /* Preenche o gap entre o pill nav e a borda inferior da tela (safe-area) */
+  /* Safe-area gap agora coberto pelo próprio sidebar estendido — pseudo-element removido */
   body::after {
-    content: "";
-    display: block;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: max(0px, calc(env(safe-area-inset-bottom) - 16px));
-    background: rgba(8, 10, 14, 0.95);
-    z-index: 199;
-    pointer-events: none;
+    display: none;
   }
 
   /* Layout: sidebar vira bottom tab bar nativo */
@@ -4095,34 +4133,63 @@ textarea:focus {
 
   /* Espaço para o pill + safe-area */
   .clinic-layout > main {
-    padding-bottom: calc(62px + env(safe-area-inset-bottom) + 4px);
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
   }
 
-  /* Sidebar → pill glassmorphism flutuante próximo ao fundo */
+  /* Sidebar → wrapper transparente; o vidro real fica no pseudo-elemento */
   .sidebar {
+    --mobile-nav-safe-bottom: max(env(safe-area-inset-bottom), 8px);
+    --mobile-nav-height: 64px;
     position: fixed;
-    bottom: max(0px, calc(env(safe-area-inset-bottom) - 16px));
+    bottom: 0;
     left: 14px;
     right: 14px;
     top: auto;
-    height: 60px;
-    border-radius: 20px;
-    background: rgba(8, 10, 14, 0.90);
-    backdrop-filter: blur(36px) saturate(200%);
-    -webkit-backdrop-filter: blur(36px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    /* filter respeita o shape real do elemento (incluindo overflow de filhos) */
-    filter:
-      drop-shadow(0 -4px 14px rgba(0, 0, 0, 0.55))
-      drop-shadow(0 8px 28px rgba(0, 0, 0, 0.7));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    height: calc(var(--mobile-nav-height) + var(--mobile-nav-safe-bottom) + 12px);
     flex-direction: row;
-    align-items: center;
-    justify-content: space-around;
-    padding: 0 6px;
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding: 0 8px var(--mobile-nav-safe-bottom);
     gap: 0;
-    border-right: 0;
+    border: 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    overflow: visible;
     z-index: 200;
+  }
+
+  .sidebar::before {
+    content: "";
+    position: absolute;
+    inset: auto 0 var(--mobile-nav-safe-bottom) 0;
+    height: var(--mobile-nav-height);
+    border-radius: 24px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03)) border-box,
+      linear-gradient(180deg, rgba(16, 24, 32, 0.76), rgba(8, 12, 18, 0.5)) padding-box;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow:
+      0 18px 40px rgba(0, 0, 0, 0.34),
+      0 4px 18px rgba(0, 0, 0, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(28px) saturate(175%);
+    -webkit-backdrop-filter: blur(28px) saturate(175%);
+    pointer-events: none;
+  }
+
+  .sidebar::after {
+    content: "";
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: calc(var(--mobile-nav-safe-bottom) + var(--mobile-nav-height) - 1px);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+    opacity: 0.9;
+    pointer-events: none;
   }
 
   .brand-mark,
@@ -4136,10 +4203,13 @@ textarea:focus {
     display: flex;
     flex-direction: row;
     flex: 4;
-    align-self: stretch;
+    min-height: var(--mobile-nav-height);
+    align-self: flex-end;
     align-items: stretch;
     justify-content: space-evenly;
     gap: 0;
+    position: relative;
+    z-index: 1;
   }
 
   .side-nav-item {
@@ -4147,66 +4217,65 @@ textarea:focus {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 3px;
-    height: 100%;
-    min-height: unset;
-    padding: 10px 10px 0;
+    gap: 4px;
+    height: var(--mobile-nav-height);
+    min-height: var(--mobile-nav-height);
+    padding: 11px 10px 9px;
     border-radius: 0;
     border-color: transparent;
     flex: 1;
     text-align: center;
+    color: rgba(221, 232, 242, 0.68);
+    z-index: 1;
   }
 
-  /* Active: highlight acima + glow ao redor (sem pill sólido) */
-  .side-nav-item {
-    position: relative;
-  }
-
-  .side-nav-item.active {
+  .side-nav-item.active,
+  .mobile-settings-btn.active {
     background: none;
     border-color: transparent;
     box-shadow: none;
     color: var(--accent-strong);
   }
 
-  /* Linha de highlight no topo */
-  .side-nav-item.active::before {
+  .side-nav-item.active::before,
+  .mobile-settings-btn.active::before {
     content: '';
     position: absolute;
-    top: 0;
+    top: 8px;
     left: 50%;
     transform: translateX(-50%);
-    width: 28px;
-    height: 2.5px;
+    width: 24px;
+    height: 2px;
     background: var(--accent-strong);
     border-radius: 0 0 4px 4px;
     box-shadow:
-      0 0 8px rgba(0, 212, 170, 0.9),
-      0 0 20px rgba(0, 212, 170, 0.45);
+      0 0 8px rgba(0, 212, 170, 0.55),
+      0 0 16px rgba(0, 212, 170, 0.22);
     pointer-events: none;
   }
 
-  /* Glow radial atrás e abaixo do ícone */
-  .side-nav-item.active::after {
+  .side-nav-item.active::after,
+  .mobile-settings-btn.active::after {
     content: '';
     position: absolute;
     inset: 0;
     background: radial-gradient(
-      ellipse 80% 90% at 50% 44%,
-      rgba(0, 212, 170, 0.13) 0%,
-      rgba(0, 212, 170, 0.05) 50%,
-      transparent 72%
+      ellipse 72% 82% at 50% 50%,
+      rgba(0, 212, 170, 0.12) 0%,
+      rgba(0, 212, 170, 0.045) 52%,
+      transparent 74%
     );
     pointer-events: none;
   }
 
   .nav-label {
+    flex: none;
     font-size: 9.5px;
     font-weight: 600;
     letter-spacing: 0.01em;
+    line-height: 1;
   }
 
-  /* Badge âmbar no Inbox */
   .nav-icon-wrap {
     position: relative;
     display: flex;
@@ -4216,13 +4285,15 @@ textarea:focus {
 
   .nav-inbox-dot {
     position: absolute;
-    top: -3px;
-    right: -4px;
-    width: 7px;
-    height: 7px;
+    top: -2px;
+    right: -5px;
+    width: 8px;
+    height: 8px;
     border-radius: 999px;
     background: #ff6b5f;
-    box-shadow: 0 0 0 2px rgba(8, 10, 14, 0.9);
+    box-shadow:
+      0 0 0 2px rgba(11, 16, 22, 0.72),
+      0 0 10px rgba(255, 107, 95, 0.38);
     animation: dot-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   }
 
@@ -4278,12 +4349,12 @@ textarea:focus {
     justify-content: center;
     align-items: center;
     gap: 3px;
-    flex: 0 0 52px;
+    flex: 0 0 48px;
     position: relative;
-    bottom: 14px;
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
+    bottom: 10px;
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
     background: linear-gradient(145deg, #12f0c0, #00b896);
     color: #041410;
     font-size: 9px;
@@ -4291,20 +4362,20 @@ textarea:focus {
     letter-spacing: 0.01em;
     text-decoration: none;
     box-shadow:
-      0 0 0 3px rgba(8, 10, 14, 0.9),
-      0 0 12px rgba(0, 212, 170, 0.3),
-      0 0 28px rgba(0, 212, 170, 0.12),
-      0 4px 14px rgba(0, 0, 0, 0.5),
+      0 0 0 3px rgba(9, 14, 19, 0.78),
+      0 0 10px rgba(0, 212, 170, 0.2),
+      0 8px 18px rgba(0, 0, 0, 0.34),
       inset 0 1px 0 rgba(255, 255, 255, 0.15);
     transition: transform 150ms ease, box-shadow 150ms ease;
+    z-index: 2;
   }
 
   .mobile-novo-btn:active {
     transform: scale(0.91);
     box-shadow:
-      0 0 0 3px rgba(8, 10, 14, 0.9),
-      0 0 8px rgba(0, 212, 170, 0.3),
-      0 2px 8px rgba(0, 0, 0, 0.4);
+      0 0 0 3px rgba(9, 14, 19, 0.78),
+      0 0 6px rgba(0, 212, 170, 0.2),
+      0 4px 10px rgba(0, 0, 0, 0.28);
   }
 
   /* ── Ajustes button in pill ─────────────────────────── */
@@ -4316,40 +4387,30 @@ textarea:focus {
     align-items: center;
     gap: 4px;
     flex: 1;
-    align-self: stretch;
-    height: auto;
-    min-height: unset;
-    padding: 10px 10px 0;
+    align-self: flex-end;
+    height: var(--mobile-nav-height);
+    min-height: var(--mobile-nav-height);
+    padding: 11px 10px 9px;
     border-radius: 0;
     border: 1px solid transparent;
     background: transparent;
-    color: var(--muted);
+    color: rgba(221, 232, 242, 0.68);
     cursor: pointer;
     transition: color 160ms ease;
     text-align: center;
-  }
-
-  .mobile-settings-btn.active {
-    background: none;
-    color: var(--accent-strong);
-  }
-
-  .mobile-settings-btn.active::before {
-    content: '';
-    position: absolute;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 44px;
-    height: 26px;
-    background: rgba(16, 185, 129, 0.18);
-    border-radius: 999px;
-    border: 1px solid rgba(16, 185, 129, 0.18);
-    pointer-events: none;
+    z-index: 1;
   }
 
   .mobile-settings-btn:active {
     transform: scale(0.93);
+  }
+
+  .mobile-settings-btn svg,
+  .side-nav-item svg {
+    width: 16px;
+    height: 16px;
+    position: relative;
+    z-index: 1;
   }
 
   /* ── Dashboard mobile header ────────────────────────── */

@@ -15,6 +15,11 @@ type Msg = {
 
 const TZ = "America/Sao_Paulo";
 
+function serializeSentAt(value: Date | string | undefined): string {
+  if (!value) return "";
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 function formatTime(sentAt: Date | string): string {
   const d = sentAt instanceof Date ? sentAt : new Date(sentAt);
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
@@ -143,6 +148,13 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
   const containerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const latestMessageIdRef = useRef<string | null>(initialMessages.at(-1)?.id ?? null);
+  const versionRef = useRef(
+    [
+      String(initialMessages.length),
+      initialMessages.at(-1)?.id ?? "",
+      serializeSentAt(initialMessages.at(-1)?.sentAt),
+    ].join("|"),
+  );
 
   // Direct container scroll — mais confiável que scrollIntoView em layout fixed
   const scrollToBottom = useCallback((instant = false) => {
@@ -182,27 +194,46 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
 
   useEffect(() => {
     latestMessageIdRef.current = messages.at(-1)?.id ?? null;
+    versionRef.current = [
+      String(messages.length),
+      messages.at(-1)?.id ?? "",
+      serializeSentAt(messages.at(-1)?.sentAt),
+    ].join("|");
   }, [messages]);
 
   useEffect(() => {
     const poll = async () => {
+      if (document.hidden) return;
       try {
+        const versionRes = await fetch(
+          `/api/conversations/${conversationId}/messages/version`,
+          { cache: "no-store" },
+        );
+        if (!versionRes.ok) return;
+        const versionData: { version?: string } = await versionRes.json();
+        if (!versionData.version || versionData.version === versionRef.current) return;
+
         const params = new URLSearchParams();
         if (latestMessageIdRef.current) params.set("after", latestMessageIdRef.current);
         const query = params.toString();
         const res = await fetch(`/api/conversations/${conversationId}/messages${query ? `?${query}` : ""}`);
         if (!res.ok) return;
         const data: { messages: Msg[] } = await res.json();
-        if (data.messages.length === 0) return;
+        if (data.messages.length === 0) {
+          versionRef.current = versionData.version;
+          return;
+        }
         setMessages((prev) => {
           const knownIds = new Set(prev.map((m) => m.id));
           const next = data.messages.filter((m) => !knownIds.has(m.id));
           return next.length > 0 ? [...prev, ...next] : prev;
         });
+        versionRef.current = versionData.version;
       } catch {
         // ignore network errors between polls
       }
     };
+    void poll();
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [conversationId]);

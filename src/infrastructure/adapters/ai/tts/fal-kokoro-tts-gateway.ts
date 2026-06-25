@@ -1,6 +1,5 @@
 import { fal } from "@fal-ai/client";
 import type { TtsGateway, TtsRequest } from "@/application/ports/tts-gateway";
-import { sanitizeForTts } from "./openai-tts-gateway";
 
 const TIMEOUT_MS = 30_000;
 const FAL_MODEL = "fal-ai/kokoro/brazilian-portuguese";
@@ -26,6 +25,8 @@ function isValidFalResult(v: unknown): v is FalAudioResult {
   return typeof a.url === "string" && a.url.startsWith("https://");
 }
 
+// Gateway puro: texto → bytes de áudio. Não está wired na fábrica hoje; se for
+// reativado, crie-o via createTtsProvider para herdar o NormalizingTtsGateway.
 export class FalKokoroTtsGateway implements TtsGateway {
   constructor() {
     const key = process.env.FAL_KEY;
@@ -34,8 +35,6 @@ export class FalKokoroTtsGateway implements TtsGateway {
   }
 
   async synthesize(text: string, options?: TtsRequest): Promise<ArrayBuffer> {
-    const cleanText = sanitizeForTts(text);
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -44,7 +43,7 @@ export class FalKokoroTtsGateway implements TtsGateway {
       // fal SDK usa um tipo genérico específico por modelo; cast via unknown evita o erro sem any
       result = await (fal.subscribe as (model: string, opts: unknown) => Promise<unknown>)(FAL_MODEL, {
         input: {
-          prompt: cleanText,
+          prompt: text,
           voice: "pf_dora",
           speed: options?.speed ?? 1.05,
         },

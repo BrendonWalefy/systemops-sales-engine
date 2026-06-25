@@ -18,6 +18,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- tsx scripts/migrate.ts",
     "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
+    "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts"
   },
   "dependencies": {

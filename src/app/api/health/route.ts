@@ -7,8 +7,9 @@ import {
   playbookVersions,
 } from "@/infrastructure/db/schema";
 import { evaluateClinicHealth } from "@/application/health/clinic-health";
-import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
+import { appendOperationalAlerts, evaluateOperationalAlerts } from "@/application/health/operational-alerts";
 import { probeClinicChannelHealth } from "@/application/health/channel-health";
+import { inspectQueueHealth, mapQueueHealthAlertsToOperationalAlerts } from "@/application/health/queue-health";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,8 @@ export async function GET() {
       clinicsWithChannelStatus,
       new Date(),
     );
-    const alertReport = evaluateOperationalAlerts(
+    const queueHealth = await inspectQueueHealth();
+    const clinicAlertReport = evaluateOperationalAlerts(
       clinicsWithChannelStatus.map((clinic) => {
         const latestMetric = latestMetrics.find(
           (row) => row.clinicId === clinic.clinicId,
@@ -101,6 +103,10 @@ export async function GET() {
         };
       }),
       new Date(),
+    );
+    const alertReport = appendOperationalAlerts(
+      clinicAlertReport,
+      mapQueueHealthAlertsToOperationalAlerts(queueHealth.alerts),
     );
     const overallStatus =
       report.status === "degraded" || alertReport.status === "degraded"
@@ -127,6 +133,7 @@ export async function GET() {
           detail: clinic.channelStatus?.detail ?? null,
         })),
         alerts: alertReport.alerts,
+        queueHealth,
       },
       { status: overallStatus === "ok" ? 200 : 503 },
     );

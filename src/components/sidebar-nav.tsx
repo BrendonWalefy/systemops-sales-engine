@@ -112,7 +112,7 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false, 
           className="mobile-novo-btn"
           aria-label="Novo agendamento"
         >
-          <Plus size={22} strokeWidth={2.5} />
+          <Plus size={20} strokeWidth={2.5} />
           <span className="nav-label">Novo</span>
         </Link>
         {NAV_ITEMS.slice(2).map(({ href, label, Icon, mobileHidden }) => (
