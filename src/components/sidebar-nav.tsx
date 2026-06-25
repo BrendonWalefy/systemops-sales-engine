@@ -30,7 +30,7 @@ function initials(value: string | undefined): string {
     .join("") || "SO";
 }
 
-export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false, clinicName = "SystemOps" }: Props) {
+function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, clinicName = "SystemOps" }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -41,7 +41,6 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false, 
       "/app/agenda?new=1",
       "/app/settings/equipe",
     ];
-
     for (const route of routes) {
       router.prefetch(route);
     }
@@ -50,15 +49,8 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false, 
   const activeFor = (href: string) => {
     const [path, query = ""] = href.split("?");
     const isRecovery = path === "/app/inbox" && query.includes("filter=recovery");
-
-    if (isRecovery) {
-      return pathname === "/app/inbox" && searchParams.get("filter") === "recovery";
-    }
-
-    if (path === "/app/inbox") {
-      return pathname === "/app/inbox" && searchParams.get("filter") !== "recovery";
-    }
-
+    if (isRecovery) return pathname === "/app/inbox" && searchParams.get("filter") === "recovery";
+    if (path === "/app/inbox") return pathname === "/app/inbox" && searchParams.get("filter") !== "recovery";
     return pathname.startsWith(path);
   };
 
@@ -129,7 +121,6 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false, 
         ))}
       </nav>
 
-      {/* Desktop only: logout + email footer */}
       <div className="sidebar-bottom">
         <form action={logout}>
           <button
@@ -153,8 +144,15 @@ export function SidebarNav({ email, avatarUrl, inboxBadge = 0, isOwner = false, 
         </div>
       </div>
 
-      {/* Mobile only: settings/avatar menu (rendered last → far right in pill) */}
       <MobileAvatarMenu email={email} avatarUrl={avatarUrl} settingsMode isOwner={isOwner} />
     </aside>
+  );
+}
+
+export function SidebarNav(props: Props) {
+  return (
+    <React.Suspense fallback={<aside className="sidebar" />}>
+      <SidebarNavInner {...props} />
+    </React.Suspense>
   );
 }
