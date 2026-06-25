@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock } from "lucide-react";
+import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock, UserRoundCog } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 
 interface Props {
@@ -56,6 +56,7 @@ export function ConvComposer({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
+  const [isHandingOff, startHandoff] = useTransition();
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -80,6 +81,18 @@ export function ConvComposer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [text]);
+
+  const handleHandoff = useCallback(() => {
+    if (isHandingOff) return;
+    startHandoff(async () => {
+      try {
+        await fetch(`/api/conversations/${conversationId}/trigger-handoff`, { method: "POST" });
+        router.refresh();
+      } catch {
+        setError("Não foi possível acionar o especialista. Tente novamente.");
+      }
+    });
+  }, [isHandingOff, conversationId, router]);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -216,6 +229,23 @@ export function ConvComposer({
 
       {isSalesConversation ? (
         <div className="conv-chips-row">
+          {!needsAttention && (
+            <button
+              className="conv-chip"
+              onClick={handleHandoff}
+              disabled={isHandingOff}
+              title="Pausa a IA e sobe para needs_human — avisa que um especialista entrará em contato"
+              style={{
+                borderColor: "color-mix(in srgb, var(--warning) 40%, transparent)",
+                color: "var(--warning)",
+                fontWeight: 700,
+              }}
+            >
+              <UserRoundCog size={12} />
+              {isHandingOff ? "Acionando…" : "Especialista"}
+            </button>
+          )}
+
           <button
             className="conv-chip chip-ai"
             onClick={handleSuggestAi}
