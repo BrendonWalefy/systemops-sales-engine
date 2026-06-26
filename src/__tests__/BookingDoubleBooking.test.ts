@@ -124,6 +124,7 @@ class FakeCalendarGateway implements CalendarGateway {
   }
 
   async deleteBlockEvent(): Promise<void> {}
+  async updateBlockEvent(): Promise<never> { throw new Error("not implemented"); }
 
   async isSlotFree(): Promise<boolean> {
     this.order.push("isSlotFree");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Ban,
   Calendar,
@@ -80,6 +81,9 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
 }
 
 export function AgendaClient({ professionals, treatments, memberRole, serviceNoun, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
   const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +125,11 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  useEffect(() => {
+    if (!openNew) return;
+    setAppointmentModal((current) => (current.open ? current : { ...current, open: true }));
+  }, [openNew]);
 
   const fetchEvents = useCallback(async (
     from: string,
@@ -214,6 +223,17 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
   }, [resourceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const agendaVersionRef = useRef<string | null>(null);
+
+  const closeAppointmentModal = useCallback(() => {
+    setAppointmentModal({ open: false });
+
+    if (searchParams.get("new") !== "1") return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("new");
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   useEffect(() => {
     agendaVersionRef.current = null;
@@ -439,7 +459,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
             <div className="calendar-loading">Carregando agenda...</div>
           ) : view === "month" && isMobile ? (
             <MobileMonthView
-              events={allCalendarEvents}
+              events={filteredCalendarEvents}
               timezone={timezone}
               onEventClick={(event) => openDrawer(event)}
               onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
@@ -447,14 +467,14 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
             />
           ) : view === "week" && isMobile ? (
             <MobileWeekView
-              events={allCalendarEvents}
+              events={filteredCalendarEvents}
               timezone={timezone}
               onEventClick={(event) => openDrawer(event)}
               onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
             />
           ) : view === "day" && isMobile ? (
             <MobileDayView
-              events={allCalendarEvents}
+              events={filteredCalendarEvents}
               timezone={timezone}
               onEventClick={(event) => openDrawer(event)}
               onQuickConfirm={handleQuickConfirm}
@@ -476,11 +496,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
                   ? professionals.filter((p) => p.id === selectedProfessionalId)
                   : professionals
               }
-              events={
-                selectedProfessionalId
-                  ? events.filter((e) => e.professionalId === selectedProfessionalId)
-                  : events
-              }
+              events={filteredCalendarEvents}
               selectedDate={resourceDate}
               onPrevDay={() => setResourceDate((d) => addDays(d, -1))}
               onNextDay={() => setResourceDate((d) => addDays(d, 1))}
@@ -520,7 +536,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
           defaultTime={appointmentModal.time}
           defaultProfessionalId={appointmentModal.professionalId}
           professionals={professionals}
-          onClose={() => setAppointmentModal({ open: false })}
+          onClose={closeAppointmentModal}
           onCreated={refreshAll}
         />
       )}

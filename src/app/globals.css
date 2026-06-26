@@ -7357,6 +7357,7 @@ textarea:focus {
 }
 
 .command-funnel {
+  --command-funnel-badge-space: 94px;
   display: grid;
   gap: 10px;
   flex: 1;
@@ -7856,6 +7857,7 @@ textarea:focus {
   }
 
   .command-funnel {
+    --command-funnel-badge-space: 72px;
     padding: 20px 14px 14px;
   }
 
@@ -7877,6 +7879,12 @@ textarea:focus {
 
   .command-funnel-line small::before {
     width: 10px;
+  }
+
+  .command-funnel-line small {
+    min-width: 58px;
+    padding: 0 8px;
+    font-size: 11px;
   }
 
   .command-funnel-stage span {

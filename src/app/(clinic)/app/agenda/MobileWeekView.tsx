@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Users, Ban } from "lucide-react";
 import type { AppointmentEvent } from "./types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -96,6 +96,33 @@ function eventPosition(
   } catch { return null; }
 }
 
+// Posição de um bloco na grid — clampada ao intervalo visível [HOUR_START, HOUR_END]
+// para que bloqueios com início antes das 08h ainda apareçam no grid.
+function blockPosition(
+  block: AppointmentEvent,
+  tz: string,
+): { top: number; height: number } | null {
+  try {
+    const [sh, sm] = formatHourMin(block.startsAt, tz).split(":").map(Number);
+    const [eh, em] = formatHourMin(block.endsAt,   tz).split(":").map(Number);
+    const startMins = sh * 60 + sm;
+    const endMins   = eh * 60 + em || 24 * 60; // 00:00 end → midnight
+
+    const visStart = HOUR_START * 60;
+    const visEnd   = HOUR_END   * 60;
+
+    const clampedStart = Math.max(startMins, visStart);
+    const clampedEnd   = Math.min(endMins,   visEnd);
+
+    if (clampedEnd <= clampedStart) return null;
+
+    return {
+      top:    ((clampedStart - visStart) / 60) * HOUR_HEIGHT_PX,
+      height: Math.max(((clampedEnd - clampedStart) / 60) * HOUR_HEIGHT_PX - 2, 28),
+    };
+  } catch { return null; }
+}
+
 // ── Overlap layout ────────────────────────────────────────────────────────────
 
 function computeColumnLayouts(
@@ -184,15 +211,20 @@ export function MobileWeekView({
     return `${first.getDate()} de ${monthFmt(first)} – ${last.getDate()} de ${monthFmt(last)} de ${last.getFullYear()}`;
   }, [weekDays]);
 
-  const eventsByDate = useMemo(() => {
-    const map = new Map<string, AppointmentEvent[]>();
+  const { eventsByDate, blocksByDate } = useMemo(() => {
+    const evMap = new Map<string, AppointmentEvent[]>();
+    const blMap = new Map<string, AppointmentEvent[]>();
     for (const e of events) {
-      if (e.status === "block") continue;
       const ds = eventDateStr(e, timezone);
-      if (!map.has(ds)) map.set(ds, []);
-      map.get(ds)!.push(e);
+      if (e.status === "block") {
+        if (!blMap.has(ds)) blMap.set(ds, []);
+        blMap.get(ds)!.push(e);
+      } else {
+        if (!evMap.has(ds)) evMap.set(ds, []);
+        evMap.get(ds)!.push(e);
+      }
     }
-    return map;
+    return { eventsByDate: evMap, blocksByDate: blMap };
   }, [events, timezone]);
 
   const filterEvent = useCallback(
@@ -304,9 +336,10 @@ export function MobileWeekView({
 
             {/* Per-day columns */}
             {weekDays.map((day, colIdx) => {
-              const ds      = toDateStr(day);
-              const colEvs  = (eventsByDate.get(ds) ?? []).filter(filterEvent);
-              const layouts = computeColumnLayouts(colEvs, timezone);
+              const ds       = toDateStr(day);
+              const colEvs   = (eventsByDate.get(ds) ?? []).filter(filterEvent);
+              const colBlks  = blocksByDate.get(ds) ?? [];
+              const layouts  = computeColumnLayouts(colEvs, timezone);
 
               return (
                 <div
@@ -321,6 +354,46 @@ export function MobileWeekView({
                   {/* Column separator */}
                   <div className="mwv-col-sep" />
 
+                  {/* Blocks: full-width overlay, rendered behind appointments */}
+                  {colBlks.map((block) => {
+                    const pos = blockPosition(block, timezone);
+                    if (!pos) return null;
+                    return (
+                      <div
+                        key={block.id}
+                        className="mwv-event"
+                        style={{
+                          top:             pos.top,
+                          height:          pos.height,
+                          left:            "2px",
+                          right:           "2px",
+                          backgroundImage: "repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(107,114,128,0.12) 4px, rgba(107,114,128,0.12) 5px)",
+                          backgroundColor: "rgba(107,114,128,0.06)",
+                          borderLeft:      "3px solid #6b7280",
+                          borderRadius:    "4px",
+                          zIndex:          0,
+                          cursor:          "pointer",
+                          display:         "flex",
+                          flexDirection:   "column",
+                          gap:             "1px",
+                          overflow:        "hidden",
+                        }}
+                        onClick={(e) => { e.stopPropagation(); onEventClick(block); }}
+                      >
+                        <span className="mwv-event-time" style={{ color: "#9ca3af", display: "flex", alignItems: "center", gap: "3px" }}>
+                          <Ban size={9} />
+                          {formatHourMin(block.startsAt, timezone)}
+                        </span>
+                        {pos.height >= 40 && (
+                          <span className="mwv-event-name" style={{ color: "#6b7280", fontSize: "10px" }}>
+                            {block.leadName ?? "Bloqueado"}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Appointments */}
                   {colEvs.map((event) => {
                     const pos = eventPosition(event, timezone);
                     if (!pos) return null;

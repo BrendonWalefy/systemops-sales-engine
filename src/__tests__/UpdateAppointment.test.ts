@@ -67,6 +67,7 @@ function makeGateway(overrides: Partial<CalendarGateway> = {}): CalendarGateway 
     listBlockEvents: vi.fn().mockResolvedValue([]),
     createBlockEvent: vi.fn(),
     deleteBlockEvent: vi.fn(),
+    updateBlockEvent: vi.fn(),
     isSlotFree: vi.fn().mockResolvedValue(true),
     updateCalendarEvent: vi.fn().mockResolvedValue(undefined),
     ...overrides,

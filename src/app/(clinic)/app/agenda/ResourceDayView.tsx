@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
+import { Ban } from "lucide-react";
 import type { AppointmentEvent, Professional } from "./types";
 
 const HOUR_HEIGHT = 44;
@@ -102,9 +103,13 @@ export function ResourceDayView({ professionals, events, selectedDate, onPrevDay
     if (headerColsRef.current) headerColsRef.current.scrollLeft = e.currentTarget.scrollLeft;
   }
 
-  // Filter day events (exclude cancelled for visual clarity)
+  // Filter day events — blocks go to a separate overlay, cancelled hidden
+  const dayBlocks = events.filter((e) => {
+    if (e.status !== "block") return false;
+    return toSpDateStr(new Date(e.startsAt)) === selectedStr;
+  });
   const dayEvents = events.filter((e) => {
-    if (e.status === "cancelled") return false;
+    if (e.status === "cancelled" || e.status === "block") return false;
     return toSpDateStr(new Date(e.startsAt)) === selectedStr;
   });
 
@@ -233,6 +238,53 @@ export function ResourceDayView({ professionals, events, selectedDate, onPrevDay
                 <div className="rdv-now-line-h" />
               </div>
             )}
+
+            {/* Block overlays — span the full width of all columns */}
+            {dayBlocks.map((block) => {
+              const { h: sh, m: sm } = toSpTimeParts(block.startsAt);
+              const { h: eh, m: em } = toSpTimeParts(block.endsAt);
+              const clampedStartH = Math.max(sh, START_HOUR);
+              const clampedStartM = sh < START_HOUR ? 0 : sm;
+              const clampedEndH = Math.min(eh || 24, END_HOUR);
+              const clampedEndM = (eh || 24) > END_HOUR ? 0 : em;
+              const top = (clampedStartH - START_HOUR + clampedStartM / 60) * HOUR_HEIGHT;
+              const dur = (clampedEndH - clampedStartH) * 60 + (clampedEndM - clampedStartM);
+              const height = Math.max(28, (dur / 60) * HOUR_HEIGHT);
+              if (dur <= 0) return null;
+              return (
+                <div
+                  key={block.id}
+                  style={{
+                    position: "absolute",
+                    top,
+                    height,
+                    left: 0,
+                    right: 0,
+                    zIndex: 2,
+                    pointerEvents: "auto",
+                    backgroundImage: "repeating-linear-gradient(-45deg, transparent, transparent 5px, rgba(107,114,128,0.14) 5px, rgba(107,114,128,0.14) 6px)",
+                    backgroundColor: "rgba(107,114,128,0.07)",
+                    borderTop: "2px solid rgba(107,114,128,0.45)",
+                    borderBottom: "2px solid rgba(107,114,128,0.45)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingLeft: 10,
+                    cursor: "pointer",
+                    overflow: "hidden",
+                  }}
+                  onClick={(e) => { e.stopPropagation(); onEventClick(block); }}
+                >
+                  <Ban size={13} color="#9ca3af" style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {block.leadName ?? "Agenda bloqueada"}
+                  </span>
+                  <span style={{ fontSize: 10, color: "#6b7280", marginLeft: 4 }}>
+                    {`${String(sh).padStart(2,"0")}:${String(sm).padStart(2,"0")}–${String(eh||0).padStart(2,"0")}:${String(em).padStart(2,"0")}`}
+                  </span>
+                </div>
+              );
+            })}
 
             {/* Professional columns */}
             {columns.map((col, idx) => {

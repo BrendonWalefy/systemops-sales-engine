@@ -9,6 +9,7 @@ import {
   Plus,
   CalendarDays,
   Home,
+  Ban,
 } from "lucide-react";
 import type { AppointmentEvent } from "./types";
 
@@ -126,16 +127,21 @@ export function MobileMonthView({
     return cells;
   }, [year, month]);
 
-  // ── events grouped by date ───────────────────────────────────
-  const eventsByDate = useMemo(() => {
-    const map = new Map<string, AppointmentEvent[]>();
+  // ── events grouped by date (appointments and blocks separate) ───────────────────────────────────
+  const { eventsByDate, blocksByDate } = useMemo(() => {
+    const evMap = new Map<string, AppointmentEvent[]>();
+    const blMap = new Map<string, AppointmentEvent[]>();
     for (const e of events) {
-      if (e.status === "block") continue;
       const ds = eventDateStr(e, timezone);
-      if (!map.has(ds)) map.set(ds, []);
-      map.get(ds)!.push(e);
+      if (e.status === "block") {
+        if (!blMap.has(ds)) blMap.set(ds, []);
+        blMap.get(ds)!.push(e);
+      } else {
+        if (!evMap.has(ds)) evMap.set(ds, []);
+        evMap.get(ds)!.push(e);
+      }
     }
-    return map;
+    return { eventsByDate: evMap, blocksByDate: blMap };
   }, [events, timezone]);
 
   // ── navigation ───────────────────────────────────────────────
@@ -167,13 +173,13 @@ export function MobileMonthView({
     [year, month],
   );
 
-  // ── selected day events ──────────────────────────────────────
+  // ── selected day events (appointments filtered + blocks always included) ──────────────────────────────────────
   const selectedDayEvents = useMemo(() => {
-    const evs = eventsByDate.get(selectedDate) ?? [];
-    const filtered =
-      filter === "all" ? evs : evs.filter((e) => getCategory(e) === filter);
-    return [...filtered].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  }, [eventsByDate, selectedDate, filter]);
+    const appts = eventsByDate.get(selectedDate) ?? [];
+    const blks  = blocksByDate.get(selectedDate) ?? [];
+    const filteredAppts = filter === "all" ? appts : appts.filter((e) => getCategory(e) === filter);
+    return [...filteredAppts, ...blks].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  }, [eventsByDate, blocksByDate, selectedDate, filter]);
 
   // ── today stats ──────────────────────────────────────────────
   const todayStats = useMemo(() => {
@@ -267,6 +273,7 @@ export function MobileMonthView({
           const filtered   = filter === "all" ? dayEvs : dayEvs.filter((e) => getCategory(e) === filter);
           const count      = filtered.length;
           const dotCats    = CATEGORY_ORDER.filter((cat) => filtered.some((e) => getCategory(e) === cat));
+          const hasBlocks  = (blocksByDate.get(ds) ?? []).length > 0;
 
           return (
             <button
@@ -277,9 +284,15 @@ export function MobileMonthView({
                 isSelected && !isToday ? "mmv-grid-cell--selected" : "",
               ].filter(Boolean).join(" ")}
               onClick={() => setSelectedDate(ds)}
+              style={hasBlocks && !isToday ? {
+                backgroundImage: "repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(107,114,128,0.13) 3px, rgba(107,114,128,0.13) 4px)",
+              } : undefined}
             >
               <span className="mmv-cell-day">{day}</span>
-              {count > 0 && (
+              {hasBlocks && (
+                <Ban size={8} style={{ position: "absolute", top: 3, right: 3, color: "#9ca3af", opacity: 0.7 }} />
+              )}
+              {(count > 0 || hasBlocks) && (
                 <div className="mmv-cell-dots">
                   {dotCats.map((cat) => (
                     <span
@@ -288,7 +301,7 @@ export function MobileMonthView({
                       style={{ background: CATEGORY_COLORS[cat] }}
                     />
                   ))}
-                  <span className="mmv-cell-count">{count}</span>
+                  {count > 0 && <span className="mmv-cell-count">{count}</span>}
                 </div>
               )}
             </button>
@@ -302,9 +315,9 @@ export function MobileMonthView({
 
         <div className="mmv-day-panel-header">
           <span className="mmv-day-panel-title">{selectedDateLabel}</span>
-          {selectedDayEvents.length > 0 && (
+          {selectedDayEvents.filter((e) => e.status !== "block").length > 0 && (
             <span className="mmv-day-panel-count">
-              {selectedDayEvents.length} agendamentos
+              {selectedDayEvents.filter((e) => e.status !== "block").length} agendamentos
             </span>
           )}
         </div>
@@ -321,6 +334,33 @@ export function MobileMonthView({
             </div>
           ) : (
             selectedDayEvents.map((event) => {
+              if (event.status === "block") {
+                return (
+                  <div
+                    key={event.id}
+                    className="mmv-event-row"
+                    style={{ "--event-border": "#6b7280" } as React.CSSProperties}
+                    onClick={() => onEventClick(event)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && onEventClick(event)}
+                  >
+                    <div className="mmv-event-time">{formatTime(event, timezone)}</div>
+                    <div className="mmv-event-avatar" aria-hidden style={{ color: "#6b7280" }}>
+                      <Ban size={15} />
+                    </div>
+                    <div className="mmv-event-body">
+                      <span className="mmv-event-name" style={{ color: "#9ca3af" }}>
+                        {event.leadName ?? "Horário bloqueado"}
+                      </span>
+                    </div>
+                    <span className="mmv-badge" style={{ background: "#6b728020", color: "#9ca3af", border: "1px solid #6b728040" }}>
+                      Bloqueio
+                    </span>
+                  </div>
+                );
+              }
+
               const { label, cls } = getStatusBadge(event);
               const cat            = getCategory(event);
               const time           = formatTime(event, timezone);
