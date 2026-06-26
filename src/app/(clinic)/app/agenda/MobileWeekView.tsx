@@ -367,9 +367,9 @@ export function MobileWeekView({
                           height:          pos.height,
                           left:            "2px",
                           right:           "2px",
-                          backgroundImage: "repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(107,114,128,0.12) 4px, rgba(107,114,128,0.12) 5px)",
-                          backgroundColor: "rgba(107,114,128,0.06)",
-                          borderLeft:      "3px solid #6b7280",
+                          backgroundImage: "repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(245,180,81,0.18) 4px, rgba(245,180,81,0.18) 5px)",
+                          backgroundColor: "rgba(245,180,81,0.07)",
+                          borderLeft:      "3px solid #f5b451",
                           borderRadius:    "4px",
                           zIndex:          0,
                           cursor:          "pointer",
@@ -380,12 +380,12 @@ export function MobileWeekView({
                         }}
                         onClick={(e) => { e.stopPropagation(); onEventClick(block); }}
                       >
-                        <span className="mwv-event-time" style={{ color: "#9ca3af", display: "flex", alignItems: "center", gap: "3px" }}>
+                        <span className="mwv-event-time" style={{ color: "#f5b451", display: "flex", alignItems: "center", gap: "3px" }}>
                           <Ban size={9} />
-                          {formatHourMin(block.startsAt, timezone)}
+                          {`${formatHourMin(block.startsAt, timezone)}–${formatHourMin(block.endsAt, timezone)}`}
                         </span>
                         {pos.height >= 40 && (
-                          <span className="mwv-event-name" style={{ color: "#6b7280", fontSize: "10px" }}>
+                          <span className="mwv-event-name" style={{ color: "#f5b451", fontSize: "10px", opacity: 0.8 }}>
                             {block.leadName ?? "Bloqueado"}
                           </span>
                         )}
