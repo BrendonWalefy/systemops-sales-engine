@@ -1527,10 +1527,6 @@ select.field-input option {
   }
 
   /* Título simplificado no mobile: mostra só o eyebrow "Agenda", esconde h1 */
-  .agenda-v2-actions {
-    display: none;
-  }
-
   .agenda-v2-title-area {
     display: flex;
     align-items: center;
@@ -1565,6 +1561,11 @@ select.field-input option {
   /* Icon-only action buttons on narrow screens */
   .agenda-btn-label {
     display: none;
+  }
+
+  .agenda-v2-actions .btn-sm {
+    padding: 0 10px;
+    min-width: 36px;
   }
 
   /* Short tab label on mobile, hide full */
