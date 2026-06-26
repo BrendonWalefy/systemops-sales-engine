@@ -95,7 +95,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     date?: string;
     time?: string;
     professionalId?: string;
-  }>(() => ({ open: openNew === true }));
+  }>({ open: false });
 
   const [blockModal, setBlockModal] = useState<{
     open: boolean;
@@ -125,11 +125,6 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  useEffect(() => {
-    if (!openNew) return;
-    setAppointmentModal((current) => (current.open ? current : { ...current, open: true }));
-  }, [openNew]);
 
   const fetchEvents = useCallback(async (
     from: string,
@@ -223,6 +218,8 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
   }, [resourceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const agendaVersionRef = useRef<string | null>(null);
+  const shouldOpenAppointmentModal =
+    appointmentModal.open || openNew === true || searchParams.get("new") === "1";
 
   const closeAppointmentModal = useCallback(() => {
     setAppointmentModal({ open: false });
@@ -530,7 +527,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
       </button>
 
       {/* ── Modals ── */}
-      {appointmentModal.open && (
+      {shouldOpenAppointmentModal && (
         <AppointmentModal
           defaultDate={appointmentModal.date}
           defaultTime={appointmentModal.time}
