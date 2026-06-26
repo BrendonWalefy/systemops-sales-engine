@@ -439,7 +439,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
             <div className="calendar-loading">Carregando agenda...</div>
           ) : view === "month" && isMobile ? (
             <MobileMonthView
-              events={events}
+              events={allCalendarEvents}
               timezone={timezone}
               onEventClick={(event) => openDrawer(event)}
               onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
@@ -447,14 +447,14 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
             />
           ) : view === "week" && isMobile ? (
             <MobileWeekView
-              events={events}
+              events={allCalendarEvents}
               timezone={timezone}
               onEventClick={(event) => openDrawer(event)}
               onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
             />
           ) : view === "day" && isMobile ? (
             <MobileDayView
-              events={events}
+              events={allCalendarEvents}
               timezone={timezone}
               onEventClick={(event) => openDrawer(event)}
               onQuickConfirm={handleQuickConfirm}
