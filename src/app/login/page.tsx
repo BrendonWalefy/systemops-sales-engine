@@ -1,4 +1,5 @@
 import { LoginForm } from "./LoginForm";
+import { SystemOpsBrand } from "@/components/systemops-brand";
 
 export default async function LoginPage({
   searchParams,
@@ -71,21 +72,22 @@ export default async function LoginPage({
         }
 
         .lp-wordmark {
-          display: flex;
-          align-items: center;
-          gap: 9px;
-          font-size: 14px;
-          font-weight: 700;
-          letter-spacing: -0.02em;
-          color: rgba(250,250,250,0.8);
-          text-decoration: none;
+          display: inline-flex;
+          width: min(290px, 100%);
         }
 
-        /* ── S MARK ── */
+        .lp-wordmark-image {
+          display: block;
+          width: 100%;
+          height: auto;
+          border-radius: 18px;
+          box-shadow: 0 18px 50px rgba(0,0,0,0.22);
+        }
+
         .lp-s-wrap {
           position: relative;
-          width: 150px;
-          height: 150px;
+          width: 190px;
+          height: 190px;
           margin-bottom: 40px;
           display: flex;
           align-items: center;
@@ -105,6 +107,13 @@ export default async function LoginPage({
           z-index: 1;
           filter: drop-shadow(0 0 18px rgba(52,211,153,0.38));
           animation: lp-float 7s ease-in-out infinite;
+        }
+
+        .lp-s-image {
+          width: 138px;
+          height: auto;
+          object-fit: contain;
+          border-radius: 32px;
         }
 
         @keyframes lp-breathe {
@@ -215,9 +224,17 @@ export default async function LoginPage({
           }
 
           .lp-s-wrap {
-            width: 90px;
-            height: 90px;
+            width: 120px;
+            height: 120px;
             margin-bottom: 24px;
+          }
+
+          .lp-wordmark {
+            width: min(230px, 100%);
+          }
+
+          .lp-s-image {
+            width: 92px;
           }
 
           .lp-headline { font-size: 30px; }
@@ -237,42 +254,14 @@ export default async function LoginPage({
         <aside className="lp-brand">
           <div className="lp-brand-top">
             <span className="lp-wordmark">
-              <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
-                <rect width="32" height="32" rx="7" fill="#18181b" />
-                <defs>
-                  <linearGradient id="lp-wm" x1="21" y1="9" x2="11" y2="23" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stopColor="#34d399" />
-                    <stop offset="100%" stopColor="#059669" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M21 9C21 5.5 11 5.5 11 11C11 16.5 21 15.5 21 21C21 26.5 11 26.5 11 23"
-                  stroke="url(#lp-wm)"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-              SystemOps
+              <SystemOpsBrand variant="wordmark" className="lp-wordmark-image" priority />
             </span>
           </div>
 
           <div className="lp-brand-center">
             <div className="lp-s-wrap">
               <div className="lp-s-glow" aria-hidden="true" />
-              <svg className="lp-s-svg" width="116" height="116" viewBox="0 0 32 32" fill="none">
-                <defs>
-                  <linearGradient id="lp-sbig" x1="21" y1="9" x2="11" y2="23" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stopColor="#34d399" />
-                    <stop offset="100%" stopColor="#059669" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M21 9C21 5.5 11 5.5 11 11C11 16.5 21 15.5 21 21C21 26.5 11 26.5 11 23"
-                  stroke="url(#lp-sbig)"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <SystemOpsBrand variant="icon" className="lp-s-svg lp-s-image" priority />
             </div>
 
             <h1 className="lp-headline">

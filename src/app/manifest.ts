@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Recepção",
-    short_name: "Recepção",
+    name: "SystemOps",
+    short_name: "SystemOps",
     description: "Recepcionista autônoma para clínicas",
     start_url: "/app/inbox",
     display: "standalone",

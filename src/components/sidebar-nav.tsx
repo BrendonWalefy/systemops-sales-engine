@@ -2,11 +2,12 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Inbox, Home, Settings2, CalendarDays, Zap, LogOut, Users, Workflow, Plus, LayoutGrid, RefreshCw } from "lucide-react";
+import { Inbox, Home, Settings2, CalendarDays, LogOut, Users, Workflow, Plus, LayoutGrid, RefreshCw } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
 import { BellToggle } from "./bell-toggle";
 import { haptic } from "@/lib/haptic";
+import { SystemOpsBrand } from "./systemops-brand";
 
 const NAV_ITEMS: { href: string; label: string; Icon: React.ElementType; mobileHidden?: boolean }[] = [
   { href: "/app/dashboard", label: "Início", Icon: Home },
@@ -58,10 +59,10 @@ function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, cl
     <aside className="sidebar">
       <div className="brand-block">
         <div className="brand-mark">
-          <Zap size={18} strokeWidth={2.5} />
+          <SystemOpsBrand variant="icon" className="brand-mark-image" priority />
         </div>
         <div className="brand-copy">
-          <strong>SystemOps</strong>
+          <SystemOpsBrand variant="wordmarkCompact" className="brand-wordmark" />
           <span>Command Center</span>
         </div>
       </div>

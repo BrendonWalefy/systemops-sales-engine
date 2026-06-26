@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = "systemops-app-shell-v1";
-const RUNTIME_CACHE = "systemops-runtime-v1";
+const APP_SHELL_CACHE = "systemops-app-shell-v2";
+const RUNTIME_CACHE = "systemops-runtime-v2";
 const APP_SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/icons/apple-touch-icon.png",

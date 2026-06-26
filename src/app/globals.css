@@ -293,6 +293,28 @@ button:disabled {
     linear-gradient(145deg, color-mix(in srgb, var(--accent) 22%, transparent), transparent),
     var(--surface-raised);
   color: var(--accent-strong);
+  overflow: hidden;
+}
+
+.systemops-brand {
+  display: inline-flex;
+  align-items: center;
+}
+
+.systemops-brand--lockup {
+  gap: 10px;
+}
+
+.systemops-brand__icon,
+.systemops-brand__wordmark {
+  display: block;
+  height: auto;
+}
+
+.brand-mark-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .side-nav {
@@ -6226,6 +6248,26 @@ textarea:focus {
   min-width: 0;
 }
 
+.brand-wordmark {
+  display: block;
+  width: min(100%, 136px);
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0,0,0,0.2);
+}
+
+.brand-block--owner {
+  align-items: center;
+}
+
+.brand-copy--owner {
+  gap: 4px;
+}
+
+.owner-brand-wordmark {
+  width: min(100%, 144px);
+}
+
 .brand-copy strong {
   color: var(--text);
   font-size: 15px;
@@ -6650,6 +6692,10 @@ textarea:focus {
   min-width: 0;
 }
 
+.command-title-brand {
+  margin-bottom: 10px;
+}
+
 .command-dashboard-title > span,
 .command-panel-header span,
 .command-activity-header span {
@@ -6675,6 +6721,17 @@ textarea:focus {
   color: var(--command-muted);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.command-brand-lockup .systemops-brand__icon {
+  width: 20px;
+  border-radius: 7px;
+}
+
+.command-brand-lockup .systemops-brand__wordmark {
+  width: 128px;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.16);
 }
 
 .command-dashboard-actions {
@@ -7688,6 +7745,26 @@ textarea:focus {
     font-weight: 820;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+
+  .command-mobile-brand {
+    display: inline-flex;
+    margin-bottom: 2px;
+  }
+
+  .command-brand-lockup--mobile {
+    gap: 8px;
+  }
+
+  .command-brand-lockup--mobile .systemops-brand__icon {
+    width: 18px;
+    border-radius: 6px;
+  }
+
+  .command-brand-lockup--mobile .systemops-brand__wordmark {
+    width: 116px;
+    border-radius: 10px;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.16);
   }
 
   .command-mobile-header strong {

@@ -21,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
+import { SystemOpsBrand } from "@/components/systemops-brand";
 import { DashboardPeriodToggle, type PeriodKey } from "./DashboardPeriodToggle";
 import {
   type MobileAiInsight,
@@ -665,7 +666,9 @@ function DashboardHeader({
       <section className="command-mobile-hero" aria-label="Resumo do dashboard">
         <div className="command-mobile-header">
           <div className="command-mobile-header-copy">
-            <span>SystemOps</span>
+            <div className="command-mobile-brand">
+              <SystemOpsBrand variant="lockup" className="command-brand-lockup command-brand-lockup--mobile" />
+            </div>
             <strong>{greeting}</strong>
             <p>Aqui está o desempenho comercial da {clinicLabel} hoje.</p>
           </div>
@@ -686,6 +689,9 @@ function DashboardHeader({
 
       <header className="command-dashboard-header">
         <div className="command-dashboard-title">
+          <div className="command-title-brand">
+            <SystemOpsBrand variant="lockup" className="command-brand-lockup" />
+          </div>
           <h1>{greeting}</h1>
           <p>Aqui está o desempenho comercial da {clinicLabel} hoje.</p>
         </div>

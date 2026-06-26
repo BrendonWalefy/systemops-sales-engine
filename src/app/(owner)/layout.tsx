@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Zap, LayoutGrid, LogOut, TrendingUp, Activity } from "lucide-react";
+import { LayoutGrid, LogOut, TrendingUp, Activity } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
+import { SystemOpsBrand } from "@/components/systemops-brand";
 
 export default async function OwnerLayout({ children }: { children: ReactNode }) {
   const jar = await cookies();
@@ -13,8 +14,13 @@ export default async function OwnerLayout({ children }: { children: ReactNode })
   return (
     <div className="clinic-layout">
       <aside className="sidebar">
-        <div className="brand-mark">
-          <Zap size={18} strokeWidth={2.5} />
+        <div className="brand-block brand-block--owner">
+          <div className="brand-mark">
+            <SystemOpsBrand variant="icon" className="brand-mark-image" priority />
+          </div>
+          <div className="brand-copy brand-copy--owner">
+            <SystemOpsBrand variant="wordmarkCompact" className="brand-wordmark owner-brand-wordmark" />
+          </div>
         </div>
 
         <div className="owner-sidebar-label">
