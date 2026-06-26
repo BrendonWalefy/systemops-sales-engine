@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
 import { and, eq, desc, inArray, gte } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
-import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
 import { getInboxVersion } from "./get-inbox-version";
 
@@ -175,9 +174,6 @@ export default async function InboxPage({
   return (
     <div className="inbox-shell">
       <InboxPoller initialVersion={initialVersion} />
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 28px 0" }}>
-        <EnableNotificationsButton />
-      </div>
       <InboxClient
         rows={allRows}
         lastMsgMap={lastMsgMap}

@@ -16,6 +16,7 @@ import {
 import { isConversationUnreadByClinic } from "./inbox-visibility";
 import { tempKey, tempLabel, avatarColor, relativeTime, conversationCategoryLabel } from "./inbox-utils";
 import { LeadAvatar } from "./[conversationId]/LeadAvatar";
+import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 
 export type ConvRow = {
   convId: string;
@@ -775,6 +776,7 @@ export function InboxClient({
             )}
           </div>
         </div>
+        <EnableNotificationsButton />
       </div>
 
       <div className="inbox-tabs-bar" style={{ paddingBottom: 0, alignItems: "center" }}>
