@@ -23,6 +23,7 @@ import {
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
 import { SystemOpsBrand } from "@/components/systemops-brand";
 import { DashboardPeriodToggle, type PeriodKey } from "./DashboardPeriodToggle";
+import { calculateFunnelStagePercentages, desktopFunnelVisualWidth } from "./funnel-metrics";
 import {
   type MobileAiInsight,
   MobileDashboardTabs,
@@ -895,7 +896,7 @@ function RevenueFunnel({
   safePeriod: PeriodKey;
 }) {
   const stages = buildRevenueStages(data.periodFunnel);
-  const max = Math.max(stages[0]?.value ?? 0, 1);
+  const stagePercentages = calculateFunnelStagePercentages(stages.map((stage) => stage.value));
   const totalPipeline = revenueData ? revenueData.potentialCents + revenueData.confirmedCents : 0;
 
   return (
@@ -909,14 +910,13 @@ function RevenueFunnel({
       </div>
 
       <div className="command-funnel">
-        {stages.map((stage) => {
-          const percent = max > 0 ? (stage.value / max) * 100 : 0;
-          const visualWidth = Math.max(22, percent);
+        {stages.map((stage, index) => {
+          const percent = stagePercentages[index] ?? 0;
           return (
             <div key={stage.label} className="command-funnel-line">
               <div
                 className="command-funnel-stage"
-                style={{ "--stage-width": `${visualWidth}%` } as CSSProperties}
+                style={{ "--stage-width": `${desktopFunnelVisualWidth(index)}%` } as CSSProperties}
               >
                 <span>{stage.label}</span>
                 <strong>{compactNumber(stage.value)}</strong>
