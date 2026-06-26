@@ -102,6 +102,8 @@ Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou de
 - Paciente pós-procedimento perguntando sobre preço de manutenção/ajuste/acompanhamento para serviço que já realizou, especialmente quando menciona restrição logística (mora longe, não pode ir em dois dias diferentes, quer fazer tudo no mesmo dia) → needs_human com handoffReason descrevendo a situação.
 - Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do resultado pessoal", "Lead quer falar com especialista", "Lead pediu condição especial de pagamento", "Lead propôs acordo de troca de serviços", "Paciente pós-procedimento — preços de manutenção e restrição logística"). Máximo 60 caracteres.
 
+EXCEÇÃO CRÍTICA — primeiro contato via anúncio: Se o CONTEXTO indicar que a recepcionista ainda não respondeu nesta conversa (primeiro contato), frases como "há alguém disponível para conversar?", "tem alguém atendendo?", "posso falar com alguém?", "tem atendimento?" são aberturas naturais de quem clicou em um anúncio do WhatsApp — NÃO são pedidos para falar com um especialista específico. Neste caso: (a) se a mensagem contém uma pergunta real de produto ou serviço, use o intent correspondente (price_inquiry, general_question, etc.); (b) se não contém outra pergunta específica, use "greeting". Só use needs_human em primeiro contato quando o lead pedir explicitamente algo que só um humano pode entregar (documento, foto pessoal, desconto, condição especial).
+
 REGRA PARA unclear:
 - Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.
 
@@ -215,7 +217,14 @@ export class IntentClassifier {
       })
       .join("\n");
 
+    // Primeiro contato: nenhuma mensagem de agente/clínica no histórico ainda.
+    // Frases de disponibilidade ("há alguém?") são aberturas de anúncio, não pedidos de handoff.
+    const isFirstContact = conversationHistory.every((m) => m.author === "lead");
+
     const userContent = [
+      isFirstContact
+        ? "CONTEXTO: Primeiro contato deste lead — a recepcionista ainda não respondeu nesta conversa. Frases de disponibilidade ('há alguém disponível?', 'tem alguém atendendo?') são aberturas naturais de anúncio, não pedidos de handoff humano."
+        : "",
       hasPendingSlotOffer
         ? "CONTEXTO: Há uma oferta de horários pendente aguardando confirmação do lead."
         : "",
