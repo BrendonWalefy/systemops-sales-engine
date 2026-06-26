@@ -58,7 +58,10 @@ export function TreatmentRow({
     treatment.maxPriceCents == null;
 
   useEffect(() => {
-    if (state?.success) setEditing(false);
+    if (!state?.success) return;
+
+    const timeoutId = window.setTimeout(() => setEditing(false), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [state]);
 
   const rowBorder = isLast ? "none" : `1px solid ${S.border}`;

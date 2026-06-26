@@ -41,10 +41,12 @@ export function AddTreatmentForm({
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (state?.success) {
-      formRef.current?.reset();
-      setOpen(false);
-    }
+    if (!state?.success) return;
+
+    formRef.current?.reset();
+    const timeoutId = window.setTimeout(() => setOpen(false), 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [state]);
 
   useEffect(() => {
