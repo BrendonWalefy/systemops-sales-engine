@@ -216,4 +216,26 @@ export class InternalCalendarGateway implements CalendarGateway {
   async deleteBlockEvent(input: { calendarEventId: string }): Promise<void> {
     await db.delete(calendarBlocks).where(eq(calendarBlocks.id, input.calendarEventId));
   }
+
+  async updateBlockEvent(input: {
+    calendarEventId: string;
+    startsAt: Date;
+    endsAt: Date;
+    reason: string;
+  }): Promise<BlockEvent> {
+    const [row] = await db
+      .update(calendarBlocks)
+      .set({ startsAt: input.startsAt, endsAt: input.endsAt, reason: input.reason })
+      .where(eq(calendarBlocks.id, input.calendarEventId))
+      .returning();
+
+    if (!row) throw new Error(`Block not found: ${input.calendarEventId}`);
+
+    return {
+      calendarEventId: row.id,
+      startsAt: row.startsAt,
+      endsAt: row.endsAt,
+      reason: row.reason,
+    };
+  }
 }

@@ -126,6 +126,7 @@ function makeInternalGateway(opts: { isSlotFree?: boolean } = {}) {
     async listBlockEvents() { return []; },
     async createBlockEvent() { throw new Error("not used"); },
     async deleteBlockEvent() {},
+    async updateBlockEvent(): Promise<never> { throw new Error("not implemented"); },
   };
   return { gateway, calls };
 }

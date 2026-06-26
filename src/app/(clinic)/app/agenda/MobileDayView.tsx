@@ -13,6 +13,7 @@ import {
   Clock,
   Users,
   Sparkles,
+  Ban,
 } from "lucide-react";
 import type { AppointmentEvent } from "./types";
 
@@ -93,30 +94,41 @@ export function MobileDayView({
   const [selectedDate, setSelectedDate] = useState(today);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // ── Group events by date ──
-  const eventsByDate = useMemo(() => {
-    const map = new Map<string, AppointmentEvent[]>();
+  // ── Group events by date (appointments and blocks separate) ──
+  const { eventsByDate, blocksByDate } = useMemo(() => {
+    const evMap = new Map<string, AppointmentEvent[]>();
+    const blMap = new Map<string, AppointmentEvent[]>();
     for (const e of events) {
-      if (e.status === "block") continue;
       const ds = eventDateStr(e, timezone);
-      if (!map.has(ds)) map.set(ds, []);
-      map.get(ds)!.push(e);
+      if (e.status === "block") {
+        if (!blMap.has(ds)) blMap.set(ds, []);
+        blMap.get(ds)!.push(e);
+      } else {
+        if (!evMap.has(ds)) evMap.set(ds, []);
+        evMap.get(ds)!.push(e);
+      }
     }
-    return map;
+    return { eventsByDate: evMap, blocksByDate: blMap };
   }, [events, timezone]);
 
-  // ── Day events sorted ──
-  const dayEvents = useMemo(() => {
+  // ── Day appointments only (for stats) ──
+  const dayAppointments = useMemo(() => {
     const evs = eventsByDate.get(selectedDate) ?? [];
     return [...evs].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   }, [eventsByDate, selectedDate]);
 
-  // ── Stats ──
+  // ── All day events sorted (appointments + blocks interleaved) ──
+  const dayEvents = useMemo(() => {
+    const blks = blocksByDate.get(selectedDate) ?? [];
+    return [...dayAppointments, ...blks].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  }, [dayAppointments, blocksByDate, selectedDate]);
+
+  // ── Stats (appointments only, blocks excluded) ──
   const stats = useMemo(() => ({
-    total:     dayEvents.length,
-    pending:   dayEvents.filter((e) => e.status === "scheduled").length,
-    completed: dayEvents.filter((e) => e.status === "completed").length,
-  }), [dayEvents]);
+    total:     dayAppointments.length,
+    pending:   dayAppointments.filter((e) => e.status === "scheduled").length,
+    completed: dayAppointments.filter((e) => e.status === "completed").length,
+  }), [dayAppointments]);
 
   // ── Date labels ──
   const dateLabel = useMemo(() => {
@@ -238,6 +250,33 @@ export function MobileDayView({
           </div>
         ) : (
           dayEvents.map((event) => {
+            if (event.status === "block") {
+              return (
+                <div
+                  key={event.id}
+                  className="mmv-event-row"
+                  style={{ "--event-border": "#6b7280" } as React.CSSProperties}
+                  onClick={() => onEventClick(event)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === "Enter" && onEventClick(event)}
+                >
+                  <div className="mmv-event-time">{formatTime(event, timezone)}</div>
+                  <div className="mmv-event-avatar" aria-hidden style={{ color: "#6b7280" }}>
+                    <Ban size={15} />
+                  </div>
+                  <div className="mmv-event-body">
+                    <span className="mmv-event-name" style={{ color: "#9ca3af" }}>
+                      {event.leadName ?? "Horário bloqueado"}
+                    </span>
+                  </div>
+                  <span className="mmv-badge" style={{ background: "#6b728020", color: "#9ca3af", border: "1px solid #6b728040" }}>
+                    Bloqueio
+                  </span>
+                </div>
+              );
+            }
+
             const cat          = getCategory(event);
             const color        = CATEGORY_COLORS[cat];
             const time         = formatTime(event, timezone);
