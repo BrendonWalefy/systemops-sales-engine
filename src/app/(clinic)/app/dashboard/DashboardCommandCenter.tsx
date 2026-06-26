@@ -666,11 +666,9 @@ function DashboardHeader({
       <section className="command-mobile-hero" aria-label="Resumo do dashboard">
         <div className="command-mobile-header">
           <div className="command-mobile-header-copy">
-            <div className="command-mobile-brand">
-              <SystemOpsBrand variant="lockup" className="command-brand-lockup command-brand-lockup--mobile" />
-            </div>
+            <SystemOpsBrand variant="wordmarkText" className="command-mobile-wordmark" priority />
             <strong>{greeting}</strong>
-            <p>Aqui está o desempenho comercial da {clinicLabel} hoje.</p>
+            <p>{clinicLabel}</p>
           </div>
           <div className="command-mobile-header-aside">
             <MobileDashboardAvatar
@@ -689,9 +687,6 @@ function DashboardHeader({
 
       <header className="command-dashboard-header">
         <div className="command-dashboard-title">
-          <div className="command-title-brand">
-            <SystemOpsBrand variant="lockup" className="command-brand-lockup" />
-          </div>
           <h1>{greeting}</h1>
           <p>Aqui está o desempenho comercial da {clinicLabel} hoje.</p>
         </div>

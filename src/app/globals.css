@@ -6244,16 +6244,8 @@ textarea:focus {
 
 .brand-copy {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
-}
-
-.brand-wordmark {
-  display: block;
-  width: min(100%, 136px);
-  height: auto;
-  border-radius: 12px;
-  box-shadow: 0 14px 36px rgba(0,0,0,0.2);
 }
 
 .brand-block--owner {
@@ -6261,25 +6253,22 @@ textarea:focus {
 }
 
 .brand-copy--owner {
-  gap: 4px;
-}
-
-.owner-brand-wordmark {
-  width: min(100%, 144px);
+  gap: 1px;
 }
 
 .brand-copy strong {
   color: var(--text);
-  font-size: 15px;
-  font-weight: 780;
-  line-height: 1.05;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 
 .brand-copy span {
-  color: var(--accent-strong);
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--muted) 82%, white 18%);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   line-height: 1.1;
   text-transform: uppercase;
 }
@@ -6692,10 +6681,6 @@ textarea:focus {
   min-width: 0;
 }
 
-.command-title-brand {
-  margin-bottom: 10px;
-}
-
 .command-dashboard-title > span,
 .command-panel-header span,
 .command-activity-header span {
@@ -6708,7 +6693,7 @@ textarea:focus {
 }
 
 .command-dashboard-title h1 {
-  margin: 5px 0 6px;
+  margin: 0 0 6px;
   color: var(--command-text);
   font-size: clamp(28px, 2.2vw, 36px);
   font-weight: 780;
@@ -7704,9 +7689,9 @@ textarea:focus {
   .command-mobile-hero {
     position: relative;
     display: grid;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 0;
-    padding: 14px 16px;
+    padding: 12px 14px;
     border: 1px solid var(--command-line);
     border-radius: 12px;
     background:
@@ -7720,7 +7705,7 @@ textarea:focus {
 
   .command-mobile-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
     width: 100%;
@@ -7729,7 +7714,7 @@ textarea:focus {
 
   .command-mobile-header-copy {
     display: grid;
-    gap: 4px;
+    gap: 2px;
     min-width: 0;
     flex: 1;
   }
@@ -7739,47 +7724,28 @@ textarea:focus {
     padding-top: 2px;
   }
 
-  .command-mobile-header span {
-    color: var(--command-accent-strong);
-    font-size: 9px;
-    font-weight: 820;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .command-mobile-brand {
-    display: inline-flex;
-    margin-bottom: 2px;
-  }
-
-  .command-brand-lockup--mobile {
-    gap: 8px;
-  }
-
-  .command-brand-lockup--mobile .systemops-brand__icon {
-    width: 18px;
-    border-radius: 6px;
-  }
-
-  .command-brand-lockup--mobile .systemops-brand__wordmark {
+  .command-mobile-wordmark {
+    display: block;
     width: 116px;
-    border-radius: 10px;
-    box-shadow: 0 8px 22px rgba(0,0,0,0.16);
+    height: auto;
+    margin-bottom: 1px;
+    border-radius: 0;
   }
 
   .command-mobile-header strong {
     color: var(--command-text);
-    font-size: 22px;
+    margin-top: 3px;
+    font-size: 19px;
     font-weight: 780;
-    line-height: 1.08;
+    line-height: 1.04;
     letter-spacing: -0.01em;
   }
 
   .command-mobile-header p {
     margin: 0;
     color: var(--command-muted);
-    font-size: 12px;
-    line-height: 1.4;
+    font-size: 11px;
+    line-height: 1.28;
   }
 
   .command-mobile-hero-footer {
@@ -7789,9 +7755,9 @@ textarea:focus {
   }
 
   .command-mobile-ia-pill {
-    min-height: 22px;
+    min-height: 20px;
     border-radius: 999px;
-    padding: 0 7px;
+    padding: 0 6px;
     font-size: 9px;
     font-weight: 800;
     letter-spacing: 0.05em;

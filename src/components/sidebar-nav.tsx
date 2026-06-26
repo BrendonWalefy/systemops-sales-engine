@@ -62,7 +62,7 @@ function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, cl
           <SystemOpsBrand variant="icon" className="brand-mark-image" priority />
         </div>
         <div className="brand-copy">
-          <SystemOpsBrand variant="wordmarkCompact" className="brand-wordmark" />
+          <strong>SystemOps</strong>
           <span>Command Center</span>
         </div>
       </div>

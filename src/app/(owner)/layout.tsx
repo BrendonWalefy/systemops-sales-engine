@@ -19,7 +19,8 @@ export default async function OwnerLayout({ children }: { children: ReactNode })
             <SystemOpsBrand variant="icon" className="brand-mark-image" priority />
           </div>
           <div className="brand-copy brand-copy--owner">
-            <SystemOpsBrand variant="wordmarkCompact" className="brand-wordmark owner-brand-wordmark" />
+            <strong>SystemOps</strong>
+            <span>Command Center</span>
           </div>
         </div>
 

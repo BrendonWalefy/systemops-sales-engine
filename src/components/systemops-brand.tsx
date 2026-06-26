@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-type Variant = "icon" | "wordmark" | "wordmarkCompact" | "lockup";
+type Variant = "icon" | "wordmark" | "wordmarkCompact" | "wordmarkText" | "lockup";
 
 type Props = {
   variant?: Variant;
@@ -46,6 +46,19 @@ export function SystemOpsBrand({ variant = "lockup", className, priority = false
         alt="SystemOps"
         width={860}
         height={200}
+        priority={priority}
+        className={joinClassNames("systemops-brand__wordmark", className)}
+      />
+    );
+  }
+
+  if (variant === "wordmarkText") {
+    return (
+      <Image
+        src="/brand/systemops-wordmark-text.png"
+        alt="SystemOps"
+        width={860}
+        height={124}
         priority={priority}
         className={joinClassNames("systemops-brand__wordmark", className)}
       />
