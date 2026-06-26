@@ -491,9 +491,13 @@
 /* ── Agenda layout v2 ──────────────────────────────────────────── */
 
 .agenda-v2 {
+  --agenda-mobile-nav-safe-bottom: 0px;
+  --agenda-mobile-nav-height: 0px;
+  --agenda-mobile-nav-clearance: 0px;
   display: flex;
   flex-direction: column;
   gap: 0;
+  box-sizing: border-box;
   /* 100dvh: preenche exatamente a viewport visível — sem barra lateral superior */
   height: 100dvh;
   padding: 20px 24px 0;
@@ -554,6 +558,9 @@
 .agenda-v2-calendar {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   /* 12px de respiro entre o calendário e a borda inferior no desktop */
   padding-bottom: 12px;
 }
@@ -1510,14 +1517,20 @@ select.field-input option {
     padding-bottom: 0;
   }
 
-  /* Bug 8+9: height fixo excluindo bottom nav; safe-area-inset-top para o notch */
+  /* Usa a mesma reserva vertical da bottom bar global para todos os iPhones. */
   .agenda-v2 {
-    height: calc(100dvh - 60px - env(safe-area-inset-bottom));
+    --agenda-mobile-nav-safe-bottom: max(env(safe-area-inset-bottom), 8px);
+    --agenda-mobile-nav-height: 64px;
+    --agenda-mobile-nav-clearance: calc(
+      var(--agenda-mobile-nav-height) + var(--agenda-mobile-nav-safe-bottom) + 12px
+    );
+    height: 100dvh;
+    min-height: 100dvh;
     overflow: hidden;
     padding:
       max(14px, env(safe-area-inset-top))
       max(10px, env(safe-area-inset-right))
-      0
+      calc(var(--agenda-mobile-nav-clearance) + 10px)
       max(10px, env(safe-area-inset-left));
     /* fundo mais escuro no mobile para contrastar com os glass cards */
     background:
@@ -1587,6 +1600,7 @@ select.field-input option {
 
   /* Calendar area: flex:1 cuida do height com o pai fixo — sem padding de respiro */
   .agenda-v2-calendar {
+    height: 100%;
     min-height: 0;
     min-width: 0;
     padding-bottom: 0;
@@ -2566,7 +2580,7 @@ select.field-input option {
   min-width: 0;
   width: 100%;
   overflow: hidden;
-  padding-bottom: calc(76px + max(env(safe-area-inset-bottom), 8px));
+  padding-bottom: 0;
 }
 
 /* Stats bar */
@@ -3059,7 +3073,7 @@ select.field-input option {
   min-width: 0;
   width: 100%;
   overflow: hidden;
-  padding-bottom: calc(76px + max(env(safe-area-inset-bottom), 8px));
+  padding-bottom: 0;
 }
 
 /* Range nav */
@@ -3351,7 +3365,7 @@ select.field-input option {
   overflow-x: hidden;
   overflow-y: hidden;
   gap: 8px;
-  padding-bottom: calc(76px + max(env(safe-area-inset-bottom), 8px));
+  padding-bottom: 0;
 }
 
 /* Date navigation — glass card */
