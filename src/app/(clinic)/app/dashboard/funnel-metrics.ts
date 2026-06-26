@@ -1,4 +1,5 @@
-export const DESKTOP_FUNNEL_VISUAL_WIDTHS = [430, 360, 295, 245, 205] as const;
+// Percentage widths (relative to container) — ensures funnel shape at any panel size
+export const DESKTOP_FUNNEL_VISUAL_WIDTHS = [100, 83, 68, 57, 47] as const;
 
 export function calculateFunnelStagePercentages(values: number[]): number[] {
   if (values.length === 0) return [];

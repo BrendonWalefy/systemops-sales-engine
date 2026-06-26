@@ -7374,13 +7374,13 @@ textarea:focus {
 
 .command-funnel-stage {
   display: grid;
-  width: min(100%, var(--stage-width));
+  width: var(--stage-width, 100%);
   min-height: 76px;
   place-items: center;
   justify-self: center;
   box-sizing: border-box;
   padding: 12px 24px 10px;
-  clip-path: polygon(2% 0, 98% 0, 88% 100%, 12% 100%);
+  clip-path: polygon(3% 0, 97% 0, 85% 100%, 15% 100%);
   background:
     linear-gradient(180deg, rgba(52, 211, 153, 0.92), rgba(13, 148, 102, 0.82)),
     var(--command-accent);
@@ -7485,6 +7485,7 @@ textarea:focus {
 }
 
 .command-activity-panel {
+  margin-bottom: 14px;
   overflow: hidden;
 }
 
