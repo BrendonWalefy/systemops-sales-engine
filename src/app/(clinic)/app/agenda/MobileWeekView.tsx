@@ -96,6 +96,56 @@ function eventPosition(
   } catch { return null; }
 }
 
+// ── Overlap layout ────────────────────────────────────────────────────────────
+
+function computeColumnLayouts(
+  events: AppointmentEvent[],
+  tz: string,
+): Map<string, { col: number; total: number }> {
+  const result = new Map<string, { col: number; total: number }>();
+  if (events.length === 0) return result;
+
+  type Item = { id: string; start: number; end: number };
+  const items: Item[] = events
+    .map((e) => {
+      try {
+        const [sh, sm] = formatHourMin(e.startsAt, tz).split(":").map(Number);
+        const [eh, em] = formatHourMin(e.endsAt,   tz).split(":").map(Number);
+        const start = sh * 60 + sm;
+        const end   = Math.max(eh * 60 + em, start + 30);
+        return { id: e.id, start, end };
+      } catch {
+        return { id: e.id, start: 0, end: 30 };
+      }
+    })
+    .sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+
+  // Greedy column assignment
+  const colEnds: number[] = [];
+  const colOf = new Map<string, number>();
+
+  for (const item of items) {
+    const freeCol = colEnds.findIndex((end) => end <= item.start);
+    const col     = freeCol >= 0 ? freeCol : colEnds.length;
+    if (freeCol >= 0) colEnds[freeCol] = item.end;
+    else colEnds.push(item.end);
+    colOf.set(item.id, col);
+  }
+
+  // Per-event total = active concurrent columns at that event's time range
+  for (const item of items) {
+    const active = new Set<number>();
+    for (const other of items) {
+      if (other.start < item.end && other.end > item.start) {
+        active.add(colOf.get(other.id) ?? 0);
+      }
+    }
+    result.set(item.id, { col: colOf.get(item.id) ?? 0, total: Math.max(1, active.size) });
+  }
+
+  return result;
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 type Props = {
@@ -254,8 +304,9 @@ export function MobileWeekView({
 
             {/* Per-day columns */}
             {weekDays.map((day, colIdx) => {
-              const ds     = toDateStr(day);
-              const colEvs = (eventsByDate.get(ds) ?? []).filter(filterEvent);
+              const ds      = toDateStr(day);
+              const colEvs  = (eventsByDate.get(ds) ?? []).filter(filterEvent);
+              const layouts = computeColumnLayouts(colEvs, timezone);
 
               return (
                 <div
@@ -273,9 +324,12 @@ export function MobileWeekView({
                   {colEvs.map((event) => {
                     const pos = eventPosition(event, timezone);
                     if (!pos) return null;
-                    const cat   = getCategory(event);
-                    const color = CATEGORY_COLORS[cat];
+                    const cat        = getCategory(event);
+                    const color      = CATEGORY_COLORS[cat];
                     const startLabel = formatHourMin(event.startsAt, timezone);
+                    const layout     = layouts.get(event.id) ?? { col: 0, total: 1 };
+                    const leftPct    = layout.col / layout.total;
+                    const rightPct   = 1 - (layout.col + 1) / layout.total;
 
                     return (
                       <div
@@ -284,6 +338,8 @@ export function MobileWeekView({
                         style={{
                           top:             pos.top,
                           height:          pos.height,
+                          left:            `calc(${leftPct * 100}% + 2px)`,
+                          right:           `calc(${rightPct * 100}% + 2px)`,
                           background:      `${color}1e`,
                           borderLeftColor: color,
                         }}

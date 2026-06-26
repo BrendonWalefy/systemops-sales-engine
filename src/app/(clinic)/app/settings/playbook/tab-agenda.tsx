@@ -1,6 +1,6 @@
 "use client";
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Clock, Phone, Timer } from "lucide-react";
+import { Timer } from "lucide-react";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import { S, SettingsCard, SettingsSection, SaveStatus, SettingsInput } from "./settings-primitives";
 
@@ -16,9 +16,17 @@ type ClinicData = {
   mediaTakeoverTtlHours: number | null;
 };
 
+const labelStyle = {
+  margin: "0 0 6px",
+  fontSize: S.fs.label,
+  fontWeight: 600 as const,
+  color: S.textMuted,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
+};
+
 function NumericRow({
   label,
-  description,
   value,
   onChange,
   min,
@@ -29,7 +37,6 @@ function NumericRow({
   inputRef,
 }: {
   label: string;
-  description: string;
   value: number;
   onChange: (v: number) => void;
   min: number;
@@ -45,16 +52,12 @@ function NumericRow({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: "12px",
-        paddingTop: "12px",
-        paddingBottom: "12px",
+        gap: "16px",
+        padding: "12px 18px",
         borderBottom: last ? "none" : `1px solid ${S.border}`,
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 500, color: S.text }}>{label}</p>
-        <p style={{ margin: "2px 0 0", fontSize: S.fs.desc, color: S.textSec }}>{description}</p>
-      </div>
+      <p style={{ margin: 0, fontSize: "13px", fontWeight: 500, color: S.text }}>{label}</p>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
         <input
           ref={inputRef as React.RefObject<HTMLInputElement>}
@@ -65,22 +68,29 @@ function NumericRow({
           step={step ?? 1}
           onChange={(e) => onChange(parseInt(e.target.value) || min)}
           style={{
-            width: "72px",
-            height: "36px",
-            background: S.card,
-            border: `1px solid ${S.border}`,
+            width: "48px",
+            height: "30px",
+            background: "rgba(0,224,178,0.08)",
+            border: "1px solid rgba(0,224,178,0.15)",
             borderRadius: "8px",
-            color: S.text,
-            fontSize: "14px",
-            padding: "0 10px",
+            color: S.teal,
+            fontWeight: 700,
+            fontSize: "13px",
+            padding: "0 6px",
             outline: "none",
             textAlign: "center",
             fontFamily: "inherit",
           }}
-          onFocus={(e) => { e.currentTarget.style.borderColor = S.borderActive; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = S.border; }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = S.borderActive;
+            e.currentTarget.style.boxShadow = `0 0 0 3px rgba(0,224,178,0.1)`;
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = "rgba(0,224,178,0.15)";
+            e.currentTarget.style.boxShadow = "none";
+          }}
         />
-        <span style={{ fontSize: "12px", color: S.textSec, whiteSpace: "nowrap" }}>{unit}</span>
+        <span style={{ fontSize: "11px", color: S.textMuted, whiteSpace: "nowrap", minWidth: "24px" }}>{unit}</span>
       </div>
     </div>
   );
@@ -139,7 +149,6 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
     }, 1000);
   }, [businessHours, receptionistPhone, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours]);
 
-  // Scroll and focus are side effects, so refs must be read after render.
   useEffect(() => {
     if (!focusTarget) return;
     const targets = {
@@ -169,34 +178,29 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
     <div style={{ display: "flex", flexDirection: "column", gap: S.sectionGap, maxWidth: "660px" }}>
 
       {/* Disponibilidade */}
-      <SettingsSection title="Disponibilidade" description="Informações que a IA usa para responder sobre horários e alertas">
-        <SettingsCard>
-          <div ref={businessHoursSectionRef} style={{ borderBottom: `1px solid ${S.border}`, paddingBottom: "12px", paddingTop: "4px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              <Clock size={14} style={{ color: S.teal, flexShrink: 0 }} />
-              <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 500, color: S.text }}>Horário de funcionamento</p>
-            </div>
+      <SettingsSection title="Disponibilidade">
+        <SettingsCard style={{ padding: 0, overflow: "hidden" }}>
+          <div ref={businessHoursSectionRef} style={{ padding: "12px 18px", borderBottom: `1px solid ${S.border}` }}>
+            <p style={labelStyle}>Horário de funcionamento</p>
             <SettingsInput
               ref={businessHoursInputRef}
               type="text"
               value={businessHours}
               onChange={(e) => { setBusinessHours(e.target.value); triggerSave({ businessHours: e.target.value }); }}
-              placeholder="Ex: Segunda a sexta das 8h às 18h. Sábado das 8h às 13h."
+              placeholder="Ex: Seg–sex 8h–18h · Sáb 8h–13h"
+              style={{ height: "36px", fontSize: "13px" }}
             />
           </div>
-
-          <div style={{ paddingTop: "12px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              <Phone size={14} style={{ color: S.teal, flexShrink: 0 }} />
-              <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 500, color: S.text }}>Telefone da recepção</p>
-            </div>
+          <div style={{ padding: "12px 18px" }}>
+            <p style={labelStyle}>Telefone da recepção</p>
             <SettingsInput
               type="tel"
               value={receptionistPhone}
               onChange={(e) => { setReceptionistPhone(e.target.value); triggerSave({ receptionistPhone: e.target.value }); }}
-              placeholder="Ex: 5511999999999 (com código do país)"
+              placeholder="Ex: 11 99000-0000"
+              style={{ height: "36px", fontSize: "13px" }}
             />
-            <p style={{ margin: "6px 0 0", fontSize: "11px", color: S.textMuted }}>
+            <p style={{ margin: "5px 0 0", fontSize: "11px", color: S.textMuted }}>
               Recebe alertas quando a IA pede atenção humana
             </p>
           </div>
@@ -205,12 +209,11 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
 
       {/* Comportamento automático */}
       <div ref={takeoverSectionRef}>
-        <SettingsSection title="Comportamento automático" description="Controla quando a IA retoma e quanto tempo reserva entre atendimentos">
-          <SettingsCard>
+        <SettingsSection title="Comportamento automático">
+          <SettingsCard style={{ padding: 0, overflow: "hidden" }}>
             <div ref={bufferSectionRef}>
               <NumericRow
                 label="Pausa automática"
-                description="Horas até a IA retomar após atendimento humano"
                 value={takeoverTtlHours}
                 onChange={(v) => { setTakeoverTtlHours(v); triggerSave({ takeoverTtlHours: v }); }}
                 min={0} max={72} unit="horas"
@@ -218,7 +221,6 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
               />
               <NumericRow
                 label="Intervalo entre atendimentos"
-                description="Buffer de tempo reservado após cada agendamento"
                 value={postAppointmentBufferMinutes}
                 onChange={(v) => { setPostAppointmentBufferMinutes(v); triggerSave({ postAppointmentBufferMinutes: v }); }}
                 min={0} max={240} step={5} unit="min"
@@ -226,21 +228,18 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
               />
               <NumericRow
                 label="Janela de agenda"
-                description="Quantos dias à frente a IA pode oferecer horários"
                 value={slotLookaheadDays}
                 onChange={(v) => { setSlotLookaheadDays(v); triggerSave({ slotLookaheadDays: v }); }}
                 min={1} max={90} unit="dias"
               />
               <NumericRow
                 label="Conversa parada"
-                description="Após esse tempo sem resposta, a IA retoma como conversa nova"
                 value={staleConversationHours}
                 onChange={(v) => { setStaleConversationHours(v); triggerSave({ staleConversationHours: v }); }}
                 min={1} max={72} unit="horas"
               />
               <NumericRow
                 label="Retorno após mídia"
-                description="Horas até a IA retomar após foto, vídeo ou documento. Use 0 para deixar só no humano."
                 value={mediaTakeoverTtlHours}
                 onChange={(v) => { setMediaTakeoverTtlHours(v); triggerSave({ mediaTakeoverTtlHours: v }); }}
                 min={0} max={72} unit="horas"
