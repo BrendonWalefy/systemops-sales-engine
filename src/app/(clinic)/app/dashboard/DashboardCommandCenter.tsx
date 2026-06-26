@@ -916,7 +916,7 @@ function RevenueFunnel({
             <div key={stage.label} className="command-funnel-line">
               <div
                 className="command-funnel-stage"
-                style={{ "--stage-width": `${desktopFunnelVisualWidth(index)}%` } as CSSProperties}
+                style={{ "--stage-width": `${desktopFunnelVisualWidth(index)}px` } as CSSProperties}
               >
                 <span>{stage.label}</span>
                 <strong>{compactNumber(stage.value)}</strong>
