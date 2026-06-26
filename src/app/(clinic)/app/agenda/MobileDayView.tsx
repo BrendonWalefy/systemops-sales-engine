@@ -7,8 +7,6 @@ import {
   CalendarDays,
   Phone,
   Check,
-  Calendar,
-  FileText,
   MessageCircle,
   SlidersHorizontal,
   CheckCircle2,
@@ -62,6 +60,15 @@ function shiftDate(ds: string, delta: number): string {
   const date = new Date(y, m - 1, d);
   date.setDate(date.getDate() + delta);
   return toDateStr(date);
+}
+
+function getStatusBadge(event: AppointmentEvent): { label: string; cls: string } {
+  const cat = getCategory(event);
+  switch (cat) {
+    case "confirmed": return { label: "Confirmado", cls: "mmv-badge--confirmed" };
+    case "return":    return { label: "Retorno",    cls: "mmv-badge--return" };
+    default:          return { label: "Pendente",   cls: "mmv-badge--pending" };
+  }
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -231,106 +238,90 @@ export function MobileDayView({
           </div>
         ) : (
           dayEvents.map((event) => {
-            const cat   = getCategory(event);
-            const color = CATEGORY_COLORS[cat];
-            const time  = formatTime(event, timezone);
+            const cat          = getCategory(event);
+            const color        = CATEGORY_COLORS[cat];
+            const time         = formatTime(event, timezone);
             const isConfirming = confirmingId === event.id;
-
-            const badgeLabel =
-              cat === "confirmed" ? "Confirmado" :
-              cat === "return"    ? "Retorno"    : "Pendente";
+            const { label: badgeLabel, cls: badgeCls } = getStatusBadge(event);
 
             return (
               <div
                 key={event.id}
-                className="mdv-event-row"
-                style={{ "--event-color": color } as React.CSSProperties}
+                className="mmv-event-row"
+                style={{ "--event-border": color } as React.CSSProperties}
                 onClick={() => onEventClick(event)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === "Enter" && onEventClick(event)}
               >
-                {/* Time + dot */}
-                <div className="mdv-event-left">
-                  <span className="mdv-event-time">{time}</span>
-                  <span className="mdv-event-dot" style={{ background: color }} />
+                {/* Time */}
+                <div className="mmv-event-time">{time}</div>
+
+                {/* Avatar */}
+                <div className="mmv-event-avatar" aria-hidden>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="8" r="4.5" fill="currentColor" opacity="0.5" />
+                    <path
+                      d="M3 20c0-5 4-9 9-9s9 4 9 9"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      fill="none"
+                      strokeLinecap="round"
+                      opacity="0.5"
+                    />
+                  </svg>
                 </div>
 
                 {/* Info */}
-                <div className="mdv-event-body">
-                  <span className="mdv-event-name">{event.leadName ?? "Paciente"}</span>
+                <div className="mmv-event-body">
+                  <span className="mmv-event-name">{event.leadName ?? "Paciente"}</span>
                   {event.leadTreatmentInterest && (
-                    <span className="mdv-event-treatment">
+                    <span className="mmv-event-treatment">
                       {event.leadTreatmentInterest}
                     </span>
                   )}
                 </div>
 
                 {/* Status badge */}
-                <span
-                  className="mmv-badge mdv-badge"
-                  style={{
-                    borderColor: `${color}55`,
-                    background:  `${color}18`,
-                    color,
-                  }}
-                >
-                  {badgeLabel}
-                </span>
+                <span className={`mmv-badge ${badgeCls}`}>{badgeLabel}</span>
 
                 {/* Action buttons */}
                 <div
-                  className="mdv-event-actions"
+                  className="mmv-event-actions"
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >
                   <button
-                    className={`mdv-action-btn${event.conversationId ? " mdv-action-btn--whatsapp" : " mdv-action-btn--dim"}`}
+                    className="mmv-action-btn"
                     aria-label="Abrir conversa"
                     disabled={!event.conversationId}
                     onClick={() => {/* navigate to inbox */}}
                   >
-                    <MessageCircle size={13} />
+                    <MessageCircle size={14} />
                   </button>
 
                   {event.leadPhone ? (
                     <a
-                      className="mdv-action-btn"
+                      className="mmv-action-btn"
                       href={`tel:${event.leadPhone}`}
                       aria-label="Ligar"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <Phone size={13} />
+                      <Phone size={14} />
                     </a>
                   ) : (
-                    <button className="mdv-action-btn mdv-action-btn--dim" disabled>
-                      <Phone size={13} />
+                    <button className="mmv-action-btn" disabled>
+                      <Phone size={14} />
                     </button>
                   )}
 
                   <button
-                    className={`mdv-action-btn${event.status !== "scheduled" ? " mdv-action-btn--dim" : ""}`}
+                    className="mmv-action-btn"
                     aria-label="Confirmar"
                     disabled={event.status !== "scheduled" || isConfirming}
                     onClick={(e) => void handleConfirm(event, e)}
                   >
-                    <Check size={13} className={isConfirming ? "mdv-spin" : ""} />
-                  </button>
-
-                  <button
-                    className="mdv-action-btn"
-                    aria-label="Ver detalhes"
-                    onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                  >
-                    <Calendar size={13} />
-                  </button>
-
-                  <button
-                    className="mdv-action-btn"
-                    aria-label="Notas"
-                    onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                  >
-                    <FileText size={13} />
+                    <Check size={14} className={isConfirming ? "mdv-spin" : ""} />
                   </button>
                 </div>
               </div>

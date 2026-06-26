@@ -69,7 +69,7 @@ export function SettingsSection({
     <div style={{ display: "flex", flexDirection: "column", gap: "12px", ...style }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
         <div>
-          <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 600, color: S.text }}>{title}</p>
+          <p style={{ margin: 0, fontSize: S.fs.label, fontWeight: 600, color: S.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{title}</p>
           {description && (
             <p style={{ margin: "2px 0 0", fontSize: S.fs.desc, color: S.textSec }}>{description}</p>
           )}

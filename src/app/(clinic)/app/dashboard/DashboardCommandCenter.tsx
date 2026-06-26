@@ -22,6 +22,16 @@ import {
 } from "lucide-react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
 import { DashboardPeriodToggle, type PeriodKey } from "./DashboardPeriodToggle";
+import {
+  type MobileAiInsight,
+  MobileDashboardTabs,
+  type MobileActivityItem,
+  type MobileFunnelStage,
+  type MobileHotLeadItem,
+  type MobileRecoveryItem,
+  type MobileSparkPoint,
+  type MobileSnapshotStat,
+} from "./MobileDashboardTabs";
 
 const DASHBOARD_TZ = "America/Sao_Paulo";
 const MINUTES_SAVED_PER_AGENT_REPLY = 2;
@@ -45,6 +55,7 @@ export type RevenueData = {
   confirmedCount: number;
   byTreatment: ByTreatmentRow[];
   monthlyRevenueBrl: number;
+  series: FlowPoint[];
 };
 
 export type DashboardRecentLead = {
@@ -103,6 +114,22 @@ export type DashboardActionLead = {
   updatedAt: Date;
 };
 
+export type DashboardInsightConversation = {
+  status: string;
+  treatmentInterest: string | null;
+  summary: string | null;
+  lastMessage: string | null;
+};
+
+export type DashboardPeriodFunnel = {
+  totalLeads: number;
+  hotCount: number;
+  warmCount: number;
+  activeHotCount: number;
+  scheduledCount: number;
+  wonCount: number;
+};
+
 export type DashboardData = {
   totalLeads: number;
   activeLeads: number;
@@ -133,6 +160,8 @@ export type DashboardData = {
   upcomingAppointments: DashboardAppointment[];
   recoveryLeads: DashboardActionLead[];
   attentionLeads: DashboardActionLead[];
+  insightConversations: DashboardInsightConversation[];
+  periodFunnel: DashboardPeriodFunnel;
 };
 
 type Props = {
@@ -241,7 +270,7 @@ function formatDoctorDisplayName(name: string | null): string | null {
 function greetingText(doctorName: string | null): string {
   const doctorDisplayName = formatDoctorDisplayName(doctorName);
   const greeting = getGreetingByTime();
-  return doctorDisplayName ? `${greeting}, ${doctorDisplayName} 👋` : `${greeting} 👋`;
+  return doctorDisplayName ? `${greeting}, ${doctorDisplayName}` : greeting;
 }
 
 function greetingInitial(doctorName: string | null): string {
@@ -354,9 +383,9 @@ function trendTone(current: number, previous: number): MetricCardProps["tone"] {
 }
 
 function periodLabel(period: PeriodKey): string {
-  if (period === "30d") return "30 dias";
-  if (period === "3m") return "3 meses";
-  return "7 dias";
+  if (period === "1d") return "1D";
+  if (period === "30d") return "30D";
+  return "7D";
 }
 
 function leadDisplayName(lead: { name: string | null; phone: string | null }): string {
@@ -416,8 +445,8 @@ function conversationMeta(lead: DashboardRecentLead): string {
   ].join(" · ");
 }
 
-function conversionRate(data: DashboardData): number {
-  return data.totalLeads > 0 ? (data.scheduledCount / data.totalLeads) * 100 : 0;
+function conversionRate(funnel: DashboardPeriodFunnel): number {
+  return funnel.totalLeads > 0 ? (funnel.scheduledCount / funnel.totalLeads) * 100 : 0;
 }
 
 function automationRate(data: DashboardData): number {
@@ -439,13 +468,12 @@ function countLabel(value: number, singular: string, plural: string): string {
   return `${compactNumber(value)} ${value === 1 ? singular : plural}`;
 }
 
-function buildRevenueStages(data: DashboardData) {
-  const won = data.statusCounts.won ?? 0;
-  const total = data.totalLeads;
-  const qualified = Math.min(total, data.tempCounts.hot + data.tempCounts.warm + data.scheduledCount + won);
-  const proposals = Math.min(qualified, data.scheduledCount + data.activeHotCount + won);
-  const negotiation = Math.min(proposals, data.activeHotCount + won);
-  const closed = Math.min(negotiation, data.scheduledCount + won);
+function buildRevenueStages(funnel: DashboardPeriodFunnel) {
+  const total = funnel.totalLeads;
+  const qualified = Math.min(total, funnel.hotCount + funnel.warmCount + funnel.scheduledCount + funnel.wonCount);
+  const proposals = Math.min(qualified, funnel.scheduledCount + funnel.activeHotCount + funnel.wonCount);
+  const negotiation = Math.min(proposals, funnel.activeHotCount + funnel.wonCount);
+  const closed = Math.min(negotiation, funnel.scheduledCount + funnel.wonCount);
 
   return [
     { label: "Novos Leads", value: total },
@@ -454,6 +482,79 @@ function buildRevenueStages(data: DashboardData) {
     { label: "Negociação", value: negotiation },
     { label: "Fechados", value: closed },
   ];
+}
+
+function conversationInsightText(source: DashboardInsightConversation): string {
+  return [source.summary, source.lastMessage, source.treatmentInterest].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR");
+}
+
+function buildPerformanceAiInsight(data: DashboardData): MobileAiInsight {
+  const sources = data.insightConversations;
+  if (sources.length === 0) {
+    return {
+      eyebrow: "Insight da IA",
+      title: "Ainda sem leitura suficiente",
+      detail: "A IA precisa de mais conversas para identificar um padrão de perda.",
+      action: "Sugestão: acompanhe novas conversas e revise este bloco no próximo período.",
+      baseLabel: "Base: sem conversas suficientes",
+    };
+  }
+
+  const categories = [
+    {
+      key: "price",
+      title: "Preço e condição comercial aparecem como principal trava",
+      detail: "A IA percebeu recorrência de dúvidas sobre valor, parcelamento ou desconto antes do agendamento.",
+      action: "Sugestão: testar resposta mais curta com faixa de preço e CTA direto para dois horários.",
+      keywords: ["preco", "preço", "valor", "custa", "parcel", "desconto", "pagamento"],
+    },
+    {
+      key: "schedule",
+      title: "Os leads demonstram interesse, mas travam na hora de marcar",
+      detail: "A IA encontrou sinais frequentes de dúvida sobre horários, agenda ou disponibilidade.",
+      action: "Sugestão: oferecer horários fechados em vez de perguntar disponibilidade aberta.",
+      keywords: ["horario", "horário", "agenda", "disponibilidade", "encaixe", "manha", "manhã", "tarde", "dia"],
+    },
+    {
+      key: "hesitation",
+      title: "A conversa avança, mas o lead termina em hesitação",
+      detail: "A IA detectou padrões de indecisão, pedido de tempo ou necessidade de pensar antes de marcar.",
+      action: "Sugestão: reduzir fricção com prova social, urgência leve e follow-up no mesmo dia.",
+      keywords: ["pensar", "depois", "avaliar", "ver", "marido", "esposa", "semana que vem", "dúvida", "duvida"],
+    },
+  ] as const;
+
+  const counts = categories.map((category) => ({
+    ...category,
+    count: sources.filter((source) => {
+      const text = conversationInsightText(source);
+      return category.keywords.some((keyword) => text.includes(keyword));
+    }).length,
+  }));
+
+  const waitingCount = sources.filter((source) => source.status === "waiting_response").length;
+  const followUpCount = sources.filter((source) => source.status === "follow_up_due").length;
+  const topCategory = counts.sort((a, b) => b.count - a.count)[0];
+
+  if ((topCategory?.count ?? 0) === 0) {
+    return {
+      eyebrow: "Insight da IA",
+      title: "Os sinais estão mais ligados ao timing do que ao conteúdo",
+      detail: "A IA não encontrou um tema dominante, mas há muitas conversas paradas sem avanço claro.",
+      action: waitingCount >= followUpCount
+        ? "Sugestão: acelerar o follow-up nas conversas aguardando resposta."
+        : "Sugestão: revisar a régua de recuperação e retomar leads mornos com mais contexto.",
+      baseLabel: `Base: ${compactNumber(sources.length)} conversas analisadas`,
+    };
+  }
+
+  return {
+    eyebrow: "Insight da IA",
+    title: topCategory.title,
+    detail: topCategory.detail,
+    action: topCategory.action,
+    baseLabel: `Base: ${compactNumber(sources.length)} conversas analisadas`,
+  };
 }
 
 function buildRecentActivities(data: DashboardData) {
@@ -563,46 +664,23 @@ function DashboardHeader({
     <>
       <section className="command-mobile-hero" aria-label="Resumo do dashboard">
         <div className="command-mobile-header">
-          <div>
+          <div className="command-mobile-header-copy">
             <span>SystemOps</span>
             <strong>{greeting}</strong>
+            <p>Aqui está o desempenho comercial da {clinicLabel} hoje.</p>
           </div>
-          <MobileDashboardAvatar
-            avatarUrl={data.avatarUrl}
-            initial={avatarInitial}
-          />
+          <div className="command-mobile-header-aside">
+            <MobileDashboardAvatar
+              avatarUrl={data.avatarUrl}
+              initial={avatarInitial}
+            />
+          </div>
         </div>
-
-        <p className="command-mobile-subtitle">
-          Aqui está o desempenho comercial da {clinicLabel} hoje.
-        </p>
-
-        <div className="command-mobile-pills">
-          <span className={`command-status-pill ${data.autoReplyEnabled ? "active" : "muted"}`}>
-            <Bot size={15} />
+        <div className="command-mobile-hero-footer">
+          <span className={`command-status-pill command-mobile-ia-pill ${data.autoReplyEnabled ? "active" : "muted"}`}>
+            <Bot size={11} />
             {data.autoReplyEnabled ? "IA ativa" : "IA pausada"}
           </span>
-          {data.needsAttentionCount > 0 ? (
-            <Link href="/app/inbox?filter=attention" className="command-status-pill warning">
-              <AlertTriangle size={15} />
-              {data.needsAttentionCount} {data.needsAttentionCount === 1 ? "intervenção" : "intervenções"}
-            </Link>
-          ) : (
-            <span className="command-status-pill active">
-              <CheckCircle2 size={15} />
-              Operação em dia
-            </span>
-          )}
-        </div>
-
-        <div className="command-mobile-toolbar">
-          <span className="command-date-pill">
-            <CalendarDays size={15} />
-            {todayFormatted()}
-          </span>
-          <Suspense fallback={<span className="command-period-fallback">{periodLabel(safePeriod)}</span>}>
-            <DashboardPeriodToggle current={safePeriod} />
-          </Suspense>
         </div>
       </section>
 
@@ -655,6 +733,7 @@ function HumanInterventionAlert({ data }: { data: DashboardData }) {
           {data.needsAttentionCount} conversa{data.needsAttentionCount !== 1 ? "s" : ""} precisa
           {data.needsAttentionCount === 1 ? "" : "m"} de decisão da equipe
         </strong>
+        <small className="command-mobile-hint">Resolva agora para não perder o lead.</small>
       </div>
       <div className="command-attention-actions">
         <Link href="/app/inbox?filter=attention">Resolver agora</Link>
@@ -687,7 +766,7 @@ function SecondaryMetrics({ data }: { data: DashboardData }) {
       </div>
       <div>
         <Zap size={16} />
-        <span>Tempo economizado</span>
+        <span>Tempo estimado poupado</span>
         <strong>{formatTimeSaved(saved)}</strong>
       </div>
     </section>
@@ -701,6 +780,8 @@ function RevenueSummary({
   data: DashboardData;
   revenueData: RevenueData | null;
 }) {
+  const periodStages = buildRevenueStages(data.periodFunnel);
+
   return (
     <section className="command-revenue-summary" aria-label="Resumo de receita e agenda">
       <div>
@@ -716,12 +797,12 @@ function RevenueSummary({
       <div>
         <Send size={16} />
         <span>Propostas</span>
-        <strong>{compactNumber(buildRevenueStages(data)[2]?.value ?? 0)}</strong>
+        <strong>{compactNumber(periodStages[2]?.value ?? 0)}</strong>
       </div>
       <div>
-        <MessageCircle size={16} />
-        <span>Conversas</span>
-        <strong>{compactNumber(data.totalConversations)}</strong>
+        <Users size={16} />
+        <span>Leads no período</span>
+        <strong>{compactNumber(data.periodFunnel.totalLeads)}</strong>
       </div>
     </section>
   );
@@ -812,24 +893,24 @@ function RevenueFunnel({
   revenueData: RevenueData | null;
   safePeriod: PeriodKey;
 }) {
-  const stages = buildRevenueStages(data);
+  const stages = buildRevenueStages(data.periodFunnel);
   const max = Math.max(stages[0]?.value ?? 0, 1);
   const totalPipeline = revenueData ? revenueData.potentialCents + revenueData.confirmedCents : 0;
 
   return (
     <section className="command-panel command-funnel-panel">
-      <div className="command-panel-header">
-        <div>
-          <span>Funil de novas receitas</span>
+        <div className="command-panel-header">
+          <div>
+          <span>Funil comercial do período</span>
           <h2>{totalPipeline > 0 ? formatBRL(totalPipeline) : "Pipeline comercial"}</h2>
         </div>
         <span className="command-mini-pill">{periodLabel(safePeriod)}</span>
       </div>
 
       <div className="command-funnel">
-        {stages.map((stage, index) => {
+        {stages.map((stage) => {
           const percent = max > 0 ? (stage.value / max) * 100 : 0;
-          const visualWidth = Math.max(48, 100 - index * 10);
+          const visualWidth = Math.max(22, percent);
           return (
             <div key={stage.label} className="command-funnel-line">
               <div
@@ -847,7 +928,7 @@ function RevenueFunnel({
 
       <div className="command-funnel-footer">
         <span>Taxa de conversão geral</span>
-        <strong>{formatPercent(conversionRate(data))}%</strong>
+        <strong>{formatPercent(conversionRate(data.periodFunnel))}%</strong>
       </div>
     </section>
   );
@@ -902,7 +983,7 @@ function HotLeadsCard({
         </div>
       )}
 
-      <Link href="/app/inbox?temperature=hot" className="command-panel-footer">
+      <Link href="/app/inbox?filter=hot" className="command-panel-footer">
         Ver todos os leads
       </Link>
     </section>
@@ -958,58 +1039,192 @@ export function DashboardCommandCenter({
   const leadTone = trendTone(data.currentPeriodLeadCount, data.previousPeriodLeadCount);
   const totalAppointmentsToday = data.todayAppointments.length;
   const revenueOpportunityCount = (revenueData?.potentialCount ?? 0) + (revenueData?.confirmedCount ?? 0);
+  const periodConversionRate = conversionRate(data.periodFunnel);
+
+  // ── Pre-compute mobile tab data (server-side) ───────────────────────────────
+  const rawActivities = buildRecentActivities(data);
+  const mobileActivities: MobileActivityItem[] = rawActivities.map((a) => ({
+    key: a.key,
+    iconType:
+      a.Icon === MessageCircle
+        ? "message"
+        : a.Icon === CalendarDays
+          ? "calendar"
+          : "alert",
+    title: a.title,
+    detail: a.detail,
+    context: a.context,
+    timeLabel: formatTime(a.time),
+    tone: a.tone,
+  }));
+
+  const nextAptRaw = data.upcomingAppointments[0] ?? null;
+  const mobileNextAppointment = nextAptRaw
+    ? {
+        time: formatTime(nextAptRaw.startsAt),
+        dateLabel: appointmentDateLabel(nextAptRaw.startsAt),
+        patientName: nextAptRaw.leadName ?? nextAptRaw.leadPhone ?? "Paciente",
+        statusLabel: appointmentStatusLabel(nextAptRaw.status),
+      }
+    : null;
+
+  const funnelRaw = buildRevenueStages(data.periodFunnel);
+  const funnelMax = Math.max(funnelRaw[0]?.value ?? 0, 1);
+  const mobileFunnel: MobileFunnelStage[] = funnelRaw.map((stage) => ({
+    label: stage.label,
+    value: stage.value,
+    valueLabel: compactNumber(stage.value),
+    visualWidth: Math.max(5, Math.round((stage.value / funnelMax) * 100)),
+  }));
+
+  const mobileHotLeads: MobileHotLeadItem[] = data.hotLeads.slice(0, 5).map((lead, index) => {
+    const score = leadScore(lead.temperature, lead.status);
+    const estimatedValue = estimateTreatmentValue(lead.treatmentInterest, data.treatmentCatalog);
+    return {
+      id: lead.id,
+      convId: lead.convId,
+      name: leadDisplayName(lead),
+      phone: lead.phone,
+      initial: nameInitial(lead.name, lead.phone),
+      profilePicUrl: lead.profilePicUrl,
+      temperatureClass: temperatureClass(lead.temperature),
+      treatmentLabel: lead.treatmentInterest ?? "Interesse a qualificar",
+      valueLabel: estimatedValue ? formatBRL(estimatedValue) : "Valor pendente",
+      timeLabel: relativeTime(lead.updatedAt),
+      statusLabel: statusLabel(lead.status),
+      score,
+      isTopCard: index < 2,
+    };
+  });
+
+  const mobileRecovery: MobileRecoveryItem[] = data.recoveryLeads.slice(0, 3).map((lead) => ({
+    id: lead.id,
+    name: lead.name ?? lead.phone ?? "Lead",
+    summaryLabel: lead.treatmentInterest ?? "Sumiu da conversa",
+    timeLabel: relativeTime(lead.updatedAt),
+  }));
+
+  const mobilePeriodLabel = periodLabel(safePeriod);
+  const mobileTodayStats: MobileSnapshotStat[] = [
+    {
+      label: "Em conversa",
+      value: compactNumber(data.activeLeads),
+      helper: "leads ativos agora",
+      tone: "accent",
+    },
+    {
+      label: "Agenda de hoje",
+      value: compactNumber(totalAppointmentsToday),
+      helper: "consultas no radar",
+      tone: totalAppointmentsToday > 0 ? "accent" : "neutral",
+    },
+    {
+      label: "Autonomia IA",
+      value: `${formatPercent(automationRate(data))}%`,
+      helper: data.needsAttentionCount > 0 ? "com handoffs pendentes" : "sem intervenção agora",
+      tone: data.needsAttentionCount > 0 ? "warning" : "accent",
+    },
+  ];
+  const mobilePipelineStats: MobileSnapshotStat[] = [
+    {
+      label: "Potencial",
+      value: showRevenue && revenueData ? formatBRL(revenueData.potentialCents) : "Restrito",
+      helper: revenueData ? countLabel(revenueData.potentialCount, "caso", "casos") : "visão financeira",
+      tone: revenueData && revenueData.potentialCents > 0 ? "accent" : "neutral",
+    },
+    {
+      label: "Propostas",
+      value: compactNumber(funnelRaw[2]?.value ?? 0),
+      helper: "leads já qualificados",
+      tone: (funnelRaw[2]?.value ?? 0) > 0 ? "accent" : "neutral",
+    },
+    {
+      label: "Agenda",
+      value: compactNumber(data.periodFunnel.scheduledCount),
+      helper: "agendamentos no período",
+      tone: data.periodFunnel.scheduledCount > 0 ? "accent" : "neutral",
+    },
+  ];
+  const performanceSparkline: MobileSparkPoint[] = (showRevenue ? revenueData?.series : [])?.map((point) => ({
+    label: point.label,
+    value: point.count,
+  })) ?? [];
+  const performanceAiInsight = buildPerformanceAiInsight(data);
 
   return (
     <div className="command-dashboard-shell">
       <DashboardHeader data={data} safePeriod={safePeriod} />
 
-      <section className="command-metric-grid" aria-label="Indicadores principais">
-        <MetricCard
-          title={ownRevenueOnly ? "Minha Receita em Pipeline" : "Receita em Pipeline"}
-          value={showRevenue && revenueData ? formatBRL(pipelineCents) : "Restrito"}
-          trend={revenueData ? countLabel(revenueOpportunityCount, "oportunidade", "oportunidades") : "financeiro"}
-          context={showRevenue ? "potencial e confirmado" : "permissão necessária"}
-          tone="positive"
-          Icon={DollarSign}
-        />
-        <MetricCard
-          title="ROI"
-          value={roi !== null ? `${roi.toFixed(1)}x` : "Restrito"}
-          trend={roi !== null ? "sobre mensalidade" : "financeiro"}
-          context={roi !== null ? "Receita confirmada no período" : "permissão necessária"}
-          tone={roi !== null && roi >= 1 ? "positive" : "neutral"}
-          Icon={TrendingUp}
-        />
-        <MetricCard
-          title="Leads Ativos"
-          value={compactNumber(data.activeLeads)}
-          trend={leadTrend}
-          context={`vs. últimos ${periodLabel(safePeriod)}`}
-          tone={leadTone}
-          Icon={Users}
-        />
-        <MetricCard
-          title="Agendamentos"
-          value={compactNumber(data.scheduledCount)}
-          trend={`Hoje: ${totalAppointmentsToday}`}
-          context={`${formatPercent(conversionRate(data))}% de conversão`}
-          tone={totalAppointmentsToday > 0 ? "positive" : "neutral"}
-          Icon={CalendarDays}
-        />
-      </section>
+      {/* Layout mobile — 3 tabs: Hoje / Pipeline / Leads */}
+      <MobileDashboardTabs
+        needsAttentionCount={data.needsAttentionCount}
+        nextAppointment={mobileNextAppointment}
+        activities={mobileActivities}
+        pipelineHero={showRevenue && revenueData ? formatBRL(pipelineCents) : "Restrito"}
+        confirmedRevenue={showRevenue && revenueData ? formatBRL(revenueData.confirmedCents) : null}
+        roi={roi !== null ? `${roi.toFixed(1)}x` : null}
+        conversionRate={`${formatPercent(periodConversionRate)}%`}
+        safePeriod={safePeriod}
+        periodLabelText={mobilePeriodLabel}
+        funnelStages={mobileFunnel}
+        hotLeads={mobileHotLeads}
+        recoveryLeads={mobileRecovery}
+        todayStats={mobileTodayStats}
+        pipelineStats={mobilePipelineStats}
+        performanceSparkline={performanceSparkline}
+        performanceAiInsight={performanceAiInsight}
+      />
 
-      <RevenueSummary data={data} revenueData={revenueData} />
-      <SecondaryMetrics data={data} />
-      <UpcomingAppointments appointments={data.upcomingAppointments} />
-      <HumanInterventionAlert data={data} />
+      {/* Layout desktop — oculto no mobile */}
+      <div className="command-desktop-layout">
+        <section className="command-metric-grid" aria-label="Indicadores principais">
+          <MetricCard
+            title={ownRevenueOnly ? "Minha Receita em Pipeline" : "Receita em Pipeline"}
+            value={showRevenue && revenueData ? formatBRL(pipelineCents) : "Restrito"}
+            trend={revenueData ? countLabel(revenueOpportunityCount, "oportunidade", "oportunidades") : "financeiro"}
+            context={showRevenue ? "potencial e confirmado" : "permissão necessária"}
+            tone="positive"
+            Icon={DollarSign}
+          />
+          <MetricCard
+            title="ROI"
+            value={roi !== null ? `${roi.toFixed(1)}x` : "Restrito"}
+            trend={roi !== null ? "sobre mensalidade" : "financeiro"}
+            context={roi !== null ? "Receita confirmada no período" : "permissão necessária"}
+            tone={roi !== null && roi >= 1 ? "positive" : "neutral"}
+            Icon={TrendingUp}
+          />
+          <MetricCard
+            title="Leads Ativos"
+            value={compactNumber(data.activeLeads)}
+            trend={leadTrend}
+            context={`vs. últimos ${periodLabel(safePeriod)}`}
+            tone={leadTone}
+            Icon={Users}
+          />
+          <MetricCard
+            title="Agendados no período"
+            value={compactNumber(data.periodFunnel.scheduledCount)}
+            trend={`Hoje: ${totalAppointmentsToday}`}
+            context={`${formatPercent(periodConversionRate)}% de conversão`}
+            tone={totalAppointmentsToday > 0 ? "positive" : "neutral"}
+            Icon={CalendarDays}
+          />
+        </section>
 
-      <main className="command-main-grid">
-        <ConversationList leads={data.recentLeads} />
-        <RevenueFunnel data={data} revenueData={revenueData} safePeriod={safePeriod} />
-        <HotLeadsCard leads={data.hotLeads} treatmentCatalog={data.treatmentCatalog} />
-      </main>
+        <HumanInterventionAlert data={data} />
+        <UpcomingAppointments appointments={data.upcomingAppointments} />
 
-      <RecentActivity data={data} />
+        <main className="command-main-grid">
+          <ConversationList leads={data.recentLeads} />
+          <RevenueFunnel data={data} revenueData={revenueData} safePeriod={safePeriod} />
+          <HotLeadsCard leads={data.hotLeads} treatmentCatalog={data.treatmentCatalog} />
+        </main>
+
+        <RecentActivity data={data} />
+        <RevenueSummary data={data} revenueData={revenueData} />
+        <SecondaryMetrics data={data} />
+      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { toggleAutoReply } from "./actions";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import type { MenuItem, MenuItemIntent, ConversationExperience } from "@/domain/entities/clinic";
 import { CONCIERGE_MENU_ITEMS, DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
-import { S, SettingsCard, SettingsToggle, SettingsBadge, SettingsTextarea, SaveStatus, IconBox } from "./settings-primitives";
+import { S, SettingsCard, SettingsToggle, SettingsBadge, SettingsTextarea, SaveStatus, IconBox, SLabel } from "./settings-primitives";
 
 export type SettingsFocusTarget = "takeover" | "buffer" | "hours";
 
@@ -140,115 +140,96 @@ export function TabGeral({ clinic }: { clinic: ClinicData }) {
     triggerSave({ menuItems: next });
   }
 
-  const menuPreview = menuItems.filter((i) => i.enabled).map((i) => `${i.number}. ${i.label}`).join("\n");
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: S.sectionGap, maxWidth: "660px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "660px" }}>
 
-      {/* Status da IA */}
-      <SettingsCard>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
-            <IconBox>
-              <Zap size={15} strokeWidth={1.8} />
-            </IconBox>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Status da IA</strong>
-                <SettingsBadge variant={enabled ? "active" : "locked"}>
-                  {enabled ? "Ativa" : "Pausada"}
-                </SettingsBadge>
-                {enabled && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                    <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: S.teal, display: "inline-block" }} />
-                    <span style={{ fontSize: "11px", color: S.teal, fontWeight: 500 }}>IA Online</span>
-                  </div>
-                )}
-              </div>
-              <p style={{ margin: "2px 0 0", fontSize: S.fs.desc, color: S.textSec }}>
-                Recepcionista responde automaticamente via WhatsApp
-              </p>
-            </div>
-          </div>
-          <SettingsToggle checked={enabled} onChange={handleToggle} pending={togglePending} />
-        </div>
-      </SettingsCard>
-
-      {/* Experiência da conversa */}
-      <SettingsCard>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
-            <IconBox active={conciergeModuleActive}>
-              <Sparkles size={15} strokeWidth={1.8} />
-            </IconBox>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Experiência da conversa</strong>
-                <SettingsBadge variant="active">
-                  {conciergeModuleActive ? "Concierge" : "Menu-first"}
-                </SettingsBadge>
-              </div>
-              <p style={{ margin: "2px 0 0", fontSize: S.fs.desc, color: S.textSec }}>
-                {conciergeModuleActive ? "IA conversa naturalmente, sem menu" : "IA apresenta menu de opções ao lead"}
-              </p>
-              <p style={{ margin: "3px 0 0", fontSize: "11px", color: conciergeModuleActive ? S.teal : S.textMuted }}>
-                {conciergeModuleActive ? "Modo concierge ativo no seu plano." : "Para alterar o modo, fale com o suporte."}
-              </p>
-            </div>
-          </div>
-          {!conciergeModuleActive && <Lock size={14} style={{ color: S.textMuted, flexShrink: 0 }} />}
-        </div>
-      </SettingsCard>
-
-      {/* Texto de boas-vindas */}
+      {/* COMPORTAMENTO */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <IconBox>
-            <MessageSquare size={14} strokeWidth={1.8} />
-          </IconBox>
-          <div>
-            <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Texto de boas-vindas</p>
-            <p style={{ margin: "1px 0 0", fontSize: S.fs.desc, color: S.textSec }}>
-              Introdução do menu — deixe vazio para usar o texto padrão da IA
-            </p>
+        <SLabel>Comportamento</SLabel>
+
+        <SettingsCard>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
+              <IconBox>
+                <Zap size={15} strokeWidth={1.8} />
+              </IconBox>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Status da IA</strong>
+                  <SettingsBadge variant={enabled ? "active" : "locked"}>
+                    {enabled ? "Ativa" : "Pausada"}
+                  </SettingsBadge>
+                  {enabled && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                      <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: S.teal, display: "inline-block" }} />
+                      <span style={{ fontSize: "11px", color: S.teal, fontWeight: 500 }}>IA Online</span>
+                    </div>
+                  )}
+                </div>
+                <p style={{ margin: "2px 0 0", fontSize: S.fs.desc, color: S.textSec }}>
+                  Responde automaticamente no WhatsApp
+                </p>
+              </div>
+            </div>
+            <SettingsToggle checked={enabled} onChange={handleToggle} pending={togglePending} />
           </div>
-        </div>
-        <SettingsTextarea
-          value={greetingMessage}
-          onChange={(e) => {
-            setGreetingMessage(e.target.value);
-            triggerSave({ greetingMessage: e.target.value });
-          }}
-          placeholder={`Olá! Sou a assistente virtual da ${clinic.name ?? "clínica"}. Como posso ajudá-lo?`}
-          rows={3}
-        />
+        </SettingsCard>
+
+        <SettingsCard>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
+              <IconBox active={conciergeModuleActive}>
+                <Sparkles size={15} strokeWidth={1.8} />
+              </IconBox>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Experiência da conversa</strong>
+                  <SettingsBadge variant="active">
+                    {conciergeModuleActive ? "Concierge" : "Menu-first"}
+                  </SettingsBadge>
+                </div>
+                <p style={{ margin: "2px 0 0", fontSize: S.fs.desc, color: S.textSec }}>
+                  {conciergeModuleActive ? "IA conversa naturalmente, sem menu" : "IA apresenta menu de opções ao lead"}
+                </p>
+              </div>
+            </div>
+            {!conciergeModuleActive && <Lock size={14} style={{ color: S.textMuted, flexShrink: 0 }} />}
+          </div>
+        </SettingsCard>
       </div>
 
-      {/* Menu de opções */}
+      {/* BOAS-VINDAS */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Menu de opções</p>
-        <p style={{ margin: 0, fontSize: S.fs.desc, color: S.textSec }}>
-          Edite os rótulos ou desative itens que não se aplicam à sua clínica
-        </p>
-        <MenuEditor items={menuItems} onChange={handleMenuChange} />
-
-        {/* WhatsApp preview */}
-        <div style={{
-          background: "rgba(0,224,178,0.03)",
-          border: `1px solid rgba(0,224,178,0.1)`,
-          borderRadius: "10px",
-          padding: "12px 14px",
-        }}>
-          <p style={{ margin: "0 0 6px", fontSize: "10px", fontWeight: 700, color: S.textMuted, letterSpacing: "0.08em" }}>
-            PRÉVIA NO WHATSAPP
-          </p>
-          <p style={{ margin: "0 0 3px", fontSize: "12px", color: S.textSec, fontStyle: "italic", lineHeight: 1.4 }}>
-            {greetingMessage || `Seja bem-vindo à ${clinic.name ?? "clínica"}. Como posso ajudá-lo?`}
-          </p>
-          <p style={{ margin: 0, fontSize: "13px", color: S.text, whiteSpace: "pre-line", lineHeight: 1.7 }}>
-            {menuPreview}
-          </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <SLabel style={{ margin: 0 }}>Boas-vindas</SLabel>
+          <span style={{ fontSize: "11px", color: S.textMuted }}>Opcional</span>
         </div>
+        <SettingsCard>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+            <MessageSquare size={14} strokeWidth={1.8} style={{ color: S.textMuted }} />
+            <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Texto de boas-vindas</p>
+          </div>
+          <SettingsTextarea
+            value={greetingMessage}
+            onChange={(e) => {
+              setGreetingMessage(e.target.value);
+              triggerSave({ greetingMessage: e.target.value });
+            }}
+            placeholder={`Olá! Sou a assistente virtual da ${clinic.name ?? "clínica"}. Como posso ajudá-lo?`}
+            rows={3}
+          />
+        </SettingsCard>
+      </div>
+
+      {/* MENU DE OPÇÕES */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <SLabel style={{ margin: 0 }}>Menu de opções</SLabel>
+          <span style={{ fontSize: "11px", color: S.textMuted }}>arraste p/ ordenar</span>
+        </div>
+        <SettingsCard style={{ padding: "12px" }}>
+          <MenuEditor items={menuItems} onChange={handleMenuChange} />
+        </SettingsCard>
       </div>
 
       <SaveStatus saving={saving} saved={saved} />

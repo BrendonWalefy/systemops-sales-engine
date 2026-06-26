@@ -1,10 +1,10 @@
 "use client";
 import { useState, useRef } from "react";
-import { AlertTriangle, CreditCard, FileText, Tag } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
-import { S, SettingsCard, SettingsSection, SettingsBadge, SaveStatus, EmptyState } from "./settings-primitives";
+import { S, SettingsCard, SettingsSection, SettingsBadge, SaveStatus } from "./settings-primitives";
 
 type InstallmentRow = { n: number; rate: number; active: boolean };
 
@@ -160,34 +160,34 @@ export function TabFinanceiro({
         {/* 1x–12x */}
         <div>
           <p style={{ margin: "0 0 10px", fontSize: "11px", fontWeight: 700, color: S.textMuted, letterSpacing: "0.07em" }}>ATÉ 12x — OPERADORA ATUAL</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(126px, 1fr))", gap: "8px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: "6px" }}>
             {current12.map((row) => (
               <div key={row.n} style={{
                 background: row.active ? "rgba(0,224,178,0.05)" : S.card,
                 border: `1px solid ${row.active ? "rgba(0,224,178,0.2)" : S.border}`,
-                borderRadius: "12px", padding: "12px",
-                display: "flex", flexDirection: "column", gap: "8px", transition: "all 150ms",
+                borderRadius: "9px", padding: "9px 10px",
+                display: "flex", flexDirection: "column", gap: "5px", transition: "all 150ms",
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "18px", fontWeight: 700, color: row.active ? S.text : S.textMuted }}>{row.n}x</span>
+                  <span style={{ fontSize: "14px", fontWeight: 700, color: row.active ? S.text : S.textMuted }}>{row.n}x</span>
                   <button onClick={() => updateRow(row.n, { active: !row.active })} style={{
-                    width: "30px", height: "17px", borderRadius: "9px", border: "none",
+                    width: "26px", height: "14px", borderRadius: "7px", border: "none",
                     background: row.active ? S.teal : "rgba(255,255,255,0.1)",
-                    cursor: "pointer", position: "relative", transition: "background 200ms",
+                    cursor: "pointer", position: "relative", transition: "background 200ms", flexShrink: 0,
                   }}>
-                    <span style={{ position: "absolute", top: "2.5px", left: row.active ? "15px" : "2.5px", width: "12px", height: "12px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
+                    <span style={{ position: "absolute", top: "2px", left: row.active ? "14px" : "2px", width: "10px", height: "10px", borderRadius: "50%", background: "#fff", transition: "left 200ms" }} />
                   </button>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
                   <input type="text" inputMode="decimal"
                     value={row.rate === 0 ? "" : String(row.rate).replace(".", ",")}
                     onChange={(e) => { const raw = e.target.value.replace(/[^0-9,]/g, ""); const num = parseFloat(raw.replace(",", ".")); updateRow(row.n, { rate: isNaN(num) ? 0 : num }); }}
                     placeholder="0,00"
-                    style={{ width: "50px", background: "transparent", border: "none", borderBottom: `1px solid ${row.active ? "rgba(0,224,178,0.3)" : S.border}`, color: row.active ? S.text : S.textSec, fontSize: "13px", outline: "none", padding: "2px 0", textAlign: "right", fontFamily: "inherit" }}
+                    style={{ width: "42px", background: "transparent", border: "none", borderBottom: `1px solid ${row.active ? "rgba(0,224,178,0.3)" : S.border}`, color: row.active ? S.text : S.textSec, fontSize: "12px", outline: "none", padding: "1px 0", textAlign: "right", fontFamily: "inherit" }}
                   />
-                  <span style={{ fontSize: "11px", color: S.textSec }}>%</span>
+                  <span style={{ fontSize: "10px", color: S.textSec }}>%</span>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: row.active ? 600 : 400, color: row.active ? S.teal : S.textMuted }}>
+                <span style={{ fontSize: "10px", fontWeight: row.active ? 600 : 400, color: row.active ? S.teal : S.textMuted }}>
                   {row.active && row.rate > 0 ? calcPreview(previewValue, row.rate, row.n) : "—"}
                 </span>
               </div>
@@ -197,19 +197,19 @@ export function TabFinanceiro({
 
         {/* 13x–24x — futuro */}
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
             <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: S.textMuted, letterSpacing: "0.07em" }}>13x – 24x — NOVA OPERADORA</p>
             <SettingsBadge variant="coming">Em breve</SettingsBadge>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(126px, 1fr))", gap: "8px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: "6px" }}>
             {future.map((row) => (
-              <div key={row.n} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: "12px", padding: "12px", display: "flex", flexDirection: "column", gap: "8px", opacity: 0.4 }}>
+              <div key={row.n} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: "9px", padding: "9px 10px", display: "flex", flexDirection: "column", gap: "5px", opacity: 0.4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "18px", fontWeight: 700, color: S.textMuted }}>{row.n}x</span>
-                  <div style={{ width: "30px", height: "17px", borderRadius: "9px", background: "rgba(255,255,255,0.08)" }} />
+                  <span style={{ fontSize: "14px", fontWeight: 700, color: S.textMuted }}>{row.n}x</span>
+                  <div style={{ width: "26px", height: "14px", borderRadius: "7px", background: "rgba(255,255,255,0.08)" }} />
                 </div>
-                <span style={{ fontSize: "13px", color: S.textMuted }}>—</span>
-                <span style={{ fontSize: "11px", color: S.textMuted }}>—</span>
+                <span style={{ fontSize: "12px", color: S.textMuted }}>—</span>
+                <span style={{ fontSize: "10px", color: S.textMuted }}>—</span>
               </div>
             ))}
           </div>
@@ -218,26 +218,6 @@ export function TabFinanceiro({
         <SaveStatus saving={saving} saved={saved} />
       </SettingsSection>
 
-      {/* Formas de pagamento — scaffolding */}
-      <SettingsSection title="Formas de pagamento" description="Métodos aceitos que a IA pode informar ao lead">
-        <SettingsCard>
-          <EmptyState icon={<CreditCard size={16} />} title="Em breve" description="Configure quais formas de pagamento a IA menciona ao responder sobre valores" />
-        </SettingsCard>
-      </SettingsSection>
-
-      {/* Regras de preço — scaffolding */}
-      <SettingsSection title="Regras para responder preço" description="Como a IA deve conduzir a conversa sobre valores">
-        <SettingsCard>
-          <EmptyState icon={<FileText size={16} />} title="Em breve" description="Define quando a IA informa preço direto, quando direciona para avaliação, e frases aprovadas" />
-        </SettingsCard>
-      </SettingsSection>
-
-      {/* Frases aprovadas — scaffolding */}
-      <SettingsSection title="Frases comerciais aprovadas" description="Textos pré-aprovados para usar em situações específicas">
-        <SettingsCard>
-          <EmptyState icon={<Tag size={16} />} title="Em breve" description="Frases para condições especiais, observações sobre valores iniciais, e chamadas para avaliação" />
-        </SettingsCard>
-      </SettingsSection>
     </div>
   );
 }

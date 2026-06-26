@@ -4,9 +4,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
 const PERIODS = [
-  { key: "7d", label: "7 dias" },
-  { key: "30d", label: "30 dias" },
-  { key: "3m", label: "3 meses" },
+  { key: "1d", label: "1D" },
+  { key: "7d", label: "7D" },
+  { key: "30d", label: "30D" },
 ] as const;
 
 export type PeriodKey = (typeof PERIODS)[number]["key"];

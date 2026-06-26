@@ -8,7 +8,13 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canViewFinancials, canViewOwnRevenue } from "@/application/tenancy/member-role";
 import { db } from "@/infrastructure/db/client";
 import { leads, conversations, messages, clinicMembers, appointments, treatments, clinics, professionals } from "@/infrastructure/db/schema";
-import { DashboardCommandCenter, type DashboardData, type FlowPoint, type RevenueData } from "./DashboardCommandCenter";
+import {
+  DashboardCommandCenter,
+  type DashboardData,
+  type DashboardPeriodFunnel,
+  type FlowPoint,
+  type RevenueData,
+} from "./DashboardCommandCenter";
 import type { PeriodKey } from "./DashboardPeriodToggle";
 
 const DASHBOARD_TZ = "America/Sao_Paulo";
@@ -37,7 +43,7 @@ function startOfDay(value: DateLike): Date {
 }
 
 function dateKey(value: DateLike): string {
-  return toDate(value).toISOString().slice(0, 10);
+  return toDate(value).toLocaleDateString("en-CA", { timeZone: DASHBOARD_TZ });
 }
 
 function buildFlowSeries(rows: Array<{ createdAt: DateLike }>, startDate: Date, numDays = 7): FlowPoint[] {
@@ -64,22 +70,78 @@ function buildFlowSeries(rows: Array<{ createdAt: DateLike }>, startDate: Date, 
   }));
 }
 
+function buildValueSeries(
+  rows: Array<{ startsAt: DateLike; valueCents: number | null }>,
+  startDate: Date,
+  numDays = 7,
+): FlowPoint[] {
+  const buckets = new Map<string, number>();
+  const days = Array.from({ length: numDays }, (_, index) => addDays(startDate, index));
+
+  for (const day of days) {
+    buckets.set(dateKey(day), 0);
+  }
+
+  for (const row of rows) {
+    const key = dateKey(row.startsAt);
+    if (buckets.has(key)) {
+      buckets.set(key, (buckets.get(key) ?? 0) + Number(row.valueCents ?? 0));
+    }
+  }
+
+  const labelFormat: Intl.DateTimeFormatOptions =
+    numDays <= 7 ? { weekday: "short" } : { day: "2-digit", month: "short" };
+
+  return days.map((day) => ({
+    label: day.toLocaleDateString("pt-BR", { ...labelFormat, timeZone: DASHBOARD_TZ }),
+    count: buckets.get(dateKey(day)) ?? 0,
+  }));
+}
+
+function buildPeriodFunnel(rows: Array<{ status: string; temperature: string | null }>): DashboardPeriodFunnel {
+  let hotCount = 0;
+  let warmCount = 0;
+  let activeHotCount = 0;
+  let scheduledCount = 0;
+  let wonCount = 0;
+
+  for (const row of rows) {
+    const isOpen = !["appointment_scheduled", "won", "lost"].includes(row.status);
+
+    if (row.temperature === "hot" && isOpen) hotCount += 1;
+    if (row.temperature === "warm" && isOpen) warmCount += 1;
+    if (row.temperature === "hot" && row.status === "in_conversation") activeHotCount += 1;
+    if (row.status === "appointment_scheduled") scheduledCount += 1;
+    if (row.status === "won") wonCount += 1;
+  }
+
+  return {
+    totalLeads: rows.length,
+    hotCount,
+    warmCount,
+    activeHotCount,
+    scheduledCount,
+    wonCount,
+  };
+}
+
 function periodToDays(period: string): number {
+  if (period === "1d") return 1;
   if (period === "30d") return 30;
-  if (period === "3m") return 90;
   return 7;
 }
 
 async function fetchRevenueData(
   clinicId: string,
   periodStart: Date,
+  numDays: number,
   professionalId: string | null,
 ): Promise<RevenueData> {
   const professionalFilter = professionalId
     ? [eq(appointments.professionalId, professionalId)]
     : [];
 
-  const [potentialResult, confirmedResult, byTreatmentResult, clinicRow] = await Promise.all([
+  const [potentialResult, confirmedResult, byTreatmentResult, clinicRow, seriesRows] = await Promise.all([
     db
       .select({ sum: sql<number>`coalesce(sum(${appointments.valueCents}), 0)`, cnt: count() })
       .from(appointments)
@@ -87,7 +149,7 @@ async function fetchRevenueData(
         and(
           eq(appointments.clinicId, clinicId),
           inArray(appointments.status, ["scheduled", "confirmed"]),
-          gte(appointments.createdAt, periodStart),
+          gte(appointments.startsAt, periodStart),
           isNotNull(appointments.valueCents),
           ...professionalFilter,
         ),
@@ -99,7 +161,7 @@ async function fetchRevenueData(
         and(
           eq(appointments.clinicId, clinicId),
           eq(appointments.status, "completed"),
-          gte(appointments.createdAt, periodStart),
+          gte(appointments.startsAt, periodStart),
           isNotNull(appointments.valueCents),
           ...professionalFilter,
         ),
@@ -115,7 +177,7 @@ async function fetchRevenueData(
       .where(
         and(
           eq(appointments.clinicId, clinicId),
-          gte(appointments.createdAt, periodStart),
+          gte(appointments.startsAt, periodStart),
           isNotNull(appointments.valueCents),
           ...professionalFilter,
         ),
@@ -128,6 +190,22 @@ async function fetchRevenueData(
       .from(clinics)
       .where(eq(clinics.id, clinicId))
       .limit(1),
+    db
+      .select({
+        startsAt: appointments.startsAt,
+        valueCents: appointments.valueCents,
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.clinicId, clinicId),
+          inArray(appointments.status, ["scheduled", "confirmed", "completed"]),
+          gte(appointments.startsAt, periodStart),
+          isNotNull(appointments.valueCents),
+          ...professionalFilter,
+        ),
+      )
+      .orderBy(asc(appointments.startsAt)),
   ]);
 
   return {
@@ -141,6 +219,7 @@ async function fetchRevenueData(
       count: r.cnt,
     })),
     monthlyRevenueBrl: clinicRow[0]?.monthlyRevenueBrl ?? 89700,
+    series: buildValueSeries(seriesRows, periodStart, numDays),
   };
 }
 
@@ -217,6 +296,7 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
     afterHoursResult,
     currentFlowLeadsResult,
     previousLeadPeriodResult,
+    periodLeadSnapshotResult,
     statusCountsResult,
     treatmentCatalogResult,
     clinicInfoResult,
@@ -226,6 +306,7 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
     upcomingAppointmentsResult,
     recoveryLeadsResult,
     attentionLeadsResult,
+    insightConversationsResult,
   ] = await Promise.all([
     db
       .select({ count: count() })
@@ -400,6 +481,20 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
         ),
       ),
     db
+      .select({
+        status: leads.status,
+        temperature: leads.temperature,
+      })
+      .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(
+        and(
+          eq(leads.clinicId, CLINIC_ID),
+          eq(conversations.category, "sales"),
+          gte(leads.createdAt, flowStart),
+        ),
+      ),
+    db
       .select({ status: leads.status, count: count() })
       .from(leads)
       .innerJoin(conversations, eq(conversations.leadId, leads.id))
@@ -500,7 +595,25 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
       ))
       .orderBy(desc(conversations.updatedAt))
       .limit(5),
+    db
+      .select({
+        status: leads.status,
+        treatmentInterest: leads.treatmentInterest,
+        summary: conversations.summary,
+        lastMessage: lastMessageSql,
+      })
+      .from(conversations)
+      .innerJoin(leads, eq(conversations.leadId, leads.id))
+      .where(and(
+        eq(conversations.clinicId, CLINIC_ID),
+        eq(conversations.category, "sales"),
+        notInArray(leads.status, ["appointment_scheduled", "won"]),
+      ))
+      .orderBy(desc(activityAtSql))
+      .limit(24),
   ]);
+
+  const periodFunnel = buildPeriodFunnel(periodLeadSnapshotResult);
 
   return {
     totalLeads: totalLeadsResult[0]?.count ?? 0,
@@ -535,6 +648,8 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
     upcomingAppointments: upcomingAppointmentsResult,
     recoveryLeads: recoveryLeadsResult,
     attentionLeads: attentionLeadsResult,
+    insightConversations: insightConversationsResult,
+    periodFunnel,
   };
 }
 
@@ -544,7 +659,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ period?: string }>;
 }) {
   const { period = "7d" } = await searchParams;
-  const safePeriod = (["7d", "30d", "3m"].includes(period) ? period : "7d") as PeriodKey;
+  const safePeriod = (["1d", "7d", "30d"].includes(period) ? period : "7d") as PeriodKey;
   const data = await fetchDashboardData(safePeriod);
 
   const { memberProfile } = data;
@@ -554,9 +669,10 @@ export default async function DashboardPage({
   const ownRevenueOnly = memberProfile ? canViewOwnRevenue(memberProfile) : false;
   const showRoi = memberProfile ? canViewFinancials(memberProfile) : false;
   const revenueData = showRevenue
-    ? await fetchRevenueData(
+      ? await fetchRevenueData(
         data.CLINIC_ID,
         data.flowStart,
+        periodToDays(safePeriod),
         ownRevenueOnly ? (memberProfile?.professionalId ?? null) : null,
       )
     : null;

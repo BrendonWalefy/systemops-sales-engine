@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { FlaskConical, Plus, Edit2, Check, Copy, Trash2, Pencil, MoreHorizontal, Workflow, Zap, Users, RefreshCw, Calendar, DollarSign, MessageSquare, ChevronRight } from "lucide-react";
+import { FlaskConical, Plus, Edit2, Check, Copy, Trash2, Pencil, MoreHorizontal, Zap, Users, RefreshCw, Calendar, DollarSign, MessageSquare, ChevronRight } from "lucide-react";
 import {
   activatePlaybookVersion,
   renamePlaybookVersion,
@@ -9,7 +9,7 @@ import {
   deletePlaybookVersion,
   createPlaybookVersion,
 } from "./playbook-version-actions";
-import { S, SettingsBadge, primaryBtnStyle, outlineBtnStyle, activeBtnStyle, EmptyState } from "./settings-primitives";
+import { S, SettingsBadge, primaryBtnStyle, outlineBtnStyle, activeBtnStyle } from "./settings-primitives";
 
 type Version = {
   id: string;
@@ -206,12 +206,7 @@ export function TabPlaybooks({ versions }: { versions: Version[] }) {
 
       {/* Toolbar */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-        <div>
-          <p style={{ margin: "0 0 2px", fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Versões de playbook</p>
-          <p style={{ margin: 0, fontSize: S.fs.desc, color: S.textSec }}>
-            Cada versão é um conjunto independente de regras. A versão em produção é a que está ativa.
-          </p>
-        </div>
+        <p style={{ margin: 0, fontSize: S.fs.label, fontWeight: 600, color: S.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Versões de playbook</p>
         <button
           onClick={() => router.push("/app/settings/playbook/simulate")}
           style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "rgba(0,224,178,0.08)", border: `1px solid rgba(0,224,178,0.2)`, borderRadius: "8px", color: S.teal, fontSize: "13px", fontWeight: 600, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
@@ -226,11 +221,10 @@ export function TabPlaybooks({ versions }: { versions: Version[] }) {
         <NewVersionCard />
       </div>
 
-      {/* Template playbooks — scaffolding */}
+      {/* Template playbooks */}
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-          <Workflow size={14} style={{ color: S.textMuted }} />
-          <p style={{ margin: 0, fontSize: S.fs.title, fontWeight: 600, color: S.text }}>Fluxos estratégicos</p>
+          <p style={{ margin: 0, fontSize: S.fs.label, fontWeight: 600, color: S.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Fluxos estratégicos</p>
           <SettingsBadge variant="coming">Em breve</SettingsBadge>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "8px" }}>

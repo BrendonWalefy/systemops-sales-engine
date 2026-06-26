@@ -1,9 +1,9 @@
 "use client";
-import { Clock, BookOpen, HelpCircle, AlertTriangle } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { AddTreatmentForm } from "../tratamentos/AddTreatmentForm";
-import { S, SettingsCard, SettingsSection, EmptyState } from "./settings-primitives";
+import { S, SettingsCard, SettingsSection } from "./settings-primitives";
 
 export function TabConhecimento({
   treatments,
@@ -44,8 +44,8 @@ export function TabConhecimento({
 
           {/* Treatment list */}
           {treatments.length === 0 ? (
-            <div style={{ padding: "24px 18px", textAlign: "center", color: S.textSec, fontSize: "14px" }}>
-              Adicione o primeiro {serviceNoun} abaixo
+            <div style={{ padding: "20px 18px", textAlign: "center", color: S.textSec, fontSize: "14px" }}>
+              Nenhum {serviceNoun} cadastrado ainda
             </div>
           ) : (
             <div>
@@ -61,51 +61,14 @@ export function TabConhecimento({
               ))}
             </div>
           )}
-        </SettingsCard>
 
-        <SettingsCard style={{ padding: "14px 18px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
-            <Clock size={13} style={{ color: S.textMuted }} />
-            <p style={{ margin: 0, fontSize: "12px", color: S.textSec }}>
-              Procedimentos sem duração cadastrada usarão o intervalo padrão de agendamento.
-            </p>
+          {/* Add treatment inline */}
+          <div style={{ borderTop: `1px solid ${S.border}`, padding: "0 18px 4px" }}>
+            <AddTreatmentForm canEditPrices={canEditPrices} serviceNoun={serviceNoun} />
           </div>
-          <AddTreatmentForm canEditPrices={canEditPrices} serviceNoun={serviceNoun} />
         </SettingsCard>
       </SettingsSection>
 
-      {/* Dados da clínica — scaffolding */}
-      <SettingsSection title="Dados da clínica" description="Informações que a IA usa para responder sobre localização e contato">
-        <SettingsCard>
-          <EmptyState
-            icon={<BookOpen size={16} />}
-            title="Em breve"
-            description="Endereço, telefone, links e informações gerais da clínica"
-          />
-        </SettingsCard>
-      </SettingsSection>
-
-      {/* Perguntas frequentes — scaffolding */}
-      <SettingsSection title="Perguntas frequentes" description="Respostas padrão que a IA deve seguir">
-        <SettingsCard>
-          <EmptyState
-            icon={<HelpCircle size={16} />}
-            title="Em breve"
-            description="Configure respostas para dúvidas comuns sobre a clínica, procedimentos e agendamento"
-          />
-        </SettingsCard>
-      </SettingsSection>
-
-      {/* Limites da IA — scaffolding */}
-      <SettingsSection title="Limites da IA" description="O que a IA não deve prometer ou responder">
-        <SettingsCard>
-          <EmptyState
-            icon={<AlertTriangle size={16} />}
-            title="Em breve"
-            description="Defina o que a IA pode e não pode informar — quando chamar um humano, o que não prometer"
-          />
-        </SettingsCard>
-      </SettingsSection>
     </div>
   );
 }
