@@ -13,8 +13,19 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://app.systemops.com.br"),
   title: "SystemOps",
   description: "Recepcionista autônoma para clínicas",
+  // O app SaaS é protegido por autenticação — não deve ser indexado.
+  // O site público está em systemops.com.br (systemops-landing).
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    },
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
