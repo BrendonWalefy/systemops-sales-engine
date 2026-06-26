@@ -241,7 +241,7 @@ function formatDoctorDisplayName(name: string | null): string | null {
 function greetingText(doctorName: string | null): string {
   const doctorDisplayName = formatDoctorDisplayName(doctorName);
   const greeting = getGreetingByTime();
-  return doctorDisplayName ? `${greeting}, ${doctorDisplayName} 👋` : `${greeting} 👋`;
+  return doctorDisplayName ? `${greeting}, ${doctorDisplayName}` : greeting;
 }
 
 function greetingInitial(doctorName: string | null): string {
@@ -354,9 +354,9 @@ function trendTone(current: number, previous: number): MetricCardProps["tone"] {
 }
 
 function periodLabel(period: PeriodKey): string {
-  if (period === "30d") return "30 dias";
-  if (period === "3m") return "3 meses";
-  return "7 dias";
+  if (period === "1d") return "1D";
+  if (period === "30d") return "30D";
+  return "7D";
 }
 
 function leadDisplayName(lead: { name: string | null; phone: string | null }): string {
@@ -578,31 +578,16 @@ function DashboardHeader({
         </p>
 
         <div className="command-mobile-pills">
-          <span className={`command-status-pill ${data.autoReplyEnabled ? "active" : "muted"}`}>
-            <Bot size={15} />
-            {data.autoReplyEnabled ? "IA ativa" : "IA pausada"}
+          <span className={`command-status-pill command-ia-pill ${data.autoReplyEnabled ? "active" : "danger"}`}>
+            <Bot size={14} />
+            IA
           </span>
-          {data.needsAttentionCount > 0 ? (
+          {data.needsAttentionCount > 0 && (
             <Link href="/app/inbox?filter=attention" className="command-status-pill warning">
-              <AlertTriangle size={15} />
-              {data.needsAttentionCount} {data.needsAttentionCount === 1 ? "intervenção" : "intervenções"}
+              <AlertTriangle size={14} />
+              {data.needsAttentionCount}
             </Link>
-          ) : (
-            <span className="command-status-pill active">
-              <CheckCircle2 size={15} />
-              Operação em dia
-            </span>
           )}
-        </div>
-
-        <div className="command-mobile-toolbar">
-          <span className="command-date-pill">
-            <CalendarDays size={15} />
-            {todayFormatted()}
-          </span>
-          <Suspense fallback={<span className="command-period-fallback">{periodLabel(safePeriod)}</span>}>
-            <DashboardPeriodToggle current={safePeriod} />
-          </Suspense>
         </div>
       </section>
 
@@ -655,6 +640,7 @@ function HumanInterventionAlert({ data }: { data: DashboardData }) {
           {data.needsAttentionCount} conversa{data.needsAttentionCount !== 1 ? "s" : ""} precisa
           {data.needsAttentionCount === 1 ? "" : "m"} de decisão da equipe
         </strong>
+        <small className="command-mobile-hint">Resolva agora para não perder o lead.</small>
       </div>
       <div className="command-attention-actions">
         <Link href="/app/inbox?filter=attention">Resolver agora</Link>
@@ -944,6 +930,231 @@ function RecentActivity({ data }: { data: DashboardData }) {
   );
 }
 
+function MobileMetricsGroup({
+  data,
+  revenueData,
+  showRevenue,
+  roi,
+  safePeriod,
+  pipelineCents,
+  revenueOpportunityCount,
+  totalAppointmentsToday,
+  ownRevenueOnly,
+}: {
+  data: DashboardData;
+  revenueData: RevenueData | null;
+  showRevenue: boolean;
+  roi: number | null;
+  safePeriod: PeriodKey;
+  pipelineCents: number;
+  revenueOpportunityCount: number;
+  totalAppointmentsToday: number;
+  ownRevenueOnly: boolean;
+}) {
+  const proposalsCount = buildRevenueStages(data)[2]?.value ?? 0;
+
+  return (
+    <section className="command-mobile-metrics-group" aria-label="Métricas do período">
+      <div className="command-mobile-metrics-header">
+        <span>Operação</span>
+        <Suspense fallback={<span className="command-period-fallback">{periodLabel(safePeriod)}</span>}>
+          <DashboardPeriodToggle current={safePeriod} />
+        </Suspense>
+      </div>
+      <div className="command-mobile-metrics-inner">
+        <MetricCard
+          title={ownRevenueOnly ? "Minha Receita" : "Receita Pipeline"}
+          value={showRevenue && revenueData ? formatBRL(pipelineCents) : "Restrito"}
+          trend={revenueData ? countLabel(revenueOpportunityCount, "oportunidade", "oportunidades") : "financeiro"}
+          context={showRevenue ? "potencial + confirmado" : "permissão necessária"}
+          tone="positive"
+          Icon={DollarSign}
+        />
+        <MetricCard
+          title="Potencial"
+          value={showRevenue && revenueData ? formatBRL(revenueData.potentialCents) : "Restrito"}
+          trend={revenueData ? countLabel(revenueData.potentialCount, "conversa", "conversas") : "financeiro"}
+          context={showRevenue ? "em andamento e agendados" : "permissão necessária"}
+          tone={revenueData && revenueData.potentialCents > 0 ? "positive" : "neutral"}
+          Icon={TrendingUp}
+        />
+        <MetricCard
+          title="Propostas"
+          value={compactNumber(proposalsCount)}
+          trend={`${formatPercent(conversionRate(data))}% conv.`}
+          context="leads qualificados"
+          tone={proposalsCount > 0 ? "positive" : "neutral"}
+          Icon={Send}
+        />
+        <MetricCard
+          title="Agendamentos"
+          value={compactNumber(data.scheduledCount)}
+          trend={`Hoje: ${totalAppointmentsToday}`}
+          context={`${formatPercent(conversionRate(data))}% conversão`}
+          tone={totalAppointmentsToday > 0 ? "positive" : "neutral"}
+          Icon={CalendarDays}
+        />
+      </div>
+    </section>
+  );
+}
+
+function MobileOperacaoHoje({
+  data,
+  revenueData,
+  showRevenue,
+  roi,
+  safePeriod,
+}: {
+  data: DashboardData;
+  revenueData: RevenueData | null;
+  showRevenue: boolean;
+  roi: number | null;
+  safePeriod: PeriodKey;
+}) {
+  return (
+    <section className="command-mobile-operacao" aria-label="Operação hoje">
+      <div className="command-mobile-operacao-header">
+        <span>Operação hoje</span>
+        <Suspense fallback={<span className="command-period-fallback">{periodLabel(safePeriod)}</span>}>
+          <DashboardPeriodToggle current={safePeriod} />
+        </Suspense>
+      </div>
+
+      {showRevenue && revenueData ? (
+        <div className="command-mobile-operacao-main">
+          <strong>{formatBRL(revenueData.confirmedCents)}</strong>
+          <small>Receita confirmada no período</small>
+        </div>
+      ) : null}
+
+      <div className="command-mobile-operacao-metrics">
+        <div>
+          <strong>{compactNumber(data.activeLeads)}</strong>
+          <small>leads</small>
+        </div>
+        <div>
+          <strong>{compactNumber(data.scheduledCount)}</strong>
+          <small>agendamentos</small>
+        </div>
+        <div>
+          <strong>{compactNumber(data.totalConversations)}</strong>
+          <small>conversas</small>
+        </div>
+        <div>
+          <strong>{roi !== null ? `${roi.toFixed(1)}x` : "–"}</strong>
+          <small>ROI</small>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MobileNextAppointment({ appointments }: { appointments: DashboardAppointment[] }) {
+  const next = appointments[0];
+
+  return (
+    <section className="command-mobile-next-apt" aria-label="Próximo agendamento">
+      <div className="command-mobile-section-header">
+        <span>
+          <CalendarDays size={14} />
+          Próximo agendamento
+        </span>
+        <Link href="/app/agenda">Ver agenda</Link>
+      </div>
+
+      {!next ? (
+        <div className="command-mobile-apt-empty">Nenhum agendamento próximo.</div>
+      ) : (
+        <Link href="/app/agenda" className="command-mobile-apt-item">
+          <span className="command-upcoming-time">{formatTime(next.startsAt)}</span>
+          <div>
+            <strong>{next.leadName ?? next.leadPhone ?? "Paciente"}</strong>
+            <small>{appointmentDateLabel(next.startsAt)} · {appointmentStatusLabel(next.status)}</small>
+          </div>
+        </Link>
+      )}
+    </section>
+  );
+}
+
+function MobileInboxResumido({ leads }: { leads: DashboardRecentLead[] }) {
+  return (
+    <section className="command-panel command-conversations-panel" aria-label="Inbox resumido">
+      <div className="command-panel-header">
+        <div>
+          <span>Conversas</span>
+          <h2>Inbox resumido</h2>
+        </div>
+        <Link href="/app/inbox" className="command-icon-link" aria-label="Ver todas as conversas">
+          <ArrowRight size={16} />
+        </Link>
+      </div>
+
+      {leads.length === 0 ? (
+        <div className="command-empty">Nenhuma conversa registrada ainda.</div>
+      ) : (
+        <div className="command-conversation-list">
+          {leads.slice(0, 3).map((lead) => (
+            <Link key={lead.id} href={`/app/inbox/${lead.convId}`} className="command-conversation-row">
+              <LeadAvatar
+                name={lead.name}
+                phone={lead.phone}
+                imageUrl={lead.profilePicUrl}
+                className={temperatureClass(lead.temperature)}
+              />
+              <div className="command-conversation-copy">
+                <strong>{leadDisplayName(lead)}</strong>
+                <p>{summarizeText(lastMessageLabel(lead), 92)}</p>
+                <small className={`command-conversation-meta ${temperatureClass(lead.temperature)}`}>
+                  {conversationMeta(lead)}
+                </small>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <Link href="/app/inbox" className="command-panel-footer">
+        Ver todas as conversas
+      </Link>
+    </section>
+  );
+}
+
+function MobileFunnelCompacto({
+  data,
+  safePeriod,
+}: {
+  data: DashboardData;
+  safePeriod: PeriodKey;
+}) {
+  const stages = buildRevenueStages(data);
+
+  return (
+    <section className="command-mobile-funnel" aria-label="Funil de receita">
+      <div className="command-mobile-section-header">
+        <span>Funil de receita</span>
+        <span className="command-mini-pill">{periodLabel(safePeriod)}</span>
+      </div>
+
+      <div className="command-mobile-funnel-list">
+        {stages.map((stage) => (
+          <div key={stage.label} className="command-mobile-funnel-row">
+            <span>{stage.label}</span>
+            <strong>{compactNumber(stage.value)}</strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="command-mobile-funnel-footer">
+        <span>Conversão geral</span>
+        <strong>{formatPercent(conversionRate(data))}%</strong>
+      </div>
+    </section>
+  );
+}
+
 export function DashboardCommandCenter({
   data,
   revenueData,
@@ -963,53 +1174,74 @@ export function DashboardCommandCenter({
     <div className="command-dashboard-shell">
       <DashboardHeader data={data} safePeriod={safePeriod} />
 
-      <section className="command-metric-grid" aria-label="Indicadores principais">
-        <MetricCard
-          title={ownRevenueOnly ? "Minha Receita em Pipeline" : "Receita em Pipeline"}
-          value={showRevenue && revenueData ? formatBRL(pipelineCents) : "Restrito"}
-          trend={revenueData ? countLabel(revenueOpportunityCount, "oportunidade", "oportunidades") : "financeiro"}
-          context={showRevenue ? "potencial e confirmado" : "permissão necessária"}
-          tone="positive"
-          Icon={DollarSign}
+      {/* Layout mobile — oculto no desktop */}
+      <div className="command-mobile-layout">
+        <MobileMetricsGroup
+          data={data}
+          revenueData={revenueData}
+          showRevenue={showRevenue}
+          roi={roi}
+          safePeriod={safePeriod}
+          pipelineCents={pipelineCents}
+          revenueOpportunityCount={revenueOpportunityCount}
+          totalAppointmentsToday={totalAppointmentsToday}
+          ownRevenueOnly={ownRevenueOnly}
         />
-        <MetricCard
-          title="ROI"
-          value={roi !== null ? `${roi.toFixed(1)}x` : "Restrito"}
-          trend={roi !== null ? "sobre mensalidade" : "financeiro"}
-          context={roi !== null ? "Receita confirmada no período" : "permissão necessária"}
-          tone={roi !== null && roi >= 1 ? "positive" : "neutral"}
-          Icon={TrendingUp}
-        />
-        <MetricCard
-          title="Leads Ativos"
-          value={compactNumber(data.activeLeads)}
-          trend={leadTrend}
-          context={`vs. últimos ${periodLabel(safePeriod)}`}
-          tone={leadTone}
-          Icon={Users}
-        />
-        <MetricCard
-          title="Agendamentos"
-          value={compactNumber(data.scheduledCount)}
-          trend={`Hoje: ${totalAppointmentsToday}`}
-          context={`${formatPercent(conversionRate(data))}% de conversão`}
-          tone={totalAppointmentsToday > 0 ? "positive" : "neutral"}
-          Icon={CalendarDays}
-        />
-      </section>
-
-      <RevenueSummary data={data} revenueData={revenueData} />
-      <SecondaryMetrics data={data} />
-      <UpcomingAppointments appointments={data.upcomingAppointments} />
-      <HumanInterventionAlert data={data} />
-
-      <main className="command-main-grid">
-        <ConversationList leads={data.recentLeads} />
-        <RevenueFunnel data={data} revenueData={revenueData} safePeriod={safePeriod} />
+        <MobileNextAppointment appointments={data.upcomingAppointments} />
         <HotLeadsCard leads={data.hotLeads} treatmentCatalog={data.treatmentCatalog} />
-      </main>
+        <RevenueFunnel data={data} revenueData={revenueData} safePeriod={safePeriod} />
+      </div>
 
-      <RecentActivity data={data} />
+      {/* Layout desktop — oculto no mobile */}
+      <div className="command-desktop-layout">
+        <section className="command-metric-grid" aria-label="Indicadores principais">
+          <MetricCard
+            title={ownRevenueOnly ? "Minha Receita em Pipeline" : "Receita em Pipeline"}
+            value={showRevenue && revenueData ? formatBRL(pipelineCents) : "Restrito"}
+            trend={revenueData ? countLabel(revenueOpportunityCount, "oportunidade", "oportunidades") : "financeiro"}
+            context={showRevenue ? "potencial e confirmado" : "permissão necessária"}
+            tone="positive"
+            Icon={DollarSign}
+          />
+          <MetricCard
+            title="ROI"
+            value={roi !== null ? `${roi.toFixed(1)}x` : "Restrito"}
+            trend={roi !== null ? "sobre mensalidade" : "financeiro"}
+            context={roi !== null ? "Receita confirmada no período" : "permissão necessária"}
+            tone={roi !== null && roi >= 1 ? "positive" : "neutral"}
+            Icon={TrendingUp}
+          />
+          <MetricCard
+            title="Leads Ativos"
+            value={compactNumber(data.activeLeads)}
+            trend={leadTrend}
+            context={`vs. últimos ${periodLabel(safePeriod)}`}
+            tone={leadTone}
+            Icon={Users}
+          />
+          <MetricCard
+            title="Agendamentos"
+            value={compactNumber(data.scheduledCount)}
+            trend={`Hoje: ${totalAppointmentsToday}`}
+            context={`${formatPercent(conversionRate(data))}% de conversão`}
+            tone={totalAppointmentsToday > 0 ? "positive" : "neutral"}
+            Icon={CalendarDays}
+          />
+        </section>
+
+        <RevenueSummary data={data} revenueData={revenueData} />
+        <SecondaryMetrics data={data} />
+        <UpcomingAppointments appointments={data.upcomingAppointments} />
+        <HumanInterventionAlert data={data} />
+
+        <main className="command-main-grid">
+          <ConversationList leads={data.recentLeads} />
+          <RevenueFunnel data={data} revenueData={revenueData} safePeriod={safePeriod} />
+          <HotLeadsCard leads={data.hotLeads} treatmentCatalog={data.treatmentCatalog} />
+        </main>
+
+        <RecentActivity data={data} />
+      </div>
     </div>
   );
 }

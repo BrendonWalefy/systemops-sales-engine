@@ -65,8 +65,8 @@ function buildFlowSeries(rows: Array<{ createdAt: DateLike }>, startDate: Date, 
 }
 
 function periodToDays(period: string): number {
+  if (period === "1d") return 1;
   if (period === "30d") return 30;
-  if (period === "3m") return 90;
   return 7;
 }
 
@@ -544,7 +544,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ period?: string }>;
 }) {
   const { period = "7d" } = await searchParams;
-  const safePeriod = (["7d", "30d", "3m"].includes(period) ? period : "7d") as PeriodKey;
+  const safePeriod = (["1d", "7d", "30d"].includes(period) ? period : "7d") as PeriodKey;
   const data = await fetchDashboardData(safePeriod);
 
   const { memberProfile } = data;
