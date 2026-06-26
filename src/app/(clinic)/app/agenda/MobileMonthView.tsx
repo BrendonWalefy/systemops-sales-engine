@@ -61,6 +61,15 @@ function formatTime(event: AppointmentEvent, tz: string): string {
   }
 }
 
+function formatBlockTimeRange(event: AppointmentEvent, tz: string): string {
+  try {
+    const fmt = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    });
+    return `${fmt.format(new Date(event.startsAt))}–${fmt.format(new Date(event.endsAt))}`;
+  } catch { return event.startsAt.slice(11, 16); }
+}
+
 function getCategory(event: AppointmentEvent): Category {
   if (event.status === "confirmed" || event.status === "completed") return "confirmed";
   const t = (event.leadTreatmentInterest ?? "").toLowerCase();
@@ -285,12 +294,12 @@ export function MobileMonthView({
               ].filter(Boolean).join(" ")}
               onClick={() => setSelectedDate(ds)}
               style={hasBlocks && !isToday ? {
-                backgroundImage: "repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(107,114,128,0.13) 3px, rgba(107,114,128,0.13) 4px)",
+                backgroundImage: "repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(245,180,81,0.18) 3px, rgba(245,180,81,0.18) 4px)",
               } : undefined}
             >
               <span className="mmv-cell-day">{day}</span>
               {hasBlocks && (
-                <Ban size={8} style={{ position: "absolute", top: 3, right: 3, color: "#9ca3af", opacity: 0.7 }} />
+                <Ban size={8} style={{ position: "absolute", top: 3, right: 3, color: "#f5b451", opacity: 0.85 }} />
               )}
               {(count > 0 || hasBlocks) && (
                 <div className="mmv-cell-dots">
@@ -339,22 +348,24 @@ export function MobileMonthView({
                   <div
                     key={event.id}
                     className="mmv-event-row"
-                    style={{ "--event-border": "#6b7280" } as React.CSSProperties}
+                    style={{ "--event-border": "#f5b451" } as React.CSSProperties}
                     onClick={() => onEventClick(event)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => e.key === "Enter" && onEventClick(event)}
                   >
-                    <div className="mmv-event-time">{formatTime(event, timezone)}</div>
-                    <div className="mmv-event-avatar" aria-hidden style={{ color: "#6b7280" }}>
+                    <div className="mmv-event-time" style={{ color: "#f5b451", fontSize: 10 }}>
+                      {formatBlockTimeRange(event, timezone)}
+                    </div>
+                    <div className="mmv-event-avatar" aria-hidden style={{ color: "#f5b451" }}>
                       <Ban size={15} />
                     </div>
                     <div className="mmv-event-body">
-                      <span className="mmv-event-name" style={{ color: "#9ca3af" }}>
+                      <span className="mmv-event-name" style={{ color: "#f5b451" }}>
                         {event.leadName ?? "Horário bloqueado"}
                       </span>
                     </div>
-                    <span className="mmv-badge" style={{ background: "#6b728020", color: "#9ca3af", border: "1px solid #6b728040" }}>
+                    <span className="mmv-badge" style={{ background: "rgba(245,180,81,0.12)", color: "#f5b451", border: "1px solid rgba(245,180,81,0.3)" }}>
                       Bloqueio
                     </span>
                   </div>
