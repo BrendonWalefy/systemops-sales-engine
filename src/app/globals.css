@@ -7357,7 +7357,7 @@ textarea:focus {
 }
 
 .command-funnel {
-  --command-funnel-badge-space: 94px;
+  --command-funnel-badge-space: 84px;
   display: grid;
   gap: 12px;
   flex: 1;
@@ -7373,7 +7373,8 @@ textarea:focus {
 
 .command-funnel-stage {
   display: grid;
-  width: min(var(--stage-width), 100%);
+  width: var(--stage-width);
+  max-width: 100%;
   min-height: 60px;
   place-items: center;
   margin-inline: auto;
@@ -7381,7 +7382,7 @@ textarea:focus {
   background:
     linear-gradient(180deg, rgba(52, 211, 153, 0.92), rgba(13, 148, 102, 0.82)),
     var(--command-accent);
-  color: #04110e;
+  color: #effcf7;
   text-align: center;
   box-shadow:
     0 10px 24px rgba(16, 185, 129, 0.12),
@@ -7392,7 +7393,7 @@ textarea:focus {
   background:
     linear-gradient(180deg, rgba(21, 128, 91, 0.86), rgba(12, 72, 54, 0.86)),
     #0f6b51;
-  color: var(--command-text);
+  color: #effcf7;
 }
 
 .command-funnel-stage span {
@@ -7851,7 +7852,7 @@ textarea:focus {
   }
 
   .command-funnel {
-    --command-funnel-badge-space: 72px;
+    --command-funnel-badge-space: 68px;
     padding: 20px 14px 14px;
   }
 
