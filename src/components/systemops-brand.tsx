@@ -58,7 +58,7 @@ export function SystemOpsBrand({ variant = "lockup", className, priority = false
         src="/brand/systemops-wordmark-text.png"
         alt="SystemOps"
         width={860}
-        height={124}
+        height={150}
         priority={priority}
         className={joinClassNames("systemops-brand__wordmark", className)}
       />
