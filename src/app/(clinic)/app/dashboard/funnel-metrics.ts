@@ -1,4 +1,4 @@
-export const DESKTOP_FUNNEL_VISUAL_WIDTHS = [520, 470, 420, 370, 320] as const;
+export const DESKTOP_FUNNEL_VISUAL_WIDTHS = [430, 360, 295, 245, 205] as const;
 
 export function calculateFunnelStagePercentages(values: number[]): number[] {
   if (values.length === 0) return [];

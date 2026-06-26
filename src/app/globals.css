@@ -7358,7 +7358,7 @@ textarea:focus {
 
 .command-funnel {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   flex: 1;
   align-content: center;
   padding: 28px 30px 20px;
@@ -7374,12 +7374,12 @@ textarea:focus {
 .command-funnel-stage {
   display: grid;
   width: min(100%, var(--stage-width));
-  min-height: 84px;
+  min-height: 76px;
   place-items: center;
   justify-self: center;
   box-sizing: border-box;
-  padding: 14px 28px 12px;
-  clip-path: polygon(4% 0, 96% 0, 88% 100%, 12% 100%);
+  padding: 12px 24px 10px;
+  clip-path: polygon(2% 0, 98% 0, 88% 100%, 12% 100%);
   background:
     linear-gradient(180deg, rgba(52, 211, 153, 0.92), rgba(13, 148, 102, 0.82)),
     var(--command-accent);
@@ -7399,7 +7399,7 @@ textarea:focus {
 
 .command-funnel-stage span {
   color: inherit;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 760;
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -7407,7 +7407,7 @@ textarea:focus {
 
 .command-funnel-stage strong {
   color: inherit;
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 840;
   line-height: 1;
 }
@@ -7865,8 +7865,8 @@ textarea:focus {
   }
 
   .command-funnel-stage {
-    min-height: 72px;
-    padding: 12px 18px 10px;
+    min-height: 66px;
+    padding: 11px 16px 9px;
   }
 
   .command-funnel-line small {
@@ -7884,7 +7884,7 @@ textarea:focus {
   }
 
   .command-funnel-stage strong {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .command-attention-actions {
