@@ -619,7 +619,6 @@ function TabLeads({
 
   return (
     <div className="command-tab-content">
-      <OperationalInsightsCard />
       <section className="command-mobile-leads-hero">
         <div>
           <span>Fila comercial</span>
@@ -754,6 +753,7 @@ function TabLeads({
           </div>
         </section>
       )}
+      <OperationalInsightsCard />
     </div>
   );
 }

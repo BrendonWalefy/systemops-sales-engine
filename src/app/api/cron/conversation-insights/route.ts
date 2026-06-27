@@ -1,6 +1,6 @@
-// Cron diário (7h UTC) — analisa conversas recentes por clínica e gera insights operacionais.
-// Usa LLM para identificar padrões: objeção de preço, hesitação, resposta confusa, etc.
-// Resultados ficam disponíveis no card "Pontos de Melhoria" na home.
+// Cron diário (7h UTC) — analisa conversas recentes por clínica e gera insights em duas categorias:
+// - operational: lacunas operacionais (tratamento não cadastrado, preço ausente, etc.)
+// - ai_quality: onde o assistente de IA poderia ter respondido melhor
 
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
@@ -10,6 +10,7 @@ import {
   clinicOperationalInsights,
   conversations,
   messages,
+  treatments,
 } from "@/infrastructure/db/schema";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 
@@ -23,6 +24,7 @@ const INSIGHT_TTL_DAYS = 3;
 
 type InsightDraft = {
   type: string;
+  category: "operational" | "ai_quality";
   title: string;
   description: string;
   affectedCount: number;
@@ -34,7 +36,7 @@ async function callLLM(prompt: string): Promise<string> {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const res = await client.messages.create({
       model: INSIGHT_MODEL,
-      max_tokens: 1024,
+      max_tokens: 1500,
       messages: [{ role: "user", content: prompt }],
     });
     return res.content[0].type === "text" ? res.content[0].text : "";
@@ -44,36 +46,62 @@ async function callLLM(prompt: string): Promise<string> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const res = await client.chat.completions.create({
     model: INSIGHT_MODEL,
-    max_tokens: 1024,
+    max_tokens: 1500,
     response_format: { type: "json_object" },
     messages: [{ role: "user", content: prompt }],
   });
   return res.choices[0]?.message?.content ?? "";
 }
 
+type RawInsight = { type?: unknown; title?: unknown; description?: unknown; affectedCount?: unknown };
+
+function normalizeInsights(arr: unknown[], category: "operational" | "ai_quality"): InsightDraft[] {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter(
+      (i): i is RawInsight =>
+        i !== null &&
+        typeof i === "object" &&
+        typeof (i as RawInsight).title === "string" &&
+        typeof (i as RawInsight).description === "string",
+    )
+    .map((i) => ({
+      type: typeof i.type === "string" ? i.type : "other",
+      category,
+      title: String(i.title).slice(0, 80),
+      description: String(i.description).slice(0, 200),
+      affectedCount: typeof i.affectedCount === "number" ? i.affectedCount : 1,
+    }))
+    .slice(0, 3);
+}
+
 function parseInsights(raw: string): InsightDraft[] {
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     const json = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(raw);
-    const arr = Array.isArray(json.insights) ? json.insights : [];
-    return arr
-      .filter(
-        (i: unknown) =>
-          i !== null &&
-          typeof i === "object" &&
-          typeof (i as Record<string, unknown>).title === "string" &&
-          typeof (i as Record<string, unknown>).description === "string",
-      )
-      .map((i: Record<string, unknown>) => ({
-        type: typeof i.type === "string" ? i.type : "other",
-        title: String(i.title).slice(0, 80),
-        description: String(i.description).slice(0, 200),
-        affectedCount: typeof i.affectedCount === "number" ? i.affectedCount : 1,
-      }))
-      .slice(0, 5);
+    return [
+      ...normalizeInsights(json.operational ?? [], "operational"),
+      ...normalizeInsights(json.ai_quality ?? [], "ai_quality"),
+    ].slice(0, 6);
   } catch {
     return [];
   }
+}
+
+type TreatmentRow = { name: string; priceCents: number | null; minPriceCents: number | null; maxPriceCents: number | null };
+
+function formatTreatmentCatalog(catalog: TreatmentRow[]): string {
+  if (catalog.length === 0) return "Nenhum tratamento cadastrado.";
+  return catalog
+    .map((t) => {
+      const price = t.priceCents
+        ? `R$ ${(t.priceCents / 100).toFixed(0)}`
+        : t.minPriceCents && t.maxPriceCents
+          ? `R$ ${(t.minPriceCents / 100).toFixed(0)}–${(t.maxPriceCents / 100).toFixed(0)}`
+          : "sem preço cadastrado";
+      return `- ${t.name} (${price})`;
+    })
+    .join("\n");
 }
 
 async function analyzeClinic(
@@ -83,17 +111,28 @@ async function analyzeClinic(
   const since = new Date();
   since.setHours(since.getHours() - 48);
 
-  const recentConvs = await db
-    .select({ id: conversations.id, leadId: conversations.leadId })
-    .from(conversations)
-    .where(
-      and(
-        eq(conversations.clinicId, clinicId),
-        gte(conversations.lastMessageAt, since),
-      ),
-    )
-    .orderBy(desc(conversations.lastMessageAt))
-    .limit(MAX_CONVERSATIONS);
+  const [recentConvs, clinicTreatments] = await Promise.all([
+    db
+      .select({ id: conversations.id, leadId: conversations.leadId })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.clinicId, clinicId),
+          gte(conversations.lastMessageAt, since),
+        ),
+      )
+      .orderBy(desc(conversations.lastMessageAt))
+      .limit(MAX_CONVERSATIONS),
+    db
+      .select({
+        name: treatments.name,
+        priceCents: treatments.priceCents,
+        minPriceCents: treatments.minPriceCents,
+        maxPriceCents: treatments.maxPriceCents,
+      })
+      .from(treatments)
+      .where(eq(treatments.clinicId, clinicId)),
+  ]);
 
   if (recentConvs.length < 3) return [];
 
@@ -121,7 +160,7 @@ async function analyzeClinic(
       const msgs = byConv.get(conv.id) ?? [];
       if (msgs.length === 0) return null;
       const lines = msgs.map((m) => {
-        const role = m.author === "lead" ? "Lead" : "AI";
+        const role = m.author === "lead" ? "Lead" : "IA";
         return `  ${role}: ${(m.body ?? "").slice(0, 200)}`;
       });
       return `Conversa ${idx + 1}:\n${lines.join("\n")}`;
@@ -129,26 +168,50 @@ async function analyzeClinic(
     .filter(Boolean)
     .join("\n\n");
 
-  const prompt = `Você é um analista de conversas de clínicas estéticas.
+  const catalogText = formatTreatmentCatalog(clinicTreatments);
 
-Analise as seguintes ${recentConvs.length} conversas recentes (últimas 48h) da clínica "${clinicName}" entre o assistente AI e leads:
+  const prompt = `Você é um analista especializado em clínicas estéticas.
 
+Clínica: "${clinicName}"
+
+CATÁLOGO DE TRATAMENTOS CADASTRADOS:
+${catalogText}
+
+CONVERSAS RECENTES (últimas 48h) entre assistente de IA e leads:
 [CONVERSAS]
 ${conversationsText}
 [/CONVERSAS]
 
-Identifique de 1 a 4 padrões operacionais que o gestor deveria saber. Foque em:
-- Objeções de preço/parcelamento que ficaram sem resolução clara
-- Leads com interesse que hesitaram e não agendaram
-- Respostas do AI que pareceram confusas, incompletas ou inadequadas
-- Serviços/tratamentos perguntados que o AI não soube informar
-- Qualquer fricção recorrente que esteja impedindo agendamentos
+Analise as conversas e identifique insights em DUAS categorias:
 
-Responda APENAS com JSON válido:
+CATEGORIA 1 — OPERACIONAL (problemas que o gestor precisa resolver):
+- Tratamentos/procedimentos perguntados pelo lead que NÃO existem no catálogo acima
+- Tratamentos no catálogo sem preço, onde o lead perguntou sobre valor
+- Serviços ou tópicos que a IA não conseguiu responder por falta de informação cadastrada
+- Padrões de pergunta recorrente que indicam algo importante faltando no sistema
+
+CATEGORIA 2 — QUALIDADE DA IA (onde o assistente poderia ter se saído melhor):
+- Respostas confusas, genéricas ou que não endereçaram a dúvida do lead
+- Oportunidades perdidas de conduzir para agendamento quando o lead estava pronto
+- Respostas robóticas ou pouco naturais que podem ter esfriado o lead
+- Hesitação do lead logo após uma resposta da IA (sinal de que a resposta não foi boa)
+- Objeções de preço ou condição que a IA não soube contornar com clareza
+
+IMPORTANTE: Para "tratamento não cadastrado", verifique se o tema da conversa (mesmo usando outros termos ou de forma implícita) corresponde a algo que não está no catálogo. Exemplo: lead pergunta sobre "deixar os dentes mais brancos" → clareamento dental não cadastrado.
+
+Responda APENAS com JSON válido (máx 3 insights por categoria, só inclua os relevantes):
 {
-  "insights": [
+  "operational": [
     {
-      "type": "price_objection" | "hesitation_drop" | "unclear_response" | "service_gap" | "scheduling_friction" | "other",
+      "type": "missing_treatment" | "price_not_set" | "service_gap" | "info_gap" | "other",
+      "title": "Título curto e direto (máx 60 chars)",
+      "description": "Padrão identificado com contexto específico (máx 150 chars)",
+      "affectedCount": número de conversas onde isso ocorreu
+    }
+  ],
+  "ai_quality": [
+    {
+      "type": "unclear_response" | "missed_opportunity" | "unnatural_reply" | "price_objection_unresolved" | "hesitation_after_reply" | "other",
       "title": "Título curto e direto (máx 60 chars)",
       "description": "Padrão identificado com contexto específico (máx 150 chars)",
       "affectedCount": número de conversas onde isso ocorreu
@@ -156,7 +219,7 @@ Responda APENAS com JSON válido:
   ]
 }
 
-Se não houver padrões relevantes, retorne {"insights": []}.`;
+Se não houver insights relevantes em uma categoria, retorne array vazio para ela.`;
 
   const raw = await callLLM(prompt);
   return parseInsights(raw);
@@ -181,7 +244,6 @@ export async function GET(req: NextRequest) {
     try {
       const drafts = await analyzeClinic(clinic.id, clinic.name);
 
-      // Remove insights anteriores não descartados antes de inserir novos
       await db
         .delete(clinicOperationalInsights)
         .where(eq(clinicOperationalInsights.clinicId, clinic.id));
@@ -191,6 +253,7 @@ export async function GET(req: NextRequest) {
           drafts.map((d) => ({
             clinicId: clinic.id,
             type: d.type,
+            category: d.category,
             title: d.title,
             description: d.description,
             affectedCount: d.affectedCount,

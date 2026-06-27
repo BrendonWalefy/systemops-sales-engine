@@ -9,13 +9,13 @@ export const dynamic = "force-dynamic";
 export type OperationalInsight = {
   key: string;
   type: string;
+  category: "operational" | "ai_quality";
   title: string;
   description: string;
   affectedCount: number;
 };
 
 // GET /api/clinic/operational-insights
-// Retorna insights operacionais unificados: gaps de catálogo + insights LLM de conversas.
 export async function GET(_request: NextRequest): Promise<NextResponse> {
   const clinicId = await getSessionClinicId();
   if (!clinicId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -43,6 +43,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
       .select({
         id: clinicOperationalInsights.id,
         type: clinicOperationalInsights.type,
+        category: clinicOperationalInsights.category,
         title: clinicOperationalInsights.title,
         description: clinicOperationalInsights.description,
         affectedCount: clinicOperationalInsights.affectedCount,
@@ -56,13 +57,14 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
         ),
       )
       .orderBy(desc(clinicOperationalInsights.affectedCount))
-      .limit(5),
+      .limit(6),
   ]);
 
   const insights: OperationalInsight[] = [
     ...insightRows.map((r) => ({
       key: `op::${r.id}`,
       type: r.type,
+      category: (r.category === "ai_quality" ? "ai_quality" : "operational") as "operational" | "ai_quality",
       title: r.title,
       description: r.description,
       affectedCount: r.affectedCount,
@@ -70,6 +72,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
     ...gapRows.map((r) => ({
       key: `missing_treatment::${r.mentionedText}`,
       type: "missing_treatment",
+      category: "operational" as const,
       title: "Tratamento não cadastrado",
       description: `${r.count} ${r.count === 1 ? "lead mencionou" : "leads mencionaram"} "${r.mentionedText}" — considere adicioná-lo ao catálogo.`,
       affectedCount: r.count,
@@ -79,8 +82,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ insights });
 }
 
-// PATCH /api/clinic/operational-insights
-// Descarta um insight pelo key.
+// PATCH /api/clinic/operational-insights — descarta um insight pelo key
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   const clinicId = await getSessionClinicId();
   if (!clinicId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
