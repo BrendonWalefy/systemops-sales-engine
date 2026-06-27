@@ -302,6 +302,13 @@
       "when": 1782583386563,
       "tag": "0042_treatment_gap_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1782600249560,
+      "tag": "0043_clinic_operational_insights",
+      "breakpoints": true
     }
   ]
 }

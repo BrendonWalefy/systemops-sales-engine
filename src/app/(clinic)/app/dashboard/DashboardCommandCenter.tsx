@@ -1,6 +1,7 @@
 import type { CSSProperties, ElementType } from "react";
 import { Suspense } from "react";
 import Link from "next/link";
+import { OperationalInsightsCard } from "./OperationalInsightsCard";
 import {
   Activity,
   AlertTriangle,
@@ -1214,6 +1215,7 @@ export function DashboardCommandCenter({
         </section>
 
         <HumanInterventionAlert data={data} />
+        <OperationalInsightsCard />
         <UpcomingAppointments appointments={data.upcomingAppointments} />
 
         <main className="command-main-grid">

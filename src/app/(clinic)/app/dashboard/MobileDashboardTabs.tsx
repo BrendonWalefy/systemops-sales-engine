@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import { OperationalInsightsCard } from "./OperationalInsightsCard";
 import Link from "next/link";
 import {
   Activity,
@@ -618,6 +619,7 @@ function TabLeads({
 
   return (
     <div className="command-tab-content">
+      <OperationalInsightsCard />
       <section className="command-mobile-leads-hero">
         <div>
           <span>Fila comercial</span>
