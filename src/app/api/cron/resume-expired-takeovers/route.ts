@@ -14,7 +14,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const resumed = await db
     .update(conversations)
-    .set({ aiPaused: false, takeoverExpiresAt: null })
+    .set({ aiPaused: false, takeoverExpiresAt: null, aiResumedAt: now })
     .where(
       and(
         eq(conversations.aiPaused, true),

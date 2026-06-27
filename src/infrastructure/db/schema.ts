@@ -326,6 +326,10 @@ export const conversations = pgTable(
     processingUntil: timestamp("processing_until", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
+    // Marcado quando a IA retoma controle após pausa (TTL expirado ou operador retomou).
+    // Usado pelo stuck-conversation-sweep para ignorar mensagens enviadas antes da retomada,
+    // evitando falsos positivos de "sem resposta automática" em conversas já tratadas.
+    aiResumedAt: timestamp("ai_resumed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -831,5 +835,35 @@ export const clinicModules = pgTable(
   (t) => ({
     uniq: unique().on(t.clinicId, t.moduleKey),
     activeIdx: index("idx_clinic_modules_clinic").on(t.clinicId),
+  }),
+);
+
+// Registra menções de tratamentos não encontrados no catálogo da clínica.
+// Alimenta os insights operacionais no Inbox: "X leads mencionaram Y — cadastrar?"
+// Permite ao doutor identificar lacunas no catálogo sem precisar ler cada conversa.
+export const treatmentGapReports = pgTable(
+  "treatment_gap_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    leadName: text("lead_name"),
+    mentionedText: text("mentioned_text").notNull(),
+    messageSnippet: text("message_snippet").notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    clinicCreatedIdx: index("treatment_gap_reports_clinic_created_idx").on(
+      t.clinicId,
+      t.createdAt,
+    ),
+    convIdx: index("treatment_gap_reports_conv_idx").on(t.conversationId),
   }),
 );

@@ -9,6 +9,7 @@ import { InboxPoller } from "./InboxPoller";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { InboxClient, type ConvRow } from "./InboxClient";
 import { buildInboxSnapshotSignature, type InboxSnapshotRow } from "./inbox-snapshot";
+import { TreatmentGapBanner } from "./TreatmentGapBanner";
 
 export default async function InboxPage({
   searchParams,
@@ -200,6 +201,7 @@ export default async function InboxPage({
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 28px 0" }}>
         <EnableNotificationsButton />
       </div>
+      <TreatmentGapBanner />
       <InboxClient
         rows={allRows}
         lastMsgMap={lastMsgMap}

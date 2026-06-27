@@ -5,7 +5,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable } from "@/infrastructure/db/schema";
+import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports } from "@/infrastructure/db/schema";
 import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
@@ -515,6 +515,46 @@ export function inferTreatmentContextFromHistory(params: {
     params.treatments,
     TREATMENT_MENTION_STOPWORDS,
   );
+}
+
+// Busca o tratamento mais recentemente mencionado no histórico completo da conversa.
+// Usada como fallback no fluxo de agendamento quando o lead não especifica o tratamento
+// na mensagem atual (ex: "quero marcar meu retorno") mas o discutiu anteriormente.
+export function inferTreatmentFromConversationHistory(
+  messages: Message[],
+  treatments: Treatment[],
+): Treatment | null {
+  if (!treatments.length || !messages.length) return null;
+  const recent = [...messages].reverse().slice(0, 12);
+  for (const msg of recent) {
+    if (!msg.body) continue;
+    const matched = matchTreatmentByNormalizedMessage(
+      normalizeFreeText(msg.body),
+      treatments,
+      TREATMENT_MENTION_STOPWORDS,
+    );
+    if (matched) return matched;
+  }
+  return null;
+}
+
+// Registra uma menção de tratamento não encontrado no catálogo da clínica.
+// Alimenta os insights operacionais do Inbox ("leads mencionaram X — cadastrar?").
+// Fire-and-forget: sempre chamada com .catch(() => {}) para não bloquear a resposta.
+async function maybeLogTreatmentGap(
+  clinicId: string,
+  conversationId: string,
+  leadName: string | null,
+  mentionedText: string,
+  messageSnippet: string,
+): Promise<void> {
+  await db.insert(treatmentGapReports).values({
+    clinicId,
+    conversationId,
+    leadName,
+    mentionedText: mentionedText.slice(0, 200),
+    messageSnippet: messageSnippet.slice(0, 300),
+  });
 }
 
 export function resolveSchedulingTreatmentTarget(params: {
@@ -1335,7 +1375,7 @@ export class ConversationOrchestrator {
     // Após registrar, espera N ms e verifica se chegou mensagem mais recente.
     // Se sim, esta mensagem não gera resposta — a última do burst responde
     // com o histórico completo (que já inclui todas as anteriores).
-    const debounceMs = clinic.messageDebounceMs ?? 3000;
+    const debounceMs = clinic.messageDebounceMs ?? 5000;
     if (debounceMs > 0) {
       await new Promise((r) => setTimeout(r, debounceMs));
       const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
@@ -1969,8 +2009,17 @@ export class ConversationOrchestrator {
           clarificationTreatmentName ??
           lead.treatmentInterest ??
           null;
+
+        // Fallback: se effectiveTreatment ainda é nulo, busca no histórico da conversa.
+        // Cobre o caso "quero marcar meu retorno" onde o lead não repete o tratamento
+        // mas ele foi discutido anteriormente (ex: lentes, facetas, etc.).
+        const historyTreatment = !effectiveTreatment
+          ? inferTreatmentFromConversationHistory(allMessagesForContext, clinicTreatments)
+          : null;
+        const finalEffectiveTreatment = effectiveTreatment ?? historyTreatment?.name ?? null;
+
         const resolution = resolveTreatmentDuration(
-          effectiveTreatment,
+          finalEffectiveTreatment,
           clinicTreatments,
           clinic.defaultAppointmentDurationMinutes,
           classification.shouldAskClarification,
@@ -2046,6 +2095,7 @@ export class ConversationOrchestrator {
             type: "slots_found",
             slots: formattedSlots,
             askedForPreference: false,
+            treatmentInferredFromHistory: historyTreatment?.name ?? null,
           });
         } else if (preferredDayEmpty) {
           replyText = await compose({
@@ -2211,9 +2261,26 @@ export class ConversationOrchestrator {
 
       // ── Preço ──
       case "price_inquiry": {
+        const priceIdentifiedTreatment = classification.slotPreference.identifiedTreatment ?? null;
+        // Gap: lead perguntou preço de tratamento não cadastrado
+        if (priceIdentifiedTreatment) {
+          const matchedInCatalog = clinicTreatments.find(
+            (t) => t.name.toLowerCase() === priceIdentifiedTreatment.toLowerCase() ||
+              (t.aliases ?? []).some((a) => a.toLowerCase() === priceIdentifiedTreatment.toLowerCase()),
+          );
+          if (!matchedInCatalog) {
+            maybeLogTreatmentGap(
+              clinicId,
+              conversation.id,
+              lead.name,
+              priceIdentifiedTreatment,
+              messageText,
+            ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+          }
+        }
         replyText = await compose({
           type: "price_inquiry",
-          identifiedTreatment: classification.slotPreference.identifiedTreatment ?? null,
+          identifiedTreatment: priceIdentifiedTreatment,
         });
         break;
       }
@@ -2356,6 +2423,18 @@ export class ConversationOrchestrator {
           procedureSelection,
           identifiedTreatment: classification.slotPreference.identifiedTreatment ?? null,
         });
+
+        // Gap: LLM identificou um tratamento na mensagem mas ele não existe no catálogo.
+        // Registra para exibição como insight operacional no Inbox da clínica.
+        if (!informationalTreatment && classification.slotPreference.identifiedTreatment) {
+          maybeLogTreatmentGap(
+            clinicId,
+            conversation.id,
+            lead.name,
+            classification.slotPreference.identifiedTreatment,
+            messageText,
+          ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+        }
 
         if (informationalTreatment) {
           const matchedTreatment = informationalTreatment;

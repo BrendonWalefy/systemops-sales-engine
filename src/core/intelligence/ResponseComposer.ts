@@ -23,6 +23,7 @@ export type ActionResult =
       type: "slots_found";
       slots: FormattedSlot[];
       askedForPreference: boolean; // se true, LLM perguntou período antes
+      treatmentInferredFromHistory?: string | null; // quando o tratamento foi inferido do histórico da conversa, não da mensagem atual
     }
   | { type: "appointment_confirmed"; slot: FormattedSlot; clinicName: string; clinicAddress?: string | null }
   | { type: "appointment_cancelled"; count?: number }
@@ -318,7 +319,11 @@ export function buildActionContext(
   switch (result.type) {
     case "slots_found": {
       const slotList = result.slots.map((s) => `${s.index}. ${s.label}`).join("\n");
+      const historyHint = result.treatmentInferredFromHistory
+        ? `CONTEXTO: O lead não especificou o tratamento na mensagem atual, mas o histórico desta conversa menciona "${result.treatmentInferredFromHistory}". Confirme que é para este tratamento de forma natural (ex: "Para continuar com as ${result.treatmentInferredFromHistory},...") antes de apresentar os horários — NÃO pergunte novamente qual tratamento.`
+        : "";
       return `AÇÃO EXECUTADA: Encontramos horários disponíveis.
+${historyHint}
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
 FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
 HORÁRIOS DISPONÍVEIS:

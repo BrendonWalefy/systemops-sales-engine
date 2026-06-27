@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Search, Inbox, RefreshCw, Send, X, CalendarCheck, Tag } from "lucide-react";
+import { Search, Inbox, RefreshCw, Send, X, CalendarCheck, Tag, CheckCheck } from "lucide-react";
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recovery-actions";
-import { setConversationCategory } from "./[conversationId]/actions";
+import { setConversationCategory, clearAttention } from "./[conversationId]/actions";
 import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import {
   isRecoveryCandidate,
@@ -651,8 +651,50 @@ function InboxCard({
             {badge.label}
           </span>
         </div>
+
+        {row.needsAttention && (
+          <AttendedButton convId={row.convId} />
+        )}
       </div>
     </Link>
+  );
+}
+
+function AttendedButton({ convId }: { convId: string }) {
+  const [isPending, startTransition] = useTransition();
+  return (
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startTransition(async () => {
+          await clearAttention(convId);
+        });
+      }}
+      disabled={isPending}
+      title="Marcar como atendido (remove da aba Atenção)"
+      style={{
+        marginTop: 6,
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+        borderRadius: 6,
+        padding: "5px 0",
+        fontSize: 11,
+        fontWeight: 600,
+        color: "var(--accent-strong)",
+        cursor: isPending ? "default" : "pointer",
+        opacity: isPending ? 0.5 : 1,
+        transition: "opacity 150ms",
+      }}
+    >
+      <CheckCheck size={11} />
+      {isPending ? "Salvando…" : "Atendido"}
+    </button>
   );
 }
 

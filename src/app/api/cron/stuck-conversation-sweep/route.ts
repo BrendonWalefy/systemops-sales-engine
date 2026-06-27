@@ -15,7 +15,7 @@ import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway"
 export const dynamic = "force-dynamic";
 
 // Threshold de margem confortável acima do pior caso normal de
-// processamento (debounce 3s + espera de claim até 45s + LLM).
+// processamento (debounce 5s + espera de claim até 45s + LLM).
 const STUCK_THRESHOLD_MS = 3 * 60_000;
 // Limite superior é só guarda de custo de query — não regra de negócio.
 const SCAN_WINDOW_MS = 24 * 60 * 60_000;
@@ -41,6 +41,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       leadPhone: leads.phone,
       autoReplyEnabled: clinics.autoReplyEnabled,
       operationalStatus: clinics.operationalStatus,
+      aiResumedAt: conversations.aiResumedAt,
     })
     .from(conversations)
     .innerJoin(clinics, eq(clinics.id, conversations.clinicId))
@@ -88,6 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       latestMessageAuthor: latest.author,
       latestMessageAt: latest.sentAt,
       latestMessageBody: latest.body,
+      aiResumedAt: row.aiResumedAt ?? null,
     });
   }
 

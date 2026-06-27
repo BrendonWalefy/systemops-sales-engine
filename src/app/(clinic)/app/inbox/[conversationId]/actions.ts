@@ -20,6 +20,7 @@ export async function pauseAi(conversationId: string, leadId: string) {
 }
 
 export async function resumeAi(conversationId: string) {
+  const now = new Date();
   await db
     .update(conversations)
     .set({
@@ -28,7 +29,24 @@ export async function resumeAi(conversationId: string) {
       needsAttention: false,
       attentionReason: null,
       consecutiveUnclearCount: 0,
-      updatedAt: new Date(),
+      aiResumedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(conversations.id, conversationId));
+  revalidatePath("/app/inbox");
+  revalidatePath(`/app/inbox/${conversationId}`);
+}
+
+// Limpa o flag de atenção sem retomar a IA — usado quando o operador já atendeu
+// o lead manualmente e quer remover o aviso do inbox sem mudar o controle da IA.
+export async function clearAttention(conversationId: string) {
+  const now = new Date();
+  await db
+    .update(conversations)
+    .set({
+      needsAttention: false,
+      attentionReason: null,
+      updatedAt: now,
     })
     .where(eq(conversations.id, conversationId));
   revalidatePath("/app/inbox");
