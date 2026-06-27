@@ -1,5 +1,4 @@
 import type { TtsGateway, TtsRequest } from "@/application/ports/tts-gateway";
-import { sanitizeForTts } from "./openai-tts-gateway";
 
 // pt-BR-Chirp3-HD-Leda: feminina, calorosa, profissional — melhor qualidade disponível
 const VOICE_DEFAULT = "pt-BR-Chirp3-HD-Leda";
@@ -12,8 +11,6 @@ export class GoogleNeural2TtsGateway implements TtsGateway {
     const apiKey = process.env.GOOGLE_TTS_API_KEY;
     if (!apiKey) throw new Error("GOOGLE_TTS_API_KEY must be set");
 
-    const cleanText = sanitizeForTts(text);
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -25,7 +22,7 @@ export class GoogleNeural2TtsGateway implements TtsGateway {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            input: { text: cleanText },
+            input: { text },
             voice: {
               languageCode: "pt-BR",
               name: options?.voice ?? VOICE_DEFAULT,

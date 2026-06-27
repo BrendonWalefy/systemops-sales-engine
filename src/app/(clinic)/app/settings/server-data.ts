@@ -43,6 +43,7 @@ export async function getCachedEquipeData(clinicId: string) {
             role: clinicMembers.role,
             professionalId: clinicMembers.professionalId,
             avatarUrl: clinicMembers.avatarUrl,
+            displayName: clinicMembers.displayName,
           })
           .from(clinicMembers)
           .where(eq(clinicMembers.clinicId, clinicId)),

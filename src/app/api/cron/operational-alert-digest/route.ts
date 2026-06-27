@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { clinics, clinicMetrics, playbookVersions } from "@/infrastructure/db/schema";
-import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
+import { appendOperationalAlerts, evaluateOperationalAlerts } from "@/application/health/operational-alerts";
 import { probeClinicChannelHealth } from "@/application/health/channel-health";
+import { inspectQueueHealth, mapQueueHealthAlertsToOperationalAlerts } from "@/application/health/queue-health";
 import { buildAlertDigestEmail } from "@/infrastructure/notifications/alert-email-template";
 import { sendEmail } from "@/infrastructure/notifications/email-sender";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://systemops-core.vercel.app");
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://app.systemops.com.br");
 
   const activeClinics = await db
     .select({
@@ -78,7 +79,8 @@ export async function GET(req: NextRequest) {
     })),
   );
 
-  const alertReport = evaluateOperationalAlerts(
+  const queueHealth = await inspectQueueHealth();
+  const clinicAlertReport = evaluateOperationalAlerts(
     clinicsWithChannelStatus.map((clinic) => {
       const latestMetric = latestMetrics.find((r) => r.clinicId === clinic.clinicId);
       return {
@@ -100,6 +102,10 @@ export async function GET(req: NextRequest) {
       };
     }),
     new Date(),
+  );
+  const alertReport = appendOperationalAlerts(
+    clinicAlertReport,
+    mapQueueHealthAlertsToOperationalAlerts(queueHealth.alerts),
   );
 
   if (alertReport.alertCount === 0) {

@@ -356,6 +356,45 @@ export class GoogleCalendarGateway implements CalendarGateway {
     return this.deleteCalendarEvent(input.calendarEventId);
   }
 
+  async updateBlockEvent(input: {
+    calendarEventId: string;
+    startsAt: Date;
+    endsAt: Date;
+    reason: string;
+  }): Promise<BlockEvent> {
+    const calendarId = getCalendarId(this.clinicCalendarId);
+    const token = await getAccessToken();
+
+    const summary = input.reason
+      ? `${GoogleCalendarGateway.BLOCK_PREFIX} — ${input.reason}`
+      : GoogleCalendarGateway.BLOCK_PREFIX;
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.calendarEventId)}`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary,
+          start: { dateTime: input.startsAt.toISOString() },
+          end: { dateTime: input.endsAt.toISOString() },
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Calendar updateBlockEvent failed: ${err}`);
+    }
+
+    return {
+      calendarEventId: input.calendarEventId,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      reason: input.reason,
+    };
+  }
+
   async updateCalendarEvent(input: {
     calendarEventId: string;
     startsAt: Date;

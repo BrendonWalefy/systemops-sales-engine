@@ -1,23 +1,28 @@
 "use client";
-import { useActionState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { CheckCircle2, Clock, DollarSign, Loader2, Plus, Stethoscope } from "lucide-react";
+import { Loader2, Plus, X } from "lucide-react";
 import { createTreatment } from "./actions";
+import { S, inputStyle } from "../playbook/settings-primitives";
 
 function AddButton() {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      className="primary-button"
       disabled={pending}
-      style={{ gap: "8px", opacity: pending ? 0.7 : 1 }}
+      style={{
+        display: "flex", alignItems: "center", gap: "6px",
+        height: "36px", padding: "0 16px", borderRadius: "9px",
+        border: "none", background: S.teal, color: "#071115",
+        fontSize: "13px", fontWeight: 700,
+        cursor: pending ? "default" : "pointer", opacity: pending ? 0.7 : 1, flexShrink: 0,
+      }}
     >
-      {pending ? (
-        <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-      ) : (
-        <Plus size={14} strokeWidth={2} />
-      )}
+      {pending
+        ? <Loader2 size={13} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+        : <Plus size={13} strokeWidth={2} />}
       {pending ? "Adicionando..." : "Adicionar"}
     </button>
   );
@@ -30,142 +35,107 @@ export function AddTreatmentForm({
   canEditPrices: boolean;
   serviceNoun: string;
 }) {
+  const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(createTreatment, null);
   const formRef = useRef<HTMLFormElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (state?.success) {
-      formRef.current?.reset();
-    }
+    if (!state?.success) return;
+
+    formRef.current?.reset();
+    const timeoutId = window.setTimeout(() => setOpen(false), 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [state]);
 
-  const serviceNounCapitalized = serviceNoun.charAt(0).toUpperCase() + serviceNoun.slice(1);
+  useEffect(() => {
+    if (open) setTimeout(() => nameRef.current?.focus(), 50);
+  }, [open]);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          display: "flex", alignItems: "center", gap: "8px",
+          width: "100%", padding: "12px 0", background: "transparent",
+          border: "none", color: S.teal, fontSize: "14px", fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        <Plus size={15} strokeWidth={2} />
+        Adicionar {serviceNoun}
+      </button>
+    );
+  }
 
   return (
-    <section
-      style={{
-        border: "1px solid var(--line)",
-        borderRadius: "14px",
-        background: "var(--surface-soft)",
-        padding: "20px 22px",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", marginBottom: "18px" }}>
-        <div
-          style={{
-            display: "grid",
-            placeItems: "center",
-            width: "40px",
-            height: "40px",
-            flexShrink: 0,
-            borderRadius: "10px",
-            border: "1px solid var(--line)",
-            background: "var(--surface-raised)",
-            color: "var(--accent-strong)",
-          }}
-        >
-          <Plus size={18} strokeWidth={1.8} />
-        </div>
-        <div>
-          <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
-            Adicionar {serviceNoun}
-          </strong>
-          <p style={{ margin: "3px 0 0", fontSize: "13px", color: "var(--muted)" }}>
-            A IA reconhece variações de escrita e erros de digitação e bloqueia o tempo exato no calendário.
-          </p>
-        </div>
-      </div>
-
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingTop: "4px" }}>
       <form
         ref={formRef}
         action={formAction}
-        className="treatment-add-form"
-        style={{
-          display: "grid",
-          gridTemplateColumns: canEditPrices ? "1fr 120px 140px auto" : "1fr 120px auto",
-          gap: "12px",
-          alignItems: "end",
-        }}
+        style={{ display: "flex", flexDirection: "column", gap: "10px" }}
       >
-        <label style={{ margin: 0 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-            <Stethoscope size={12} strokeWidth={2} style={{ color: "var(--muted)" }} />
-            <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 500 }}>
-              Nome do {serviceNoun}
-            </span>
-          </span>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
           <input
+            ref={nameRef}
             type="text"
             name="name"
-            placeholder={`Ex: ${serviceNounCapitalized} Premium`}
+            placeholder={`Nome do ${serviceNoun}`}
             required
-            style={{ margin: 0, fontSize: "16px" }}
+            style={{ ...inputStyle, flex: 1, minWidth: "160px" }}
           />
-        </label>
-
-        <label style={{ margin: 0 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-            <Clock size={12} strokeWidth={2} style={{ color: "var(--muted)" }} />
-            <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 500 }}>
-              Duração (min)
-            </span>
-          </span>
-          <input
-            type="number"
-            name="durationMinutes"
-            placeholder="60"
-            min={5}
-            max={480}
-            step={5}
-            required
-            defaultValue={60}
-            style={{ textAlign: "center", margin: 0, fontSize: "16px" }}
-          />
-        </label>
-
-        {canEditPrices && (
-          <label style={{ margin: 0 }}>
-            <span style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-              <DollarSign size={12} strokeWidth={2} style={{ color: "var(--muted)" }} />
-              <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 500 }}>
-                Preço (R$)
-              </span>
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
             <input
               type="number"
-              name="priceCents"
-              placeholder="opcional"
-              min={0}
-              step={0.01}
-              style={{ textAlign: "center", margin: 0, fontSize: "16px" }}
+              name="durationMinutes"
+              defaultValue={60}
+              min={5}
+              max={480}
+              step={5}
+              required
+              style={{ ...inputStyle, width: "72px", textAlign: "center" }}
             />
-          </label>
-        )}
+            <span style={{ fontSize: "12px", color: S.textSec }}>min</span>
+          </div>
+          {canEditPrices && (
+            <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+              <span style={{ fontSize: "12px", color: S.textMuted }}>R$</span>
+              <input
+                type="number"
+                name="priceCents"
+                placeholder="—"
+                min={0}
+                step={0.01}
+                style={{ ...inputStyle, width: "90px", textAlign: "center" }}
+              />
+            </div>
+          )}
+        </div>
 
-        <AddButton />
+        <div style={{ display: "flex", gap: "8px" }}>
+          <AddButton />
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            style={{
+              display: "flex", alignItems: "center", gap: "5px",
+              height: "36px", padding: "0 12px", borderRadius: "9px",
+              border: `1px solid ${S.border}`, background: "transparent",
+              color: S.textSec, fontSize: "13px", cursor: "pointer",
+            }}
+          >
+            <X size={12} />
+            Cancelar
+          </button>
+        </div>
       </form>
 
-      {state?.success && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            marginTop: "12px",
-            fontSize: "13px",
-            color: "var(--accent-strong)",
-          }}
-        >
-          <CheckCircle2 size={14} strokeWidth={2} />
-          {serviceNounCapitalized} adicionado com sucesso
-        </div>
-      )}
-
       {state?.error && (
-        <p style={{ marginTop: "10px", fontSize: "13px", color: "var(--destructive, #ef4444)" }}>
-          {state.error}
-        </p>
+        <p style={{ margin: 0, fontSize: "12px", color: "#ef4444" }}>{state.error}</p>
       )}
-    </section>
+    </div>
   );
 }

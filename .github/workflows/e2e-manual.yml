@@ -7,10 +7,18 @@ on:
         description: "Clinic ID to test against"
         required: false
         default: "c9137774-e783-4461-ac2b-e2f01be739a6"
-      waitMs:
-        description: "Wait ms after each POST (default 15000)"
+      mode:
+        description: "Smoke validates durable webhook ingestion; full also exercises media and conversation flows"
         required: false
-        default: "15000"
+        type: choice
+        options:
+          - smoke
+          - full
+        default: smoke
+      waitMs:
+        description: "Maximum wait per assertion in ms (default 90000)"
+        required: false
+        default: "90000"
   schedule:
     # 7h UTC = 4h BRT — fora do horário comercial da clínica
     - cron: "0 7 * * *"
@@ -38,7 +46,12 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           E2E_WEBHOOK_URL: ${{ secrets.E2E_WEBHOOK_URL }}
-          E2E_WAIT_MS: ${{ github.event.inputs.waitMs || '15000' }}
+          E2E_WAIT_MS: ${{ github.event.inputs.waitMs || '90000' }}
         run: |
           CLINIC_ID="${{ github.event.inputs.clinicId || 'c9137774-e783-4461-ac2b-e2f01be739a6' }}"
-          npx tsx scripts/e2e-webhook-test.ts --clinicId "$CLINIC_ID"
+          MODE="${{ github.event.inputs.mode || 'smoke' }}"
+          if [[ "$MODE" == "smoke" ]]; then
+            npx tsx scripts/e2e-webhook-test.ts --clinicId "$CLINIC_ID" --smoke
+          else
+            npx tsx scripts/e2e-webhook-test.ts --clinicId "$CLINIC_ID"
+          fi

@@ -10,6 +10,11 @@
 
 export type LogContext = {
   scope: string;
+  traceId?: string;
+  jobId?: string;
+  queue?: string;
+  route?: string;
+  workerId?: string;
   correlationId?: string;
   clinicId?: string;
   conversationId?: string;

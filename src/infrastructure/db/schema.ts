@@ -96,6 +96,39 @@ export const messageDirectionEnum = pgEnum("message_direction", [
   "outbound",
 ]);
 
+export const inboundEventProcessingStatusEnum = pgEnum(
+  "inbound_event_processing_status",
+  ["pending", "processing", "processed", "failed", "ignored"],
+);
+
+export const jobQueueEnum = pgEnum("job_queue", [
+  "message.process",
+  "message.send",
+  "followup.dispatch",
+]);
+
+export const jobStatusEnum = pgEnum("job_status", [
+  "pending",
+  "processing",
+  "done",
+  "failed",
+  "dead",
+]);
+
+export const outboundMessageDeliveryKindEnum = pgEnum(
+  "outbound_message_delivery_kind",
+  ["text", "audio", "image", "video", "document"],
+);
+
+export const outboundMessageStatusEnum = pgEnum("outbound_message_status", [
+  "pending",
+  "processing",
+  "sent",
+  "failed",
+  "dead",
+  "cancelled",
+]);
+
 export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
   "service",
   "utility",
@@ -324,6 +357,8 @@ export const conversations = pgTable(
     // Adquirido via UPDATE condicional (CAS de single-statement — neon-http não
     // suporta transações interativas). NULL ou passado = livre.
     processingUntil: timestamp("processing_until", { withTimezone: true }),
+    // Sequência monotônica para preservar a ordem de entregas na outbox.
+    nextOutboundSequence: integer("next_outbound_sequence").notNull().default(0),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     // Marcado quando a IA retoma controle após pausa (TTL expirado ou operador retomou).
@@ -376,6 +411,125 @@ export const messages = pgTable(
       table.sentAt,
     ),
     externalIdIdx: uniqueIndex("messages_external_id_idx").on(table.externalId),
+  }),
+);
+
+export const inboundEvents = pgTable(
+  "inbound_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    provider: whatsappProviderEnum("provider").notNull(),
+    providerMessageId: text("provider_message_id").notNull(),
+    conversationKey: text("conversation_key").notNull(),
+    payload: jsonb("payload").notNull(),
+    normalizedText: text("normalized_text"),
+    mediaType: text("media_type"),
+    dedupeKey: text("dedupe_key").notNull(),
+    processingStatus: inboundEventProcessingStatusEnum("processing_status")
+      .notNull()
+      .default("pending"),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    providerMessageUnique: uniqueIndex(
+      "inbound_events_provider_message_unique",
+    ).on(table.provider, table.providerMessageId),
+    clinicReceivedAtIdx: index("inbound_events_clinic_received_at_idx").on(
+      table.clinicId,
+      table.receivedAt,
+    ),
+    processingStatusReceivedAtIdx: index(
+      "inbound_events_processing_status_received_at_idx",
+    ).on(table.processingStatus, table.receivedAt),
+    dedupeKeyIdx: index("inbound_events_dedupe_key_idx").on(table.dedupeKey),
+  }),
+);
+
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    queue: jobQueueEnum("queue").notNull(),
+    status: jobStatusEnum("status").notNull().default("pending"),
+    payload: jsonb("payload").notNull(),
+    dedupeKey: text("dedupe_key"),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(10),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedBy: text("locked_by"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    queueStatusRunAtIdx: index("jobs_queue_status_run_at_idx").on(
+      table.queue,
+      table.status,
+      table.runAt,
+    ),
+    statusRunAtIdx: index("jobs_status_run_at_idx").on(
+      table.status,
+      table.runAt,
+    ),
+    queueDedupeKeyIdx: uniqueIndex("jobs_queue_dedupe_key_idx").on(
+      table.queue,
+      table.dedupeKey,
+    ),
+  }),
+);
+
+export const outboundMessages = pgTable(
+  "outbound_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    channel: channelEnum("channel").notNull(),
+    payload: jsonb("payload").notNull(),
+    deliveryKind: outboundMessageDeliveryKindEnum("delivery_kind").notNull(),
+    sequence: integer("sequence").notNull(),
+    status: outboundMessageStatusEnum("status").notNull().default("pending"),
+    providerMessageId: text("provider_message_id"),
+    dedupeKey: text("dedupe_key"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (table) => ({
+    conversationCreatedAtIdx: index(
+      "outbound_messages_conversation_created_at_idx",
+    ).on(table.conversationId, table.createdAt),
+    conversationSequenceIdx: uniqueIndex(
+      "outbound_messages_conversation_sequence_idx",
+    ).on(table.conversationId, table.sequence),
+    statusCreatedAtIdx: index("outbound_messages_status_created_at_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    conversationDedupeKeyIdx: uniqueIndex(
+      "outbound_messages_conversation_dedupe_key_idx",
+    ).on(table.conversationId, table.dedupeKey),
+    providerMessageIdIdx: index("outbound_messages_provider_message_id_idx").on(
+      table.providerMessageId,
+    ),
   }),
 );
 
@@ -638,6 +792,31 @@ export const whatsappMessageCosts = pgTable(
   }),
 );
 
+// Eventos de orçamento da infraestrutura compartilhada. Não pertencem a uma
+// clínica específica porque o plano Vercel é custo da plataforma.
+export const platformSpendAlerts = pgTable(
+  "platform_spend_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").$type<"vercel">().notNull(),
+    teamId: text("team_id").notNull(),
+    budgetAmountUsd: integer("budget_amount_usd").notNull(),
+    currentSpendUsd: integer("current_spend_usd").notNull(),
+    thresholdPercent: integer("threshold_percent").$type<50 | 75 | 100>().notNull(),
+    eventKey: text("event_key").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    providerReceivedAtIdx: index("platform_spend_alerts_provider_received_at_idx").on(
+      table.provider,
+      table.receivedAt,
+    ),
+    eventKeyIdx: uniqueIndex("platform_spend_alerts_event_key_idx").on(table.eventKey),
+  }),
+);
+
 // Estado explícito de conversa — substitui marcadores de texto em mensagens
 export const conversationStates = pgTable(
   "conversation_states",
@@ -798,6 +977,9 @@ export const clinicMembers = pgTable(
       .references(() => clinics.id),
     email: text("email").notNull(),
     role: memberRoleEnum("role").notNull().default("clinic_admin"),
+    // Nome de exibição amigável usado na saudação do dashboard (ex.: "Dr. Gregorie").
+    // Quando preenchido, tem prioridade sobre o profissional vinculado e o e-mail.
+    displayName: text("display_name"),
     professionalId: uuid("professional_id").references(() => professionals.id),
     passwordHash: text("password_hash"),
     avatarUrl: text("avatar_url"),

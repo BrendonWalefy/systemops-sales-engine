@@ -1,11 +1,11 @@
 // Testes para:
 //   1. buildActionContext("media_received") — template correto por tipo de mídia
-//   2. sanitizeForTts — limpeza de texto antes de síntese de voz
+//   2. normalizeForTts — limpeza de texto antes de síntese de voz
 
 import { describe, it, expect } from "vitest";
 import { buildActionContext } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult } from "@/core/intelligence/ResponseComposer";
-import { sanitizeForTts } from "@/infrastructure/adapters/ai/tts/openai-tts-gateway";
+import { normalizeForTts } from "@/infrastructure/adapters/ai/tts/tts-text-normalizer";
 
 // ─── buildActionContext para media_received ────────────────────────────────────
 
@@ -63,46 +63,46 @@ describe("buildActionContext — media_received", () => {
   });
 });
 
-// ─── sanitizeForTts ───────────────────────────────────────────────────────────
+// ─── normalizeForTts ───────────────────────────────────────────────────────────
 
-describe("sanitizeForTts", () => {
+describe("normalizeForTts", () => {
   it("remove emojis comuns de respostas da IA", () => {
-    expect(sanitizeForTts("Olá! 😊 Tudo bem?")).toBe("Olá! Tudo bem?");
-    expect(sanitizeForTts("Até logo! 👋")).toBe("Até logo!");
-    expect(sanitizeForTts("Perfeito 🙏")).toBe("Perfeito");
+    expect(normalizeForTts("Olá! 😊 Tudo bem?")).toBe("Olá! Tudo bem?");
+    expect(normalizeForTts("Até logo! 👋")).toBe("Até logo!");
+    expect(normalizeForTts("Perfeito 🙏")).toBe("Perfeito");
   });
 
   it("remove formatação WhatsApp bold/italic/strikethrough/code", () => {
-    expect(sanitizeForTts("*negrito* normal")).toBe("negrito normal");
-    expect(sanitizeForTts("_itálico_ normal")).toBe("itálico normal");
-    expect(sanitizeForTts("~tachado~ normal")).toBe("tachado normal");
-    expect(sanitizeForTts("`código` normal")).toBe("código normal");
+    expect(normalizeForTts("*negrito* normal")).toBe("negrito normal");
+    expect(normalizeForTts("_itálico_ normal")).toBe("itálico normal");
+    expect(normalizeForTts("~tachado~ normal")).toBe("tachado normal");
+    expect(normalizeForTts("`código` normal")).toBe("código normal");
   });
 
   it("transforma quebra de linha dupla em pausa de frase (ponto único)", () => {
     // \n\n → ". " e depois ". ." colapsado em "." — evita ponto duplo no áudio
-    const result = sanitizeForTts("Primeira frase.\n\nSegunda frase.");
+    const result = normalizeForTts("Primeira frase.\n\nSegunda frase.");
     expect(result).toBe("Primeira frase. Segunda frase.");
   });
 
   it("transforma quebra simples em espaço (não vírgula)", () => {
     // \n → " " — vírgula causa leitura literal "Linha um vírgula Linha dois" no TTS
-    const result = sanitizeForTts("Linha um\nLinha dois");
+    const result = normalizeForTts("Linha um\nLinha dois");
     expect(result).toBe("Linha um Linha dois");
   });
 
   it("colapsa espaços múltiplos", () => {
-    expect(sanitizeForTts("texto   com    espaços")).toBe("texto com espaços");
+    expect(normalizeForTts("texto   com    espaços")).toBe("texto com espaços");
   });
 
   it("preserva texto sem formatação intacto", () => {
     const plain = "Boa tarde, tudo bem com você? Estou aqui para ajudar.";
-    expect(sanitizeForTts(plain)).toBe(plain);
+    expect(normalizeForTts(plain)).toBe(plain);
   });
 
   it("mensagem típica da IA: remove emojis + asteriscos", () => {
     const aiMsg = "*Boa tarde*, Karen! 😊\nRecebi sua solicitação e vou verificar os horários disponíveis para você!";
-    const result = sanitizeForTts(aiMsg);
+    const result = normalizeForTts(aiMsg);
     expect(result).not.toContain("*");
     expect(result).not.toContain("😊");
     expect(result).toContain("Boa tarde");
@@ -110,26 +110,26 @@ describe("sanitizeForTts", () => {
   });
 
   it("converte símbolos de moeda (R$) e valores em texto por extenso", () => {
-    expect(sanitizeForTts("O valor é R$2.500 para 20 elementos.")).toBe("O valor é 2.500 reais para 20 elementos.");
-    expect(sanitizeForTts("O valor é R$ 5.000 para 20 elementos.")).toBe("O valor é 5.000 reais para 20 elementos.");
-    expect(sanitizeForTts("Fica por R$ 150")).toBe("Fica por 150 reais");
-    expect(sanitizeForTts("Total de R$ 150,00.")).toBe("Total de 150 reais.");
-    expect(sanitizeForTts("Total de R$ 150,50.")).toBe("Total de 150 reais e 50 centavos.");
-    expect(sanitizeForTts("Total de R$ 0,50.")).toBe("Total de 50 centavos.");
-    expect(sanitizeForTts("Valor R$ 1,00.")).toBe("Valor 1 real.");
-    expect(sanitizeForTts("Valor r$ 100.")).toBe("Valor 100 reais.");
-    expect(sanitizeForTts("Valor de R$ 0,00")).toBe("Valor de 0 reais");
+    expect(normalizeForTts("O valor é R$2.500 para 20 elementos.")).toBe("O valor é 2.500 reais para 20 elementos.");
+    expect(normalizeForTts("O valor é R$ 5.000 para 20 elementos.")).toBe("O valor é 5.000 reais para 20 elementos.");
+    expect(normalizeForTts("Fica por R$ 150")).toBe("Fica por 150 reais");
+    expect(normalizeForTts("Total de R$ 150,00.")).toBe("Total de 150 reais.");
+    expect(normalizeForTts("Total de R$ 150,50.")).toBe("Total de 150 reais e 50 centavos.");
+    expect(normalizeForTts("Total de R$ 0,50.")).toBe("Total de 50 centavos.");
+    expect(normalizeForTts("Valor R$ 1,00.")).toBe("Valor 1 real.");
+    expect(normalizeForTts("Valor r$ 100.")).toBe("Valor 100 reais.");
+    expect(normalizeForTts("Valor de R$ 0,00")).toBe("Valor de 0 reais");
   });
 
   it("converte datas abreviadas em texto por extenso", () => {
-    expect(sanitizeForTts("Agendado para 22/06.")).toBe("Agendado para 22 de junho.");
-    expect(sanitizeForTts("Será no dia 22/06/2026 às 14h.")).toBe("Será no dia 22 de junho de 2026 às 14h.");
-    expect(sanitizeForTts("Dia 5/5/25 às 9h")).toBe("Dia 5 de maio de 2025 às 9h");
-    expect(sanitizeForTts("Consulta em 01/12/26")).toBe("Consulta em 1 de dezembro de 2026");
-    expect(sanitizeForTts("Dia 22/6.")).toBe("Dia 22 de junho.");
-    expect(sanitizeForTts("Dia 5/12.")).toBe("Dia 5 de dezembro.");
+    expect(normalizeForTts("Agendado para 22/06.")).toBe("Agendado para 22 de junho.");
+    expect(normalizeForTts("Será no dia 22/06/2026 às 14h.")).toBe("Será no dia 22 de junho de 2026 às 14 horas.");
+    expect(normalizeForTts("Dia 5/5/25 às 9h")).toBe("Dia 5 de maio de 2025 às 9 horas");
+    expect(normalizeForTts("Consulta em 01/12/26")).toBe("Consulta em 1 de dezembro de 2026");
+    expect(normalizeForTts("Dia 22/6.")).toBe("Dia 22 de junho.");
+    expect(normalizeForTts("Dia 5/12.")).toBe("Dia 5 de dezembro.");
     // Frações sem ano não devem ser convertidas
-    expect(sanitizeForTts("Outro teste com fração 1/2.")).toBe("Outro teste com fração 1/2.");
-    expect(sanitizeForTts("Fração 3/4.")).toBe("Fração 3/4.");
+    expect(normalizeForTts("Outro teste com fração 1/2.")).toBe("Outro teste com fração 1/2.");
+    expect(normalizeForTts("Fração 3/4.")).toBe("Fração 3/4.");
   });
 });

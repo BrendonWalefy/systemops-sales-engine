@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Ban,
   Calendar,
@@ -11,12 +12,14 @@ import {
 } from "lucide-react";
 import { CalendarView } from "./CalendarView";
 import { ResourceDayView } from "./ResourceDayView";
+import { MobileMonthView } from "./MobileMonthView";
+import { MobileWeekView } from "./MobileWeekView";
+import { MobileDayView } from "./MobileDayView";
 import { AppointmentModal } from "./AppointmentModal";
 import { BlockModal } from "./BlockModal";
 import { AppointmentDrawer } from "./AppointmentDrawer";
 import { AgendaSidebar } from "./AgendaSidebar";
 import { AgendaStatsHeader } from "./AgendaStatsHeader";
-import { useRealtimeEvents } from "@/components/realtime-events-provider";
 import {
   getCachedJson,
   hasFreshJsonCache,
@@ -78,6 +81,9 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
 }
 
 export function AgendaClient({ professionals, treatments, memberRole, serviceNoun, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [events, setEvents] = useState<AppointmentEvent[]>([]);
   const [blocks, setBlocks] = useState<BlockEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +95,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     date?: string;
     time?: string;
     professionalId?: string;
-  }>(() => ({ open: openNew === true }));
+  }>({ open: false });
 
   const [blockModal, setBlockModal] = useState<{
     open: boolean;
@@ -107,6 +113,18 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
 
   const [range, setRange] = useState({ from: initialFrom, to: initialTo });
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string | null>(null);
+
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 640px)").matches;
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const fetchEvents = useCallback(async (
     from: string,
@@ -199,39 +217,53 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     }
   }, [resourceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tempo real: agenda atualiza automaticamente quando IA agenda/cancela via WhatsApp.
-  // A assinatura vem do SSE compartilhado (layout); só refaz o fetch completo
-  // de eventos quando ela mudar. Bloqueios ficam fora pois só mudam por ação
-  // manual nesta própria tela (refreshAll cobre isso via onCreated/onUpdated).
-  const { agendaSignature, connected } = useRealtimeEvents();
-  const agendaSignatureRef = useRef<string | null>(null);
+  const agendaVersionRef = useRef<string | null>(null);
+  const shouldOpenAppointmentModal =
+    appointmentModal.open || openNew === true || searchParams.get("new") === "1";
+
+  const closeAppointmentModal = useCallback(() => {
+    setAppointmentModal({ open: false });
+
+    if (searchParams.get("new") !== "1") return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("new");
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   useEffect(() => {
-    agendaSignatureRef.current = null;
+    agendaVersionRef.current = null;
   }, [range]);
 
   useEffect(() => {
-    if (!agendaSignature) return;
-    if (agendaSignatureRef.current === null) {
-      agendaSignatureRef.current = agendaSignature;
-      return;
-    }
-    if (agendaSignature !== agendaSignatureRef.current) {
-      agendaSignatureRef.current = agendaSignature;
-      fetchEvents(range.from, range.to, { force: true });
-    }
-  }, [agendaSignature, range, fetchEvents]);
-
-  // Fallback: se a conexão SSE cair, volta a checar periodicamente até reconectar.
-  useEffect(() => {
-    if (connected) return;
-
-    const id = setInterval(() => {
+    const check = async () => {
       if (document.hidden) return;
-      fetchEvents(range.from, range.to, { force: true });
-    }, 30_000);
+      try {
+        const query = `/api/agenda/check?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+        const res = await fetch(query, { cache: "no-store" });
+        if (!res.ok) return;
+        const data: { version?: string } = await res.json();
+        if (!data.version) return;
+        if (agendaVersionRef.current === null) {
+          agendaVersionRef.current = data.version;
+          return;
+        }
+        if (data.version !== agendaVersionRef.current) {
+          agendaVersionRef.current = data.version;
+          fetchEvents(range.from, range.to, { force: true });
+        }
+      } catch {
+        // Ignora falhas transitórias e tenta novamente no próximo ciclo.
+      }
+    };
+
+    void check();
+    const id = setInterval(() => {
+      void check();
+    }, 10_000);
     return () => clearInterval(id);
-  }, [connected, range, fetchEvents]);
+  }, [range, fetchEvents]);
 
   async function handleEventUpdate(id: string, startsAt: string, endsAt: string) {
     const [date, time] = startsAt.split(" ");
@@ -292,6 +324,19 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
     refreshAll();
   }
 
+  async function handleQuickConfirm(event: AppointmentEvent): Promise<void> {
+    const res = await fetch(`/api/appointments/${event.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "confirmed" }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error ?? "Erro ao confirmar");
+    }
+    refreshAll();
+  }
+
   const hasProfs = professionals.length > 0;
   const isScheduleView = view !== "resource";
 
@@ -347,10 +392,11 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
             onClick={() => setView("day")}
           >
             <Calendar size={12} />
-            Dia
+            <span className="tab-label-full">Dia</span>
+            <span className="tab-label-short">Hoje</span>
           </button>
           <button
-            className={`agenda-view-tab agenda-tab--week${view === "week" ? " active" : ""}`}
+            className={`agenda-view-tab${view === "week" ? " active" : ""}`}
             onClick={() => setView("week")}
           >
             <CalendarDays size={12} />
@@ -365,7 +411,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
           </button>
           {hasProfs && (
             <button
-              className={`agenda-view-tab${view === "resource" ? " active" : ""}`}
+              className={`agenda-view-tab agenda-tab--resource${view === "resource" ? " active" : ""}`}
               onClick={() => setView("resource")}
             >
               <Users size={12} />
@@ -408,6 +454,29 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
         <div className="agenda-v2-calendar">
           {loading && events.length === 0 ? (
             <div className="calendar-loading">Carregando agenda...</div>
+          ) : view === "month" && isMobile ? (
+            <MobileMonthView
+              events={filteredCalendarEvents}
+              timezone={timezone}
+              onEventClick={(event) => openDrawer(event)}
+              onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
+              onNewAppointment={() => setAppointmentModal({ open: true })}
+            />
+          ) : view === "week" && isMobile ? (
+            <MobileWeekView
+              events={filteredCalendarEvents}
+              timezone={timezone}
+              onEventClick={(event) => openDrawer(event)}
+              onSlotClick={(date, time) => setAppointmentModal({ open: true, date, time })}
+            />
+          ) : view === "day" && isMobile ? (
+            <MobileDayView
+              events={filteredCalendarEvents}
+              timezone={timezone}
+              onEventClick={(event) => openDrawer(event)}
+              onQuickConfirm={handleQuickConfirm}
+              onNewAppointment={() => setAppointmentModal({ open: true })}
+            />
           ) : isScheduleView ? (
             <CalendarView
               currentView={SX_VIEW_NAMES[view as ScheduleView]}
@@ -424,11 +493,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
                   ? professionals.filter((p) => p.id === selectedProfessionalId)
                   : professionals
               }
-              events={
-                selectedProfessionalId
-                  ? events.filter((e) => e.professionalId === selectedProfessionalId)
-                  : events
-              }
+              events={filteredCalendarEvents}
               selectedDate={resourceDate}
               onPrevDay={() => setResourceDate((d) => addDays(d, -1))}
               onNextDay={() => setResourceDate((d) => addDays(d, 1))}
@@ -462,13 +527,13 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
       </button>
 
       {/* ── Modals ── */}
-      {appointmentModal.open && (
+      {shouldOpenAppointmentModal && (
         <AppointmentModal
           defaultDate={appointmentModal.date}
           defaultTime={appointmentModal.time}
           defaultProfessionalId={appointmentModal.professionalId}
           professionals={professionals}
-          onClose={() => setAppointmentModal({ open: false })}
+          onClose={closeAppointmentModal}
           onCreated={refreshAll}
         />
       )}

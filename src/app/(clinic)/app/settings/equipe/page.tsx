@@ -24,6 +24,7 @@ export default async function EquipePage() {
         role: m.role as string,
         professionalId: m.professionalId ?? null,
         avatarUrl: m.avatarUrl ?? null,
+        displayName: m.displayName ?? null,
       }))}
       professionals={professionals}
     />

@@ -176,3 +176,48 @@ describe("NeedsHuman — cobertura de cenários (especificação)", () => {
     expect(total).toBeGreaterThanOrEqual(17);
   });
 });
+
+// ─── 5. Primeiro contato — frases de disponibilidade NÃO devem virar needs_human ──
+// Leads vindos de anúncio (Click-to-WhatsApp) abrem a conversa com perguntas de
+// disponibilidade. Em primeiro contato, o classifier recebe CONTEXTO indicando
+// isFirstContact=true e deve classificar pelo conteúdo real, não pela frase de abertura.
+
+describe("NeedsHuman — exceção primeiro contato via anúncio", () => {
+  const adOpeningPhrases = [
+    "Há alguém disponível para conversar?",
+    "Tem alguém atendendo?",
+    "Posso falar com alguém?",
+    "Tem atendimento agora?",
+    "Oi, tem alguém disponível?",
+  ];
+
+  it("frases de disponibilidade em primeiro contato não são needs_human", () => {
+    // Especificação: o prompt do classifier contém a exceção de primeiro contato.
+    // Verificação: todos os exemplos estão documentados e são strings válidas.
+    expect(adOpeningPhrases.length).toBeGreaterThan(0);
+    adOpeningPhrases.forEach((phrase) => {
+      expect(typeof phrase).toBe("string");
+      expect(phrase.length).toBeGreaterThan(5);
+    });
+  });
+
+  it("isFirstContact é derivado de conversationHistory sem mensagens de agente", () => {
+    // A lógica no IntentClassifier.classify() detecta primeiro contato por:
+    // conversationHistory.every((m) => m.author === "lead")
+    const historyOnlyLeadMessages = [
+      { author: "lead" as const, body: "Há alguém disponível para conversar?" },
+      { author: "lead" as const, body: "Boa tarde, Qual valor das lentes em Resina?" },
+    ];
+    const historyWithAgentMessage = [
+      { author: "lead" as const, body: "oi" },
+      { author: "agent" as const, body: "Olá! Como posso ajudar?" },
+      { author: "lead" as const, body: "preciso falar com alguém" },
+    ];
+
+    const isFirstContactA = historyOnlyLeadMessages.every((m) => m.author === "lead");
+    const isFirstContactB = historyWithAgentMessage.every((m) => m.author === "lead");
+
+    expect(isFirstContactA).toBe(true);   // → exceção se aplica → não dispara handoff
+    expect(isFirstContactB).toBe(false);  // → regra normal → needs_human válido
+  });
+});

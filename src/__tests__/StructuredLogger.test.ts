@@ -59,4 +59,28 @@ describe("createLogger — logging estruturado em JSON de linha única", () => {
     expect(parsed.clinicId).toBe("clinic-1");
     expect(parsed.conversationId).toBe("conv-9");
   });
+
+  it("preserva os identificadores de execução durável", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = createLogger({
+      scope: "Worker",
+      traceId: "outbound-1",
+      jobId: "job-1",
+      queue: "message.send",
+      workerId: "sender-1",
+      route: "/api/cron/sender-worker",
+    });
+
+    log.info("job.sent", { durationMs: 42 });
+
+    const parsed = JSON.parse(spy.mock.calls[0][0] as string);
+    expect(parsed).toMatchObject({
+      traceId: "outbound-1",
+      jobId: "job-1",
+      queue: "message.send",
+      workerId: "sender-1",
+      route: "/api/cron/sender-worker",
+      durationMs: 42,
+    });
+  });
 });

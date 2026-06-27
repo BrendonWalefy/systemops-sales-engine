@@ -2,7 +2,7 @@
 
 > Recepcionista comercial com IA para clínicas. Responde no WhatsApp, qualifica leads, agenda consultas, envia lembretes e entrega o painel — sem depender de horário humano.
 
-Produção: https://systemops-core.vercel.app
+Produção: https://app.systemops.com.br
 
 ---
 

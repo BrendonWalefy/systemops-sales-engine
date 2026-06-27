@@ -69,6 +69,8 @@ type NewClinicConfig = {
     email: string;
     password: string;
     role?: "owner" | "clinic_admin";
+    // Nome amigável exibido na saudação do dashboard (ex.: "Dr. Gregorie").
+    displayName?: string;
   }[];
 };
 
@@ -212,6 +214,7 @@ async function main() {
   for (const a of cfg.admins) {
     const email = a.email.trim().toLowerCase();
     const passwordHash = await hashPassword(a.password);
+    const displayName = a.displayName?.trim() || null;
     const existsMember = await db
       .select({ id: clinicMembers.id })
       .from(clinicMembers)
@@ -226,7 +229,7 @@ async function main() {
     if (existsMember) {
       await db
         .update(clinicMembers)
-        .set({ role: a.role ?? "clinic_admin", passwordHash })
+        .set({ role: a.role ?? "clinic_admin", passwordHash, displayName })
         .where(eq(clinicMembers.id, existsMember.id));
     } else {
       await db.insert(clinicMembers).values({
@@ -234,6 +237,7 @@ async function main() {
         email,
         role: a.role ?? "clinic_admin",
         passwordHash,
+        displayName,
       });
     }
   }

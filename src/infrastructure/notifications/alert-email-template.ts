@@ -16,6 +16,7 @@ const SOURCE_LABEL: Record<string, string> = {
   quality: "Qualidade",
   webhook: "Webhook / Entrada",
   channel: "Canal / Saída",
+  queue: "Fila / Workers",
 };
 
 function alertRow(alert: OperationalAlertReport["alerts"][number]): string {

@@ -49,7 +49,7 @@ export async function GET(): Promise<NextResponse> {
     const { gateway } = await getGateway();
     const clinicId = await requireSessionClinicId();
     const from = new Date();
-    const to = new Date(Date.now() + 60 * 24 * 60 * 60_000); // próximos 60 dias
+    const to = new Date(Date.now() + 150 * 24 * 60 * 60_000); // próximos 150 dias
 
     const blocks = await gateway.listBlockEvents({ clinicId, from, to });
     return NextResponse.json({ blocks });
