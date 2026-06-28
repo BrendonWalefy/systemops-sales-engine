@@ -1215,7 +1215,6 @@ export function DashboardCommandCenter({
         </section>
 
         <HumanInterventionAlert data={data} />
-        <OperationalInsightsCard />
         <UpcomingAppointments appointments={data.upcomingAppointments} />
 
         <main className="command-main-grid">
@@ -1227,6 +1226,7 @@ export function DashboardCommandCenter({
         <RecentActivity data={data} />
         <RevenueSummary data={data} revenueData={revenueData} />
         <SecondaryMetrics data={data} />
+        <OperationalInsightsCard />
       </div>
     </div>
   );
