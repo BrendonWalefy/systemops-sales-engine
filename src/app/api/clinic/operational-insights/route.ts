@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, count, eq, gt, isNull, desc } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNull, desc } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { treatmentGapReports, clinicOperationalInsights } from "@/infrastructure/db/schema";
+import { treatmentGapReports, clinicOperationalInsights, treatments } from "@/infrastructure/db/schema";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,8 @@ export type OperationalInsight = {
   title: string;
   description: string;
   affectedCount: number;
+  convIds: string[];
+  actionData: Record<string, unknown>;
 };
 
 // GET /api/clinic/operational-insights
@@ -47,6 +49,8 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
         title: clinicOperationalInsights.title,
         description: clinicOperationalInsights.description,
         affectedCount: clinicOperationalInsights.affectedCount,
+        convIds: clinicOperationalInsights.convIds,
+        actionData: clinicOperationalInsights.actionData,
       })
       .from(clinicOperationalInsights)
       .where(
@@ -60,15 +64,39 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
       .limit(6),
   ]);
 
+  // Resolve treatment IDs for price_not_set insights
+  const priceNotSetNames = insightRows
+    .filter((r) => r.type === "price_not_set" && typeof (r.actionData as Record<string, unknown> | null)?.treatmentName === "string")
+    .map((r) => (r.actionData as Record<string, unknown>).treatmentName as string);
+
+  const treatmentIdMap = new Map<string, string>();
+  if (priceNotSetNames.length > 0) {
+    const matched = await db
+      .select({ id: treatments.id, name: treatments.name })
+      .from(treatments)
+      .where(and(eq(treatments.clinicId, clinicId), inArray(treatments.name, priceNotSetNames)));
+    for (const t of matched) treatmentIdMap.set(t.name, t.id);
+  }
+
   const insights: OperationalInsight[] = [
-    ...insightRows.map((r) => ({
-      key: `op::${r.id}`,
-      type: r.type,
-      category: (r.category === "ai_quality" ? "ai_quality" : "operational") as "operational" | "ai_quality",
-      title: r.title,
-      description: r.description,
-      affectedCount: r.affectedCount,
-    })),
+    ...insightRows.map((r) => {
+      const baseActionData = (r.actionData ?? {}) as Record<string, unknown>;
+      const actionData =
+        r.type === "price_not_set" && typeof baseActionData.treatmentName === "string"
+          ? { ...baseActionData, treatmentId: treatmentIdMap.get(baseActionData.treatmentName) }
+          : baseActionData;
+
+      return {
+        key: `op::${r.id}`,
+        type: r.type,
+        category: (r.category === "ai_quality" ? "ai_quality" : "operational") as "operational" | "ai_quality",
+        title: r.title,
+        description: r.description,
+        affectedCount: r.affectedCount,
+        convIds: (r.convIds ?? []) as string[],
+        actionData,
+      };
+    }),
     ...gapRows.map((r) => ({
       key: `missing_treatment::${r.mentionedText}`,
       type: "missing_treatment",
@@ -76,6 +104,8 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
       title: "Tratamento não cadastrado",
       description: `${r.count} ${r.count === 1 ? "lead mencionou" : "leads mencionaram"} "${r.mentionedText}" — considere adicioná-lo ao catálogo.`,
       affectedCount: r.count,
+      convIds: [] as string[],
+      actionData: { treatmentName: r.mentionedText } as Record<string, unknown>,
     })),
   ];
 

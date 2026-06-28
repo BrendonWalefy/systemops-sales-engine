@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Lightbulb, AlertCircle, TrendingDown, HelpCircle, Calendar, Package, Bot, Wrench } from "lucide-react";
+import {
+  X,
+  Lightbulb,
+  AlertCircle,
+  TrendingDown,
+  HelpCircle,
+  Calendar,
+  Package,
+  Bot,
+  Wrench,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Check,
+  ExternalLink,
+} from "lucide-react";
 import type { OperationalInsight } from "@/app/api/clinic/operational-insights/route";
 
 const TYPE_ICONS: Record<string, typeof Lightbulb> = {
@@ -21,6 +36,51 @@ const TYPE_ICONS: Record<string, typeof Lightbulb> = {
   other: Lightbulb,
 };
 
+const AI_QUALITY_TYPES = new Set([
+  "unclear_response",
+  "missed_opportunity",
+  "unnatural_reply",
+  "price_objection_unresolved",
+  "hesitation_after_reply",
+]);
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copiar instrução"
+      style={{
+        background: "none",
+        border: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
+        borderRadius: 6,
+        cursor: "pointer",
+        color: copied ? "var(--accent-strong)" : "var(--muted)",
+        padding: "3px 8px",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: 11,
+        flexShrink: 0,
+      }}
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+      {copied ? "Copiado" : "Copiar"}
+    </button>
+  );
+}
+
 function InsightRow({
   insight,
   dismissing,
@@ -30,15 +90,39 @@ function InsightRow({
   dismissing: Set<string>;
   onDismiss: (key: string) => void;
 }) {
+  const [showConvs, setShowConvs] = useState(false);
+  const [showSuggestion, setShowSuggestion] = useState(false);
+
   const Icon = TYPE_ICONS[insight.type] ?? Lightbulb;
   const isDismissing = dismissing.has(insight.key);
+  const convIds = insight.convIds ?? [];
+  const actionData = insight.actionData ?? {};
+  const suggestedInstruction = typeof actionData.suggestedInstruction === "string" ? actionData.suggestedInstruction : null;
+  const treatmentId = typeof actionData.treatmentId === "string" ? actionData.treatmentId : null;
+  const treatmentName = typeof actionData.treatmentName === "string" ? actionData.treatmentName : null;
+
+  const showSuggestionButton = AI_QUALITY_TYPES.has(insight.type) && suggestedInstruction;
+  const actionHref =
+    insight.type === "missing_treatment"
+      ? "/app/settings/pipeline"
+      : insight.type === "price_not_set"
+        ? treatmentId
+          ? `/app/settings/pipeline/${treatmentId}`
+          : "/app/settings/pipeline"
+        : null;
+  const actionLabel =
+    insight.type === "missing_treatment"
+      ? `Cadastrar${treatmentName ? ` "${treatmentName}"` : ""}`
+      : insight.type === "price_not_set"
+        ? "Definir preço"
+        : null;
 
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "flex-start",
-        gap: 10,
+        flexDirection: "column",
+        gap: 6,
         padding: "8px 10px",
         background: "var(--surface)",
         borderRadius: 8,
@@ -47,50 +131,174 @@ function InsightRow({
         transition: "opacity 0.15s",
       }}
     >
-      <Icon size={14} color="var(--accent-strong)" style={{ marginTop: 2, flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>
-          {insight.title}
-          {insight.affectedCount >= 1 && (
+      {/* Main row */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <Icon size={14} color="var(--accent-strong)" style={{ marginTop: 2, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>
+            {insight.title}
+            {convIds.length > 0 && (
+              <button
+                onClick={() => setShowConvs((v) => !v)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  marginLeft: 6,
+                  fontWeight: 400,
+                  color: "var(--accent-strong)",
+                  fontSize: 11,
+                  padding: 0,
+                  textDecoration: "underline",
+                  textDecorationStyle: "dotted",
+                  textUnderlineOffset: 2,
+                }}
+              >
+                · {convIds.length} {convIds.length === 1 ? "conversa" : "conversas"}
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>
+            {insight.description}
+          </div>
+        </div>
+        <button
+          onClick={() => onDismiss(insight.key)}
+          disabled={isDismissing}
+          title="Dispensar"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: isDismissing ? "default" : "pointer",
+            color: "var(--muted)",
+            padding: 2,
+            display: "flex",
+            flexShrink: 0,
+            opacity: isDismissing ? 0.3 : 0.6,
+          }}
+        >
+          <X size={12} />
+        </button>
+      </div>
+
+      {/* Conversations expansion */}
+      {showConvs && convIds.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            paddingLeft: 24,
+          }}
+        >
+          {convIds.map((id, i) => (
             <a
-              href="/app/inbox"
+              key={id}
+              href={`/app/inbox/${id}`}
               style={{
-                marginLeft: 6,
-                fontWeight: 400,
-                color: "var(--muted)",
                 fontSize: 11,
+                color: "var(--accent-strong)",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <ExternalLink size={10} />
+              Conversa {i + 1}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Action row */}
+      {(actionHref || showSuggestionButton) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24 }}>
+          {actionHref && actionLabel && (
+            <a
+              href={actionHref}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--accent-strong)",
+                textDecoration: "none",
+                border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+                borderRadius: 6,
+                padding: "3px 8px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                background: "color-mix(in srgb, var(--accent) 6%, transparent)",
+              }}
+            >
+              {actionLabel}
+            </a>
+          )}
+          {showSuggestionButton && (
+            <button
+              onClick={() => setShowSuggestion((v) => !v)}
+              style={{
+                background: "none",
+                border: "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
+                borderRadius: 6,
+                cursor: "pointer",
+                color: "var(--muted)",
+                padding: "3px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11,
+              }}
+            >
+              {showSuggestion ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              {showSuggestion ? "Fechar sugestão" : "Ver sugestão"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Suggestion expansion */}
+      {showSuggestion && suggestedInstruction && (
+        <div
+          style={{
+            marginLeft: 24,
+            padding: "8px 10px",
+            background: "color-mix(in srgb, var(--accent) 4%, var(--surface))",
+            border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)",
+            borderRadius: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--text)",
+              lineHeight: 1.5,
+              margin: 0,
+              fontStyle: "italic",
+            }}
+          >
+            {suggestedInstruction}
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <CopyButton text={suggestedInstruction} />
+            <a
+              href="/app/settings/playbook"
+              style={{
+                fontSize: 11,
+                color: "var(--muted)",
                 textDecoration: "underline",
                 textDecorationStyle: "dotted",
                 textUnderlineOffset: 2,
-                cursor: "pointer",
               }}
-              title="Ver conversas no inbox"
             >
-              · {insight.affectedCount} {insight.affectedCount === 1 ? "conversa" : "conversas"}
+              Abrir playbook
             </a>
-          )}
+          </div>
         </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>
-          {insight.description}
-        </div>
-      </div>
-      <button
-        onClick={() => onDismiss(insight.key)}
-        disabled={isDismissing}
-        title="Dispensar"
-        style={{
-          background: "none",
-          border: "none",
-          cursor: isDismissing ? "default" : "pointer",
-          color: "var(--muted)",
-          padding: 2,
-          display: "flex",
-          flexShrink: 0,
-          opacity: isDismissing ? 0.3 : 0.6,
-        }}
-      >
-        <X size={12} />
-      </button>
+      )}
     </div>
   );
 }

@@ -28,6 +28,8 @@ type InsightDraft = {
   title: string;
   description: string;
   affectedCount: number;
+  convIds: string[];
+  actionData: Record<string, unknown>;
 };
 
 async function callLLM(prompt: string): Promise<string> {
@@ -53,9 +55,19 @@ async function callLLM(prompt: string): Promise<string> {
   return res.choices[0]?.message?.content ?? "";
 }
 
-type RawInsight = { type?: unknown; title?: unknown; description?: unknown; affectedCount?: unknown };
+type RawInsight = {
+  type?: unknown;
+  title?: unknown;
+  description?: unknown;
+  convIndices?: unknown;
+  action_data?: unknown;
+};
 
-function normalizeInsights(arr: unknown[], category: "operational" | "ai_quality"): InsightDraft[] {
+function normalizeInsights(
+  arr: unknown[],
+  category: "operational" | "ai_quality",
+  convIdMap: string[],
+): InsightDraft[] {
   if (!Array.isArray(arr)) return [];
   return arr
     .filter(
@@ -65,23 +77,38 @@ function normalizeInsights(arr: unknown[], category: "operational" | "ai_quality
         typeof (i as RawInsight).title === "string" &&
         typeof (i as RawInsight).description === "string",
     )
-    .map((i) => ({
-      type: typeof i.type === "string" ? i.type : "other",
-      category,
-      title: String(i.title).slice(0, 80),
-      description: String(i.description).slice(0, 200),
-      affectedCount: typeof i.affectedCount === "number" ? i.affectedCount : 1,
-    }))
+    .map((i) => {
+      const rawIndices = Array.isArray(i.convIndices) ? (i.convIndices as unknown[]) : [];
+      const convIds = rawIndices
+        .filter((idx): idx is number => typeof idx === "number" && idx >= 1 && idx <= convIdMap.length)
+        .map((idx) => convIdMap[idx - 1])
+        .filter((id): id is string => typeof id === "string");
+
+      const actionData =
+        i.action_data !== null && typeof i.action_data === "object"
+          ? (i.action_data as Record<string, unknown>)
+          : {};
+
+      return {
+        type: typeof i.type === "string" ? i.type : "other",
+        category,
+        title: String(i.title).slice(0, 80),
+        description: String(i.description).slice(0, 200),
+        affectedCount: convIds.length || 1,
+        convIds,
+        actionData,
+      };
+    })
     .slice(0, 3);
 }
 
-function parseInsights(raw: string): InsightDraft[] {
+function parseInsights(raw: string, convIdMap: string[]): InsightDraft[] {
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     const json = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(raw);
     return [
-      ...normalizeInsights(json.operational ?? [], "operational"),
-      ...normalizeInsights(json.ai_quality ?? [], "ai_quality"),
+      ...normalizeInsights(json.operational ?? [], "operational", convIdMap),
+      ...normalizeInsights(json.ai_quality ?? [], "ai_quality", convIdMap),
     ].slice(0, 6);
   } catch {
     return [];
@@ -104,10 +131,7 @@ function formatTreatmentCatalog(catalog: TreatmentRow[]): string {
     .join("\n");
 }
 
-async function analyzeClinic(
-  clinicId: string,
-  clinicName: string,
-): Promise<InsightDraft[]> {
+async function analyzeClinic(clinicId: string, clinicName: string): Promise<InsightDraft[]> {
   const since = new Date();
   since.setHours(since.getHours() - 48);
 
@@ -115,12 +139,7 @@ async function analyzeClinic(
     db
       .select({ id: conversations.id, leadId: conversations.leadId })
       .from(conversations)
-      .where(
-        and(
-          eq(conversations.clinicId, clinicId),
-          gte(conversations.lastMessageAt, since),
-        ),
-      )
+      .where(and(eq(conversations.clinicId, clinicId), gte(conversations.lastMessageAt, since)))
       .orderBy(desc(conversations.lastMessageAt))
       .limit(MAX_CONVERSATIONS),
     db
@@ -136,7 +155,8 @@ async function analyzeClinic(
 
   if (recentConvs.length < 3) return [];
 
-  const convIds = recentConvs.map((c) => c.id);
+  const convIdMap = recentConvs.map((c) => c.id);
+
   const msgRows = await db
     .select({
       conversationId: messages.conversationId,
@@ -145,7 +165,7 @@ async function analyzeClinic(
       sentAt: messages.sentAt,
     })
     .from(messages)
-    .where(inArray(messages.conversationId, convIds))
+    .where(inArray(messages.conversationId, convIdMap))
     .orderBy(messages.conversationId, messages.sentAt);
 
   const byConv = new Map<string, typeof msgRows>();
@@ -197,7 +217,10 @@ CATEGORIA 2 — QUALIDADE DA IA (onde o assistente poderia ter se saído melhor)
 - Hesitação do lead logo após uma resposta da IA (sinal de que a resposta não foi boa)
 - Objeções de preço ou condição que a IA não soube contornar com clareza
 
-IMPORTANTE: Para "tratamento não cadastrado", verifique se o tema da conversa (mesmo usando outros termos ou de forma implícita) corresponde a algo que não está no catálogo. Exemplo: lead pergunta sobre "deixar os dentes mais brancos" → clareamento dental não cadastrado.
+IMPORTANTE:
+- Para "tratamento não cadastrado", verifique se o tema (mesmo implícito) corresponde a algo fora do catálogo. Exemplo: lead pergunta sobre "deixar os dentes mais brancos" → clareamento dental não cadastrado.
+- Em convIndices coloque os NÚMEROS das conversas onde o padrão ocorreu (ex: [1, 3, 5])
+- Para action_data: inclua "treatmentName" para insights operacionais sobre tratamentos; inclua "suggestedInstruction" para insights de qualidade da IA — uma instrução concreta e pronta para ser adicionada ao playbook do assistente.
 
 Responda APENAS com JSON válido (máx 3 insights por categoria, só inclua os relevantes):
 {
@@ -206,7 +229,10 @@ Responda APENAS com JSON válido (máx 3 insights por categoria, só inclua os r
       "type": "missing_treatment" | "price_not_set" | "service_gap" | "info_gap" | "other",
       "title": "Título curto e direto (máx 60 chars)",
       "description": "Padrão identificado com contexto específico (máx 150 chars)",
-      "affectedCount": número de conversas onde isso ocorreu
+      "convIndices": [lista de números das conversas onde ocorreu, ex: [1, 3]],
+      "action_data": {
+        "treatmentName": "nome do tratamento mencionado ou faltante"
+      }
     }
   ],
   "ai_quality": [
@@ -214,7 +240,10 @@ Responda APENAS com JSON válido (máx 3 insights por categoria, só inclua os r
       "type": "unclear_response" | "missed_opportunity" | "unnatural_reply" | "price_objection_unresolved" | "hesitation_after_reply" | "other",
       "title": "Título curto e direto (máx 60 chars)",
       "description": "Padrão identificado com contexto específico (máx 150 chars)",
-      "affectedCount": número de conversas onde isso ocorreu
+      "convIndices": [lista de números das conversas onde ocorreu, ex: [2, 4]],
+      "action_data": {
+        "suggestedInstruction": "instrução concreta e pronta para adicionar ao playbook do assistente"
+      }
     }
   ]
 }
@@ -222,7 +251,7 @@ Responda APENAS com JSON válido (máx 3 insights por categoria, só inclua os r
 Se não houver insights relevantes em uma categoria, retorne array vazio para ela.`;
 
   const raw = await callLLM(prompt);
-  return parseInsights(raw);
+  return parseInsights(raw, convIdMap);
 }
 
 export async function GET(req: NextRequest) {
@@ -257,6 +286,8 @@ export async function GET(req: NextRequest) {
             title: d.title,
             description: d.description,
             affectedCount: d.affectedCount,
+            convIds: d.convIds.length > 0 ? d.convIds : null,
+            actionData: Object.keys(d.actionData).length > 0 ? d.actionData : null,
             expiresAt,
           })),
         );
