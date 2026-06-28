@@ -1034,6 +1034,8 @@ export const clinicOperationalInsights = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull(),
     affectedCount: integer("affected_count").notNull().default(1),
+    actionData: jsonb("action_data").$type<Record<string, unknown>>(),
+    convIds: jsonb("conv_ids").$type<string[]>(),
     dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })

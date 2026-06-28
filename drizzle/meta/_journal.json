@@ -316,6 +316,13 @@
       "when": 1782700000000,
       "tag": "0044_operational_insights_category",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1782800000000,
+      "tag": "0045_insights_action_data",
+      "breakpoints": true
     }
   ]
 }
