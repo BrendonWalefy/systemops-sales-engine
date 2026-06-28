@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   X,
   Lightbulb,
@@ -192,7 +193,7 @@ function InsightRow({
           }}
         >
           {convIds.map((id, i) => (
-            <a
+            <Link
               key={id}
               href={`/app/inbox/${id}`}
               style={{
@@ -206,7 +207,7 @@ function InsightRow({
             >
               <ExternalLink size={10} />
               Conversa {i + 1}
-            </a>
+            </Link>
           ))}
         </div>
       )}
@@ -215,7 +216,7 @@ function InsightRow({
       {(actionHref || showSuggestionButton) && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24 }}>
           {actionHref && actionLabel && (
-            <a
+            <Link
               href={actionHref}
               style={{
                 fontSize: 11,
@@ -232,7 +233,7 @@ function InsightRow({
               }}
             >
               {actionLabel}
-            </a>
+            </Link>
           )}
           {showSuggestionButton && (
             <button
@@ -284,7 +285,7 @@ function InsightRow({
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <CopyButton text={suggestedInstruction} />
-            <a
+            <Link
               href="/app/settings/playbook"
               style={{
                 fontSize: 11,
@@ -295,7 +296,7 @@ function InsightRow({
               }}
             >
               Abrir playbook
-            </a>
+            </Link>
           </div>
         </div>
       )}
