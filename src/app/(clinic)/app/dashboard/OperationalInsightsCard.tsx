@@ -51,10 +51,23 @@ function InsightRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>
           {insight.title}
-          {insight.affectedCount > 1 && (
-            <span style={{ marginLeft: 6, fontWeight: 400, color: "var(--muted)", fontSize: 11 }}>
-              · {insight.affectedCount} conversas
-            </span>
+          {insight.affectedCount >= 1 && (
+            <a
+              href="/app/inbox"
+              style={{
+                marginLeft: 6,
+                fontWeight: 400,
+                color: "var(--muted)",
+                fontSize: 11,
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+                textUnderlineOffset: 2,
+                cursor: "pointer",
+              }}
+              title="Ver conversas no inbox"
+            >
+              · {insight.affectedCount} {insight.affectedCount === 1 ? "conversa" : "conversas"}
+            </a>
           )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>
@@ -120,6 +133,33 @@ export function OperationalInsightsCard() {
 
   return (
     <div style={{ margin: "0 0 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      {aiQuality.length > 0 && (
+        <div
+          style={{
+            background: "color-mix(in srgb, var(--accent) 6%, var(--surface))",
+            border: "1px solid color-mix(in srgb, var(--accent) 18%, transparent)",
+            borderRadius: 12,
+            padding: "12px 16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
+            <Bot size={13} color="var(--accent-strong)" />
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Insights da IA
+            </span>
+            <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 4 }}>
+              {aiQuality.length} {aiQuality.length === 1 ? "ponto" : "pontos"}
+            </span>
+          </div>
+          {aiQuality.map((insight) => (
+            <InsightRow key={insight.key} insight={insight} dismissing={dismissing} onDismiss={dismiss} />
+          ))}
+        </div>
+      )}
+
       {operational.length > 0 && (
         <div
           style={{
@@ -142,33 +182,6 @@ export function OperationalInsightsCard() {
             </span>
           </div>
           {operational.map((insight) => (
-            <InsightRow key={insight.key} insight={insight} dismissing={dismissing} onDismiss={dismiss} />
-          ))}
-        </div>
-      )}
-
-      {aiQuality.length > 0 && (
-        <div
-          style={{
-            background: "color-mix(in srgb, var(--accent) 6%, var(--surface))",
-            border: "1px solid color-mix(in srgb, var(--accent) 18%, transparent)",
-            borderRadius: 12,
-            padding: "12px 16px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
-            <Bot size={13} color="var(--accent-strong)" />
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Qualidade da IA
-            </span>
-            <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 4 }}>
-              {aiQuality.length} {aiQuality.length === 1 ? "ponto" : "pontos"}
-            </span>
-          </div>
-          {aiQuality.map((insight) => (
             <InsightRow key={insight.key} insight={insight} dismissing={dismissing} onDismiss={dismiss} />
           ))}
         </div>
