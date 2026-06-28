@@ -1,6 +1,7 @@
 import type { CSSProperties, ElementType } from "react";
 import { Suspense } from "react";
 import Link from "next/link";
+import { OperationalInsightsCard } from "./OperationalInsightsCard";
 import {
   Activity,
   AlertTriangle,
@@ -1225,6 +1226,7 @@ export function DashboardCommandCenter({
         <RecentActivity data={data} />
         <RevenueSummary data={data} revenueData={revenueData} />
         <SecondaryMetrics data={data} />
+        <OperationalInsightsCard />
       </div>
     </div>
   );

@@ -302,6 +302,27 @@
       "when": 1782583386563,
       "tag": "0042_treatment_gap_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1782600249560,
+      "tag": "0043_clinic_operational_insights",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1782700000000,
+      "tag": "0044_operational_insights_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1782800000000,
+      "tag": "0045_insights_action_data",
+      "breakpoints": true
     }
   ]
 }

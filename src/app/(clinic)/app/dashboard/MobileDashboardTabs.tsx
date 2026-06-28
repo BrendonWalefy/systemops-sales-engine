@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import { OperationalInsightsCard } from "./OperationalInsightsCard";
 import Link from "next/link";
 import {
   Activity,
@@ -752,6 +753,7 @@ function TabLeads({
           </div>
         </section>
       )}
+      <OperationalInsightsCard />
     </div>
   );
 }

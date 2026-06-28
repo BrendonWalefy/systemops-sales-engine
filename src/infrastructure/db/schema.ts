@@ -1020,6 +1020,36 @@ export const clinicModules = pgTable(
   }),
 );
 
+// Armazena insights operacionais gerados por LLM sobre padrões de conversas recentes.
+// Gerado diariamente pelo cron /api/cron/conversation-insights; expira em 3 dias.
+export const clinicOperationalInsights = pgTable(
+  "clinic_operational_insights",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("clinic_id")
+      .notNull()
+      .references(() => clinics.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    category: text("category").notNull().default("operational"),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    affectedCount: integer("affected_count").notNull().default(1),
+    actionData: jsonb("action_data").$type<Record<string, unknown>>(),
+    convIds: jsonb("conv_ids").$type<string[]>(),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    clinicActiveIdx: index("clinic_operational_insights_clinic_active_idx").on(
+      t.clinicId,
+      t.expiresAt,
+    ),
+  }),
+);
+
 // Registra menções de tratamentos não encontrados no catálogo da clínica.
 // Alimenta os insights operacionais no Inbox: "X leads mencionaram Y — cadastrar?"
 // Permite ao doutor identificar lacunas no catálogo sem precisar ler cada conversa.

@@ -46,6 +46,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/conversation-insights",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/appointment-reminder-staff",
       "schedule": "0 21 * * *"
     }
