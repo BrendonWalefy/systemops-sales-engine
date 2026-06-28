@@ -754,6 +754,7 @@ function TabLeads({
           </div>
         </section>
       )}
+      <OperationalInsightsCard />
     </div>
   );
 }

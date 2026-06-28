@@ -1030,6 +1030,7 @@ export const clinicOperationalInsights = pgTable(
       .notNull()
       .references(() => clinics.id, { onDelete: "cascade" }),
     type: text("type").notNull(),
+    category: text("category").notNull().default("operational"),
     title: text("title").notNull(),
     description: text("description").notNull(),
     affectedCount: integer("affected_count").notNull().default(1),

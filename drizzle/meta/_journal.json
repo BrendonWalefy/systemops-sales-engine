@@ -309,6 +309,13 @@
       "when": 1782600249560,
       "tag": "0043_clinic_operational_insights",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1782700000000,
+      "tag": "0044_operational_insights_category",
+      "breakpoints": true
     }
   ]
 }

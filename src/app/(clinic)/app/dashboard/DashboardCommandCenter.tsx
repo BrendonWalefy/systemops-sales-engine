@@ -1227,6 +1227,7 @@ export function DashboardCommandCenter({
         <RecentActivity data={data} />
         <RevenueSummary data={data} revenueData={revenueData} />
         <SecondaryMetrics data={data} />
+        <OperationalInsightsCard />
       </div>
     </div>
   );
