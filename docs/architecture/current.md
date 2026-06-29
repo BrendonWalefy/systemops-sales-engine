@@ -1,141 +1,235 @@
 # Arquitetura Atual
 
-Este documento descreve a arquitetura viva do SystemOps Core. Historico, prompts de implementacao e planos antigos nao devem ser usados como fonte de verdade.
+Este documento descreve a arquitetura viva do SystemOps Core em 2026-06-28.
+Histórico, prompts de implementação e planos antigos não devem ser usados como
+fonte de verdade.
 
-## Principio Central
+## Resumo executivo
 
-O LLM entende e verbaliza; o sistema decide.
+Hoje o SystemOps é um **monólito modular em Next.js** com execução
+**híbrida**:
+
+- entrada de mensagens já é **event-driven**;
+- processamento conversacional principal roda em **workers lógicos** via cron;
+- entrega de saída usa **outbox + sender worker**;
+- algumas automações de cron ainda fazem **envio direto** e não usam a mesma
+  outbox.
+
+Em uma frase: o webhook deixou de ser o lugar onde tudo acontece, mas a
+plataforma ainda não unificou todos os fluxos assíncronos sob o mesmo pipeline.
+
+## Princípio central
+
+> O LLM entende e verbaliza; o sistema decide.
 
 - `IntentClassifier` classifica a mensagem em JSON estruturado.
-- `ConversationOrchestrator` aplica regras deterministicas e executa a acao real.
+- `ConversationOrchestrator` aplica regras determinísticas e executa a ação
+  real.
 - `ResponseComposer` transforma o resultado concreto em texto humano.
 
-Playbook e tom de voz influenciam comunicacao. Eles nao podem alterar regra de agenda, reserva, disponibilidade, tenant ou seguranca.
+Playbook, tom de voz e mídia influenciam comunicação. Eles não podem alterar
+regras de agenda, reserva, disponibilidade, tenant ou segurança.
 
-## Fluxo de Mensagem
+## Fluxo principal de mensagem
 
 ```text
-WhatsApp Z-API
-  -> /api/whatsapp/zapi
+WhatsApp (Z-API hoje, Meta como compatibilidade)
+  -> POST /api/whatsapp/zapi
   -> resolveClinicByZapiInstance()
+  -> persistInboundEventAndEnqueue()
+     -> inbound_events
+     -> jobs(queue = "message.process")
+
+/api/cron/message-worker
+  -> ProcessMessageJobHandler
   -> ConversationOrchestrator.handle()
      -> RegisterIncomingMessage
      -> ConversationStateMachine
      -> IntentClassifier
-     -> regra deterministica por intent
-     -> BookingService / repositories / CalendarGateway resolvido por clinic.calendarMode
+     -> regra determinística por intent
+     -> BookingService / repositories / CalendarGateway
      -> ResponseComposer
-     -> sendTextMessage()
+     -> enqueueOutboundMessage()
+        -> outbound_messages
+        -> jobs(queue = "message.send")
+
+/api/cron/sender-worker
+  -> SendMessageJobHandler
+  -> OutboundDeliveryService / sendVoiceOrText()
+  -> Z-API envia texto, mídia ou áudio
 ```
 
-O endpoint Meta Cloud API (`/api/whatsapp/webhook`) existe como compatibilidade, mas a producao atual usa Z-API.
+O endpoint Meta Cloud API (`/api/whatsapp/webhook`) existe como compatibilidade,
+mas a produção atual usa Z-API como canal principal.
+
+## O que já está assíncrono
+
+### Ingress fino
+
+`POST /api/whatsapp/zapi` já não executa toda a jornada conversacional. Ele:
+
+1. autentica o webhook;
+2. resolve a clínica;
+3. ignora grupos, status e ecos já conhecidos;
+4. persiste o payload bruto em `inbound_events`;
+5. enfileira `message.process`;
+6. responde rápido.
+
+### Processamento por worker
+
+`/api/cron/message-worker` drena a fila `message.process` e entrega cada evento
+para `ProcessMessageJobHandler`, que:
+
+- recupera o evento bruto;
+- normaliza o payload;
+- aplica policy de automação;
+- transcreve áudio quando necessário;
+- chama `ConversationOrchestrator`.
+
+### Outbox de saída
+
+O `ConversationOrchestrator` não envia mais diretamente a resposta principal do
+lead. Ele grava a intenção de envio em `outbound_messages` e enfileira
+`message.send`.
+
+`/api/cron/sender-worker` é responsável por:
+
+- respeitar ordem por conversa;
+- entregar texto, mídia e áudio;
+- persistir `providerMessageId`;
+- aplicar retry sem recomputar a conversa inteira.
+
+## O que ainda é híbrido
+
+Nem toda automação usa o mesmo pipeline de outbox:
+
+- `appointment-reminder` envia direto via `sendVoiceOrText()`;
+- `follow-up-dispatcher` envia direto via `sendVoiceOrText()`;
+- `recovery-campaign` envia direto via `sendTextMessage()`.
+
+Esses fluxos já são multi-tenant e persistem mensagens no banco, mas ainda não
+passam por `outbound_messages` + `message.send`. Para a 2.0, isso é uma
+fronteira importante: o runtime conversacional principal já foi desacoplado; as
+automações auxiliares ainda não foram totalmente unificadas.
 
 ## Camadas
 
 | Camada | Pasta | Responsabilidade |
 | --- | --- | --- |
-| Domain | `src/domain/` | Entidades, value objects e contratos de repositorio |
-| Application | `src/application/` | Use cases, ports e servicos de aplicacao |
-| Core | `src/core/` | Pipeline de conversa, agenda, state machine e inteligencia |
-| Infrastructure | `src/infrastructure/` | Drizzle, calendario interno/Google Calendar, Z-API, OpenAI, push |
-| App | `src/app/` | UI Next.js, route handlers e server actions |
+| Domain | `src/domain/` | Entidades, value objects e contratos de repositório |
+| Application | `src/application/` | Use cases, ports, jobs e serviços de aplicação |
+| Core | `src/core/` | Pipeline de conversa, agenda, state machine e inteligência |
+| Infrastructure | `src/infrastructure/` | Drizzle, calendário interno/Google Calendar, canais, OpenAI, push, storage |
+| App | `src/app/` | UI Next.js, route handlers, server actions e crons HTTP |
 
-Route handlers devem ser adapters finos: validar entrada, resolver contexto e delegar.
+Route handlers devem continuar finos: validar entrada, resolver contexto,
+delegar, retornar.
 
-## Multi-Tenancy
+## Persistência operacional
 
-Cada clinica possui sua propria configuracao no banco:
+Tabelas centrais para o runtime atual:
 
-- credenciais Z-API;
-- modo de calendario (`calendarMode`);
-- Google Calendar ID opcional;
+- `clinics`: tenant, credenciais de canal, timezone, parâmetros operacionais,
+  `segment`, `serviceNoun`, `calendarMode`;
+- `leads`, `conversations`, `messages`: trilha viva da conversa;
+- `inbound_events`: inbox bruto e reprocessável do canal;
+- `jobs`: fila durável no Postgres (`message.process`, `message.send`,
+  `followup.dispatch`);
+- `outbound_messages`: outbox com ordenação por conversa;
+- `appointments` e `calendar_blocks`: agenda interna;
+- `playbook_versions`: editorial ativo por clínica.
+
+## Multi-tenancy
+
+Cada clínica possui sua própria configuração no banco:
+
+- credenciais de canal (`zapiInstanceId`, `metaPhoneNumberId`, tokens);
+- modo de calendário (`calendarMode`);
 - timezone;
-- horarios comerciais;
+- horários comerciais;
 - profissionais;
 - tratamentos;
 - playbook;
-- tom de voz;
-- flags como `autoReplyEnabled`.
+- parâmetros operacionais e limites;
+- nomenclatura de domínio (`specialty`, `segment`, `serviceNoun`).
 
-Nao existe fallback global de Z-API, calendario ou usuario de clinica por env.
+Resolução de tenant depende do contexto:
 
-## Autenticacao
+- webhook: pela credencial do canal;
+- UI autenticada: pela sessão do membro/owner;
+- crons: iterando explicitamente todas as clínicas.
 
-- Owner: `OWNER_EMAIL` + `OWNER_PASSWORD`.
-- Clinica: membros em `clinic_members`, com `password_hash`.
-- Sessao: token HMAC assinado por `SESSION_SECRET`.
+Não existe fallback global de Z-API, calendário ou usuário de clínica por env.
 
-Usuarios de clinica devem ser criados pelo owner/onboarding/scripts. Nao reintroduza `ADMIN_EMAIL` ou `ADMIN_PASSWORD` globais.
+## Multi-segmento: estado atual
 
-## Agenda e Reservas
+A base já suporta operação por clínica com diferenças de segmento sem mudar o
+core de tenancy:
+
+- `clinics.segment` classifica o tipo do negócio;
+- `clinics.serviceNoun` adapta a linguagem da UI e partes do conteúdo;
+- `treatments` e `professionals` são genéricos o bastante para múltiplos
+  serviços;
+- playbook, tom e política comercial já vêm do banco por clínica.
+
+Os limites atuais para expansão multi-segmento estão concentrados em três
+lugares:
+
+1. o domínio ainda é nomeado como `Clinic`, `Treatment`, `Professional`;
+2. intents e prompts ainda são fortemente orientados a atendimento com
+   agendamento no WhatsApp;
+3. parte das automações ainda assume clínica/consulta como centro do fluxo.
+
+## Agenda e reservas
 
 Componentes principais:
 
-- `ClinicTimezone`: unica fonte para conversao e formatacao de fuso.
-- `SlotEngine`: pure function para disponibilidade.
-- `InternalCalendarGateway`: usa `appointments` + `calendar_blocks` no banco como fonte de verdade.
-- `GoogleCalendarGateway`: modo opt-in/legado para clinicas que mantem GCal como fonte de disponibilidade.
-- `resolveCalendarGateway`: escolhe o gateway por `clinics.calendarMode` e, quando nulo, deriva de `googleCalendarId`.
-- `SlotReservationService`: lock otimista anti-double-booking.
+- `ClinicTimezone`: única fonte para conversão e formatação de fuso;
+- `SlotEngine`: pure function para disponibilidade;
+- `InternalCalendarGateway`: usa `appointments` + `calendar_blocks`;
+- `GoogleCalendarGateway`: modo opt-in/legado;
+- `resolveCalendarGateway`: escolhe o gateway por `clinics.calendarMode`;
+- `SlotReservationService`: lock otimista anti-double-booking;
 - `BookingService`: saga reserva -> CalendarGateway -> banco.
 
-Nao crie agendamentos diretamente no Google Calendar fora do `BookingService`. Bloqueios devem passar pela port `CalendarGateway`.
+Não crie agendamentos diretamente no Google Calendar fora do `BookingService`.
+Bloqueios devem passar pela port `CalendarGateway`.
 
-## Estado de Conversa
+## Estado de conversa
 
-Estado operacional fica em `conversation_states`, via `ConversationStateMachine`.
+Estado operacional fica em `conversation_states`, via
+`ConversationStateMachine`.
 
-Nao inferir estado a partir de texto de mensagem, marcadores escondidos, cache local ou variaveis em memoria.
+Não inferir estado a partir de texto de mensagem, marcadores escondidos, cache
+local ou variáveis em memória.
 
-## Inteligencia
+## Inteligência
 
-Pontos autorizados de LLM:
+Pontos autorizados de LLM no fluxo principal:
 
 - `src/core/intelligence/IntentClassifier.ts`
 - `src/core/intelligence/ResponseComposer.ts`
 - `src/core/intelligence/PlaybookAdvisor.ts`
 - `src/infrastructure/adapters/ai/whisper-gateway.ts`
 
-Novas chamadas de IA devem entrar em `src/core/intelligence/` ou em adapter explicitamente isolado, com testes quando afetarem decisao.
+Há também gateways auxiliares de IA para TTS e recomendações operacionais, mas
+as decisões principais continuam cercadas por código determinístico.
 
-## Banco e Migrations
+## Guardrails para a arquitetura 2.0
 
-Fonte de schema: `src/infrastructure/db/schema.ts`.
+Se a 2.0 generalizar o produto para múltiplos segmentos e tenants, estes
+invariantes devem permanecer:
 
-Historico de migrations:
+- o LLM não decide ações de negócio finais;
+- tenant sempre é resolvido antes de qualquer leitura/escrita relevante;
+- configuração por clínica/tenant vive no banco, não em env global;
+- timezone e agenda passam por `ClinicTimezone` e `BookingService`;
+- toda entrega importante precisa de trilha persistida e retry seguro;
+- conteúdo editorial e regra operacional não podem ser duplicados.
 
-- baseline reprodutivel em `drizzle/0000_baseline.sql`;
-- snapshots em `drizzle/meta/`;
-- novas alteracoes devem usar `npm run db:generate`;
-- producao deve usar `npm run db:migrate` ou fluxo equivalente do deploy.
+## Leitura recomendada para desenhar a 2.0
 
-Nunca usar `drizzle-kit push` em producao.
-
-## Variaveis de Ambiente
-
-Env e para infraestrutura compartilhada:
-
-- banco;
-- sessao;
-- owner;
-- OpenAI;
-- Google service account;
-- cron/toggles;
-- push notifications;
-- simulate API.
-
-Configuracao de clinica pertence ao banco.
-
-## Testes de Maior Risco
-
-Ao mexer em agenda/calendario:
-
-```bash
-npm run verify:agenda
-```
-
-Ao mexer em pipeline WhatsApp, estados, intents, leads ou banco:
-
-```bash
-npm run verify
-```
+- `docs/architecture/diagrams/README.md`
+- `docs/architecture/sources-of-truth.md`
+- `docs/product/multi-segment.md`
+- `docs/operations/change-control.md`

@@ -204,15 +204,34 @@ O LLM nunca toma decisões de negócio diretamente. Ele classifica intenção e 
 WhatsApp Z-API
   → POST /api/whatsapp/zapi
   → resolveClinicByZapiInstance()         # resolve tenant pelo zapiInstanceId
+  → persistInboundEventAndEnqueue()       # grava inbound_events + job message.process
+
+/api/cron/message-worker
+  → ProcessMessageJobHandler
   → ConversationOrchestrator.handle()
-     → RegisterIncomingMessage            # persiste e debounce
-     → ConversationStateMachine           # lê estado atual
+     → RegisterIncomingMessage
+     → ConversationStateMachine
      → IntentClassifier                   # LLM → JSON estruturado
      → regra determinística por intent    # código decide
-     → BookingService / repositories      # agenda ou persiste
+     → BookingService / repositories
      → ResponseComposer                   # LLM → texto humanizado
-     → sendTextMessage()                  # Z-API envia
+     → enqueueOutboundMessage()           # grava outbound_messages + job message.send
+
+/api/cron/sender-worker
+  → SendMessageJobHandler
+  → OutboundDeliveryService / sendVoiceOrText()
+  → Z-API envia texto / áudio / mídia
 ```
+
+### Modelo de execução atual
+
+O runtime atual é um **monólito modular com pipeline híbrido assíncrono**:
+
+- webhook fino: recebe, valida, resolve tenant, persiste e enfileira;
+- `message-worker`: processa a conversa principal com `ConversationOrchestrator`;
+- `sender-worker`: entrega a saída usando outbox e retry;
+- algumas automações de cron ainda fazem envio direto e serão candidatas a
+  unificação na arquitetura 2.0.
 
 ### State machine de conversa
 
@@ -231,12 +250,14 @@ Estado nunca é inferido de texto de mensagem ou memória volátil.
 Cada clínica tem configuração própria no banco:
 
 - Credenciais Z-API (encriptadas)
+- Compatibilidade opcional com Meta Cloud API
 - Modo de calendário (`internal` ou `google_calendar`)
 - Timezone explícito
 - Horários comerciais
 - Profissionais e seus recursos de agenda
 - Tratamentos com duração, pipeline e flag de mídia
 - Playbook ativo com versão publicada
+- Segmento e linguagem do negócio (`specialty`, `segment`, `serviceNoun`)
 - Limites e políticas da IA
 
 Não existe fallback global. Cada requisição resolve seu tenant antes de qualquer processamento.
@@ -251,12 +272,14 @@ Não existe fallback global. Cada requisição resolve seu tenant antes de qualq
 | Linguagem | TypeScript 5.8 (strict) |
 | Banco | PostgreSQL via Neon (serverless) |
 | ORM | Drizzle ORM + Drizzle Kit |
-| IA | OpenAI GPT-4o (classificação + composição), Whisper (áudio), TTS-1-HD (voz) |
-| WhatsApp | Z-API (por clínica, com fallback para Meta Cloud API) |
+| IA | OpenAI `gpt-4o-mini` (classificação + composição), Whisper (áudio), PlaybookAdvisor |
+| Voz | TTS via OpenAI, Google Neural2, ElevenLabs, Fal/Kokoro |
+| WhatsApp | Z-API por clínica, com compatibilidade para Meta Cloud API |
 | Storage | Vercel Blob (mídia, áudio TTS) |
 | Email | Resend (digest operacional, alertas) |
 | Push | Web Push API + VAPID |
 | Calendário | Agenda interna própria + Google Calendar (opt-in) |
+| Execução assíncrona | `inbound_events` + `jobs` + `outbound_messages` no Postgres |
 | Deploy | Vercel (Hobby → Pro conforme escala) |
 | Crons | Vercel Cron + GitHub Actions (para crons que excedem limite do plano) |
 | Testes | Vitest (lógica de negócio em `src/__tests__`) |
@@ -322,6 +345,8 @@ Lógica de negócio em `src/__tests__` com Vitest (pura, sem mock de banco). Com
 | Rota | Descrição |
 |---|---|
 | `POST /api/whatsapp/zapi` | Webhook Z-API (produção) |
+| `GET /api/cron/message-worker` | Worker lógico da fila `message.process` |
+| `GET /api/cron/sender-worker` | Worker lógico da fila `message.send` |
 | `POST /api/conversations/[id]/send` | Envio manual pelo inbox |
 | `/api/cron/*` | Rotinas protegidas por `CRON_SECRET` |
 | `/api/health` | Healthcheck — filtra apenas clínicas `active` |
@@ -331,11 +356,17 @@ Lógica de negócio em `src/__tests__` com Vitest (pura, sem mock de banco). Com
 
 | Cron | Horário | Função |
 |---|---|---|
+| `message-worker` | `* * * * *` | Drena `message.process` e chama o orquestrador |
+| `sender-worker` | `* * * * *` | Drena `message.send` e entrega a outbox |
 | `stale-conversations` | 6h UTC diário | Fecha conversas com TTL expirado |
 | `follow-up-dispatcher` | 10h UTC diário | Envia follow-ups de reengajamento |
 | `appointment-reminder` | 13h UTC diário | Lembrete D-1 de consultas |
-| `recovery-campaign` | 12h e 21h (seg–sáb) | Campanha de recuperação de leads frios |
+| `appointment-reminder-staff` | 21h UTC diário | Lembretes internos para equipe |
+| `calendar-watch-renew` | 5h UTC toda segunda | Renova watch do Google Calendar |
+| `recovery-campaign` | 12h UTC (seg–sáb) | Campanha de recuperação de leads frios |
+| `recovery-campaign-evening` | 21h UTC (seg–sex) | Segunda janela da campanha de recuperação |
 | `conversation-analytics` | 8h UTC diário | Agrega métricas de qualidade por clínica |
+| `conversation-insights` | 7h UTC diário | Consolida insights de conversa |
 | `operational-alert-digest` | 9h UTC diário | Digest operacional por email |
 | `metrics-aggregate` | 2h UTC diário | Consolida métricas gerais |
 
@@ -400,6 +431,10 @@ Detalhes em [docs/operations/migrations-baseline.md](docs/operations/migrations-
 ## Documentação
 
 - [Arquitetura atual](docs/architecture/current.md)
+- [Diagramas de arquitetura](docs/architecture/diagrams/README.md)
+- [Arquitetura alvo 2.0](docs/architecture/target-architecture.md)
+- [Infraestrutura de mídia](docs/architecture/media-infrastructure.md)
+- [Prontidão multi-segmento](docs/product/multi-segment.md)
 - [Change control e deploy safety](docs/operations/change-control.md)
 - [Onboarding de clínica](docs/operations/onboarding-clinica.md)
 - [Posicionamento do produto](docs/product/positioning.md)
@@ -409,12 +444,12 @@ Detalhes em [docs/operations/migrations-baseline.md](docs/operations/migrations-
 
 ## Regras de Trabalho
 
-`main` é produção. Para mudanças normais:
+`main` é produção e `develop` é a branch de integração. Para mudanças normais:
 
-1. Criar branch focada a partir de `main`.
-2. Manter escopo pequeno.
+1. Atualizar `develop`.
+2. Criar branch focada a partir de `develop`.
 3. Rodar `npm run verify`.
-4. Abrir PR e validar preview.
-5. Mergear somente com checks verdes.
+4. Abrir PR para `develop` e validar preview.
+5. Promover `develop` para `main` só depois de validação completa.
 
 Regras completas em [AGENTS.md](AGENTS.md).

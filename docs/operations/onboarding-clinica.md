@@ -95,7 +95,11 @@ Roteamento e isolamento são o que não pode falhar com duas clínicas:
 
 ## Pontos conhecidos a endurecer antes de escala maior
 
-- **Tokens de canal estão em colunas de texto.** Funciona, mas para vários
-  clientes use criptografia em repouso ou um cofre de segredos.
+- **As credenciais já são criptografadas em repouso**, mas continuam sendo
+  operadas pela aplicação. Se o volume de tenants crescer muito, vale avaliar
+  vault dedicado para governança operacional.
 - **Owner ainda é por env** (`OWNER_EMAIL`/`OWNER_PASSWORD`). Admins de clínica
   já vivem em `clinic_members.password_hash`.
+- **Módulos por plano** são sincronizados automaticamente no onboarding. Se o
+  plano for `custom`, revise manualmente `/owner/clinics/[clinicId]/modules`
+  antes do go-live.
