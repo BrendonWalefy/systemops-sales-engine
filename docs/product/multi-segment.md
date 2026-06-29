@@ -1,212 +1,186 @@
-# Plano Multi-Segmento
+# Prontidão Multi-Segmento
 
-**Status:** Planejado — iniciar quando surgir o primeiro cliente fora de odontologia  
-**Última revisão:** 2026-06-14  
-**Estimativa de implementação:** 2–3 dias de desenvolvimento
+**Status:** base existente, com limites claros para a 2.0  
+**Última revisão:** 2026-06-28
 
----
+Este documento descreve o que o SystemOps já suporta hoje para operar vários
+tenants e vários segmentos, e o que ainda prende o produto ao modelo atual de
+"clínica com atendimento via WhatsApp e agendamento".
 
-## Diagnóstico: Onde estamos hoje
+## Resposta curta
 
-A infraestrutura do SystemOps é **segment-agnostic em ~80%**. O que bloqueia multi-segmento hoje está concentrado na **camada de IA** — especificamente em exemplos, keywords e identidade hardcoded para odontologia nos prompts do LLM. A lógica de negócio (agendamento, inbox, follow-up, billing, media) não precisa de nenhuma mudança.
+O sistema já é **multi-tenant por design** e já tem uma base relevante para
+**multi-segmento configurável por tenant**.
 
-### O que está pronto (não requer mudança)
+O que ainda não existe é uma abstração de produto realmente neutra para
+qualquer operação. Hoje a plataforma continua clinic-centric em nomenclatura,
+intents e parte das automações.
 
-| Camada | Detalhe |
-|--------|---------|
-| Schema | `clinicId` em todas as tabelas; `treatments`, `appointments`, `playbook_versions`, `media_library` são neutros |
-| Multi-tenancy | Resolução por credencial (zapiInstanceId / Meta phone_number_id); nenhum fallback hardcoded desde migration 0026 |
-| Tratamentos | Tabela genérica — `name`, `durationMinutes`, `requiresEvaluationFirst`, `isAesthetic` |
-| Pipeline steps | `PipelineStep[]` genérico — funciona para qualquer fluxo de vendas |
-| Editorial config | `playbook_versions.specialty`, `toneOfVoice`, `commercialPolicy` são free text por clínica |
-| Agenda/Calendar | Agnóstico — profissional + horário + tratamento |
-| Inbox / Human takeover | Agnóstico — `needs_human`, `unclear`, TTL configurável |
-| Follow-up / Recovery | `specialty` já é injetado dinamicamente via `editorial?.specialty ?? clinic.specialty` |
-| Billing | Planos por clínica, sem acoplamento com segmento |
-| Media library | Agnóstico — qualquer tipo de mídia |
-| Notificações push | Agnósticas |
+## O que já está pronto
 
-### O que está hardcoded para odontologia (requer mudança)
+### 1. Isolamento por tenant
 
-#### 1. Schema — `src/infrastructure/db/schema.ts:107`
-```ts
-// HOJE:
-specialty: text("specialty").notNull().default("odontology"),
+- `clinicId` está presente nas entidades centrais.
+- A entrada do WhatsApp resolve a clínica pela credencial do canal, não por env
+  global.
+- Owner, membro de clínica e crons resolvem tenant por mecanismos separados e
+  explícitos.
 
-// DEVE SER:
-specialty: text("specialty").notNull(),  // obrigatório no onboarding
-```
+### 2. Configuração por tenant no banco
 
-#### 2. Entidade Clínica — `src/domain/entities/clinic.ts:29`
-```ts
-// HOJE — CONCIERGE_MENU_ITEMS[0]:
-{ label: "Transformar meu sorriso / lentes", intent: "procedures", treatmentKeyword: "lentes" }
+Cada clínica já controla no banco:
 
-// DEVE SER (dinâmico, lido do banco por clínica):
-{ label: clinic.conciergeMenuLabel ?? "Conheça nossos serviços", intent: "procedures", treatmentKeyword: null }
-```
+- canal (`zapiInstanceId`, `metaPhoneNumberId`, tokens);
+- agenda (`calendarMode`, timezone, horários, limites);
+- identidade (`specialty`, `segment`, `serviceNoun`);
+- conteúdo (`playbook_versions`, política comercial, tom);
+- operação (`takeoverTtlHours`, rate limit, slot lookahead, thresholds).
 
-#### 3. IntentClassifier — `src/core/intelligence/IntentClassifier.ts`
-- **Linha ~45:** identidade `"recepcionista virtual de clínica odontológica"` → deve usar `clinic.specialty`  
-- **Linhas 55–62:** exemplos de urgência (`"dor"`, `"sangramento"`) e tratamentos (`"lentes"`, `"implante"`) são dental-specific — precisam de variantes por segmento  
-- **Linhas 91–95:** exemplos de `needs_human` com `"dentista"`, `"doutor"`, `"lentes"` — precisam ser parametrizados
+### 3. Modelo relativamente genérico para oferta de serviço
 
-#### 4. ResponseComposer — `src/core/intelligence/ResponseComposer.ts`
-- **Linha 386:** `"sugira a avaliação presencial para que o dentista avalie"` — assume dental  
-- **Linha 387 e 483:** `"O Dr. Gregorie tem agenda..."` — nome hardcoded  
-- **Linha 484:** `"sobre as lentes?"` — tratamento hardcoded  
-- **Linha 240:** `"lentes ou tratamento"` em exemplo de contexto  
+- `treatments` já funciona como catálogo de serviços ofertados;
+- `professionals` já funciona como recurso operacional/agendável;
+- `pipelineSteps` por tratamento permite fluxos comerciais diferentes por
+  serviço;
+- `mediaLibrary`, playbook e follow-up são configuráveis por clínica.
 
-#### 5. ConversationOrchestrator — `src/core/pipeline/ConversationOrchestrator.ts`
-- **Linha 160:** `"lentes, avaliação, valores ou algum tratamento específico"` — dental-specific  
-- **Linhas 593–599:** `AESTHETIC_TREATMENT_KEYWORDS = ["lente", "faceta", "clareamento", "harmonização", "gengivoplastia", "botox", "sorriso"]` — array hardcoded; deve ser configurável por clínica  
-- **Linha 235:** keyword `"dentista"` em `resolveMenuSelection()` — deve ser genérico (`"especialista"`)  
-- **Linha 294:** keywords `"dentista"`, `"doutor"` em `isHumanRequestText()` — deve ler de config  
+### 4. Linguagem adaptável
 
-#### 6. Recovery Actions — `src/app/(clinic)/app/inbox/recovery-actions.ts:26`
-```ts
-// HOJE:
-const specialty = editorial?.specialty ?? clinic.specialty ?? "odontologia estética"
+O schema já tem campos pensados para variar a linguagem do tenant:
 
-// DEVE SER:
-const specialty = editorial?.specialty ?? clinic.specialty ?? "nosso serviço"
-```
+- `clinics.specialty`
+- `clinics.segment`
+- `clinics.serviceNoun`
 
----
+Isso já permite trocar partes relevantes da UI e do conteúdo sem mudar código
+de tenancy.
 
-## Plano de Implementação
+## O que ainda está clinic-centric
 
-### Fase 1 — Easy Wins (sem schema change) — ~4h
+### 1. Nomes de domínio
 
-Mudanças seguras que melhoram imediatamente sem quebrar nada existente.
+O core ainda fala em:
 
-| # | Arquivo | Mudança | Risco |
-|---|---------|---------|-------|
-| 1 | `recovery-actions.ts:26` | Fallback `"odontologia estética"` → `"nosso serviço"` | Zero |
-| 2 | `ConversationOrchestrator.ts:160` | `"lentes, avaliação..."` → `"valores ou algum serviço específico"` | Zero |
-| 3 | `ResponseComposer.ts:387,483` | Remover `"Dr. Gregorie"` — usar `professionals[0]?.name ?? "nossa equipe"` | Zero |
-| 4 | `IntentClassifier.ts` | Substituir `"clínica odontológica"` por `${clinic.specialty ?? "clínica"}` no system prompt | Zero |
+- `Clinic`
+- `Treatment`
+- `Professional`
+- `Appointment`
 
-### Fase 2 — Onboarding forçado + default removido — ~4h
+Esses nomes funcionam muito bem para saúde, estética e operações baseadas em
+agenda, mas não descrevem igualmente bem outros verticais.
 
-| # | Arquivo | Mudança | Observação |
-|---|---------|---------|------------|
-| 5 | `schema.ts:107` | Remover `default("odontology")` | Requer migration + garantir que todas as clínicas existentes tenham `specialty` preenchido |
-| 6 | `domain/entities/clinic.ts:29` | Remover label `"lentes"` de `CONCIERGE_MENU_ITEMS[0]` | Label vira genérico; customização fica por playbook |
-| 7 | `/owner/clinics/:id` UI | Tornar campo `specialty` obrigatório no form de criação/edição de clínica | UX change |
+### 2. Intents orientados a recepção/agendamento
 
-### Fase 3 — Keywords configuráveis por clínica — ~1 dia
+O `IntentClassifier` continua centrado em:
 
-Mover `AESTHETIC_TREATMENT_KEYWORDS` e keywords de urgência do código para configuração por clínica.
+- `book_appointment`
+- `check_availability`
+- `confirm_slot`
+- `clinical_urgency`
+- `patient_arrived`
 
-**Opção A (simples):** campo `aesthetic_keywords: text[]` e `urgent_keywords: text[]` em `clinic_settings` (nova tabela ou campos em `clinics`)
+Isso é ótimo para clínicas e serviços com agenda, mas não representa de forma
+neutra vendas consultivas, suporte, cobrança ou atendimento operacional sem
+consulta.
 
-**Opção B (via playbook):** adicionar `aestheticKeywords` e `urgentKeywords` ao schema de `playbook_versions` — mesma fonte de verdade que `toneOfVoice`
+### 3. Parte das automações assume consulta/agendamento
 
-**Recomendação:** Opção B — sem tabela nova, mesma fonte editorial, configurável pela UI de playbook.
+Fluxos como:
 
-Mudanças de código:
-- `ConversationOrchestrator.ts`: substituir `AESTHETIC_TREATMENT_KEYWORDS` por `editorial.aestheticKeywords ?? DEFAULT_AESTHETIC_KEYWORDS`
-- `IntentClassifier.ts`: injetar `urgentKeywords` no system prompt via `editorial.urgentKeywords ?? DEFAULT_URGENT_KEYWORDS`
-- `editorialConfig.ts`: adicionar campos ao schema de `publishablePlaybookSchema`
-- UI de playbook: nova seção "Palavras-chave" (avançado / opcional)
+- appointment reminder
+- follow-up pós-vídeo
+- confirmação de consulta
+- recovery campaign baseada em lead frio de clínica
 
-### Fase 4 — Templates de prompt por segmento — ~1 dia (opcional)
+ainda são descritos com linguagem e estados centrados em consulta.
 
-Para segmentos muito diferentes de clínica de saúde (ex: salão de beleza, imobiliária), os exemplos dentro dos prompts do IntentClassifier e ResponseComposer deixam de fazer sentido. A solução é criar templates de prompt que são selecionados pelo `clinic.specialty` ou por um enum de segmento.
+## O que a 2.0 deve preservar
 
-**Abordagem sugerida:**
+Independentemente da nomenclatura nova, a arquitetura 2.0 deveria manter estes
+acertos do sistema atual:
 
-```ts
-// src/core/intelligence/prompt-templates/
-//   health-clinic.ts     ← dental, médica, veterinária, estética
-//   beauty-salon.ts      ← salão, barbearia
-//   generic.ts           ← fallback para qualquer segmento
+1. Resolução de tenant antes de qualquer decisão.
+2. Configuração por tenant no banco, não em env global.
+3. LLM cercado por decisão determinística.
+4. Inbox/outbox e retry seguro para mensagens.
+5. Um único dono para cada dado editorial ou operacional.
 
-function selectPromptTemplate(specialty: string): PromptTemplate {
-  if (HEALTH_SEGMENTS.includes(specialty)) return healthClinicTemplate;
-  if (BEAUTY_SEGMENTS.includes(specialty)) return beautySalonTemplate;
-  return genericTemplate;
-}
-```
+## O que a 2.0 provavelmente deve abstrair
 
-Cada template define:
-- Identidade da IA ("recepcionista de clínica de saúde" / "atendente de salão")
-- Exemplos de `clinical_urgency` / `urgent_issue` adequados ao segmento
-- Exemplos de `needs_human` adequados
-- Tom padrão para `ResponseComposer`
+Se o objetivo for suportar vários segmentos com o mesmo core, estes são os
+candidatos mais fortes a abstração:
 
----
+| Hoje | Possível abstração 2.0 | Observação |
+| --- | --- | --- |
+| `Clinic` | `Organization` ou `Workspace` | Tenant principal |
+| `Treatment` | `Service`, `Offering` ou `CatalogItem` | Catálogo comercial |
+| `Professional` | `Resource` | Pessoa, sala ou capacidade |
+| `Appointment` | `Booking`, `Reservation` ou `Case` | Nem todo segmento agenda consulta |
+| `specialty` | `businessDescriptor` | Descreve o negócio em linguagem humana |
 
-## Mapa de Segmentos Alvo
+## O que já facilita essa generalização
 
-### Segmentos com agendamento (core flow idêntico ao dental)
+Mesmo com nomes clinic-centric, a implementação atual já ajuda a 2.0:
 
-| Segmento | Adaptações necessárias | Estimativa |
-|----------|------------------------|------------|
-| Clínica médica | Trocar "dentista" por "médico/especialista"; urgência = "febre alta", "dor forte"; avaliação = "consulta" | Fase 1+2 resolve 90% |
-| Clínica veterinária | "paciente" = animal; urgência = "vômito", "convulsão"; "tutor" em vez de "paciente" | Fase 1+2+3 |
-| Clínica estética | "lentes" → qualquer tratamento; urgência = "alergia", "reação"; profissional = "esteticista" | Fase 1 resolve quase tudo |
-| Salão de beleza | Sem "avaliação"; agendamento direto; urgência = "alergia"; profissional = "cabeleireiro" | Fase 1+4 |
-| Barbearia | Similar ao salão; sem "avaliação"; horários rápidos | Fase 1+4 |
+- `segment` diferencia o tipo de operação no onboarding;
+- `serviceNoun` desacopla parte da UI da palavra "tratamento";
+- tratamentos e playbook já são por tenant;
+- calendário já é modular via `CalendarGateway`;
+- envio de canal já é modular via adapters.
 
-### Segmentos sem agendamento (requer novo flow)
+## Gaps reais para a 2.0
 
-| Segmento | O que muda | Esforço |
-|----------|------------|---------|
-| Imobiliária | Sem `appointment` como produto; "lead qualificado" → humano; sem pipeline de tratamentos | Médio — novo intent "qualify_lead" |
-| Contabilidade | FAQ + escalonamento humano; sem agendamento | Baixo — só playbook |
-| Administradora de condomínio | Triagem + escalonamento; sem scheduling | Baixo — só playbook |
-| Gestão de energia (ex: Libra) | 200 clientes com dúvidas de faturamento; FAQ estruturado + escalonamento | Médio — `knowledge_base` por clínica |
+Hoje, os principais gaps não são de multi-tenancy; são de neutralidade de
+domínio.
 
-**Nota sobre segmentos sem agendamento:** A infraestrutura de agendamento simplesmente não é acionada. O `IntentClassifier` mapeia para `general_question` ou `needs_human`. Não precisa de código novo — só playbook bem configurado.
+### Gaps de linguagem e prompt
 
----
+- prompts ainda assumem "recepcionista virtual" e contexto de clínica;
+- vários exemplos continuam pensando em agenda, avaliação e atendimento em
+  saúde/estética.
 
-## Checklist de Onboarding para Nova Clínica (Qualquer Segmento)
+### Gaps de modelo
 
-```
-[ ] Criar clínica com slug único no /owner/clinics
-[ ] Preencher clinic.specialty (ex: "clínica médica", "salão de beleza")
-[ ] Configurar Z-API instance (ou Meta phone_number_id) vinculada à clínica
-[ ] Criar senha de login para o clinic_member admin
-[ ] Criar profissionais com nome e especialidade
-[ ] Cadastrar tratamentos/serviços oferecidos (com duração, pipeline steps)
-[ ] Publicar playbook: toneOfVoice, commercialPolicy, FAQ, saudação
-[ ] Testar via /playbook/simulate antes de ir ao ar
-[ ] Configurar receptionist_phone para takeover humano
-[ ] Revisar TTL de pausa da IA (padrão: 60min)
-```
+- a conversa principal ainda assume funil de lead para marcação;
+- automações de cron ainda são descritas com linguagem de consulta;
+- algumas regras ainda partem da premissa de que existe agenda como destino
+  natural do lead.
 
----
+### Gaps de produto
 
-## Riscos e Mitigações
+- a UI owner/onboarding ainda nasce de templates muito orientados a clínica;
+- o dashboard e o blueprint continuam medindo prontidão de operação clínica,
+  não de uma operação genérica.
 
-| Risco | Probabilidade | Mitigação |
-|-------|--------------|-----------|
-| Regressão na Ximendes ao mudar prompts | Média | Rodar simulações antes; usar `/playbook/simulate` |
-| `specialty` NULL em clínica existente após remover default | Alta | Migration que popula `"odontologia"` nas clínicas existentes antes do DROP DEFAULT |
-| Keywords de urgência inadequadas para novo segmento | Alta (sem Fase 3) | Fase 3 resolve; Fase 1+2 é safe para clínicas de saúde em geral |
-| Template de prompt errado para segmento incomum | Baixa (Fase 4) | Fallback para `generic.ts`; ajuste por playbook |
+## Recomendação objetiva para a arquitetura 2.0
 
----
+Não reescrever tenancy. O trabalho principal deve ser:
 
-## Decisão Arquitetural: Quando Iniciar
+1. **generalizar o domínio exposto**, não o isolamento por tenant;
+2. **separar módulos obrigatórios de módulos opcionais**;
+3. **tratar agendamento como capability**, não como pressuposto universal;
+4. **manter o pipeline assíncrono de inbox/outbox** como base operacional.
 
-**Não iniciar antes de ter um prospect real em outro segmento.**
+## Módulos que parecem universais
 
-Motivo: dois casos reais de segmentos diferentes revelam mais decisões de design do que qualquer especulação. Especialmente sobre:
-- O que varia só no playbook vs. o que precisa de código
-- Quais campos de `clinic_settings` são realmente necessários
-- Se templates de prompt por segmento (Fase 4) são necessários ou se playbook bem escrito resolve
+- Tenancy
+- Channel adapters
+- Inbox/outbox
+- Jobs e retry
+- Editorial config
+- LLM classifier/composer cercados por regra
+- Observabilidade
 
-**Condição de gatilho:** primeira ligação de interesse de clínica fora de odontologia.  
-**Tempo até estar funcional:** 2–3 dias a partir do gatilho (Fases 1+2+3 resolvem 95% dos casos de saúde/beleza).
+## Módulos que devem virar capabilities
 
----
+- Scheduling
+- Calendar sync
+- Appointment reminders
+- Clinical urgency
+- Treatment pipeline baseado em consulta
 
-## Referências
+## Leitura complementar
 
-- [Arquitetura atual](architecture/current.md)
-- [Regras de core vs. playbook](../../../.claude/projects/-Users-brendonwalefy-Dev-Projetos-systemops-core/memory/feedback-core-vs-playbook.md) — melhorias universais no core; específicas no playbook
-- [Visão de expansão de plataforma](../../.claude/projects/-Users-brendonwalefy-Dev-Projetos-systemops-core/memory/vision-platform-expansion.md) — segmentos mapeados com dor real
+- `docs/architecture/current.md`
+- `docs/architecture/sources-of-truth.md`
+- `docs/architecture/diagrams/README.md`

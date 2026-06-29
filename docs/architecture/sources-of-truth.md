@@ -1,134 +1,179 @@
-# Sources of Truth — Mapa de Fontes da Verdade
+# Sources of Truth — Mapa de Donos
 
-Auditado em 2026-06-04. Atualizar sempre que um novo tipo de dado for introduzido.
+Atualizado em 2026-06-28.
 
-## Regra Central
+## Regra central
 
 **Se você precisar mudar uma regra em mais de um lugar, a arquitetura está errada.**
 
-Cada tipo de informação tem um único dono. Qualquer duplicação — especialmente entre código e prompt de LLM — é risco de divergência silenciosa.
+Cada tipo de informação tem um único dono. A duplicação mais perigosa é entre:
 
----
+- código determinístico e prompt;
+- `clinics` e `playbook_versions`;
+- `clinic_modules` e flags soltas em outros lugares.
 
-## Mapa de Donos
+## 1. Conteúdo editorial
 
-### 1. Conteúdo Editorial (tom, objeções, política comercial, playbook)
+**Dono:** `playbook_versions`  
+**Porta de acesso:** `resolveActiveEditorialConfig(clinicId)`
 
-**Dono:** tabela `playbook_versions`  
-**Porta de acesso:** `resolveActiveEditorialConfig(clinicId)` em `src/application/config/editorial-config.ts`
+Aqui vivem:
 
-O Orchestrator injeta o conteúdo editorial no prompt via `ComposerInput.clinic`. O prompt LLM **nunca** declara política comercial, tom ou objeções como texto fixo — ele os recebe como variáveis em runtime.
+- tom de voz;
+- especialidade apresentada ao lead;
+- política comercial;
+- objeções;
+- playbook livre;
+- biblioteca de mídia;
+- procedimentos expostos ao LLM.
 
-### 2. Configuração Operacional da Clínica
+O código injeta esse conteúdo em runtime. O prompt **não** deve reescrever como
+texto fixo a política comercial, o tom ou a identidade da clínica.
 
-**Dono:** tabela `clinics` — campos lidos ativamente em runtime:
+## 2. Configuração operacional do tenant
 
-| Campo | Lido Por | Propósito |
-|-------|----------|-----------|
-| `timezone` | `ClinicTimezone` | Toda conversão de horário |
-| `businessHours` | `parseBusinessHours()`, `SlotEngine` | Validação de slots disponíveis |
-| `defaultAppointmentDurationMinutes` | `ConversationOrchestrator` | Duração de consulta quando treatment não especifica |
-| `postAppointmentBufferMinutes` | `SlotEngine` | Buffer entre consultas |
-| `takeoverTtlHours` | `ConversationOrchestrator` | Tempo até IA retomar após pausa humana |
-| `conversationExperience` | `ConversationOrchestrator`, `ResponseComposer` | Modo da jornada: `menu_first` ou `concierge` |
-| `greetingMessage` | `buildMenuBody()` | Saudação inicial no menu |
-| `menuItems` | `resolveMenuSelection()` | Itens do menu conversacional |
-| `receptionistPhone` | `ConversationOrchestrator` | Notificações de urgência/needs_human |
-| `autoReplyEnabled` | webhook `zapi/route.ts` | Gate de resposta automática |
-| `calendarMode` | `resolveCalendarGateway()` | Fonte de verdade da disponibilidade: `internal` ou `google_calendar` |
-| `googleCalendarId` | `GoogleCalendarGateway` | Conector opcional para clínicas em modo `google_calendar` |
-| `zapiToken`, `metaAccessToken` etc. | `sendTextMessage()` | Credenciais de canal |
-| `specialty` | `ResponseComposer` | Fallback quando editorial não especifica |
-| `address` | `ConversationOrchestrator` | Resposta de localização |
+**Dono:** `clinics`
 
-### 2.1. Agenda Interna
+Campos centrais lidos em runtime:
 
-**Dono de agendamentos:** tabela `appointments`
+| Campo | Consumidor principal | Papel |
+| --- | --- | --- |
+| `timezone` | `ClinicTimezone` | Conversão local e saudação |
+| `businessHours` | `SlotEngine` | Disponibilidade |
+| `defaultAppointmentDurationMinutes` | `ConversationOrchestrator` | Duração padrão |
+| `postAppointmentBufferMinutes` | `SlotEngine` | Buffer pós-atendimento |
+| `takeoverTtlHours` | orquestrador / rotas inbox | Retomada após handoff |
+| `menuItems` | orquestrador / simulate | Menu conversacional |
+| `greetingMessage` | menu / playbook / simulate | Saudação base |
+| `autoReplyEnabled` | policy de automação | Liga/desliga a IA |
+| `calendarMode` | `resolveCalendarGateway()` | Fonte de verdade da agenda |
+| `googleCalendarId` | gateway Google | Integração opt-in |
+| `zapi*`, `meta*` | channel adapters | Credenciais do canal |
+| `specialty` | prompts e UI | Contexto humano do negócio |
+| `segment` | onboarding / expansão | Tipo de operação |
+| `serviceNoun` | UI / playbook | Terminologia por segmento |
+| `monthlyRevenueBrl`, `billingStartedAt`, `plan` | owner finance / blueprint | Estado comercial |
+| `calendarChannelId`, `calendarSyncToken` | Google webhook / renew cron | Sync com Google |
 
-**Dono de bloqueios internos:** tabela `calendar_blocks`
+## 3. Capability flags e módulos
 
-**Porta de acesso:** `resolveCalendarGateway()` em `src/infrastructure/adapters/calendar/resolve-calendar-gateway.ts`
+**Dono:** `clinic_modules`  
+**Porta de acesso:** `src/application/modules/module-gate.ts`
 
-No modo `internal`, a disponibilidade é calculada pelo `InternalCalendarGateway`
-com `SlotEngine`, `appointments` ativos e `calendar_blocks`. Google Calendar não
-decide disponibilidade nesse modo.
+Aqui vivem capacidades opcionais por tenant, por exemplo:
 
-No modo `google_calendar`, Google Calendar continua como fonte opt-in/legado para
-disponibilidade e eventos externos. O banco mantém os `appointments` do produto.
+- `concierge_mode`
+- `voice_tts`
+- `voice_elevenlabs`
+- `revenue_pipeline`
 
-**Campos no banco que NÃO são lidos em runtime (dead code de schema):**
+Regra: se uma feature depende de plano ou ativação por tenant, o dono é
+`clinic_modules`, não `clinics`.
 
-| Campo | Status |
-|-------|--------|
-| `plan` | Armazenado — feature gates por plano não implementados |
-| `monthlyRevenueBrl` | Armazenado — billing via `/owner/financeiro`, mas este campo nunca é lido |
-| `billingStartedAt` | Armazenado — nunca lido |
-| `isTest` | Armazenado — marca clinicas de QA, mas nao decide tenant/canal |
-| `slug` | Armazenado — nunca lido em runtime |
-| `calendarChannelId`, `calendarSyncToken` | Infraestrutura futura — não implementada |
+### Casos importantes
 
-### 3. Comportamento Conversacional Universal
+- modo de conversa (`menu_first` vs `concierge`) deriva do módulo
+  `concierge_mode`;
+- saída por voz deriva dos módulos `voice_tts` e `voice_elevenlabs`;
+- config de voz vive em `clinic_modules.config`, não em colunas soltas na
+  clínica.
 
-**Dono:** strings de prompt em `src/core/intelligence/` (ResponseComposer, IntentClassifier)
+## 4. Catálogo comercial e fluxo por serviço
 
-Regras que **não variam por clínica** (estrutura da resposta, anti-repetição, formato de horários, etc.) ficam **somente** no prompt. Nunca criar campo no banco para guardar algo que é igual para todas as clínicas.
+**Dono:** `treatments`
 
-### 4. Constantes Operacionais Globais
+Aqui vivem:
 
-**Dono:** constantes no código — com fallback explícito se puderem variar por clínica no futuro.
+- nome do serviço;
+- duração;
+- descrição;
+- aliases;
+- preço ou faixa de preço;
+- `requiresEvaluationFirst`;
+- `isAesthetic`;
+- `pipelineSteps`;
+- `triggerTemplate`.
 
-| Constante | Valor | Arquivo | Configurável por clínica? |
-|-----------|-------|---------|--------------------------|
-| `SLOTS_LOOKAHEAD_DAYS` | 14 | `ConversationOrchestrator.ts` | ❌ P1: mover para `clinics.slotsLookaheadDays` |
-| `RATE_LIMIT_MESSAGES_PER_HOUR` | 20 | `ConversationOrchestrator.ts` | ❌ P1: mover para `clinics.rateLimitMessagesPerHour` |
-| `CONVERSATION_RESTART_HOURS` | 4 | `ConversationOrchestrator.ts` | ❌ P2: mover para `clinics.conversationRestartHours` |
-| `UNCLEAR_THRESHOLD` | 3 | `ConversationOrchestrator.ts` | ❌ P2: mover para `clinics.unclearThreshold` |
-| `MAX_SLOTS_TO_OFFER` | 5 | `ConversationOrchestrator.ts` | ❌ P2: mover se houver reclamação |
-| `SLOT_OFFER_TTL_MINUTES` | 15 | `ConversationStateMachine.ts` | ❌ Baixa prioridade |
-| `RESERVATION_TTL_MINUTES` | 15 | `SlotReservationService.ts` | ❌ Deve ser >= SLOT_OFFER_TTL |
-| `MIN_ADVANCE_HOURS` | 2 | `ConversationOrchestrator.ts` | ❌ Baixa prioridade |
+Se a regra varia por serviço, ela não pertence ao playbook geral nem ao
+orquestrador.
 
-**Invariante obrigatória:** `RESERVATION_TTL_MINUTES` ≥ `SLOT_OFFER_TTL_MINUTES`. O lead pode tentar confirmar enquanto a oferta ainda é válida — o lock no banco deve existir durante toda essa janela.
+## 5. Agenda
 
-### 5. Lógica de Tempo e Timezone
+**Dono de agendamentos:** `appointments`  
+**Dono de bloqueios:** `calendar_blocks`  
+**Porta de acesso:** `BookingService` + `CalendarGateway`
+
+Regras:
+
+- disponibilidade nunca é inferida direto da UI;
+- criação/cancelamento/reagendamento passam por `BookingService`;
+- timezone sempre passa por `ClinicTimezone`.
+
+## 6. Pipeline de mensagens
+
+**Dono do que entrou:** `inbound_events`  
+**Dono do trabalho pendente:** `jobs`  
+**Dono da intenção de envio:** `outbound_messages`  
+**Dono do histórico humano da conversa:** `messages`
+
+Regra:
+
+- payload bruto do canal pertence ao inbox (`inbound_events`);
+- retry operacional pertence à fila (`jobs`);
+- retry de entrega não deve recomputar a conversa; por isso o dono é a outbox
+  (`outbound_messages`).
+
+## 7. Comportamento universal do LLM
+
+**Dono:** `src/core/intelligence/`
+
+Arquivos centrais:
+
+- `IntentClassifier.ts`
+- `ResponseComposer.ts`
+- `PlaybookAdvisor.ts`
+
+O LLM pode:
+
+- classificar intenção;
+- verbalizar um resultado já decidido;
+- sugerir melhorias editoriais.
+
+O LLM não é dono de:
+
+- booking;
+- handoff;
+- disponibilidade;
+- tenant resolution;
+- auth;
+- retry;
+- policy de automação.
+
+## 8. Tempo e timezone
 
 **Dono:** `src/core/scheduling/ClinicTimezone.ts`
 
-Toda operação que envolve horário local da clínica passa por `ClinicTimezone`. Funções exportadas:
+Nunca:
 
-- `toLocalParts(date)` → converte UTC para partes locais (hora, minuto, dia etc.)
-- `getTimeGreeting(hour)` → "Bom dia" / "Boa tarde" / "Boa noite" — **única fonte desta regra**
-- `formatNowForPrompt()` → string de data/hora para injetar no prompt do LLM
-- `parseBusinessHours(str)` → parse da string de horário comercial
+- usar offset manual (`UTC-3`, `-3`);
+- duplicar saudação temporal em prompt;
+- usar `new Date().getHours()` como regra de negócio local da clínica.
 
-**Nunca:**
-- Usar `new Date().getHours()` diretamente (ignora timezone da clínica)
-- Hardcodar offset UTC (`-3`, `UTC-3`) — viola clínicas fora de SP
-- Repetir a lógica de saudação temporal no texto do prompt (use `getTimeGreeting()` e injete o resultado)
+## 9. Invariantes importantes
 
----
+- `IntentClassifier` e `ResponseComposer` devem usar a mesma janela recente de
+  histórico.
+- `Reservation TTL` não pode ser menor que o TTL da oferta de slot.
+- regras editoriais e regras operacionais não podem viver na mesma prosa livre.
+- uma capability opcional deve ter um único gate de leitura.
 
-## Invariantes de Janela de Contexto LLM
+## Checklist antes de criar regra nova
 
-`IntentClassifier` e `ResponseComposer` devem usar o **mesmo tamanho de janela** de histórico recente. Atualmente: `.slice(-8)`.
+1. Isso varia por tenant?
+2. Isso varia por serviço?
+3. Isso é conteúdo editorial ou política operacional?
+4. Isso já existe em `clinics`, `clinic_modules`, `treatments` ou
+   `playbook_versions`?
+5. O valor está sendo declarado em código e prompt ao mesmo tempo?
 
-Se precisar mudar esse valor, mude em ambos os arquivos simultaneamente:
-- `src/core/intelligence/IntentClassifier.ts`
-- `src/core/intelligence/ResponseComposer.ts`
-
----
-
-## Checklist: Antes de Adicionar uma Nova Regra ou Constante
-
-1. **Essa informação varia por clínica?**
-   - Sim → `clinics.*` (com migration + fallback no código)
-   - Não → constante no código ou string no prompt (nunca nos dois)
-
-2. **Essa regra já existe em outro lugar?**
-   - Buscar em `ClinicTimezone.ts`, `ConversationOrchestrator.ts`, `ResponseComposer.ts`, `IntentClassifier.ts` antes de criar algo novo
-
-3. **Essa regra está no prompt E no código?**
-   - Errado. O prompt recebe o valor como variável injetada em runtime — não o redeclara
-
-4. **Essa constante precisa ser testada?**
-   - Se mudar quebra comportamento observável (booking, slots, takeover) → sim, escreva o teste
+Se a resposta para 5 for sim, a modelagem está errada.

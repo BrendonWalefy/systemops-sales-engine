@@ -1,117 +1,103 @@
 # Media Infrastructure
 
-Decisões de arquitetura para envio e recebimento de mídia (áudio TTS, vídeos do doutor, fotos de leads).
+Decisões atuais para recebimento e envio de mídia no SystemOps.
 
-## Estado atual (Z-API + Vercel Blob)
+## Estado atual
 
-### Fluxo de recebimento (inbound)
+### Inbound
 
-```
-Lead envia foto/vídeo/áudio no WhatsApp
-        ↓
-Z-API webhook → /api/whatsapp/zapi
-        ↓
-ZApiChannelAdapter.receive() — resolve mediaUrl + mediaType
-        ↓
-RegisterIncomingMessage — salva no messages.media_url + media_type
-        ↓
-Inbox mostra indicador de mídia (TODO — fase futura de UI)
+```text
+Lead envia imagem / vídeo / áudio / documento
+  -> Z-API webhook
+  -> inbound_events
+  -> ProcessMessageJobHandler
+  -> RegisterIncomingMessage
+  -> messages.media_url + media_type
+  -> Inbox renderiza a mídia no ChatWindow
 ```
 
-Tipos suportados: `image`, `video`, `audio`, `document`.
+Tipos suportados:
 
-**Limitação atual:** URLs hospedadas pela Z-API expiram (~24h). Suficiente para exibir no Inbox em tempo real, não adequado para histórico de longo prazo. Aceitar como tradeoff até migração para Meta Cloud API.
+- `image`
+- `video`
+- `audio`
+- `document`
 
-### Fluxo de áudio TTS (outbound)
+### Limite atual do inbound
 
-```
-Orchestrator decide enviar resposta em áudio
-        ↓
-OpenAiTtsGateway.synthesize() → ArrayBuffer
-        ↓
-VercelBlobStorageGateway.upload() → URL pública (blob.vercel-storage.com/...)
-        ↓
-sendMediaMessage(to, url, "audio", config)
-        ↓
-Z-API send-audio com a URL
-        ↓
-StorageGateway.delete(url) — limpeza após confirmação de envio
-```
+As URLs de mídia entregues pela Z-API expiram depois de um tempo. Hoje isso é
+aceito como tradeoff operacional: o inbox consegue operar e exibir mídia
+recente, mas o sistema ainda não rehosta toda mídia inbound para histórico
+permanente.
 
-### Fluxo de vídeo do doutor (outbound)
+## Outbound de voz
 
-```
-Clínica cadastra URL de vídeo no Playbook (campo mediaLibrary — TODO)
-        ↓
-IA decide enviar o vídeo (ex: lead pergunta sobre procedimento)
-        ↓
-sendMediaMessage(to, videoUrl, "video", config, caption)
-        ↓
-Z-API send-video com a URL pública
+Hoje a saída por voz já está integrada ao runtime real.
+
+```text
+ConversationOrchestrator ou cron resolve config de voz
+  -> resolveClinicVoiceConfig(clinicId)
+     -> clinic_modules (voice_tts / voice_elevenlabs)
+  -> sendVoiceOrText()
+  -> provider TTS sintetiza áudio
+  -> upload temporário no Vercel Blob
+  -> WhatsApp envia o áudio pela URL pública
+  -> cleanup posterior do blob
 ```
 
-**Sem storage necessário para vídeos** — a URL fica no playbook, hospedada pelo doutor onde preferir (Google Drive público, Loom, qualquer CDN).
+### Fonte de verdade da voz
 
-## Portas (interfaces estáveis)
+Saída por voz não é mais controlada por boolean solto em `clinics`.
 
-| Port | Localização |
-|---|---|
-| `TtsGateway` | `src/application/ports/tts-gateway.ts` |
-| `StorageGateway` | `src/application/ports/storage-gateway.ts` |
-| `MediaType` | `src/application/ports/channel-adapter.ts` |
+O dono agora é:
 
-## Adapters disponíveis
+- `clinic_modules` para ativação;
+- `clinic_modules.config` para provider e parâmetros.
 
-| Adapter | Provider | Quando usar |
-|---|---|---|
-| `OpenAiTtsGateway` | OpenAI TTS | Padrão atual |
-| `VercelBlobStorageGateway` | Vercel Blob | Padrão atual (app no Vercel) |
+## Outbound de mídia editorial
 
-## Próximos passos (por ordem de prioridade)
+```text
+Playbook ativo contém mediaLibrary
+  -> ResponseComposer usa tokens [MEDIA:id]
+  -> ConversationOrchestrator resolve os IDs contra a biblioteca
+  -> sender-worker / OutboundDeliveryService envia na ordem certa
+```
 
-### P-MEDIA-1 — Integrar TTS no Orchestrator
-Adicionar a decisão "texto ou áudio?" baseada em config da clínica (`voiceResponseEnabled boolean` no schema). O Orchestrator chama `TtsGateway` → `StorageGateway` → `sendMediaMessage`. Gatilho: quando o doutor pedir a feature de voz ativa.
+Isso permite:
 
-### P-MEDIA-2 — UI do Inbox para mídia inbound
-Exibir foto/vídeo/áudio recebidos de leads no Inbox. Os dados já chegam no banco (`media_url`, `media_type`), falta apenas renderizar no frontend.
+- texto + vídeo intercalados;
+- áudio + vídeo na mesma resposta;
+- pipeline por serviço com mídia declarativa.
 
-### P-MEDIA-3 — Biblioteca de mídia no Playbook
-Permitir que a clínica cadastre URLs de vídeo com título e tags de procedimento. A IA usa como base para decidir qual vídeo enviar. Armazenado em `playbook_versions.config` ou tabela dedicada.
+## Onde cada dado mora
 
-### P-MEDIA-4 — Limpeza automática do Vercel Blob
-Após envio do áudio TTS confirmado, deletar o blob. Pode ser feito inline ou via cron diário limpando blobs com mais de 1h.
+| O quê | Dono |
+| --- | --- |
+| Config de voz | `clinic_modules` |
+| Biblioteca de mídia editorial | `playbook_versions.mediaLibrary` |
+| Histórico da mensagem enviada | `messages` |
+| Intenção de envio assíncrona | `outbound_messages` |
+| Blob temporário de áudio | Vercel Blob |
 
----
+## Riscos ainda abertos
 
-## Gatilho de migração para Meta Cloud API
+1. Mídia inbound da Z-API não é persistida em storage durável por padrão.
+2. Algumas automações de cron ainda enviam direto e não passam pela mesma
+   outbox do pipeline principal.
+3. Meta Cloud API continua sendo a rota natural quando o produto precisar de
+   mídia com lifecycle mais controlado, templates aprovados ou botões nativos.
 
-Migrar quando **qualquer uma** destas condições for verdadeira:
+## Gatilhos de migração para Meta Cloud API
 
-### Gatilho técnico (prioridade alta)
-- **+5 clínicas ativas** — o custo operacional de gerir instâncias Z-API por clínica supera o custo de migrar para Meta Business API centralizada.
-- **Necessidade de botões interativos nativos** — Z-API não entrega botões nativos no plano atual; Meta Cloud API sim.
-- **Necessidade de templates aprovados** (campanhas proativas, lembretes formais) — exige WABA (WhatsApp Business Account) que só existe na Meta Cloud API.
+Migrar quando qualquer uma destas condições ficar forte o suficiente:
 
-### Gatilho de custo
-- Volume mensal de armazenamento de áudio TTS ultrapassar R$30/mês no Vercel Blob. A Meta Cloud API aceita upload binário direto (sem storage externo), eliminando esse custo.
+- custo operacional de manter muitas instâncias Z-API por tenant;
+- necessidade de templates aprovados;
+- necessidade de botões interativos nativos;
+- necessidade de mídia com lifecycle mais controlado no provider.
 
-### O que muda na migração
+## Próximas melhorias úteis
 
-| | Hoje (Z-API) | Meta Cloud API |
-|---|---|---|
-| Envio de texto | `send-text` | `POST /messages type=text` |
-| Envio de áudio | URL pública obrigatória | Upload binário → `media_id` |
-| Envio de vídeo | URL pública obrigatória | Upload binário → `media_id` |
-| Recebimento de mídia | URL no webhook (expira) | `media_id` → busca URL permanente |
-| Storage gateway | Necessário para TTS | Eliminado para TTS |
-| Buttons/templates | Não disponível | Disponível |
-
-**Impacto no código:** apenas os adapters de infraestrutura mudam (`zapi-channel-adapter` → `meta-channel-adapter`, `whatsapp-sender`). Ports, domain, Orchestrator e use cases não tocam.
-
-### Estimativa de esforço de migração
-- Novo webhook handler Meta: ~2 dias
-- `MetaChannelAdapter` com suporte a mídia via `media_id`: ~3 dias
-- Aprovação WABA + número Business: tempo externo (~1-2 semanas)
-- Testes E2E com número real: ~1 dia
-
-Total técnico: ~1 semana de desenvolvimento, 1-2 semanas de processo Meta.
+- rehosting opcional de mídia inbound relevante para histórico de longo prazo;
+- unificação de reminders/follow-ups com a mesma outbox do pipeline principal;
+- política explícita de retenção e limpeza para blobs temporários de áudio.
