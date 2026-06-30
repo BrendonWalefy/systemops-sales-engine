@@ -6,7 +6,7 @@ import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
-import { clinics, conversations, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, messages } from "@/infrastructure/db/schema";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
@@ -67,7 +67,7 @@ type DispatchDeps = {
   leadRepository: DrizzleLeadRepository;
   appointmentRepository: DrizzleAppointmentRepository;
   composer: ResponseComposer;
-  clinic: typeof clinics.$inferSelect;
+  clinic: typeof organizations.$inferSelect;
   editorial: Awaited<ReturnType<typeof resolveActiveEditorialConfig>>;
   defaultChannelConfig: ReturnType<typeof resolveChannelConfig>;
   timezone: ClinicTimezone;
@@ -251,7 +251,7 @@ async function processOneFollowUp(
 }
 
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
-  const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
+  const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return null;
   if (!shouldSendAutomatedClinicOutbound(clinic)) {
     console.log(`[FollowUpDispatcher] outbound automatizado pausado para clinic=${clinicId}`);
@@ -338,6 +338,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const dispatched = results.reduce((a, r) => a + r.dispatched, 0);
   const failed = results.reduce((a, r) => a + r.failed, 0);
-  console.log(`[FollowUpDispatcher] clinics=${results.length} dispatched=${dispatched} failed=${failed}`);
+  console.log(`[FollowUpDispatcher] organizations=${results.length} dispatched=${dispatched} failed=${failed}`);
   return NextResponse.json({ clinics: results.length, dispatched, failed, perClinic: results });
 }

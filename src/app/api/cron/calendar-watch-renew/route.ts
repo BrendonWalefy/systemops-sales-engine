@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
@@ -17,7 +17,7 @@ async function renewForClinic(
   webhookSecret: string,
 ): Promise<{ clinicId: string; ok: boolean; skipped?: boolean; expiration?: string; error?: string }> {
   try {
-    const [clinic] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+    const [clinic] = await db.select().from(organizations).where(eq(organizations.id, clinicId)).limit(1);
     if (
       !clinic?.googleCalendarId ||
       resolveCalendarMode({
@@ -41,9 +41,9 @@ async function renewForClinic(
     const { nextSyncToken } = await gateway.syncCancelledEventIds(clinic.calendarSyncToken ?? null);
 
     await db
-      .update(clinics)
+      .update(organizations)
       .set({ calendarChannelId: channelId, calendarSyncToken: nextSyncToken })
-      .where(eq(clinics.id, clinicId));
+      .where(eq(organizations.id, clinicId));
 
     return { clinicId, ok: true, expiration: expiration.toISOString() };
   } catch (err) {

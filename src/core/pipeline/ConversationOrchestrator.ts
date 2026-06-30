@@ -5,7 +5,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports } from "@/infrastructure/db/schema";
+import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports } from "@/infrastructure/db/schema";
 import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
@@ -795,7 +795,7 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
   return `${details.join("\n")}\n${format}`;
 }
 
-type ClinicRow = typeof clinics.$inferSelect;
+type ClinicRow = typeof organizations.$inferSelect;
 
 // Maps DB row (clinic_id column stays as-is per ADR-001 Layer 1) to domain type Organization
 function buildOrganization(row: ClinicRow): Organization {
@@ -1038,8 +1038,8 @@ export class ConversationOrchestrator {
     // ── 2. Busca clínica ──
     const clinicRows = await db
       .select()
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1);
 
     if (clinicRows.length === 0) {

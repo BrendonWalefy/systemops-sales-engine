@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import {
   findStuckConversationAlerts,
@@ -39,12 +39,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       clinicId: conversations.clinicId,
       leadName: leads.name,
       leadPhone: leads.phone,
-      autoReplyEnabled: clinics.autoReplyEnabled,
-      operationalStatus: clinics.operationalStatus,
+      autoReplyEnabled: organizations.autoReplyEnabled,
+      operationalStatus: organizations.operationalStatus,
       aiResumedAt: conversations.aiResumedAt,
     })
     .from(conversations)
-    .innerJoin(clinics, eq(clinics.id, conversations.clinicId))
+    .innerJoin(organizations, eq(organizations.id, conversations.clinicId))
     .innerJoin(leads, eq(leads.id, conversations.leadId))
     .where(
       and(

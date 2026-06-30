@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
 
 describe("buildClinicBlueprint", () => {
-  it("flags missing go-live prerequisites for test clinics with incomplete setup", () => {
+  it("flags missing go-live prerequisites for test organizations with incomplete setup", () => {
     const result = buildClinicBlueprint({
       clinic: {
         specialty: "odontologia",

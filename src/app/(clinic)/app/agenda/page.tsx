@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { AgendaClient } from "./AgendaClient";
 import { getCachedProfessionals, getCachedTreatmentsForAgenda } from "@/app/(clinic)/app/settings/server-data";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 
 export default async function AgendaPage({
@@ -22,9 +22,9 @@ export default async function AgendaPage({
   const [professionals, clinicRow, treatments, memberProfile] = await Promise.all([
     getCachedProfessionals(clinicId),
     db
-      .select({ timezone: clinics.timezone, serviceNoun: clinics.serviceNoun })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .select({ timezone: organizations.timezone, serviceNoun: organizations.serviceNoun })
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1),
     getCachedTreatmentsForAgenda(clinicId),
     getSessionMemberProfile(clinicId),

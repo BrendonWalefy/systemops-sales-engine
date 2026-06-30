@@ -5,7 +5,7 @@ import { ResetClinicData } from "@/application/use-cases/clinics/reset-clinic-da
 import { DrizzleClinicResetRepository } from "@/infrastructure/repositories/drizzle-clinic-reset-repository";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -36,9 +36,9 @@ export async function POST(
   let calendarGateway: GoogleCalendarGateway | undefined;
   if (body.deleteCalendarEvents) {
     const [clinic] = await db
-      .select({ googleCalendarId: clinics.googleCalendarId })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .select({ googleCalendarId: organizations.googleCalendarId })
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1);
     if (clinic?.googleCalendarId) {
       calendarGateway = new GoogleCalendarGateway(clinic.googleCalendarId);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionClinicId, requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
@@ -15,9 +15,9 @@ async function getGateway() {
   if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
   const [clinic] = await db
-    .select({ googleCalendarId: clinics.googleCalendarId, calendarMode: clinics.calendarMode, timezone: clinics.timezone, businessHours: clinics.businessHours })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
+    .select({ googleCalendarId: organizations.googleCalendarId, calendarMode: organizations.calendarMode, timezone: organizations.timezone, businessHours: organizations.businessHours })
+    .from(organizations)
+    .where(eq(organizations.id, clinicId))
     .limit(1);
 
   if (!clinic) throw new Error("Clinic not found");

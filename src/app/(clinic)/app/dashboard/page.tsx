@@ -7,7 +7,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canViewFinancials, canViewOwnRevenue } from "@/application/tenancy/member-role";
 import { db } from "@/infrastructure/db/client";
-import { leads, conversations, messages, clinicMembers, appointments, treatments, clinics, professionals } from "@/infrastructure/db/schema";
+import { leads, conversations, messages, clinicMembers, appointments, treatments, organizations, professionals } from "@/infrastructure/db/schema";
 import {
   DashboardCommandCenter,
   type DashboardData,
@@ -186,9 +186,9 @@ async function fetchRevenueData(
       .orderBy(desc(sql`sum(${appointments.valueCents})`))
       .limit(3),
     db
-      .select({ monthlyRevenueBrl: clinics.monthlyRevenueBrl })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .select({ monthlyRevenueBrl: organizations.monthlyRevenueBrl })
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1),
     db
       .select({
@@ -511,9 +511,9 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
       .where(eq(treatments.clinicId, CLINIC_ID))
       .limit(200),
     db
-      .select({ name: clinics.name, autoReplyEnabled: clinics.autoReplyEnabled })
-      .from(clinics)
-      .where(eq(clinics.id, CLINIC_ID))
+      .select({ name: organizations.name, autoReplyEnabled: organizations.autoReplyEnabled })
+      .from(organizations)
+      .where(eq(organizations.id, CLINIC_ID))
       .limit(1),
     getResponsibleDoctorName(CLINIC_ID, memberProfile?.professionalId ?? null),
     userEmail

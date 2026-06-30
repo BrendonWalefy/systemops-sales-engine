@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { ResetClinicDialog } from "./reset-clinic-dialog";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   clinicMembers,
   leads,
   aiUsageCosts,
@@ -45,18 +45,18 @@ import {
 
 async function toggleIsTest(clinicId: string, currentValue: boolean) {
   "use server";
-  const clinic = await db.query.clinics.findFirst({
-    where: eq(clinics.id, clinicId),
+  const clinic = await db.query.organizations.findFirst({
+    where: eq(organizations.id, clinicId),
     columns: {
       autoReplyEnabled: true,
       operationalStatus: true,
     },
   });
-  if (!clinic) redirect(`/owner/clinics/${clinicId}`);
+  if (!clinic) redirect(`/owner/organizations/${clinicId}`);
 
   const nextIsTest = !currentValue;
   await db
-    .update(clinics)
+    .update(organizations)
     .set({
       isTest: nextIsTest,
       operationalStatus: nextIsTest
@@ -69,8 +69,8 @@ async function toggleIsTest(clinicId: string, currentValue: boolean) {
               autoReplyEnabled: clinic.autoReplyEnabled,
             }),
     })
-    .where(eq(clinics.id, clinicId));
-  redirect(`/owner/clinics/${clinicId}`);
+    .where(eq(organizations.id, clinicId));
+  redirect(`/owner/organizations/${clinicId}`);
 }
 
 async function upsertMemberPassword(clinicId: string, formData: FormData) {
@@ -78,7 +78,7 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
   if (!email || !password || password.length < 8)
-    redirect(`/owner/clinics/${clinicId}?memberError=1`);
+    redirect(`/owner/organizations/${clinicId}?memberError=1`);
   const hash = await hashPassword(password);
   const existing = await db
     .select({ id: clinicMembers.id })
@@ -98,7 +98,7 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
       .insert(clinicMembers)
       .values({ clinicId, email, role: "clinic_admin", passwordHash: hash });
   }
-  redirect(`/owner/clinics/${clinicId}?memberOk=1`);
+  redirect(`/owner/organizations/${clinicId}?memberOk=1`);
 }
 
 async function updateClinicPlan(clinicId: string, formData: FormData) {
@@ -106,15 +106,15 @@ async function updateClinicPlan(clinicId: string, formData: FormData) {
   const plan = formData.get("plan") as string;
   const valid = ["essencial", "clinica", "rede", "custom"] as const;
   if (!(valid as readonly string[]).includes(plan)) {
-    redirect(`/owner/clinics/${clinicId}`);
+    redirect(`/owner/organizations/${clinicId}`);
   }
   const typedPlan = plan as "essencial" | "clinica" | "rede" | "custom";
   await db
-    .update(clinics)
+    .update(organizations)
     .set({ plan: typedPlan, updatedAt: new Date() })
-    .where(eq(clinics.id, clinicId));
+    .where(eq(organizations.id, clinicId));
   await applyClinicPlanPreset(clinicId, typedPlan, "owner");
-  redirect(`/owner/clinics/${clinicId}?planOk=1`);
+  redirect(`/owner/organizations/${clinicId}?planOk=1`);
 }
 
 function formatCurrency(micros: number): string {
@@ -147,8 +147,8 @@ function fourteenDaysAgo(): Date {
 async function activateClinicGoLive(clinicId: string) {
   "use server";
 
-  const clinic = await db.query.clinics.findFirst({
-    where: eq(clinics.id, clinicId),
+  const clinic = await db.query.organizations.findFirst({
+    where: eq(organizations.id, clinicId),
     columns: {
       id: true,
       specialty: true,
@@ -176,9 +176,9 @@ async function activateClinicGoLive(clinicId: string) {
     },
   });
 
-  if (!clinic) redirect(`/owner/clinics/${clinicId}?goLiveError=not-found`);
+  if (!clinic) redirect(`/owner/organizations/${clinicId}?goLiveError=not-found`);
   if (clinic.operationalStatus === "cancelled") {
-    redirect(`/owner/clinics/${clinicId}?goLiveError=cancelled`);
+    redirect(`/owner/organizations/${clinicId}?goLiveError=cancelled`);
   }
 
   const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
@@ -229,20 +229,20 @@ async function activateClinicGoLive(clinicId: string) {
   });
 
   if (blueprint.criticalMissing.length > 0) {
-    redirect(`/owner/clinics/${clinicId}?goLiveError=incomplete`);
+    redirect(`/owner/organizations/${clinicId}?goLiveError=incomplete`);
   }
 
   await db
-    .update(clinics)
+    .update(organizations)
     .set({
       isTest: false,
       autoReplyEnabled: true,
       operationalStatus: "active",
       updatedAt: new Date(),
     })
-    .where(eq(clinics.id, clinicId));
+    .where(eq(organizations.id, clinicId));
 
-  redirect(`/owner/clinics/${clinicId}?goLiveOk=1`);
+  redirect(`/owner/organizations/${clinicId}?goLiveOk=1`);
 }
 
 export default async function ClinicDetailPage({
@@ -262,34 +262,34 @@ export default async function ClinicDetailPage({
 
   const [clinic] = await db
     .select({
-      id: clinics.id,
-      name: clinics.name,
-      specialty: clinics.specialty,
-      city: clinics.city,
-      address: clinics.address,
-      greetingMessage: clinics.greetingMessage,
-      businessHours: clinics.businessHours,
-      calendarMode: clinics.calendarMode,
-      googleCalendarId: clinics.googleCalendarId,
-      receptionistPhone: clinics.receptionistPhone,
-      plan: clinics.plan,
-      monthlyRevenueBrl: clinics.monthlyRevenueBrl,
-      billingStartedAt: clinics.billingStartedAt,
+      id: organizations.id,
+      name: organizations.name,
+      specialty: organizations.specialty,
+      city: organizations.city,
+      address: organizations.address,
+      greetingMessage: organizations.greetingMessage,
+      businessHours: organizations.businessHours,
+      calendarMode: organizations.calendarMode,
+      googleCalendarId: organizations.googleCalendarId,
+      receptionistPhone: organizations.receptionistPhone,
+      plan: organizations.plan,
+      monthlyRevenueBrl: organizations.monthlyRevenueBrl,
+      billingStartedAt: organizations.billingStartedAt,
       defaultAppointmentDurationMinutes:
-        clinics.defaultAppointmentDurationMinutes,
-      postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
-      takeoverTtlHours: clinics.takeoverTtlHours,
-      autoReplyEnabled: clinics.autoReplyEnabled,
-      operationalStatus: clinics.operationalStatus,
-      isTest: clinics.isTest,
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
+        organizations.defaultAppointmentDurationMinutes,
+      postAppointmentBufferMinutes: organizations.postAppointmentBufferMinutes,
+      takeoverTtlHours: organizations.takeoverTtlHours,
+      autoReplyEnabled: organizations.autoReplyEnabled,
+      operationalStatus: organizations.operationalStatus,
+      isTest: organizations.isTest,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      metaPhoneNumberId: organizations.metaPhoneNumberId,
+      metaAccessToken: organizations.metaAccessToken,
     })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, clinicId))
     .limit(1);
   if (!clinic) notFound();
 
@@ -646,7 +646,7 @@ export default async function ClinicDetailPage({
             </span>
           )}
           <Link
-            href={`/owner/clinics/${clinic.id}/modules`}
+            href={`/owner/organizations/${clinic.id}/modules`}
             style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)" }}
           >
             <Layers size={13} />
@@ -731,7 +731,7 @@ export default async function ClinicDetailPage({
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>Clínica ativa</span>
               ) : null}
               <Link
-                href={`/owner/clinics/${clinic.id}/blueprint`}
+                href={`/owner/organizations/${clinic.id}/blueprint`}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 700, color: "var(--muted)", border: "1px solid var(--line)", background: "var(--surface-soft)" }}
               >
                 <Building2 size={12} />

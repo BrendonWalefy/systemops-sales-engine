@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, clinicMetrics, playbookVersions } from "@/infrastructure/db/schema";
+import { organizations, clinicMetrics, playbookVersions } from "@/infrastructure/db/schema";
 import { appendOperationalAlerts, evaluateOperationalAlerts } from "@/application/health/operational-alerts";
 import { probeClinicChannelHealth } from "@/application/health/channel-health";
 import { inspectQueueHealth, mapQueueHealthAlertsToOperationalAlerts } from "@/application/health/queue-health";
@@ -26,18 +26,18 @@ export async function GET(req: NextRequest) {
 
   const activeClinics = await db
     .select({
-      clinicId: clinics.id,
-      clinicName: clinics.name,
-      operationalStatus: clinics.operationalStatus,
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
+      clinicId: organizations.id,
+      clinicName: organizations.name,
+      operationalStatus: organizations.operationalStatus,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      zapiClientToken: organizations.zapiClientToken,
+      metaPhoneNumberId: organizations.metaPhoneNumberId,
+      metaAccessToken: organizations.metaAccessToken,
     })
-    .from(clinics)
-    .where(eq(clinics.operationalStatus, "active"));
+    .from(organizations)
+    .where(eq(organizations.operationalStatus, "active"));
 
   const clinicIds = activeClinics.map((c) => c.clinicId);
 

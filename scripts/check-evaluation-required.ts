@@ -5,7 +5,7 @@
 import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { treatments, clinics } from "../src/infrastructure/db/schema";
+import { treatments, organizations } from "../src/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 
 const connectionString = process.env.DATABASE_URL;
@@ -17,14 +17,14 @@ const db = drizzle(sql);
 async function main() {
   const rows = await db
     .select({
-      clinicName: clinics.name,
+      clinicName: organizations.name,
       treatmentName: treatments.name,
       requiresEvaluationFirst: treatments.requiresEvaluationFirst,
       durationMinutes: treatments.durationMinutes,
     })
     .from(treatments)
-    .innerJoin(clinics, eq(treatments.clinicId, clinics.id))
-    .orderBy(clinics.name, treatments.name);
+    .innerJoin(organizations, eq(treatments.clinicId, organizations.id))
+    .orderBy(organizations.name, treatments.name);
 
   if (rows.length === 0) {
     console.log("Nenhum tratamento encontrado.");

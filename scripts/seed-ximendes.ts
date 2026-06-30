@@ -7,7 +7,7 @@ import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { randomUUID } from "crypto";
-import { clinics, treatments } from "../src/infrastructure/db/schema";
+import { organizations, treatments } from "../src/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 
 const connectionString = process.env.DATABASE_URL;
@@ -22,14 +22,14 @@ const db = drizzle(sql);
 async function main() {
   const existing = await db
     .select()
-    .from(clinics)
-    .where(eq(clinics.name, "Ximendes Odontologia"))
+    .from(organizations)
+    .where(eq(organizations.name, "Ximendes Odontologia"))
     .limit(1);
 
   if (existing.length > 0) {
     const clinic = existing[0];
     if (clinic.calendarMode !== "internal") {
-      await db.update(clinics).set({ calendarMode: "internal" }).where(eq(clinics.id, clinic.id));
+      await db.update(organizations).set({ calendarMode: "internal" }).where(eq(organizations.id, clinic.id));
       console.log("   → calendarMode atualizado para 'internal'");
     }
     console.log("✅ Clinic already exists:");
@@ -43,7 +43,7 @@ async function main() {
   const clinicId = randomUUID();
   const now = new Date();
 
-  await db.insert(clinics).values({
+  await db.insert(organizations).values({
     id: clinicId,
     name: "Ximendes Odontologia",
     slug: "ximendes",

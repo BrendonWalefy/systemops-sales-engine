@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, clinicMetrics } from "@/infrastructure/db/schema";
+import { organizations, clinicMetrics } from "@/infrastructure/db/schema";
 import { MetricsAggregator } from "@/core/intelligence/MetricsAggregator";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 
@@ -12,9 +12,9 @@ export async function GET(req: NextRequest) {
   if (unauthorized) return unauthorized;
 
   const activeClinics = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.operationalStatus, "active"));
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.operationalStatus, "active"));
 
   const aggregator = new MetricsAggregator();
   const results: Array<{

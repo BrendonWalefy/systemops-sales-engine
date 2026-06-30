@@ -50,7 +50,7 @@ export function ResetClinicDialog({
   function handleConfirm() {
     setError(null);
     startTransition(async () => {
-      const res = await fetch(`/api/owner/clinics/${clinicId}/reset`, {
+      const res = await fetch(`/api/owner/organizations/${clinicId}/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clinicName: input, deleteCalendarEvents: deleteCalendar }),

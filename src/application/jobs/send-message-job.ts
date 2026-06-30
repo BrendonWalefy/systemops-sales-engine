@@ -19,7 +19,7 @@ import { DrizzleConversationRepository } from "@/infrastructure/repositories/dri
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { db } from "@/infrastructure/db/client";
-import { clinics, messages } from "@/infrastructure/db/schema";
+import { organizations, messages } from "@/infrastructure/db/schema";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
@@ -97,8 +97,8 @@ async function deliverConversationOutbound(input: {
 }): Promise<string | null> {
   const [clinic] = await db
     .select()
-    .from(clinics)
-    .where(eq(clinics.id, input.clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, input.clinicId))
     .limit(1);
   if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
 

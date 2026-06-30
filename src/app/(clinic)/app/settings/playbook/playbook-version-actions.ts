@@ -2,7 +2,7 @@
 
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { clinics, clinicModules, playbookVersions } from "@/infrastructure/db/schema";
+import { organizations, clinicModules, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -132,9 +132,9 @@ export async function activatePlaybookVersion(id: string) {
   });
 
   await db
-    .update(clinics)
+    .update(organizations)
     .set({ ...clinicFields, updatedAt: new Date() })
-    .where(eq(clinics.id, CLINIC_ID));
+    .where(eq(organizations.id, CLINIC_ID));
 
   revalidatePath("/app/settings/playbook");
 }
@@ -190,9 +190,9 @@ export async function updateClinicOperationalSettings(data: {
 }) {
   const CLINIC_ID = await requireSessionClinicId();
   await db
-    .update(clinics)
+    .update(organizations)
     .set({ ...data, updatedAt: new Date() })
-    .where(eq(clinics.id, CLINIC_ID));
+    .where(eq(organizations.id, CLINIC_ID));
   revalidatePath("/app/settings/playbook");
 }
 
@@ -293,9 +293,9 @@ export async function updateBWaveConfig(config: VoiceElevenLabsConfig) {
     );
 
   revalidatePath("/app/settings/playbook");
-  revalidatePath(`/owner/clinics/${CLINIC_ID}`);
-  revalidatePath(`/owner/clinics/${CLINIC_ID}/blueprint`);
-  revalidatePath(`/owner/clinics/${CLINIC_ID}/modules`);
+  revalidatePath(`/owner/organizations/${CLINIC_ID}`);
+  revalidatePath(`/owner/organizations/${CLINIC_ID}/blueprint`);
+  revalidatePath(`/owner/organizations/${CLINIC_ID}/modules`);
 }
 
 export async function deletePlaybookVersion(id: string) {

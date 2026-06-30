@@ -9,18 +9,18 @@ export { lintPlaybookNotes } from "./playbook-lint";
  *
  * Antes deste módulo existiam três fontes que "pareciam" a configuração da IA:
  *  - playbook_versions (versão publicada)
- *  - clinics.commercialPolicy / clinics.playbook (o que a produção lia)
+ *  - organizations.commercialPolicy / organizations.playbook (o que a produção lia)
  *  - treatments (procedimentos)
  *
  * A produção lia um Frankenstein de pedaços de cada uma. Resultado: o cliente
- * publicava no playbook e a produção continuava lendo o clinics antigo.
+ * publicava no playbook e a produção continuava lendo o organizations antigo.
  *
  * Regra agora:
  *  - O DONO do conteúdo editorial é a versão `active` de playbook_versions.
  *  - O DONO dos procedimentos é a tabela `treatments` (estruturado, agendável).
  *  - O texto do playbook entregue à IA é COMPOSTO a partir desses campos
  *    estruturados — nunca digitado como blob livre.
- *  - clinics deixa de ser fonte de qualquer campo editorial.
+ *  - organizations deixa de ser fonte de qualquer campo editorial.
  */
 
 export type EditorialProcedure = {

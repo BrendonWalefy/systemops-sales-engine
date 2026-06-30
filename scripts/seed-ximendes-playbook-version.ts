@@ -12,7 +12,7 @@
 import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { clinics, playbookVersions, treatments } from "../src/infrastructure/db/schema";
+import { organizations, playbookVersions, treatments } from "../src/infrastructure/db/schema";
 import { CONCIERGE_MENU_ITEMS } from "../src/domain/entities/clinic";
 import { eq, and, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -317,14 +317,14 @@ async function main() {
 
   // 3. Atualizar specialty e greetingMessage da clínica
   await db
-    .update(clinics)
+    .update(organizations)
     .set({
       specialty: SPECIALTY,
       greetingMessage: GREETING_MESSAGE,
       menuItems: CONCIERGE_MENU_ITEMS,
       updatedAt: new Date(),
     })
-    .where(eq(clinics.id, CLINIC_ID));
+    .where(eq(organizations.id, CLINIC_ID));
 
   console.log("✅ Specialty e greetingMessage da clínica atualizadas");
 

@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, messages } from "@/infrastructure/db/schema";
 import { and, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       durationMs: Date.now() - startedAt,
       instanceId: body.instanceId ?? "missing",
       phone: body.phone ?? "unknown",
-      hint: "Verifique se o instanceId da instância Z-API está cadastrado em clinics.zapi_instance_id. Rode o script de onboarding: npx tsx scripts/create-clinic.ts ./nova-clinica.json",
+      hint: "Verifique se o instanceId da instância Z-API está cadastrado em organizations.zapi_instance_id. Rode o script de onboarding: npx tsx scripts/create-clinic.ts ./nova-clinica.json",
     });
     return new NextResponse("Server misconfigured", { status: 500 });
   }
@@ -134,11 +134,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const [clinicRow] = await db
     .select({
-      receptionistPhone: clinics.receptionistPhone,
-      takeoverTtlHours: clinics.takeoverTtlHours,
+      receptionistPhone: organizations.receptionistPhone,
+      takeoverTtlHours: organizations.takeoverTtlHours,
     })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, clinicId))
     .limit(1);
 
   if (!clinicRow) {

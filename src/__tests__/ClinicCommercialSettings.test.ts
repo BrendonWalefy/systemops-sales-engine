@@ -5,7 +5,7 @@ import {
 } from "@/application/onboarding/clinic-commercial-settings";
 
 describe("resolveClinicCommercialSettings", () => {
-  it("keeps test clinics out of revenue even when billing is marked active", () => {
+  it("keeps test organizations out of revenue even when billing is marked active", () => {
     const result = resolveClinicCommercialSettings({
       plan: "clinica",
       billingActive: true,

@@ -1,17 +1,17 @@
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { appointments, organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { buildInboxSnapshotSignature, type InboxSnapshotRow } from "@/app/(clinic)/app/inbox/inbox-snapshot";
 
 export async function getInboxSnapshotSignature(clinicId: string): Promise<string> {
   const [clinicRows, rows] = await Promise.all([
     db
       .select({
-        autoReplyEnabled: clinics.autoReplyEnabled,
-        updatedAt: clinics.updatedAt,
+        autoReplyEnabled: organizations.autoReplyEnabled,
+        updatedAt: organizations.updatedAt,
       })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1),
     db
       .select({

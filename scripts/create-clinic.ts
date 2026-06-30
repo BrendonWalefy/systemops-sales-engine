@@ -20,7 +20,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq } from "drizzle-orm";
 import { onboardingConfigSchema } from "../src/application/onboarding/onboarding-config";
 import {
-  clinics,
+  organizations,
   treatments,
   playbookVersions,
   clinicMembers,
@@ -110,9 +110,9 @@ async function main() {
 
   // 1) clínica (upsert por slug)
   const existing = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.slug, cfg.slug))
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, cfg.slug))
     .limit(1)
     .then((r) => r[0] ?? null);
 
@@ -153,13 +153,13 @@ async function main() {
   let clinicId: string;
   if (existing) {
     clinicId = existing.id;
-    await db.update(clinics).set(clinicValues).where(eq(clinics.id, clinicId));
+    await db.update(organizations).set(clinicValues).where(eq(organizations.id, clinicId));
     console.log(`Clínica existente atualizada: ${cfg.name} (${clinicId})`);
   } else {
     const inserted = await db
-      .insert(clinics)
+      .insert(organizations)
       .values(clinicValues)
-      .returning({ id: clinics.id });
+      .returning({ id: organizations.id });
     clinicId = inserted[0].id;
     console.log(`Clínica criada: ${cfg.name} (${clinicId})`);
   }

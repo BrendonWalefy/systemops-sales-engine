@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { appointments, organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { eq, desc, count as drizzleCount } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
@@ -67,11 +67,11 @@ export default async function ConversationPage({
 
   const [clinic] = await db
     .select({
-      timezone: clinics.timezone,
-      defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
+      timezone: organizations.timezone,
+      defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
     })
-    .from(clinics)
-    .where(eq(clinics.id, conv.clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, conv.clinicId))
     .limit(1);
 
   const displayName = lead.name ?? lead.phone ?? "Lead";

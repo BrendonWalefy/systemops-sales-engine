@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { clinicMetrics, clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { clinicMetrics, organizations, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq, desc } from "drizzle-orm";
 import { SuggestionsClient } from "./suggestions-client";
 
@@ -27,9 +27,9 @@ async function getData() {
       .then((r) => r[0] ?? null),
 
     db
-      .select({ greetingMessage: clinics.greetingMessage, name: clinics.name })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .select({ greetingMessage: organizations.greetingMessage, name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1)
       .then((r) => r[0] ?? null),
   ]);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
@@ -13,13 +13,13 @@ export const dynamic = "force-dynamic";
 async function resolveGateway(clinicId: string) {
   const [clinic] = await db
     .select({
-      googleCalendarId: clinics.googleCalendarId,
-      calendarMode: clinics.calendarMode,
-      timezone: clinics.timezone,
-      businessHours: clinics.businessHours,
+      googleCalendarId: organizations.googleCalendarId,
+      calendarMode: organizations.calendarMode,
+      timezone: organizations.timezone,
+      businessHours: organizations.businessHours,
     })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, clinicId))
     .limit(1);
 
   if (!clinic) return null;

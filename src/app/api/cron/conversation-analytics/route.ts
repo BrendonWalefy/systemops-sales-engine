@@ -11,7 +11,7 @@ import {
   type DailyMetricAlert,
 } from "@/application/health/daily-metric-alerts";
 import { db } from "@/infrastructure/db/client";
-import { clinics, clinicMetrics } from "@/infrastructure/db/schema";
+import { organizations, clinicMetrics } from "@/infrastructure/db/schema";
 import { MetricsAggregator } from "@/core/intelligence/MetricsAggregator";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 
@@ -22,9 +22,9 @@ export async function GET(req: NextRequest) {
   if (unauthorized) return unauthorized;
 
   const activeClinics = await db
-    .select({ id: clinics.id, name: clinics.name })
-    .from(clinics)
-    .where(eq(clinics.operationalStatus, "active"));
+    .select({ id: organizations.id, name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.operationalStatus, "active"));
 
   const aggregator = new MetricsAggregator();
   const results: Array<{
