@@ -6,6 +6,7 @@ import { organizations, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PlaybookEditorClient } from "./editor-client";
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 
 export default async function PlaybookEditorPage({
   params,
@@ -22,7 +23,7 @@ export default async function PlaybookEditorPage({
       .where(and(eq(playbookVersions.id, id), eq(playbookVersions.clinicId, clinicId)))
       .limit(1),
     db
-      .select({ greetingMessage: organizations.greetingMessage })
+      .select({ greetingMessage: organizations.greetingMessage, segment: organizations.segment, bookingNoun: organizations.bookingNoun })
       .from(organizations)
       .where(eq(organizations.id, clinicId))
       .limit(1)
@@ -31,11 +32,16 @@ export default async function PlaybookEditorPage({
 
   if (!version) notFound();
 
+  const { businessNoun } = resolveSegmentVocab(clinicRow?.segment ?? "dental");
+  const bookingNoun = clinicRow?.bookingNoun ?? resolveSegmentVocab(clinicRow?.segment ?? "dental").bookingNoun;
+
   return (
     <PlaybookEditorClient
       id={version.id}
       name={version.name}
       greetingMessage={clinicRow?.greetingMessage ?? ""}
+      businessNoun={businessNoun}
+      bookingNoun={bookingNoun}
       initialData={{
         specialty: version.specialty ?? "",
         procedureDescription: version.procedureDescription ?? "",

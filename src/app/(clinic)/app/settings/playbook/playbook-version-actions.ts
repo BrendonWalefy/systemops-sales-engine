@@ -35,7 +35,7 @@ function compileToClinicFields(data: PlaybookVersionData) {
   }
   if (data.differentials && data.differentials.length > 0) {
     parts.push(
-      `\nDIFERENCIAIS DA CLÍNICA:\n${data.differentials.map((d) => `- ${d}`).join("\n")}`,
+      `\nDIFERENCIAIS DO NEGÓCIO:\n${data.differentials.map((d) => `- ${d}`).join("\n")}`,
     );
   }
   if (data.objections && data.objections.length > 0) {

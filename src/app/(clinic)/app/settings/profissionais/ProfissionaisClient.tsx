@@ -592,7 +592,7 @@ export function ProfissionaisClient({ initialProfessionals }: Props) {
               Profissionais
             </h1>
             <p style={{ margin: "3px 0 0", fontSize: "13px", color: "var(--muted)" }}>
-              Gerencie a equipe que aparece no calendário da clínica.
+              Gerencie a equipe que aparece no calendário.
             </p>
           </div>
         </div>

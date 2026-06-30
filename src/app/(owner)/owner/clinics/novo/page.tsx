@@ -165,12 +165,12 @@ export default function NovoDiagnosticoPage() {
             <Building2 size={20} />
           </div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "var(--fg)" }}>
-            {step === 1 ? "Diagnóstico rápido" : "Acesso da clínica"}
+            {step === 1 ? "Diagnóstico rápido" : "Acesso da organização"}
           </h1>
           <p style={{ margin: "8px 0 0", fontSize: 14, color: "var(--muted)", lineHeight: 1.5 }}>
             {step === 1
               ? "Preencha o essencial durante a reunião — o resto configura depois."
-              : "Crie as credenciais de acesso para o admin da clínica."}
+              : "Crie as credenciais de acesso para o admin da organização."}
           </p>
         </div>
 
@@ -178,7 +178,7 @@ export default function NovoDiagnosticoPage() {
         {step === 1 && (
           <form onSubmit={handleNext} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div>
-              <label style={labelStyle}>Nome da clínica *</label>
+              <label style={labelStyle}>Nome da organização *</label>
               <input
                 type="text"
                 value={name}

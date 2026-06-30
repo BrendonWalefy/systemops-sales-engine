@@ -48,6 +48,7 @@ type Props = {
   treatments: TreatmentOption[];
   memberRole: string;
   serviceNoun: string;
+  businessNoun: string;
   initialFrom: string;
   initialTo: string;
   openNew?: boolean;
@@ -80,7 +81,7 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
   };
 }
 
-export function AgendaClient({ professionals, treatments, memberRole, serviceNoun, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
+export function AgendaClient({ professionals, treatments, memberRole, serviceNoun, businessNoun, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -362,7 +363,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
           <div className="agenda-v2-title-area">
             <div>
               <p className="eyebrow">Agenda</p>
-              <h1>Agenda da clínica</h1>
+              <h1>Agenda {businessNoun ? `da ${businessNoun}` : ""}</h1>
             </div>
           </div>
 

@@ -16,7 +16,7 @@ export function LoadDemoClinicButton() {
         onSubmit={(e) => {
           if (
             !window.confirm(
-              "Isto vai APAGAR e recriar todos os dados da clínica demo (Odonto Marques) e re-datar tudo. Continuar?",
+              "Isto vai APAGAR e recriar todos os dados da demo (Odonto Marques) e re-datar tudo. Continuar?",
             )
           ) {
             e.preventDefault();
@@ -42,7 +42,7 @@ export function LoadDemoClinicButton() {
           }}
         >
           <FlaskConical size={14} />
-          {pending ? "Carregando…" : "Carregar clínica demo"}
+          {pending ? "Carregando…" : "Carregar demo"}
         </button>
       </form>
 
