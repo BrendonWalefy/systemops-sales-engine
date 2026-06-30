@@ -3,6 +3,7 @@
 
 import OpenAI from "openai";
 import type { Message } from "@/domain/entities/conversation";
+import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 
 const MODEL = "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 30_000;
@@ -42,8 +43,23 @@ export type IntentClassification = {
   handoffReason?: string | null;
 };
 
-function buildBaseSystemPrompt(specialty: string): string {
-  return `Você é um classificador de intenções para uma recepcionista virtual de ${specialty}.
+function buildBaseSystemPrompt(context: PromptContext): string {
+  const clinicSpecificRules = context.isClinicSegment ? `
+REGRA PARA patient_arrived (PRIORIDADE ALTA — avalie antes de unclear e antes de acknowledgment):
+Use "patient_arrived" quando o ${context.contactNoun} indica presença física na clínica ou avisa sobre chegada/atraso para uma ${context.bookingNoun} agendada. Exemplos:
+- Chegada: "cheguei", "já estou aí", "estou na recepção", "estou esperando", "cheguei antes do horário", "já estou no consultório", "estou na porta", "estou aqui"
+- Atraso: "vou me atrasar", "chego uns 10 minutos atrasado", "estou no caminho", "chego em X minutos", "ainda não saí mas já saio"
+- Confirmação de presença: "só confirmando que estarei aí", "estarei no horário", "confirmo minha presença"
+- Não use quando o ${context.contactNoun} está pedindo para agendar, cancelar ou remarcar — nesses casos use o intent específico.
+
+REGRA PARA clinical_urgency (PRIORIDADE ALTA — avalie antes de unclear):
+Use "clinical_urgency" quando o lead relatar dor, urgência médica OU problema físico com trabalho odontológico já realizado. Exemplos:
+- Dor/urgência: "dor", "urgência", "emergência", "urgente", "está doendo", "dor forte"
+- Problema com trabalho existente: "trincou", "quebrou", "fraturou", "caiu a lente", "soltou o dente", "a prótese caiu", "a restauração caiu", "a coroa soltou", "está lascado", "está rachado", "soltou o implante"
+- Use clinical_urgency nesses casos mesmo que o lead não mencione dor — um trabalho físico danificado requer avaliação presencial urgente.
+` : "";
+
+  return `Você é um classificador de intenções para um(a) ${context.agentRole} de ${context.businessDescriptor}.
 
 Sua única função é analisar a última mensagem do lead e retornar um JSON estruturado com a intenção detectada.
 
@@ -78,19 +94,6 @@ REGRA CRÍTICA — confirm_slot com data diferente dos slots oferecidos:
 - Exemplo: slots oferecidos são "Seg 01/06" mas lead diz "segunda feira dia 08/06" → intent = "reject_slots", preferredDate = "08/06"
 - "confirm_slot" SOMENTE quando o lead escolhe pelo número (1, 2, 3) OU aceita claramente um dos dias já oferecidos sem mencionar outra data
 
-REGRA PARA patient_arrived (PRIORIDADE ALTA — avalie antes de unclear e antes de acknowledgment):
-Use "patient_arrived" quando o paciente indica presença física na clínica ou avisa sobre chegada/atraso para uma consulta. Exemplos:
-- Chegada: "cheguei", "já estou aí", "estou na recepção", "estou esperando", "cheguei antes do horário", "já estou no consultório", "estou na porta", "estou aqui"
-- Atraso: "vou me atrasar", "chego uns 10 minutos atrasado", "estou no caminho", "chego em X minutos", "ainda não saí mas já saio"
-- Confirmação de presença: "só confirmando que estarei aí", "estarei no horário", "confirmo minha presença"
-- Não use quando o paciente está pedindo para agendar, cancelar ou remarcar — nesses casos use o intent específico.
-
-REGRA PARA clinical_urgency (PRIORIDADE ALTA — avalie antes de unclear):
-Use "clinical_urgency" quando o lead relatar dor, urgência médica OU problema físico com trabalho odontológico já realizado. Exemplos:
-- Dor/urgência: "dor", "urgência", "emergência", "urgente", "está doendo", "dor forte"
-- Problema com trabalho existente: "trincou", "quebrou", "fraturou", "caiu a lente", "soltou o dente", "a prótese caiu", "a restauração caiu", "a coroa soltou", "está lascado", "está rachado", "soltou o implante"
-- Use clinical_urgency nesses casos mesmo que o lead não mencione dor — um trabalho físico danificado requer avaliação presencial urgente.
-
 REGRA PARA needs_human (PRIORIDADE ALTA — avalie antes de unclear):
 Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou decidir. Exemplos:
 - Documentos/comprovantes: "pode enviar o orçamento por escrito", "me manda o comprovante", "me envia o resultado"
@@ -102,7 +105,7 @@ Use "needs_human" quando o lead pedir algo que só um humano pode entregar ou de
 - Paciente pós-procedimento perguntando sobre preço de manutenção/ajuste/acompanhamento para serviço que já realizou, especialmente quando menciona restrição logística (mora longe, não pode ir em dois dias diferentes, quer fazer tudo no mesmo dia) → needs_human com handoffReason descrevendo a situação.
 - Quando needs_human, preencha handoffReason com uma frase curta descrevendo o que o lead pediu (ex: "Lead pediu fotos do resultado pessoal", "Lead quer falar com especialista", "Lead pediu condição especial de pagamento", "Lead propôs acordo de troca de serviços", "Paciente pós-procedimento — preços de manutenção e restrição logística"). Máximo 60 caracteres.
 
-EXCEÇÃO CRÍTICA — primeiro contato via anúncio: Se o CONTEXTO indicar que a recepcionista ainda não respondeu nesta conversa (primeiro contato), frases como "há alguém disponível para conversar?", "tem alguém atendendo?", "posso falar com alguém?", "tem atendimento?" são aberturas naturais de quem clicou em um anúncio do WhatsApp — NÃO são pedidos para falar com um especialista específico. Neste caso: (a) se a mensagem contém uma pergunta real de produto ou serviço, use o intent correspondente (price_inquiry, general_question, etc.); (b) se não contém outra pergunta específica, use "greeting". Só use needs_human em primeiro contato quando o lead pedir explicitamente algo que só um humano pode entregar (documento, foto pessoal, desconto, condição especial).
+EXCEÇÃO CRÍTICA — primeiro contato via anúncio: Se o CONTEXTO indicar que o(a) ${context.agentRole} ainda não respondeu nesta conversa (primeiro contato), frases como "há alguém disponível para conversar?", "tem alguém atendendo?", "posso falar com alguém?", "tem atendimento?" são aberturas naturais de quem clicou em um anúncio do WhatsApp — NÃO são pedidos para falar com um especialista específico. Neste caso: (a) se a mensagem contém uma pergunta real de produto ou serviço, use o intent correspondente (price_inquiry, general_question, etc.); (b) se não contém outra pergunta específica, use "greeting". Só use needs_human em primeiro contato quando o lead pedir explicitamente algo que só um humano pode entregar (documento, foto pessoal, desconto, condição especial).
 
 REGRA PARA unclear:
 - Só use "unclear" quando a mensagem tem conteúdo de negócio mas é realmente impossível entender. Não use para mensagens curtas de reconhecimento.
@@ -133,14 +136,16 @@ REGRA PARA identifiedTreatment:
 - Se o lead não mencionou nenhum procedimento (ex: "quero marcar uma consulta" sem especificar qual) → retorne null.
 - Extraia identifiedTreatment para intent = "book_appointment", "check_availability", "price_inquiry" e "general_question". Para perguntas comparativas ("qual é melhor X ou Y?"), extraia o tratamento principal sobre o qual o lead parece mais interessado, ou o primeiro mencionado. Para outros intents, retorne null.
 
-Retorne APENAS JSON válido, sem markdown, sem explicação.`;
+Retorne APENAS JSON válido, sem markdown, sem explicação.
+${clinicSpecificRules}`;
 }
 
-function buildSystemPrompt(treatmentNames: string[], specialty: string): string {
-  const base = buildBaseSystemPrompt(specialty);
+function buildSystemPrompt(treatmentNames: string[], context: PromptContext): string {
+  const base = buildBaseSystemPrompt(context);
   if (treatmentNames.length === 0) return base;
+  const label = context.serviceNoun === "tratamento" ? "CLÍNICA" : "EMPRESA";
   const list = treatmentNames.map((n) => `  - ${n}`).join("\n");
-  return `${base}\n\nSERVIÇOS DISPONÍVEIS NESTA CLÍNICA:\n${list}`;
+  return `${base}\n\nSERVIÇOS DISPONÍVEIS NESTA ${label}:\n${list}`;
 }
 
 // strict: true exige que todo campo em properties conste em required.
@@ -206,13 +211,20 @@ export class IntentClassifier {
     conversationHistory: Message[],
     hasPendingSlotOffer: boolean,
     treatmentNames: string[] = [],
-    specialty = "clínica",
+    context: PromptContext = {
+      agentRole: "recepcionista virtual",
+      serviceNoun: "tratamento",
+      bookingNoun: "consulta",
+      contactNoun: "paciente",
+      businessDescriptor: "clínica",
+      isClinicSegment: true,
+    },
   ): Promise<IntentClassification> {
     // Contexto resumido da conversa (últimas 8 mensagens para economizar tokens)
     const recentHistory = conversationHistory.slice(-8);
     const historyText = recentHistory
       .map((m) => {
-        const role = m.author === "lead" ? "Lead" : "Recepcionista";
+        const role = m.author === "lead" ? "Lead" : context.agentRole.charAt(0).toUpperCase() + context.agentRole.slice(1);
         return `${role}: ${m.body}`;
       })
       .join("\n");
@@ -223,7 +235,7 @@ export class IntentClassifier {
 
     const userContent = [
       isFirstContact
-        ? "CONTEXTO: Primeiro contato deste lead — a recepcionista ainda não respondeu nesta conversa. Frases de disponibilidade ('há alguém disponível?', 'tem alguém atendendo?') são aberturas naturais de anúncio, não pedidos de handoff humano."
+        ? `CONTEXTO: Primeiro contato deste lead — o(a) ${context.agentRole} ainda não respondeu nesta conversa. Frases de disponibilidade ('há alguém disponível?', 'tem alguém atendendo?') são aberturas naturais de anúncio, não pedidos de handoff humano.`
         : "",
       hasPendingSlotOffer
         ? "CONTEXTO: Há uma oferta de horários pendente aguardando confirmação do lead."
@@ -246,7 +258,7 @@ export class IntentClassifier {
         },
       },
       messages: [
-        { role: "system", content: buildSystemPrompt(treatmentNames, specialty) },
+        { role: "system", content: buildSystemPrompt(treatmentNames, context) },
         { role: "user", content: userContent },
       ],
     });
