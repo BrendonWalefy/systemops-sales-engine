@@ -4,6 +4,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, conversations, leads } from "@/infrastructure/db/schema";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
@@ -162,6 +163,7 @@ export async function POST(
           contactNoun: clinic.contactNoun,
           agentRole: clinic.agentRole,
           businessDescriptor: clinic.businessDescriptor ?? null,
+          businessNoun: resolveSegmentVocab(clinic.segment).businessNoun,
           createdAt: clinic.createdAt,
           updatedAt: clinic.updatedAt,
         },

@@ -249,7 +249,7 @@ function buildSystemPrompt(input: ComposerInput): string {
   const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover, voiceResponseEnabled } = input;
   const ctx = input.context;
   const agentRole = ctx?.agentRole ?? "recepcionista virtual";
-  const businessDescriptor = ctx?.businessDescriptor ?? `clínica de ${clinic.specialty}`;
+  const businessDescriptor = ctx?.businessDescriptor ?? `negócio de ${clinic.specialty}`;
   const conversationExperience = input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const nowStr = timezone.formatNowForPrompt();
   const experienceRules = conversationExperience === "concierge"

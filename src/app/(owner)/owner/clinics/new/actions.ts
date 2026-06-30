@@ -38,7 +38,7 @@ export async function onboardClinic(
   formData: FormData,
 ): Promise<OnboardingState> {
   if (!(await requireOwner())) {
-    return { ok: false, message: "Apenas o owner pode cadastrar clínicas." };
+    return { ok: false, message: "Apenas o owner pode cadastrar organizações." };
   }
 
   // Monta o objeto a partir do form e valida pelo schema único.
@@ -142,7 +142,7 @@ export async function onboardClinic(
     return {
       ok: false,
       errors: [
-        { field: "slug", message: "já existe uma clínica com esse slug" },
+        { field: "slug", message: "já existe uma organização com esse slug" },
       ],
     };
   }

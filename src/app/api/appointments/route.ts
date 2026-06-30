@@ -6,6 +6,7 @@ import { db } from "@/infrastructure/db/client";
 import { appointments, organizations, conversations, leads, professionals } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         contactNoun: clinicRow.contactNoun,
         agentRole: clinicRow.agentRole,
         businessDescriptor: clinicRow.businessDescriptor ?? null,
+        businessNoun: resolveSegmentVocab(clinicRow.segment).businessNoun,
         createdAt: clinicRow.createdAt,
         updatedAt: clinicRow.updatedAt,
       },

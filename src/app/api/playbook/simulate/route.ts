@@ -188,7 +188,7 @@ function buildPlaybookText(p: PlaybookInput): string | null {
   if (p.specialty) parts.push(`ESPECIALIDADE: ${p.specialty}`);
   if (p.procedureDescription) parts.push(`\nSOBRE O PROCEDIMENTO:\n${p.procedureDescription}`);
   const diffs = p.differentials.filter((d) => d.trim());
-  if (diffs.length > 0) parts.push(`\nDIFERENCIAIS DA CLÍNICA:\n${diffs.map((d) => `- ${d}`).join("\n")}`);
+  if (diffs.length > 0) parts.push(`\nDIFERENCIAIS DO NEGÓCIO:\n${diffs.map((d) => `- ${d}`).join("\n")}`);
   const objections = p.objections?.filter((o) => o.objection.trim() || o.response.trim()) ?? [];
   if (objections.length > 0) {
     const objectionText = objections
@@ -205,7 +205,7 @@ function buildClinicContext(p: PlaybookInput): string {
     p.procedureDescription && `Sobre: ${p.procedureDescription}`,
   ]
     .filter(Boolean)
-    .join("\n") || "Clínica odontológica";
+    .join("\n") || "Negócio";
 }
 
 function intentToActionResult(
@@ -323,7 +323,7 @@ const MOCK_TEXTS: Partial<Record<ActionResult["type"], string>> = {
   farewell: "[MOCK] Foi um prazer! Qualquer dúvida, é só chamar.",
   acknowledgment: "[MOCK] Certo! Posso ajudar com mais alguma coisa?",
   clarification_needed: "[MOCK] Pode me contar um pouco mais sobre o que você precisa?",
-  general_question: "[MOCK] Vou te ajudar com essa dúvida sobre nossa clínica.",
+  general_question: "[MOCK] Vou te ajudar com essa dúvida.",
 };
 
 function mockCompose(actionResult: ActionResult): ComposedResponse {

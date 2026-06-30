@@ -6,6 +6,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports } from "@/infrastructure/db/schema";
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
@@ -831,6 +832,7 @@ function buildOrganization(row: ClinicRow): Organization {
     contactNoun: row.contactNoun,
     agentRole: row.agentRole,
     businessDescriptor: row.businessDescriptor ?? null,
+    businessNoun: resolveSegmentVocab(row.segment).businessNoun,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
