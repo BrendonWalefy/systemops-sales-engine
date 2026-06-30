@@ -28,12 +28,14 @@ import {
 import { hashPassword } from "../src/lib/password";
 import { resolveClinicCommercialSettings } from "../src/application/onboarding/clinic-commercial-settings";
 import { resolveInitialClinicOperationalStatus } from "../src/application/clinics/clinic-operational-status";
+import { resolveSegmentVocab } from "../src/application/onboarding/segment-vocab";
 import { encryptCredentialNullable } from "../src/infrastructure/crypto/credential-vault";
 import { syncModulesForPlan } from "../src/application/modules/module-gate";
 
 type NewClinicConfig = {
   name: string;
   slug: string;
+  segment?: string;
   specialty?: string;
   timezone?: string;
   businessHours?: string;
@@ -114,9 +116,13 @@ async function main() {
     .limit(1)
     .then((r) => r[0] ?? null);
 
+  const segment = cfg.segment ?? "dental";
+  const segmentVocab = resolveSegmentVocab(segment);
+
   const clinicValues = {
     name: cfg.name,
     slug: cfg.slug,
+    segment,
     specialty: cfg.specialty ?? "odontology",
     timezone: cfg.timezone ?? "America/Sao_Paulo",
     businessHours: cfg.businessHours ?? null,
@@ -137,6 +143,10 @@ async function main() {
     zapiClientToken: encryptCredentialNullable(cfg.channel.zapi?.clientToken),
     metaPhoneNumberId: cfg.channel.meta?.phoneNumberId ?? null,
     metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
+    agentRole: segmentVocab.agentRole,
+    bookingNoun: segmentVocab.bookingNoun,
+    contactNoun: segmentVocab.contactNoun,
+    businessDescriptor: segmentVocab.businessDescriptor,
     updatedAt: now,
   };
 

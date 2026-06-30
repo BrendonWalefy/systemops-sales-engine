@@ -17,30 +17,7 @@ import { resolveClinicCommercialSettings } from "@/application/onboarding/clinic
 import { resolveInitialClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 import { encryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 import { syncModulesForPlan } from "@/application/modules/module-gate";
-
-const SEGMENT_VOCAB: Record<string, { bookingNoun: string; contactNoun: string; agentRole: string; businessDescriptor: string }> = {
-  atelier: {
-    bookingNoun: "entrega",
-    contactNoun: "cliente",
-    agentRole: "atendente virtual",
-    businessDescriptor: "ateliê especializado em uniformes, bordados e peças personalizadas",
-  },
-  cortinas: {
-    bookingNoun: "instalação",
-    contactNoun: "cliente",
-    agentRole: "atendente virtual",
-    businessDescriptor: "loja especializada em cortinas e persianas",
-  },
-};
-
-function resolveSegmentVocab(segment: string) {
-  return SEGMENT_VOCAB[segment] ?? {
-    bookingNoun: "consulta",
-    contactNoun: "paciente",
-    agentRole: "recepcionista virtual",
-    businessDescriptor: null,
-  };
-}
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 
 export type OnboardingState = {
   ok: boolean;

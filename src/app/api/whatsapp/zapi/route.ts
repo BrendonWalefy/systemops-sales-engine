@@ -121,7 +121,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const resolution = await resolveWebhookClinic(body, clinicIdOverride);
   if (!resolution) {
-    log.error("webhook.rejected", new Error("clinic_not_resolved"), { durationMs: Date.now() - startedAt });
+    log.error("webhook.rejected", new Error("clinic_not_resolved"), {
+      durationMs: Date.now() - startedAt,
+      instanceId: body.instanceId ?? "missing",
+      phone: body.phone ?? "unknown",
+      hint: "Verifique se o instanceId da instância Z-API está cadastrado em clinics.zapi_instance_id. Rode o script de onboarding: npx tsx scripts/create-clinic.ts ./nova-clinica.json",
+    });
     return new NextResponse("Server misconfigured", { status: 500 });
   }
   const clinicId = resolution;
