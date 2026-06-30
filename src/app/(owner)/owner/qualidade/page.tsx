@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { db } from "@/infrastructure/db/client";
-import { clinics, clinicMetrics } from "@/infrastructure/db/schema";
+import { organizations, clinicMetrics } from "@/infrastructure/db/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
 import {
   ArrowLeft,
@@ -51,9 +51,9 @@ async function fetchQualityData(): Promise<DailySnapshot[]> {
   since.setDate(since.getDate() - 30);
 
   const allClinics = await db
-    .select({ id: clinics.id, name: clinics.name })
-    .from(clinics)
-    .where(eq(clinics.operationalStatus, "active"));
+    .select({ id: organizations.id, name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.operationalStatus, "active"));
 
   const snapshots: DailySnapshot[] = [];
 

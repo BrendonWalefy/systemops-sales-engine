@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, playbookVersions, clinicMembers } from "@/infrastructure/db/schema";
+import { organizations, playbookVersions, clinicMembers } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { hashPassword } from "@/lib/password";
 import { resolveClinicCommercialSettings } from "@/application/onboarding/clinic-commercial-settings";
@@ -73,9 +73,9 @@ export async function createProspectClinic(
 
   let slug = toSlug(name);
   const taken = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.slug, slug))
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, slug))
     .limit(1)
     .then((r) => r[0] ?? null);
   if (taken) slug = `${slug}-${randomSuffix()}`;
@@ -83,7 +83,7 @@ export async function createProspectClinic(
   const now = new Date();
 
   const [inserted] = await db
-    .insert(clinics)
+    .insert(organizations)
     .values({
       name,
       slug,
@@ -97,7 +97,7 @@ export async function createProspectClinic(
       autoReplyEnabled: false,
       updatedAt: now,
     })
-    .returning({ id: clinics.id });
+    .returning({ id: organizations.id });
 
   const clinicId = inserted.id;
 
@@ -123,5 +123,5 @@ export async function createProspectClinic(
     passwordHash,
   });
 
-  redirect(`/owner/clinics/${clinicId}/blueprint`);
+  redirect(`/owner/organizations/${clinicId}/blueprint`);
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google/google-calendar-gateway";
 import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
@@ -32,8 +32,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const [clinic] = await db
       .select()
-      .from(clinics)
-      .where(eq(clinics.calendarChannelId, channelId))
+      .from(organizations)
+      .where(eq(organizations.calendarChannelId, channelId))
       .limit(1);
 
     if (
@@ -79,9 +79,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     await db
-      .update(clinics)
+      .update(organizations)
       .set({ calendarSyncToken: nextSyncToken })
-      .where(eq(clinics.id, clinic.id));
+      .where(eq(organizations.id, clinic.id));
 
     return new NextResponse(null, { status: 200 });
   } catch (err) {

@@ -25,7 +25,7 @@ import * as schema from "../src/infrastructure/db/schema";
 import { resolveChannelConfig } from "../src/infrastructure/adapters/channels/whatsapp/channel-config";
 import { fetchAndPersistLeadPhoto } from "../src/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 
-const { clinics, leads } = schema;
+const { organizations, leads } = schema;
 
 const COMMIT = process.argv.includes("--commit");
 const INCLUDE_ALL = process.argv.includes("--all");
@@ -52,13 +52,13 @@ async function main() {
       name: leads.name,
       phone: leads.phone,
       profilePicUrl: leads.profilePicUrl,
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      zapiClientToken: organizations.zapiClientToken,
     })
     .from(leads)
-    .innerJoin(clinics, eq(leads.clinicId, clinics.id))
+    .innerJoin(organizations, eq(leads.clinicId, organizations.id))
     .where(
       and(
         isNotNull(leads.phone),

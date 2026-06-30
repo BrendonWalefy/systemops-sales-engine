@@ -44,7 +44,7 @@ import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { randomUUID } from "crypto";
-import { playbookVersions, treatments, clinics } from "../src/infrastructure/db/schema";
+import { playbookVersions, treatments, organizations } from "../src/infrastructure/db/schema";
 import { CONCIERGE_MENU_ITEMS } from "../src/domain/entities/clinic";
 import { and, eq, ne } from "drizzle-orm";
 
@@ -269,14 +269,14 @@ async function main() {
 
   // 1. Confirma clínica com modo concierge e greeting message
   await db
-    .update(clinics)
+    .update(organizations)
     .set({
       specialty: "Odontologia Estética e Reabilitação Oral",
       greetingMessage: "Olá! Sou a recepcionista virtual da Ximendes Odontologia. Como posso ajudar?",
       menuItems: CONCIERGE_MENU_ITEMS,
       updatedAt: new Date(),
     })
-    .where(eq(clinics.id, CLINIC_ID));
+    .where(eq(organizations.id, CLINIC_ID));
   console.log("✅ Clínica: specialty, greetingMessage e conversationExperience=concierge OK");
 
   // 2. Arquiva todas as versões não-históricas

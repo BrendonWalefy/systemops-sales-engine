@@ -172,7 +172,7 @@ export const calendarModeEnum = pgEnum("calendar_mode", [
   "google_calendar",
 ]);
 
-export const clinics = pgTable("clinics", {
+export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   // Identificador legível e único — usado em URLs e no onboarding.
@@ -253,9 +253,9 @@ export const treatments = pgTable(
   "treatments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     name: text("name").notNull(),
     durationMinutes: integer("duration_minutes").notNull().default(60),
     description: text("description"),
@@ -287,7 +287,7 @@ export const treatments = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicNameIdx: uniqueIndex("treatments_clinic_name_idx").on(
+    clinicNameIdx: uniqueIndex("treatments_org_name_idx").on(
       table.clinicId,
       table.name,
     ),
@@ -298,9 +298,9 @@ export const leads = pgTable(
   "leads",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     name: text("name"),
     phone: text("phone"),
     whatsappLid: text("whatsapp_lid"),
@@ -322,15 +322,15 @@ export const leads = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicStatusIdx: index("leads_clinic_status_idx").on(
+    clinicStatusIdx: index("leads_org_status_idx").on(
       table.clinicId,
       table.status,
     ),
-    clinicPhoneIdx: uniqueIndex("leads_clinic_phone_idx").on(
+    clinicPhoneIdx: uniqueIndex("leads_org_phone_idx").on(
       table.clinicId,
       table.phone,
     ),
-    clinicWhatsappLidIdx: uniqueIndex("leads_clinic_whatsapp_lid_idx").on(
+    clinicWhatsappLidIdx: uniqueIndex("leads_org_whatsapp_lid_idx").on(
       table.clinicId,
       table.whatsappLid,
     ),
@@ -341,9 +341,9 @@ export const conversations = pgTable(
   "conversations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id),
@@ -379,7 +379,7 @@ export const conversations = pgTable(
   },
   (table) => ({
     leadIdx: uniqueIndex("conversations_lead_idx").on(table.leadId),
-    clinicCategoryIdx: index("conversations_clinic_category_idx").on(
+    clinicCategoryIdx: index("conversations_org_category_idx").on(
       table.clinicId,
       table.category,
     ),
@@ -423,9 +423,9 @@ export const inboundEvents = pgTable(
   "inbound_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     provider: whatsappProviderEnum("provider").notNull(),
     providerMessageId: text("provider_message_id").notNull(),
     conversationKey: text("conversation_key").notNull(),
@@ -445,7 +445,7 @@ export const inboundEvents = pgTable(
     providerMessageUnique: uniqueIndex(
       "inbound_events_provider_message_unique",
     ).on(table.provider, table.providerMessageId),
-    clinicReceivedAtIdx: index("inbound_events_clinic_received_at_idx").on(
+    clinicReceivedAtIdx: index("inbound_events_org_received_at_idx").on(
       table.clinicId,
       table.receivedAt,
     ),
@@ -498,9 +498,9 @@ export const outboundMessages = pgTable(
   "outbound_messages",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     conversationId: uuid("conversation_id")
       .notNull()
       .references(() => conversations.id),
@@ -542,9 +542,9 @@ export const agentRecommendations = pgTable(
   "agent_recommendations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id),
@@ -580,9 +580,9 @@ export const followUps = pgTable(
   "follow_ups",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id),
@@ -599,11 +599,11 @@ export const followUps = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicDueAtIdx: index("follow_ups_clinic_due_at_idx").on(
+    clinicDueAtIdx: index("follow_ups_org_due_at_idx").on(
       table.clinicId,
       table.dueAt,
     ),
-    leadReasonDueAtIdx: uniqueIndex("follow_ups_lead_reason_due_at_idx").on(
+    leadReasonDueAtIdx: uniqueIndex("follow_ups_org_lead_reason_due_at_idx").on(
       table.clinicId,
       table.leadId,
       table.reason,
@@ -616,9 +616,9 @@ export const professionals = pgTable(
   "professionals",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     name: text("name").notNull(),
     specialty: text("specialty"),
     color: text("color").notNull().default("#10B981"),
@@ -633,7 +633,7 @@ export const professionals = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicIdx: index("professionals_clinic_idx").on(table.clinicId),
+    clinicIdx: index("professionals_org_idx").on(table.clinicId),
   }),
 );
 
@@ -641,9 +641,9 @@ export const rooms = pgTable(
   "rooms",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     name: text("name").notNull(),
     capacity: integer("capacity").notNull().default(1),
     isActive: boolean("is_active").notNull().default(true),
@@ -655,7 +655,7 @@ export const rooms = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicIdx: index("rooms_clinic_idx").on(table.clinicId),
+    clinicIdx: index("rooms_org_idx").on(table.clinicId),
   }),
 );
 
@@ -663,9 +663,9 @@ export const appointments = pgTable(
   "appointments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id),
@@ -688,11 +688,11 @@ export const appointments = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicStartsAtIdx: index("appointments_clinic_starts_at_idx").on(
+    clinicStartsAtIdx: index("appointments_org_starts_at_idx").on(
       table.clinicId,
       table.startsAt,
     ),
-    clinicProfessionalIdx: index("appointments_clinic_professional_idx").on(
+    clinicProfessionalIdx: index("appointments_org_professional_idx").on(
       table.clinicId,
       table.professionalId,
     ),
@@ -707,9 +707,9 @@ export const calendarBlocks = pgTable(
   "calendar_blocks",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     professionalId: uuid("professional_id").references(() => professionals.id),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
@@ -719,7 +719,7 @@ export const calendarBlocks = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicStartsAtIdx: index("calendar_blocks_clinic_starts_at_idx").on(
+    clinicStartsAtIdx: index("calendar_blocks_org_starts_at_idx").on(
       table.clinicId,
       table.startsAt,
     ),
@@ -730,9 +730,9 @@ export const aiUsageCosts = pgTable(
   "ai_usage_costs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     provider: aiProviderEnum("provider").notNull(),
     model: text("model").notNull(),
     operation: aiOperationEnum("operation").notNull(),
@@ -744,7 +744,7 @@ export const aiUsageCosts = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicCreatedAtIdx: index("ai_usage_costs_clinic_created_at_idx").on(
+    clinicCreatedAtIdx: index("ai_usage_costs_org_created_at_idx").on(
       table.clinicId,
       table.createdAt,
     ),
@@ -755,9 +755,9 @@ export const ttsUsageCosts = pgTable(
   "tts_usage_costs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     provider: ttsProviderEnum("provider").notNull(),
     model: text("model").notNull(),
     characterCount: integer("character_count").notNull(),
@@ -767,7 +767,7 @@ export const ttsUsageCosts = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicCreatedAtIdx: index("tts_usage_costs_clinic_created_at_idx").on(
+    clinicCreatedAtIdx: index("tts_usage_costs_org_created_at_idx").on(
       table.clinicId,
       table.createdAt,
     ),
@@ -778,9 +778,9 @@ export const whatsappMessageCosts = pgTable(
   "whatsapp_message_costs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     provider: whatsappProviderEnum("provider").notNull(),
     providerMessageId: text("provider_message_id"),
     direction: messageDirectionEnum("direction").notNull(),
@@ -792,7 +792,7 @@ export const whatsappMessageCosts = pgTable(
   },
   (table) => ({
     clinicCreatedAtIdx: index(
-      "whatsapp_message_costs_clinic_created_at_idx",
+      "whatsapp_message_costs_org_created_at_idx",
     ).on(table.clinicId, table.createdAt),
   }),
 );
@@ -850,9 +850,9 @@ export const pushSubscriptions = pgTable(
   "push_subscriptions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     userEmail: text("user_email").notNull(),
     endpoint: text("endpoint").notNull(),
     p256dh: text("p256dh").notNull(),
@@ -865,7 +865,7 @@ export const pushSubscriptions = pgTable(
     endpointIdx: uniqueIndex("push_subscriptions_endpoint_idx").on(
       table.endpoint,
     ),
-    clinicIdx: index("push_subscriptions_clinic_idx").on(table.clinicId),
+    clinicIdx: index("push_subscriptions_org_idx").on(table.clinicId),
   }),
 );
 
@@ -873,9 +873,9 @@ export const playbookVersions = pgTable(
   "playbook_versions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     name: text("name").notNull(),
     status: playbookVersionStatusEnum("status").notNull().default("draft"),
     specialty: text("specialty"),
@@ -887,7 +887,7 @@ export const playbookVersions = pgTable(
       .default([]),
     commercialPolicy: text("commercial_policy"),
     // Orientação livre editada pela tela de settings. Vive aqui (e não em
-    // clinics) para que settings e advisor alimentem a MESMA versão ativa.
+    // organizations) para que settings e advisor alimentem a MESMA versão ativa.
     notes: text("notes"),
     receptionistName: text("receptionist_name").notNull().default("Marina"),
     objections: jsonb("objections")
@@ -908,7 +908,7 @@ export const playbookVersions = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicStatusIdx: index("playbook_versions_clinic_status_idx").on(
+    clinicStatusIdx: index("playbook_versions_org_status_idx").on(
       table.clinicId,
       table.status,
     ),
@@ -918,9 +918,9 @@ export const playbookVersions = pgTable(
 // Lock otimista de slots — previne double-booking
 export const clinicMetrics = pgTable("clinic_metrics", {
   id: uuid("id").primaryKey().defaultRandom(),
-  clinicId: uuid("clinic_id")
+  clinicId: uuid("organization_id")
     .notNull()
-    .references(() => clinics.id),
+    .references(() => organizations.id),
   periodFrom: timestamp("period_from", { withTimezone: true }).notNull(),
   periodTo: timestamp("period_to", { withTimezone: true }).notNull(),
   data: jsonb("data").notNull(),
@@ -933,9 +933,9 @@ export const slotReservations = pgTable(
   "slot_reservations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id),
@@ -950,16 +950,16 @@ export const slotReservations = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    clinicStartsAtIdx: index("slot_reservations_clinic_starts_at_idx").on(
+    clinicStartsAtIdx: index("slot_reservations_org_starts_at_idx").on(
       table.clinicId,
       table.startsAt,
     ),
-    clinicLeadIdx: index("slot_reservations_clinic_lead_idx").on(
+    clinicLeadIdx: index("slot_reservations_org_lead_idx").on(
       table.clinicId,
       table.leadId,
     ),
     clinicStartsAtUnique: uniqueIndex(
-      "slot_reservations_clinic_starts_at_unique",
+      "slot_reservations_org_starts_at_unique",
     ).on(table.clinicId, table.startsAt),
   }),
 );
@@ -977,9 +977,9 @@ export const clinicMembers = pgTable(
   "clinic_members",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id),
+      .references(() => organizations.id),
     email: text("email").notNull(),
     role: memberRoleEnum("role").notNull().default("clinic_admin"),
     // Nome de exibição amigável usado na saudação do dashboard (ex.: "Dr. Gregorie").
@@ -993,11 +993,11 @@ export const clinicMembers = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    emailClinicIdx: uniqueIndex("clinic_members_email_clinic_idx").on(
+    emailClinicIdx: uniqueIndex("org_members_email_org_idx").on(
       table.email,
       table.clinicId,
     ),
-    emailIdx: index("clinic_members_email_idx").on(table.email),
+    emailIdx: index("org_members_email_idx").on(table.email),
   }),
 );
 
@@ -1008,9 +1008,9 @@ export const clinicModules = pgTable(
   "clinic_modules",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     moduleKey: text("module_key").notNull().$type<ModuleKey>(),
     isActive: boolean("is_active").notNull().default(true),
     config: jsonb("config"),
@@ -1021,7 +1021,7 @@ export const clinicModules = pgTable(
   },
   (t) => ({
     uniq: unique().on(t.clinicId, t.moduleKey),
-    activeIdx: index("idx_clinic_modules_clinic").on(t.clinicId),
+    activeIdx: index("idx_org_modules_org").on(t.clinicId),
   }),
 );
 
@@ -1031,9 +1031,9 @@ export const clinicOperationalInsights = pgTable(
   "clinic_operational_insights",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     type: text("type").notNull(),
     category: text("category").notNull().default("operational"),
     title: text("title").notNull(),
@@ -1048,7 +1048,7 @@ export const clinicOperationalInsights = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    clinicActiveIdx: index("clinic_operational_insights_clinic_active_idx").on(
+    clinicActiveIdx: index("org_operational_insights_org_active_idx").on(
       t.clinicId,
       t.expiresAt,
     ),
@@ -1062,9 +1062,9 @@ export const treatmentGapReports = pgTable(
   "treatment_gap_reports",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clinicId: uuid("clinic_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => clinics.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     conversationId: uuid("conversation_id")
       .notNull()
       .references(() => conversations.id, { onDelete: "cascade" }),
@@ -1077,7 +1077,7 @@ export const treatmentGapReports = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    clinicCreatedIdx: index("treatment_gap_reports_clinic_created_idx").on(
+    clinicCreatedIdx: index("treatment_gap_reports_org_created_idx").on(
       t.clinicId,
       t.createdAt,
     ),

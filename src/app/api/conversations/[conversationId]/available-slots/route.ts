@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics, conversations } from "@/infrastructure/db/schema";
+import { appointments, organizations, conversations } from "@/infrastructure/db/schema";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
@@ -31,8 +31,8 @@ export async function GET(
 
   const [clinic] = await db
     .select()
-    .from(clinics)
-    .where(eq(clinics.id, sessionClinicId))
+    .from(organizations)
+    .where(eq(organizations.id, sessionClinicId))
     .limit(1);
   if (!clinic) return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
 

@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   clinicOperationalInsights,
   conversations,
   messages,
@@ -259,9 +259,9 @@ export async function GET(req: NextRequest) {
   if (unauthorized) return unauthorized;
 
   const activeClinics = await db
-    .select({ id: clinics.id, name: clinics.name })
-    .from(clinics)
-    .where(eq(clinics.operationalStatus, "active"));
+    .select({ id: organizations.id, name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.operationalStatus, "active"));
 
   const now = new Date();
   const expiresAt = new Date(now);

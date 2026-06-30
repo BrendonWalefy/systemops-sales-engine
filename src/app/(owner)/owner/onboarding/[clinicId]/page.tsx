@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   playbookVersions,
   treatments,
 } from "@/infrastructure/db/schema";
@@ -27,8 +27,8 @@ export default async function OnboardingWizardPage({
   const { clinicId } = await params;
 
   const [clinic, activePlaybook, existingTreatments] = await Promise.all([
-    db.query.clinics.findFirst({
-      where: eq(clinics.id, clinicId),
+    db.query.organizations.findFirst({
+      where: eq(organizations.id, clinicId),
       columns: {
         id: true,
         name: true,

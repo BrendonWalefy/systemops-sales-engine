@@ -18,7 +18,7 @@ if (!dbUrl) throw new Error("DATABASE_URL não encontrado no .env.local");
 const sql = neon(dbUrl);
 
 // Buscar o ID da Ximendes dinamicamente
-const clinicRows = await sql`SELECT id, name, slug FROM clinics WHERE name ILIKE '%ximendes%' OR slug ILIKE '%ximendes%' LIMIT 1`;
+const clinicRows = await sql`SELECT id, name, slug FROM organizations WHERE name ILIKE '%ximendes%' OR slug ILIKE '%ximendes%' LIMIT 1`;
 if (clinicRows.length === 0) throw new Error("Clínica Ximendes não encontrada no banco");
 const XIMENDES_CLINIC_ID = clinicRows[0].id;
 console.log(`\nClínica: ${clinicRows[0].name} (${XIMENDES_CLINIC_ID})\n`);

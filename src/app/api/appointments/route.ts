@@ -3,7 +3,7 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { and, between, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics, conversations, leads, professionals } from "@/infrastructure/db/schema";
+import { appointments, organizations, conversations, leads, professionals } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -119,8 +119,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const [clinicRow] = await db
       .select()
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1);
 
     if (!clinicRow) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });

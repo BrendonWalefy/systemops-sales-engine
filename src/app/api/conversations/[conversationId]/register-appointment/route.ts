@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, leads } from "@/infrastructure/db/schema";
+import { organizations, conversations, leads } from "@/infrastructure/db/schema";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
@@ -52,8 +52,8 @@ export async function POST(
 
     const [clinic] = await db
       .select()
-      .from(clinics)
-      .where(eq(clinics.id, conv.clinicId ?? ""))
+      .from(organizations)
+      .where(eq(organizations.id, conv.clinicId ?? ""))
       .limit(1);
 
     if (!clinic) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });

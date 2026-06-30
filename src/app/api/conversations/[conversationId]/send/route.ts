@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
@@ -53,10 +53,10 @@ export async function POST(
   // ── 4. Busca TTL configurado para a clínica lógica ──
   const [clinicRow] = await db
     .select({
-      takeoverTtlHours: clinics.takeoverTtlHours,
+      takeoverTtlHours: organizations.takeoverTtlHours,
     })
-    .from(clinics)
-    .where(eq(clinics.id, conv.clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, conv.clinicId))
     .limit(1);
   if (!clinicRow) {
     return NextResponse.json({ error: "Clinic not found" }, { status: 422 });
@@ -81,15 +81,15 @@ export async function POST(
 
   const [channelClinicRow] = await db
     .select({
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      zapiClientToken: organizations.zapiClientToken,
+      metaPhoneNumberId: organizations.metaPhoneNumberId,
+      metaAccessToken: organizations.metaAccessToken,
     })
-    .from(clinics)
-    .where(eq(clinics.id, conv.clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, conv.clinicId))
     .limit(1);
 
   if (!channelClinicRow) {

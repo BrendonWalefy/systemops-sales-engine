@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   treatments,
   playbookVersions,
   clinicMembers,
@@ -133,9 +133,9 @@ export async function onboardClinic(
 
   // Slug único
   const slugTaken = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.slug, cfg.slug))
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, cfg.slug))
     .limit(1)
     .then((r) => r[0] ?? null);
   if (slugTaken) {
@@ -148,7 +148,7 @@ export async function onboardClinic(
   }
 
   const inserted = await db
-    .insert(clinics)
+    .insert(organizations)
     .values({
       name: cfg.name,
       slug: cfg.slug,
@@ -177,7 +177,7 @@ export async function onboardClinic(
       ...resolveSegmentVocab(cfg.segment),
       updatedAt: now,
     })
-    .returning({ id: clinics.id });
+    .returning({ id: organizations.id });
   const clinicId = inserted[0].id;
 
   await db.insert(playbookVersions).values({
@@ -227,5 +227,5 @@ export async function onboardClinic(
     }
   }
 
-  redirect(`/owner/clinics/${clinicId}`);
+  redirect(`/owner/organizations/${clinicId}`);
 }

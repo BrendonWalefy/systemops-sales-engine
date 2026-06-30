@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/infrastructure/db/client";
-import { clinicModules, clinics } from "@/infrastructure/db/schema";
+import { clinicModules, organizations } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -31,9 +31,9 @@ export async function toggleModule(
       target: [clinicModules.clinicId, clinicModules.moduleKey],
       set: { isActive, updatedBy: "owner", updatedAt: new Date() },
     });
-  revalidatePath(`/owner/clinics/${clinicId}`);
-  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
-  revalidatePath(`/owner/clinics/${clinicId}/modules`);
+  revalidatePath(`/owner/organizations/${clinicId}`);
+  revalidatePath(`/owner/organizations/${clinicId}/blueprint`);
+  revalidatePath(`/owner/organizations/${clinicId}/modules`);
 }
 
 export async function updateModuleConfig(
@@ -51,19 +51,19 @@ export async function updateModuleConfig(
         eq(clinicModules.moduleKey, moduleKey),
       ),
     );
-  revalidatePath(`/owner/clinics/${clinicId}`);
-  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
-  revalidatePath(`/owner/clinics/${clinicId}/modules`);
+  revalidatePath(`/owner/organizations/${clinicId}`);
+  revalidatePath(`/owner/organizations/${clinicId}/blueprint`);
+  revalidatePath(`/owner/organizations/${clinicId}/modules`);
 }
 
 export async function updateClinicPlan(clinicId: string, plan: ClinicPlan) {
   await assertOwnerSession();
   await db
-    .update(clinics)
+    .update(organizations)
     .set({ plan, updatedAt: new Date() })
-    .where(eq(clinics.id, clinicId));
+    .where(eq(organizations.id, clinicId));
   await applyClinicPlanPreset(clinicId, plan, "owner_modules");
-  revalidatePath(`/owner/clinics/${clinicId}`);
-  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
-  revalidatePath(`/owner/clinics/${clinicId}/modules`);
+  revalidatePath(`/owner/organizations/${clinicId}`);
+  revalidatePath(`/owner/organizations/${clinicId}/blueprint`);
+  revalidatePath(`/owner/organizations/${clinicId}/modules`);
 }

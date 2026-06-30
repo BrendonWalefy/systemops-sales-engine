@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, messages } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
@@ -156,7 +156,7 @@ function shouldSkip(lead: UnattendedLead): string | null {
 }
 
 async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicResult> {
-  const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
+  const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return { clinicId, sent: 0, skipped: 0, failed: 0 };
 
   if (!shouldSendAutomatedClinicOutbound(clinic)) {
@@ -268,6 +268,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     { sent: 0, skipped: 0, failed: 0 },
   );
 
-  console.log(`[RecoveryCampaign] clinics=${results.length} sent=${totals.sent} skipped=${totals.skipped} failed=${totals.failed}`);
+  console.log(`[RecoveryCampaign] organizations=${results.length} sent=${totals.sent} skipped=${totals.skipped} failed=${totals.failed}`);
   return NextResponse.json({ clinics: results.length, ...totals, perClinic: results });
 }

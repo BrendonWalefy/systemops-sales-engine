@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   aiUsageCosts,
   ttsUsageCosts,
   whatsappMessageCosts,
@@ -102,16 +102,16 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
 
   const allClinics = await db
     .select({
-      id: clinics.id,
-      name: clinics.name,
-      plan: clinics.plan,
-      operationalStatus: clinics.operationalStatus,
-      monthlyRevenueBrl: clinics.monthlyRevenueBrl,
-      billingStartedAt: clinics.billingStartedAt,
-      isTest: clinics.isTest,
+      id: organizations.id,
+      name: organizations.name,
+      plan: organizations.plan,
+      operationalStatus: organizations.operationalStatus,
+      monthlyRevenueBrl: organizations.monthlyRevenueBrl,
+      billingStartedAt: organizations.billingStartedAt,
+      isTest: organizations.isTest,
     })
-    .from(clinics)
-    .orderBy(clinics.name);
+    .from(organizations)
+    .orderBy(organizations.name);
 
   return Promise.all(
     allClinics.map(async (clinic) => {

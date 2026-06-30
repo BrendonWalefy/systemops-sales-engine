@@ -3,7 +3,7 @@ import { probeClinicChannelHealth } from "@/application/health/channel-health";
 import { detectDailyMetricAlerts } from "@/application/health/daily-metric-alerts";
 import { MetricsAggregator } from "@/core/intelligence/MetricsAggregator";
 import { db } from "@/infrastructure/db/client";
-import { clinicMetrics, clinics } from "@/infrastructure/db/schema";
+import { clinicMetrics, organizations } from "@/infrastructure/db/schema";
 
 type RecheckClinicRow = {
   clinicId: string;
@@ -40,18 +40,18 @@ async function loadTargetClinics(
 ): Promise<RecheckClinicRow[]> {
   const rows = await db
     .select({
-      clinicId: clinics.id,
-      clinicName: clinics.name,
-      operationalStatus: clinics.operationalStatus,
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
+      clinicId: organizations.id,
+      clinicName: organizations.name,
+      operationalStatus: organizations.operationalStatus,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      zapiClientToken: organizations.zapiClientToken,
+      metaPhoneNumberId: organizations.metaPhoneNumberId,
+      metaAccessToken: organizations.metaAccessToken,
     })
-    .from(clinics)
-    .where(clinicId ? eq(clinics.id, clinicId) : eq(clinics.operationalStatus, "active"));
+    .from(organizations)
+    .where(clinicId ? eq(organizations.id, clinicId) : eq(organizations.operationalStatus, "active"));
 
   if (clinicId && rows.length === 0) {
     throw new Error("Clínica não encontrada");

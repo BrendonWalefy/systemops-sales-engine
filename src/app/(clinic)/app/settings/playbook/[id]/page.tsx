@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { organizations, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PlaybookEditorClient } from "./editor-client";
@@ -22,9 +22,9 @@ export default async function PlaybookEditorPage({
       .where(and(eq(playbookVersions.id, id), eq(playbookVersions.clinicId, clinicId)))
       .limit(1),
     db
-      .select({ greetingMessage: clinics.greetingMessage })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .select({ greetingMessage: organizations.greetingMessage })
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1)
       .then((r) => r[0] ?? null),
   ]);

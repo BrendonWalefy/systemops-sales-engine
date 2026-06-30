@@ -17,7 +17,7 @@ import {
   decryptCredential,
 } from "../src/infrastructure/crypto/credential-vault";
 
-const { clinics } = schema;
+const { organizations } = schema;
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -28,25 +28,25 @@ async function main() {
 
   const rows = await db
     .select({
-      id: clinics.id,
-      name: clinics.name,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
-      metaAccessToken: clinics.metaAccessToken,
+      id: organizations.id,
+      name: organizations.name,
+      zapiToken: organizations.zapiToken,
+      zapiClientToken: organizations.zapiClientToken,
+      metaAccessToken: organizations.metaAccessToken,
     })
-    .from(clinics)
+    .from(organizations)
     .where(
       or(
-        isNotNull(clinics.zapiToken),
-        isNotNull(clinics.zapiClientToken),
-        isNotNull(clinics.metaAccessToken),
+        isNotNull(organizations.zapiToken),
+        isNotNull(organizations.zapiClientToken),
+        isNotNull(organizations.metaAccessToken),
       ),
     );
 
   console.log(`Clínicas com credenciais: ${rows.length}`);
 
   for (const row of rows) {
-    const updates: Partial<typeof schema.clinics.$inferInsert> = {};
+    const updates: Partial<typeof schema.organizations.$inferInsert> = {};
 
     if (row.zapiToken && !row.zapiToken.startsWith("enc:v1:")) {
       updates.zapiToken = encryptCredential(row.zapiToken);
@@ -64,9 +64,9 @@ async function main() {
     }
 
     await db
-      .update(clinics)
+      .update(organizations)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(clinics.id, row.id));
+      .where(eq(organizations.id, row.id));
 
     const fields = Object.keys(updates).join(", ");
     console.log(`  [ok]   ${row.name} — encriptado: ${fields}`);
@@ -74,9 +74,9 @@ async function main() {
 
   // Verificação final: tenta decriptar para confirmar que a chave bate
   const verify = await db
-    .select({ id: clinics.id, name: clinics.name, zapiToken: clinics.zapiToken })
-    .from(clinics)
-    .where(isNotNull(clinics.zapiToken));
+    .select({ id: organizations.id, name: organizations.name, zapiToken: organizations.zapiToken })
+    .from(organizations)
+    .where(isNotNull(organizations.zapiToken));
 
   let verifyErrors = 0;
   for (const row of verify) {

@@ -235,7 +235,7 @@ export function SimulateClient({ clinicId, clinicName, menuItems }: { clinicId: 
           </span>
           <span style={{ fontSize: "11px", color: "#3f3f46" }}>
             {isProduction
-              ? "Lê de clinics.* + tratamentos — idêntico ao que o lead real recebe"
+              ? "Lê de organizations.* + tratamentos — idêntico ao que o lead real recebe"
               : "Lê do playbook_version ativo — útil para testar antes de publicar"}
           </span>
         </div>

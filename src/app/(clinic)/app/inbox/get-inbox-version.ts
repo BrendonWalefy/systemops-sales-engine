@@ -1,6 +1,6 @@
 import { count, eq, max } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics, conversations, leads } from "@/infrastructure/db/schema";
+import { appointments, organizations, conversations, leads } from "@/infrastructure/db/schema";
 
 function serializeDate(value: Date | null | undefined): string {
   return value ? value.toISOString() : "";
@@ -10,11 +10,11 @@ export async function getInboxVersion(clinicId: string): Promise<string> {
   const [clinicResult, conversationResult, leadResult, appointmentResult] = await Promise.all([
     db
       .select({
-        updatedAt: clinics.updatedAt,
-        autoReplyEnabled: clinics.autoReplyEnabled,
+        updatedAt: organizations.updatedAt,
+        autoReplyEnabled: organizations.autoReplyEnabled,
       })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1),
     db
       .select({
