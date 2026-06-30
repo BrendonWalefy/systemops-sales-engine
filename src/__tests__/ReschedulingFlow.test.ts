@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
-import type { Clinic } from "@/domain/entities/clinic";
+import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { SlotReservation } from "@/core/scheduling/SlotReservationService";
@@ -18,7 +18,7 @@ import { BookingService, type BookingReservationService } from "@/core/schedulin
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const clinic: Clinic = {
+const clinic: Organization = {
   id: "clinic-1",
   name: "Clinic Test",
   specialty: "odontologia",
@@ -323,7 +323,7 @@ describe("ReschedulingFlow — reagendamento no modo interno", () => {
 
 describe("ReschedulingFlow — modo interno ignorando googleCalendarId", () => {
   it("clínica com googleCalendarId mas calendarMode=internal usa gateway interno (no-op)", async () => {
-    const clinicWithGcal: Clinic = {
+    const clinicWithGcal: Organization = {
       ...clinic,
       googleCalendarId: "gcal@test.com",
       calendarMode: "internal",

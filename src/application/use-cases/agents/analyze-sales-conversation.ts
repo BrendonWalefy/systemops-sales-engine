@@ -1,7 +1,7 @@
 import type { SalesAgentGateway } from "@/application/ports/sales-agent-gateway";
 import type { UsageCostTracker } from "@/application/ports/usage-cost-tracker";
 import type { SalesAgentRecommendation } from "@/domain/entities/agent-recommendation";
-import type { Clinic } from "@/domain/entities/clinic";
+import type { Organization } from "@/domain/entities/clinic";
 import type { AgentRecommendationRepository } from "@/domain/repositories/agent-recommendation-repository";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
@@ -20,7 +20,7 @@ export class AnalyzeSalesConversation {
   constructor(private readonly deps: AnalyzeSalesConversationDependencies) {}
 
   async execute(input: {
-    clinic: Clinic;
+    clinic: Organization;
     leadId: string;
     playbook: string;
   }) {

@@ -3,7 +3,7 @@ import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
-import type { Clinic } from "@/domain/entities/clinic";
+import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { SlotReservation } from "@/core/scheduling/SlotReservationService";
 import { BookingService, type BookingReservationService } from "@/core/scheduling/BookingService";
@@ -11,7 +11,7 @@ import { BookingService, type BookingReservationService } from "@/core/schedulin
 const startsAt = new Date("2026-01-05T13:00:00.000Z");
 const endsAt = new Date("2026-01-05T14:00:00.000Z");
 
-const clinic: Clinic = {
+const clinic: Organization = {
   id: "clinic-1",
   name: "Clínica Teste",
   specialty: "odontologia",

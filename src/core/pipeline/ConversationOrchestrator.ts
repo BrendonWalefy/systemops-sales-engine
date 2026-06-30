@@ -51,7 +51,7 @@ import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 import { getClinicModules } from "@/application/modules/module-gate";
 
-import type { Clinic, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
+import type { Organization, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import type { ConversationExperience } from "@/domain/entities/clinic";
 import type { Message } from "@/domain/entities/conversation";
 import type { Treatment } from "@/domain/entities/treatment";
@@ -92,7 +92,7 @@ function buildMenuText(items: MenuItem[]): string {
   return items.filter(i => i.enabled).map(i => `${i.number}. ${i.label}`).join("\n");
 }
 
-function getMenuItemsForExperience(clinic: Clinic, experience: ConversationExperience): MenuItem[] {
+function getMenuItemsForExperience(clinic: Organization, experience: ConversationExperience): MenuItem[] {
   return clinic.menuItems ?? (experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS);
 }
 
@@ -113,7 +113,7 @@ function stripGreetingPrefix(text: string): string {
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
 
-function buildMenuBody(clinic: Clinic, variant: "first" | "reoffer" | "stale", experience: ConversationExperience): string {
+function buildMenuBody(clinic: Organization, variant: "first" | "reoffer" | "stale", experience: ConversationExperience): string {
   const items = getMenuItemsForExperience(clinic, experience);
   const menuText = buildMenuText(items);
 
@@ -163,7 +163,7 @@ function shouldSendConciergeStarter(experience: ConversationExperience, intent: 
   return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
 }
 
-function buildConciergeStarter(clinic: Clinic, timezone: ClinicTimezone, leadName?: string | null): string {
+function buildConciergeStarter(clinic: Organization, timezone: ClinicTimezone, leadName?: string | null): string {
   const salutation = getDayGreeting(timezone);
   const firstName = extractFirstName(leadName);
   const nameGreeting = firstName ? `, ${firstName}` : "";
@@ -797,7 +797,8 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
 
 type ClinicRow = typeof clinics.$inferSelect;
 
-function buildClinic(row: ClinicRow): Clinic {
+// Maps DB row (clinic_id column stays as-is per ADR-001 Layer 1) to domain type Organization
+function buildOrganization(row: ClinicRow): Organization {
   return {
     id: row.id,
     name: row.name,
@@ -1046,7 +1047,7 @@ export class ConversationOrchestrator {
       return { replied: false };
     }
 
-    const clinic = buildClinic(clinicRows[0]);
+    const clinic = buildOrganization(clinicRows[0]);
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
 
@@ -2911,7 +2912,7 @@ export class ConversationOrchestrator {
   //   - preferredDayEmpty=false        → slots confirmáveis, salvos na state machine
   private async fetchAndOfferSlots(
     conversationId: string,
-    clinic: Clinic,
+    clinic: Organization,
     calendarGateway: CalendarGateway,
     timezone: ClinicTimezone,
     businessHours: ReturnType<typeof parseBusinessHours>,
@@ -3098,7 +3099,7 @@ export class ConversationOrchestrator {
   }
 
   private async notifyAttentionNeeded(
-    clinic: Clinic,
+    clinic: Organization,
     channelConfig: ClinicChannelConfig,
     leadPhone: string,
     leadName: string | null,
