@@ -284,7 +284,7 @@ function greetingInitial(doctorName: string | null): string {
 
 function clinicDisplayName(name: string): string {
   const clean = name.trim();
-  return clean.length > 0 ? clean : "sua clínica";
+  return clean.length > 0 ? clean : "seu negócio";
 }
 
 function relativeTime(value: DateLike): string {

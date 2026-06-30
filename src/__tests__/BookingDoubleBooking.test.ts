@@ -21,6 +21,7 @@ const clinic: Organization = {
   contactNoun: "paciente",
   agentRole: "recepcionista virtual",
   businessDescriptor: null,
+  businessNoun: "clínica",
   city: null,
   address: null,
   timezone: "America/Sao_Paulo",

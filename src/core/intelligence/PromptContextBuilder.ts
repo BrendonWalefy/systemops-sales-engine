@@ -3,6 +3,7 @@
 // Nunca derive vocabulário de prompt em outro lugar — sempre passe PromptContext.
 
 import type { Organization } from "@/domain/entities/clinic";
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 
 export type PromptContext = {
   agentRole: string;          // ex: "recepcionista virtual" | "atendente virtual"
@@ -26,7 +27,7 @@ export function buildPromptContext(
     serviceNoun: clinic.serviceNoun,
     bookingNoun: clinic.bookingNoun,
     contactNoun: clinic.contactNoun,
-    businessDescriptor: clinic.businessDescriptor ?? `clínica de ${clinic.specialty}`,
+    businessDescriptor: clinic.businessDescriptor ?? resolveSegmentVocab(clinic.segment).businessDescriptor ?? `${resolveSegmentVocab(clinic.segment).businessNoun} de ${clinic.specialty}`,
     isClinicSegment: CLINIC_SEGMENT_PATTERN.test(clinic.segment),
   };
 }

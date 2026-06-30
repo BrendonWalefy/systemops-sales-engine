@@ -176,7 +176,7 @@ export default function NewClinicPage() {
             </label>
             <label>
               Z-API: Instance ID
-              <input name="zapiInstanceId" placeholder="instância da clínica" />
+              <input name="zapiInstanceId" placeholder="instância da organização" />
             </label>
             <label>
               Z-API: Token
@@ -283,10 +283,10 @@ export default function NewClinicPage() {
         </section>
 
         <section className="panel" style={{ marginBottom: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Acesso do dono da clínica</h2>
+          <h2 style={{ marginTop: 0 }}>Acesso do administrador</h2>
           <div className="form-stack">
             <label>
-              E-mail do admin da clínica
+              E-mail do admin
               <input name="adminEmail" type="email" required placeholder="dono@clinica.com.br" />
               {errorFor("admins.0.email") && (
                 <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("admins.0.email")}</small>
@@ -303,7 +303,7 @@ export default function NewClinicPage() {
         </section>
 
         <button type="submit" className="primary-button" disabled={pending}>
-          {pending ? "Criando..." : "Criar clínica"}
+          {pending ? "Criando..." : "Criar organização"}
         </button>
       </form>
     </div>

@@ -544,8 +544,8 @@ export default async function OwnerPage() {
                 style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-soft)" }}
               >
                 {operationalAlertReport.alertCount === 0
-                  ? "Nenhum alerta ativo nas clínicas em produção."
-                  : `${operationalAlertReport.alertCount} alerta${operationalAlertReport.alertCount !== 1 ? "s" : ""} ativo${operationalAlertReport.alertCount !== 1 ? "s" : ""} em ${operationalAlertReport.activeClinicCount} clínica${operationalAlertReport.activeClinicCount !== 1 ? "s" : ""} ativa${operationalAlertReport.activeClinicCount !== 1 ? "s" : ""}.`}
+                  ? "Nenhum alerta ativo nas organizações em produção."
+                  : `${operationalAlertReport.alertCount} alerta${operationalAlertReport.alertCount !== 1 ? "s" : ""} ativo${operationalAlertReport.alertCount !== 1 ? "s" : ""} em ${operationalAlertReport.activeClinicCount} organização${operationalAlertReport.activeClinicCount !== 1 ? "ões" : ""} ativa${operationalAlertReport.activeClinicCount !== 1 ? "s" : ""}.`}
               </p>
               {operationalAlertReport.alertCount > 0 && (
                 <p

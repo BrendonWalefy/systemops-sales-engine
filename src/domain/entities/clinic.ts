@@ -69,6 +69,8 @@ export type Organization = {
   contactNoun: string;
   agentRole: string;
   businessDescriptor: string | null;
+  // Nome do tipo de negócio para UI (ex: "clínica", "barbearia", "ateliê")
+  businessNoun: string;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -9,6 +9,7 @@ import { getCachedProfessionals, getCachedTreatmentsForAgenda } from "@/app/(cli
 import { db } from "@/infrastructure/db/client";
 import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 
 export default async function AgendaPage({
   searchParams,
@@ -22,7 +23,7 @@ export default async function AgendaPage({
   const [professionals, clinicRow, treatments, memberProfile] = await Promise.all([
     getCachedProfessionals(clinicId),
     db
-      .select({ timezone: organizations.timezone, serviceNoun: organizations.serviceNoun })
+      .select({ timezone: organizations.timezone, serviceNoun: organizations.serviceNoun, segment: organizations.segment })
       .from(organizations)
       .where(eq(organizations.id, clinicId))
       .limit(1),
@@ -31,6 +32,7 @@ export default async function AgendaPage({
   ]);
   const timezone = clinicRow[0]?.timezone ?? "America/Sao_Paulo";
   const serviceNoun = clinicRow[0]?.serviceNoun ?? "tratamento";
+  const businessNoun = resolveSegmentVocab(clinicRow[0]?.segment ?? "dental").businessNoun;
   const memberRole = memberProfile?.memberRole ?? "clinic_admin";
 
   const now = new Date();
@@ -53,6 +55,7 @@ export default async function AgendaPage({
       }))}
       memberRole={memberRole}
       serviceNoun={serviceNoun}
+      businessNoun={businessNoun}
       initialFrom={from.toISOString()}
       initialTo={to.toISOString()}
       openNew={params?.new === "1"}

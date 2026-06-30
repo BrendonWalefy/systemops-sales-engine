@@ -42,7 +42,7 @@ export async function createProspectClinic(
   formData: FormData,
 ): Promise<ProspectState> {
   if (!(await requireOwner())) {
-    return { ok: false, message: "Apenas o owner pode cadastrar clínicas." };
+    return { ok: false, message: "Apenas o owner pode cadastrar organizações." };
   }
 
   const name = (formData.get("name") as string | null)?.trim() ?? "";
@@ -57,7 +57,7 @@ export async function createProspectClinic(
   const adminPassword = (formData.get("adminPassword") as string | null) ?? "";
 
   const errors: Record<string, string> = {};
-  if (!name) errors.name = "Nome da clínica é obrigatório";
+  if (!name) errors.name = "Nome da organização é obrigatório";
   if (!adminEmail || !adminEmail.includes("@")) errors.adminEmail = "Email inválido";
   if (adminPassword.length < 8) errors.adminPassword = "Mínimo 8 caracteres";
   if (Object.keys(errors).length > 0) return { ok: false, errors };

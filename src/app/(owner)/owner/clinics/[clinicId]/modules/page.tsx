@@ -78,7 +78,7 @@ export default async function ClinicModulesPage({
           href={`/owner/organizations/${clinicId}`}
           style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "#71717a", textDecoration: "none", marginBottom: "12px" }}
         >
-          <ArrowLeft size={14} /> Voltar para a clínica
+          <ArrowLeft size={14} /> Voltar para a organização
         </Link>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
           <div>

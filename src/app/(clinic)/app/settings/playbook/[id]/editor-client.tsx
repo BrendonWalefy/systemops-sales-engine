@@ -42,6 +42,8 @@ type Props = {
   name: string;
   initialData: EditorData;
   greetingMessage: string;
+  businessNoun: string;
+  bookingNoun: string;
 };
 
 const TONES = [
@@ -596,7 +598,7 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
 
 // ── Main editor ───────────────────────────────────────────────────────────────
 
-export function PlaybookEditorClient({ id, name, initialData, greetingMessage }: Props) {
+export function PlaybookEditorClient({ id, name, initialData, greetingMessage, businessNoun, bookingNoun }: Props) {
   const router = useRouter();
   const [data, setData] = useState<EditorData>(initialData);
   const [saving, setSaving] = useState(false);
@@ -905,7 +907,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                 </FieldGroup>
               </EditorSection>
 
-              <EditorSection step="1" title="Contexto base" description="Informações que a IA usa para entender a clínica e o atendimento.">
+              <EditorSection step="1" title="Contexto base" description={`Informações que a IA usa para entender ${businessNoun ? `a ${businessNoun}` : "o negócio"} e o atendimento.`}>
                 <div className="editor-config-grid">
                   <FieldGroup label="Especialidade" hint="Aparece no prompt para que a IA responda com vocabulário adequado à área.">
                     <input
@@ -927,7 +929,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                     />
                   </FieldGroup>
 
-                  <FieldGroup label="Tom de voz" hint="Define a personalidade da IA. Acolhedor é o padrão para clínicas; Luxo para um posicionamento premium.">
+                  <FieldGroup label="Tom de voz" hint="Define a personalidade da IA. Acolhedor é o padrão; Luxo para um posicionamento premium.">
                     <select
                       value={data.toneOfVoice}
                       onChange={(e) => updateVersion({ toneOfVoice: e.target.value })}
@@ -942,7 +944,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
 
                 <FieldGroup
                   label="Sobre os procedimentos"
-                  hint="Fallback usado quando os tratamentos cadastrados não têm descrição. Descreva em 3–4 linhas o que a clínica oferece e o diferencial técnico. Ex: scanner 3D, laboratório próprio, anestesia digital."
+                  hint={`Fallback usado quando os ${bookingNoun ? `${bookingNoun}s` : "serviços"} cadastrados não têm descrição. Descreva em 3–4 linhas o que o negócio oferece e o diferencial técnico.`}
                 >
                   <textarea
                     value={data.procedureDescription}
@@ -957,18 +959,18 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                     clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
                     onApply={(text) => updateVersion({ procedureDescription: text })}
                     guidedQuestions={[
-                      "Quais procedimentos principais a clínica oferece?",
-                      "Quais tecnologias ou diferenciais técnicos o paciente pode saber?",
+                      `Quais ${bookingNoun ? `${bookingNoun}s` : "serviços"} principais o negócio oferece?`,
+                      "Quais tecnologias ou diferenciais técnicos o cliente pode saber?",
                       "O que deve ser explicado com cuidado para não prometer resultado?",
                     ]}
                   />
                 </FieldGroup>
               </EditorSection>
 
-              <EditorSection step="2" title="Argumentos da clínica" description="Pontos de diferenciação e regras comerciais que ajudam a conduzir o lead.">
+              <EditorSection step="2" title={`Argumentos ${businessNoun ? `da ${businessNoun}` : "do negócio"}`} description="Pontos de diferenciação e regras comerciais que ajudam a conduzir o lead.">
                 <FieldGroup
-                  label="Diferenciais da clínica"
-                  hint="Por que importa: diferenciais viram argumentos curtos quando o lead está comparando clínicas. Use fatos verificáveis, não promessa de resultado."
+                  label={`Diferenciais ${businessNoun ? `da ${businessNoun}` : "do negócio"}`}
+                  hint="Por que importa: diferenciais viram argumentos curtos quando o lead está comparando opções. Use fatos verificáveis, não promessa de resultado."
                 >
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {data.differentials.map((diff, i) => (
@@ -996,7 +998,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage }:
                     clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
                     onApply={(text) => updateVersion({ differentials: parseBulletList(text) })}
                     guidedQuestions={[
-                      "O que torna a clínica diferente das outras?",
+                      `O que torna ${businessNoun ? `a ${businessNoun}` : "o negócio"} diferente das outras opções?`,
                       "Há tecnologia, estrutura ou especialista que deve aparecer?",
                       "Há algum diferencial que você não quer prometer como resultado garantido?",
                     ]}
