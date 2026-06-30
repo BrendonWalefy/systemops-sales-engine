@@ -59,7 +59,7 @@ export const onboardingConfigSchema = z.object({
     .min(1, "slug obrigatório")
     .regex(/^[a-z0-9-]+$/, "slug só pode ter minúsculas, números e hífen"),
   specialty: z.string().trim().default("odontology"),
-  segment: z.enum(["dental", "barbershop", "hair_salon", "aesthetics", "other"]).default("dental"),
+  segment: z.enum(["dental", "barbershop", "hair_salon", "aesthetics", "atelier", "cortinas", "other"]).default("dental"),
   serviceNoun: z.string().trim().min(1).default("tratamento"),
   timezone: z.string().trim().default("America/Sao_Paulo"),
   businessHours: z.string().trim().optional(),
@@ -79,7 +79,7 @@ export const onboardingConfigSchema = z.object({
     .array(
       z.object({
         name: z.string().trim().min(1),
-        durationMinutes: z.number().int().positive().default(60),
+        durationMinutes: z.number().int().min(0).default(60),
         description: z.string().trim().optional(),
         requiresEvaluationFirst: z.boolean().default(false),
       }),
@@ -91,6 +91,7 @@ export const onboardingConfigSchema = z.object({
         email: z.string().trim().email(),
         password: z.string().min(8, "senha deve ter pelo menos 8 caracteres"),
         role: z.enum(["owner", "clinic_admin"]).default("clinic_admin"),
+        displayName: z.string().trim().optional(),
       }),
     )
     .min(1, "ao menos um admin é obrigatório"),

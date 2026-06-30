@@ -59,7 +59,7 @@ async function ensureSchema(): Promise<void> {
   await db.execute(sql.raw(`
     CREATE TABLE IF NOT EXISTS "clinic_modules" (
       "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      "clinic_id" UUID NOT NULL REFERENCES "clinics"("id") ON DELETE CASCADE,
+      "clinic_id" UUID NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
       "module_key" TEXT NOT NULL,
       "is_active" BOOLEAN NOT NULL DEFAULT true,
       "config" JSONB,
@@ -81,7 +81,7 @@ async function ensureSchema(): Promise<void> {
   await db.execute(sql.raw(`
     INSERT INTO "clinic_modules" ("clinic_id", "module_key", "is_active", "updated_by")
     SELECT c."id", m."module_key", true, 'repair_prod_migration_history'
-    FROM "clinics" c
+    FROM "organizations" c
     CROSS JOIN (VALUES
       ('video_library'),
       ('ai_co_writer'),
@@ -93,16 +93,16 @@ async function ensureSchema(): Promise<void> {
   `));
 
   await db.execute(sql.raw(`
-    ALTER TABLE "clinics" DROP COLUMN IF EXISTS "voice_response_enabled";
+    ALTER TABLE "organizations" DROP COLUMN IF EXISTS "voice_response_enabled";
   `));
   await db.execute(sql.raw(`
-    ALTER TABLE "clinics" DROP COLUMN IF EXISTS "tts_voice";
+    ALTER TABLE "organizations" DROP COLUMN IF EXISTS "tts_voice";
   `));
   await db.execute(sql.raw(`
-    ALTER TABLE "clinics" DROP COLUMN IF EXISTS "tts_config";
+    ALTER TABLE "organizations" DROP COLUMN IF EXISTS "tts_config";
   `));
   await db.execute(sql.raw(`
-    ALTER TABLE "clinics" DROP COLUMN IF EXISTS "conversation_experience";
+    ALTER TABLE "organizations" DROP COLUMN IF EXISTS "conversation_experience";
   `));
 
   await db.execute(sql.raw(`
@@ -131,7 +131,7 @@ async function ensureSchema(): Promise<void> {
   `));
 
   await db.execute(sql.raw(`
-    ALTER TABLE "clinics"
+    ALTER TABLE "organizations"
       ADD COLUMN IF NOT EXISTS "service_noun" TEXT NOT NULL DEFAULT 'tratamento',
       ADD COLUMN IF NOT EXISTS "segment" TEXT NOT NULL DEFAULT 'dental';
   `));

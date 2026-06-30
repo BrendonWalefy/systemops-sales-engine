@@ -18,6 +18,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     perClinic.push({ clinicId, marked: result.marked });
   }
 
-  console.log(`[StaleConversations] clinics=${clinicIds.length} marked=${marked}`);
+  console.log(`[StaleConversations] organizations=${clinicIds.length} marked=${marked}`);
   return NextResponse.json({ clinics: clinicIds.length, marked, perClinic });
 }

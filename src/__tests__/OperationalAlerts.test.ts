@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateOperationalAlerts } from "@/application/health/operational-alerts";
 
 describe("operational alerts", () => {
-  it("ignores non-active clinics", () => {
+  it("ignores non-active organizations", () => {
     const report = evaluateOperationalAlerts(
       [
         {

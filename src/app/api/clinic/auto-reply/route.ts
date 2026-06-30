@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
 
@@ -16,8 +16,8 @@ export async function GET(): Promise<NextResponse> {
       { status: 500 },
     );
 
-  const clinic = await db.query.clinics.findFirst({
-    where: eq(clinics.id, clinicId),
+  const clinic = await db.query.organizations.findFirst({
+    where: eq(organizations.id, clinicId),
   });
   if (!clinic)
     return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
@@ -53,8 +53,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const clinic = await db.query.clinics.findFirst({
-    where: eq(clinics.id, clinicId),
+  const clinic = await db.query.organizations.findFirst({
+    where: eq(organizations.id, clinicId),
     columns: {
       isTest: true,
       operationalStatus: true,
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
 
   await db
-    .update(clinics)
+    .update(organizations)
     .set({
       autoReplyEnabled: body.enabled,
       operationalStatus: resolveOperationalStatusFromAutomationState({
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }),
       updatedAt: new Date(),
     })
-    .where(eq(clinics.id, clinicId));
+    .where(eq(organizations.id, clinicId));
 
   return NextResponse.json({
     autoReplyEnabled: body.enabled,

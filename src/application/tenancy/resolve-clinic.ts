@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics, clinicMembers } from "@/infrastructure/db/schema";
+import { organizations, clinicMembers } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME, type SessionPayload } from "@/lib/session";
 
 /**
@@ -22,9 +22,9 @@ export async function resolveClinicByZapiInstance(
 ): Promise<string | null> {
   if (!instanceId) return null;
   const row = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.zapiInstanceId, instanceId))
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.zapiInstanceId, instanceId))
     .limit(1)
     .then((r) => r[0] ?? null);
   return row?.id ?? null;
@@ -36,9 +36,9 @@ export async function resolveClinicByMetaPhoneNumberId(
 ): Promise<string | null> {
   if (!phoneNumberId) return null;
   const row = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.metaPhoneNumberId, phoneNumberId))
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.metaPhoneNumberId, phoneNumberId))
     .limit(1)
     .then((r) => r[0] ?? null);
   return row?.id ?? null;
@@ -46,7 +46,7 @@ export async function resolveClinicByMetaPhoneNumberId(
 
 /** Crons: lista todas as clínicas para iterar uma a uma. */
 export async function listAllClinicIds(): Promise<string[]> {
-  const rows = await db.select({ id: clinics.id }).from(clinics).orderBy(asc(clinics.createdAt));
+  const rows = await db.select({ id: organizations.id }).from(organizations).orderBy(asc(organizations.createdAt));
   return rows.map((r) => r.id);
 }
 
@@ -75,17 +75,17 @@ export async function getSessionClinicId(): Promise<string | null> {
     const selected = store.get(ACTIVE_CLINIC_COOKIE)?.value;
     if (selected) {
       const exists = await db
-        .select({ id: clinics.id })
-        .from(clinics)
-        .where(eq(clinics.id, selected))
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, selected))
         .limit(1)
         .then((r) => r[0] ?? null);
       if (exists) return exists.id;
     }
     const first = await db
-      .select({ id: clinics.id })
-      .from(clinics)
-      .orderBy(asc(clinics.createdAt))
+      .select({ id: organizations.id })
+      .from(organizations)
+      .orderBy(asc(organizations.createdAt))
       .limit(1)
       .then((r) => r[0] ?? null);
     return first?.id ?? null;

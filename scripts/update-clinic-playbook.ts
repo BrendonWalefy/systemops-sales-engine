@@ -6,7 +6,7 @@
 import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { clinics, playbookVersions } from "../src/infrastructure/db/schema";
+import { organizations, playbookVersions } from "../src/infrastructure/db/schema";
 import { CONCIERGE_MENU_ITEMS } from "../src/domain/entities/clinic";
 import { and, eq } from "drizzle-orm";
 
@@ -46,7 +46,7 @@ REGRAS ABSOLUTAS:
 async function main() {
   const now = new Date();
 
-  await db.update(clinics).set({
+  await db.update(organizations).set({
     businessHours: "Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.",
     greetingMessage: GREETING_MESSAGE,
     menuItems: CONCIERGE_MENU_ITEMS,
@@ -55,7 +55,7 @@ async function main() {
     slotLookaheadDays: 21,
     mediaTakeoverTtlHours: 6,
     updatedAt: now,
-  }).where(eq(clinics.id, CLINIC_ID));
+  }).where(eq(organizations.id, CLINIC_ID));
 
   await db.update(playbookVersions).set({
     commercialPolicy: COMMERCIAL_POLICY,

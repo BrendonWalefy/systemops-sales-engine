@@ -1,0 +1,63 @@
+name: Migration CI
+
+# Roda em PRs que tocam schema ou migrations.
+# Cria branch Neon de staging, aplica migration, roda verify completo, destrói o branch.
+
+on:
+  pull_request:
+    paths:
+      - "drizzle/*.sql"
+      - "src/infrastructure/db/schema.ts"
+
+concurrency:
+  group: migration-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-test:
+    name: Test migration on staging branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Cria branch Neon a partir do snapshot de prod.
+      # A branch é destruída no final mesmo se o job falhar (if: always()).
+      - name: Create Neon staging branch
+        id: neon
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch_name: ci-migration-pr-${{ github.event.pull_request.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          role: ${{ secrets.NEON_DB_USER }}
+
+      - name: Apply migration on staging branch
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+        run: npx drizzle-kit migrate
+
+      # Roda a suite completa (lint + typecheck + vitest) contra o banco de staging.
+      - name: Verify against staging branch
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+        run: npm run verify
+
+      - name: Delete Neon staging branch
+        if: always()
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch: ci-migration-pr-${{ github.event.pull_request.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}

@@ -7,7 +7,7 @@ export type CalendarMode = "internal" | "google_calendar";
 
 export type CalendarResolutionInput = {
   clinicId: string;
-  /** Valor da coluna clinics.calendarMode. Null = derivar de googleCalendarId. */
+  /** Valor da coluna organizations.calendarMode. Null = derivar de googleCalendarId. */
   calendarMode: CalendarMode | null;
   googleCalendarId: string | null;
   timezone: ClinicTimezone;

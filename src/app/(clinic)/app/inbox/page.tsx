@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
-import { clinics, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
+import { organizations, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
 import { and, eq, desc, inArray, gte } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { InboxClient, type ConvRow } from "./InboxClient";
@@ -21,11 +21,11 @@ export default async function InboxPage({
 
   const [clinicRows, rows] = await Promise.all([
     db.select({
-      autoReplyEnabled: clinics.autoReplyEnabled,
-      updatedAt: clinics.updatedAt,
+      autoReplyEnabled: organizations.autoReplyEnabled,
+      updatedAt: organizations.updatedAt,
     })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1),
     db
       .select({

@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   leads,
   conversations,
   messages,
@@ -19,9 +19,9 @@ import type { ClinicResetPort, DbResetCounts } from "@/application/use-cases/cli
 export class DrizzleClinicResetRepository implements ClinicResetPort {
   async findClinicName(clinicId: string): Promise<string | null> {
     const [clinic] = await db
-      .select({ name: clinics.name })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1);
     return clinic?.name ?? null;
   }

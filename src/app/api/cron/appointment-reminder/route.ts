@@ -5,7 +5,7 @@ import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
@@ -27,7 +27,7 @@ const WINDOW_END_HOURS = 32;
 type ClinicResult = { clinicId: string; sent: number; failed: number; total: number };
 
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
-  const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
+  const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return null;
   if (!shouldSendAutomatedClinicOutbound(clinic)) {
     console.log(`[AppointmentReminder] outbound automatizado pausado para clinic=${clinicId}`);
@@ -146,6 +146,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const sent = results.reduce((a, r) => a + r.sent, 0);
   const failed = results.reduce((a, r) => a + r.failed, 0);
-  console.log(`[AppointmentReminder] clinics=${results.length} sent=${sent} failed=${failed}`);
+  console.log(`[AppointmentReminder] organizations=${results.length} sent=${sent} failed=${failed}`);
   return NextResponse.json({ clinics: results.length, sent, failed, perClinic: results });
 }

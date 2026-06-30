@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   leads,
   aiUsageCosts,
   whatsappMessageCosts,
@@ -79,20 +79,20 @@ type ClinicRow = {
 async function fetchAllClinics(): Promise<ClinicRow[]> {
   const allClinics = await db
     .select({
-      id: clinics.id,
-      name: clinics.name,
-      autoReplyEnabled: clinics.autoReplyEnabled,
-      operationalStatus: clinics.operationalStatus,
-      isTest: clinics.isTest,
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      zapiClientToken: clinics.zapiClientToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
+      id: organizations.id,
+      name: organizations.name,
+      autoReplyEnabled: organizations.autoReplyEnabled,
+      operationalStatus: organizations.operationalStatus,
+      isTest: organizations.isTest,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      zapiClientToken: organizations.zapiClientToken,
+      metaPhoneNumberId: organizations.metaPhoneNumberId,
+      metaAccessToken: organizations.metaAccessToken,
     })
-    .from(clinics)
-    .orderBy(clinics.name);
+    .from(organizations)
+    .orderBy(organizations.name);
   const monthStart = startOfMonth();
 
   const rows = await Promise.all(
@@ -366,7 +366,7 @@ export default async function OwnerPage() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link
-            href="/owner/clinics/novo"
+            href="/owner/organizations/novo"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -383,7 +383,7 @@ export default async function OwnerPage() {
           >
             + Diagnóstico rápido
           </Link>
-          <Link href="/owner/clinics/new" className="primary-button">
+          <Link href="/owner/organizations/new" className="primary-button">
             Clínica completa
           </Link>
           <LoadDemoClinicButton />
@@ -667,7 +667,7 @@ export default async function OwnerPage() {
                 return (
                   <Link
                     key={clinic.id}
-                    href={`/owner/clinics/${clinic.id}`}
+                    href={`/owner/organizations/${clinic.id}`}
                     className="mobile-clinic-card"
                   >
                     <div className="mobile-clinic-card-row">
@@ -809,7 +809,7 @@ export default async function OwnerPage() {
                       >
                         <td style={{ padding: "12px 16px" }}>
                           <Link
-                            href={`/owner/clinics/${clinic.id}`}
+                            href={`/owner/organizations/${clinic.id}`}
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -976,7 +976,7 @@ export default async function OwnerPage() {
                     }}
                   >
                     <Link
-                      href={`/owner/clinics/${clinic.id}`}
+                      href={`/owner/organizations/${clinic.id}`}
                       style={{
                         fontWeight: 700,
                         color: "#60a5fa",
@@ -1026,7 +1026,7 @@ export default async function OwnerPage() {
               {testRows.map((clinic) => (
                 <Link
                   key={clinic.id}
-                  href={`/owner/clinics/${clinic.id}`}
+                  href={`/owner/organizations/${clinic.id}`}
                   className="mobile-clinic-card"
                 >
                   <div className="mobile-clinic-card-row">
@@ -1071,7 +1071,7 @@ export default async function OwnerPage() {
                   }}
                 >
                   <Link
-                    href={`/owner/clinics/${clinic.id}`}
+                    href={`/owner/organizations/${clinic.id}`}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1137,7 +1137,7 @@ export default async function OwnerPage() {
                   }}
                 >
                   <Link
-                    href={`/owner/clinics/${clinic.id}`}
+                    href={`/owner/organizations/${clinic.id}`}
                     style={{
                       fontWeight: 700,
                       color: "#f87171",

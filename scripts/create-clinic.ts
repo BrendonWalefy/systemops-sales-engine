@@ -20,7 +20,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq } from "drizzle-orm";
 import { onboardingConfigSchema } from "../src/application/onboarding/onboarding-config";
 import {
-  clinics,
+  organizations,
   treatments,
   playbookVersions,
   clinicMembers,
@@ -28,12 +28,14 @@ import {
 import { hashPassword } from "../src/lib/password";
 import { resolveClinicCommercialSettings } from "../src/application/onboarding/clinic-commercial-settings";
 import { resolveInitialClinicOperationalStatus } from "../src/application/clinics/clinic-operational-status";
+import { resolveSegmentVocab } from "../src/application/onboarding/segment-vocab";
 import { encryptCredentialNullable } from "../src/infrastructure/crypto/credential-vault";
 import { syncModulesForPlan } from "../src/application/modules/module-gate";
 
 type NewClinicConfig = {
   name: string;
   slug: string;
+  segment?: string;
   specialty?: string;
   timezone?: string;
   businessHours?: string;
@@ -108,15 +110,19 @@ async function main() {
 
   // 1) clínica (upsert por slug)
   const existing = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.slug, cfg.slug))
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, cfg.slug))
     .limit(1)
     .then((r) => r[0] ?? null);
+
+  const segment = cfg.segment ?? "dental";
+  const segmentVocab = resolveSegmentVocab(segment);
 
   const clinicValues = {
     name: cfg.name,
     slug: cfg.slug,
+    segment,
     specialty: cfg.specialty ?? "odontology",
     timezone: cfg.timezone ?? "America/Sao_Paulo",
     businessHours: cfg.businessHours ?? null,
@@ -137,19 +143,23 @@ async function main() {
     zapiClientToken: encryptCredentialNullable(cfg.channel.zapi?.clientToken),
     metaPhoneNumberId: cfg.channel.meta?.phoneNumberId ?? null,
     metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
+    agentRole: segmentVocab.agentRole,
+    bookingNoun: segmentVocab.bookingNoun,
+    contactNoun: segmentVocab.contactNoun,
+    businessDescriptor: segmentVocab.businessDescriptor,
     updatedAt: now,
   };
 
   let clinicId: string;
   if (existing) {
     clinicId = existing.id;
-    await db.update(clinics).set(clinicValues).where(eq(clinics.id, clinicId));
+    await db.update(organizations).set(clinicValues).where(eq(organizations.id, clinicId));
     console.log(`Clínica existente atualizada: ${cfg.name} (${clinicId})`);
   } else {
     const inserted = await db
-      .insert(clinics)
+      .insert(organizations)
       .values(clinicValues)
-      .returning({ id: clinics.id });
+      .returning({ id: organizations.id });
     clinicId = inserted[0].id;
     console.log(`Clínica criada: ${cfg.name} (${clinicId})`);
   }

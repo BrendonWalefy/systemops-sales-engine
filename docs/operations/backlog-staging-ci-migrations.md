@@ -1,8 +1,9 @@
 # Backlog: Staging com CI Testando Migrations Antes de Prod
 
-**Status:** NÃO IMPLEMENTADO  
+**Status:** ✅ IMPLEMENTADO — workflow em `.github/workflows/migration-ci.yml`  
 **Prioridade:** Alta (pré-requisito para ADR-001 Camada 2 e para qualquer migration de schema destrutiva futura)  
-**Criado em:** 2026-06-30
+**Criado em:** 2026-06-30  
+**Setup:** ver `docs/operations/staging-ci-setup.md` para configurar secrets e branch protection
 
 ---
 

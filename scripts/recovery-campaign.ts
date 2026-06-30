@@ -21,7 +21,7 @@ const DRY_RUN = !process.argv.includes("--send");
 if (DRY_RUN) console.log("DRY-RUN: nenhuma mensagem será enviada. Use --send para enviar.\n");
 
 // 1. Buscar clínica Ximendes
-const clinic = await db.query.clinics.findFirst({
+const clinic = await db.query.organizations.findFirst({
   where: (c, { or, ilike }) => or(ilike(c.name, "%ximendes%"), ilike(c.slug, "%ximendes%")),
 });
 if (!clinic) throw new Error("Clínica Ximendes não encontrada");

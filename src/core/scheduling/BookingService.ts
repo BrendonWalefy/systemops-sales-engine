@@ -15,7 +15,7 @@ import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
-import type { Clinic } from "@/domain/entities/clinic";
+import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import { SlotReservationService, type SlotReservation } from "./SlotReservationService";
@@ -47,7 +47,7 @@ export class BookingService {
   ) {}
 
   async book(params: {
-    clinic: Clinic;
+    clinic: Organization;
     lead: Lead;
     startsAt: Date;
     endsAt: Date;

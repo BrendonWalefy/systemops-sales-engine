@@ -16,7 +16,7 @@ import { db } from "@/infrastructure/db/client";
 import { hashPassword } from "@/lib/password";
 import { syncModulesForPlan } from "@/application/modules/module-gate";
 import {
-  clinics,
+  organizations,
   treatments,
   professionals,
   leads,
@@ -187,7 +187,7 @@ async function resetClinic(clinicId: string): Promise<void> {
   await db.delete(clinicMetrics).where(eq(clinicMetrics.clinicId, clinicId));
   await db.delete(clinicModules).where(eq(clinicModules.clinicId, clinicId));
   await db.delete(leads).where(eq(leads.clinicId, clinicId));
-  await db.delete(clinics).where(eq(clinics.id, clinicId));
+  await db.delete(organizations).where(eq(organizations.id, clinicId));
 }
 
 async function insertChunked<T>(
@@ -327,9 +327,9 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
 
   // 0) reset
   const existing = await db
-    .select({ id: clinics.id })
-    .from(clinics)
-    .where(eq(clinics.slug, DEMO_CLINIC_SLUG))
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, DEMO_CLINIC_SLUG))
     .limit(1)
     .then((r) => r[0] ?? null);
   if (existing) await resetClinic(existing.id);
@@ -337,7 +337,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   const clinicId = randomUUID();
 
   // 1) clínica
-  await db.insert(clinics).values({
+  await db.insert(organizations).values({
     id: clinicId,
     name: DEMO_CLINIC_NAME,
     slug: DEMO_CLINIC_SLUG,

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   playbookVersions,
   treatments,
 } from "@/infrastructure/db/schema";
@@ -102,12 +102,12 @@ const SECTION_META: Record<
   },
   tts: {
     icon: <Mic size={20} />,
-    actionHref: (id) => `/owner/clinics/${id}/modules`,
+    actionHref: (id) => `/owner/organizations/${id}/modules`,
     actionLabel: "Configurar voz",
   },
   go_live: {
     icon: <Rocket size={20} />,
-    actionHref: (id) => `/owner/clinics/${id}`,
+    actionHref: (id) => `/owner/organizations/${id}`,
     actionLabel: "Ir para detalhes",
   },
 };
@@ -117,33 +117,33 @@ export default async function BlueprintPage({ params }: { params: Params }) {
 
   const [clinic] = await db
     .select({
-      id: clinics.id,
-      name: clinics.name,
-      specialty: clinics.specialty,
-      city: clinics.city,
-      address: clinics.address,
-      greetingMessage: clinics.greetingMessage,
-      businessHours: clinics.businessHours,
-      calendarMode: clinics.calendarMode,
-      googleCalendarId: clinics.googleCalendarId,
-      receptionistPhone: clinics.receptionistPhone,
-      plan: clinics.plan,
-      monthlyRevenueBrl: clinics.monthlyRevenueBrl,
-      billingStartedAt: clinics.billingStartedAt,
-      defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
-      postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
-      takeoverTtlHours: clinics.takeoverTtlHours,
-      autoReplyEnabled: clinics.autoReplyEnabled,
-      operationalStatus: clinics.operationalStatus,
-      isTest: clinics.isTest,
-      channelProvider: clinics.channelProvider,
-      zapiInstanceId: clinics.zapiInstanceId,
-      zapiToken: clinics.zapiToken,
-      metaPhoneNumberId: clinics.metaPhoneNumberId,
-      metaAccessToken: clinics.metaAccessToken,
+      id: organizations.id,
+      name: organizations.name,
+      specialty: organizations.specialty,
+      city: organizations.city,
+      address: organizations.address,
+      greetingMessage: organizations.greetingMessage,
+      businessHours: organizations.businessHours,
+      calendarMode: organizations.calendarMode,
+      googleCalendarId: organizations.googleCalendarId,
+      receptionistPhone: organizations.receptionistPhone,
+      plan: organizations.plan,
+      monthlyRevenueBrl: organizations.monthlyRevenueBrl,
+      billingStartedAt: organizations.billingStartedAt,
+      defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
+      postAppointmentBufferMinutes: organizations.postAppointmentBufferMinutes,
+      takeoverTtlHours: organizations.takeoverTtlHours,
+      autoReplyEnabled: organizations.autoReplyEnabled,
+      operationalStatus: organizations.operationalStatus,
+      isTest: organizations.isTest,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      metaPhoneNumberId: organizations.metaPhoneNumberId,
+      metaAccessToken: organizations.metaAccessToken,
     })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
+    .from(organizations)
+    .where(eq(organizations.id, clinicId))
     .limit(1);
 
   if (!clinic) notFound();
@@ -212,7 +212,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
         }}
       >
         <Link
-          href={`/owner/clinics/${clinicId}`}
+          href={`/owner/organizations/${clinicId}`}
           style={{
             display: "flex",
             alignItems: "center",
@@ -471,7 +471,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
                 </div>
               </div>
               <Link
-                href={`/owner/clinics/${clinicId}`}
+                href={`/owner/organizations/${clinicId}`}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",

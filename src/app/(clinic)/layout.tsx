@@ -5,7 +5,7 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { PushNotificationSetup } from "@/components/push-notification-setup";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { db } from "@/infrastructure/db/client";
-import { clinicMembers, conversations, clinics } from "@/infrastructure/db/schema";
+import { clinicMembers, conversations, organizations } from "@/infrastructure/db/schema";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 
 export default async function ClinicLayout({ children }: { children: ReactNode }) {
@@ -31,9 +31,9 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
           .from(conversations)
           .where(and(eq(conversations.clinicId, clinicId), eq(conversations.needsAttention, true))),
         db
-          .select({ name: clinics.name })
-          .from(clinics)
-          .where(eq(clinics.id, clinicId))
+          .select({ name: organizations.name })
+          .from(organizations)
+          .where(eq(organizations.id, clinicId))
           .limit(1),
       ]);
       avatarUrl = memberResult[0]?.avatarUrl ?? null;

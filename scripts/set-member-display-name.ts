@@ -17,7 +17,7 @@ import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, or } from "drizzle-orm";
-import { clinics, clinicMembers } from "../src/infrastructure/db/schema";
+import { organizations, clinicMembers } from "../src/infrastructure/db/schema";
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -61,9 +61,9 @@ async function main() {
 
   try {
     const clinic = await db
-      .select({ id: clinics.id, name: clinics.name, slug: clinics.slug })
-      .from(clinics)
-      .where(or(eq(clinics.slug, clinicRef), eq(clinics.name, clinicRef)))
+      .select({ id: organizations.id, name: organizations.name, slug: organizations.slug })
+      .from(organizations)
+      .where(or(eq(organizations.slug, clinicRef), eq(organizations.name, clinicRef)))
       .limit(1);
 
     if (clinic.length === 0) {

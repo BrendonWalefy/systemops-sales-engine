@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/infrastructure/db/client";
-import { clinics, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
@@ -18,7 +18,7 @@ export async function composeRecoveryMessageAction(
 ): Promise<{ message: string | null; error?: string }> {
   const clinicId = await requireSessionClinicId();
 
-  const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
+  const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return { message: null, error: "Clínica não encontrada" };
 
   const editorial = await resolveActiveEditorialConfig(clinicId);
@@ -84,7 +84,7 @@ export async function sendRecoveryMessageAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const clinicId = await requireSessionClinicId();
 
-  const clinic = await db.query.clinics.findFirst({ where: eq(clinics.id, clinicId) });
+  const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return { ok: false, error: "Clínica não encontrada" };
 
   const conv = await db.query.conversations.findFirst({

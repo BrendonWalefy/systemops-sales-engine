@@ -2,7 +2,7 @@
 // Transforma campos de configuração do tenant em termos prontos para uso em prompts.
 // Nunca derive vocabulário de prompt em outro lugar — sempre passe PromptContext.
 
-import type { Clinic } from "@/domain/entities/clinic";
+import type { Organization } from "@/domain/entities/clinic";
 
 export type PromptContext = {
   agentRole: string;          // ex: "recepcionista virtual" | "atendente virtual"
@@ -17,7 +17,7 @@ const CLINIC_SEGMENT_PATTERN = /dental|saude|saúde|clinic|medic|estétic|esteti
 
 export function buildPromptContext(
   clinic: Pick<
-    Clinic,
+    Organization,
     "segment" | "specialty" | "serviceNoun" | "bookingNoun" | "contactNoun" | "agentRole" | "businessDescriptor"
   >,
 ): PromptContext {

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Lock, Settings2 } from "lucide-react";
 import { db } from "@/infrastructure/db/client";
-import { clinics, clinicModules } from "@/infrastructure/db/schema";
+import { organizations, clinicModules } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { MODULE_CATALOG } from "@/application/modules/module-catalog";
 import type { ModuleKey } from "@/application/modules/module-catalog";
@@ -33,9 +33,9 @@ function isConfigurableModuleKey(key: ModuleKey): key is ConfigurableModuleKey {
 async function getData(clinicId: string) {
   const [clinic, moduleRows] = await Promise.all([
     db
-      .select({ id: clinics.id, name: clinics.name, plan: clinics.plan })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .select({ id: organizations.id, name: organizations.name, plan: organizations.plan })
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1)
       .then((r) => r[0] ?? null),
     db
@@ -75,7 +75,7 @@ export default async function ClinicModulesPage({
       {/* Header */}
       <div style={{ marginBottom: "24px" }}>
         <Link
-          href={`/owner/clinics/${clinicId}`}
+          href={`/owner/organizations/${clinicId}`}
           style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "#71717a", textDecoration: "none", marginBottom: "12px" }}
         >
           <ArrowLeft size={14} /> Voltar para a clínica
@@ -141,8 +141,8 @@ export default async function ClinicModulesPage({
             (!openModuleKey && def.key === "voice_elevenlabs" && !elevenLabsConfig?.voiceId)
           );
           const configHref = openModuleKey === def.key
-            ? `/owner/clinics/${clinicId}/modules#module-${def.key}`
-            : `/owner/clinics/${clinicId}/modules?open=${def.key}#module-${def.key}`;
+            ? `/owner/organizations/${clinicId}/modules#module-${def.key}`
+            : `/owner/organizations/${clinicId}/modules?open=${def.key}#module-${def.key}`;
 
           return (
             <div

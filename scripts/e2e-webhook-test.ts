@@ -19,7 +19,7 @@ import postgres from "postgres";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
-  clinics,
+  organizations,
   leads,
   conversations,
   inboundEvents,
@@ -290,9 +290,9 @@ console.log(`   Aguardando ${waitMs}ms por POST\n`);
 
 // 1. Ler dados da clínica
 const [clinic] = await db
-  .select({ name: clinics.name, zapiInstanceId: clinics.zapiInstanceId, autoReplyEnabled: clinics.autoReplyEnabled })
-  .from(clinics)
-  .where(eq(clinics.id, clinicId!))
+  .select({ name: organizations.name, zapiInstanceId: organizations.zapiInstanceId, autoReplyEnabled: organizations.autoReplyEnabled })
+  .from(organizations)
+  .where(eq(organizations.id, clinicId!))
   .limit(1);
 
 if (!clinic) {

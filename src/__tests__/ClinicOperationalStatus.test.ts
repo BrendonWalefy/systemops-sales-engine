@@ -5,7 +5,7 @@ import {
 } from "@/application/clinics/clinic-operational-status";
 
 describe("clinic operational status", () => {
-  it("starts new test clinics in test and others in prospect", () => {
+  it("starts new test organizations in test and others in prospect", () => {
     expect(resolveInitialClinicOperationalStatus({ isTest: true })).toBe(
       "test",
     );
@@ -14,7 +14,7 @@ describe("clinic operational status", () => {
     );
   });
 
-  it("keeps test clinics blocked even if auto reply is on", () => {
+  it("keeps test organizations blocked even if auto reply is on", () => {
     expect(
       resolveOperationalStatusFromAutomationState({
         currentStatus: "test",
@@ -24,7 +24,7 @@ describe("clinic operational status", () => {
     ).toBe("test");
   });
 
-  it("maps production clinics to active or paused based on automation", () => {
+  it("maps production organizations to active or paused based on automation", () => {
     expect(
       resolveOperationalStatusFromAutomationState({
         currentStatus: "prospect",
@@ -50,7 +50,7 @@ describe("clinic operational status", () => {
     ).toBe("paused");
   });
 
-  it("preserves cancelled clinics", () => {
+  it("preserves cancelled organizations", () => {
     expect(
       resolveOperationalStatusFromAutomationState({
         currentStatus: "cancelled",

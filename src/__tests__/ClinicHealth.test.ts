@@ -19,7 +19,7 @@ describe("clinic health", () => {
     ).toBe(false);
   });
 
-  it("marks active clinics as degraded when core config is missing", () => {
+  it("marks active organizations as degraded when core config is missing", () => {
     const report = evaluateClinicHealth(
       [
         {
@@ -41,7 +41,7 @@ describe("clinic health", () => {
     expect(report.degradedClinics[0]?.issues).toContain("sem playbook ativo");
   });
 
-  it("marks active clinics as degraded when the channel health probe fails", () => {
+  it("marks active organizations as degraded when the channel health probe fails", () => {
     const report = evaluateClinicHealth(
       [
         {
@@ -68,7 +68,7 @@ describe("clinic health", () => {
     );
   });
 
-  it("keeps health ok when active clinics are configured and only warns on stale metrics", () => {
+  it("keeps health ok when active organizations are configured and only warns on stale metrics", () => {
     const report = evaluateClinicHealth(
       [
         {

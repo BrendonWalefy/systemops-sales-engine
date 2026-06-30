@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinics,
+  organizations,
   playbookVersions,
   treatments,
 } from "@/infrastructure/db/schema";
@@ -57,7 +57,7 @@ export async function saveWizardIdentity(
     return { success: false, error: "Sem permissão" };
   try {
     await db
-      .update(clinics)
+      .update(organizations)
       .set({
         ...data,
         zapiToken: encryptCredentialNullable(data.zapiToken),
@@ -65,7 +65,7 @@ export async function saveWizardIdentity(
         metaAccessToken: encryptCredentialNullable(data.metaAccessToken),
         updatedAt: new Date(),
       })
-      .where(eq(clinics.id, clinicId));
+      .where(eq(organizations.id, clinicId));
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Erro" };
@@ -112,9 +112,9 @@ export async function saveWizardSchedule(
     return { success: false, error: "Sem permissão" };
   try {
     await db
-      .update(clinics)
+      .update(organizations)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(clinics.id, clinicId));
+      .where(eq(organizations.id, clinicId));
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Erro" };
@@ -246,8 +246,8 @@ export async function saveWizardPolicy(
     const pvId = await getActivePlaybookId(clinicId);
     if (!pvId)
       return { success: false, error: "Playbook ativo não encontrado" };
-    const clinic = await db.query.clinics.findFirst({
-      where: eq(clinics.id, clinicId),
+    const clinic = await db.query.organizations.findFirst({
+      where: eq(organizations.id, clinicId),
       columns: {
         autoReplyEnabled: true,
         operationalStatus: true,
@@ -273,7 +273,7 @@ export async function saveWizardPolicy(
       .where(eq(playbookVersions.id, pvId));
 
     await db
-      .update(clinics)
+      .update(organizations)
       .set({
         plan: commercial.plan,
         operationalStatus: resolveOperationalStatusFromAutomationState({
@@ -286,7 +286,7 @@ export async function saveWizardPolicy(
         isTest: commercial.isTest,
         updatedAt: new Date(),
       })
-      .where(eq(clinics.id, clinicId));
+      .where(eq(organizations.id, clinicId));
 
     return { success: true };
   } catch (e) {

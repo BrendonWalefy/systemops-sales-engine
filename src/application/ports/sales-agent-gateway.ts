@@ -1,4 +1,4 @@
-import type { Clinic } from "@/domain/entities/clinic";
+import type { Organization } from "@/domain/entities/clinic";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 
@@ -8,7 +8,7 @@ export type AvailableSlot = {
 };
 
 export type SalesAgentInput = {
-  clinic: Clinic;
+  clinic: Organization;
   lead: Lead;
   conversation: Conversation;
   messages: Message[];

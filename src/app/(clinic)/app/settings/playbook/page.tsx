@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canEditPrices } from "@/application/tenancy/member-role";
-import { clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { organizations, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
@@ -15,22 +15,22 @@ async function getData() {
   const [clinic, versions, treatments, activeModules, memberProfile] = await Promise.all([
     db
       .select({
-        name: clinics.name,
-        autoReplyEnabled: clinics.autoReplyEnabled,
-        takeoverTtlHours: clinics.takeoverTtlHours,
-        postAppointmentBufferMinutes: clinics.postAppointmentBufferMinutes,
-        businessHours: clinics.businessHours,
-        greetingMessage: clinics.greetingMessage,
-        menuItems: clinics.menuItems,
-        receptionistPhone: clinics.receptionistPhone,
-        staleConversationHours: clinics.staleConversationHours,
-        slotLookaheadDays: clinics.slotLookaheadDays,
-        mediaTakeoverTtlHours: clinics.mediaTakeoverTtlHours,
-        installmentRates: clinics.installmentRates,
-        serviceNoun: clinics.serviceNoun,
+        name: organizations.name,
+        autoReplyEnabled: organizations.autoReplyEnabled,
+        takeoverTtlHours: organizations.takeoverTtlHours,
+        postAppointmentBufferMinutes: organizations.postAppointmentBufferMinutes,
+        businessHours: organizations.businessHours,
+        greetingMessage: organizations.greetingMessage,
+        menuItems: organizations.menuItems,
+        receptionistPhone: organizations.receptionistPhone,
+        staleConversationHours: organizations.staleConversationHours,
+        slotLookaheadDays: organizations.slotLookaheadDays,
+        mediaTakeoverTtlHours: organizations.mediaTakeoverTtlHours,
+        installmentRates: organizations.installmentRates,
+        serviceNoun: organizations.serviceNoun,
       })
-      .from(clinics)
-      .where(eq(clinics.id, clinicId))
+      .from(organizations)
+      .where(eq(organizations.id, clinicId))
       .limit(1)
       .then((r) => r[0] ?? null),
     db

@@ -3,7 +3,7 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { clinics } from "@/infrastructure/db/schema";
+import { organizations } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -50,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     const clinicId = await getSessionClinicId();
     if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
-    const [clinicRow] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+    const [clinicRow] = await db.select().from(organizations).where(eq(organizations.id, clinicId)).limit(1);
     if (!clinicRow) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });
 
     const timezone = new ClinicTimezone(clinicRow.timezone);
@@ -137,7 +137,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams): Pr
     const clinicId = await getSessionClinicId();
     if (!clinicId) throw new Error("Sem clínica resolvida para a sessão");
 
-    const [clinicRow] = await db.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+    const [clinicRow] = await db.select().from(organizations).where(eq(organizations.id, clinicId)).limit(1);
     if (!clinicRow) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });
 
     const apptRepo = new DrizzleAppointmentRepository();

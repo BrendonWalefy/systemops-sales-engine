@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { db } from "@/infrastructure/db/client";
-import { clinics, playbookVersions } from "@/infrastructure/db/schema";
+import { organizations, playbookVersions } from "@/infrastructure/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
@@ -376,13 +376,13 @@ export async function POST(req: NextRequest) {
 
     if (body.clinicId && body.source === "production") {
       // Modo 1b — espelho REAL da produção: lê a versão ativa via o mesmo
-      // resolver que o runtime usa. Antes lia clinics.* e divergia da produção.
+      // resolver que o runtime usa. Antes lia organizations.* e divergia da produção.
       const [editorial, clinicRow] = await Promise.all([
         resolveActiveEditorialConfig(body.clinicId),
         db
-          .select({ specialty: clinics.specialty, greetingMessage: clinics.greetingMessage })
-          .from(clinics)
-          .where(eq(clinics.id, body.clinicId))
+          .select({ specialty: organizations.specialty, greetingMessage: organizations.greetingMessage })
+          .from(organizations)
+          .where(eq(organizations.id, body.clinicId))
           .limit(1)
           .then((r) => r[0] ?? null),
       ]);
@@ -414,9 +414,9 @@ export async function POST(req: NextRequest) {
           .limit(1)
           .then((r) => r[0] ?? null),
         db
-          .select({ greetingMessage: clinics.greetingMessage })
-          .from(clinics)
-          .where(eq(clinics.id, body.clinicId))
+          .select({ greetingMessage: organizations.greetingMessage })
+          .from(organizations)
+          .where(eq(organizations.id, body.clinicId))
           .limit(1)
           .then((r) => r[0] ?? null),
       ]);
@@ -449,15 +449,15 @@ export async function POST(req: NextRequest) {
     const [clinic, activeModules] = await Promise.all([
       db
         .select({
-          name: clinics.name,
-          timezone: clinics.timezone,
-          businessHours: clinics.businessHours,
-          defaultAppointmentDurationMinutes: clinics.defaultAppointmentDurationMinutes,
-          menuItems: clinics.menuItems,
-          address: clinics.address,
+          name: organizations.name,
+          timezone: organizations.timezone,
+          businessHours: organizations.businessHours,
+          defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
+          menuItems: organizations.menuItems,
+          address: organizations.address,
         })
-        .from(clinics)
-        .where(eq(clinics.id, clinicLookupId))
+        .from(organizations)
+        .where(eq(organizations.id, clinicLookupId))
         .limit(1)
         .then((r) => r[0]),
       getClinicModules(clinicLookupId),

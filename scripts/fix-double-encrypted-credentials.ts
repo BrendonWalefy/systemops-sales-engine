@@ -3,7 +3,7 @@
 import { createDecipheriv } from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../src/infrastructure/db/client";
-import { clinics } from "../src/infrastructure/db/schema";
+import { organizations } from "../src/infrastructure/db/schema";
 import {
   isEncryptedCredential,
 } from "../src/infrastructure/crypto/credential-vault";
@@ -51,13 +51,13 @@ async function main() {
   const clinicFilter = process.argv[2]?.trim().toLowerCase() ?? null;
 
   const rows = await db.select({
-    id: clinics.id,
-    slug: clinics.slug,
-    name: clinics.name,
-    zapiToken: clinics.zapiToken,
-    zapiClientToken: clinics.zapiClientToken,
-    metaAccessToken: clinics.metaAccessToken,
-  }).from(clinics);
+    id: organizations.id,
+    slug: organizations.slug,
+    name: organizations.name,
+    zapiToken: organizations.zapiToken,
+    zapiClientToken: organizations.zapiClientToken,
+    metaAccessToken: organizations.metaAccessToken,
+  }).from(organizations);
 
   let fixed = 0;
 
@@ -77,12 +77,12 @@ async function main() {
 
     if (!changed) continue;
 
-    await db.update(clinics).set({
+    await db.update(organizations).set({
       zapiToken: nextZapiToken,
       zapiClientToken: nextZapiClientToken,
       metaAccessToken: nextMetaAccessToken,
       updatedAt: new Date(),
-    }).where(eq(clinics.id, row.id));
+    }).where(eq(organizations.id, row.id));
 
     fixed += 1;
     console.log(`fixed ${row.slug ?? row.name}`);

@@ -36,7 +36,7 @@ export const CONCIERGE_MENU_ITEMS: MenuItem[] = [
 export type { TtsConfig, TtsProvider } from "./tts-config";
 export { DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, ttsConfigFromVoice } from "./tts-config";
 
-export type Clinic = {
+export type Organization = {
   id: string;
   name: string;
   specialty: string;

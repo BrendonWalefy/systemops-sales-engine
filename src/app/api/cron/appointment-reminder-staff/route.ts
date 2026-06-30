@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { db } from "@/infrastructure/db/client";
-import { appointments, clinics, leads } from "@/infrastructure/db/schema";
+import { appointments, organizations, leads } from "@/infrastructure/db/schema";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
@@ -24,9 +24,9 @@ type ClinicResult = { tomorrowCount: number; pendingCount: number };
 
 async function processClinic(clinicId: string): Promise<ClinicResult> {
   const [clinic] = await db
-    .select({ timezone: clinics.timezone, name: clinics.name })
-    .from(clinics)
-    .where(eq(clinics.id, clinicId))
+    .select({ timezone: organizations.timezone, name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, clinicId))
     .limit(1);
 
   if (!clinic) return { tomorrowCount: 0, pendingCount: 0 };
