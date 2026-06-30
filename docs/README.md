@@ -13,12 +13,17 @@ verdade.
 - [Infraestrutura de mídia](architecture/media-infrastructure.md)
 - [Fontes de verdade por tipo de dado](architecture/sources-of-truth.md)
 
+### ADRs
+
+- [ADR-001: Renomear domínio Clinic → Organization](architecture/adr/adr-001-clinic-to-organization-rename.md)
+
 ## Operação
 
 - [Change control e deploy safety](operations/change-control.md)
 - [Onboarding de clínica](operations/onboarding-clinica.md)
 - [Baseline de migrations](operations/migrations-baseline.md)
 - [Controle de spend Vercel Pro](operations/vercel-pro-spend-control.md)
+- [Backlog: Staging com CI para migrations](operations/backlog-staging-ci-migrations.md)
 
 ## Produto e Expansão
 

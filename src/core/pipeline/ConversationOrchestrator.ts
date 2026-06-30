@@ -37,6 +37,7 @@ import { ConversationStateMachine } from "@/core/conversation/ConversationStateM
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer, parseIntoParts } from "@/core/intelligence/ResponseComposer";
 import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
+import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -801,6 +802,7 @@ function buildClinic(row: ClinicRow): Clinic {
     id: row.id,
     name: row.name,
     specialty: row.specialty,
+    segment: row.segment,
     city: row.city,
     address: row.address ?? null,
     timezone: row.timezone,
@@ -823,6 +825,11 @@ function buildClinic(row: ClinicRow): Clinic {
     mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
     rapidThrottleMs: row.rapidThrottleMs,
     messageDebounceMs: row.messageDebounceMs ?? null,
+    serviceNoun: row.serviceNoun,
+    bookingNoun: row.bookingNoun,
+    contactNoun: row.contactNoun,
+    agentRole: row.agentRole,
+    businessDescriptor: row.businessDescriptor ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -1646,6 +1653,8 @@ export class ConversationOrchestrator {
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
 
+    const promptContext = buildPromptContext(clinic);
+
     const classification = rescheduleAfterReminder
       ? {
           // Lead respondeu ao lembrete D-1 pedindo para remarcar: roteia direto para o
@@ -1689,7 +1698,7 @@ export class ConversationOrchestrator {
           allMessagesForContext,
           hasPendingOffer,
           clinicTreatments.map((t) => t.name),
-          editorial?.specialty ?? clinic.specialty,
+          promptContext,
         );
 
     const { intent, slotPreference } = classification;
@@ -1766,6 +1775,7 @@ export class ConversationOrchestrator {
             mediaLibrary: editorial?.mediaLibrary ?? [],
             receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
+          context: promptContext,
           leadName: extractFirstName(lead.name),
           timezone,
           isFirstMessage,

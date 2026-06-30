@@ -234,8 +234,13 @@ export const clinics = pgTable("clinics", {
   metaAccessToken: text("meta_access_token"),
   // Terminologia adaptada por segmento (ex: "tratamento", "serviço", "procedimento")
   serviceNoun: text("service_noun").notNull().default("tratamento"),
-  // Segmento do negócio: "dental" | "barbershop" | "hair_salon" | "aesthetics" | "other"
+  // Segmento do negócio: "dental" | "barbershop" | "hair_salon" | "aesthetics" | "atelier" | "other"
   segment: text("segment").notNull().default("dental"),
+  // Vocabulário do agente — derivado do segmento, sobrescrevível por tenant
+  bookingNoun: text("booking_noun").notNull().default("consulta"),
+  contactNoun: text("contact_noun").notNull().default("paciente"),
+  agentRole: text("agent_role").notNull().default("recepcionista virtual"),
+  businessDescriptor: text("business_descriptor"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

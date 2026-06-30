@@ -40,6 +40,7 @@ export type Clinic = {
   id: string;
   name: string;
   specialty: string;
+  segment: string;
   city: string | null;
   address: string | null;
   timezone: string;
@@ -62,6 +63,12 @@ export type Clinic = {
   mediaTakeoverTtlHours: number | null;
   rapidThrottleMs: number;
   messageDebounceMs: number | null;
+  // Vocabulário configurável por segmento
+  serviceNoun: string;
+  bookingNoun: string;
+  contactNoun: string;
+  agentRole: string;
+  businessDescriptor: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

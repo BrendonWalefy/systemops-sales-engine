@@ -18,6 +18,30 @@ import { resolveInitialClinicOperationalStatus } from "@/application/clinics/cli
 import { encryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 import { syncModulesForPlan } from "@/application/modules/module-gate";
 
+const SEGMENT_VOCAB: Record<string, { bookingNoun: string; contactNoun: string; agentRole: string; businessDescriptor: string }> = {
+  atelier: {
+    bookingNoun: "entrega",
+    contactNoun: "cliente",
+    agentRole: "atendente virtual",
+    businessDescriptor: "ateliê especializado em uniformes, bordados e peças personalizadas",
+  },
+  cortinas: {
+    bookingNoun: "instalação",
+    contactNoun: "cliente",
+    agentRole: "atendente virtual",
+    businessDescriptor: "loja especializada em cortinas e persianas",
+  },
+};
+
+function resolveSegmentVocab(segment: string) {
+  return SEGMENT_VOCAB[segment] ?? {
+    bookingNoun: "consulta",
+    contactNoun: "paciente",
+    agentRole: "recepcionista virtual",
+    businessDescriptor: null,
+  };
+}
+
 export type OnboardingState = {
   ok: boolean;
   clinicId?: string;
@@ -173,6 +197,7 @@ export async function onboardClinic(
       metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
       segment: cfg.segment,
       serviceNoun: cfg.serviceNoun,
+      ...resolveSegmentVocab(cfg.segment),
       updatedAt: now,
     })
     .returning({ id: clinics.id });
