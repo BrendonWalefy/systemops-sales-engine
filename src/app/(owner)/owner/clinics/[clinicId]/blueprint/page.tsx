@@ -88,7 +88,7 @@ const SECTION_META: Record<
   treatments: {
     icon: <Stethoscope size={20} />,
     actionHref: (id) => `/owner/onboarding/${id}`,
-    actionLabel: "Cadastrar tratamentos",
+    actionLabel: "Cadastrar serviços",
   },
   objections: {
     icon: <Shield size={20} />,
