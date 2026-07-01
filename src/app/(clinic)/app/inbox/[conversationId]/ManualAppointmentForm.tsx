@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarPlus, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { DurationHoursInput } from "@/components/DurationHoursInput";
 
 interface Props {
   conversationId: string;
@@ -14,7 +15,7 @@ export function ManualAppointmentForm({ conversationId, defaultDurationMinutes, 
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [duration, setDuration] = useState(String(defaultDurationMinutes));
+  const [duration, setDuration] = useState(defaultDurationMinutes);
   const [calendarEventId, setCalendarEventId] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export function ManualAppointmentForm({ conversationId, defaultDurationMinutes, 
           body: JSON.stringify({
             date,
             time,
-            durationMinutes: Number(duration) || defaultDurationMinutes,
+            durationMinutes: duration || defaultDurationMinutes,
             calendarEventId: calendarEventId.trim() || undefined,
           }),
         });
@@ -122,16 +123,9 @@ export function ManualAppointmentForm({ conversationId, defaultDurationMinutes, 
 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
-              Duração (min)
+              Duração
             </label>
-            <input
-              type="number"
-              min={15}
-              max={480}
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              style={inputStyle}
-            />
+            <DurationHoursInput minutes={duration} onChangeMinutes={setDuration} inputStyle={inputStyle} />
           </div>
 
           <button
