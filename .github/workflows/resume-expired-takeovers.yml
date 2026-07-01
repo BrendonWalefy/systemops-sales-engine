@@ -15,4 +15,4 @@ jobs:
       - name: Call endpoint
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: bash scripts/call-cron-endpoint.sh https://systemops-core.vercel.app/api/cron/resume-expired-takeovers
+        run: bash scripts/call-cron-endpoint.sh https://systemops-sales-engine.vercel.app/api/cron/resume-expired-takeovers
