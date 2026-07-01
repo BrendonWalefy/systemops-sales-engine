@@ -11,6 +11,6 @@ jobs:
     steps:
       - name: Call endpoint
         run: |
-          curl -sf -X GET https://systemops-sales-engine.vercel.app/api/cron/stuck-conversation-sweep \
+          curl -sf -X GET https://app.systemops.com.br/api/cron/stuck-conversation-sweep \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             | jq .
