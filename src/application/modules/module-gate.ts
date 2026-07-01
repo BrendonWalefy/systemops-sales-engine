@@ -6,7 +6,9 @@ import type { OrgPlan } from "@/application/onboarding/clinic-commercial-setting
 import type { VoiceElevenLabsConfig } from "./module-configs";
 import {
   applyPlanActivations,
-  mergeRedeBWaveConfig,
+  GROWTH_VALIDATION_BWAVE_CONFIG,
+  mergeBWaveConfig,
+  REDE_RECOMMENDED_BWAVE_CONFIG,
   REDE_RECOMMENDED_TONE,
   resolvePlanModules,
   shouldApplyRedeToneRecommendation,
@@ -150,7 +152,12 @@ export async function applyClinicPlanPreset(
 ): Promise<void> {
   await syncModulesForPlan(clinicId, plan, updatedBy);
 
-  if (plan !== "rede") return;
+  // Fase de validação inicial: rede segue o preset "mix" de sempre; avancado
+  // (Growth) recebe B-WAVE completo ("full") para validar os primeiros clientes
+  // reais. Ver docs/product/pricing-strategy.md, seção 6.2.
+  if (plan !== "rede" && plan !== "avancado") return;
+  const bwaveBase =
+    plan === "rede" ? REDE_RECOMMENDED_BWAVE_CONFIG : GROWTH_VALIDATION_BWAVE_CONFIG;
 
   const [bwaveModule, activePlaybook] = await Promise.all([
     db
@@ -176,8 +183,9 @@ export async function applyClinicPlanPreset(
     }),
   ]);
 
-  const nextBWaveConfig = mergeRedeBWaveConfig(
+  const nextBWaveConfig = mergeBWaveConfig(
     (bwaveModule?.config as Partial<VoiceElevenLabsConfig> | null) ?? null,
+    bwaveBase,
   );
 
   await db
@@ -200,6 +208,7 @@ export async function applyClinicPlanPreset(
     });
 
   if (
+    plan === "rede" &&
     activePlaybook?.id &&
     shouldApplyRedeToneRecommendation(activePlaybook.toneOfVoice)
   ) {

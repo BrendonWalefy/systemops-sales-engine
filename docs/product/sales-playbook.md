@@ -65,39 +65,49 @@ Se forem mais de 5, mostre que o retorno do investimento já está garantido.
 
 ## 5. Planos e preços
 
+> **Fonte oficial dos preços e limites:** `docs/product/pricing-strategy.md`.
+> A tabela abaixo é só o resumo usado no discurso de vendas — sempre confira o
+> documento oficial antes de fechar contrato, pois valores podem mudar sem atualizar
+> este script.
+
 | Plano | Preço | Para quem |
 |-------|-------|-----------|
-| **Essencial** | R$ 897/mês | Clínica começando com IA, até 150 leads/mês |
-| **Clínica** ⭐ | R$ 1.497/mês | Clínica em crescimento, leads ilimitados + personalização |
-| **Rede** | R$ 2.997/mês | Grupos com 2-3 unidades, painel centralizado |
+| **Start** | R$ 1.300/mês | Clínica começando com IA, ~300 conversas/mês |
+| **Growth** ⭐ | R$ 2.300/mês | Clínica em crescimento com tráfego pago ativo |
+| **Scale** | R$ 3.500/mês | Alto volume, múltiplos profissionais, voz premium |
 
-**Desconto anual:** 2 meses grátis (equivale a ~16% de desconto).
+**Desconto anual:** 2 meses grátis (equivale a ~16% de desconto). Nunca dar desconto no
+valor mensal — só no plano anual ou no setup.
+
+**Multi-unidade/rede não está no catálogo.** Se perguntado: "hoje atendemos cada
+unidade com contrato próprio; multi-unidade está no roadmap."
 
 ### O que cada plano inclui
 
-**Essencial (R$ 897/mês)**
+**Start (R$ 1.300/mês)**
 - 1 número WhatsApp conectado
 - Recepcionista IA ativa 24h / 7 dias
-- Agendamento automático no Google Calendar
+- Agendamento automático (agenda interna ou Google Calendar)
 - Smart Inbox (painel de conversas + histórico)
-- Até 150 leads atendidos/mês
-- Relatório mensal de conversão
+- ~300 conversas atendidas/mês
+- Follow-up automático (cadência padrão)
+- Voz por IA (OpenAI, 3 modos configuráveis — impact/mix/full)
 - Suporte por e-mail em até 48h
 
-**Clínica (R$ 1.497/mês) — RECOMENDADO**
-- Tudo do Essencial, mais:
-- Leads ilimitados
-- Playbook personalizado com tom de voz da clínica
-- Follow-up automático de re-engajamento
-- Classificação de temperatura dos leads (frio / morno / quente)
-- Alerta de handoff quando o lead precisa de atendimento humano
+**Growth (R$ 2.300/mês) — RECOMENDADO**
+- Tudo do Start, mais:
+- ~800 conversas/mês, playbooks ilimitados
+- Playbook personalizado com AI co-writer
+- Recuperação automática de leads parados
+- Recomendação de resposta ao operador
+- Biblioteca de mídia (vídeos/áudios no atendimento)
 - Suporte via WhatsApp em até 4h úteis
 
-**Rede (R$ 2.997/mês)**
-- Tudo do Clínica, mais:
-- Até 3 unidades no mesmo painel
-- Dashboard centralizado do proprietário
-- Onboarding dedicado de configuração (presencial ou videochamada)
+**Scale (R$ 3.500/mês)**
+- Tudo do Growth, mais:
+- ~2.000 conversas/mês, até 2 números WhatsApp
+- Voz premium B-WAVE (ElevenLabs) — hiper-realista, add-on incluso dentro do limite
+- Onboarding dedicado de configuração
 - SLA de resposta em 2h
 - Reunião mensal de resultado com análise de métricas
 
@@ -111,7 +121,7 @@ Se forem mais de 5, mostre que o retorno do investimento já está garantido.
 
 Se for R$ 1.500 (conservador para odonto):
 
-> *"O plano Clínica custa R$ 1.497. Se a IA recuperar apenas 1 lead por mês que vocês perderiam fora do horário, o sistema já se paga. Em clínicas com volume parecido, a meta inicial é recuperar de 5 a 10 consultas por mês que antes iam embora."*
+> *"O plano Growth custa R$ 2.300. Se a IA recuperar apenas 1 lead por mês que vocês perderiam fora do horário, o sistema já se paga. Em clínicas com volume parecido, a meta inicial é recuperar de 5 a 10 consultas por mês que antes iam embora."*
 
 ---
 
@@ -172,7 +182,7 @@ Objetivo: fazer o prospect perceber o tamanho da perda antes de apresentar a sol
 ---
 
 ### Passo 4 — Proposta (imediato ou até 24h)
-- Recomendar o plano Clínica como padrão
+- Recomendar o plano Growth como padrão
 - Enviar proposta em PDF ou link de pagamento (Stripe / Hotmart / PIX recorrente)
 - Incluir: garantia de 7 dias ou dinheiro de volta
 - Prazo de resposta da proposta: 48h
@@ -211,10 +221,10 @@ Leads perdidos/mês fora do horário: ~[Y]
 Recuperação estimada com IA: 40-60% desses leads
 
 Receita adicional/mês = X × Y × 0,5
-ROI = Receita adicional / R$ 1.497 (plano Clínica)
+ROI = Receita adicional / R$ 2.300 (plano Growth)
 
 Exemplo: R$ 2.000 ticket × 8 leads perdidos × 50% = R$ 8.000
-ROI = 8.000 / 1.497 = 534% ao mês
+ROI = 8.000 / 2.300 = 348% ao mês
 ```
 
 ---

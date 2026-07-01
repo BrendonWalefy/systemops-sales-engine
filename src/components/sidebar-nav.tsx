@@ -136,7 +136,12 @@ function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, cl
         </form>
 
         <div className="sidebar-footer">
-          <div className="sidebar-account-avatar">{initials(clinicName)}</div>
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica do Vercel Blob, sem domain configurado em next.config
+            <img src={avatarUrl} alt="Avatar" className="sidebar-account-avatar sidebar-account-avatar-img" />
+          ) : (
+            <div className="sidebar-account-avatar">{initials(clinicName)}</div>
+          )}
           <span className="footer-label" title={`${clinicName} · ${email ?? "SystemOps"}`}>
             <strong>{clinicName}</strong>
             <small>{email ?? "SystemOps"}</small>

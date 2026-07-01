@@ -65,6 +65,32 @@ Estes limites devem ser monitorados antes de fazer upgrade:
 
 ---
 
+## Capacidade Real de Conversas — Infra Atual (jul/2026)
+
+Cálculo derivado do piloto Ximendes: 36 conversas consumiram 16 de 100 CU-hrs/mês do
+Neon Free tier em 12 dias → **≈ 0,44 CU-hr por conversa**.
+
+Extrapolando para o teto do Neon Free (100 CU-hrs/mês):
+
+**≈ 225 conversas/mês é o teto real da infra atual, agregando TODAS as clínicas juntas**
+— não é por clínica. É uma extrapolação de amostra pequena (36 conversas), a validar
+com uso real dos primeiros clientes pagantes.
+
+Implicação direta para os planos comerciais (`docs/product/pricing-strategy.md`):
+- 1 cliente Growth sozinho (fair use ~800 conversas/mês) já ultrapassa esse teto em
+  ~3-4x.
+- 1 cliente Start sozinho (fair use ~300 conversas/mês) já ultrapassa o teto.
+- A tabela de "Projeção por Escala" abaixo (gatilho de upgrade do Neon "a partir de 15
+  clínicas") estava otimista demais — foi calculada por custo médio por clínica, não
+  pelo teto de CU-hrs do tier gratuito. **Correção: provisionar Neon Launch (US$19/mês)
+  antes de ativar o primeiro cliente pago**, não esperar volume.
+- Vercel Hobby roda `message-worker`/`sender-worker` a cada minuto
+  (`vercel.json`) — confirmar se o plano atual realmente sustenta essa frequência antes
+  de escalar (Vercel historicamente restringe frequência de cron no tier gratuito;
+  não temos essa confirmação registrada em produção ainda).
+- Resto da infra tem folga grande: Neon Storage 2% usado, Network 4% usado. Z-API é
+  custo fixo e linear por instância (~R$80/clínica/mês), já refletido na tabela abaixo.
+
 ## Projeção por Escala
 
 | Clínicas | Z-API | OpenAI | Vercel/Neon | Total infra/mês | MRR mín. | Margem |
