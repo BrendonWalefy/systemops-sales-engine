@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { OrgPlan } from "./clinic-commercial-settings";
+import { SEGMENT_KEYS } from "./segment-options";
 
 /**
  * VALIDAÇÃO ÚNICA DE ONBOARDING.
@@ -59,7 +60,7 @@ export const onboardingConfigSchema = z.object({
     .min(1, "slug obrigatório")
     .regex(/^[a-z0-9-]+$/, "slug só pode ter minúsculas, números e hífen"),
   specialty: z.string().trim().default("odontology"),
-  segment: z.enum(["dental", "barbershop", "hair_salon", "aesthetics", "atelier", "cortinas", "other"]).default("dental"),
+  segment: z.enum(SEGMENT_KEYS).default("dental"),
   serviceNoun: z.string().trim().min(1).default("tratamento"),
   timezone: z.string().trim().default("America/Sao_Paulo"),
   businessHours: z.string().trim().optional(),

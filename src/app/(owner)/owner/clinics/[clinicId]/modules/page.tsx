@@ -112,7 +112,7 @@ export default async function ClinicModulesPage({
               }}
             >
               <option value="essencial">Essencial</option>
-              <option value="avancado">Clínica</option>
+              <option value="avancado">Growth</option>
               <option value="rede">Rede</option>
               <option value="custom">Custom</option>
             </select>

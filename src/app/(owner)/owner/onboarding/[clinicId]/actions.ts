@@ -253,7 +253,7 @@ export async function saveWizardPolicy(
         operationalStatus: true,
       },
     });
-    if (!clinic) return { success: false, error: "Clínica não encontrada" };
+    if (!clinic) return { success: false, error: "Organização não encontrada" };
 
     const commercial = resolveClinicCommercialSettings({
       plan: data.plan,

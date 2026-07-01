@@ -155,7 +155,7 @@ export function ResetClinicDialog({
               /* Resultado */
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <p style={{ margin: 0, fontSize: 13, color: "var(--accent-strong)", fontWeight: 600 }}>
-                  Clínica zerada com sucesso.
+                  Organização zerada com sucesso.
                 </p>
                 <div style={{ background: "var(--surface-soft)", borderRadius: 8, padding: "12px 14px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px" }}>
                   {Object.entries({
@@ -198,7 +198,7 @@ export function ResetClinicDialog({
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)", lineHeight: 1.6 }}>
                   Isso apagará permanentemente todos os <strong>leads, conversas, mensagens,
-                  agendamentos, bloqueios e custos</strong> desta clínica. As configurações e tratamentos
+                  agendamentos, bloqueios e custos</strong> desta organização. As configurações e serviços
                   serão preservados.
                 </p>
 
@@ -228,7 +228,7 @@ export function ResetClinicDialog({
                       Apagar também no Google Calendar
                     </p>
                     <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
-                      Remove os eventos de teste do calendário da clínica. Eventos sem ID são ignorados.
+                      Remove os eventos de teste do calendário da organização. Eventos sem ID são ignorados.
                     </p>
                   </div>
                 </label>

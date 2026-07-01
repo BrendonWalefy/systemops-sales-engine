@@ -125,9 +125,9 @@ export function buildClinicBlueprint(
     createSection(
       "identity",
       "Identidade",
-      "Posicionamento básico da clínica para a IA e confirmações.",
+      "Posicionamento básico da organização para a IA e confirmações.",
       [
-        !normalize(clinic.specialty) ? "especialidade principal" : null,
+        !normalize(clinic.specialty) ? "categoria principal" : null,
         !normalize(clinic.city) ? "cidade" : null,
         !normalize(clinic.address) ? "endereço" : null,
         !normalize(clinic.greetingMessage) ? "mensagem de boas-vindas" : null,
@@ -136,7 +136,7 @@ export function buildClinicBlueprint(
     createSection(
       "channel",
       "Canal",
-      "Canal oficial da clínica e rota de handoff humano.",
+      "Canal oficial da organização e rota de handoff humano.",
       [
         !clinic.channelProvider ? "provedor do WhatsApp" : null,
         !hasChannel ? "credenciais completas do canal" : null,
@@ -155,7 +155,7 @@ export function buildClinicBlueprint(
         !normalize(clinic.businessHours) ? "horário comercial" : null,
         !clinic.defaultAppointmentDurationMinutes ? "duração padrão" : null,
         clinic.postAppointmentBufferMinutes == null
-          ? "buffer pós-consulta"
+          ? "buffer pós-atendimento"
           : null,
         clinic.takeoverTtlHours == null ? "janela de takeover humano" : null,
         usesGoogleCalendar && !normalize(clinic.googleCalendarId)
@@ -176,7 +176,7 @@ export function buildClinicBlueprint(
     createSection(
       "commercial",
       "Comercial",
-      "Plano, valor contratado e status de cobrança da clínica.",
+      "Plano, valor contratado e status de cobrança da organização.",
       [
         !clinic.plan ? "plano comercial" : null,
         clinic.plan === "custom" ? "plano final ainda não definido" : null,
@@ -190,12 +190,12 @@ export function buildClinicBlueprint(
     ),
     createSection(
       "treatments",
-      "Tratamentos",
-      `${treatments.length} tratamento(s) cadastrados, ${treatmentsWithPipeline} com pipeline ativo.`,
+      "Serviços",
+      `${treatments.length} serviço(s) cadastrados, ${treatmentsWithPipeline} com pipeline ativo.`,
       [
-        treatments.length === 0 ? "cadastro de tratamentos" : null,
+        treatments.length === 0 ? "cadastro de serviços" : null,
         treatments.length > 0 && treatmentsWithPipeline === 0
-          ? "pipeline configurado em ao menos 1 tratamento"
+          ? "pipeline configurado em ao menos 1 serviço"
           : null,
       ],
     ),
@@ -253,7 +253,7 @@ export function buildClinicBlueprint(
     );
 
   const goLiveChecks = [
-    clinic.isTest ? "clínica ainda está marcada como ambiente de teste" : null,
+    clinic.isTest ? "organização ainda está marcada como ambiente de teste" : null,
     !clinic.autoReplyEnabled ? "IA ainda está pausada" : null,
     ...sections
       .filter(
@@ -274,8 +274,8 @@ export function buildClinicBlueprint(
     title: "Go-live",
     missing: goLiveMissing,
     summary: clinic.autoReplyEnabled
-      ? "IA pronta para operar quando a clínica estiver validada."
-      : "A clínica ainda depende de validação final antes de ativar a IA.",
+      ? "IA pronta para operar quando a organização estiver validada."
+      : "A organização ainda depende de validação final antes de ativar a IA.",
     status: statusFromMissing(goLiveMissing, goLiveChecks.length),
   });
 

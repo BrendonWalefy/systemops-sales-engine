@@ -72,7 +72,7 @@ export function ArchiveClinicDialog({
         }}
       >
         <Archive size={13} />
-        Arquivar clínica
+        Arquivar organização
       </button>
 
       {open && (
@@ -118,7 +118,7 @@ export function ArchiveClinicDialog({
                   <AlertTriangle size={18} color="var(--danger)" />
                 </div>
                 <div>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>Arquivar clínica</p>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>Arquivar organização</p>
                   <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>
                     Reversível — nenhum dado é apagado
                   </p>
@@ -136,7 +136,7 @@ export function ArchiveClinicDialog({
             {done ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <p style={{ margin: 0, fontSize: 13, color: "var(--accent-strong)", fontWeight: 600 }}>
-                  Clínica arquivada. A IA foi desligada e ela saiu dos KPIs de faturamento.
+                  Organização arquivada. A IA foi desligada e ela saiu dos KPIs de faturamento.
                 </p>
                 <button
                   onClick={handleClose}
@@ -157,10 +157,10 @@ export function ArchiveClinicDialog({
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)", lineHeight: 1.6 }}>
-                  Isso desliga a IA, encerra o shadow mode e move a clínica para
+                  Isso desliga a IA, encerra o shadow mode e move a organização para
                   &quot;Cancelada&quot; — ela some da visão ativa e do faturamento, mas
                   <strong> nenhum lead, conversa ou agendamento é apagado</strong>. Pode ser
-                  revertido a qualquer momento pelo botão &quot;Reativar clínica&quot;.
+                  revertido a qualquer momento pelo botão &quot;Reativar organização&quot;.
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

@@ -9,6 +9,8 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { hashPassword } from "@/lib/password";
 import { resolveClinicCommercialSettings } from "@/application/onboarding/clinic-commercial-settings";
 import { resolveInitialClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
+import { resolveSegmentDefaults } from "@/application/onboarding/segment-options";
+import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 
 export type ProspectState = {
   ok: boolean;
@@ -46,7 +48,9 @@ export async function createProspectClinic(
   }
 
   const name = (formData.get("name") as string | null)?.trim() ?? "";
-  const specialty = (formData.get("specialty") as string | null)?.trim() || "odontologia";
+  const segment = (formData.get("segment") as string | null)?.trim() || "dental";
+  const segmentDefaults = resolveSegmentDefaults(segment);
+  const specialty = (formData.get("specialty") as string | null)?.trim() || segmentDefaults.specialtyDefault;
   const city = (formData.get("city") as string | null)?.trim() || null;
   const plan = (formData.get("plan") as string | null) as
     | "essencial"
@@ -95,6 +99,9 @@ export async function createProspectClinic(
       monthlyRevenueBrl: commercialSettings.monthlyRevenueBrl,
       isTest: false,
       autoReplyEnabled: false,
+      segment,
+      serviceNoun: segmentDefaults.serviceNoun,
+      ...resolveSegmentVocab(segment),
       updatedAt: now,
     })
     .returning({ id: organizations.id });

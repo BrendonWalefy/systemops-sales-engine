@@ -45,7 +45,7 @@ describe("buildClinicBlueprint", () => {
     ).toContain("credenciais completas do canal");
     expect(
       result.sections.find((section) => section.id === "go_live")?.missing,
-    ).toContain("clínica ainda está marcada como ambiente de teste");
+    ).toContain("organização ainda está marcada como ambiente de teste");
   });
 
   it("marks the blueprint as complete when clinic is operationally ready", () => {

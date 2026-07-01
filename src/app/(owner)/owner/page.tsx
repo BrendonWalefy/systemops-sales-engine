@@ -380,7 +380,7 @@ export default async function OwnerPage() {
       <div className="product-topbar">
         <div>
           <p className="eyebrow">Owner Panel</p>
-          <h1>Visão geral das clínicas</h1>
+          <h1>Visão geral das organizações</h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
             Mês atual · {activeRows.length} ativa
             {activeRows.length !== 1 ? "s" : ""}
@@ -412,7 +412,7 @@ export default async function OwnerPage() {
             + Diagnóstico rápido
           </Link>
           <Link href="/owner/clinics/new" className="primary-button">
-            Clínica completa
+            Organização completa
           </Link>
           <LoadDemoClinicButton />
         </div>
@@ -653,7 +653,7 @@ export default async function OwnerPage() {
         {liveRows.length === 0 ? (
           <div className="empty-state">
             <p style={{ margin: 0 }}>
-              Nenhuma clínica operacional ativa ou pausada.
+              Nenhuma organização operacional ativa ou pausada.
             </p>
           </div>
         ) : (
@@ -672,11 +672,11 @@ export default async function OwnerPage() {
               }}
             >
               <p className="eyebrow" style={{ margin: 0 }}>
-                Clínicas operacionais
+                Organizações operacionais
               </p>
             </div>
 
-            {/* Mobile: cards por clínica */}
+            {/* Mobile: cards por organização */}
             <div className="mobile-clinic-cards">
               {liveRows.map((clinic) => {
                 const conversion =
@@ -783,7 +783,7 @@ export default async function OwnerPage() {
                     }}
                   >
                     {[
-                      "Clínica",
+                      "Organização",
                       "Leads/mês",
                       "Conversão",
                       "Custo IA+WA",
@@ -1150,7 +1150,7 @@ export default async function OwnerPage() {
               }}
             >
               <p className="eyebrow" style={{ margin: 0, color: "#f87171" }}>
-                Clínicas canceladas
+                Organizações canceladas
               </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>

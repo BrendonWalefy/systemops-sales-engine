@@ -50,7 +50,7 @@ const PLAN_PRICE_BRL: Record<string, number> = {
 
 const PLAN_LABEL: Record<string, string> = {
   essencial: "Essencial",
-  clinica: "Clínica",
+  clinica: "Growth",
   rede: "Rede",
   custom: "Customizado",
 };
@@ -331,7 +331,7 @@ export default async function FinanceiroPage() {
           ))}
         </div>
 
-        {/* Alerta de clínicas sem valor configurado */}
+        {/* Alerta de organizações sem valor configurado */}
         {unconfiguredClinics.length > 0 && (
           <div
             style={{
@@ -349,8 +349,11 @@ export default async function FinanceiroPage() {
               style={{ color: "var(--warning)", flexShrink: 0 }}
             />
             <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)" }}>
-              <strong>{unconfiguredClinics.length} clínica(s)</strong> sem plano
-              configurado: {unconfiguredClinics.map((c) => c.name).join(", ")}.
+              <strong>
+                {unconfiguredClinics.length}{" "}
+                {unconfiguredClinics.length === 1 ? "organização" : "organizações"}
+              </strong>{" "}
+              sem plano configurado: {unconfiguredClinics.map((c) => c.name).join(", ")}.
               Configure o plano na tabela abaixo.
             </p>
           </div>
@@ -419,7 +422,8 @@ export default async function FinanceiroPage() {
               {formatBrl(mrr)}
             </span>
             <span className="metric-context">
-              {nProdClinics} clínica{nProdClinics !== 1 ? "s" : ""} ativas
+              {nProdClinics}{" "}
+              {nProdClinics === 1 ? "organização ativa" : "organizações ativas"}
             </span>
           </div>
 
@@ -632,8 +636,11 @@ export default async function FinanceiroPage() {
                         color: "#818cf8",
                       }}
                     >
-                      Infra de testes ({nTestClinics} clínica
-                      {nTestClinics !== 1 ? "s" : ""})
+                      Infra de testes (
+                      {nTestClinics === 1
+                        ? "1 organização"
+                        : `${nTestClinics} organizações`}
+                      )
                     </span>
                     <span style={{ fontSize: 11, color: "var(--muted)" }}>
                       Z-API + IA · não entra no MRR
@@ -689,7 +696,7 @@ export default async function FinanceiroPage() {
           </div>
         </div>
 
-        {/* Receita por clínica — produção */}
+        {/* Receita por organização — produção */}
         {billableClinics.length > 0 && (
           <div
             style={{
@@ -706,7 +713,7 @@ export default async function FinanceiroPage() {
               }}
             >
               <p className="eyebrow" style={{ margin: 0 }}>
-                Receita por clínica operacional
+                Receita por organização operacional
               </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
@@ -902,7 +909,7 @@ export default async function FinanceiroPage() {
           </div>
         )}
 
-        {/* Clínicas de teste */}
+        {/* Organizações de teste */}
         {testClinics.length > 0 && (
           <div
             style={{
@@ -1004,7 +1011,7 @@ export default async function FinanceiroPage() {
               }}
             >
               <p className="eyebrow" style={{ margin: 0, color: "#f87171" }}>
-                Clínicas canceladas
+                Organizações canceladas
               </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
@@ -1147,7 +1154,7 @@ export default async function FinanceiroPage() {
             }}
           >
             <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-              Projeção para 5 clínicas: ~R$518/mês de custo · ~R$4.485/mês MRR ·
+              Projeção para 5 organizações: ~R$518/mês de custo · ~R$4.485/mês MRR ·
               margem ~88%. Inclui Vercel Pro; Neon permanece no free tier enquanto
               a franquia comportar a operação.
             </p>
@@ -1159,7 +1166,7 @@ export default async function FinanceiroPage() {
           Cotação USD/BRL utilizada: R${USD_TO_BRL.toFixed(2)} (estimativa
           estática). Custos de IA em USD são convertidos apenas para referência.
           {(nTestClinics > 0 || prospectClinics.length > 0) &&
-            " Clínicas de teste e prospect são excluídas do MRR e da margem."}{" "}
+            " Organizações de teste e prospect são excluídas do MRR e da margem."}{" "}
           Custos de infra auditados em jun/2026: Vercel Pro ({formatBrl(INFRA_FIXED_BRL.vercel)}), Neon Free
           (R$0), Z-API R$79,99/instância. O Spend Management da Vercel mede
           apenas excedente de uso, não a mensalidade do plano.
