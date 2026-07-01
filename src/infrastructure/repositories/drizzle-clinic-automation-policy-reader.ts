@@ -10,6 +10,7 @@ export class DrizzleClinicAutomationPolicyReader implements ClinicAutomationPoli
       .select({
         autoReplyEnabled: organizations.autoReplyEnabled,
         operationalStatus: organizations.operationalStatus,
+        shadowModeEnabled: organizations.shadowModeEnabled,
       })
       .from(organizations)
       .where(eq(organizations.id, clinicId))

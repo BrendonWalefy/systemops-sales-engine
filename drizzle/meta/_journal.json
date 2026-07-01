@@ -344,6 +344,13 @@
       "when": 1782865714493,
       "tag": "0048_rename_clinic_enums_to_org",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1782878713552,
+      "tag": "0049_zippy_scorpion",
+      "breakpoints": true
     }
   ]
 }

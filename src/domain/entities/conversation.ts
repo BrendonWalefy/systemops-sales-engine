@@ -16,6 +16,8 @@ export type Message = {
   externalId: string | null;
   intent?: string | null;
   deliveryFormat?: "text" | "audio" | null;
+  /** true quando composta em shadow mode: nunca foi enviada de verdade ao lead. */
+  simulated?: boolean;
 };
 
 export type Conversation = {

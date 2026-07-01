@@ -61,6 +61,7 @@ type ClinicRow = {
   name: string;
   autoReplyEnabled: boolean;
   operationalStatus: ClinicOperationalStatus;
+  shadowModeEnabled: boolean;
   leadsThisMonth: number;
   scheduledThisMonth: number;
   aiCostMicros: number;
@@ -83,6 +84,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
       name: organizations.name,
       autoReplyEnabled: organizations.autoReplyEnabled,
       operationalStatus: organizations.operationalStatus,
+      shadowModeEnabled: organizations.shadowModeEnabled,
       isTest: organizations.isTest,
       channelProvider: organizations.channelProvider,
       zapiInstanceId: organizations.zapiInstanceId,
@@ -171,6 +173,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
         name: clinic.name,
         autoReplyEnabled: clinic.autoReplyEnabled,
         operationalStatus: clinic.operationalStatus,
+        shadowModeEnabled: clinic.shadowModeEnabled,
         leadsThisMonth: leadsCount,
         scheduledThisMonth: scheduledCount,
         aiCostMicros,
@@ -311,6 +314,31 @@ function StatusPill({ status }: { status: ClinicOperationalStatus }) {
         }}
       />
       {getClinicOperationalStatusLabel(status)}
+    </span>
+  );
+}
+
+function ShadowModeBadge() {
+  return (
+    <span
+      title="IA responde e simula, mas nada é enviado ao lead"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "3px 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 700,
+        color: "#c084fc",
+        background: "rgba(192,132,252,0.12)",
+        border: "1px solid rgba(192,132,252,0.32)",
+      }}
+    >
+      <span
+        style={{ width: 6, height: 6, borderRadius: "50%", background: "#c084fc", flexShrink: 0 }}
+      />
+      Shadow mode
     </span>
   );
 }
@@ -682,6 +710,7 @@ export default async function OwnerPage() {
                         }}
                       >
                         <StatusPill status={clinic.operationalStatus} />
+                        {clinic.shadowModeEnabled && <ShadowModeBadge />}
                         <ChevronRight
                           size={15}
                           style={{ color: "var(--muted)", flexShrink: 0 }}
@@ -866,6 +895,7 @@ export default async function OwnerPage() {
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           <StatusPill status={clinic.operationalStatus} />
+                          {clinic.shadowModeEnabled && <ShadowModeBadge />}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           {clinic.operationalStatus === "paused" ? (
@@ -987,6 +1017,7 @@ export default async function OwnerPage() {
                       {clinic.name}
                     </Link>
                     <StatusPill status={clinic.operationalStatus} />
+                    {clinic.shadowModeEnabled && <ShadowModeBadge />}
                   </div>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>
                     Pronto para completar onboarding e go-live
@@ -1040,6 +1071,7 @@ export default async function OwnerPage() {
                       style={{ display: "flex", alignItems: "center", gap: 8 }}
                     >
                       <StatusPill status={clinic.operationalStatus} />
+                      {clinic.shadowModeEnabled && <ShadowModeBadge />}
                       <ChevronRight
                         size={15}
                         style={{ color: "var(--muted)", flexShrink: 0 }}
@@ -1089,6 +1121,7 @@ export default async function OwnerPage() {
                     style={{ display: "flex", alignItems: "center", gap: 10 }}
                   >
                     <StatusPill status={clinic.operationalStatus} />
+                    {clinic.shadowModeEnabled && <ShadowModeBadge />}
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
                       {clinic.leadsThisMonth} leads ·{" "}
                       {relativeTime(clinic.lastActivity)}
@@ -1148,6 +1181,7 @@ export default async function OwnerPage() {
                     {clinic.name}
                   </Link>
                   <StatusPill status={clinic.operationalStatus} />
+                  {clinic.shadowModeEnabled && <ShadowModeBadge />}
                 </div>
               ))}
             </div>

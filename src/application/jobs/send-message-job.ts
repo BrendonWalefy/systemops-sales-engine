@@ -102,6 +102,12 @@ async function deliverConversationOutbound(input: {
     .limit(1);
   if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
 
+  // Shadow mode: já compôs a resposta e avançou o pipeline normalmente — aqui
+  // só suprimimos o envio real (Z-API/TTS), persistindo tudo como "simulated".
+  if (clinic.shadowModeEnabled) {
+    return deliverShadowOutbound(input);
+  }
+
   const config = resolveChannelConfig(clinic);
   const conversationRepository = new DrizzleConversationRepository();
   const appointmentRepository = new DrizzleAppointmentRepository();
@@ -251,4 +257,77 @@ async function deliverConversationOutbound(input: {
   }
 
   return firstProviderMessageId;
+}
+
+/**
+ * Shadow mode: persiste a resposta composta e avança o pipeline exatamente
+ * como o fluxo real (deliverConversationOutbound), mas nunca chama Z-API/TTS.
+ * Mensagens ficam marcadas simulated=true, externalId=null — a inbox exibe
+ * um badge para deixar claro que nada chegou ao lead de verdade.
+ */
+async function deliverShadowOutbound(input: {
+  payload: ConversationOutboundPayload;
+  clinicId: string;
+  conversationId: string;
+}): Promise<string | null> {
+  const conversationRepository = new DrizzleConversationRepository();
+  const log = createLogger({
+    scope: "SenderWorker",
+    correlationId: input.payload.agentMessageId,
+    clinicId: input.clinicId,
+    conversationId: input.conversationId,
+  });
+  log.info("shadow_mode.delivery_suppressed", { intent: input.payload.intent });
+
+  await db
+    .update(messages)
+    .set({ simulated: true, deliveryFormat: "text" })
+    .where(eq(messages.id, input.payload.agentMessageId));
+
+  const allParts = [...input.payload.interleavedParts, ...input.payload.mediaParts];
+  for (const part of allParts) {
+    if (part.type === "text") {
+      await conversationRepository.appendMessage({
+        id: randomUUID(),
+        conversationId: input.conversationId,
+        author: "agent",
+        body: part.content,
+        mediaUrl: null,
+        mediaType: null,
+        sentAt: new Date(),
+        externalId: null,
+        intent: input.payload.intent,
+        deliveryFormat: "text",
+        simulated: true,
+      });
+    } else {
+      await conversationRepository.appendMessage({
+        id: randomUUID(),
+        conversationId: input.conversationId,
+        author: "agent",
+        body: part.title,
+        mediaUrl: part.url,
+        mediaType: part.mediaType,
+        sentAt: new Date(),
+        externalId: null,
+        intent: input.payload.intent,
+        deliveryFormat: "text",
+        simulated: true,
+      });
+    }
+  }
+
+  if (input.payload.pipelineAdvance) {
+    const stateMachine = new ConversationStateMachine();
+    if (input.payload.pipelineAdvance.action === "advance") {
+      await stateMachine.advancePipelineStep(
+        input.conversationId,
+        input.payload.pipelineAdvance.nextStepIndex,
+      );
+    } else {
+      await stateMachine.exitTreatmentPipeline(input.conversationId);
+    }
+  }
+
+  return null;
 }

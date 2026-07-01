@@ -204,6 +204,10 @@ export const organizations = pgTable("organizations", {
   monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
   billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
   isTest: boolean("is_test").notNull().default(false),
+  // Shadow mode: IA classifica, compõe resposta e avança o pipeline normalmente,
+  // mas o envio real ao WhatsApp é suprimido — usado para validar comportamento
+  // sem afetar o lead (clínicas problemáticas ou pré-onboarding).
+  shadowModeEnabled: boolean("shadow_mode_enabled").notNull().default(false),
   receptionistPhone: text("receptionist_phone"),
   // Taxa flat por faixa de parcela { n, rate (%), active }. Null = fallback "taxa da maquininha".
   installmentRates:
@@ -406,6 +410,8 @@ export const messages = pgTable(
     externalId: text("external_id"),
     intent: text("intent"),
     deliveryFormat: text("delivery_format").$type<"text" | "audio">(),
+    // Composta em shadow mode: nunca foi enviada de verdade ao WhatsApp do lead.
+    simulated: boolean("simulated").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

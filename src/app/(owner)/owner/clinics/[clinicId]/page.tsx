@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { ResetClinicDialog } from "./reset-clinic-dialog";
+import { ArchiveClinicDialog } from "./archive-clinic-dialog";
 import { db } from "@/infrastructure/db/client";
 import {
   organizations,
@@ -40,6 +41,7 @@ import {
 } from "@/application/modules/module-gate";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
 import { ACTIVE_CLINIC_COOKIE } from "@/application/tenancy/resolve-clinic";
+import { createLogger } from "@/infrastructure/logging/logger";
 import {
   getClinicOperationalStatusColors,
   getClinicOperationalStatusLabel,
@@ -84,6 +86,75 @@ async function toggleIsTest(clinicId: string, currentValue: boolean) {
             }),
     })
     .where(eq(organizations.id, clinicId));
+  redirect(`/owner/clinics/${clinicId}`);
+}
+
+/** Liga/desliga a IA da clínica (owner). Não afeta clínicas arquivadas. */
+async function toggleClinicAutomation(clinicId: string, currentAutoReplyEnabled: boolean) {
+  "use server";
+  const clinic = await db.query.organizations.findFirst({
+    where: eq(organizations.id, clinicId),
+    columns: { operationalStatus: true, isTest: true },
+  });
+  if (!clinic) redirect(`/owner/clinics/${clinicId}`);
+  if (clinic.operationalStatus === "cancelled") {
+    redirect(`/owner/clinics/${clinicId}?automationError=cancelled`);
+  }
+
+  const nextAutoReplyEnabled = !currentAutoReplyEnabled;
+  await db
+    .update(organizations)
+    .set({
+      autoReplyEnabled: nextAutoReplyEnabled,
+      operationalStatus: resolveOperationalStatusFromAutomationState({
+        currentStatus: clinic.operationalStatus,
+        isTest: clinic.isTest,
+        autoReplyEnabled: nextAutoReplyEnabled,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(organizations.id, clinicId));
+
+  createLogger({ scope: "OwnerPanel", clinicId }).info("clinic.automation_toggled", {
+    autoReplyEnabled: nextAutoReplyEnabled,
+  });
+  redirect(`/owner/clinics/${clinicId}`);
+}
+
+/** Liga/desliga o shadow mode: IA compõe e simula, mas nunca envia de verdade. */
+async function toggleShadowMode(clinicId: string, currentValue: boolean) {
+  "use server";
+  const clinic = await db.query.organizations.findFirst({
+    where: eq(organizations.id, clinicId),
+    columns: { operationalStatus: true },
+  });
+  if (!clinic) redirect(`/owner/clinics/${clinicId}`);
+  if (clinic.operationalStatus === "cancelled") {
+    redirect(`/owner/clinics/${clinicId}?automationError=cancelled`);
+  }
+
+  const nextValue = !currentValue;
+  await db
+    .update(organizations)
+    .set({ shadowModeEnabled: nextValue, updatedAt: new Date() })
+    .where(eq(organizations.id, clinicId));
+
+  createLogger({ scope: "OwnerPanel", clinicId }).info("clinic.shadow_mode_toggled", {
+    shadowModeEnabled: nextValue,
+  });
+  redirect(`/owner/clinics/${clinicId}`);
+}
+
+/** Reativa uma clínica arquivada — sempre volta para "prospect"; a IA precisa ser
+ *  religada manualmente (toggleClinicAutomation) para evitar automação sem revisão. */
+async function reactivateClinic(clinicId: string) {
+  "use server";
+  await db
+    .update(organizations)
+    .set({ operationalStatus: "prospect", updatedAt: new Date() })
+    .where(eq(organizations.id, clinicId));
+
+  createLogger({ scope: "OwnerPanel", clinicId }).info("clinic.reactivated", {});
   redirect(`/owner/clinics/${clinicId}`);
 }
 
@@ -296,6 +367,7 @@ export default async function ClinicDetailPage({
       autoReplyEnabled: organizations.autoReplyEnabled,
       operationalStatus: organizations.operationalStatus,
       isTest: organizations.isTest,
+      shadowModeEnabled: organizations.shadowModeEnabled,
       channelProvider: organizations.channelProvider,
       zapiInstanceId: organizations.zapiInstanceId,
       zapiToken: organizations.zapiToken,
@@ -369,6 +441,10 @@ export default async function ClinicDetailPage({
   const activateGoLiveAction = activateClinicGoLive.bind(null, clinic.id);
   const upsertMemberAction = upsertMemberPassword.bind(null, clinic.id);
   const updatePlanAction = updateClinicPlan.bind(null, clinic.id);
+  const toggleAutomationAction = toggleClinicAutomation.bind(null, clinic.id, clinic.autoReplyEnabled);
+  const toggleShadowModeAction = toggleShadowMode.bind(null, clinic.id, clinic.shadowModeEnabled);
+  const reactivateClinicAction = reactivateClinic.bind(null, clinic.id);
+  const isArchived = clinic.operationalStatus === "cancelled";
 
   const members = await db
     .select({
@@ -1083,16 +1159,92 @@ export default async function ClinicDetailPage({
               </div>
             </div>
 
+            {/* Automação */}
+            <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <p className="eyebrow" style={{ margin: 0 }}>Automação</p>
+
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+                    IA {clinic.autoReplyEnabled ? "ativa" : "pausada"}
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                    {clinic.autoReplyEnabled
+                      ? "Responde automaticamente aos leads no WhatsApp."
+                      : "Nenhuma resposta automática é enviada — use para clientes inadimplentes ou em revisão."}
+                  </p>
+                </div>
+                {isArchived ? (
+                  <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>Clínica arquivada</span>
+                ) : (
+                  <form action={toggleAutomationAction}>
+                    <button type="submit" style={btnStyle}>
+                      {clinic.autoReplyEnabled ? "Pausar IA" : "Reativar IA"}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: clinic.shadowModeEnabled ? "#c084fc" : "var(--text)" }}>
+                    Shadow mode {clinic.shadowModeEnabled ? "ligado" : "desligado"}
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                    IA classifica, responde e avança o funil normalmente, mas nada é enviado ao lead —
+                    use para validar comportamento em clínicas com problemas ou em pré-onboarding.
+                  </p>
+                </div>
+                {isArchived ? (
+                  <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>—</span>
+                ) : (
+                  <form action={toggleShadowModeAction}>
+                    <button
+                      type="submit"
+                      style={{
+                        ...btnStyle,
+                        borderColor: clinic.shadowModeEnabled ? "rgba(192,132,252,0.5)" : btnStyle.border,
+                        color: clinic.shadowModeEnabled ? "#c084fc" : btnStyle.color,
+                      }}
+                    >
+                      {clinic.shadowModeEnabled ? "Desligar shadow mode" : "Ligar shadow mode"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+
             {/* Zona de risco */}
-            <div style={{ border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "14px 16px", background: "rgba(239,68,68,0.03)" }}>
-              <p className="eyebrow" style={{ margin: "0 0 8px", color: "var(--danger)", opacity: 0.8 }}>
+            <div style={{ border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14, background: "rgba(239,68,68,0.03)" }}>
+              <p className="eyebrow" style={{ margin: 0, color: "var(--danger)", opacity: 0.8 }}>
                 Zona de risco
               </p>
+
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
                   Apaga todos os leads, conversas e agendamentos de teste.
                 </p>
                 <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, borderTop: "1px solid rgba(239,68,68,0.15)" }}>
+                {isArchived ? (
+                  <>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                      Clínica arquivada — automação desligada e fora dos KPIs de faturamento.
+                    </p>
+                    <form action={reactivateClinicAction}>
+                      <button type="submit" style={btnStyle}>Reativar clínica</button>
+                    </form>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                      Arquiva a clínica: desliga a IA e para de contar no faturamento. Não apaga nenhum dado.
+                    </p>
+                    <ArchiveClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
+                  </>
+                )}
               </div>
             </div>
           </div>

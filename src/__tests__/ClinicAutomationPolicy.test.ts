@@ -41,4 +41,43 @@ describe("Clinic automation policy", () => {
       }),
     ).toBe(false);
   });
+
+  it("shadow mode compõe resposta mesmo fora de go-live (prospect, paused, test)", () => {
+    for (const operationalStatus of ["prospect", "paused", "test"] as const) {
+      expect(
+        shouldSendAutomatedClinicOutbound({
+          autoReplyEnabled: false,
+          operationalStatus,
+          shadowModeEnabled: true,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("shadow mode nunca compõe para clínica arquivada (cancelled)", () => {
+    expect(
+      shouldSendAutomatedClinicOutbound({
+        autoReplyEnabled: true,
+        operationalStatus: "cancelled",
+        shadowModeEnabled: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("shadow mode desligado preserva o comportamento normal", () => {
+    expect(
+      shouldSendAutomatedClinicOutbound({
+        autoReplyEnabled: true,
+        operationalStatus: "active",
+        shadowModeEnabled: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSendAutomatedClinicOutbound({
+        autoReplyEnabled: true,
+        operationalStatus: "prospect",
+        shadowModeEnabled: false,
+      }),
+    ).toBe(false);
+  });
 });

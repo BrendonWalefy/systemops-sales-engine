@@ -69,6 +69,7 @@ export class DrizzleConversationRepository implements ConversationRepository {
           externalId: message.externalId,
           intent: message.intent ?? null,
           deliveryFormat: message.deliveryFormat ?? null,
+          simulated: message.simulated ?? false,
         })
         .onConflictDoNothing();
 
