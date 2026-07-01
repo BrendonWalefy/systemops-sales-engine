@@ -11,6 +11,8 @@ type Msg = {
   mediaType?: "image" | "video" | "audio" | "document" | null;
   sentAt: Date | string;
   deliveryFormat?: "text" | "audio" | null;
+  /** true quando composta em shadow mode: nunca chegou de verdade ao lead. */
+  simulated?: boolean;
 };
 
 const TZ = "America/Sao_Paulo";
@@ -346,6 +348,22 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
                 )}
                 {isOperator && <span className="agent-badge" style={{ color: "var(--cold)" }}>OP</span>}
                 {!isRight && <span className="lead-badge">{displayName}</span>}
+                {msg.simulated && (
+                  <span
+                    title="Composta em shadow mode — nunca foi enviada ao lead de verdade"
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "#c084fc",
+                      background: "rgba(192,132,252,0.12)",
+                      border: "1px solid rgba(192,132,252,0.32)",
+                      borderRadius: 999,
+                      padding: "1px 8px",
+                    }}
+                  >
+                    Simulado
+                  </span>
+                )}
                 <span className="message-time">{formatTime(msg.sentAt)}</span>
               </div>
 
