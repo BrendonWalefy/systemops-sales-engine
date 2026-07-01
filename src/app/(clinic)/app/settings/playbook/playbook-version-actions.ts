@@ -213,7 +213,7 @@ export async function toggleVoiceOutput(
     .set({
       config: { ...(row.config ?? {}), voiceOutputEnabled },
       updatedAt: new Date(),
-      updatedBy: "clinic_admin",
+      updatedBy: "org_admin",
     })
     .where(and(eq(clinicModules.clinicId, CLINIC_ID), eq(clinicModules.moduleKey, moduleKey)));
   revalidatePath("/app/settings/playbook");
@@ -223,7 +223,7 @@ export async function updateVoiceModuleConfig(config: VoiceTtsConfig) {
   const CLINIC_ID = await requireSessionClinicId();
   await db
     .update(clinicModules)
-    .set({ config, updatedAt: new Date(), updatedBy: "clinic_admin" })
+    .set({ config, updatedAt: new Date(), updatedBy: "org_admin" })
     .where(
       and(
         eq(clinicModules.clinicId, CLINIC_ID),
@@ -256,7 +256,7 @@ export async function updateBWaveSpeed(speed: number) {
     .set({
       config: { ...current, speed: clampedSpeed },
       updatedAt: new Date(),
-      updatedBy: "clinic_admin",
+      updatedBy: "org_admin",
     })
     .where(
       and(
@@ -283,7 +283,7 @@ export async function updateBWaveConfig(config: VoiceElevenLabsConfig) {
         mode,
       },
       updatedAt: new Date(),
-      updatedBy: "clinic_admin",
+      updatedBy: "org_admin",
     })
     .where(
       and(

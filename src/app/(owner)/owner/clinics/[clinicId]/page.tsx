@@ -96,7 +96,7 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
   } else {
     await db
       .insert(clinicMembers)
-      .values({ clinicId, email, role: "clinic_admin", passwordHash: hash });
+      .values({ clinicId, email, role: "org_admin", passwordHash: hash });
   }
   redirect(`/owner/organizations/${clinicId}?memberOk=1`);
 }
@@ -104,11 +104,11 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
 async function updateClinicPlan(clinicId: string, formData: FormData) {
   "use server";
   const plan = formData.get("plan") as string;
-  const valid = ["essencial", "clinica", "rede", "custom"] as const;
+  const valid = ["essencial", "avancado", "rede", "custom"] as const;
   if (!(valid as readonly string[]).includes(plan)) {
     redirect(`/owner/organizations/${clinicId}`);
   }
-  const typedPlan = plan as "essencial" | "clinica" | "rede" | "custom";
+  const typedPlan = plan as "essencial" | "avancado" | "rede" | "custom";
   await db
     .update(organizations)
     .set({ plan: typedPlan, updatedAt: new Date() })
@@ -1030,7 +1030,7 @@ export default async function ClinicDetailPage({
                   style={{ ...inputStyle, flex: 1 }}
                 >
                   <option value="essencial">Essencial — R$897/mês</option>
-                  <option value="clinica">Clínica — R$1.497/mês</option>
+                  <option value="avancado">Clínica — R$1.497/mês</option>
                   <option value="rede">Rede — R$2.997/mês</option>
                   <option value="custom">Custom</option>
                 </select>

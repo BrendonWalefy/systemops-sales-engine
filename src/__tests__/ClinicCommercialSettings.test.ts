@@ -7,7 +7,7 @@ import {
 describe("resolveClinicCommercialSettings", () => {
   it("keeps test organizations out of revenue even when billing is marked active", () => {
     const result = resolveClinicCommercialSettings({
-      plan: "clinica",
+      plan: "avancado",
       billingActive: true,
       monthlyRevenueBrl: 1497,
       billingStartedAt: "2026-06-14",
@@ -15,7 +15,7 @@ describe("resolveClinicCommercialSettings", () => {
     });
 
     expect(result).toEqual({
-      plan: "clinica",
+      plan: "avancado",
       monthlyRevenueBrl: 0,
       billingStartedAt: null,
       isTest: true,

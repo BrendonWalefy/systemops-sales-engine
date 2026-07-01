@@ -33,10 +33,10 @@ export async function login(formData: FormData) {
     if (member.passwordHash) {
       const authenticated = await verifyPassword(password, member.passwordHash);
       if (authenticated) {
-        // Papéis "owner" e "clinic_admin" usam role = "clinic_admin" no JWT de rota
+        // Papéis "owner" e "org_admin" usam role = "org_admin" no JWT de rota
         // (o campo role é apenas para resolve-clinic.ts); memberRole carrega o papel real.
         const memberRole = member.role as MemberRole;
-        const sessionRole = memberRole === "owner" ? "owner" as const : "clinic_admin" as const;
+        const sessionRole = memberRole === "owner" ? "owner" as const : "org_admin" as const;
         const token = await signToken({
           email,
           role: sessionRole,

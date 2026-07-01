@@ -2,7 +2,7 @@ import { db } from "@/infrastructure/db/client";
 import { clinicModules, playbookVersions } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import type { ModuleKey } from "./module-catalog";
-import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
+import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
 import type { VoiceElevenLabsConfig } from "./module-configs";
 import {
   applyPlanActivations,
@@ -113,7 +113,7 @@ export async function getClinicVoiceBlueprintState(
  */
 export async function syncModulesForPlan(
   clinicId: string,
-  plan: ClinicPlan,
+  plan: OrgPlan,
   updatedBy: string,
 ): Promise<void> {
   if (plan === "custom") return;
@@ -145,7 +145,7 @@ export async function syncModulesForPlan(
 
 export async function applyClinicPlanPreset(
   clinicId: string,
-  plan: ClinicPlan,
+  plan: OrgPlan,
   updatedBy: string,
 ): Promise<void> {
   await syncModulesForPlan(clinicId, plan, updatedBy);

@@ -39,7 +39,7 @@ export const DEMO_CLINIC_NAME = "Odonto Marques";
 export const DEMO_CLINIC_SLUG = "odonto-marques";
 export const DEMO_ADMIN_EMAIL = "helena@odontomarques.com.br";
 export const DEMO_ADMIN_PASSWORD = "OdontoMarques2026!";
-const PLAN = "clinica" as const;
+const PLAN = "avancado" as const;
 
 export type DemoSeedResult = {
   clinicId: string;
@@ -398,7 +398,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     {
       clinicId,
       email: DEMO_ADMIN_EMAIL,
-      role: "clinic_admin",
+      role: "org_admin",
       professionalId: profHelena,
       passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
     },
@@ -406,7 +406,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     {
       clinicId,
       email: "brendonwalefyom@gmail.com",
-      role: "clinic_admin",
+      role: "org_admin",
       professionalId: null,
       passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
     },

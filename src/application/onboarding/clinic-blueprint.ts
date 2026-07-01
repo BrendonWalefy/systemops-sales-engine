@@ -12,7 +12,7 @@ export type ClinicBlueprintInput = {
     receptionistPhone?: string | null;
     autoReplyEnabled: boolean;
     isTest: boolean;
-    plan?: "essencial" | "clinica" | "rede" | "custom" | null;
+    plan?: "essencial" | "avancado" | "rede" | "custom" | null;
     monthlyRevenueBrl?: number | null;
     billingStartedAt?: Date | null;
     defaultAppointmentDurationMinutes?: number | null;

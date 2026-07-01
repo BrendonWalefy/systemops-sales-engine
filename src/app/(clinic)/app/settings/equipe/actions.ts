@@ -36,7 +36,7 @@ export async function addMember(
   const password = (formData.get("password") as string) || null;
   const displayName = ((formData.get("displayName") as string) ?? "").trim() || null;
 
-  if (!email || !["clinic_admin", "professional", "receptionist"].includes(role)) {
+  if (!email || !["org_admin", "professional", "receptionist"].includes(role)) {
     return { success: false, error: "Dados inválidos." };
   }
 
@@ -48,7 +48,7 @@ export async function addMember(
       .values({
         clinicId,
         email,
-        role: role as "clinic_admin" | "professional" | "receptionist",
+        role: role as "org_admin" | "professional" | "receptionist",
         professionalId,
         passwordHash,
         displayName,
@@ -56,7 +56,7 @@ export async function addMember(
       .onConflictDoUpdate({
         target: [clinicMembers.email, clinicMembers.clinicId],
         set: {
-          role: role as "clinic_admin" | "professional" | "receptionist",
+          role: role as "org_admin" | "professional" | "receptionist",
           professionalId,
           displayName,
           ...(passwordHash && { passwordHash }),

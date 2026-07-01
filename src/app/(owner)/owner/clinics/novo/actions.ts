@@ -50,7 +50,7 @@ export async function createProspectClinic(
   const city = (formData.get("city") as string | null)?.trim() || null;
   const plan = (formData.get("plan") as string | null) as
     | "essencial"
-    | "clinica"
+    | "avancado"
     | "rede"
     | null;
   const adminEmail = (formData.get("adminEmail") as string | null)?.trim().toLowerCase() ?? "";
@@ -119,7 +119,7 @@ export async function createProspectClinic(
   await db.insert(clinicMembers).values({
     clinicId,
     email: adminEmail,
-    role: "clinic_admin",
+    role: "org_admin",
     passwordHash,
   });
 

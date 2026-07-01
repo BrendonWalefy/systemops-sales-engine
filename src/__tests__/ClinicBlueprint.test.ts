@@ -61,7 +61,7 @@ describe("buildClinicBlueprint", () => {
         receptionistPhone: "+5511999999999",
         autoReplyEnabled: true,
         isTest: false,
-        plan: "clinica",
+        plan: "avancado",
         monthlyRevenueBrl: 149700,
         billingStartedAt: new Date("2026-06-01T00:00:00.000Z"),
         defaultAppointmentDurationMinutes: 60,

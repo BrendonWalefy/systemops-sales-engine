@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ClinicPlan } from "./clinic-commercial-settings";
+import type { OrgPlan } from "./clinic-commercial-settings";
 
 /**
  * VALIDAÇÃO ÚNICA DE ONBOARDING.
@@ -68,7 +68,7 @@ export const onboardingConfigSchema = z.object({
   calendarMode: z.enum(["internal", "google_calendar"]).default("internal"),
   googleCalendarId: z.string().trim().optional(),
   isTest: z.boolean().default(true),
-  plan: z.enum(["essencial", "clinica", "rede", "custom"] satisfies [ClinicPlan, ...ClinicPlan[]]).default("custom"),
+  plan: z.enum(["essencial", "avancado", "rede", "custom"] satisfies [OrgPlan, ...OrgPlan[]]).default("custom"),
   billingActive: z.boolean().default(false),
   monthlyRevenueBrl: z.number().nonnegative().optional(),
   billingStartedAt: z.string().trim().optional(),
@@ -90,7 +90,7 @@ export const onboardingConfigSchema = z.object({
       z.object({
         email: z.string().trim().email(),
         password: z.string().min(8, "senha deve ter pelo menos 8 caracteres"),
-        role: z.enum(["owner", "clinic_admin"]).default("clinic_admin"),
+        role: z.enum(["owner", "org_admin"]).default("org_admin"),
         displayName: z.string().trim().optional(),
       }),
     )

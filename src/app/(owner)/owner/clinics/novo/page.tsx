@@ -17,7 +17,7 @@ const ESPECIALIDADES = [
 
 const PLANOS = [
   { value: "essencial", label: "Essencial", price: "R$ 897/mês", desc: "Até 150 leads/mês" },
-  { value: "clinica", label: "Clínica", price: "R$ 1.497/mês", desc: "Leads ilimitados", recommended: true },
+  { value: "avancado", label: "Clínica", price: "R$ 1.497/mês", desc: "Leads ilimitados", recommended: true },
   { value: "rede", label: "Rede", price: "R$ 2.997/mês", desc: "Até 3 unidades" },
 ];
 
@@ -30,7 +30,7 @@ export default function NovoDiagnosticoPage() {
   const [name, setName] = useState("");
   const [especialidade, setEspecialidade] = useState("odontologia");
   const [cidade, setCidade] = useState("");
-  const [plano, setPlano] = useState("clinica");
+  const [plano, setPlano] = useState("avancado");
 
   function handleNext(e: React.FormEvent) {
     e.preventDefault();

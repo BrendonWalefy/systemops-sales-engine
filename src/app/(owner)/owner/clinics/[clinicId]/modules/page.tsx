@@ -8,13 +8,13 @@ import { organizations, clinicModules } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { MODULE_CATALOG } from "@/application/modules/module-catalog";
 import type { ModuleKey } from "@/application/modules/module-catalog";
-import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
+import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
 import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import { REDE_RECOMMENDED_BWAVE_CONFIG } from "@/application/modules/plan-presets";
 import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
 import { toggleModule, updateClinicPlan, updateModuleConfig } from "./actions";
 
-const PLAN_OPTIONS = ["essencial", "clinica", "rede", "custom"] as const;
+const PLAN_OPTIONS = ["essencial", "avancado", "rede", "custom"] as const;
 const CONFIGURABLE_MODULE_KEYS = ["voice_tts", "voice_elevenlabs"] as const;
 
 type ConfigurableModuleKey = (typeof CONFIGURABLE_MODULE_KEYS)[number];
@@ -64,7 +64,7 @@ export default async function ClinicModulesPage({
   const { clinic, moduleRows } = await getData(clinicId);
   if (!clinic) notFound();
 
-  const plan = clinic.plan as ClinicPlan;
+  const plan = clinic.plan as OrgPlan;
   const moduleMap = new Map(moduleRows.map((r) => [r.moduleKey, r]));
   const openModuleKey = resolveOpenModuleKey(
     typeof sp.open === "string" ? sp.open : undefined,
@@ -92,8 +92,8 @@ export default async function ClinicModulesPage({
             action={async (formData: FormData) => {
               "use server";
               const rawPlan = String(formData.get("plan") ?? plan);
-              const nextPlan = PLAN_OPTIONS.includes(rawPlan as ClinicPlan)
-                ? (rawPlan as ClinicPlan)
+              const nextPlan = PLAN_OPTIONS.includes(rawPlan as OrgPlan)
+                ? (rawPlan as OrgPlan)
                 : plan;
               await updateClinicPlan(clinicId, nextPlan);
             }}
@@ -112,7 +112,7 @@ export default async function ClinicModulesPage({
               }}
             >
               <option value="essencial">Essencial</option>
-              <option value="clinica">Clínica</option>
+              <option value="avancado">Clínica</option>
               <option value="rede">Rede</option>
               <option value="custom">Custom</option>
             </select>

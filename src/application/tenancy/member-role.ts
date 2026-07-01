@@ -5,7 +5,7 @@ export type { MemberRole };
 
 export type MemberProfile = {
   email: string;
-  sessionRole: "owner" | "clinic_admin";
+  sessionRole: "owner" | "org_admin";
   memberRole: MemberRole;
   clinicId: string;
   professionalId: string | null;
@@ -35,7 +35,7 @@ export async function getSessionMemberProfile(
 }
 
 export function canViewFinancials(profile: MemberProfile): boolean {
-  return profile.memberRole === "owner" || profile.memberRole === "clinic_admin";
+  return profile.memberRole === "owner" || profile.memberRole === "org_admin";
 }
 
 export function canViewOwnRevenue(profile: MemberProfile): boolean {
@@ -43,5 +43,5 @@ export function canViewOwnRevenue(profile: MemberProfile): boolean {
 }
 
 export function canEditPrices(profile: MemberProfile): boolean {
-  return profile.memberRole === "owner" || profile.memberRole === "clinic_admin";
+  return profile.memberRole === "owner" || profile.memberRole === "org_admin";
 }

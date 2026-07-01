@@ -1,4 +1,4 @@
-import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
+import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
 import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import { MODULE_CATALOG, type ModuleKey } from "./module-catalog";
 
@@ -34,7 +34,7 @@ function normalizeTone(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
 
-export function resolvePlanModules(plan: ClinicPlan): ModuleKey[] {
+export function resolvePlanModules(plan: OrgPlan): ModuleKey[] {
   if (plan === "custom") return [];
   return MODULE_CATALOG.filter((moduleDef) => moduleDef.plans.includes(plan)).map(
     (moduleDef) => moduleDef.key,
@@ -43,7 +43,7 @@ export function resolvePlanModules(plan: ClinicPlan): ModuleKey[] {
 
 export function applyPlanActivations(
   currentState: Partial<Record<ModuleKey, boolean>>,
-  plan: ClinicPlan,
+  plan: OrgPlan,
 ): Partial<Record<ModuleKey, boolean>> {
   if (plan === "custom") return currentState;
 
