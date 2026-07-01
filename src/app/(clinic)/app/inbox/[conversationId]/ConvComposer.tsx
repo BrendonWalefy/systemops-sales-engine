@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock, UserRoundCog } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
+import { DurationHoursInput } from "@/components/DurationHoursInput";
 
 interface Props {
   conversationId: string;
@@ -64,7 +65,7 @@ export function ConvComposer({
   const [discountCustom, setDiscountCustom] = useState("");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
-  const [schedDuration, setSchedDuration] = useState(String(defaultDurationMinutes));
+  const [schedDuration, setSchedDuration] = useState(defaultDurationMinutes);
   const [schedError, setSchedError] = useState<string | null>(null);
   const [isScheduling, startSchedule] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -188,7 +189,7 @@ export function ConvComposer({
           body: JSON.stringify({
             date: schedDate,
             time: schedTime,
-            durationMinutes: Number(schedDuration) || defaultDurationMinutes,
+            durationMinutes: schedDuration || defaultDurationMinutes,
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -330,12 +331,8 @@ export function ConvComposer({
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              <label style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Duração (min)</label>
-              <input
-                type="number" min={15} max={480}
-                value={schedDuration} onChange={(e) => setSchedDuration(e.target.value)}
-                style={inputStyle}
-              />
+              <label style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>Duração</label>
+              <DurationHoursInput minutes={schedDuration} onChangeMinutes={setSchedDuration} inputStyle={inputStyle} />
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button

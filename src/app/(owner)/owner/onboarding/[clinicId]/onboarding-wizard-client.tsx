@@ -36,6 +36,7 @@ import {
   type ClinicBlueprint,
 } from "@/application/onboarding/clinic-blueprint";
 import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
+import { DurationHoursInput } from "@/components/DurationHoursInput";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -979,17 +980,11 @@ function StepProcedimentos({
             }}
           >
             <div>
-              <FieldLabel>Duração (min)</FieldLabel>
-              <input
-                type="number"
-                value={t.durationMinutes}
-                min={10}
-                max={480}
-                step={5}
-                onChange={(e) =>
-                  update(i, { durationMinutes: Number(e.target.value) })
-                }
-                style={inputStyle}
+              <FieldLabel>Duração</FieldLabel>
+              <DurationHoursInput
+                minutes={t.durationMinutes}
+                onChangeMinutes={(m) => update(i, { durationMinutes: m })}
+                inputStyle={inputStyle}
               />
             </div>
             <div>

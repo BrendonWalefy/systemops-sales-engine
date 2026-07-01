@@ -1735,6 +1735,9 @@ export class ConversationOrchestrator {
     let replyText = "";
     let composerInputTokens = 0;
     let composerOutputTokens = 0;
+    // Listas numeradas de horários são muito mais claras em texto do que em voz —
+    // nunca sintetizar áudio para essas respostas, independente do modo B-WAVE.
+    let forceTextOnlyReply = false;
 
     const calendarGateway = resolveCalendarGateway({
       clinicId: clinic.id,
@@ -1856,6 +1859,7 @@ export class ConversationOrchestrator {
                 });
               } else if (redirectSlots.length > 0 && !rdEmpty) {
                 replyText = await compose({ type: "slots_found", slots: redirectSlots, askedForPreference: false });
+                forceTextOnlyReply = true;
               } else if (rdEmpty) {
                 replyText = await compose({ type: "no_slots_available", alternativeSlots: redirectSlots.length > 0 ? redirectSlots : undefined });
               } else {
@@ -1882,9 +1886,12 @@ export class ConversationOrchestrator {
               businessHours,
               undefined, undefined, undefined, undefined, undefined, voiceEnabled,
             );
-            replyText = freshSlots.length > 0
-              ? await compose({ type: "slots_expired", freshSlots })
-              : await compose({ type: "no_slots_available" });
+            if (freshSlots.length > 0) {
+              replyText = await compose({ type: "slots_expired", freshSlots });
+              forceTextOnlyReply = true;
+            } else {
+              replyText = await compose({ type: "no_slots_available" });
+            }
           } else {
             replyText = await compose({ type: "clarification_needed", question: "Qual horário você prefere? Posso mostrar as opções disponíveis." });
           }
@@ -1939,6 +1946,7 @@ export class ConversationOrchestrator {
           );
           if (newSlots.length > 0) {
             replyText = await compose({ type: "slot_taken_reoffered", newSlots });
+            forceTextOnlyReply = true;
           } else {
             replyText = await compose({ type: "no_slots_available" });
           }
@@ -1989,6 +1997,7 @@ export class ConversationOrchestrator {
             });
           } else if (preferredSlots.length > 0 && !rejectDayEmpty) {
             replyText = await compose({ type: "slots_found", slots: preferredSlots, askedForPreference: false });
+            forceTextOnlyReply = true;
           } else if (rejectDayEmpty) {
             replyText = await compose({
               type: "no_slots_available",
@@ -2134,6 +2143,7 @@ export class ConversationOrchestrator {
             askedForPreference: false,
             treatmentInferredFromHistory: historyTreatment?.name ?? null,
           });
+          forceTextOnlyReply = true;
         } else if (preferredDayEmpty) {
           replyText = await compose({
             type: "no_slots_available",
@@ -2757,7 +2767,7 @@ export class ConversationOrchestrator {
       agentMessageId,
       replyText,
       intent: intent ?? null,
-      useVoice: resolveVoiceForReply(intent, replyText),
+      useVoice: forceTextOnlyReply ? false : resolveVoiceForReply(intent, replyText),
       ttsConfig: ttsConf,
       interleavedParts: hasInterleavedMedia ? outboundParts : [],
       mediaParts,

@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { Loader2, Plus, X } from "lucide-react";
 import { createTreatment } from "./actions";
 import { S, inputStyle } from "../playbook/settings-primitives";
+import { DurationHoursInput } from "@/components/DurationHoursInput";
 
 function AddButton() {
   const { pending } = useFormStatus();
@@ -87,19 +88,13 @@ export function AddTreatmentForm({
             required
             style={{ ...inputStyle, flex: 1, minWidth: "160px" }}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-            <input
-              type="number"
-              name="durationMinutes"
-              defaultValue={60}
-              min={5}
-              max={480}
-              step={5}
-              required
-              style={{ ...inputStyle, width: "72px", textAlign: "center" }}
-            />
-            <span style={{ fontSize: "12px", color: S.textSec }}>min</span>
-          </div>
+          <DurationHoursInput
+            name="durationMinutes"
+            defaultMinutes={60}
+            required
+            inputStyle={inputStyle}
+            labelStyle={{ color: S.textSec }}
+          />
           {canEditPrices && (
             <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
               <span style={{ fontSize: "12px", color: S.textMuted }}>R$</span>
