@@ -13,7 +13,7 @@ import type { PipelineStep } from "@/domain/entities/treatment";
 import { resolveTreatmentIdsToDelete } from "@/application/onboarding/treatment-sync";
 import {
   resolveClinicCommercialSettings,
-  type ClinicPlan,
+  type OrgPlan,
 } from "@/application/onboarding/clinic-commercial-settings";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
 import { encryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
@@ -233,7 +233,7 @@ export async function saveWizardPolicy(
   data: {
     commercialPolicy: string;
     notes: string;
-    plan: ClinicPlan;
+    plan: OrgPlan;
     billingActive: boolean;
     monthlyRevenueBrl?: number;
     billingStartedAt?: string;

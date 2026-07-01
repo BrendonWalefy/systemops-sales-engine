@@ -772,7 +772,7 @@ export default async function FinanceiroPage() {
                             color:
                               clinic.plan === "rede"
                                 ? "var(--accent-strong)"
-                                : clinic.plan === "clinica"
+                                : clinic.plan === "avancado"
                                   ? "var(--text)"
                                   : "var(--muted)",
                           }}

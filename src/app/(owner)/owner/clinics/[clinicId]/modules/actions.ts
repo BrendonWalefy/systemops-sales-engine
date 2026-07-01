@@ -8,7 +8,7 @@ import { cookies } from "next/headers";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import { applyClinicPlanPreset } from "@/application/modules/module-gate";
-import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
+import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
 
 async function assertOwnerSession() {
   const store = await cookies();
@@ -56,7 +56,7 @@ export async function updateModuleConfig(
   revalidatePath(`/owner/organizations/${clinicId}/modules`);
 }
 
-export async function updateClinicPlan(clinicId: string, plan: ClinicPlan) {
+export async function updateClinicPlan(clinicId: string, plan: OrgPlan) {
   await assertOwnerSession();
   await db
     .update(organizations)

@@ -1,14 +1,14 @@
-export type ClinicPlan = "essencial" | "clinica" | "rede" | "custom";
+export type OrgPlan = "essencial" | "avancado" | "rede" | "custom";
 
-export const PLAN_PRICE_BRL_CENTS: Record<ClinicPlan, number> = {
+export const PLAN_PRICE_BRL_CENTS: Record<OrgPlan, number> = {
   essencial: 89700,
-  clinica: 149700,
+  avancado: 149700,
   rede: 299700,
   custom: 0,
 };
 
 export function resolveClinicCommercialSettings(input: {
-  plan: ClinicPlan;
+  plan: OrgPlan;
   billingActive: boolean;
   monthlyRevenueBrl?: number;
   billingStartedAt?: string;

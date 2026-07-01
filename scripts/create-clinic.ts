@@ -44,7 +44,7 @@ type NewClinicConfig = {
   calendarMode?: "internal" | "google_calendar";
   googleCalendarId?: string;
   isTest?: boolean;
-  plan?: "essencial" | "clinica" | "rede" | "custom";
+  plan?: "essencial" | "avancado" | "rede" | "custom";
   billingActive?: boolean;
   monthlyRevenueBrl?: number;
   billingStartedAt?: string;
@@ -70,7 +70,7 @@ type NewClinicConfig = {
   admins: {
     email: string;
     password: string;
-    role?: "owner" | "clinic_admin";
+    role?: "owner" | "org_admin";
     // Nome amigável exibido na saudação do dashboard (ex.: "Dr. Gregorie").
     displayName?: string;
   }[];
@@ -239,13 +239,13 @@ async function main() {
     if (existsMember) {
       await db
         .update(clinicMembers)
-        .set({ role: a.role ?? "clinic_admin", passwordHash, displayName })
+        .set({ role: a.role ?? "org_admin", passwordHash, displayName })
         .where(eq(clinicMembers.id, existsMember.id));
     } else {
       await db.insert(clinicMembers).values({
         clinicId,
         email,
-        role: a.role ?? "clinic_admin",
+        role: a.role ?? "org_admin",
         passwordHash,
         displayName,
       });

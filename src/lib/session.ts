@@ -14,11 +14,11 @@ async function getKey(): Promise<CryptoKey> {
   );
 }
 
-// "owner" | "clinic_admin" — mantido para resolve-clinic.ts (não alterar semântica)
-export type SessionRole = "owner" | "clinic_admin";
+// "owner" | "org_admin" — mantido para resolve-clinic.ts (não alterar semântica)
+export type SessionRole = "owner" | "org_admin";
 
 // Papel granular: inclui receptionist e professional além dos papéis de sessão
-export type MemberRole = "owner" | "clinic_admin" | "receptionist" | "professional";
+export type MemberRole = "owner" | "org_admin" | "receptionist" | "professional";
 
 export type SessionPayload = {
   email: string;
@@ -55,9 +55,9 @@ export async function verifyToken(token: string): Promise<SessionPayload | null>
 
     const parsed = JSON.parse(json);
     const { email, role, memberRole, professionalId } = parsed;
-    if (!email || (role !== "owner" && role !== "clinic_admin")) return null;
+    if (!email || (role !== "owner" && role !== "org_admin")) return null;
 
-    const validMemberRoles: MemberRole[] = ["owner", "clinic_admin", "receptionist", "professional"];
+    const validMemberRoles: MemberRole[] = ["owner", "org_admin", "receptionist", "professional"];
     const resolvedMemberRole: MemberRole = validMemberRoles.includes(memberRole) ? memberRole : role;
 
     return {

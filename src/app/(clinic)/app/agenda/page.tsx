@@ -33,7 +33,7 @@ export default async function AgendaPage({
   const timezone = clinicRow[0]?.timezone ?? "America/Sao_Paulo";
   const serviceNoun = clinicRow[0]?.serviceNoun ?? "tratamento";
   const businessNoun = resolveSegmentVocab(clinicRow[0]?.segment ?? "dental").businessNoun;
-  const memberRole = memberProfile?.memberRole ?? "clinic_admin";
+  const memberRole = memberProfile?.memberRole ?? "org_admin";
 
   const now = new Date();
   const from = new Date(now.getTime() - 14 * 24 * 60 * 60_000);

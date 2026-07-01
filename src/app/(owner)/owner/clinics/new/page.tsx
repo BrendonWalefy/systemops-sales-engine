@@ -229,7 +229,7 @@ export default function NewClinicPage() {
               <select name="plan" defaultValue="custom">
                 <option value="custom">Customizado / ainda definindo</option>
                 <option value="essencial">Essencial</option>
-                <option value="clinica">Clínica</option>
+                <option value="avancado">Clínica</option>
                 <option value="rede">Rede</option>
               </select>
             </label>

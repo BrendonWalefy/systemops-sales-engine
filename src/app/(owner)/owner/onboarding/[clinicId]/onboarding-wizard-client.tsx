@@ -35,7 +35,7 @@ import {
   buildClinicBlueprint,
   type ClinicBlueprint,
 } from "@/application/onboarding/clinic-blueprint";
-import type { ClinicPlan } from "@/application/onboarding/clinic-commercial-settings";
+import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ type WizardInitial = {
   policy: {
     commercialPolicy: string;
     notes: string;
-    plan: ClinicPlan;
+    plan: OrgPlan;
     billingActive: boolean;
     monthlyRevenueBrl: string;
     billingStartedAt: string;
@@ -1448,13 +1448,13 @@ function StepPolitica({
             <select
               value={data.plan}
               onChange={(e) =>
-                onChange({ ...data, plan: e.target.value as ClinicPlan })
+                onChange({ ...data, plan: e.target.value as OrgPlan })
               }
               style={inputStyle}
             >
               <option value="custom">Customizado / ainda definindo</option>
               <option value="essencial">Essencial</option>
-              <option value="clinica">Clínica</option>
+              <option value="avancado">Clínica</option>
               <option value="rede">Rede</option>
             </select>
           </div>

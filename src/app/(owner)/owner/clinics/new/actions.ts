@@ -65,7 +65,7 @@ export async function onboardClinic(
     isTest: formData.get("isTest") === "on",
     plan: ((formData.get("plan") as string) || "custom") as
       | "essencial"
-      | "clinica"
+      | "avancado"
       | "rede"
       | "custom",
     billingActive: formData.get("billingActive") === "on",
@@ -106,7 +106,7 @@ export async function onboardClinic(
       {
         email: (formData.get("adminEmail") as string) || "",
         password: (formData.get("adminPassword") as string) || "",
-        role: "clinic_admin" as const,
+        role: "org_admin" as const,
       },
     ],
   };

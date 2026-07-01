@@ -269,7 +269,7 @@ export function EquipeClient({ members, professionals }: { members: Member[]; pr
             <label style={{ margin: 0 }}>
               <span style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "5px" }}>Papel</span>
               <select name="role" defaultValue="receptionist" style={{ margin: 0 }}>
-                <option value="clinic_admin">Administrador</option>
+                <option value="org_admin">Administrador</option>
                 <option value="professional">Profissional</option>
                 <option value="receptionist">Recepcionista</option>
               </select>

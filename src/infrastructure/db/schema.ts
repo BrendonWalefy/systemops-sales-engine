@@ -137,13 +137,13 @@ export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
   "unknown",
 ]);
 
-export const clinicPlanEnum = pgEnum("clinic_plan", [
+export const orgPlanEnum = pgEnum("org_plan", [
   "essencial",
-  "clinica",
+  "avancado",
   "rede",
   "custom",
 ]);
-export const clinicOperationalStatusEnum = pgEnum("clinic_operational_status", [
+export const orgOperationalStatusEnum = pgEnum("org_operational_status", [
   "prospect",
   "test",
   "active",
@@ -197,8 +197,8 @@ export const organizations = pgTable("organizations", {
   )
     .notNull()
     .default(60),
-  plan: clinicPlanEnum("plan").notNull().default("essencial"),
-  operationalStatus: clinicOperationalStatusEnum("operational_status")
+  plan: orgPlanEnum("plan").notNull().default("essencial"),
+  operationalStatus: orgOperationalStatusEnum("operational_status")
     .notNull()
     .default("prospect"),
   monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
@@ -965,10 +965,10 @@ export const slotReservations = pgTable(
 );
 
 // ── Membros: liga um usuário (por email) a uma clínica ──
-// owner enxerga todas; clinic_admin é resolvido para a clínica do seu vínculo.
+// owner enxerga todas; org_admin é resolvido para a organização do seu vínculo.
 export const memberRoleEnum = pgEnum("member_role", [
   "owner",
-  "clinic_admin",
+  "org_admin",
   "receptionist",
   "professional",
 ]);
@@ -981,7 +981,7 @@ export const clinicMembers = pgTable(
       .notNull()
       .references(() => organizations.id),
     email: text("email").notNull(),
-    role: memberRoleEnum("role").notNull().default("clinic_admin"),
+    role: memberRoleEnum("role").notNull().default("org_admin"),
     // Nome de exibição amigável usado na saudação do dashboard (ex.: "Dr. Gregorie").
     // Quando preenchido, tem prioridade sobre o profissional vinculado e o e-mail.
     displayName: text("display_name"),
