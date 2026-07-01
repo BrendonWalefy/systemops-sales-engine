@@ -163,7 +163,21 @@ republica o playbook em vez de duplicar. Ele imprime o `clinicId` ao final.
 - **Meta**: configure o webhook para `https://SEU_DOMINIO/api/whatsapp/webhook`.
   O roteamento usa o `phone_number_id` do payload.
 
-## 4. Checklist de teste (faça ANTES de liberar para o cliente)
+## 4. Ative a IA (passo que falta por padrão)
+
+`create-clinic.ts` sempre cria a clínica com `autoReplyEnabled = false` — é uma trava de
+segurança proposital, mas **se você não completar este passo, o cliente entra em
+produção com a IA muda**. Ligue a IA pela UI (`/app/settings/playbook`, toggle de
+resposta automática) como org_admin da clínica nova — isso também move
+`operationalStatus` para `active`, que é o gate real que libera resposta automática
+(ver `src/application/automation/clinic-automation-policy.ts`). Confirme os dois campos
+antes de considerar a clínica pronta:
+
+- [ ] `organizations.autoReplyEnabled = true`
+- [ ] `organizations.operationalStatus = "active"` (clínicas com `isTest = true` nunca
+      chegam em `active` — isso é esperado só para piloto/QA, não para cliente pagante)
+
+## 5. Checklist de teste (faça ANTES de liberar para o cliente)
 
 Roteamento e isolamento são o que não pode falhar com duas clínicas:
 
