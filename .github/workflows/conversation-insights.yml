@@ -1,8 +1,6 @@
 name: Conversation Insights
 
 on:
-  schedule:
-    - cron: "0 7 * * *"
   workflow_dispatch:
 
 jobs:
@@ -11,6 +9,6 @@ jobs:
     steps:
       - name: Call endpoint
         run: |
-          curl -sf -X GET https://systemops-sales-engine.vercel.app/api/cron/conversation-insights \
+          curl -sf -X GET https://app.systemops.com.br/api/cron/conversation-insights \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             | jq .

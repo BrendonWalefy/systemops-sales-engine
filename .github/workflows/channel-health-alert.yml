@@ -22,4 +22,4 @@ jobs:
       - name: Call endpoint
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: bash scripts/call-cron-endpoint.sh https://systemops-sales-engine.vercel.app/api/cron/channel-health-alert
+        run: bash scripts/call-cron-endpoint.sh https://app.systemops.com.br/api/cron/channel-health-alert
