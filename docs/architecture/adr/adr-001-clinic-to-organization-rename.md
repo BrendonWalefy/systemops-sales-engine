@@ -2,13 +2,13 @@
 
 **Status:** Aprovado — implementação pendente  
 **Data:** 2026-06-30  
-**Contexto:** Evolução do systemops-core como módulo de atendimento da systemops-platform
+**Contexto:** Evolução do systemops-sales-engine como módulo de atendimento da systemops-platform
 
 ---
 
 ## Contexto
 
-O `systemops-core` foi construído inicialmente como produto exclusivo para clínicas odontológicas e de estética. O domínio central se chama `Clinic` — o tipo TypeScript, a tabela no banco, os campos `clinicId` — e essa nomenclatura está espalhada por todo o código.
+O `systemops-sales-engine` foi construído inicialmente como produto exclusivo para clínicas odontológicas e de estética. O domínio central se chama `Clinic` — o tipo TypeScript, a tabela no banco, os campos `clinicId` — e essa nomenclatura está espalhada por todo o código.
 
 Com a expansão multi-segmento (atelier de costura, cortinas, e qualquer negócio baseado em orçamento e conversão via WhatsApp), o core está sendo posicionado como um **módulo de atendimento especializado em venda e conversão com IA**, acoplado a uma plataforma maior chamada `systemops-platform`. Nesse contexto, o nome `Clinic` se torna um identificador técnico incorreto para o conceito que representa: um **tenant operacional** com canal, agente e catálogo de serviços.
 
@@ -80,7 +80,7 @@ Considerado. `Organization` foi preferido porque:
 ## Consequências
 
 **Positivas:**
-- Código do `systemops-core` se auto-documenta corretamente como módulo genérico
+- Código do `systemops-sales-engine` se auto-documenta corretamente como módulo genérico
 - Integração com `systemops-platform` usa vocabulário consistente desde o início
 - Novos desenvolvedores entendem imediatamente que `Organization` representa qualquer tipo de negócio
 

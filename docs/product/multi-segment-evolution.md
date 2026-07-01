@@ -3,7 +3,7 @@
 **Status:** Planejado — próximo ciclo de desenvolvimento  
 **Última revisão:** 2026-06-30
 
-Este documento define o plano concreto para tornar o `systemops-core` capaz de
+Este documento define o plano concreto para tornar o `systemops-sales-engine` capaz de
 operar qualquer segmento de negócio sem reescrever o runtime.
 
 O sistema já funciona. O trabalho aqui não é refatoração por elegância — é
