@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { ResetClinicDialog } from "./reset-clinic-dialog";
 import { ArchiveClinicDialog } from "./archive-clinic-dialog";
+import { PurgeClinicDialog } from "./purge-clinic-dialog";
 import { db } from "@/infrastructure/db/client";
 import {
   organizations,
@@ -1246,6 +1247,15 @@ export default async function ClinicDetailPage({
                   </>
                 )}
               </div>
+
+              {isArchived && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, borderTop: "1px solid rgba(239,68,68,0.15)" }}>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                    Apaga permanentemente todo o dado da organização. Só disponível para organizações já arquivadas.
+                  </p>
+                  <PurgeClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
+                </div>
+              )}
             </div>
           </div>
         </div>
