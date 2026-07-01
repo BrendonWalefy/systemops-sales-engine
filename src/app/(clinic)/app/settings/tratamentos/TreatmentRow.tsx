@@ -6,6 +6,8 @@ import { Loader2, Save, Trash2, Pencil, X } from "lucide-react";
 import type { Treatment } from "@/domain/entities/treatment";
 import { deleteTreatment, updateTreatment } from "./actions";
 import { S, inputStyle } from "../playbook/settings-primitives";
+import { DurationHoursInput } from "@/components/DurationHoursInput";
+import { formatDurationLabel } from "@/core/scheduling/durationFormat";
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -111,7 +113,7 @@ export function TreatmentRow({
               background: "rgba(0,224,178,0.08)", border: "1px solid rgba(0,224,178,0.15)",
               padding: "3px 10px", borderRadius: "8px", flexShrink: 0,
             }}>
-              {treatment.durationMinutes} min
+              {formatDurationLabel(treatment.durationMinutes)}
             </span>
             {editBtn}
           </div>
@@ -136,19 +138,13 @@ export function TreatmentRow({
                 required
                 style={{ ...inputStyle, flex: 1, minWidth: "160px" }}
               />
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-                <input
-                  type="number"
-                  name="durationMinutes"
-                  defaultValue={treatment.durationMinutes}
-                  min={5}
-                  max={480}
-                  step={5}
-                  required
-                  style={{ ...inputStyle, width: "72px", textAlign: "center" }}
-                />
-                <span style={{ fontSize: "12px", color: S.textSec }}>min</span>
-              </div>
+              <DurationHoursInput
+                name="durationMinutes"
+                defaultMinutes={treatment.durationMinutes}
+                required
+                inputStyle={inputStyle}
+                labelStyle={{ color: S.textSec }}
+              />
             </div>
 
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -258,7 +254,7 @@ export function TreatmentRow({
       className="treatment-form"
       style={{
         display: "grid",
-        gridTemplateColumns: canEditPrices ? "1fr 130px 180px auto auto" : "1fr 130px auto auto",
+        gridTemplateColumns: canEditPrices ? "1fr 170px 180px auto auto" : "1fr 170px auto auto",
         alignItems: "center",
         gap: "10px",
         padding: "12px 22px",
@@ -267,12 +263,13 @@ export function TreatmentRow({
     >
       <input type="hidden" name="id" value={treatment.id} />
       <input type="text" name="name" defaultValue={treatment.name} required style={{ margin: 0, fontSize: "14px" }} />
-      <label style={{ display: "flex", alignItems: "center", gap: "6px", margin: 0 }}>
-        <input type="number" name="durationMinutes" defaultValue={treatment.durationMinutes} min={5} max={480} step={5} required style={{ width: "72px", textAlign: "center", margin: 0, fontSize: "16px" }} />
-        <span style={{ fontSize: "12px", color: "var(--muted)", whiteSpace: "nowrap" }}>
-          min
-        </span>
-      </label>
+      <DurationHoursInput
+        name="durationMinutes"
+        defaultMinutes={treatment.durationMinutes}
+        required
+        inputStyle={{ margin: 0, fontSize: "16px" }}
+        labelStyle={{ color: "var(--muted)", whiteSpace: "nowrap" }}
+      />
       {canEditPrices && (
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           {hasRange ? (
