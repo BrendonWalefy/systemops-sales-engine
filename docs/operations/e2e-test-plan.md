@@ -13,6 +13,58 @@ o comportamento do sistema como um todo, com dados e canais reais/simulados.
 
 ---
 
+## Achados da primeira execução (jul/2026) — ler antes de rodar de novo
+
+Validação executada contra produção real (`app.systemops.com.br`), clínica QA Start
+(`isTest=true`, plan `essencial`, slug `qa-start-clinic`), Z-API com credenciais falsas
+(garante que nenhum envio real de WhatsApp é possível, mesmo com o resto do pipeline
+funcionando de verdade — só falha no envio final por instância inválida).
+
+**1. Produção não tem nenhuma flag de QA configurada na Vercel** — só existem em
+`.env.local`. `E2E_MODE`, `DISABLE_REAL_WHATSAPP_SEND`, `DISABLE_REAL_OPENAI` não
+existem no ambiente de produção. Ou seja, qualquer teste contra produção gera custo
+real de OpenAI (pequeno) e tentaria envio real de WhatsApp se as credenciais Z-API
+fossem reais — **sempre use credenciais Z-API falsas ao testar contra produção**.
+
+**2. Clínica nova criada via `create-clinic.ts` sempre nasce com `autoReplyEnabled =
+false`** (default do schema) — a IA não responde nada até esse campo ser ativado
+manualmente. Isso é uma trava de segurança intencional (evita a IA responder antes do
+onboarding terminar), não um bug — mas **precisa entrar explicitamente no checklist de
+go-live de cada cliente novo**, senão o cliente entra em produção com a IA muda.
+
+**3. `autoReplyEnabled = true` sozinho não é suficiente para clínicas `isTest = true`.**
+O gate real é `shouldSendAutomatedClinicOutbound()`
+(`src/application/automation/clinic-automation-policy.ts`): exige
+`operationalStatus === "active"` OU `shadowModeEnabled = true`. Clínicas de teste
+resolvem para status `"test"`, não `"active"` — então, sem shadow mode, a IA nunca
+compõe resposta nenhuma para uma clínica de teste, mesmo com `autoReplyEnabled = true`.
+**Para clientes reais (não-teste) prestes a ir ao ar, confirmar que o toggle de "ativar
+IA" na UI realmente move `operationalStatus` para `"active"`** — é isso que efetivamente
+liga o atendimento automático, não só o `autoReplyEnabled` isolado.
+
+**4. Golden path confirmado funcionando de ponta a ponta** com shadow mode ativo: webhook
+→ `inbound_events` (`processed`) → job `message.process` (`done`, ~2s de latência real
+observada) → lead + conversa criados → IA compõe resposta correta e coerente (testado
+com pergunta sobre tratamento e preço) → `outbound_messages` criado → job `message.send`
+processa e marca `sent` (simulado, sem envio real, confirmado por `shadowModeEnabled`).
+
+**5. `scripts/e2e-webhook-test.ts` precisa de `E2E_WAIT_MS` bem maior que o default
+(12000ms) ao rodar contra produção real** — latência de composição de IA + fila real
+facilmente passa de 20-30s. Recomendado `E2E_WAIT_MS=45000` ou mais como piso ao testar
+contra produção (o default foi calibrado para um ambiente mais controlado).
+
+**6. Falha não resolvida — Grupo A do harness (`e2e-webhook-test.ts`, sem `--smoke`)**:
+mesmo com `E2E_WAIT_MS=45000`, os testes A1-A4 falham consistentemente com "Conversa não
+criada no DB", enquanto B1/B2/C1/C2 passam normalmente no mesmo run. Reproduzi o payload
+exato de A1 (`"oi"`, primeira mensagem) manualmente fora do harness — **funcionou
+perfeitamente** (lead criado, conversa criada, IA respondeu com intent `greeting`
+correto em ~28s). Isso indica que a falha é do **harness de teste** (`e2e-webhook-test.ts`
+Grupo A), não do pipeline de produção — mas não foi root-caused ainda. **Não tratar como
+bug de produto até investigar mais** — próxima sessão: instrumentar o script pra logar
+o `phoneA` gerado e comparar contra o que realmente chegou no banco.
+
+---
+
 ## 0. Preparação do ambiente de teste
 
 - [ ] Rodar `npm run verify` limpo antes de começar (lint, typecheck, db:check, testes)
