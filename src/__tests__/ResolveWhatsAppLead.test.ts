@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Lead } from "@/domain/entities/lead";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
-import { ResolveWhatsAppLead } from "@/application/whatsapp/resolve-whatsapp-lead";
+import { ResolveWhatsAppLead, sanitizeLeadName } from "@/application/whatsapp/resolve-whatsapp-lead";
 
 class MemoryLeadRepository implements LeadRepository {
   readonly leads = new Map<string, Lead>();
@@ -165,5 +165,84 @@ describe("ResolveWhatsAppLead", () => {
     expect(lead.id).toBe("phone-lead");
     expect(lead.whatsappLid).toBe("271295921025045@lid");
     expect(await repo.findById("lid-lead")).toBeNull();
+  });
+
+  // Cenário real: lead "🧜‍♂️🧚🏽‍♀️" (29/06) recebeu saudação da IA usando o
+  // emoji como nome literal, pois o pushname do WhatsApp era só emoji.
+  describe("sanitizeLeadName — nomes de perfil do WhatsApp sem letras", () => {
+    it("rejeita nome só com emoji", () => {
+      expect(sanitizeLeadName("🧜‍♂️🧚🏽‍♀️")).toBeNull();
+    });
+
+    it("rejeita nome só com símbolos/pontuação", () => {
+      expect(sanitizeLeadName("🔥🔥🔥")).toBeNull();
+      expect(sanitizeLeadName("...")).toBeNull();
+      expect(sanitizeLeadName("---")).toBeNull();
+    });
+
+    it("rejeita string vazia, só espaço ou undefined/null", () => {
+      expect(sanitizeLeadName("")).toBeNull();
+      expect(sanitizeLeadName("   ")).toBeNull();
+      expect(sanitizeLeadName(undefined)).toBeNull();
+      expect(sanitizeLeadName(null)).toBeNull();
+    });
+
+    it("aceita nomes reais, com acento, e ajusta espaços nas bordas", () => {
+      expect(sanitizeLeadName("Tarcísio Meira")).toBe("Tarcísio Meira");
+      expect(sanitizeLeadName("  Carla  ")).toBe("Carla");
+    });
+
+    it("aceita nome com emoji misturado a letras (ex: apelido decorado)", () => {
+      expect(sanitizeLeadName("Carla 💖")).toBe("Carla 💖");
+    });
+
+    it("lead novo criado via WhatsApp com pushname só-emoji recebe name null, não o emoji", async () => {
+      const repo = new MemoryLeadRepository();
+      const resolver = new ResolveWhatsAppLead(repo);
+      const lead = await resolver.execute({
+        clinicId: "clinic-1",
+        identifiers: { phone: "5511960564731", whatsappLid: null },
+        name: "🧜‍♂️🧚🏽‍♀️",
+        channel: "whatsapp",
+        now,
+        idGenerator,
+      });
+      expect(lead.name).toBeNull();
+    });
+
+    it("lead existente com nome válido não é sobrescrito por um pushname inválido em mensagem seguinte", async () => {
+      const repo = new MemoryLeadRepository();
+      repo.leads.set("lead-1", {
+        id: "lead-1",
+        clinicId: "clinic-1",
+        name: "Rogger Tenorio",
+        phone: "5513997707530",
+        whatsappLid: null,
+        email: null,
+        channel: "whatsapp",
+        campaignId: null,
+        treatmentInterest: null,
+        profilePicUrl: null,
+        status: "waiting_response",
+        temperature: null,
+        assignedToUserId: null,
+        nextActionAt: null,
+        lostReason: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const resolver = new ResolveWhatsAppLead(repo);
+      const lead = await resolver.execute({
+        clinicId: "clinic-1",
+        identifiers: { phone: "5513997707530", whatsappLid: null },
+        name: "🔥🔥🔥",
+        channel: "whatsapp",
+        now,
+        idGenerator,
+      });
+
+      expect(lead.name).toBe("Rogger Tenorio");
+    });
   });
 });

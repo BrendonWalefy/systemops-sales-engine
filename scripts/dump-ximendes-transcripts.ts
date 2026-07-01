@@ -31,13 +31,23 @@ mkdirSync(outputDir, { recursive: true });
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 
-const leads = await sql`
-  SELECT DISTINCT l.id, l.name, l.phone, l.status, l.temperature, l.treatment_interest, l.created_at
-  FROM leads l
-  JOIN conversations c ON c.lead_id = l.id
-  WHERE c.clinic_id = ${XIMENDES_CLINIC_ID}
-  ORDER BY l.created_at DESC
-`;
+const sinceDate = process.argv[3] ?? null;
+
+const leads = sinceDate
+  ? await sql`
+      SELECT DISTINCT l.id, l.name, l.phone, l.status, l.temperature, l.treatment_interest, l.created_at
+      FROM leads l
+      JOIN conversations c ON c.lead_id = l.id
+      WHERE c.organization_id = ${XIMENDES_CLINIC_ID} AND c.last_message_at >= ${sinceDate}
+      ORDER BY l.created_at DESC
+    `
+  : await sql`
+      SELECT DISTINCT l.id, l.name, l.phone, l.status, l.temperature, l.treatment_interest, l.created_at
+      FROM leads l
+      JOIN conversations c ON c.lead_id = l.id
+      WHERE c.organization_id = ${XIMENDES_CLINIC_ID}
+      ORDER BY l.created_at DESC
+    `;
 
 console.log(`Encontrados ${leads.length} lead(s) com conversas na Ximendes.`);
 
@@ -71,7 +81,7 @@ for (const lead of leads) {
            c.consecutive_unclear_count, c.last_message_at, c.created_at,
            c.takeover_expires_at
     FROM conversations c
-    WHERE c.lead_id = ${lead.id} AND c.clinic_id = ${XIMENDES_CLINIC_ID}
+    WHERE c.lead_id = ${lead.id} AND c.organization_id = ${XIMENDES_CLINIC_ID}
     ORDER BY c.created_at ASC
   `;
 

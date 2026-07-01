@@ -1654,7 +1654,7 @@ export class ConversationOrchestrator {
     // explícitas (ex: "quero saber sobre custo") mesmo após longo silêncio.
     const skipLlm = procedureSelection !== null || menuReRequested || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
 
-    const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
+    const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null, ambiguousTreatmentMatches: null as null };
 
     const promptContext = buildPromptContext(clinic);
 
@@ -1700,7 +1700,7 @@ export class ConversationOrchestrator {
           messageText,
           allMessagesForContext,
           hasPendingOffer,
-          clinicTreatments.map((t) => t.name),
+          clinicTreatments.map((t) => ({ name: t.name, aliases: t.aliases ?? [] })),
           promptContext,
         );
 
@@ -2318,6 +2318,7 @@ export class ConversationOrchestrator {
         replyText = await compose({
           type: "price_inquiry",
           identifiedTreatment: priceIdentifiedTreatment,
+          ambiguousTreatmentMatches: classification.slotPreference.ambiguousTreatmentMatches ?? null,
         });
         break;
       }
