@@ -1,9 +1,13 @@
 export type OrgPlan = "essencial" | "avancado" | "rede" | "custom";
 
+// Valores oficiais em docs/product/pricing-strategy.md.
+// Mapeamento comercial: essencial = Start, avancado = Growth, rede = Scale
+// (mono-unidade de alto volume — "rede" aqui NÃO significa multi-unidade, ver
+// docs/operations/billing-roadmap.md).
 export const PLAN_PRICE_BRL_CENTS: Record<OrgPlan, number> = {
-  essencial: 89700,
-  avancado: 149700,
-  rede: 299700,
+  essencial: 130000,
+  avancado: 230000,
+  rede: 350000,
   custom: 0,
 };
 

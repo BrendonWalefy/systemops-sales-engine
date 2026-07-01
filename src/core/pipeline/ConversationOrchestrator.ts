@@ -29,7 +29,7 @@ import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure
 import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 import { createLogger, type Logger } from "@/infrastructure/logging/logger";
 import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, type TtsConfig } from "@/domain/entities/tts-config";
-import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import type { VoiceElevenLabsConfig, VoiceTtsConfig } from "@/application/modules/module-configs";
 import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voice-mode";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
@@ -1089,10 +1089,14 @@ export class ConversationOrchestrator {
       ttsConf = DEFAULT_TTS_CONFIG;
     }
 
-    // Resolve voz por mensagem: B-WAVE usa lógica inteligente; voz básica é global
+    // Resolve voz por mensagem: B-WAVE e voz básica usam a mesma lógica de modo.
+    // Voz básica sem `mode` configurado cai em "impact" (mesmo padrão do B-WAVE —
+    // mais barato e evita voz em toda mensagem por falta de config explícita).
+    const voiceBasicMode: VoiceMode = (voiceMod?.config as VoiceTtsConfig | undefined)?.mode ?? "impact";
     function resolveVoiceForReply(messageIntent: IntentType, responseText: string): boolean {
       if (bwaveEnabled) return shouldUseBWaveForMessage(bwaveMode, messageIntent, responseText, inputWasAudio);
-      return voiceBasicEnabled;
+      if (voiceBasicEnabled) return shouldUseBWaveForMessage(voiceBasicMode, messageIntent, responseText, inputWasAudio);
+      return false;
     }
     const clinicExperience: ConversationExperience = activeModules.some((m) => m.key === "concierge_mode")
       ? "concierge"

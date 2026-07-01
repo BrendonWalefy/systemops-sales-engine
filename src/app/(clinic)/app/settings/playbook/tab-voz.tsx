@@ -3,7 +3,7 @@ import { useState, useTransition } from "react";
 import { Mic, Lock } from "lucide-react";
 import { toggleVoiceOutput, updateVoiceModuleConfig, updateBWaveConfig, updateBWaveSpeed } from "./playbook-version-actions";
 import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
-import type { VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import type { VoiceElevenLabsConfig, VoiceTtsConfig } from "@/application/modules/module-configs";
 import { TTS_SPEED_DEFAULTS } from "@/domain/entities/tts-config";
 import type { TtsProvider } from "@/domain/entities/tts-config";
 import { S, SettingsCard, SettingsRow, SettingsToggle, SettingsBadge, CollapsibleAdvanced, IconBox, SLabel } from "./settings-primitives";
@@ -27,10 +27,14 @@ export function TabVoz({ clinic }: { clinic: ClinicData }) {
   const [ttsOutputEnabled, setTtsOutputEnabled] = useState(ttsOutputEnabledInit);
   const [ttsOutputPending, startTtsOutputTransition] = useTransition();
 
-  const [ttsConfig, setTtsConfig] = useState<{ provider: string; speed: number }>(
+  const [ttsConfig, setTtsConfig] = useState<VoiceTtsConfig>(
     voiceMod?.config
-      ? { provider: (voiceMod.config.provider as string) ?? "nova", speed: Number(voiceMod.config.speed ?? 1.0) }
-      : { provider: "nova", speed: TTS_SPEED_DEFAULTS.nova },
+      ? {
+          provider: (voiceMod.config.provider as TtsProvider) ?? "nova",
+          speed: Number(voiceMod.config.speed ?? 1.0),
+          mode: (voiceMod.config.mode as VoiceMode) ?? "impact",
+        }
+      : { provider: "nova", speed: TTS_SPEED_DEFAULTS.nova, mode: "impact" },
   );
   const [ttsConfigPending, startTtsConfigTransition] = useTransition();
 
@@ -58,13 +62,19 @@ export function TabVoz({ clinic }: { clinic: ClinicData }) {
   }
 
   function handleTtsProviderChange(provider: TtsProvider) {
-    const next = { provider, speed: TTS_SPEED_DEFAULTS[provider] };
+    const next: VoiceTtsConfig = { ...ttsConfig, provider, speed: TTS_SPEED_DEFAULTS[provider] };
     setTtsConfig(next);
     startTtsConfigTransition(async () => { await updateVoiceModuleConfig(next); });
   }
 
   function handleTtsSpeedChange(speed: number) {
-    const next = { ...(ttsConfig as { provider: TtsProvider; speed: number }), speed };
+    const next: VoiceTtsConfig = { ...ttsConfig, speed };
+    setTtsConfig(next);
+    startTtsConfigTransition(async () => { await updateVoiceModuleConfig(next); });
+  }
+
+  function handleTtsModeChange(mode: VoiceMode) {
+    const next: VoiceTtsConfig = { ...ttsConfig, mode };
     setTtsConfig(next);
     startTtsConfigTransition(async () => { await updateVoiceModuleConfig(next); });
   }
@@ -150,6 +160,41 @@ export function TabVoz({ clinic }: { clinic: ClinicData }) {
               </div>
 
               <div>
+                <SLabel>Modo de voz</SLabel>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {(["impact", "mix", "full"] as VoiceMode[]).map((mode) => {
+                    const selected = ttsConfig.mode === mode;
+                    const isRec = mode === "impact";
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={ttsConfigPending}
+                        onClick={() => handleTtsModeChange(mode)}
+                        style={{
+                          display: "flex", alignItems: "flex-start", gap: "10px",
+                          padding: "10px 12px", borderRadius: "8px",
+                          border: selected ? `1px solid rgba(0,224,178,0.25)` : `1px solid ${S.border}`,
+                          background: selected ? S.cardActive : S.card,
+                          cursor: ttsConfigPending ? "default" : "pointer", textAlign: "left",
+                          opacity: ttsConfigPending ? 0.7 : 1,
+                        }}
+                      >
+                        <span style={{ width: "8px", height: "8px", marginTop: "5px", borderRadius: "999px", background: selected ? S.teal : S.textMuted, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ fontSize: "13px", fontWeight: 600, color: S.text }}>{VOICE_MODE_LABELS[mode].label}</span>
+                            {isRec && <SettingsBadge variant="recommended">Recomendado</SettingsBadge>}
+                          </div>
+                          <div style={{ fontSize: "11px", color: S.textSec, marginTop: "2px" }}>{VOICE_MODE_LABELS[mode].description}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                   <SLabel style={{ margin: 0 }}>Velocidade</SLabel>
                   <span style={{ fontSize: "13px", fontWeight: 700, color: S.teal, fontVariantNumeric: "tabular-nums" }}>
@@ -191,7 +236,7 @@ export function TabVoz({ clinic }: { clinic: ClinicData }) {
                   {bwaveActive ? (
                     <SettingsBadge variant="active">{VOICE_MODE_LABELS[bwaveMode].label}</SettingsBadge>
                   ) : (
-                    <SettingsBadge variant="coming">Plano Rede+</SettingsBadge>
+                    <SettingsBadge variant="coming">Plano Growth+</SettingsBadge>
                   )}
                 </div>
                 <p style={{ margin: "2px 0 0", fontSize: S.fs.desc, color: S.textSec }}>
@@ -217,7 +262,7 @@ export function TabVoz({ clinic }: { clinic: ClinicData }) {
                 </div>
               ))}
               <p style={{ margin: "4px 0 0", fontSize: "11px", color: S.textMuted }}>
-                Disponível no plano Rede. Fale com o suporte para ativar.
+                Disponível no plano Growth. Fale com o suporte para ativar.
               </p>
             </div>
           )}
