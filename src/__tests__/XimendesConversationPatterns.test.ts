@@ -290,6 +290,76 @@ describe("needs_human — cobertura de cenários reais Ximendes (especificação
   });
 });
 
+// ─── 11. price_inquiry — variação não especificada (cenário Luis, 30/06) ─────
+// Lead perguntou "valores das lentes" sem dizer qual técnica. A IA cotou só a
+// Estratificada e nunca mencionou a Simplificada, até o operador corrigir manualmente.
+// Generalização: qualquer clínica com 2+ variações do mesmo procedimento base
+// (ex: técnicas, categorias, planos) deve sempre apresentar TODAS quando o lead
+// não especificar qual quer.
+
+describe("price_inquiry — variação de procedimento não especificada (cenário Luis)", () => {
+  it("com ambiguousTreatmentMatches, instrui a apresentar TODAS as opções, nunca uma só", () => {
+    const ctx = buildActionContext({
+      type: "price_inquiry",
+      identifiedTreatment: null,
+      ambiguousTreatmentMatches: [
+        "Lentes de resina composta simplificada",
+        "Lentes de resina composta estratificada",
+      ],
+    });
+    expect(ctx).toContain("mais de uma opção do catálogo");
+    expect(ctx).toContain("Lentes de resina composta simplificada");
+    expect(ctx).toContain("Lentes de resina composta estratificada");
+    expect(ctx).toContain("NUNCA responda com apenas uma delas");
+  });
+
+  it("sem ambiguidade (uma única correspondência), não injeta a instrução de múltiplas opções", () => {
+    const ctx = buildActionContext({
+      type: "price_inquiry",
+      identifiedTreatment: "Clareamento dental",
+      ambiguousTreatmentMatches: null,
+    });
+    expect(ctx).not.toContain("mais de uma opção do catálogo");
+  });
+
+  it("funciona para qualquer família de procedimento com variações, não só lentes", () => {
+    const ctx = buildActionContext({
+      type: "price_inquiry",
+      identifiedTreatment: null,
+      ambiguousTreatmentMatches: ["Implante unitário", "Implante protocolo (arcada completa)"],
+    });
+    expect(ctx).toContain("Implante unitário");
+    expect(ctx).toContain("Implante protocolo (arcada completa)");
+  });
+});
+
+// ─── 12. Anti-desvio de assunto — cenário Tarcísio Meira (30/06) ─────────────
+// Lead disse "Não é lentes... seria uma dentadura?" e a IA continuou respondendo
+// sobre lentes por vários turnos antes de falar de prótese. Generalização: a IA
+// não deve grudar no procedimento anterior da conversa quando o lead migrou ou
+// corrigiu o assunto — vale para qualquer par de procedimentos, não só lentes/prótese.
+
+describe("foco no assunto atual — não reverter para procedimento anterior (cenário Tarcísio)", () => {
+  it("price_inquiry instrui a não misturar com procedimento anterior após correção do lead", () => {
+    const ctx = buildActionContext({
+      type: "price_inquiry",
+      identifiedTreatment: "Prótese dentária",
+      ambiguousTreatmentMatches: null,
+    });
+    expect(ctx).toContain("FOCO NO ASSUNTO DA MENSAGEM ATUAL");
+    expect(ctx).toContain("NÃO volte a falar dele");
+  });
+
+  it("general_question instrui a não misturar com procedimento anterior após correção do lead", () => {
+    const ctx = buildActionContext({
+      type: "general_question",
+      clinicContext: "Lead perguntou como funciona o processo de prótese dentária.",
+    });
+    expect(ctx).toContain("FOCO NO ASSUNTO DA MENSAGEM ATUAL");
+    expect(ctx).toContain("não é isso");
+  });
+});
+
 // ─── 10. patient_arrived action context — cenário Fe Em Deus (atraso no dia) ──
 
 describe("patient_arrived — aviso de atraso no dia da consulta", () => {
