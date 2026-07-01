@@ -5,6 +5,7 @@ export type VoiceTtsConfig = {
   provider: TtsProvider;
   speed: number;
   voiceOutputEnabled?: boolean; // default true; false = envia só texto mesmo com módulo ativo
+  mode?: VoiceMode; // default "full"; usar "greeting_only" para o teaser do plano Start
 };
 
 export type VoiceElevenLabsConfig = {

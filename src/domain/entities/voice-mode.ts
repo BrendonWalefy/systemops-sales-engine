@@ -1,6 +1,6 @@
 import type { IntentType } from "@/core/intelligence/IntentClassifier";
 
-export type VoiceMode = "impact" | "mix" | "full";
+export type VoiceMode = "greeting_only" | "impact" | "mix" | "full";
 
 // Intents onde a voz tem alto impacto em conversão e experiência
 const IMPACT_INTENTS = new Set<IntentType>([
@@ -36,13 +36,21 @@ export function shouldUseBWaveForMessage(
   if (responseText.trim().length < 50) return false;
 
   switch (mode) {
-    case "full":   return true;
-    case "impact": return IMPACT_INTENTS.has(intent);
-    case "mix":    return !SKIP_IN_MIX.has(intent);
+    case "full":          return true;
+    case "impact":        return IMPACT_INTENTS.has(intent);
+    case "mix":           return !SKIP_IN_MIX.has(intent);
+    // Teaser comercial do plano Start: só a saudação vem em voz, o resto em texto.
+    // Ver docs/product/pricing-strategy.md — cria desejo de upgrade sem dar a
+    // experiência completa de graça.
+    case "greeting_only": return intent === "greeting";
   }
 }
 
 export const VOICE_MODE_LABELS: Record<VoiceMode, { label: string; description: string }> = {
+  greeting_only: {
+    label: "Voz na saudação",
+    description: "Só a primeira mensagem (saudação) vem em áudio. Teaser do plano Start.",
+  },
   impact: {
     label: "B-WAVE Impact",
     description: "Voz nos momentos certos: saudação, agendamento, confirmação, preços. Economiza créditos.",

@@ -85,7 +85,7 @@ export default async function ClinicModulesPage({
             <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "#fafafa" }}>{clinic.name} — Módulos</h1>
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#71717a" }}>
               Plano: <span style={{ color: "#34d399", fontWeight: 600, textTransform: "capitalize" }}>{plan}</span>
-              <span style={{ color: "#3f3f46", marginLeft: "8px" }}>· Custom não mexe em nada; Rede também prepara a recomendação premium de voz.</span>
+              <span style={{ color: "#3f3f46", marginLeft: "8px" }}>· Custom não mexe em nada; Avançado (Growth) ativa B-WAVE full e Rede ativa B-WAVE mix — ambos com recomendação premium de voz.</span>
             </p>
           </div>
           <form
@@ -253,20 +253,20 @@ export default async function ClinicModulesPage({
                     "use server";
                     const provider = String(formData.get("provider") ?? "nova");
                     const speed = provider === "neural2" ? 1.0 : 0.92;
-                    await updateModuleConfig(clinicId, "voice_tts", { provider, speed });
+                    const mode = (String(formData.get("mode") ?? "impact")) as VoiceMode;
+                    await updateModuleConfig(clinicId, "voice_tts", { provider, speed, mode });
                   }}
                   style={{
                     borderTop: "1px solid rgba(255,255,255,0.06)",
                     padding: "14px 16px",
                     background: "rgba(255,255,255,0.015)",
                     display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
-                    flexWrap: "wrap",
+                    flexDirection: "column",
+                    gap: "14px",
                   }}
                 >
-                  <Settings2 size={14} style={{ color: "#52525b", flexShrink: 0 }} />
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Settings2 size={14} style={{ color: "#52525b", flexShrink: 0 }} />
                     <label style={{ fontSize: "12px", color: "#71717a" }}>Provedor de voz</label>
                     <select
                       name="provider"
@@ -285,9 +285,27 @@ export default async function ClinicModulesPage({
                       <option value="neural2">Google Neural2 (PT-BR nativa)</option>
                     </select>
                   </div>
+
+                  {/* Modo de voz — mesmos 3 níveis do B-WAVE */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label style={{ fontSize: "11px", color: "#52525b" }}>Modo de operação</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {(["impact", "mix", "full"] as VoiceMode[]).map((m) => (
+                        <label key={m} style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 10px", borderRadius: "6px", background: (voiceTtsConfig?.mode ?? "impact") === m ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)", border: (voiceTtsConfig?.mode ?? "impact") === m ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
+                          <input type="radio" name="mode" value={m} defaultChecked={(voiceTtsConfig?.mode ?? "impact") === m} style={{ marginTop: "2px", accentColor: "#10b981" }} />
+                          <div>
+                            <div style={{ fontSize: "12px", fontWeight: 600, color: "#fafafa" }}>{VOICE_MODE_LABELS[m].label}</div>
+                            <div style={{ fontSize: "11px", color: "#52525b", marginTop: "1px" }}>{VOICE_MODE_LABELS[m].description}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
                     style={{
+                      alignSelf: "flex-start",
                       padding: "5px 12px",
                       borderRadius: "6px",
                       border: "1px solid rgba(16,185,129,0.3)",

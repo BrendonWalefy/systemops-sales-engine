@@ -13,6 +13,17 @@ export const REDE_RECOMMENDED_BWAVE_CONFIG: VoiceElevenLabsConfig = {
   mode: "mix",
 };
 
+// Fase de validação inicial (Start + Growth, ver docs/product/pricing-strategy.md):
+// clientes Growth recebem B-WAVE completo (mode "full") para validar o produto com
+// os primeiros casos reais, antes de restringir a régua definitiva por plano.
+export const GROWTH_VALIDATION_BWAVE_CONFIG: VoiceElevenLabsConfig = {
+  voiceId: "",
+  stability: 0.58,
+  similarityBoost: 0.82,
+  speed: 0.96,
+  mode: "full",
+};
+
 const GENERIC_TONES = new Set([
   "acolhedor",
   "profissional",
@@ -54,19 +65,19 @@ export function applyPlanActivations(
   return nextState;
 }
 
-export function mergeRedeBWaveConfig(
+export function mergeBWaveConfig(
   currentConfig: Partial<VoiceElevenLabsConfig> | null | undefined,
+  base: VoiceElevenLabsConfig = REDE_RECOMMENDED_BWAVE_CONFIG,
 ): VoiceElevenLabsConfig {
   return {
-    voiceId: currentConfig?.voiceId?.trim() ?? REDE_RECOMMENDED_BWAVE_CONFIG.voiceId,
-    stability: currentConfig?.stability ?? REDE_RECOMMENDED_BWAVE_CONFIG.stability,
-    similarityBoost:
-      currentConfig?.similarityBoost ??
-      REDE_RECOMMENDED_BWAVE_CONFIG.similarityBoost,
-    speed: currentConfig?.speed ?? REDE_RECOMMENDED_BWAVE_CONFIG.speed,
-    mode: currentConfig?.mode ?? REDE_RECOMMENDED_BWAVE_CONFIG.mode,
+    voiceId: currentConfig?.voiceId?.trim() ?? base.voiceId,
+    stability: currentConfig?.stability ?? base.stability,
+    similarityBoost: currentConfig?.similarityBoost ?? base.similarityBoost,
+    speed: currentConfig?.speed ?? base.speed,
+    mode: currentConfig?.mode ?? base.mode,
   };
 }
+
 
 export function shouldApplyRedeToneRecommendation(
   currentTone: string | null | undefined,
