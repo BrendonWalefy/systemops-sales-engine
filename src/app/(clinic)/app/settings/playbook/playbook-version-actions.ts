@@ -293,9 +293,9 @@ export async function updateBWaveConfig(config: VoiceElevenLabsConfig) {
     );
 
   revalidatePath("/app/settings/playbook");
-  revalidatePath(`/owner/organizations/${CLINIC_ID}`);
-  revalidatePath(`/owner/organizations/${CLINIC_ID}/blueprint`);
-  revalidatePath(`/owner/organizations/${CLINIC_ID}/modules`);
+  revalidatePath(`/owner/clinics/${CLINIC_ID}`);
+  revalidatePath(`/owner/clinics/${CLINIC_ID}/blueprint`);
+  revalidatePath(`/owner/clinics/${CLINIC_ID}/modules`);
 }
 
 export async function deletePlaybookVersion(id: string) {

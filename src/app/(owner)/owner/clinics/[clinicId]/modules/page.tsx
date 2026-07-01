@@ -75,7 +75,7 @@ export default async function ClinicModulesPage({
       {/* Header */}
       <div style={{ marginBottom: "24px" }}>
         <Link
-          href={`/owner/organizations/${clinicId}`}
+          href={`/owner/clinics/${clinicId}`}
           style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "#71717a", textDecoration: "none", marginBottom: "12px" }}
         >
           <ArrowLeft size={14} /> Voltar para a organização
@@ -141,8 +141,8 @@ export default async function ClinicModulesPage({
             (!openModuleKey && def.key === "voice_elevenlabs" && !elevenLabsConfig?.voiceId)
           );
           const configHref = openModuleKey === def.key
-            ? `/owner/organizations/${clinicId}/modules#module-${def.key}`
-            : `/owner/organizations/${clinicId}/modules?open=${def.key}#module-${def.key}`;
+            ? `/owner/clinics/${clinicId}/modules#module-${def.key}`
+            : `/owner/clinics/${clinicId}/modules?open=${def.key}#module-${def.key}`;
 
           return (
             <div

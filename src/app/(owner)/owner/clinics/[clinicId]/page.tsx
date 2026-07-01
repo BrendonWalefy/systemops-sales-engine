@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { ResetClinicDialog } from "./reset-clinic-dialog";
 import { db } from "@/infrastructure/db/client";
 import {
@@ -38,10 +39,23 @@ import {
   getClinicVoiceBlueprintState,
 } from "@/application/modules/module-gate";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
+import { ACTIVE_CLINIC_COOKIE } from "@/application/tenancy/resolve-clinic";
 import {
   getClinicOperationalStatusColors,
   getClinicOperationalStatusLabel,
 } from "@/application/clinics/clinic-operational-status-presentation";
+
+async function enterClinicInbox(clinicId: string) {
+  "use server";
+  const store = await cookies();
+  store.set(ACTIVE_CLINIC_COOKIE, clinicId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  });
+  redirect("/app/inbox");
+}
 
 async function toggleIsTest(clinicId: string, currentValue: boolean) {
   "use server";
@@ -52,7 +66,7 @@ async function toggleIsTest(clinicId: string, currentValue: boolean) {
       operationalStatus: true,
     },
   });
-  if (!clinic) redirect(`/owner/organizations/${clinicId}`);
+  if (!clinic) redirect(`/owner/clinics/${clinicId}`);
 
   const nextIsTest = !currentValue;
   await db
@@ -70,7 +84,7 @@ async function toggleIsTest(clinicId: string, currentValue: boolean) {
             }),
     })
     .where(eq(organizations.id, clinicId));
-  redirect(`/owner/organizations/${clinicId}`);
+  redirect(`/owner/clinics/${clinicId}`);
 }
 
 async function upsertMemberPassword(clinicId: string, formData: FormData) {
@@ -78,7 +92,7 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
   if (!email || !password || password.length < 8)
-    redirect(`/owner/organizations/${clinicId}?memberError=1`);
+    redirect(`/owner/clinics/${clinicId}?memberError=1`);
   const hash = await hashPassword(password);
   const existing = await db
     .select({ id: clinicMembers.id })
@@ -98,7 +112,7 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
       .insert(clinicMembers)
       .values({ clinicId, email, role: "org_admin", passwordHash: hash });
   }
-  redirect(`/owner/organizations/${clinicId}?memberOk=1`);
+  redirect(`/owner/clinics/${clinicId}?memberOk=1`);
 }
 
 async function updateClinicPlan(clinicId: string, formData: FormData) {
@@ -106,7 +120,7 @@ async function updateClinicPlan(clinicId: string, formData: FormData) {
   const plan = formData.get("plan") as string;
   const valid = ["essencial", "avancado", "rede", "custom"] as const;
   if (!(valid as readonly string[]).includes(plan)) {
-    redirect(`/owner/organizations/${clinicId}`);
+    redirect(`/owner/clinics/${clinicId}`);
   }
   const typedPlan = plan as "essencial" | "avancado" | "rede" | "custom";
   await db
@@ -114,7 +128,7 @@ async function updateClinicPlan(clinicId: string, formData: FormData) {
     .set({ plan: typedPlan, updatedAt: new Date() })
     .where(eq(organizations.id, clinicId));
   await applyClinicPlanPreset(clinicId, typedPlan, "owner");
-  redirect(`/owner/organizations/${clinicId}?planOk=1`);
+  redirect(`/owner/clinics/${clinicId}?planOk=1`);
 }
 
 function formatCurrency(micros: number): string {
@@ -176,9 +190,9 @@ async function activateClinicGoLive(clinicId: string) {
     },
   });
 
-  if (!clinic) redirect(`/owner/organizations/${clinicId}?goLiveError=not-found`);
+  if (!clinic) redirect(`/owner/clinics/${clinicId}?goLiveError=not-found`);
   if (clinic.operationalStatus === "cancelled") {
-    redirect(`/owner/organizations/${clinicId}?goLiveError=cancelled`);
+    redirect(`/owner/clinics/${clinicId}?goLiveError=cancelled`);
   }
 
   const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
@@ -229,7 +243,7 @@ async function activateClinicGoLive(clinicId: string) {
   });
 
   if (blueprint.criticalMissing.length > 0) {
-    redirect(`/owner/organizations/${clinicId}?goLiveError=incomplete`);
+    redirect(`/owner/clinics/${clinicId}?goLiveError=incomplete`);
   }
 
   await db
@@ -242,7 +256,7 @@ async function activateClinicGoLive(clinicId: string) {
     })
     .where(eq(organizations.id, clinicId));
 
-  redirect(`/owner/organizations/${clinicId}?goLiveOk=1`);
+  redirect(`/owner/clinics/${clinicId}?goLiveOk=1`);
 }
 
 export default async function ClinicDetailPage({
@@ -646,7 +660,7 @@ export default async function ClinicDetailPage({
             </span>
           )}
           <Link
-            href={`/owner/organizations/${clinic.id}/modules`}
+            href={`/owner/clinics/${clinic.id}/modules`}
             style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)" }}
           >
             <Layers size={13} />
@@ -659,13 +673,15 @@ export default async function ClinicDetailPage({
             <Workflow size={13} />
             Onboarding
           </Link>
-          <Link
-            href="/app/inbox"
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--accent-strong)", textDecoration: "none" }}
-          >
-            <ExternalLink size={13} />
-            Inbox
-          </Link>
+          <form action={enterClinicInbox.bind(null, clinic.id)}>
+            <button
+              type="submit"
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--accent-strong)", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+            >
+              <ExternalLink size={13} />
+              Inbox
+            </button>
+          </form>
         </div>
       </div>
 
@@ -731,7 +747,7 @@ export default async function ClinicDetailPage({
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>Clínica ativa</span>
               ) : null}
               <Link
-                href={`/owner/organizations/${clinic.id}/blueprint`}
+                href={`/owner/clinics/${clinic.id}/blueprint`}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 700, color: "var(--muted)", border: "1px solid var(--line)", background: "var(--surface-soft)" }}
               >
                 <Building2 size={12} />

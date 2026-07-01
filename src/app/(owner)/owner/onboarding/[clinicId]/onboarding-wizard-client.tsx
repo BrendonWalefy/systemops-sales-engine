@@ -2079,7 +2079,7 @@ export function OnboardingWizardClient({
             break;
           case 7:
             setDone(true);
-            setTimeout(() => router.push(`/owner/organizations/${clinicId}`), 1200);
+            setTimeout(() => router.push(`/owner/clinics/${clinicId}`), 1200);
             return resolve();
         }
 
@@ -2258,7 +2258,7 @@ export function OnboardingWizardClient({
               blueprint={blueprint}
             />
             <a
-              href={`/owner/organizations/${clinicId}/blueprint`}
+              href={`/owner/clinics/${clinicId}/blueprint`}
               target="_blank"
               rel="noopener noreferrer"
               style={{

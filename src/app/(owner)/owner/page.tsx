@@ -366,7 +366,7 @@ export default async function OwnerPage() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link
-            href="/owner/organizations/novo"
+            href="/owner/clinics/novo"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -383,7 +383,7 @@ export default async function OwnerPage() {
           >
             + Diagnóstico rápido
           </Link>
-          <Link href="/owner/organizations/new" className="primary-button">
+          <Link href="/owner/clinics/new" className="primary-button">
             Clínica completa
           </Link>
           <LoadDemoClinicButton />
@@ -667,7 +667,7 @@ export default async function OwnerPage() {
                 return (
                   <Link
                     key={clinic.id}
-                    href={`/owner/organizations/${clinic.id}`}
+                    href={`/owner/clinics/${clinic.id}`}
                     className="mobile-clinic-card"
                   >
                     <div className="mobile-clinic-card-row">
@@ -809,7 +809,7 @@ export default async function OwnerPage() {
                       >
                         <td style={{ padding: "12px 16px" }}>
                           <Link
-                            href={`/owner/organizations/${clinic.id}`}
+                            href={`/owner/clinics/${clinic.id}`}
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -976,7 +976,7 @@ export default async function OwnerPage() {
                     }}
                   >
                     <Link
-                      href={`/owner/organizations/${clinic.id}`}
+                      href={`/owner/clinics/${clinic.id}`}
                       style={{
                         fontWeight: 700,
                         color: "#60a5fa",
@@ -1026,7 +1026,7 @@ export default async function OwnerPage() {
               {testRows.map((clinic) => (
                 <Link
                   key={clinic.id}
-                  href={`/owner/organizations/${clinic.id}`}
+                  href={`/owner/clinics/${clinic.id}`}
                   className="mobile-clinic-card"
                 >
                   <div className="mobile-clinic-card-row">
@@ -1071,7 +1071,7 @@ export default async function OwnerPage() {
                   }}
                 >
                   <Link
-                    href={`/owner/organizations/${clinic.id}`}
+                    href={`/owner/clinics/${clinic.id}`}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1137,7 +1137,7 @@ export default async function OwnerPage() {
                   }}
                 >
                   <Link
-                    href={`/owner/organizations/${clinic.id}`}
+                    href={`/owner/clinics/${clinic.id}`}
                     style={{
                       fontWeight: 700,
                       color: "#f87171",

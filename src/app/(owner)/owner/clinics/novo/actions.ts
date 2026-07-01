@@ -123,5 +123,5 @@ export async function createProspectClinic(
     passwordHash,
   });
 
-  redirect(`/owner/organizations/${clinicId}/blueprint`);
+  redirect(`/owner/clinics/${clinicId}/blueprint`);
 }

@@ -84,5 +84,5 @@ export async function setConversationCategory(
   revalidatePath(`/app/inbox/${conversationId}`);
   revalidatePath("/app/dashboard");
   revalidatePath("/owner");
-  revalidatePath(`/owner/organizations/${conversation.clinicId}`);
+  revalidatePath(`/owner/clinics/${conversation.clinicId}`);
 }
