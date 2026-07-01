@@ -35,7 +35,7 @@ export type ActionResult =
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
   | { type: "handoff_requested"; handoffReason?: string | null }
-  | { type: "price_inquiry"; identifiedTreatment?: string | null }
+  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
   | { type: "acknowledgment" }
@@ -401,8 +401,14 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       const treatmentMediaInstruction = result.identifiedTreatment
         ? `VÍDEOS PARA ESTE PROCEDIMENTO: se a Biblioteca de Mídia contiver vídeos relacionados a "${result.identifiedTreatment}", inclua TODOS os [MEDIA:id] correspondentes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido e aumenta a conversão. Coloque os [MEDIA:id] antes do próximo passo.`
         : `SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os [MEDIA:id] relevantes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido do procedimento.`;
+      const ambiguousMatches = result.ambiguousTreatmentMatches?.filter(Boolean) ?? [];
+      const ambiguityInstruction = ambiguousMatches.length > 1
+        ? `REGRA CRÍTICA — LEAD NÃO ESPECIFICOU A VARIAÇÃO: o termo usado corresponde a mais de uma opção do catálogo (${ambiguousMatches.map((n) => `"${n}"`).join(", ")}). Apresente o valor e as condições de TODAS essas opções na mesma resposta, deixando claro o que diferencia cada uma — NUNCA responda com apenas uma delas e omita as demais. Só aprofunde em uma única opção se o lead perguntar especificamente por ela depois.`
+        : "";
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço${result.identifiedTreatment ? ` de "${result.identifiedTreatment}"` : ""}.
 Apresente os valores e condições descritos na política comercial do sistema. REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados.
+REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda especificamente sobre o procedimento perguntado agora. Se a conversa mencionou outro procedimento antes (inclusive se o lead rejeitou ou corrigiu esse procedimento anterior, ex: "não é isso", "não é X"), NÃO volte a falar dele nem misture os dois — a menos que o lead peça explicitamente uma comparação entre ambos.
+${ambiguityInstruction}
 ${installmentInstruction}
 ${treatmentMediaInstruction}
 SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes.
@@ -413,6 +419,7 @@ ${isConcierge ? "Depois de responder o investimento, conduza ativamente para o p
 case "general_question":
       return `AÇÃO EXECUTADA: Pergunta geral sobre a clínica.
 CONTEXTO DA CLÍNICA: ${result.clinicContext}
+REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda sobre o procedimento/assunto perguntado agora pelo lead. Se a conversa mencionou outro procedimento antes (inclusive se o lead rejeitou ou corrigiu esse procedimento anterior, ex: "não é isso", "não é X", "seria Y"), NÃO volte a falar do procedimento anterior nem o misture com o atual — a menos que o lead peça explicitamente uma comparação entre os dois.
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
 PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.

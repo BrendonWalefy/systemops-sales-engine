@@ -17,6 +17,16 @@ export type ResolveWhatsAppLeadInput = {
   idGenerator: () => string;
 };
 
+// O "nome" de um contato de WhatsApp vem do pushname do perfil, definido livremente
+// pelo usuário — pode ser um emoji, símbolo, apelido de grupo, nome de empresa etc.
+// Só aceitamos como nome do lead algo que contenha ao menos uma letra; caso contrário
+// tratamos como ausente (null) para a IA não cumprimentar o lead com lixo textual.
+export function sanitizeLeadName(name: string | null | undefined): string | null {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  return /\p{L}/u.test(trimmed) ? trimmed : null;
+}
+
 function enrichLead(
   lead: Lead,
   identifiers: WhatsAppContactIdentifiers,
@@ -33,7 +43,7 @@ function enrichLead(
     ...lead,
     phone: mergedIds.phone ?? lead.phone,
     whatsappLid: mergedIds.whatsappLid ?? lead.whatsappLid,
-    name: name?.trim() ? name.trim() : lead.name,
+    name: sanitizeLeadName(name) ?? lead.name,
     profilePicUrl: senderPhoto ?? lead.profilePicUrl,
     updatedAt: now,
   };
@@ -98,7 +108,7 @@ export class ResolveWhatsAppLead {
     const candidate: Lead = {
       id: input.idGenerator(),
       clinicId: input.clinicId,
-      name: input.name?.trim() ? input.name.trim() : null,
+      name: sanitizeLeadName(input.name),
       phone: mergedIds.phone,
       whatsappLid: mergedIds.whatsappLid,
       email: null,

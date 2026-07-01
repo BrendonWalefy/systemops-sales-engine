@@ -282,6 +282,7 @@ function makeIntent(
       preferredTime: null,
       slotChoice: extra.slotPreference?.slotChoice ?? null,
       identifiedTreatment: null,
+      ambiguousTreatmentMatches: null,
     },
     confidence: 1,
     shouldAskClarification: false,
@@ -295,7 +296,7 @@ function mockClassify(message: string, hasPendingSlotOffer: boolean): IntentClas
   const m = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
   if (hasPendingSlotOffer && /^[123]$/.test(m)) {
-    return makeIntent("confirm_slot", { slotPreference: { preferredDate: null, preferredPeriod: null, preferredTime: null, slotChoice: Number(m), identifiedTreatment: null } });
+    return makeIntent("confirm_slot", { slotPreference: { preferredDate: null, preferredPeriod: null, preferredTime: null, slotChoice: Number(m), identifiedTreatment: null, ambiguousTreatmentMatches: null } });
   }
   if (/dor|urgente|urgencia|sangrament|emergencia/.test(m)) return makeIntent("clinical_urgency");
   if (/falar com|dentista|humano|especialista|ligar/.test(m)) return makeIntent("needs_human");
@@ -571,7 +572,7 @@ export async function POST(req: NextRequest) {
       externalId: null,
     }));
 
-    const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null };
+    const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null, ambiguousTreatmentMatches: null as null };
 
     const classification = menuResolution
       ? {

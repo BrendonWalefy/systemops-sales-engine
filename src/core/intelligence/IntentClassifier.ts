@@ -8,12 +8,21 @@ import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 const MODEL = "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 30_000;
 
+export type TreatmentOption = {
+  name: string;
+  aliases?: string[];
+};
+
 export type SlotPreference = {
   preferredDate?: string | null;
   preferredPeriod?: "morning" | "afternoon" | "evening" | null;
   preferredTime?: string | null;
   slotChoice?: number | null;
   identifiedTreatment: string | null;
+  // Preenchido quando o termo do lead é genérico e corresponde a 2+ tratamentos
+  // (ex: variações/técnicas de um mesmo procedimento) sem que o lead tenha
+  // especificado qual delas. identifiedTreatment fica null nesse caso.
+  ambiguousTreatmentMatches: string[] | null;
 };
 
 export type IntentType =
@@ -130,21 +139,40 @@ Para preferências de horário:
 REGRA PARA identifiedTreatment:
 - Tente mapear o que o lead disse para um dos procedimentos da lista fornecida.
 - Use correspondência flexível: ignore acentos, maiúsculas, abreviações e erros de digitação comuns.
-- Se o lead mencionar algo que claramente corresponde a um procedimento da lista → retorne o nome exato da lista.
+- Cada procedimento da lista pode vir acompanhado de "também chamado de: ...", com termos leigos/sinônimos usados por pacientes reais (ex: "dentadura" para prótese dentária, "canal" para tratamento de canal). Use SEMPRE esses sinônimos como correspondência válida e prioritária — são mais confiáveis que sua própria inferência.
+- Se o lead mencionar algo que claramente corresponde a um procedimento da lista (por nome ou sinônimo) → retorne o nome exato da lista.
 - EXCEÇÃO — "avaliação": Se o lead pedir "avaliação" (mesmo que cite um procedimento, ex: "avaliação para lentes", "avaliação de implante"), procure na lista um procedimento que contenha "avaliação" ou "avaliaç". Se encontrar, retorne o nome exato desse procedimento de avaliação. Se NÃO encontrar procedimento de avaliação na lista, retorne null — "avaliação" não é equivalente ao procedimento principal.
 - Se o lead mencionar algo que NÃO corresponde a nenhum procedimento da lista → retorne null e use shouldAskClarification: true.
 - Se o lead não mencionou nenhum procedimento (ex: "quero marcar uma consulta" sem especificar qual) → retorne null.
 - Extraia identifiedTreatment para intent = "book_appointment", "check_availability", "price_inquiry" e "general_question". Para perguntas comparativas ("qual é melhor X ou Y?"), extraia o tratamento principal sobre o qual o lead parece mais interessado, ou o primeiro mencionado. Para outros intents, retorne null.
 
+REGRA PARA ambiguousTreatmentMatches (AMBIGUIDADE ENTRE VARIAÇÕES DO MESMO PROCEDIMENTO):
+- Alguns procedimentos da lista são variações/técnicas de uma mesma família (ex: duas entradas diferentes para a versão "simplificada" e a versão "estratificada"/"premium" do mesmo tratamento).
+- Se o termo usado pelo lead for GENÉRICO e corresponder a 2 OU MAIS procedimentos da lista (por nome ou sinônimo), e o lead NÃO tiver especificado qual variação/técnica quer → retorne identifiedTreatment: null e preencha ambiguousTreatmentMatches com os nomes exatos de TODOS os procedimentos que correspondem.
+- Se o lead especificou claramente qual variação (citou o nome da técnica, ou termo que só corresponde a uma delas) → retorne essa em identifiedTreatment e ambiguousTreatmentMatches: null.
+- Em qualquer outro caso (correspondência única ou nenhuma correspondência) → ambiguousTreatmentMatches: null.
+
+REGRA PARA NEGAÇÃO DE PROCEDIMENTO (evite grudar no assunto errado):
+- Se o lead usar negação explícita sobre um procedimento mencionado anteriormente pela IA (ex: "não é lentes", "não quero isso", "não é isso que eu preciso") → NÃO retorne esse procedimento negado como identifiedTreatment, mesmo que ele apareça no histórico recente.
+- Se a mesma mensagem mencionar outro procedimento (ex: "não é lentes, seria uma dentadura") → identifique o NOVO procedimento mencionado, usando a lista de sinônimos.
+- Se a negação não vier acompanhada de um novo procedimento claro → retorne identifiedTreatment: null e shouldAskClarification: true, para que a próxima pergunta descubra o que o lead realmente quer — NUNCA assuma que o procedimento antigo continua valendo.
+
 Retorne APENAS JSON válido, sem markdown, sem explicação.
 ${clinicSpecificRules}`;
 }
 
-function buildSystemPrompt(treatmentNames: string[], context: PromptContext): string {
+function buildSystemPrompt(treatments: TreatmentOption[], context: PromptContext): string {
   const base = buildBaseSystemPrompt(context);
-  if (treatmentNames.length === 0) return base;
+  if (treatments.length === 0) return base;
   const label = context.serviceNoun === "tratamento" ? "CLÍNICA" : "EMPRESA";
-  const list = treatmentNames.map((n) => `  - ${n}`).join("\n");
+  const list = treatments
+    .map((t) => {
+      const aliases = t.aliases?.filter(Boolean) ?? [];
+      return aliases.length > 0
+        ? `  - ${t.name} (também chamado de: ${aliases.join(", ")})`
+        : `  - ${t.name}`;
+    })
+    .join("\n");
   return `${base}\n\nSERVIÇOS DISPONÍVEIS NESTA ${label}:\n${list}`;
 }
 
@@ -182,8 +210,18 @@ const RESPONSE_SCHEMA = {
         preferredTime: { anyOf: [{ type: "string" }, { type: "null" }] },
         slotChoice: { anyOf: [{ type: "number" }, { type: "null" }] },
         identifiedTreatment: { anyOf: [{ type: "string" }, { type: "null" }] },
+        ambiguousTreatmentMatches: {
+          anyOf: [{ type: "array", items: { type: "string" } }, { type: "null" }],
+        },
       },
-      required: ["preferredDate", "preferredPeriod", "preferredTime", "slotChoice", "identifiedTreatment"],
+      required: [
+        "preferredDate",
+        "preferredPeriod",
+        "preferredTime",
+        "slotChoice",
+        "identifiedTreatment",
+        "ambiguousTreatmentMatches",
+      ],
       additionalProperties: false,
     },
     confidence: { type: "number" },
@@ -210,7 +248,7 @@ export class IntentClassifier {
     latestMessage: string,
     conversationHistory: Message[],
     hasPendingSlotOffer: boolean,
-    treatmentNames: string[] = [],
+    treatments: TreatmentOption[] = [],
     context: PromptContext = {
       agentRole: "recepcionista virtual",
       serviceNoun: "tratamento",
@@ -258,7 +296,7 @@ export class IntentClassifier {
         },
       },
       messages: [
-        { role: "system", content: buildSystemPrompt(treatmentNames, context) },
+        { role: "system", content: buildSystemPrompt(treatments, context) },
         { role: "user", content: userContent },
       ],
     });
@@ -277,6 +315,7 @@ export class IntentClassifier {
           preferredTime: null,
           slotChoice: null,
           identifiedTreatment: null,
+          ambiguousTreatmentMatches: null,
         },
         confidence: 0,
         shouldAskClarification: true,
