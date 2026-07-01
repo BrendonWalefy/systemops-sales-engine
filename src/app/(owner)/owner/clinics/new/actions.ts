@@ -227,5 +227,5 @@ export async function onboardClinic(
     }
   }
 
-  redirect(`/owner/organizations/${clinicId}`);
+  redirect(`/owner/clinics/${clinicId}`);
 }

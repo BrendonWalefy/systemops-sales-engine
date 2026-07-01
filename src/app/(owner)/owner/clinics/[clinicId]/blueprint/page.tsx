@@ -102,12 +102,12 @@ const SECTION_META: Record<
   },
   tts: {
     icon: <Mic size={20} />,
-    actionHref: (id) => `/owner/organizations/${id}/modules`,
+    actionHref: (id) => `/owner/clinics/${id}/modules`,
     actionLabel: "Configurar voz",
   },
   go_live: {
     icon: <Rocket size={20} />,
-    actionHref: (id) => `/owner/organizations/${id}`,
+    actionHref: (id) => `/owner/clinics/${id}`,
     actionLabel: "Ir para detalhes",
   },
 };
@@ -212,7 +212,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
         }}
       >
         <Link
-          href={`/owner/organizations/${clinicId}`}
+          href={`/owner/clinics/${clinicId}`}
           style={{
             display: "flex",
             alignItems: "center",
@@ -471,7 +471,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
                 </div>
               </div>
               <Link
-                href={`/owner/organizations/${clinicId}`}
+                href={`/owner/clinics/${clinicId}`}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",

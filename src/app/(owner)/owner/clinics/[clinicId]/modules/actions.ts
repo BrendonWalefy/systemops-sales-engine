@@ -31,9 +31,9 @@ export async function toggleModule(
       target: [clinicModules.clinicId, clinicModules.moduleKey],
       set: { isActive, updatedBy: "owner", updatedAt: new Date() },
     });
-  revalidatePath(`/owner/organizations/${clinicId}`);
-  revalidatePath(`/owner/organizations/${clinicId}/blueprint`);
-  revalidatePath(`/owner/organizations/${clinicId}/modules`);
+  revalidatePath(`/owner/clinics/${clinicId}`);
+  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
+  revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }
 
 export async function updateModuleConfig(
@@ -51,9 +51,9 @@ export async function updateModuleConfig(
         eq(clinicModules.moduleKey, moduleKey),
       ),
     );
-  revalidatePath(`/owner/organizations/${clinicId}`);
-  revalidatePath(`/owner/organizations/${clinicId}/blueprint`);
-  revalidatePath(`/owner/organizations/${clinicId}/modules`);
+  revalidatePath(`/owner/clinics/${clinicId}`);
+  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
+  revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }
 
 export async function updateClinicPlan(clinicId: string, plan: OrgPlan) {
@@ -63,7 +63,7 @@ export async function updateClinicPlan(clinicId: string, plan: OrgPlan) {
     .set({ plan, updatedAt: new Date() })
     .where(eq(organizations.id, clinicId));
   await applyClinicPlanPreset(clinicId, plan, "owner_modules");
-  revalidatePath(`/owner/organizations/${clinicId}`);
-  revalidatePath(`/owner/organizations/${clinicId}/blueprint`);
-  revalidatePath(`/owner/organizations/${clinicId}/modules`);
+  revalidatePath(`/owner/clinics/${clinicId}`);
+  revalidatePath(`/owner/clinics/${clinicId}/blueprint`);
+  revalidatePath(`/owner/clinics/${clinicId}/modules`);
 }

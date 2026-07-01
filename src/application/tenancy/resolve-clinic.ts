@@ -57,7 +57,7 @@ async function readSession(): Promise<SessionPayload | null> {
   return verifyToken(token);
 }
 
-const ACTIVE_CLINIC_COOKIE = "sops_active_clinic";
+export const ACTIVE_CLINIC_COOKIE = "sops_active_clinic";
 
 /**
  * Resolve a clínica do usuário logado.
