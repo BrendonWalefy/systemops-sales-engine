@@ -26,7 +26,7 @@ export async function loadDemoClinic(
   _formData: FormData,
 ): Promise<LoadDemoState> {
   if (!(await requireOwner())) {
-    return { ok: false, message: "Apenas o owner pode carregar a clínica demo." };
+    return { ok: false, message: "Apenas o owner pode carregar a organização demo." };
   }
 
   try {

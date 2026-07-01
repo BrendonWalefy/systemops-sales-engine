@@ -58,7 +58,7 @@ async function fetchQualityData(): Promise<DailySnapshot[]> {
   const snapshots: DailySnapshot[] = [];
 
   for (const clinic of allClinics) {
-    // Busca o snapshot diário mais recente (periodDays=1) da clínica
+    // Busca o snapshot diário mais recente (periodDays=1) da organização
     const [latest] = await db
       .select({
         periodFrom: clinicMetrics.periodFrom,
@@ -114,7 +114,7 @@ export default async function QualidadePage({
   const recheckChannelDegraded = Number(sp.channelDegraded ?? "0");
   const recheckSnapshotAlerts = Number(sp.snapshotAlerts ?? "0");
   const recheckMessage = sp.message;
-  const recheckScope = sp.scope === "clinic" ? "da clínica" : "geral";
+  const recheckScope = sp.scope === "clinic" ? "da organização" : "geral";
 
   return (
     <div>
@@ -145,7 +145,7 @@ export default async function QualidadePage({
             <p
               style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}
             >
-              Último snapshot diário por clínica · Atualizado às 8h UTC ou sob demanda
+              Último snapshot diário por organização · Atualizado às 8h UTC ou sob demanda
             </p>
           </div>
         </div>
@@ -231,7 +231,11 @@ export default async function QualidadePage({
             <span style={{ fontSize: 13, color: "var(--fg)" }}>
               {recheckMessage
                 ? recheckMessage
-                : `Recheck ${recheckScope} concluído: ${recheckProcessed} clínica(s) processada(s), ${recheckFailed} falha(s), ${recheckChannelDegraded} canal(is) degradado(s) e ${recheckSnapshotAlerts} alerta(s) de snapshot no resultado atual.`}
+                : `Recheck ${recheckScope} concluído: ${
+                    recheckProcessed === 1
+                      ? "1 organização processada"
+                      : `${recheckProcessed} organizações processadas`
+                  }, ${recheckFailed} falha(s), ${recheckChannelDegraded} canal(is) degradado(s) e ${recheckSnapshotAlerts} alerta(s) de snapshot no resultado atual.`}
             </span>
           </div>
         )}
@@ -275,7 +279,7 @@ export default async function QualidadePage({
               style={{ color: "var(--accent)", flexShrink: 0 }}
             />
             <span style={{ fontSize: 13, color: "var(--fg)" }}>
-              Todas as clínicas dentro dos limites. Nenhum alerta ativo.
+              Todas as organizações dentro dos limites. Nenhum alerta ativo.
             </span>
           </div>
         ) : (
@@ -333,7 +337,7 @@ export default async function QualidadePage({
                     gap: 16,
                   }}
                 >
-                  {/* Header da clínica */}
+                  {/* Header da organização */}
                   <div
                     style={{
                       display: "flex",

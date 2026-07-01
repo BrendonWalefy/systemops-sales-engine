@@ -17,6 +17,7 @@ import { resolveClinicCommercialSettings } from "@/application/onboarding/clinic
 import { resolveInitialClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 import { encryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 import { syncModulesForPlan } from "@/application/modules/module-gate";
+import { resolveSegmentDefaults } from "@/application/onboarding/segment-options";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 
 export type OnboardingState = {
@@ -46,12 +47,16 @@ export async function onboardClinic(
     (formData.get("provider") as string) === "meta_cloud_api"
       ? "meta_cloud_api"
       : "z_api";
+  const segment = (formData.get("segment") as string) || "dental";
+  const segmentDefaults = resolveSegmentDefaults(segment);
   const raw = {
     name: formData.get("name"),
     slug: formData.get("slug"),
-    specialty: (formData.get("specialty") as string) || "odontology",
-    segment: (formData.get("segment") as string) || "dental",
-    serviceNoun: (formData.get("serviceNoun") as string) || "tratamento",
+    specialty:
+      (formData.get("specialty") as string) || segmentDefaults.specialtyDefault,
+    segment,
+    serviceNoun:
+      (formData.get("serviceNoun") as string) || segmentDefaults.serviceNoun,
     timezone: (formData.get("timezone") as string) || "America/Sao_Paulo",
     businessHours: (formData.get("businessHours") as string) || undefined,
     greetingMessage: (formData.get("greetingMessage") as string) || undefined,

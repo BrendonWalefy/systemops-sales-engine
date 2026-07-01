@@ -89,7 +89,7 @@ async function toggleIsTest(clinicId: string, currentValue: boolean) {
   redirect(`/owner/clinics/${clinicId}`);
 }
 
-/** Liga/desliga a IA da clínica (owner). Não afeta clínicas arquivadas. */
+/** Liga/desliga a IA da organização (owner). Não afeta organizações arquivadas. */
 async function toggleClinicAutomation(clinicId: string, currentAutoReplyEnabled: boolean) {
   "use server";
   const clinic = await db.query.organizations.findFirst({
@@ -145,7 +145,7 @@ async function toggleShadowMode(clinicId: string, currentValue: boolean) {
   redirect(`/owner/clinics/${clinicId}`);
 }
 
-/** Reativa uma clínica arquivada — sempre volta para "prospect"; a IA precisa ser
+/** Reativa uma organização arquivada — sempre volta para "prospect"; a IA precisa ser
  *  religada manualmente (toggleClinicAutomation) para evitar automação sem revisão. */
 async function reactivateClinic(clinicId: string) {
   "use server";
@@ -712,7 +712,7 @@ export default async function ClinicDetailPage({
           <div style={{ minWidth: 0 }}>
             <h1 style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{clinic.name}</h1>
             <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>
-              {[clinic.specialty, clinic.city].filter(Boolean).join(" · ") || "Clínica"}
+              {[clinic.specialty, clinic.city].filter(Boolean).join(" · ") || "Organização"}
             </p>
           </div>
         </div>
@@ -766,7 +766,7 @@ export default async function ClinicDetailPage({
         {/* ── FLASH ALERTS ────────────────────────────────────── */}
         {goLiveOk && (
           <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.24)", background: "rgba(16,185,129,0.08)", color: "#34d399", fontSize: 13, fontWeight: 600 }}>
-            Go-live ativado. A clínica entrou em produção com automação liberada.
+            Go-live ativado. A organização entrou em produção com automação liberada.
           </div>
         )}
         {goLiveError && (
@@ -774,8 +774,8 @@ export default async function ClinicDetailPage({
             {goLiveError === "incomplete"
               ? "Go-live bloqueado — existem lacunas obrigatórias no blueprint."
               : goLiveError === "cancelled"
-                ? "Clínica cancelada não pode ser promovida para go-live."
-                : "Não foi possível concluir o go-live desta clínica."}
+                ? "Organização cancelada não pode ser promovida para go-live."
+                : "Não foi possível concluir o go-live desta organização."}
           </div>
         )}
         {planOk && (
@@ -820,7 +820,7 @@ export default async function ClinicDetailPage({
                   </button>
                 </form>
               ) : clinic.operationalStatus === "active" ? (
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>Clínica ativa</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>Organização ativa</span>
               ) : null}
               <Link
                 href={`/owner/clinics/${clinic.id}/blueprint`}
@@ -1040,11 +1040,11 @@ export default async function ClinicDetailPage({
         {/* ── ZONA 4: ADMINISTRAÇÃO ───────────────────────────── */}
         <div className="clinic-detail-two-col-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
 
-          {/* Acesso da clínica */}
+          {/* Acesso da organização */}
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
             <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", alignItems: "center", gap: 7 }}>
               <KeyRound size={13} style={{ color: "var(--muted)" }} />
-              <p className="eyebrow" style={{ margin: 0 }}>Acesso da clínica</p>
+              <p className="eyebrow" style={{ margin: 0 }}>Acesso da organização</p>
             </div>
             <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
               {memberOk && (
@@ -1086,7 +1086,7 @@ export default async function ClinicDetailPage({
                   <input
                     name="email"
                     type="email"
-                    placeholder="admin@clinica.com"
+                    placeholder="admin@empresa.com"
                     required
                     style={{ ...inputStyle, flex: "1 1 160px" }}
                   />
@@ -1122,7 +1122,7 @@ export default async function ClinicDetailPage({
                   style={{ ...inputStyle, flex: 1 }}
                 >
                   <option value="essencial">Essencial — R$897/mês</option>
-                  <option value="avancado">Clínica — R$1.497/mês</option>
+                  <option value="avancado">Growth — R$1.497/mês</option>
                   <option value="rede">Rede — R$2.997/mês</option>
                   <option value="custom">Custom</option>
                 </select>
@@ -1139,7 +1139,7 @@ export default async function ClinicDetailPage({
             {/* Produção / Teste */}
             <div style={{ border: clinic.isTest ? "1px solid rgba(99,102,241,0.3)" : "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", background: clinic.isTest ? "rgba(99,102,241,0.04)" : "transparent" }}>
               <p className="eyebrow" style={{ margin: "0 0 8px", color: clinic.isTest ? "#818cf8" : "var(--muted)" }}>
-                {clinic.isTest ? "Ambiente de testes" : "Clínica em produção"}
+                {clinic.isTest ? "Ambiente de testes" : "Organização em produção"}
               </p>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
@@ -1175,7 +1175,7 @@ export default async function ClinicDetailPage({
                   </p>
                 </div>
                 {isArchived ? (
-                  <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>Clínica arquivada</span>
+                  <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>Organização arquivada</span>
                 ) : (
                   <form action={toggleAutomationAction}>
                     <button type="submit" style={btnStyle}>
@@ -1192,7 +1192,7 @@ export default async function ClinicDetailPage({
                   </p>
                   <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
                     IA classifica, responde e avança o funil normalmente, mas nada é enviado ao lead —
-                    use para validar comportamento em clínicas com problemas ou em pré-onboarding.
+                    use para validar comportamento em organizações com problemas ou em pré-onboarding.
                   </p>
                 </div>
                 {isArchived ? (
@@ -1231,16 +1231,16 @@ export default async function ClinicDetailPage({
                 {isArchived ? (
                   <>
                     <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                      Clínica arquivada — automação desligada e fora dos KPIs de faturamento.
+                      Organização arquivada — automação desligada e fora dos KPIs de faturamento.
                     </p>
                     <form action={reactivateClinicAction}>
-                      <button type="submit" style={btnStyle}>Reativar clínica</button>
+                      <button type="submit" style={btnStyle}>Reativar organização</button>
                     </form>
                   </>
                 ) : (
                   <>
                     <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                      Arquiva a clínica: desliga a IA e para de contar no faturamento. Não apaga nenhum dado.
+                      Arquiva a organização: desliga a IA e para de contar no faturamento. Não apaga nenhum dado.
                     </p>
                     <ArchiveClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
                   </>

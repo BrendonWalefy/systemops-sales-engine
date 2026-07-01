@@ -3,62 +3,13 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { onboardClinic, type OnboardingState } from "./actions";
+import {
+  SEGMENT_DEFAULTS,
+  SEGMENT_OPTIONS,
+  type SegmentKey,
+} from "@/application/onboarding/segment-options";
 
 const initialState: OnboardingState = { ok: false };
-
-type SegmentKey = "dental" | "barbershop" | "hair_salon" | "aesthetics" | "other";
-
-const SEGMENT_DEFAULTS: Record<SegmentKey, {
-  serviceNoun: string;
-  businessHours: string;
-  toneOfVoice: string;
-  greetingPlaceholder: string;
-  namePlaceholder: string;
-}> = {
-  dental: {
-    serviceNoun: "tratamento",
-    businessHours: "Seg-Sex 08:00-18:00, Sab 08:00-13:00",
-    toneOfVoice: "acolhedor",
-    greetingPlaceholder: "Olá! Sou a assistente virtual da clínica. Como posso ajudar?",
-    namePlaceholder: "Clínica Exemplo",
-  },
-  barbershop: {
-    serviceNoun: "serviço",
-    businessHours: "Seg-Sab 09:00-20:00",
-    toneOfVoice: "descontraído",
-    greetingPlaceholder: "E aí! Sou o assistente da barbearia. Quando vem cair o cabelo?",
-    namePlaceholder: "Barbearia Exemplo",
-  },
-  hair_salon: {
-    serviceNoun: "serviço",
-    businessHours: "Ter-Sab 09:00-20:00",
-    toneOfVoice: "amigável",
-    greetingPlaceholder: "Olá! Sou a assistente do salão. Quando quer agendar seu horário?",
-    namePlaceholder: "Salão Exemplo",
-  },
-  aesthetics: {
-    serviceNoun: "procedimento",
-    businessHours: "Seg-Sex 09:00-19:00, Sab 09:00-15:00",
-    toneOfVoice: "acolhedor",
-    greetingPlaceholder: "Olá! Sou a assistente da clínica de estética. Como posso te ajudar?",
-    namePlaceholder: "Clínica de Estética Exemplo",
-  },
-  other: {
-    serviceNoun: "serviço",
-    businessHours: "",
-    toneOfVoice: "profissional",
-    greetingPlaceholder: "Olá! Como posso ajudar?",
-    namePlaceholder: "Estabelecimento Exemplo",
-  },
-};
-
-const SEGMENTS: { key: SegmentKey; icon: string; label: string }[] = [
-  { key: "dental", icon: "🦷", label: "Odontologia" },
-  { key: "barbershop", icon: "✂️", label: "Barbearia" },
-  { key: "aesthetics", icon: "💅", label: "Estética" },
-  { key: "hair_salon", icon: "💇", label: "Cabeleireiro" },
-  { key: "other", icon: "⚙️", label: "Outro" },
-];
 
 export default function NewClinicPage() {
   const [state, formAction, pending] = useActionState(onboardClinic, initialState);
@@ -72,7 +23,7 @@ export default function NewClinicPage() {
       <div className="product-topbar">
         <div>
           <p className="eyebrow">Owner Panel</p>
-          <h1 style={{ margin: 0 }}>Nova clínica</h1>
+          <h1 style={{ margin: 0 }}>Nova organização</h1>
         </div>
         <Link href="/owner" className="secondary-button">
           Voltar
@@ -87,9 +38,9 @@ export default function NewClinicPage() {
 
       {/* Segmento */}
       <section className="panel" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Tipo de negócio</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "10px" }}>
-          {SEGMENTS.map((s) => (
+        <h2 style={{ marginTop: 0 }}>Segmento do negócio</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: "10px" }}>
+          {SEGMENT_OPTIONS.map((s) => (
             <button
               key={s.key}
               type="button"
@@ -109,9 +60,9 @@ export default function NewClinicPage() {
                 transition: "border-color 0.15s, background 0.15s",
               }}
             >
-              <span>{s.icon}</span>
+              <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em" }}>{s.icon}</span>
               <span style={{ fontSize: "11px", fontWeight: 600, color: segment === s.key ? "var(--accent-strong)" : "var(--muted)" }}>
-                {s.label}
+                {s.shortLabel}
               </span>
             </button>
           ))}
@@ -133,12 +84,17 @@ export default function NewClinicPage() {
             </label>
             <label>
               Slug (URL, sem espaços)
-              <input name="slug" required placeholder="clinica-exemplo" pattern="[a-z0-9-]+" />
+              <input name="slug" required placeholder={defaults.slugPlaceholder} pattern="[a-z0-9-]+" />
               {errorFor("slug") && <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("slug")}</small>}
             </label>
             <label>
-              Especialidade
-              <input name="specialty" placeholder="estetica / odontology / dermatologia" defaultValue="odontology" />
+              Categoria principal
+              <input
+                key={`specialty-${segment}`}
+                name="specialty"
+                placeholder={defaults.specialtyPlaceholder}
+                defaultValue={defaults.specialtyDefault}
+              />
             </label>
             <label>
               Fuso horário
@@ -229,7 +185,7 @@ export default function NewClinicPage() {
               <select name="plan" defaultValue="custom">
                 <option value="custom">Customizado / ainda definindo</option>
                 <option value="essencial">Essencial</option>
-                <option value="avancado">Clínica</option>
+                <option value="avancado">Growth</option>
                 <option value="rede">Rede</option>
               </select>
             </label>
@@ -277,7 +233,7 @@ export default function NewClinicPage() {
             </label>
             <label>
               Orientações livres (notes)
-              <textarea name="notes" rows={3} placeholder="Sempre confirmar o procedimento antes de oferecer horário." />
+              <textarea name="notes" rows={3} placeholder="Sempre confirmar o serviço antes de oferecer horário." />
             </label>
           </div>
         </section>
@@ -287,7 +243,7 @@ export default function NewClinicPage() {
           <div className="form-stack">
             <label>
               E-mail do admin
-              <input name="adminEmail" type="email" required placeholder="dono@clinica.com.br" />
+              <input name="adminEmail" type="email" required placeholder={defaults.adminEmailPlaceholder} />
               {errorFor("admins.0.email") && (
                 <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("admins.0.email")}</small>
               )}

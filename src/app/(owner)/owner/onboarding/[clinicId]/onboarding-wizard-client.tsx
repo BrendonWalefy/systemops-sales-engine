@@ -136,7 +136,7 @@ function toPipelineSteps(config: PipelineConfig): PipelineStep[] {
     if (blocks.length > 0)
       steps.push({
         type: "content",
-        label: "Apresentação do procedimento",
+        label: "Apresentação do serviço",
         blocks,
       });
   }
@@ -203,8 +203,8 @@ function initPipelineConfig(t: WizardTreatment): PipelineConfig {
 const STEPS = [
   {
     id: 1,
-    title: "Identidade da clínica",
-    subtitle: "Nome, especialidade, localização e canal",
+    title: "Identidade da organização",
+    subtitle: "Nome, segmento, localização e canal",
     Icon: Building2,
   },
   {
@@ -221,8 +221,8 @@ const STEPS = [
   },
   {
     id: 4,
-    title: "Procedimentos",
-    subtitle: "O que a clínica oferece",
+    title: "Serviços",
+    subtitle: "O que a organização oferece",
     Icon: Stethoscope,
   },
   {
@@ -249,7 +249,7 @@ const TONE_OPTIONS = [
   {
     value: "acolhedor",
     label: "Acolhedor",
-    desc: "Empático e próximo, faz o paciente sentir acolhido",
+    desc: "Empático e próximo, faz o cliente se sentir acolhido",
   },
   {
     value: "profissional",
@@ -259,7 +259,7 @@ const TONE_OPTIONS = [
   {
     value: "sofisticado",
     label: "Sofisticado",
-    desc: "Refinado, para clínicas premium e de luxo",
+    desc: "Refinado, para marcas premium e de luxo",
   },
   {
     value: "descontraido",
@@ -433,11 +433,11 @@ function StepIdentidade({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div>
-        <FieldLabel>Especialidade principal</FieldLabel>
+        <FieldLabel>Categoria principal</FieldLabel>
         <input
           value={data.specialty}
           onChange={f("specialty")}
-          placeholder="Ex: odontologia, dermatologia..."
+          placeholder="Ex: odontologia, barbearia, cortinas, consultoria..."
           style={inputStyle}
         />
       </div>
@@ -464,7 +464,7 @@ function StepIdentidade({
         <textarea
           value={data.greetingMessage}
           onChange={f("greetingMessage")}
-          placeholder="Ex: Olá! Sou a Mariana, recepcionista virtual da Clínica X. Como posso te ajudar?"
+          placeholder="Ex: Ola! Sou a assistente virtual da empresa. Como posso ajudar?"
           rows={3}
           style={{ ...inputStyle, resize: "vertical" }}
         />
@@ -503,7 +503,7 @@ function StepIdentidade({
                       zapiInstanceId: e.target.value,
                     })
                   }
-                  placeholder="Instância da clínica"
+                  placeholder="Instância da organização"
                   style={inputStyle}
                 />
               </div>
@@ -663,7 +663,7 @@ function StepRecepcionista({
 
       <div>
         <SectionTitle>
-          Diferenciais da clínica ({data.differentials.length}/6)
+          Diferenciais da organização ({data.differentials.length}/6)
         </SectionTitle>
         <p
           style={{
@@ -672,7 +672,7 @@ function StepRecepcionista({
             marginBottom: "12px",
           }}
         >
-          O que faz esta clínica se destacar? A IA menciona esses pontos nas
+          O que faz esta organização se destacar? A IA menciona esses pontos nas
           conversas.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -694,7 +694,7 @@ function StepRecepcionista({
               <input
                 value={d}
                 onChange={(e) => updateDiff(i, e.target.value)}
-                placeholder={`Ex: ${["Mais de 15 anos de experiência", "Tecnologia de ponta para diagnóstico", "Atendimento humanizado e sem dor", "Avaliação gratuita"][i] ?? "Diferencial da clínica"}`}
+                placeholder={`Ex: ${["Mais de 15 anos de experiencia", "Atendimento rapido", "Equipe especializada", "Avaliacao gratuita"][i] ?? "Diferencial da organizacao"}`}
                 style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
               />
               <button
@@ -790,7 +790,7 @@ function StepHorarios({
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
       >
         <div>
-          <FieldLabel>Duração padrão da consulta</FieldLabel>
+          <FieldLabel>Duração padrão do atendimento</FieldLabel>
           <select
             value={data.defaultDurationMinutes}
             onChange={(e) =>
@@ -809,7 +809,7 @@ function StepHorarios({
           </select>
         </div>
         <div>
-          <FieldLabel>Intervalo entre consultas</FieldLabel>
+          <FieldLabel>Intervalo entre atendimentos</FieldLabel>
           <select
             value={data.bufferMinutes}
             onChange={(e) =>
@@ -938,8 +938,8 @@ function StepProcedimentos({
       <p
         style={{ fontSize: "13px", color: "var(--muted)", marginBottom: "4px" }}
       >
-        Liste todos os procedimentos que a clínica oferece. A IA usará essas
-        informações para responder perguntas e sugerir agendamentos.
+        Liste os serviços, produtos ou ofertas que a organização atende pelo WhatsApp.
+        A IA usará essas informações para responder perguntas e sugerir agendamentos.
       </p>
 
       {data.map((t, i) => (
@@ -960,7 +960,7 @@ function StepProcedimentos({
             <input
               value={t.name}
               onChange={(e) => update(i, { name: e.target.value })}
-              placeholder="Nome do procedimento"
+              placeholder="Nome do serviço"
               style={{ ...inputStyle, flex: 1, fontWeight: 600 }}
             />
             <button
@@ -1041,7 +1041,7 @@ function StepProcedimentos({
                   strokeWidth={2}
                   style={{ color: "#a78bfa" }}
                 />
-                Procedimento estético
+                Jornada guiada
               </span>
             </label>
           </div>
@@ -1049,7 +1049,7 @@ function StepProcedimentos({
       ))}
 
       <button type="button" onClick={add} style={addBtnStyle}>
-        <Plus size={14} strokeWidth={2.5} /> Adicionar procedimento
+        <Plus size={14} strokeWidth={2.5} /> Adicionar serviço
       </button>
 
       {data.filter((t) => t.isAesthetic).length > 0 && (
@@ -1064,8 +1064,7 @@ function StepProcedimentos({
           }}
         >
           <strong>
-            {data.filter((t) => t.isAesthetic).length} procedimento(s)
-            estético(s)
+            {data.filter((t) => t.isAesthetic).length} serviço(s) com jornada guiada
           </strong>{" "}
           — no próximo passo você configurará a jornada da IA para cada um.
         </div>
@@ -1102,10 +1101,10 @@ function StepJornada({
           style={{ marginBottom: "12px", opacity: 0.4 }}
         />
         <p style={{ fontSize: "14px", marginBottom: "4px" }}>
-          Nenhum procedimento estético configurado
+          Nenhum serviço com jornada guiada configurado
         </p>
         <p style={{ fontSize: "12px" }}>
-          Volte ao passo anterior e marque os procedimentos estéticos.
+          Volte ao passo anterior e marque os serviços que precisam de jornada guiada.
         </p>
       </div>
     );
@@ -1131,7 +1130,7 @@ function StepJornada({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <p style={{ fontSize: "13px", color: "var(--muted)" }}>
-        Para procedimentos estéticos, você pode configurar uma{" "}
+        Para serviços com jornada guiada, você pode configurar uma{" "}
         <strong style={{ color: "var(--foreground)" }}>
           sequência de conversa
         </strong>{" "}
@@ -1244,7 +1243,7 @@ function StepJornada({
                     checked={cfg.sendContent}
                     onChange={(v) => updatePipeline(t.id!, { sendContent: v })}
                     label="Enviar vídeos de apresentação"
-                    desc="A IA apresenta o procedimento com vídeos antes de responder perguntas"
+                    desc="A IA apresenta o serviço com vídeos antes de responder perguntas"
                     Icon={Film}
                     color="#60a5fa"
                   >
@@ -1257,7 +1256,7 @@ function StepJornada({
                             contentIntroText: e.target.value,
                           })
                         }
-                        placeholder="Ex: Trabalhamos com duas técnicas de lentes de resina:"
+                        placeholder="Ex: Trabalhamos com duas opções para esse serviço:"
                         rows={2}
                         style={{ ...inputStyle, resize: "vertical" }}
                       />
@@ -1369,13 +1368,13 @@ function StepJornada({
                   <ToggleCard
                     checked={cfg.requestPhoto}
                     onChange={(v) => updatePipeline(t.id!, { requestPhoto: v })}
-                    label="Solicitar foto do paciente"
+                    label="Solicitar foto do cliente"
                     desc="A IA pede uma foto para personalizar a avaliação"
                     Icon={Camera}
                     color="#34d399"
                   >
                     <div>
-                      <FieldLabel>Mensagem enviada ao paciente</FieldLabel>
+                      <FieldLabel>Mensagem enviada ao cliente</FieldLabel>
                       <textarea
                         value={cfg.photoMessage}
                         onChange={(e) =>
@@ -1449,7 +1448,7 @@ function StepPolitica({
             >
               <option value="custom">Customizado / ainda definindo</option>
               <option value="essencial">Essencial</option>
-              <option value="avancado">Clínica</option>
+              <option value="avancado">Growth</option>
               <option value="rede">Rede</option>
             </select>
           </div>
@@ -1470,7 +1469,7 @@ function StepPolitica({
               }
               style={{ width: "16px", height: "16px" }}
             />
-            Cobrança ativa nesta clínica
+            Cobrança ativa nesta organização
           </label>
           {data.billingActive && (
             <>
@@ -1516,7 +1515,7 @@ function StepPolitica({
               onChange={(e) => onChange({ ...data, isTest: e.target.checked })}
               style={{ width: "16px", height: "16px" }}
             />
-            Clínica em ambiente de testes
+            Organização em ambiente de testes
           </label>
         </div>
       </div>
@@ -1694,9 +1693,9 @@ function StepRevisao({
   blueprint: ClinicBlueprint;
 }) {
   const items: { label: string; value: string; ok: boolean }[] = [
-    { label: "Clínica", value: clinicName, ok: true },
+    { label: "Organização", value: clinicName, ok: true },
     {
-      label: "Especialidade",
+      label: "Categoria",
       value: identity.specialty,
       ok: !!identity.specialty,
     },

@@ -4,20 +4,16 @@ import { useState, useActionState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ChevronRight, Building2, Check, Loader2 } from "lucide-react";
 import { createProspectClinic, type ProspectState } from "./actions";
-
-const ESPECIALIDADES = [
-  { value: "odontologia", label: "Odontologia" },
-  { value: "estetica", label: "Estética" },
-  { value: "dermatologia", label: "Dermatologia" },
-  { value: "fisioterapia", label: "Fisioterapia" },
-  { value: "psicologia", label: "Psicologia" },
-  { value: "nutricao", label: "Nutrição" },
-  { value: "outro", label: "Outro" },
-];
+import {
+  SEGMENT_OPTIONS,
+  resolveSegmentDefaults,
+  resolveSegmentLabel,
+  type SegmentKey,
+} from "@/application/onboarding/segment-options";
 
 const PLANOS = [
   { value: "essencial", label: "Essencial", price: "R$ 897/mês", desc: "Até 150 leads/mês" },
-  { value: "avancado", label: "Clínica", price: "R$ 1.497/mês", desc: "Leads ilimitados", recommended: true },
+  { value: "avancado", label: "Growth", price: "R$ 1.497/mês", desc: "Leads ilimitados", recommended: true },
   { value: "rede", label: "Rede", price: "R$ 2.997/mês", desc: "Até 3 unidades" },
 ];
 
@@ -28,9 +24,10 @@ export default function NovoDiagnosticoPage() {
   const [state, formAction, isPending] = useActionState(createProspectClinic, initialState);
 
   const [name, setName] = useState("");
-  const [especialidade, setEspecialidade] = useState("odontologia");
+  const [segment, setSegment] = useState<SegmentKey>("dental");
   const [cidade, setCidade] = useState("");
   const [plano, setPlano] = useState("avancado");
+  const defaults = resolveSegmentDefaults(segment);
 
   function handleNext(e: React.FormEvent) {
     e.preventDefault();
@@ -183,7 +180,7 @@ export default function NovoDiagnosticoPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Clínica Ximendes"
+                placeholder={`Ex: ${defaults.namePlaceholder}`}
                 required
                 style={inputStyle}
                 autoFocus
@@ -191,15 +188,15 @@ export default function NovoDiagnosticoPage() {
             </div>
 
             <div>
-              <label style={labelStyle}>Especialidade</label>
+              <label style={labelStyle}>Segmento</label>
               <select
-                value={especialidade}
-                onChange={(e) => setEspecialidade(e.target.value)}
+                value={segment}
+                onChange={(e) => setSegment(e.target.value as SegmentKey)}
                 style={{ ...inputStyle, cursor: "pointer" }}
               >
-                {ESPECIALIDADES.map((e) => (
-                  <option key={e.value} value={e.value}>
-                    {e.label}
+                {SEGMENT_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -315,7 +312,8 @@ export default function NovoDiagnosticoPage() {
             style={{ display: "flex", flexDirection: "column", gap: 20 }}
           >
             <input type="hidden" name="name" value={name} />
-            <input type="hidden" name="specialty" value={especialidade} />
+            <input type="hidden" name="segment" value={segment} />
+            <input type="hidden" name="specialty" value={defaults.specialtyDefault} />
             <input type="hidden" name="city" value={cidade} />
             <input type="hidden" name="plan" value={plano} />
             {/* Resumo read-only */}
@@ -334,7 +332,7 @@ export default function NovoDiagnosticoPage() {
                 {name}
               </p>
               <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
-                {ESPECIALIDADES.find((e) => e.value === especialidade)?.label}
+                {resolveSegmentLabel(segment)}
                 {cidade ? ` · ${cidade}` : ""}
                 {" · "}
                 {PLANOS.find((p) => p.value === plano)?.price}
@@ -346,7 +344,7 @@ export default function NovoDiagnosticoPage() {
               <input
                 type="email"
                 name="adminEmail"
-                placeholder="admin@clinica.com"
+                placeholder={defaults.adminEmailPlaceholder}
                 required
                 style={inputStyle}
                 autoFocus
