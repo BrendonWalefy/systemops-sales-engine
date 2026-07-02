@@ -4,8 +4,8 @@
  * ("Carregar clínica demo").
  *
  * É um TENANT REAL (não há "modo demo" em runtime): o dashboard, o inbox e a
- * agenda são calculados ao vivo. As conversas visíveis são geradas pela IA REAL
- * (ResponseComposer, mesmo motor da produção) a partir de roteiros curados — ver
+ * agenda são calculados ao vivo. As conversas visíveis usam roteiros curados,
+ * com fallback pelo ResponseComposer quando o turno não traz resposta fixa — ver
  * `generate-demo-conversation.ts` e `demo-conversation-scripts.ts`. Isso substitui
  * as threads fabricadas antigas (frases genéricas soltas + padding aleatório) por
  * conteúdo coerente que serve para demo E para marketing.
@@ -104,9 +104,12 @@ const CHANNELS = ["whatsapp", "whatsapp", "whatsapp", "instagram", "meta_ads", "
 
 // ── Plano de valores (centavos) — para o volume histórico de ganhos ──────
 const PRICE_CYCLE: { t: string; v: number }[] = [
+  { t: "Lentes de resina", v: 95000 },
   { t: "Implante dentário", v: 290000 },
   { t: "Lentes de porcelana", v: 180000 },
-  { t: "Harmonização facial", v: 89000 },
+  { t: "Prótese dentária", v: 240000 },
+  { t: "Remoção de dentes", v: 65000 },
+  { t: "Botox", v: 89000 },
   { t: "Clareamento dental", v: 69000 },
   { t: "Alinhadores invisíveis", v: 35000 },
   { t: "Limpeza e profilaxia", v: 22000 },
@@ -122,8 +125,12 @@ function buildValuePlan(count: number, targetCents: number): { t: string; v: num
 }
 
 const TREATMENT_VALUE_CENTS: Record<string, number> = {
+  "Lentes de resina": 95000,
   "Implante dentário": 290000,
   "Lentes de porcelana": 180000,
+  "Prótese dentária": 240000,
+  "Remoção de dentes": 65000,
+  "Botox": 89000,
   "Harmonização facial": 89000,
   "Clareamento dental": 69000,
   "Alinhadores invisíveis": 35000,
@@ -135,7 +142,8 @@ const TREATMENT_VALUE_CENTS: Record<string, number> = {
 // as conversas ricas. Estes tratamentos calibram a receita/contagem do dashboard.
 const HISTORY_TREATMENTS = [
   "Clareamento dental", "Limpeza e profilaxia", "Avaliação estética",
-  "Lentes de porcelana", "Implante dentário", "Harmonização facial",
+  "Lentes de porcelana", "Lentes de resina", "Prótese dentária",
+  "Remoção de dentes", "Botox", "Implante dentário",
 ];
 
 // ── Reset idempotente (respeita FKs) ────────────────────────────────────
@@ -382,13 +390,14 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       "Olá! Seja bem-vindo à Odonto Marques. Sou a Marina, assistente virtual da clínica. " +
       "Posso te ajudar com informações, avaliação, horários disponíveis e dúvidas sobre tratamentos. Como posso te ajudar hoje?",
     menuItems: [
-      { number: 1, label: "Lentes de porcelana", intent: "procedures", enabled: true, treatmentKeyword: "lentes" },
+      { number: 1, label: "Lentes", intent: "procedures", enabled: true, treatmentKeyword: "lentes" },
       { number: 2, label: "Agendar avaliação", intent: "book_appointment", enabled: true },
-      { number: 3, label: "Clareamento", intent: "procedures", enabled: true, treatmentKeyword: "clareamento" },
-      { number: 4, label: "Implantes", intent: "procedures", enabled: true, treatmentKeyword: "implante" },
-      { number: 5, label: "Valores", intent: "price_inquiry", enabled: true },
-      { number: 6, label: "Endereço e horários", intent: "location", enabled: true },
-      { number: 7, label: "Falar com equipe", intent: "needs_human", enabled: true },
+      { number: 3, label: "Prótese dentária", intent: "procedures", enabled: true, treatmentKeyword: "prótese" },
+      { number: 4, label: "Remoção de dentes", intent: "procedures", enabled: true, treatmentKeyword: "remoção" },
+      { number: 5, label: "Botox", intent: "procedures", enabled: true, treatmentKeyword: "botox" },
+      { number: 6, label: "Valores", intent: "price_inquiry", enabled: true },
+      { number: 7, label: "Endereço e horários", intent: "location", enabled: true },
+      { number: 8, label: "Falar com equipe", intent: "needs_human", enabled: true },
     ],
     receptionistPhone: "+55 11 90000-0000",
     calendarMode: "internal",
@@ -408,16 +417,20 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   const profAndre = randomUUID();
   await db.insert(professionals).values([
     { id: profHelena, clinicId, name: "Dra. Helena Marques", specialty: "Lentes, estética e clareamento", color: COLORS.verde },
-    { id: profRafael, clinicId, name: "Dr. Rafael Nogueira", specialty: "Implantes e cirurgia", color: COLORS.azul },
+    { id: profRafael, clinicId, name: "Dr. Rafael Nogueira", specialty: "Prótese, implantes e cirurgia", color: COLORS.azul },
     { id: profCamila, clinicId, name: "Dra. Camila Torres", specialty: "Ortodontia e alinhadores", color: COLORS.roxo },
-    { id: profAndre, clinicId, name: "Dr. André Vilela", specialty: "Avaliação geral e harmonização", color: COLORS.dourado },
+    { id: profAndre, clinicId, name: "Dr. André Vilela", specialty: "Avaliação geral e botox", color: COLORS.dourado },
   ]);
   const profByTreatment: Record<string, string> = {
+    "Lentes de resina": profHelena,
     "Lentes de porcelana": profHelena,
     "Clareamento dental": profHelena,
     "Avaliação estética": profHelena,
     "Harmonização facial": profAndre,
+    "Botox": profAndre,
     "Implante dentário": profRafael,
+    "Prótese dentária": profRafael,
+    "Remoção de dentes": profRafael,
     "Alinhadores invisíveis": profCamila,
     "Limpeza e profilaxia": profAndre,
     "Avaliação geral": profAndre,
@@ -452,6 +465,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       isAesthetic: true, commonObjections: ["Tem custo?", "Quanto tempo dura?", "Preciso de exames?"],
     },
     {
+      clinicId, name: "Lentes de resina", durationMinutes: 60, minPriceCents: 95000,
+      description: "A partir de R$ 950 por dente, após avaliação. Melhora formato, cor e harmonia com planejamento conservador.",
+      isAesthetic: true, requiresEvaluationFirst: true,
+      commonObjections: ["Fica artificial?", "Mancha?", "Quanto tempo dura?"],
+    },
+    {
       clinicId, name: "Lentes de porcelana", durationMinutes: 60, minPriceCents: 180000,
       description: "A partir de R$ 1.800 por dente, sempre após avaliação. Melhora formato, cor e harmonia do sorriso.",
       isAesthetic: true, requiresEvaluationFirst: true,
@@ -469,6 +488,18 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       commonObjections: ["Muito caro", "Dói?", "Quanto tempo leva?"],
     },
     {
+      clinicId, name: "Prótese dentária", durationMinutes: 60, minPriceCents: 240000,
+      description: "A partir de R$ 2.400. Reabilitação com prótese fixa, removível ou sobre implantes, conforme avaliação.",
+      requiresEvaluationFirst: true,
+      commonObjections: ["Fica firme?", "Parece natural?", "Precisa de implante?"],
+    },
+    {
+      clinicId, name: "Remoção de dentes", durationMinutes: 50, minPriceCents: 65000,
+      description: "A partir de R$ 650. Avaliação cirúrgica para sisos, dentes quebrados ou extrações indicadas por planejamento.",
+      requiresEvaluationFirst: true,
+      commonObjections: ["Dói?", "Preciso repousar?", "Tira no mesmo dia?"],
+    },
+    {
       clinicId, name: "Alinhadores invisíveis", durationMinutes: 45, minPriceCents: 35000,
       description: "A partir de R$ 350/mês. Correção ortodôntica com alinhadores transparentes removíveis.",
       commonObjections: ["Quanto custa?", "Quanto tempo demora?", "É melhor que aparelho fixo?"],
@@ -483,6 +514,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       description: "A partir de R$ 890. Procedimentos estéticos faciais realizados pelo dentista.",
       isAesthetic: true,
       commonObjections: ["É seguro?", "Quanto dura o resultado?", "Quanto custa?"],
+    },
+    {
+      clinicId, name: "Botox", durationMinutes: 45, minPriceCents: 89000,
+      description: "A partir de R$ 890. Avaliação para toxina botulínica estética ou apoio em tensão muscular/bruxismo.",
+      isAesthetic: true, requiresEvaluationFirst: true,
+      commonObjections: ["Fica congelado?", "Quanto dura?", "É seguro?"],
     },
   ];
   for (const def of treatmentDefs) {
@@ -499,14 +536,15 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     specialty: "Odontologia estética e reabilitação oral",
     procedureDescription:
       "Clínica de odontologia estética e reabilitação oral. Procedimentos: avaliação estética (R$ 150), " +
-      "lentes de porcelana (a partir de R$ 1.800 por dente), clareamento dental (a partir de R$ 690), " +
-      "implante dentário (a partir de R$ 2.900), alinhadores invisíveis (a partir de R$ 350/mês), " +
-      "limpeza e profilaxia (R$ 220) e harmonização facial (a partir de R$ 890).",
+      "lentes de resina (a partir de R$ 950 por dente), lentes de porcelana (a partir de R$ 1.800 por dente), " +
+      "prótese dentária (a partir de R$ 2.400), remoção de dentes (a partir de R$ 650), " +
+      "botox (a partir de R$ 890), clareamento dental (a partir de R$ 690), implante dentário (a partir de R$ 2.900), " +
+      "alinhadores invisíveis (a partir de R$ 350/mês), limpeza e profilaxia (R$ 220) e harmonização facial (a partir de R$ 890).",
     toneOfVoice: "Consultivo, acolhedor, elegante e objetivo. Trata por você, com cordialidade premium.",
     commercialPolicy:
       "Valores sempre apresentados como 'a partir de', pois dependem de avaliação. Lentes são cobradas por dente. " +
-      "Alinhadores têm valor mensal. Parcelamos no cartão. Procedimentos estéticos exigem avaliação prévia. " +
-      "A avaliação estética custa R$ 150 e é o ponto de partida para lentes, implantes e harmonização.",
+      "Prótese, remoção de dentes e botox dependem de avaliação. Alinhadores têm valor mensal. Parcelamos no cartão. " +
+      "Procedimentos estéticos e cirúrgicos exigem avaliação prévia. A avaliação estética/cirúrgica custa R$ 150 e é o ponto de partida.",
     notes: "Recepcionista virtual: Marina. Sempre oferecer horários reais e confirmar antes da consulta.",
     differentials: [
       "Atendimento humanizado e premium",
@@ -521,21 +559,24 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     mediaLibrary: demoMediaLibrary, // vídeos de procedimento reusados da Ximendes
   });
 
-  // ── CONVERSAS REAIS geradas pela IA a partir dos roteiros curados ──────────
-  // Cada conversa é coerente e na voz da Marina (ResponseComposer real). Substitui
-  // as threads fabricadas + o padding aleatório antigos. Ver src/application/demo/.
+  // ── CONVERSAS CURADAS a partir dos roteiros completos ──────────────────────
+  // Cada conversa é coerente e na voz da Marina. Turnos sem resposta fixa ainda
+  // passam pelo ResponseComposer, mas os casos principais são fechados no roteiro.
   const demoCtx: DemoClinicContext = {
     clinicName: DEMO_CLINIC_NAME,
     specialty: "Odontologia estética e reabilitação oral",
     toneOfVoice: "Consultivo, acolhedor, elegante e objetivo. Trata por você, com cordialidade premium.",
     playbook:
-      "Procedimentos e valores: avaliação estética R$150; lentes de porcelana a partir de R$1.800 por dente; " +
-      "clareamento a partir de R$690; implante a partir de R$2.900; alinhadores a partir de R$350/mês; " +
-      "limpeza R$220; harmonização facial a partir de R$890. Valores sempre 'a partir de', após avaliação. " +
+      "Procedimentos e valores: avaliação R$150; lentes de resina a partir de R$950 por dente; " +
+      "lentes de porcelana a partir de R$1.800 por dente; prótese dentária a partir de R$2.400; " +
+      "remoção de dentes a partir de R$650; botox a partir de R$890; clareamento a partir de R$690; " +
+      "implante a partir de R$2.900; alinhadores a partir de R$350/mês; limpeza R$220. " +
+      "Valores sempre 'a partir de', após avaliação. " +
       "Objeção de preço: parcelamos no cartão e o plano é montado na avaliação. Recepcionista: Marina.",
     commercialPolicy:
-      "Valores sempre 'a partir de', pois dependem de avaliação. Lentes por dente. Parcelamos no cartão. " +
-      "Procedimentos estéticos exigem avaliação prévia (R$150).",
+      "Valores sempre 'a partir de', pois dependem de avaliação. Lentes por dente. " +
+      "Prótese, remoção de dentes e botox dependem de avaliação. Parcelamos no cartão. " +
+      "Avaliação prévia R$150.",
     receptionistName: "Marina",
     timezone: new ClinicTimezone("America/Sao_Paulo"),
   };
