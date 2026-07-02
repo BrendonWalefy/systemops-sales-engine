@@ -7,6 +7,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { db } from "@/infrastructure/db/client";
 import { clinicMembers, conversations, organizations } from "@/infrastructure/db/schema";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { setSentryClinic } from "@/infrastructure/logging/sentry";
 
 export default async function ClinicLayout({ children }: { children: ReactNode }) {
   const jar = await cookies();
@@ -20,6 +21,7 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
   if (session?.email) {
     try {
       const clinicId = await requireSessionClinicId();
+      setSentryClinic(clinicId);
       const [memberResult, badgeResult, clinicResult] = await Promise.all([
         db
           .select({ avatarUrl: clinicMembers.avatarUrl })
