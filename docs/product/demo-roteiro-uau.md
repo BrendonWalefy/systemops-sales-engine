@@ -13,11 +13,17 @@ premium e dashboard cheio de dados. Fonte: `src/application/demo/seed-demo-clini
 ## Setup (1 comando)
 
 ```bash
-npm run seed:demo   # cria/reseta a Odonto Marques: playbook + 184 leads + agenda + métricas
+npm run seed:demo   # cria/reseta a Odonto Marques: playbook + ~120 leads + agenda + métricas
 ```
 
 Deixa o painel "fresco" no dia da demo (ROI 4,8x, leads fora do horário, horas
 economizadas). Login da clínica: `helena@odontomarques.com.br` / `OdontoMarques2026!`.
+
+**As conversas do inbox agora são geradas pela IA REAL** (~35 conversas coerentes na voz
+da Marina, via `ResponseComposer` — ver `src/application/demo/`), não mais frases genéricas
+soltas. Por isso o `seed:demo` **requer `OPENAI_API_KEY`** e leva ~1-2 min. Sem chave (ou
+com `DISABLE_REAL_OPENAI=true`) ele cai em respostas-modelo coerentes, sem travar. Cada
+conversa é printável — serve de conteúdo pronto para marketing.
 
 ## Três jeitos de rodar a demo
 
