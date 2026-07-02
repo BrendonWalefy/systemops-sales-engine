@@ -119,6 +119,15 @@ Database:
 - schema and generated migration
 - repository behavior when touched
 - rollback notes if the migration is not trivially reversible
+- if the migration adds a column with a FK to `organizations`, `conversations`,
+  or `leads` (or a new table that references one of those), run
+  `npx dotenv -e .env.local -- npx tsx scripts/check-purge-coverage.ts`
+  afterwards — it fails loudly if the new table isn't covered by the
+  permanent-delete route (`/api/owner/clinics/[clinicId]/purge`). This exists
+  because that route does manual per-table deletes (Postgres FKs here aren't
+  all `onDelete: cascade`), and a table silently left out only surfaces as a
+  500 in production the first time someone tries to purge a clinic with real
+  data in that table.
 
 ## PR Checklist
 
