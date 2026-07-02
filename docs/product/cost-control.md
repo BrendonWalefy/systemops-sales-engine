@@ -25,19 +25,19 @@ Auditoria realizada em 08/06/2026 com dados reais do painel de cada fornecedor.
 |---|---|---|---|
 | Z-API | "Meu número" — 1 instância | **R$ 79,99** | Fatura 24/05/2026 |
 | OpenAI API | Pay-as-you-go (GPT-4o-mini + Whisper + TTS-1-HD) | **~R$ 2,50** | Dashboard OpenAI: $0.41 em jun/2026 |
-| Vercel | Hobby (gratuito) | **R$ 0** | Dashboard Vercel: plano Hobby confirmado |
+| Vercel | Pro | **US$ 20 (~R$ 110,00)** | Dashboard Vercel: plano Pro confirmado (upgrade jul/2026); conversão aproximada, cotação R$ 5,50 |
 | Neon PostgreSQL | Free tier | **R$ 0** | Dashboard Neon: 0.03/0.5 GB, 16/100 CU-hrs |
 | Vercel Blob | Free tier | **R$ 0** | Criado jun/2026, ~0 MB usado |
 | Google Calendar API | Free | **R$ 0** | — |
-| **Total** | | **~R$ 82,50/mês** | |
+| **Total** | | **~R$ 192,50/mês** | |
 
 ### Métricas de eficiência
 
 | Métrica | Valor |
 |---|---|
 | Receita (plano Starter) | R$ 897,00/mês |
-| Custo total infra | R$ 82,50/mês |
-| **Margem bruta** | **91% (~R$ 814/mês)** |
+| Custo total infra | R$ 192,50/mês |
+| **Margem bruta** | **~79% (~R$ 704/mês)** |
 | Custo por lead | R$ 2,29 |
 | Custo por agendamento | R$ 6,87 |
 | Custo OpenAI puro (IA) | $0.41 (~R$ 2,11) em 12 dias |
@@ -60,7 +60,7 @@ Estes limites devem ser monitorados antes de fazer upgrade:
 
 **Trigger de upgrade:**
 - Neon → Launch ($19/mês): quando Compute > 80 CU-hrs ou Storage > 400 MB
-- Vercel → Pro ($20/mês): quando adicionar domínio customizado ou precisar de CI avançado
+- Vercel → Pro ($20/mês): ✅ já migrado (jul/2026)
 - Z-API → plano superior: avaliar ao escalar acima de 10 instâncias simultâneas
 
 ---
@@ -84,10 +84,9 @@ Implicação direta para os planos comerciais (`docs/product/pricing-strategy.md
   clínicas") estava otimista demais — foi calculada por custo médio por clínica, não
   pelo teto de CU-hrs do tier gratuito. **Correção: provisionar Neon Launch (US$19/mês)
   antes de ativar o primeiro cliente pago**, não esperar volume.
-- Vercel Hobby roda `message-worker`/`sender-worker` a cada minuto
-  (`vercel.json`) — confirmar se o plano atual realmente sustenta essa frequência antes
-  de escalar (Vercel historicamente restringe frequência de cron no tier gratuito;
-  não temos essa confirmação registrada em produção ainda).
+- Vercel Pro roda `message-worker`/`sender-worker` a cada minuto (`vercel.json`) —
+  plano Pro suporta crons sub-diários nativamente, sem a restrição que existia no
+  tier gratuito.
 - Resto da infra tem folga grande: Neon Storage 2% usado, Network 4% usado. Z-API é
   custo fixo e linear por instância (~R$80/clínica/mês), já refletido na tabela abaixo.
 

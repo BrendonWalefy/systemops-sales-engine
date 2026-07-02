@@ -1,7 +1,7 @@
 name: Cleanup TTS Blobs
 
 # Apaga blobs tts/ com mais de 2h do Vercel Blob.
-# Roda fora do Vercel porque o Hobby plan não suporta crons sub-diários.
+# Roda fora do Vercel (GitHub Actions) por conveniência de agendamento sub-diário.
 # Secret necessário: BLOB_READ_WRITE_TOKEN (mesmo token da env do Vercel).
 
 on:

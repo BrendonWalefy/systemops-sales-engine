@@ -87,8 +87,7 @@ export async function resolveClinicVoiceConfig(clinicId: string): Promise<VoiceC
  * Em caso de falha no TTS, cai silenciosamente para texto.
  *
  * O blob de áudio NÃO é deletado aqui — cleanup acontece via GitHub Actions
- * (cron a cada 2h, apaga blobs tts/ com mais de 2h). Vercel Hobby não suporta
- * crons sub-diários, por isso o cleanup vive fora da plataforma.
+ * (cron a cada 2h, apaga blobs tts/ com mais de 2h).
  */
 export async function sendVoiceOrText(
   to: string,
