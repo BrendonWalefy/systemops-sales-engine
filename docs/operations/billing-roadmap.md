@@ -17,7 +17,7 @@ Objetivo: vender com a matriz de preços corrigida sem esperar nenhuma fase téc
 
 - [ ] Atualizar `PLAN_PRICE_BRL_CENTS` em
   `src/application/onboarding/clinic-commercial-settings.ts` para os novos valores
-  (Start R$1.300 / Growth R$2.300 / Scale R$3.500 — ver `pricing-strategy.md`)
+  (Start R$1.300 / Growth R$2.100 / Scale R$3.500 — ver `pricing-strategy.md`)
 - [ ] Atualizar tabela de preços em `docs/product/sales-playbook.md` (seção 5) para
   referenciar `pricing-strategy.md` como fonte oficial, e ajustar os valores de exemplo
   usados nos scripts de ROI/objeção (seção 9)

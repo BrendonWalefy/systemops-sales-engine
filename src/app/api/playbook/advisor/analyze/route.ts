@@ -32,7 +32,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const metrics = body.metricsData as unknown as ClinicMetrics;
+    // metricsData chega via JSON.stringify do cliente — period.from/to viram string
+    // ISO na serialização e precisam ser revividos como Date antes de usar getTime().
+    const rawMetrics = body.metricsData as unknown as ClinicMetrics;
+    const metrics: ClinicMetrics = {
+      ...rawMetrics,
+      period: {
+        from: new Date(rawMetrics.period.from),
+        to: new Date(rawMetrics.period.to),
+      },
+    };
     const advisor = new PlaybookAdvisor();
     const result = await advisor.analyze(metrics, body.currentPlaybook);
 

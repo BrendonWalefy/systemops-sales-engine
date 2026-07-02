@@ -38,12 +38,15 @@ export type CurrentPlaybook = {
 const ADVISOR_MODEL = process.env.ADVISOR_MODEL ?? "gpt-4o-mini";
 
 async function callAdvisorLLM(prompt: string): Promise<string> {
+  // 2000 tokens já cortou a resposta no meio do array "gaps" em produção (JSON
+  // truncado → SyntaxError no parse, usuário via só "internal error" sem pista da
+  // causa). proposedPlaybook completo + vários gaps facilmente passa de 2000 tokens.
   if (ADVISOR_MODEL.startsWith("claude-")) {
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const res = await client.messages.create({
       model: ADVISOR_MODEL,
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{ role: "user", content: prompt }],
     });
     return res.content[0].type === "text" ? res.content[0].text : "";
@@ -53,7 +56,7 @@ async function callAdvisorLLM(prompt: string): Promise<string> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const res = await client.chat.completions.create({
     model: ADVISOR_MODEL,
-    max_tokens: 2000,
+    max_tokens: 4000,
     messages: [{ role: "user", content: prompt }],
   });
   return res.choices[0]?.message?.content ?? "";
@@ -129,7 +132,15 @@ export class PlaybookAdvisor {
       throw new Error("[PlaybookAdvisor] response did not contain valid JSON");
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as AdvisorResult;
-    return parsed;
+    try {
+      return JSON.parse(jsonMatch[0]) as AdvisorResult;
+    } catch (err) {
+      // JSON truncado (limite de tokens) é a causa mais comum — logar um trecho do
+      // fim da resposta ajuda a diferenciar isso de um erro real de formatação.
+      throw new Error(
+        `[PlaybookAdvisor] failed to parse LLM JSON response (${(err as Error).message}). ` +
+          `Tail: ...${jsonMatch[0].slice(-200)}`,
+      );
+    }
   }
 }
