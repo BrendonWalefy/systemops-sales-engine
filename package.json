@@ -35,6 +35,7 @@
     "@schedule-x/resize": "^3.7.3",
     "@schedule-x/scroll-controller": "^4.6.0",
     "@schedule-x/theme-default": "^4.6.0",
+    "@sentry/nextjs": "^10.63.0",
     "@vercel/blob": "^2.4.0",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.16.0",
