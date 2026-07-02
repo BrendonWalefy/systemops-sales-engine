@@ -19,7 +19,8 @@
     "db:migrate": "dotenv -e .env.local -- tsx scripts/migrate.ts",
     "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
     "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
-    "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts"
+    "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
+    "dev:workers": "dotenv -e .env.local -- ./scripts/dev-workers.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
