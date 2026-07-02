@@ -23,7 +23,12 @@ export default async function AgendaPage({
   const [professionals, clinicRow, treatments, memberProfile] = await Promise.all([
     getCachedProfessionals(clinicId),
     db
-      .select({ timezone: organizations.timezone, serviceNoun: organizations.serviceNoun, segment: organizations.segment })
+      .select({
+        timezone: organizations.timezone,
+        serviceNoun: organizations.serviceNoun,
+        segment: organizations.segment,
+        defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
+      })
       .from(organizations)
       .where(eq(organizations.id, clinicId))
       .limit(1),
@@ -33,6 +38,7 @@ export default async function AgendaPage({
   const timezone = clinicRow[0]?.timezone ?? "America/Sao_Paulo";
   const serviceNoun = clinicRow[0]?.serviceNoun ?? "tratamento";
   const businessNoun = resolveSegmentVocab(clinicRow[0]?.segment ?? "dental").businessNoun;
+  const defaultDurationMinutes = clinicRow[0]?.defaultAppointmentDurationMinutes ?? 60;
   const memberRole = memberProfile?.memberRole ?? "org_admin";
 
   const now = new Date();
@@ -60,6 +66,7 @@ export default async function AgendaPage({
       initialTo={to.toISOString()}
       openNew={params?.new === "1"}
       timezone={timezone}
+      defaultDurationMinutes={defaultDurationMinutes}
     />
   );
 }

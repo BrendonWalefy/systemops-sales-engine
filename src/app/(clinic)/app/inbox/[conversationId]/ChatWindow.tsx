@@ -131,6 +131,35 @@ function cleanBody(body: string): string {
   return body.replace(/\[(?:VÍDEO|VIDEO|FOTO|IMAGEM|IMAGE|MEDIA:[a-zA-Z0-9_-]+)\][^\n]*/gi, "").trim();
 }
 
+const MESSAGE_PREVIEW_CHAR_LIMIT = 360;
+const MESSAGE_PREVIEW_LINE_LIMIT = 8;
+
+function shouldCollapseMessage(body: string): boolean {
+  return body.length > MESSAGE_PREVIEW_CHAR_LIMIT || body.split("\n").length > MESSAGE_PREVIEW_LINE_LIMIT;
+}
+
+function MessageText({ body }: { body: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = shouldCollapseMessage(body);
+
+  return (
+    <>
+      <p className={collapsible && !expanded ? "message-text message-text-collapsed" : "message-text"}>
+        {body}
+      </p>
+      {collapsible && (
+        <button
+          type="button"
+          className="message-expand-button"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Ver menos" : "Ver mais"}
+        </button>
+      )}
+    </>
+  );
+}
+
 type ListItem =
   | { kind: "separator"; dateStr: string }
   | { kind: "message"; msg: Msg };
@@ -370,8 +399,8 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
               {hasMedia && (
                 <MediaPreview url={msg.mediaUrl} type={msg.mediaType} title={bodyText || undefined} />
               )}
-              {bodyText && !hasMedia && <p>{bodyText}</p>}
-              {bodyText && hasMedia && msg.mediaType === "audio" && <p>{bodyText}</p>}
+              {bodyText && !hasMedia && <MessageText body={bodyText} />}
+              {bodyText && hasMedia && msg.mediaType === "audio" && <MessageText body={bodyText} />}
             </div>
           );
         })}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Search, Loader2 } from "lucide-react";
 import type { Professional } from "./types";
+import { DurationHoursInput } from "@/components/DurationHoursInput";
 
 type LeadResult = { id: string; name: string | null; phone: string | null };
 
@@ -10,15 +11,46 @@ type Props = {
   defaultDate?: string;
   defaultTime?: string;
   defaultProfessionalId?: string;
+  defaultDurationMinutes: number;
   professionals: Professional[];
   onClose: () => void;
   onCreated: () => void;
 };
 
-export function AppointmentModal({ defaultDate, defaultTime, defaultProfessionalId, professionals, onClose, onCreated }: Props) {
+function normalizeLeadText(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function pickSingleLead(query: string, results: LeadResult[]): LeadResult | null {
+  if (results.length === 1) return results[0];
+  const normalizedQuery = normalizeLeadText(query);
+  if (!normalizedQuery) return null;
+
+  const exact = results.find((lead) => {
+    const name = normalizeLeadText(lead.name);
+    const phone = normalizeLeadText(lead.phone);
+    return name === normalizedQuery || phone === normalizedQuery;
+  });
+  return exact ?? null;
+}
+
+export function AppointmentModal({
+  defaultDate,
+  defaultTime,
+  defaultProfessionalId,
+  defaultDurationMinutes,
+  professionals,
+  onClose,
+  onCreated,
+}: Props) {
   const [date, setDate] = useState(defaultDate ?? new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState(defaultTime ?? "09:00");
-  const [durationMinutes, setDurationMinutes] = useState(60);
+  const [durationMinutes, setDurationMinutes] = useState(defaultDurationMinutes);
   const [professionalId, setProfessionalId] = useState(defaultProfessionalId ?? professionals[0]?.id ?? "");
   const [treatmentName, setTreatmentName] = useState("");
   const [leadQuery, setLeadQuery] = useState("");
@@ -50,10 +82,31 @@ export function AppointmentModal({ defaultDate, defaultTime, defaultProfessional
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedLead) {
-      setError("Selecione um paciente");
+    let leadToSchedule = selectedLead;
+
+    if (!leadToSchedule) {
+      leadToSchedule = pickSingleLead(leadQuery, leadResults);
+    }
+
+    if (!leadToSchedule && leadQuery.trim().length >= 2) {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/leads/search?q=${encodeURIComponent(leadQuery.trim())}`);
+        const data: { leads?: LeadResult[] } = await res.json();
+        const freshResults = data.leads ?? [];
+        setLeadResults(freshResults);
+        leadToSchedule = pickSingleLead(leadQuery, freshResults);
+      } finally {
+        setSearching(false);
+      }
+    }
+
+    if (!leadToSchedule) {
+      setError("Selecione o paciente na lista");
       return;
     }
+
+    setSelectedLead(leadToSchedule);
     setSubmitting(true);
     setError(null);
     try {
@@ -61,7 +114,7 @@ export function AppointmentModal({ defaultDate, defaultTime, defaultProfessional
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          leadId: selectedLead.id,
+          leadId: leadToSchedule.id,
           date,
           time,
           durationMinutes,
@@ -116,7 +169,7 @@ export function AppointmentModal({ defaultDate, defaultTime, defaultProfessional
                 {leadResults.length > 0 && (
                   <ul className="search-results">
                     {leadResults.map((l) => (
-                      <li key={l.id} className="search-result-item" onClick={() => { setSelectedLead(l); setLeadQuery(""); setLeadResults([]); }}>
+                      <li key={l.id} className="search-result-item" onPointerDown={() => { setSelectedLead(l); setLeadQuery(""); setLeadResults([]); }}>
                         <span className="result-name">{l.name ?? "—"}</span>
                         <span className="result-phone">{l.phone ?? ""}</span>
                       </li>
@@ -138,10 +191,13 @@ export function AppointmentModal({ defaultDate, defaultTime, defaultProfessional
               <input className="field-input" type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
             </div>
             <div className="field-group">
-              <label className="field-label">Duração (min)</label>
-              <select className="field-input" value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value))}>
-                {[30, 45, 60, 90, 120].map((d) => <option key={d} value={d}>{d} min</option>)}
-              </select>
+              <label className="field-label">Duração</label>
+              <DurationHoursInput
+                minutes={durationMinutes}
+                onChangeMinutes={setDurationMinutes}
+                inputStyle={durationInputStyle}
+                labelStyle={{ color: "var(--agenda-muted)" }}
+              />
             </div>
           </div>
 
@@ -177,3 +233,17 @@ export function AppointmentModal({ defaultDate, defaultTime, defaultProfessional
     </div>
   );
 }
+
+const durationInputStyle: React.CSSProperties = {
+  background: "var(--agenda-panel-raised)",
+  border: "1px solid var(--agenda-border)",
+  borderRadius: 7,
+  color: "var(--agenda-text)",
+  fontSize: 16,
+  padding: "8px 10px",
+  width: 64,
+  minWidth: 0,
+  boxSizing: "border-box",
+  fontFamily: "inherit",
+  colorScheme: "dark",
+};

@@ -1,8 +1,17 @@
 "use server";
 import { db } from "@/infrastructure/db/client";
-import { conversations, leads } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import {
+  agentRecommendations,
+  conversations,
+  conversationStates,
+  leads,
+  messages,
+  outboundMessages,
+  treatmentGapReports,
+} from "@/infrastructure/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
 
 export async function pauseAi(conversationId: string, leadId: string) {
@@ -85,4 +94,61 @@ export async function setConversationCategory(
   revalidatePath("/app/dashboard");
   revalidatePath("/owner");
   revalidatePath(`/owner/clinics/${conversation.clinicId}`);
+}
+
+export async function setConversationCategoryBulk(
+  conversationIds: string[],
+  category: ConversationCategory,
+) {
+  const ids = [...new Set(conversationIds.filter(Boolean))];
+  if (ids.length === 0) return;
+
+  const clinicId = await requireSessionClinicId();
+  const now = new Date();
+  const isSales = category === "sales";
+
+  await db
+    .update(conversations)
+    .set({
+      category,
+      aiPaused: !isSales,
+      takeoverExpiresAt: null,
+      needsAttention: false,
+      attentionReason: null,
+      consecutiveUnclearCount: 0,
+      updatedAt: now,
+    })
+    .where(and(eq(conversations.clinicId, clinicId), inArray(conversations.id, ids)));
+
+  revalidatePath("/app/inbox");
+  revalidatePath("/app/dashboard");
+  revalidatePath("/owner");
+  revalidatePath(`/owner/clinics/${clinicId}`);
+}
+
+export async function deleteConversationsBulk(conversationIds: string[]) {
+  const ids = [...new Set(conversationIds.filter(Boolean))];
+  if (ids.length === 0) return;
+
+  const clinicId = await requireSessionClinicId();
+  const scopedConversations = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.clinicId, clinicId), inArray(conversations.id, ids)));
+  const scopedIds = scopedConversations.map((conversation) => conversation.id);
+  if (scopedIds.length === 0) return;
+
+  await db.delete(outboundMessages).where(inArray(outboundMessages.conversationId, scopedIds));
+  await db.delete(messages).where(inArray(messages.conversationId, scopedIds));
+  await db.delete(conversationStates).where(inArray(conversationStates.conversationId, scopedIds));
+  await db.delete(agentRecommendations).where(inArray(agentRecommendations.conversationId, scopedIds));
+  await db.delete(treatmentGapReports).where(inArray(treatmentGapReports.conversationId, scopedIds));
+  await db
+    .delete(conversations)
+    .where(and(eq(conversations.clinicId, clinicId), inArray(conversations.id, scopedIds)));
+
+  revalidatePath("/app/inbox");
+  revalidatePath("/app/dashboard");
+  revalidatePath("/owner");
+  revalidatePath(`/owner/clinics/${clinicId}`);
 }

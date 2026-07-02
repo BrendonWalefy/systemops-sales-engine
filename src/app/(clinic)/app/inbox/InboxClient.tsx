@@ -2,11 +2,32 @@
 
 import { useState, useTransition, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Search, Inbox, RefreshCw, Send, X, CalendarCheck, Tag, ChevronDown, CheckCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Search,
+  Inbox,
+  RefreshCw,
+  Send,
+  X,
+  CalendarCheck,
+  Tag,
+  CheckCheck,
+  Archive,
+  MoreHorizontal,
+  Trash2,
+  MoveRight,
+  Square,
+  CheckSquare,
+} from "lucide-react";
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { composeRecoveryMessageAction, sendRecoveryMessageAction } from "./recovery-actions";
-import { setConversationCategory, clearAttention } from "./[conversationId]/actions";
+import {
+  setConversationCategory,
+  setConversationCategoryBulk,
+  deleteConversationsBulk,
+  clearAttention,
+} from "./[conversationId]/actions";
 import { filterBySearch, filterLiveRowsByTab, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import {
   isRecoveryCandidate,
@@ -50,7 +71,7 @@ const MOVE_OPTIONS: { key: ConversationCategory; label: string }[] = [
   { key: "operational", label: "Operacional" },
   { key: "vendor", label: "Fornecedores" },
   { key: "spam", label: "Spam" },
-  { key: "archived", label: "Arquivar" },
+  { key: "archived", label: "Arquivadas" },
 ];
 
 function CategoryMoveButton({
@@ -60,52 +81,54 @@ function CategoryMoveButton({
   convId: string;
   currentCategory: ConversationCategory;
 }) {
+  const router = useRouter();
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const options = currentCategory === "archived"
+    ? MOVE_OPTIONS.filter((option) => option.key !== "archived")
+    : [
+        MOVE_OPTIONS.find((option) => option.key === "archived")!,
+        ...MOVE_OPTIONS.filter((option) => option.key !== currentCategory && option.key !== "archived"),
+      ];
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  function optionLabel(option: ConversationCategory): string {
+    if (currentCategory !== "archived" && option === "archived") return "Arquivar conversa";
+    if (currentCategory === "archived" && option === "sales") return "Desarquivar para Comercial";
+    return `Mover para ${conversationCategoryLabel(option)}`;
+  }
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="category-move" ref={menuRef}>
       <button
         title="Mover para..."
+        aria-label="Mover conversa"
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        style={{
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: "2px 5px",
-          color: open ? "var(--accent-strong)" : "var(--muted)",
-          display: "flex",
-          alignItems: "center",
-          borderRadius: 4,
-          opacity: isPending ? 0.5 : 1,
-          transition: "color 120ms",
-        }}
+        className={`category-move-trigger${open ? " active" : ""}`}
+        disabled={isPending}
       >
-        <Tag size={12} />
+        <Tag size={13} />
       </button>
       {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            right: 0,
-            zIndex: 200,
-            background: "var(--surface-raised)",
-            border: "1px solid var(--line)",
-            borderRadius: 8,
-            padding: 4,
-            minWidth: 148,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 1,
-          }}
-        >
-          {MOVE_OPTIONS.filter((o) => o.key !== currentCategory).map((option) => (
+        <div className="category-move-menu" role="menu">
+          {options.map((option) => (
             <button
               key={option.key}
               onClick={(e) => {
@@ -114,27 +137,14 @@ function CategoryMoveButton({
                 setOpen(false);
                 startTransition(async () => {
                   await setConversationCategory(convId, option.key);
+                  router.refresh();
                 });
               }}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "7px 10px",
-                fontSize: 12,
-                color: "var(--text)",
-                textAlign: "left",
-                borderRadius: 6,
-                width: "100%",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-soft)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "none";
-              }}
+              className={`category-move-item${option.key === "archived" || currentCategory === "archived" && option.key === "sales" ? " primary" : ""}`}
+              role="menuitem"
             >
-              → {option.label}
+              {option.key === "archived" ? <Archive size={13} /> : <Tag size={13} />}
+              <span>{optionLabel(option.key)}</span>
             </button>
           ))}
         </div>
@@ -354,9 +364,15 @@ function RecoveryModal({
 function RecoveryCard({
   row,
   lastMsg,
+  selectionMode,
+  selected,
+  onToggleSelected,
 }: {
   row: ConvRow;
   lastMsg: { body: string; author: string; sentAt?: Date | null };
+  selectionMode: boolean;
+  selected: boolean;
+  onToggleSelected: () => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
@@ -376,10 +392,32 @@ function RecoveryCard({
         />
       )}
       <div
-        className="inbox-card-v2"
+        className={`inbox-card-v2${selectionMode ? " selection-mode" : ""}${selected ? " selected" : ""}`}
         style={{ borderLeft: "3px solid #f59e0b" }}
       >
-        <Link href={`/app/inbox/${row.convId}`} style={{ textDecoration: "none", display: "block" }}>
+        {selectionMode && (
+          <button
+            type="button"
+            className="inbox-select-check"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelected();
+            }}
+            aria-label={selected ? "Remover conversa da seleção" : "Selecionar conversa"}
+          >
+            {selected ? <CheckSquare size={17} /> : <Square size={17} />}
+          </button>
+        )}
+        <Link
+          href={`/app/inbox/${row.convId}`}
+          style={{ textDecoration: "none", display: "block" }}
+          onClick={(e) => {
+            if (!selectionMode) return;
+            e.preventDefault();
+            onToggleSelected();
+          }}
+        >
           <div className="inbox-card-v2-top">
             <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b" }}>{reason}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -413,6 +451,7 @@ function RecoveryCard({
           </div>
         </Link>
 
+        {!selectionMode && (
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <Link
             href={`/app/inbox/${row.convId}`}
@@ -452,6 +491,7 @@ function RecoveryCard({
             Enviar retomada
           </button>
         </div>
+        )}
       </div>
     </>
   );
@@ -513,9 +553,15 @@ function markConversationRead(conversationId: string): void {
 function InboxCard({
   row,
   lastMsg,
+  selectionMode,
+  selected,
+  onToggleSelected,
 }: {
   row: ConvRow;
   lastMsg: { body: string; author: string; sentAt?: Date | null };
+  selectionMode: boolean;
+  selected: boolean;
+  onToggleSelected: () => void;
 }) {
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
   const initial = avatarInitial(displayName);
@@ -539,12 +585,33 @@ function InboxCard({
   return (
     <Link
       href={`/app/inbox/${row.convId}`}
-      onClick={() => markConversationRead(row.convId)}
+      onClick={(e) => {
+        if (selectionMode) {
+          e.preventDefault();
+          onToggleSelected();
+          return;
+        }
+        markConversationRead(row.convId);
+      }}
       style={{ textDecoration: "none" }}
     >
       <div
-        className={`inbox-card-v2 ${borderClass}${hasUnread ? " has-unread" : ""}`}
+        className={`inbox-card-v2 ${borderClass}${hasUnread ? " has-unread" : ""}${selectionMode ? " selection-mode" : ""}${selected ? " selected" : ""}`}
       >
+        {selectionMode && (
+          <button
+            type="button"
+            className="inbox-select-check"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelected();
+            }}
+            aria-label={selected ? "Remover conversa da seleção" : "Selecionar conversa"}
+          >
+            {selected ? <CheckSquare size={17} /> : <Square size={17} />}
+          </button>
+        )}
         <div className="inbox-card-v2-top">
           {row.needsAttention ? (
             <span className="temp-badge-v2 temp-badge-v2-attention">Atenção</span>
@@ -710,24 +777,42 @@ export function InboxClient({
   initialScope?: InboxCategoryScope;
   initialTab?: LiveInboxTabFilter | "recovery";
 }) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<InboxCategoryScope>(initialScope);
   const [tab, setTab] = useState<LiveInboxTabFilter | "recovery">(initialTab);
-  const [othersOpen, setOthersOpen] = useState(false);
-  const othersRef = useRef<HTMLDivElement>(null);
+  const [topMenuOpen, setTopMenuOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [isBulkPending, startBulkTransition] = useTransition();
+  const topMenuRef = useRef<HTMLDivElement>(null);
+  const bulkMoveRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!othersOpen) return;
+    if (!topMenuOpen) return;
     function handleClick(e: MouseEvent) {
-      if (othersRef.current && !othersRef.current.contains(e.target as Node)) {
-        setOthersOpen(false);
+      if (topMenuRef.current && !topMenuRef.current.contains(e.target as Node)) {
+        setTopMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [othersOpen]);
+  }, [topMenuOpen]);
+
+  useEffect(() => {
+    if (!bulkMoveOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (bulkMoveRef.current && !bulkMoveRef.current.contains(e.target as Node)) {
+        setBulkMoveOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [bulkMoveOpen]);
 
   const salesRows = categoryRows(rows, "sales");
+  const archivedRows = categoryRows(rows, "archived");
   const { handoff, active, paused, recovery } = segmentRows(salesRows, lastMsgMap);
   const allLive = [...handoff, ...active, ...paused];
   const attentionRows = salesRows.filter((r) => r.needsAttention);
@@ -736,8 +821,8 @@ export function InboxClient({
 
   if (totalAll === 0) {
     return (
-      <div className="inbox-content">
-        <div className="empty-state">
+      <div className="inbox-content inbox-empty-content">
+        <div className="empty-state inbox-empty-state">
           <Inbox
             size={32}
             style={{ margin: "0 auto 12px", display: "block", opacity: 0.4 }}
@@ -751,18 +836,6 @@ export function InboxClient({
     );
   }
 
-  const nonClosedSalesCount = salesRows.filter(
-    (r) => r.leadStatus !== "won" && r.leadStatus !== "lost",
-  ).length;
-
-  const CATEGORY_TABS: { key: InboxCategoryScope; label: string; count: number }[] = [
-    { key: "sales", label: "Comercial", count: nonClosedSalesCount },
-    { key: "operational", label: "Operacional", count: categoryRows(rows, "operational").length },
-    { key: "vendor", label: "Fornecedores", count: categoryRows(rows, "vendor").length },
-    { key: "spam", label: "Spam", count: categoryRows(rows, "spam").length },
-    { key: "archived", label: "Arquivadas", count: categoryRows(rows, "archived").length },
-  ];
-
   const TABS: { key: LiveInboxTabFilter | "recovery"; label: string; count: number }[] = [
     { key: "all",       label: "Todas",       count: allLive.length },
     { key: "hot",       label: "Quentes",     count: allLive.filter((r) => r.leadTemperature === "hot").length },
@@ -773,6 +846,7 @@ export function InboxClient({
   ];
 
   const isSalesScope = scope === "sales";
+  const isArchivedScope = scope === "archived";
   const isRecoveryTab = isSalesScope && tab === "recovery";
   const scopedRows = isSalesScope ? allLive : categoryRows(rows, scope);
   const baseRows = isRecoveryTab
@@ -783,11 +857,76 @@ export function InboxClient({
   const sortedRows = isRecoveryTab ? [] : sortInboxRowsByRecency(filterBySearch(baseRows, search));
   const sortedRecovery = sortInboxRowsByRecency(filterBySearch(recovery, search));
   const scopeLabel = conversationCategoryLabel(scope).toLowerCase();
+  const selectedCount = selectedIds.size;
+  const selectedIdList = [...selectedIds];
+
+  function toggleSelected(conversationId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(conversationId)) next.delete(conversationId);
+      else next.add(conversationId);
+      return next;
+    });
+  }
+
+  function enterSelectionMode() {
+    setTopMenuOpen(false);
+    setSelectionMode(true);
+  }
+
+  function exitSelectionMode() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBulkMoveOpen(false);
+  }
+
+  function handleBulkMove(category: ConversationCategory) {
+    if (selectedCount === 0) return;
+    setBulkMoveOpen(false);
+    startBulkTransition(async () => {
+      await setConversationCategoryBulk(selectedIdList, category);
+      exitSelectionMode();
+      router.refresh();
+    });
+  }
+
+  function handleBulkDelete() {
+    if (selectedCount === 0) return;
+    const confirmed = window.confirm(
+      `Excluir ${selectedCount} conversa${selectedCount !== 1 ? "s" : ""}? Esta ação remove o histórico da operação.`,
+    );
+    if (!confirmed) return;
+    startBulkTransition(async () => {
+      await deleteConversationsBulk(selectedIdList);
+      exitSelectionMode();
+      router.refresh();
+    });
+  }
 
   return (
     <>
       <div className="inbox-topbar">
-        <div>
+        <div className="inbox-title-area">
+          <div className="inbox-more-wrap" ref={topMenuRef}>
+            <button
+              type="button"
+              className="inbox-more-button"
+              onClick={() => setTopMenuOpen((open) => !open)}
+              aria-label="Mais opções do inbox"
+              aria-haspopup="menu"
+              aria-expanded={topMenuOpen}
+            >
+              <MoreHorizontal size={17} />
+            </button>
+            {topMenuOpen && (
+              <div className="inbox-top-menu" role="menu">
+                <button type="button" onClick={enterSelectionMode} role="menuitem">
+                  <CheckSquare size={14} />
+                  Selecionar conversas
+                </button>
+              </div>
+            )}
+          </div>
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
             Inbox IA
           </h1>
@@ -806,98 +945,107 @@ export function InboxClient({
         <EnableNotificationsButton />
       </div>
 
-      <div className="inbox-tabs-bar" style={{ paddingBottom: 0, alignItems: "center" }}>
-        {/* Comercial sempre visível */}
-        {CATEGORY_TABS.slice(0, 1).map(({ key, label, count }) => (
+      {selectionMode && (
+        <div className="inbox-selection-bar">
+          <span>
+            {selectedCount === 0
+              ? "Selecione conversas"
+              : `${selectedCount} selecionada${selectedCount !== 1 ? "s" : ""}`}
+          </span>
+          <div className="inbox-selection-actions">
+            <button
+              type="button"
+              onClick={() => handleBulkMove("archived")}
+              disabled={selectedCount === 0 || isBulkPending}
+            >
+              <Archive size={14} />
+              Arquivar
+            </button>
+            <div className="inbox-bulk-move" ref={bulkMoveRef}>
+              <button
+                type="button"
+                onClick={() => setBulkMoveOpen((open) => !open)}
+                disabled={selectedCount === 0 || isBulkPending}
+                aria-haspopup="menu"
+                aria-expanded={bulkMoveOpen}
+              >
+                <MoveRight size={14} />
+                Mover
+              </button>
+              {bulkMoveOpen && (
+                <div className="inbox-bulk-menu" role="menu">
+                  {MOVE_OPTIONS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => handleBulkMove(option.key)}
+                      role="menuitem"
+                    >
+                      {conversationCategoryLabel(option.key)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="danger"
+              onClick={handleBulkDelete}
+              disabled={selectedCount === 0 || isBulkPending}
+            >
+              <Trash2 size={14} />
+              Excluir
+            </button>
+            <button type="button" className="ghost" onClick={exitSelectionMode} disabled={isBulkPending}>
+              <X size={14} />
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="inbox-tabs-bar inbox-primary-tabs">
+        {TABS.map(({ key, label, count }) => (
           <button
             key={key}
-            className={`inbox-tab-pill${scope === key ? " active" : ""}`}
-            onClick={() => { setScope(key); setTab("all"); }}
+            className={`inbox-tab-pill${isSalesScope && tab === key ? " active" : ""}`}
+            onClick={() => { setScope("sales"); setTab(key); }}
           >
             {label}
             {count > 0 && (
-              <span className={`inbox-tab-count${scope === key ? " active" : ""}`}>{count}</span>
+              <span className={`inbox-tab-count${isSalesScope && tab === key ? " active" : ""}`}>
+                {count}
+              </span>
             )}
           </button>
         ))}
-
-        {/* Outros → dropdown com Operacional, Fornecedores, Spam, Arquivadas */}
-        <div ref={othersRef} style={{ position: "relative" }}>
-          <button
-            className={`inbox-tab-pill${CATEGORY_TABS.slice(1).some(t => t.key === scope) ? " active" : ""}`}
-            onClick={() => setOthersOpen(o => !o)}
-            style={{ display: "flex", alignItems: "center", gap: 4 }}
-          >
-            {CATEGORY_TABS.slice(1).find(t => t.key === scope)?.label ?? "Outros"}
-            {CATEGORY_TABS.slice(1).reduce((sum, t) => sum + t.count, 0) > 0 && !CATEGORY_TABS.slice(1).some(t => t.key === scope) && (
-              <span className="inbox-tab-count">
-                {CATEGORY_TABS.slice(1).reduce((sum, t) => sum + t.count, 0)}
-              </span>
-            )}
-            <ChevronDown size={11} style={{ opacity: 0.7, transform: othersOpen ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
-          </button>
-          {othersOpen && (
-            <div style={{
-              position: "absolute",
-              top: "calc(100% + 6px)",
-              left: 0,
-              background: "var(--surface-raised)",
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              padding: "4px",
-              zIndex: 50,
-              minWidth: 160,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-            }}>
-              {CATEGORY_TABS.slice(1).map(({ key, label, count }) => (
-                <button
-                  key={key}
-                  onClick={() => { setScope(key); setTab("all"); setOthersOpen(false); }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: scope === key ? "var(--accent-soft)" : "transparent",
-                    border: "none",
-                    borderRadius: 7,
-                    color: scope === key ? "var(--accent-strong)" : "var(--text)",
-                    fontSize: 13,
-                    fontWeight: scope === key ? 700 : 500,
-                    cursor: "pointer",
-                    gap: 8,
-                  }}
-                >
-                  {label}
-                  {count > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>{count}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
-      {isSalesScope && (
-        <div className="inbox-tabs-bar">
-          {TABS.map(({ key, label, count }) => (
-            <button
-              key={key}
-              className={`inbox-tab-pill${tab === key ? " active" : ""}`}
-              onClick={() => setTab(key)}
-            >
-              {label}
-              {count > 0 && (
-                <span className={`inbox-tab-count${tab === key ? " active" : ""}`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="inbox-archive-tabs">
+        <button
+          className={`inbox-tab-pill inbox-archive-tab${isArchivedScope ? " active" : ""}`}
+          onClick={() => { setScope("archived"); setTab("all"); }}
+        >
+          <Archive size={12} />
+          Arquivados
+          {archivedRows.length > 0 && (
+            <span className={`inbox-tab-count${isArchivedScope ? " active" : ""}`}>
+              {archivedRows.length}
+            </span>
+          )}
+        </button>
+        {scope !== "sales" && scope !== "archived" && (
+          <button
+            className="inbox-tab-pill inbox-archive-tab active"
+            onClick={() => setTab("all")}
+          >
+            {conversationCategoryLabel(scope)}
+            <span className="inbox-tab-count active">
+              {categoryRows(rows, scope).length}
+            </span>
+          </button>
+        )}
+      </div>
 
       <div className="inbox-search-bar">
         <Search size={13} style={{ color: "var(--muted)", flexShrink: 0 }} />
@@ -930,6 +1078,9 @@ export function InboxClient({
                   key={row.convId}
                   row={row}
                   lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null }}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(row.convId)}
+                  onToggleSelected={() => toggleSelected(row.convId)}
                 />
               ))}
             </div>
@@ -941,7 +1092,7 @@ export function InboxClient({
               style={{ margin: "0 auto 12px", display: "block", opacity: 0.3 }}
             />
             <p style={{ margin: 0 }}>
-              {isSalesScope ? "Nenhuma conversa encontrada." : `Nenhuma conversa em ${scopeLabel}.`}
+              {isArchivedScope ? "Nenhuma conversa arquivada." : isSalesScope ? "Nenhuma conversa encontrada." : `Nenhuma conversa em ${scopeLabel}.`}
             </p>
           </div>
         ) : (
@@ -951,6 +1102,9 @@ export function InboxClient({
                 key={row.convId}
                 row={row}
                 lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null }}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(row.convId)}
+                onToggleSelected={() => toggleSelected(row.convId)}
               />
             ))}
           </div>
