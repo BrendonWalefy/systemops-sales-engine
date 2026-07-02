@@ -34,7 +34,7 @@ arquitetura ainda — ver `docs/architecture/target-architecture.md` quando for 
 
 | | **Start** (`essencial`) | **Growth** (`avancado`) | **Scale** (`rede`) | **Enterprise** (`custom`) |
 |---|---|---|---|---|
-| Preço/mês | R$ 1.300 | R$ 2.300 | R$ 3.500 | Sob diagnóstico |
+| Preço/mês | R$ 1.300 | R$ 2.100 | R$ 3.500 | Sob diagnóstico |
 | Setup (único) | R$ 1.800 | R$ 3.000 | R$ 5.000 | Customizado |
 | Cliente ideal | Clínica solo/pequena, tráfego incipiente | Clínica com tráfego pago ativo (R$5-15k/mês em ads) | Alto volume, múltiplos profissionais, quer voz premium | Faturamento R$100k+/mês, caso sob medida |
 | WhatsApp | 1 número | 1 número | 1-2 números | Customizado |
@@ -100,10 +100,13 @@ promessa contratual formal.
 
 ## 3. Racional dos preços
 
-- **Start R$1.300 / Growth R$2.300 / Scale R$3.500**: ajuste para cima em relação aos
+- **Start R$1.300 / Growth R$2.100 / Scale R$3.500**: ajuste para cima em relação aos
   valores originalmente cogitados (R$900/1.500/2.600), porque a margem técnica atual
   (~91% no tier básico, conforme `cost-control.md`) suporta preço maior sem risco, e o
   ICP (clínica com R$10-15k/mês em ads) tem tolerância de preço muito acima do piso.
+  Growth ajustado de R$2.300 → **R$2.100** (jul/2026) para deixar o degrau Start→Growth
+  mais fácil de subir na fase de validação; a margem segue saudável mesmo com B-WAVE full
+  (ver `cost-control.md` — validar consumo real de ElevenLabs nos primeiros Growth).
 - Preço nunca deve ser ancorado no cliente de baixo ticket — ancorar no valor de 1-2
   leads recuperados por mês, que já cobre o plano inteiro em qualquer tier.
 - Setup separado do mensal sempre — funciona como filtro de comprometimento e cobre
@@ -119,6 +122,35 @@ promessa contratual formal.
   possível projeto Enterprise sob diagnóstico.
 - Não ofereça "rede"/multi-unidade mesmo se perguntado — resposta padrão: "hoje
   atendemos cada unidade com contrato próprio; multi-unidade está no roadmap".
+
+### 4.1 Frame de persuasão (ancorar no valor, não no software)
+
+O argumento central não é "software de atendimento" — é **"uma recepcionista que custa
+menos, trabalha 24/7 e nunca deixa um lead sem resposta"**.
+
+- **Comparação com recepcionista humana.** Uma recepcionista CLT no Brasil custa salário
+  ~R$1.500-2.000/mês **mais** encargos e provisões (FGTS, INSS patronal, 13º, férias +1/3,
+  VT/VR, rescisão) — custo real para a clínica de **~R$2.800-4.000/mês**. E ainda assim:
+  cobre só ~44h/semana, tira férias, falta, adoece e tem rotatividade. O SystemOps custa
+  R$1.300-2.100/mês, atende **24/7/365**, responde na hora, **sem folha, sem encargos,
+  sem passivo trabalhista, sem turnover** — e pega o lead à noite e no fim de semana,
+  justamente quando o tráfego pago traz gente e a recepção humana está fora.
+- **ROI como âncora.** Recuperar 1-2 leads/mês que hoje se perdem fora do horário já paga
+  o plano inteiro. Ancorar no ticket médio do procedimento da clínica, nunca no preço do
+  software.
+- **Setup separado do mensal** funciona como filtro de comprometimento e cobre o
+  onboarding real (WhatsApp, Google Calendar, playbook).
+
+### 4.2 Oferta de Fundador (primeiros ~6 clientes de validação)
+
+Mecanismo de desconto para os primeiros contratos, sem queimar a ancoragem de preço:
+
+- **40% off nos 3 primeiros meses + setup pela metade**, em troca de: (a) autorização de
+  case/depoimento com números reais, (b) feedback estruturado sobre o produto.
+- **Preço cheio travado por 12 meses** (protege o cliente de reajuste e nos dá retenção).
+- **Nunca gratuito** e **time-boxed**: válido só até fechar os ~6 primeiros. Depois disso,
+  a oferta some — o cliente sabe que o preço "real" é maior, o que preserva a ancoragem.
+- É desconto **no fluxo** (temporário), nunca no valor percebido nem no mensal recorrente.
 
 ## 5. O que não publicar no site ainda
 
@@ -177,7 +209,7 @@ primeiros ~6 contratos.
   aba Voz da clínica) — sem isso o B-WAVE não sintetiza, mesmo com o módulo ativo.
 - Único ponto de atenção real: **custo por caractere da ElevenLabs em modo full é alto**
   — acompanhar `tts_usage_costs` de perto nos primeiros clientes Growth para confirmar
-  que a margem do plano (R$2.300/mês) absorve o consumo em modo full antes de assumir
+  que a margem do plano (R$2.100/mês) absorve o consumo em modo full antes de assumir
   isso como padrão permanente do Growth.
 - Critério de revisão: ao fechar os primeiros ~6 clientes Start/Growth, revisitar se
   `"full"` continua sendo o modo certo para todo cliente Growth por padrão, ou se deveria

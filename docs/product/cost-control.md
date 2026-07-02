@@ -35,14 +35,57 @@ Auditoria realizada em 08/06/2026 com dados reais do painel de cada fornecedor.
 
 | Métrica | Valor |
 |---|---|
-| Receita (plano Starter) | R$ 897,00/mês |
+| Receita (plano Start · preço vigente jul/2026) | R$ 1.300,00/mês |
 | Custo total infra | R$ 192,50/mês |
-| **Margem bruta** | **~79% (~R$ 704/mês)** |
+| **Margem bruta** | **~85% (~R$ 1.107/mês)** |
 | Custo por lead | R$ 2,29 |
 | Custo por agendamento | R$ 6,87 |
 | Custo OpenAI puro (IA) | $0.41 (~R$ 2,11) em 12 dias |
 
+> O piloto Ximendes rodou no preço legado do Starter (R$897); a margem acima está
+> recalculada no preço Start vigente (R$1.300) para servir de referência atual. O custo
+> de infra (R$192,50) é real e independe do preço.
+
 O Z-API representa **97% do custo total**. OpenAI é residual no volume atual.
+
+---
+
+## Tabela Mestre — Todos os Serviços Pagos e Drivers de Custo
+
+Fonte única de custos da plataforma (mantida pelo agente `especialista-infra`; consumida
+pelos preços em `docs/product/pricing-strategy.md`). "Driver" = o que faz o custo subir.
+
+| Serviço | Modelo de cobrança | Custo atual | Driver de custo |
+|---|---|---|---|
+| Z-API | R$79,99 / instância (1 número) | R$79,99/clínica | nº de números conectados — linear por clínica |
+| OpenAI (GPT-4o-mini + Whisper + TTS-1-HD) | pay-as-you-go por token/áudio | ~R$3/mês (piloto) | volume de conversas × tamanho do histórico; áudios transcritos |
+| **ElevenLabs / B-WAVE** | por caractere sintetizado (planos por cota) | **variável — alto** | modo de voz (`impact` < `mix` < `full`) × volume de texto falado. **Maior driver variável do Growth em `full`.** |
+| Vercel | Pro flat US$20/mês | ~R$110/mês (conta toda) | bandwidth/execução; serverless escala — sem gatilho de troca no horizonte |
+| Vercel Blob | Free (1GB / 5GB egress) → pago | R$0 hoje | mídia armazenada (TTL de 90 dias segura o crescimento) |
+| Neon PostgreSQL | Free (100 CU-hrs) → Launch US$19+ | R$0 hoje → **provisionar Launch antes do 1º cliente pago** | CU-hrs (compute) ≈ 0,44/conversa; storage |
+| **Resend** | Free (3k e-mails/mês, 100/dia) → Pro US$20 | R$0 hoje | e-mails transacionais + digest diário × nº de clínicas |
+| Google Calendar API | Free | R$0 | — (opt-in por clínica) |
+| Web Push (VAPID) | nativo do browser | R$0 | — |
+| Domínio / DNS | anual | ~R$40/ano | fixo |
+
+Estimativas de ElevenLabs e Resend a validar com uso real dos primeiros clientes Growth —
+padrão do doc: extrapolação de amostra pequena, confirmar em produção.
+
+### Margem por plano nos preços vigentes (jul/2026)
+
+Preços: **Start R$1.300 / Growth R$2.100 / Scale R$3.500** (ver `pricing-strategy.md`).
+
+- **Start** — voz OpenAI (robotizada, barata). Custo de infra de clínica pequena
+  ~R$83-200/mês → margem **~85-94%**. Saudável.
+- **Growth** — inclui **B-WAVE/ElevenLabs em `full`**. Antes da voz premium a margem fica
+  ~72-90%; o ElevenLabs em `full` é o item que pode comê-la. **Ação: acompanhar
+  `tts_usage_costs` nos primeiros ~6 clientes Growth.** Se o consumo em `full` apertar a
+  margem a R$2.100, o default do Growth passa a `mix`/`impact` e `full` vira upgrade dentro
+  do próprio Growth (decisão já prevista em `pricing-strategy.md` §6.2).
+- **Scale** — B-WAVE em `mix` por padrão + ticket maior → margem **~83%+**.
+
+**Regra:** nunca prometer feature de custo variável (voz premium) sem margem confirmada
+no plano em que ela é vendida.
 
 ---
 
@@ -94,12 +137,17 @@ Implicação direta para os planos comerciais (`docs/product/pricing-strategy.md
 
 | Clínicas | Z-API | OpenAI | Vercel/Neon | Total infra/mês | MRR mín. | Margem |
 |---|---|---|---|---|---|---|
-| 1 (hoje) | R$ 80 | R$ 3 | R$ 0 | **R$ 83** | R$ 897 | 91% |
-| 5 | R$ 400 | R$ 15 | R$ 0 | **R$ 415** | R$ 4.485 | 91% |
-| 15 | R$ 1.200 | R$ 45 | ~R$ 100 | **R$ 1.345** | R$ 13.455 | 90% |
-| 30 | R$ 2.400 | R$ 90 | ~R$ 200 | **R$ 2.690** | R$ 26.910 | 90% |
+| 1 (hoje) | R$ 80 | R$ 3 | R$ 0 | **R$ 83** | R$ 1.300 | 94% |
+| 5 | R$ 400 | R$ 15 | R$ 0 | **R$ 415** | R$ 6.500 | 94% |
+| 15 | R$ 1.200 | R$ 45 | ~R$ 100 | **R$ 1.345** | R$ 19.500 | 93% |
+| 30 | R$ 2.400 | R$ 90 | ~R$ 200 | **R$ 2.690** | R$ 39.000 | 93% |
 
-Neon e Vercel só impactam margem a partir de ~15 clínicas ativas.
+Neon e Vercel só impactam margem a partir de ~15 clínicas ativas. **MRR mín.** usa o piso
+Start (R$1.300/clínica); com mix de Growth (R$2.100) a margem sobe. Custo Z-API mostrado é
+o pior caso (1 instância paga por clínica) — a partir da 2ª clínica ele cai muito migrando
+para Evolution API self-hosted (ver `docs/operations/infra-scaling-thresholds.md`). ElevenLabs
+não entra aqui (Start usa voz OpenAI); para clínicas Growth, somar o driver de voz premium
+da Tabela Mestre acima.
 
 ---
 
@@ -124,4 +172,7 @@ Disponível em `/owner/financeiro` — MRR, margem bruta, custo por clínica, be
 - Ambientes de QA desligam envio real (`DISABLE_REAL_WHATSAPP_SEND=true`) e LLM real (`DISABLE_REAL_OPENAI=true`).
 - Campanhas outbound não ativadas sem controle explícito de limite e custo.
 - Playbooks não podem burlar limite financeiro; limites estão em código ou configuração determinística.
-- Z-API é custo fixo por instância — migrar para Meta Cloud API avaliado quando ≥ 5 clínicas ou necessidade de botões nativos (ver `docs/architecture/media-infrastructure.md`).
+- Z-API é custo fixo por instância. A partir da **2ª clínica**, avaliar migração para
+  Evolution API self-hosted (Hetzner) — break-even imediato; gatilhos e trade-offs em
+  `docs/operations/infra-scaling-thresholds.md`. Meta Cloud API / botões nativos: ver
+  `docs/architecture/media-infrastructure.md`.

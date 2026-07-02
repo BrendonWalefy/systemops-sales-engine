@@ -73,7 +73,7 @@ Se forem mais de 5, mostre que o retorno do investimento já está garantido.
 | Plano | Preço | Para quem |
 |-------|-------|-----------|
 | **Start** | R$ 1.300/mês | Clínica começando com IA, ~300 conversas/mês |
-| **Growth** ⭐ | R$ 2.300/mês | Clínica em crescimento com tráfego pago ativo |
+| **Growth** ⭐ | R$ 2.100/mês | Clínica em crescimento com tráfego pago ativo |
 | **Scale** | R$ 3.500/mês | Alto volume, múltiplos profissionais, voz premium |
 
 **Desconto anual:** 2 meses grátis (equivale a ~16% de desconto). Nunca dar desconto no
@@ -94,7 +94,7 @@ unidade com contrato próprio; multi-unidade está no roadmap."
 - Voz por IA (OpenAI, 3 modos configuráveis — impact/mix/full)
 - Suporte por e-mail em até 48h
 
-**Growth (R$ 2.300/mês) — RECOMENDADO**
+**Growth (R$ 2.100/mês) — RECOMENDADO**
 - Tudo do Start, mais:
 - ~800 conversas/mês, playbooks ilimitados
 - Playbook personalizado com AI co-writer
@@ -121,7 +121,7 @@ unidade com contrato próprio; multi-unidade está no roadmap."
 
 Se for R$ 1.500 (conservador para odonto):
 
-> *"O plano Growth custa R$ 2.300. Se a IA recuperar apenas 1 lead por mês que vocês perderiam fora do horário, o sistema já se paga. Em clínicas com volume parecido, a meta inicial é recuperar de 5 a 10 consultas por mês que antes iam embora."*
+> *"O plano Growth custa R$ 2.100. Se a IA recuperar apenas 1 lead por mês que vocês perderiam fora do horário, o sistema já se paga. Em clínicas com volume parecido, a meta inicial é recuperar de 5 a 10 consultas por mês que antes iam embora."*
 
 ---
 
@@ -139,9 +139,9 @@ Se for R$ 1.500 (conservador para odonto):
 
 ### "Preciso pensar"
 
-> *"Faz sentido. Uma coisa que eu posso fazer: a gente faz um teste de 7 dias com a IA respondendo ao WhatsApp de vocês — zero custo. Você vê funcionando na prática antes de decidir."*
+> *"Faz sentido. O que eu posso fazer: colocar a IA respondendo o WhatsApp de vocês já nas condições de Fundador — desconto nos primeiros meses e setup reduzido — pra você ver funcionando valendo, com risco baixo e sem contrato longo. Não trabalho com teste grátis de propósito: quem entra como Fundador entra levando o resultado a sério, e por isso o preço fica travado pra vocês."*
 
-(Se a clínica já tiver sido onboardada para teste, esse é o pitch de conversão para contrato pago.)
+(Piloto sempre pago com desconto de Fundador — nunca gratuito. Ver `pricing-strategy.md` §4.2.)
 
 ---
 
@@ -183,8 +183,9 @@ Objetivo: fazer o prospect perceber o tamanho da perda antes de apresentar a sol
 
 ### Passo 4 — Proposta (imediato ou até 24h)
 - Recomendar o plano Growth como padrão
-- Enviar proposta em PDF ou link de pagamento (Stripe / Hotmart / PIX recorrente)
-- Incluir: garantia de 7 dias ou dinheiro de volta
+- Enviar proposta em PDF + cobrança via PIX/boleto (billing manual nesta fase — gateway
+  automático ainda não integrado; ver `docs/operations/billing-roadmap.md`)
+- Aplicar as condições de Fundador se estiver dentro dos ~6 primeiros contratos
 - Prazo de resposta da proposta: 48h
 
 ---
@@ -221,10 +222,10 @@ Leads perdidos/mês fora do horário: ~[Y]
 Recuperação estimada com IA: 40-60% desses leads
 
 Receita adicional/mês = X × Y × 0,5
-ROI = Receita adicional / R$ 2.300 (plano Growth)
+ROI = Receita adicional / R$ 2.100 (plano Growth)
 
 Exemplo: R$ 2.000 ticket × 8 leads perdidos × 50% = R$ 8.000
-ROI = 8.000 / 2.300 = 348% ao mês
+ROI = 8.000 / 2.100 = 381% ao mês
 ```
 
 ---

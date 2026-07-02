@@ -6,7 +6,7 @@ export type OrgPlan = "essencial" | "avancado" | "rede" | "custom";
 // docs/operations/billing-roadmap.md).
 export const PLAN_PRICE_BRL_CENTS: Record<OrgPlan, number> = {
   essencial: 130000,
-  avancado: 230000,
+  avancado: 210000,
   rede: 350000,
   custom: 0,
 };

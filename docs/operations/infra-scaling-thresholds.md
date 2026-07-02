@@ -120,13 +120,18 @@ Sem gatilho de troca. Monitorar via `/owner/financeiro`.
 Custo adicional por uma clínica 10x: ~R$580/mês  
 (Neon Launch $91 + Vercel Pro $20 já pago ÷ clínicas + Z-API R$80 + OpenAI R$50)
 
-| Plano da clínica | MRR | Custo infra | Margem bruta |
-|-----------------|-----|-------------|--------------|
-| Starter (R$897) | R$897 | ~R$580 | ~35% — **inviável** |
-| Growth (R$1.497) | R$1.497 | ~R$580 | ~61% — aceitável |
-| Scale (R$2.997) | R$2.997 | ~R$580 | ~81% — excelente |
+> **Não inclui ElevenLabs/B-WAVE.** O Growth inclui voz premium em `full`, cujo custo por
+> caractere é o maior driver variável do plano — some-o à linha do Growth. A tabela mestre
+> de custos por serviço (incl. ElevenLabs e Resend) vive em `docs/product/cost-control.md`,
+> fonte única de custos.
 
-**Regra de bolso:** clínica com volume acima de 3x Ximendes não entra no Starter.
+| Plano da clínica | MRR | Custo infra (sem voz premium) | Margem bruta |
+|-----------------|-----|-------------|--------------|
+| Start (R$1.300) | R$1.300 | ~R$580 | ~55% — ver regra de bolso |
+| Growth (R$2.100) | R$2.100 | ~R$580 + ElevenLabs | ~72% antes da voz premium |
+| Scale (R$3.500) | R$3.500 | ~R$580 | ~83% — excelente |
+
+**Regra de bolso:** clínica com volume acima de 3x Ximendes não entra no Start.
 
 ---
 
@@ -135,11 +140,11 @@ Custo adicional por uma clínica 10x: ~R$580/mês
 ```
 Hoje (1 clínica, Ximendes)
   → Neon Free + Z-API + Vercel Pro
-  → Custo: ~R$82/mês | MRR: R$897 | Margem: ~91%
+  → Custo: ~R$82/mês | MRR: R$1.300 (Start) | Margem: ~94%
 
 2ª clínica (qualquer tamanho)
   → Migrar Z-API → Evolution API no Hetzner (~R$27/mês)
-  → Custo: ~R$200/mês | MRR: ~R$1.794 | Margem: ~89%
+  → Custo: ~R$200/mês | MRR: ~R$2.600 (2× Start) | Margem: ~92%
 
 1 clínica grande (5–10x) OU 3+ clínicas pequenas
   → Ativar Neon Launch
