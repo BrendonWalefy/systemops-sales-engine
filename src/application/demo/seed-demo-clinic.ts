@@ -131,16 +131,8 @@ const TREATMENT_VALUE_CENTS: Record<string, number> = {
   "Avaliação estética": 15000,
 };
 
-// Fechos curtos e COERENTES para o volume histórico (nunca frases soltas/aleatórias).
-const WON_CLOSERS: [string, string][] = [
-  ["Fiz o tratamento com vocês e amei o resultado, muito obrigada! 💚", "Nós que agradecemos! Ficamos muito felizes 💚"],
-  ["Ficou perfeito, super recomendo!", "Que alegria ler isso! Obrigada pela confiança 😊"],
-  ["Melhor decisão, adorei o atendimento de vocês.", "Obrigada! Estamos sempre por aqui quando precisar 💚"],
-];
-const LOST_CLOSERS: [string, string][] = [
-  ["Por ora vou deixar pra mais pra frente, obrigada.", "Sem problema! Fico à disposição quando quiser 😊"],
-  ["Vou pensar com calma e retorno depois.", "Claro! Qualquer dúvida, é só me chamar por aqui 💚"],
-];
+// Volume histórico é NUMÉRICO (lead + agendamento, sem conversa) — o inbox só mostra
+// as conversas ricas. Estes tratamentos calibram a receita/contagem do dashboard.
 const HISTORY_TREATMENTS = [
   "Clareamento dental", "Limpeza e profilaxia", "Avaliação estética",
   "Lentes de porcelana", "Implante dentário", "Harmonização facial",
@@ -333,17 +325,34 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     return { leadId, convId };
   }
 
-  // Reusa a biblioteca de mídia da Ximendes (vídeos de procedimento reais) na demo.
-  // Se a Ximendes não existir (ex.: banco local), segue sem mídia — degrada limpo.
+  // Reusa da Ximendes: (a) vídeos de procedimento e (b) o voiceId da voz B-WAVE.
+  // Reusar o voiceId NÃO interfere na Ximendes — é só um identificador de voz.
+  // Se a Ximendes não existir (ex.: banco local), segue sem mídia/voz — degrada limpo.
   type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
-  const ximendesMedia = await db
-    .select({ media: playbookVersions.mediaLibrary })
-    .from(playbookVersions)
-    .innerJoin(organizations, eq(playbookVersions.clinicId, organizations.id))
-    .where(and(eq(organizations.slug, "ximendes"), eq(playbookVersions.status, "active")))
+  const ximendes = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, "ximendes"))
     .limit(1)
     .then((r) => r[0] ?? null);
-  const demoMediaLibrary: MediaItem[] = (ximendesMedia?.media as MediaItem[] | null) ?? [];
+  let demoMediaLibrary: MediaItem[] = [];
+  let ximendesVoiceId = "";
+  if (ximendes) {
+    const pv = await db
+      .select({ media: playbookVersions.mediaLibrary })
+      .from(playbookVersions)
+      .where(and(eq(playbookVersions.clinicId, ximendes.id), eq(playbookVersions.status, "active")))
+      .limit(1)
+      .then((r) => r[0] ?? null);
+    demoMediaLibrary = (pv?.media as MediaItem[] | null) ?? [];
+    const vm = await db
+      .select({ config: clinicModules.config })
+      .from(clinicModules)
+      .where(and(eq(clinicModules.clinicId, ximendes.id), eq(clinicModules.moduleKey, "voice_elevenlabs")))
+      .limit(1)
+      .then((r) => r[0] ?? null);
+    ximendesVoiceId = ((vm?.config as { voiceId?: string } | null)?.voiceId ?? "").trim();
+  }
   const demoVideo = demoMediaLibrary.find((m) => m.type === "video") ?? null;
   const demoImage = demoMediaLibrary.find((m) => m.type === "image") ?? demoVideo;
 
@@ -618,15 +627,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   const wonValuePlan = buildValuePlan(HISTORY_WON, 4_800_000);
   for (let i = 0; i < HISTORY_WON; i++) {
     const treatment = wonValuePlan[i].t;
-    const created = spAt(10 + i, 10, i % 55);
-    const closer = pick(WON_CLOSERS, i);
-    const { leadId } = makeLead({
-      clinicId, name: genName(), status: "won", temperature: null,
-      treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i),
-      thread: [
-        { author: "lead", body: closer[0], at: created, intent: "small_talk" },
-        { author: "agent", body: closer[1], at: new Date(created.getTime() + 60_000), intent: "small_talk" },
-      ],
+    const created = spAt(12 + i, 10, i % 55);
+    const leadId = randomUUID();
+    leadRows.push({
+      id: leadId, clinicId, name: genName(), phone: genPhone(), channel: pick(CHANNELS, i),
+      treatmentInterest: treatment, status: "won", temperature: null,
+      createdAt: created, updatedAt: created,
     });
     const startsAt = spAt(2 + (i % 6), 10 + (i % 6));
     apptRows.push({
@@ -643,14 +649,10 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   for (let i = 0; i < HISTORY_LOST; i++) {
     const treatment = pick(HISTORY_TREATMENTS, i + 3);
     const created = spAt(18 + i, 10, i % 50);
-    const closer = pick(LOST_CLOSERS, i);
-    makeLead({
-      clinicId, name: genName(), status: "lost", temperature: null,
-      treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i),
-      thread: [
-        { author: "lead", body: closer[0], at: created, intent: "small_talk" },
-        { author: "agent", body: closer[1], at: new Date(created.getTime() + 60_000), intent: "small_talk" },
-      ],
+    leadRows.push({
+      id: randomUUID(), clinicId, name: genName(), phone: genPhone(), channel: pick(CHANNELS, i),
+      treatmentInterest: treatment, status: "lost", temperature: null,
+      createdAt: created, updatedAt: created,
     });
   }
 
@@ -673,6 +675,17 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   if (blockRows.length) await insertChunked(calendarBlocks, blockRows);
 
   await syncModulesForPlan(clinicId, PLAN, "seed-demo");
+
+  // Reusa a voz B-WAVE da Ximendes na clínica demo (só o voiceId — não afeta a Ximendes).
+  // Assim, no simulador ao vivo / WhatsApp, a Marina já fala em B-WAVE sem config manual.
+  if (ximendesVoiceId) {
+    await db
+      .update(clinicModules)
+      .set({
+        config: { voiceId: ximendesVoiceId, stability: 0.58, similarityBoost: 0.82, speed: 0.96, mode: "impact" },
+      })
+      .where(and(eq(clinicModules.clinicId, clinicId), eq(clinicModules.moduleKey, "voice_elevenlabs")));
+  }
 
   return {
     clinicId,
