@@ -42,11 +42,13 @@ export function estimateAiCostUsdMicros(input: TrackAiUsageInput): number {
   return Math.ceil(inputCost + outputCost);
 }
 
-// ElevenLabs Flash v2.5: ~$0.30/1000 chars (Creator plan, jun/2026).
-// Atualizar se migrar de plano.
+// ElevenLabs Flash v2.5 = ~0,5 crédito/caractere. No plano Pro ($99/600k créditos,
+// jul/2026) isso equivale a ~$0,12/1000 chars (overage Pro $0,24/1k crédito × 0,5).
+// Antes assumíamos $0,30/1k (Creator, 1 crédito/char) — superestimava ~2,5x. Atualizar
+// ao migrar de plano (Scale $0,18/1k crédito → ~$0,09/1k chars). Ver docs/product/cost-control.md.
 const TTS_PRICE_USD_MICROS_PER_CHAR: Record<string, number> = {
-  eleven_flash_v2_5: 300,
-  default: 300,
+  eleven_flash_v2_5: 120,
+  default: 120,
 };
 
 export function estimateTtsCostUsdMicros(input: TrackTtsUsageInput): number {

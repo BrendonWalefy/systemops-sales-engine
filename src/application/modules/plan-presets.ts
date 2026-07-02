@@ -14,14 +14,17 @@ export const REDE_RECOMMENDED_BWAVE_CONFIG: VoiceElevenLabsConfig = {
 };
 
 // Fase de validação inicial (Start + Growth, ver docs/product/pricing-strategy.md):
-// clientes Growth recebem B-WAVE completo (mode "full") para validar o produto com
-// os primeiros casos reais, antes de restringir a régua definitiva por plano.
+// Growth usa B-WAVE em "impact" — voz premium nos momentos de conversão (saudação,
+// preço, agendamento, confirmação, urgência). Decisão jul/2026: default "impact" em vez
+// de "full", para proteger a margem (ElevenLabs é caro por caractere) e responder ao
+// feedback real de cliente (áudio em excesso incomoda). "full" fica como opt-in por
+// clínica no painel. Ver docs/product/pricing-strategy.md §6.2.
 export const GROWTH_VALIDATION_BWAVE_CONFIG: VoiceElevenLabsConfig = {
   voiceId: "",
   stability: 0.58,
   similarityBoost: 0.82,
   speed: 0.96,
-  mode: "full",
+  mode: "impact",
 };
 
 const GENERIC_TONES = new Set([

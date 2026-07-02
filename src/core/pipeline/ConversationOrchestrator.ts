@@ -1097,9 +1097,11 @@ export class ConversationOrchestrator {
     }
 
     // Resolve voz por mensagem: B-WAVE e voz básica usam a mesma lógica de modo.
-    // Voz básica sem `mode` configurado cai em "impact" (mesmo padrão do B-WAVE —
-    // mais barato e evita voz em toda mensagem por falta de config explícita).
-    const voiceBasicMode: VoiceMode = (voiceMod?.config as VoiceTtsConfig | undefined)?.mode ?? "impact";
+    // Voz básica (Start/OpenAI) sem `mode` configurado cai em "greeting_only": só a
+    // saudação vem em áudio. Decisão jul/2026 a partir de feedback real (áudio em
+    // excesso incomoda) + a voz OpenAI é robótica — ouvida uma vez é novidade, repetida
+    // irrita. A clínica pode subir para impact/mix/full no painel. Ver pricing-strategy §6.1.
+    const voiceBasicMode: VoiceMode = (voiceMod?.config as VoiceTtsConfig | undefined)?.mode ?? "greeting_only";
     function resolveVoiceForReply(messageIntent: IntentType, responseText: string): boolean {
       if (bwaveEnabled) return shouldUseBWaveForMessage(bwaveMode, messageIntent, responseText, inputWasAudio);
       if (voiceBasicEnabled) return shouldUseBWaveForMessage(voiceBasicMode, messageIntent, responseText, inputWasAudio);

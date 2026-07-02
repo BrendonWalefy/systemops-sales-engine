@@ -59,7 +59,7 @@ pelos preços em `docs/product/pricing-strategy.md`). "Driver" = o que faz o cus
 |---|---|---|---|
 | Z-API | R$79,99 / instância (1 número) | R$79,99/clínica | nº de números conectados — linear por clínica |
 | OpenAI (GPT-4o-mini + Whisper + TTS-1-HD) | pay-as-you-go por token/áudio | ~R$3/mês (piloto) | volume de conversas × tamanho do histórico; áudios transcritos |
-| **ElevenLabs / B-WAVE** | por caractere sintetizado (planos por cota) | **variável — alto** | modo de voz (`impact` < `mix` < `full`) × volume de texto falado. **Maior driver variável do Growth em `full`.** |
+| **ElevenLabs / B-WAVE** | por crédito; **Flash v2.5 ≈ 0,5 crédito/char** | **~$0,12/1k chars no Pro** (~R$0,66) | modo de voz (`impact` < `mix` < `full`) × volume falado. Plano: Pro $99/600k créditos → Scale $299/1,8M. Maior driver variável do Growth. |
 | Vercel | Pro flat US$20/mês | ~R$110/mês (conta toda) | bandwidth/execução; serverless escala — sem gatilho de troca no horizonte |
 | Vercel Blob | Free (1GB / 5GB egress) → pago | R$0 hoje | mídia armazenada (TTL de 90 dias segura o crescimento) |
 | Neon PostgreSQL | Free (100 CU-hrs) → Launch US$19+ | R$0 hoje → **provisionar Launch antes do 1º cliente pago** | CU-hrs (compute) ≈ 0,44/conversa; storage |
@@ -75,14 +75,32 @@ padrão do doc: extrapolação de amostra pequena, confirmar em produção.
 
 Preços: **Start R$1.300 / Growth R$2.100 / Scale R$3.500** (ver `pricing-strategy.md`).
 
-- **Start** — voz OpenAI (robotizada, barata). Custo de infra de clínica pequena
-  ~R$83-200/mês → margem **~85-94%**. Saudável.
-- **Growth** — inclui **B-WAVE/ElevenLabs em `full`**. Antes da voz premium a margem fica
-  ~72-90%; o ElevenLabs em `full` é o item que pode comê-la. **Ação: acompanhar
-  `tts_usage_costs` nos primeiros ~6 clientes Growth.** Se o consumo em `full` apertar a
-  margem a R$2.100, o default do Growth passa a `mix`/`impact` e `full` vira upgrade dentro
-  do próprio Growth (decisão já prevista em `pricing-strategy.md` §6.2).
-- **Scale** — B-WAVE em `mix` por padrão + ticket maior → margem **~83%+**.
+- **Start (R$1.300)** — voz OpenAI, default **`greeting_only`** (só a saudação; decisão
+  jul/2026 por feedback da Ximendes de que áudio em excesso incomoda). Custo de infra de
+  clínica pequena ~R$83-200/mês → margem **~85-94%**. Saudável.
+- **Growth (R$2.100)** — B-WAVE em default **`impact`** (não `full`); `full` é opt-in.
+  Tabela de margem abaixo.
+- **Scale (R$3.500)** — B-WAVE em `mix` + ticket maior → margem **~83%+**.
+
+#### Margem do Growth por modo × volume × preço do ElevenLabs
+
+Premissas: ~5 mensagens de IA/conversa (piloto real), ~180 chars/mensagem falada; típico
+= 350 conversas/mês, alto = 800 (teto de fair use). ElevenLabs: **conservador** = $0,30/1k
+(overage Creator, 1 crédito/char) vs **realista** = ~$0,12/1k (Flash v2.5 no Pro). Outros
+custos do Growth ~R$140 (Z-API + OpenAI + Vercel/Neon; cai p/ ~R$90 com Evolution API).
+
+| Modo · volume · preço | Custo voz/mês | Margem Growth |
+|---|---|---|
+| `full` · típico · realista | ~R$158 | ~86% |
+| `full` · típico · conservador | ~R$433 | ~73% |
+| `full` · **alto · conservador** | ~R$990 | **~46%** ⚠️ |
+| `full` · alto · realista | ~R$360 | ~76% |
+| **`impact` · alto · conservador** | ~R$594 | **~65%** |
+| `impact` · alto · realista | ~R$216 | ~83% |
+
+Leitura: o único cenário ruim (46%) é `full` + alto volume + plano/modelo errado no
+ElevenLabs — exatamente a clínica que o Growth mira. Default `impact` + Pro/Flash elimina
+o risco (pior caso sobe para ~83%). **Acompanhar `tts_usage_costs` nos primeiros Growth.**
 
 **Regra:** nunca prometer feature de custo variável (voz premium) sem margem confirmada
 no plano em que ela é vendida.

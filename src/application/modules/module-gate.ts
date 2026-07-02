@@ -152,9 +152,9 @@ export async function applyClinicPlanPreset(
 ): Promise<void> {
   await syncModulesForPlan(clinicId, plan, updatedBy);
 
-  // Fase de validação inicial: rede segue o preset "mix" de sempre; avancado
-  // (Growth) recebe B-WAVE completo ("full") para validar os primeiros clientes
-  // reais. Ver docs/product/pricing-strategy.md, seção 6.2.
+  // Fase de validação inicial: rede segue o preset "mix"; avancado (Growth) recebe
+  // B-WAVE em "impact" (voz premium nos momentos de conversão), não "full" — protege
+  // margem e responde a feedback de cliente (áudio em excesso). Ver pricing-strategy §6.2.
   if (plan !== "rede" && plan !== "avancado") return;
   const bwaveBase =
     plan === "rede" ? REDE_RECOMMENDED_BWAVE_CONFIG : GROWTH_VALIDATION_BWAVE_CONFIG;

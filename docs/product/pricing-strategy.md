@@ -171,17 +171,21 @@ que já existem no código (não exigem nova infraestrutura):
 
 ### 6.1 Start com voz OpenAI liberada e configurável (decisão final, substitui o teaser)
 
-Decisão revista: em vez de um teaser restrito só à saudação, o plano Start **já inclui
-a voz robotizada (OpenAI TTS)** de fato, com os mesmos 3 modos configuráveis que o
-B-WAVE usa — `impact` (só nos momentos de alto impacto, padrão), `mix` (quase toda a
-conversa) e `full` (tudo em áudio). A clínica escolhe o modo no próprio painel
-(`/app/settings/playbook`, aba Voz), igual ao que já existia só para B-WAVE.
+Decisão: o plano Start **inclui a voz robotizada (OpenAI TTS)** de fato, com os mesmos
+4 modos configuráveis que o B-WAVE usa — `greeting_only` (só a saudação, **padrão**),
+`impact` (momentos de alto impacto), `mix` (quase toda a conversa) e `full` (tudo em
+áudio). A clínica escolhe o modo no próprio painel (`/app/settings/playbook`, aba Voz),
+igual ao que já existia só para B-WAVE.
 
 - `voice_tts` agora está no catálogo padrão de `essencial` em `module-catalog.ts` — é
   incluso de verdade, não add-on.
-- Default de modo (quando a clínica não configurou nada) é `"impact"`, não `"full"` —
-  mais barato e consistente com o padrão do B-WAVE. Ajustado em
-  `ConversationOrchestrator.ts`.
+- Default de modo (quando a clínica não configurou nada) é **`"greeting_only"`**: só a
+  saudação vem em áudio (revisão jul/2026, em `ConversationOrchestrator.ts`). Motivo:
+  feedback real de cliente — **Ximendes: "não gosta de tantas mensagens de áudio"** — mais
+  o fato de a voz OpenAI ser robótica. Ouvida uma vez (na saudação) é novidade e cria
+  desejo de upgrade; repetida em toda conversa, irrita e assusta o cliente menor. Regra:
+  começar conservador e deixar a clínica **subir** o volume de voz (impact/mix/full) no
+  painel — nunca o contrário.
 - UI: seletor de modo (3 opções, mesmo componente visual do B-WAVE) adicionado em
   `src/app/(clinic)/app/settings/playbook/tab-voz.tsx` e no painel owner
   (`/owner/clinics/[clinicId]/modules`).
@@ -189,28 +193,30 @@ conversa) e `full` (tudo em áudio). A clínica escolhe o modo no próprio paine
   qualidade da voz**: Start = OpenAI (robotizada, mais barata), Scale/Enterprise =
   B-WAVE/ElevenLabs (hiper-realista). Esse é o gancho de upgrade agora — o cliente ouve
   a diferença de qualidade entre as duas, não a ausência total de voz.
-- Modo `"greeting_only"` continua implementado (`voice-mode.ts`,
-  `VoiceModeGreetingOnly.test.ts`) e disponível para casos pontuais via override manual
-  no painel de módulos, mas não é mais a estratégia padrão do Start.
+- Modo `"greeting_only"` (`voice-mode.ts`, `VoiceModeGreetingOnly.test.ts`) é o **padrão
+  do Start** — voz só na saudação. Menos áudio, não mais.
 
-### 6.2 Growth com B-WAVE completo (ElevenLabs, modo "full") — decisão final
+### 6.2 Growth com B-WAVE em modo "impact" (ElevenLabs) — revisão jul/2026
 
-Diferente da ideia inicial de exceção manual só para o primeiro contrato, a decisão foi
-**incluir B-WAVE/ElevenLabs no catálogo padrão do Growth**, em modo `"full"` (toda a
-conversa em voz premium), para todos os clientes Growth durante a fase de validação dos
-primeiros ~6 contratos.
+O Growth **inclui B-WAVE/ElevenLabs no catálogo padrão**, em modo **`"impact"`** (voz
+premium nos momentos de conversão: saudação, preço, agendamento, confirmação, urgência) —
+não `"full"`. Revisão jul/2026 por dois motivos convergentes: **margem** (o ElevenLabs
+tem custo alto por caractere; `full` numa clínica de alto volume derruba a margem do
+plano — ver tabela em `docs/product/cost-control.md`) e **feedback real de cliente**
+(áudio em excesso incomoda — Ximendes). O `full` (toda a conversa em voz) fica como
+**opt-in por clínica** no painel, para quem quiser.
 
-- `voice_elevenlabs` agora está no catálogo padrão de `avancado` em
-  `module-catalog.ts`, junto de `rede`/`custom`.
-- Preset dedicado `GROWTH_VALIDATION_BWAVE_CONFIG` (`plan-presets.ts`, mode `"full"`) —
+- `voice_elevenlabs` está no catálogo padrão de `avancado` em `module-catalog.ts`, junto
+  de `rede`/`custom`.
+- Preset dedicado `GROWTH_VALIDATION_BWAVE_CONFIG` (`plan-presets.ts`, mode `"impact"`) —
   distinto do preset do Rede (`REDE_RECOMMENDED_BWAVE_CONFIG`, mode `"mix"`), aplicado
   automaticamente via `applyClinicPlanPreset()` quando o plano da clínica é `avancado`.
 - A clínica ainda precisa cadastrar o `voiceId` real da ElevenLabs (painel owner ou
   aba Voz da clínica) — sem isso o B-WAVE não sintetiza, mesmo com o módulo ativo.
-- Único ponto de atenção real: **custo por caractere da ElevenLabs em modo full é alto**
-  — acompanhar `tts_usage_costs` de perto nos primeiros clientes Growth para confirmar
-  que a margem do plano (R$2.100/mês) absorve o consumo em modo full antes de assumir
-  isso como padrão permanente do Growth.
-- Critério de revisão: ao fechar os primeiros ~6 clientes Start/Growth, revisitar se
-  `"full"` continua sendo o modo certo para todo cliente Growth por padrão, ou se deveria
-  virar `"mix"`/`"impact"` como default e `"full"` um upgrade dentro do próprio Growth.
+- **Plano ElevenLabs:** operar no **Pro ($99/600k créditos)** com **Flash v2.5**
+  (~0,5 crédito/char) e subir para **Scale ($299/1,8M)** conforme o nº de clínicas Growth
+  cresce (mesmo racional dos gatilhos de Neon/Z-API). Acompanhar `tts_usage_costs`; a
+  tabela de margem por modo/volume/preço vive em `docs/product/cost-control.md`.
+- Cap de segurança (Fase 3, quando houver enforcement de entitlement): budget de
+  caracteres por plano com fallback para voz OpenAI ao estourar — bloqueia o pior caso da
+  clínica de altíssimo volume em voz sem intervenção manual.

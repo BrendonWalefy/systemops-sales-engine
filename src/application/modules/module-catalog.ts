@@ -46,9 +46,9 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     key: "voice_elevenlabs",
     label: "B-WAVE Voice",
     description: "Voz hiper-realista via ElevenLabs — atendimento que soa humano no WhatsApp",
-    // avancado (Growth) inclui B-WAVE completo ("full") na fase de validação
-    // inicial — ver GROWTH_VALIDATION_BWAVE_CONFIG em plan-presets.ts e
-    // docs/product/pricing-strategy.md §6.2.
+    // avancado (Growth) inclui B-WAVE em "impact" — voz premium nos momentos de
+    // conversão — ver GROWTH_VALIDATION_BWAVE_CONFIG em plan-presets.ts e
+    // docs/product/pricing-strategy.md §6.2. "full" fica como opt-in por clínica.
     plans: ["avancado", "rede", "custom"],
   },
   {

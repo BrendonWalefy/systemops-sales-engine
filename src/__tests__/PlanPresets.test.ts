@@ -38,14 +38,14 @@ describe("plan presets", () => {
     expect(config.mode).toBe(REDE_RECOMMENDED_BWAVE_CONFIG.mode);
   });
 
-  it("fills missing B-WAVE defaults (Growth validation) with mode full", () => {
+  it("fills missing B-WAVE defaults (Growth validation) with mode impact", () => {
     const config = mergeBWaveConfig(
       { voiceId: "xyz789" },
       GROWTH_VALIDATION_BWAVE_CONFIG,
     );
 
     expect(config.voiceId).toBe("xyz789");
-    expect(config.mode).toBe("full");
+    expect(config.mode).toBe("impact");
   });
 
   it("applies the Rede tone recommendation only to empty or generic tones", () => {
