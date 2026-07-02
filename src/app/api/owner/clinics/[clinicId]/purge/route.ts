@@ -76,28 +76,30 @@ export async function POST(
     );
   }
 
-  await db.transaction(async (tx) => {
-    await tx.delete(agentRecommendations).where(eq(agentRecommendations.clinicId, clinicId));
-    await tx.delete(outboundMessages).where(eq(outboundMessages.clinicId, clinicId));
-    await tx.delete(followUps).where(eq(followUps.clinicId, clinicId));
-    await tx.delete(slotReservations).where(eq(slotReservations.clinicId, clinicId));
-    await tx.delete(appointments).where(eq(appointments.clinicId, clinicId));
-    await tx.delete(calendarBlocks).where(eq(calendarBlocks.clinicId, clinicId));
-    await tx.delete(clinicMembers).where(eq(clinicMembers.clinicId, clinicId));
-    await tx.delete(conversations).where(eq(conversations.clinicId, clinicId));
-    await tx.delete(leads).where(eq(leads.clinicId, clinicId));
-    await tx.delete(professionals).where(eq(professionals.clinicId, clinicId));
-    await tx.delete(rooms).where(eq(rooms.clinicId, clinicId));
-    await tx.delete(treatments).where(eq(treatments.clinicId, clinicId));
-    await tx.delete(inboundEvents).where(eq(inboundEvents.clinicId, clinicId));
-    await tx.delete(aiUsageCosts).where(eq(aiUsageCosts.clinicId, clinicId));
-    await tx.delete(ttsUsageCosts).where(eq(ttsUsageCosts.clinicId, clinicId));
-    await tx.delete(whatsappMessageCosts).where(eq(whatsappMessageCosts.clinicId, clinicId));
-    await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.clinicId, clinicId));
-    await tx.delete(playbookVersions).where(eq(playbookVersions.clinicId, clinicId));
-    await tx.delete(clinicMetrics).where(eq(clinicMetrics.clinicId, clinicId));
-    await tx.delete(organizations).where(eq(organizations.id, clinicId));
-  });
+  // Sem transação: o driver neon-http (usado em produção/serverless) não suporta
+  // transações multi-statement. Deletes sequenciais, ordenados para nunca violar
+  // FK — se falhar no meio, a organização fica parcialmente limpa e pode rodar
+  // de novo (todos os deletes abaixo são idempotentes por clinicId).
+  await db.delete(agentRecommendations).where(eq(agentRecommendations.clinicId, clinicId));
+  await db.delete(outboundMessages).where(eq(outboundMessages.clinicId, clinicId));
+  await db.delete(followUps).where(eq(followUps.clinicId, clinicId));
+  await db.delete(slotReservations).where(eq(slotReservations.clinicId, clinicId));
+  await db.delete(appointments).where(eq(appointments.clinicId, clinicId));
+  await db.delete(calendarBlocks).where(eq(calendarBlocks.clinicId, clinicId));
+  await db.delete(clinicMembers).where(eq(clinicMembers.clinicId, clinicId));
+  await db.delete(conversations).where(eq(conversations.clinicId, clinicId));
+  await db.delete(leads).where(eq(leads.clinicId, clinicId));
+  await db.delete(professionals).where(eq(professionals.clinicId, clinicId));
+  await db.delete(rooms).where(eq(rooms.clinicId, clinicId));
+  await db.delete(treatments).where(eq(treatments.clinicId, clinicId));
+  await db.delete(inboundEvents).where(eq(inboundEvents.clinicId, clinicId));
+  await db.delete(aiUsageCosts).where(eq(aiUsageCosts.clinicId, clinicId));
+  await db.delete(ttsUsageCosts).where(eq(ttsUsageCosts.clinicId, clinicId));
+  await db.delete(whatsappMessageCosts).where(eq(whatsappMessageCosts.clinicId, clinicId));
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.clinicId, clinicId));
+  await db.delete(playbookVersions).where(eq(playbookVersions.clinicId, clinicId));
+  await db.delete(clinicMetrics).where(eq(clinicMetrics.clinicId, clinicId));
+  await db.delete(organizations).where(eq(organizations.id, clinicId));
 
   createLogger({ scope: "OwnerPanel", clinicId }).info("clinic.purged", { name: clinic.name });
 
