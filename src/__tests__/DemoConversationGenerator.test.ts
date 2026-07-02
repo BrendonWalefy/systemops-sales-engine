@@ -63,15 +63,22 @@ describe("generateDemoThread (mock)", () => {
 });
 
 describe("DEMO_CONVERSATIONS", () => {
-  it("tem ~30+ conversas ricas, coerentes e ordenadas ricas-primeiro", () => {
-    expect(DEMO_CONVERSATIONS.length).toBeGreaterThanOrEqual(30);
+  it("tem 10 conversas completas, coerentes e focadas nos procedimentos da demo", async () => {
+    expect(DEMO_CONVERSATIONS).toHaveLength(10);
     const keys = new Set(DEMO_CONVERSATIONS.map((c) => c.key));
     expect(keys.size).toBe(DEMO_CONVERSATIONS.length);
-    expect(DEMO_CONVERSATIONS.every((c) => c.turns.length >= 2 && c.leadName.trim().length > 0)).toBe(true);
-    // As primeiras conversas do inbox (daysAgo pequeno) devem ser as mais completas.
-    const firstFive = DEMO_CONVERSATIONS.slice(0, 5);
-    expect(firstFive.every((c) => c.turns.length >= 4)).toBe(true);
-    expect(DEMO_CONVERSATIONS.filter((c) => c.booked).length).toBeGreaterThan(8);
+    expect(DEMO_CONVERSATIONS.every((c) => c.turns.length >= 8 && c.turns.length <= 10 && c.leadName.trim().length > 0)).toBe(true);
+    expect(DEMO_CONVERSATIONS.every((c) => c.booked && c.status === "appointment_scheduled")).toBe(true);
+    expect(new Set(DEMO_CONVERSATIONS.map((c) => c.treatment))).toEqual(
+      new Set(["Lentes de resina", "Prótese dentária", "Remoção de dentes", "Botox", "Lentes de porcelana"]),
+    );
+
+    for (const conv of DEMO_CONVERSATIONS) {
+      const msgs = await generateDemoThread(ctx, conv.turns);
+      expect(msgs.length).toBeLessThanOrEqual(20);
+      expect(msgs.at(-1)?.author).toBe("agent");
+      expect(msgs.at(-1)?.body.toLowerCase()).toMatch(/agend|confirm|marcad/);
+    }
   });
 
   it("gera threads coerentes para todos os roteiros (mock)", async () => {

@@ -17,6 +17,7 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 
 export type DemoTurn = {
   lead: string;         // mensagem do lead; vazio = turno proativo da IA (reengajamento)
+  agent?: string;       // resposta curada da Marina; quando ausente, usa ResponseComposer/mock
   voice?: boolean;      // resposta do agente entregue como ÁUDIO (deliveryFormat "audio")
   media?: "video" | "image"; // anexa um item da biblioteca de mídia à resposta
 };
@@ -118,7 +119,10 @@ function mockClassify(message: string, hasPendingSlotOffer: boolean): IntentClas
   const m = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   let intent: IntentType = "general_question";
   let slotChoice: number | null = null;
-  if (hasPendingSlotOffer && /(primeir|segund|terceir|^[123]\b|primeiro|o 1|a 1)/.test(m)) intent = "confirm_slot";
+  if (
+    hasPendingSlotOffer &&
+    /(primeir|segund|terceir|^[123]\b|primeiro|o 1|a 1|segunda|terca|quarta|quinta|sexta|sabado|domingo|\d{1,2}h)/.test(m)
+  ) intent = "confirm_slot";
   else if (/dor|urgente|urgencia|sangrament|emergencia|quebr|trinc|caiu/.test(m)) intent = "clinical_urgency";
   else if (/falar com|atendente|humano|especialista/.test(m)) intent = "needs_human";
   else if (/remarcar|reagendar|mudar.*horario|trocar.*horario/.test(m)) intent = "reschedule_appointment";
@@ -195,6 +199,8 @@ export async function generateDemoThread(
 
   for (const turn of turns) {
     const proactive = !turn.lead.trim();
+    const curatedAgentReply = turn.agent?.trim() ?? "";
+    const hasCuratedAgentReply = curatedAgentReply.length > 0;
     if (!proactive) {
       out.push({ author: "lead", body: turn.lead, intent: "lead" });
       history.push(toHistoryMessage("lead", turn.lead, i++));
@@ -204,14 +210,20 @@ export async function generateDemoThread(
     const action: ActionResult = proactive
       ? { type: "reengagement", lastAppointmentLabel: "sua avaliação" }
       : intentToAction(
-          classifier ? await classifier.classify(turn.lead, history, hasPendingSlotOffer) : mockClassify(turn.lead, hasPendingSlotOffer),
+          hasCuratedAgentReply
+            ? mockClassify(turn.lead, hasPendingSlotOffer)
+            : classifier
+              ? await classifier.classify(turn.lead, history, hasPendingSlotOffer)
+              : mockClassify(turn.lead, hasPendingSlotOffer),
           ctx.clinicName,
           slots,
         );
     hasPendingSlotOffer = action.type === "slots_found";
 
     let text: string;
-    if (composer) {
+    if (hasCuratedAgentReply) {
+      text = curatedAgentReply;
+    } else if (composer) {
       const composed = await composer.compose({
         actionResult: action,
         conversationHistory: history,

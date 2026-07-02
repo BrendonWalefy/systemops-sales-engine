@@ -17,18 +17,26 @@ const ctx: DemoClinicContext = {
   specialty: "Odontologia estética e reabilitação oral",
   toneOfVoice: "Consultivo, acolhedor, elegante e objetivo. Trata por você, com cordialidade premium.",
   playbook:
-    "Procedimentos e valores: avaliação estética R$150; lentes de porcelana a partir de R$1.800 por dente; " +
-    "clareamento a partir de R$690; implante a partir de R$2.900; alinhadores a partir de R$350/mês; " +
-    "limpeza R$220; harmonização facial a partir de R$890. Valores sempre 'a partir de', após avaliação. " +
+    "Procedimentos e valores: avaliação R$150; lentes de resina a partir de R$950 por dente; " +
+    "lentes de porcelana a partir de R$1.800 por dente; prótese dentária a partir de R$2.400; " +
+    "remoção de dentes a partir de R$650; botox a partir de R$890; clareamento a partir de R$690; " +
+    "implante a partir de R$2.900; alinhadores a partir de R$350/mês; limpeza R$220. " +
+    "Valores sempre 'a partir de', após avaliação. " +
     "Objeção de preço: parcelamos no cartão e o plano é montado na avaliação. Recepcionista: Marina.",
   commercialPolicy:
-    "Valores sempre 'a partir de', pois dependem de avaliação. Lentes por dente. Parcelamos no cartão. " +
-    "Procedimentos estéticos exigem avaliação prévia (R$150).",
+    "Valores sempre 'a partir de', pois dependem de avaliação. Lentes por dente. " +
+    "Prótese, remoção de dentes e botox dependem de avaliação. Parcelamos no cartão. Avaliação prévia R$150.",
   receptionistName: "Marina",
   timezone: new ClinicTimezone("America/Sao_Paulo"),
 };
 
-const SAMPLE_KEYS = ["book-lentes", "video-lentes-1", "night-lentes", "urg-implante", "rec-media-lentes", "voice-bwave-implante"];
+const SAMPLE_KEYS = [
+  "lentes-resina-noiva",
+  "protese-fixa-mastigacao",
+  "remocao-siso-medo",
+  "botox-bruxismo-estetica",
+  "lentes-porcelana-executiva",
+];
 
 async function main(): Promise<void> {
   process.env.DISABLE_REAL_OPENAI = ""; // força IA real
