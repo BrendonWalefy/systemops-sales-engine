@@ -19,11 +19,26 @@ npm run seed:demo   # cria/reseta a Odonto Marques: playbook + ~120 leads + agen
 Deixa o painel "fresco" no dia da demo (ROI 4,8x, leads fora do horário, horas
 economizadas). Login da clínica: `helena@odontomarques.com.br` / `OdontoMarques2026!`.
 
-**As conversas do inbox agora são geradas pela IA REAL** (~35 conversas coerentes na voz
+**As conversas do inbox agora são geradas pela IA REAL** (~40 conversas coerentes na voz
 da Marina, via `ResponseComposer` — ver `src/application/demo/`), não mais frases genéricas
 soltas. Por isso o `seed:demo` **requer `OPENAI_API_KEY`** e leva ~1-2 min. Sem chave (ou
 com `DISABLE_REAL_OPENAI=true`) ele cai em respostas-modelo coerentes, sem travar. Cada
 conversa é printável — serve de conteúdo pronto para marketing.
+
+**Conteúdo rico incluído:**
+- **Vídeos de procedimento reais** — as conversas de lentes enviam o vídeo da técnica,
+  reusando a biblioteca de mídia da **Ximendes** (query por slug no seed; degrada limpo se
+  a Ximendes não existir). Tocam de verdade no inbox.
+- **Mix de áudio e texto** — parte das respostas da Marina é marcada como voz
+  (`deliveryFormat: "audio"` → badge 🔊 no inbox). Conversas rotuladas como voz **B-WAVE**
+  (premium) e uma com **voz simples** (`voiceStyle` no roteiro).
+- **Follow-ups atraentes com mídia** — a recuperação de lead reengaja com imagem/vídeo.
+- **Agendamentos, urgência→handoff, remarcação** e histórico de ganhos/perdidos.
+
+> **Sobre ouvir a voz:** o inbox mostra o badge 🔊 (voz), mas **não toca áudio sintetizado**
+> — para OUVIR o B-WAVE, use o simulador ao vivo ou o WhatsApp real (síntese na hora, com o
+> `voiceId` da clínica). Áudio tocável no próprio inbox exige sintetizar no seed (custo +
+> `voiceId` de B-WAVE) — ver "próximos passos".
 
 ## Três jeitos de rodar a demo
 

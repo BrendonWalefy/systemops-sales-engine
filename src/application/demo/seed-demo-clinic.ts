@@ -17,7 +17,7 @@
  * datando os registros relativos ao momento da execução.
  */
 import { randomUUID } from "crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { hashPassword } from "@/lib/password";
 import { syncModulesForPlan } from "@/application/modules/module-gate";
@@ -237,8 +237,23 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     body: string,
     sentAt: Date,
     intent?: string,
+    extra?: {
+      deliveryFormat?: "text" | "audio" | null;
+      mediaUrl?: string | null;
+      mediaType?: "image" | "video" | "audio" | "document" | null;
+    },
   ): void {
-    msgRows.push({ id: randomUUID(), conversationId, author, body, sentAt, intent: intent ?? null });
+    msgRows.push({
+      id: randomUUID(),
+      conversationId,
+      author,
+      body,
+      sentAt,
+      intent: intent ?? null,
+      deliveryFormat: extra?.deliveryFormat ?? null,
+      mediaUrl: extra?.mediaUrl ?? null,
+      mediaType: extra?.mediaType ?? null,
+    });
     if (author === "agent") agentMsgCount++;
   }
 
@@ -260,7 +275,15 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     needsAttention?: boolean;
     attentionReason?: string | null;
     takeoverExpiresAt?: Date | null;
-    thread: { author: "lead" | "agent" | "clinic_user"; body: string; at: Date; intent?: string }[];
+    thread: {
+      author: "lead" | "agent" | "clinic_user";
+      body: string;
+      at: Date;
+      intent?: string;
+      deliveryFormat?: "text" | "audio" | null;
+      mediaUrl?: string | null;
+      mediaType?: "image" | "video" | "audio" | "document" | null;
+    }[];
   };
 
   function makeLead(opts: MakeLeadOpts): { leadId: string; convId: string } {
@@ -299,10 +322,30 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       updatedAt: lastAt,
     });
 
-    for (const m of sorted) addMsg(convId, m.author, m.body, m.at, m.intent);
+    for (const m of sorted) {
+      addMsg(convId, m.author, m.body, m.at, m.intent, {
+        deliveryFormat: m.deliveryFormat,
+        mediaUrl: m.mediaUrl,
+        mediaType: m.mediaType,
+      });
+    }
 
     return { leadId, convId };
   }
+
+  // Reusa a biblioteca de mídia da Ximendes (vídeos de procedimento reais) na demo.
+  // Se a Ximendes não existir (ex.: banco local), segue sem mídia — degrada limpo.
+  type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
+  const ximendesMedia = await db
+    .select({ media: playbookVersions.mediaLibrary })
+    .from(playbookVersions)
+    .innerJoin(organizations, eq(playbookVersions.clinicId, organizations.id))
+    .where(and(eq(organizations.slug, "ximendes"), eq(playbookVersions.status, "active")))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  const demoMediaLibrary: MediaItem[] = (ximendesMedia?.media as MediaItem[] | null) ?? [];
+  const demoVideo = demoMediaLibrary.find((m) => m.type === "video") ?? null;
+  const demoImage = demoMediaLibrary.find((m) => m.type === "image") ?? demoVideo;
 
   // 0) reset
   const existing = await db
@@ -466,6 +509,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       { objection: "Está caro", response: "Entendo! Conseguimos parcelar e o plano é montado conforme sua prioridade na avaliação." },
       { objection: "Vou pensar", response: "Claro! Posso deixar uma avaliação pré-reservada pra você sem compromisso?" },
     ],
+    mediaLibrary: demoMediaLibrary, // vídeos de procedimento reusados da Ximendes
   });
 
   // ── CONVERSAS REAIS geradas pela IA a partir dos roteiros curados ──────────
@@ -493,12 +537,31 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     const startHour = conv.afterHours ? pick([20, 21, 22], convIdx) : 9 + (convIdx % 8);
     const created = spAt(conv.daysAgo, startHour, (convIdx * 7) % 50);
     // timestamps crescentes (agente responde ~1-2 min depois do lead)
-    const thread = generated.map((m, k) => ({
-      author: m.author,
-      body: m.body,
-      at: new Date(created.getTime() + k * 90_000),
-      intent: m.intent,
-    }));
+    const thread: MakeLeadOpts["thread"] = [];
+    let step = 0;
+    for (const m of generated) {
+      const mediaItem = m.media === "image" ? demoImage : m.media === "video" ? demoVideo : null;
+      thread.push({
+        author: m.author,
+        body: m.body,
+        at: new Date(created.getTime() + step * 90_000),
+        intent: m.intent,
+        deliveryFormat: m.author === "agent" && m.voice ? "audio" : undefined,
+      });
+      step++;
+      // Mídia (vídeo/imagem) vai como mensagem PRÓPRIA logo depois do texto.
+      if (m.author === "agent" && mediaItem) {
+        thread.push({
+          author: "agent",
+          body: mediaItem.title ?? "",
+          at: new Date(created.getTime() + step * 90_000),
+          intent: "media_sent",
+          mediaUrl: mediaItem.url,
+          mediaType: mediaItem.type,
+        });
+        step++;
+      }
+    }
     const { leadId } = makeLead({
       clinicId,
       name: conv.leadName,

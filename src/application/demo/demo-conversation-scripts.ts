@@ -31,6 +31,7 @@ export type DemoConversationSpec = {
   attentionReason?: string;
   aiPaused?: boolean;
   afterHours?: boolean; // conversa que começou fora do horário
+  voiceStyle?: "bwave" | "simple"; // rótulo do estilo de voz da conversa (para doc/kit)
   daysAgo: number;
   turns: DemoTurn[];
 };
@@ -184,7 +185,70 @@ function tplLostShort(
   };
 }
 
-// ── Montagem: ~35 conversas ricas e distintas ────────────────────────────────
+// Lentes com VÍDEO do procedimento (reusa o vídeo da Ximendes). Voz B-WAVE. Agendado.
+function tplVideoLentes(
+  key: string, leadName: string, channel: DemoChannel, daysAgo: number,
+): DemoConversationSpec {
+  return {
+    key, leadName, treatment: "Lentes de porcelana", channel,
+    status: "appointment_scheduled", temperature: "hot", booked: true,
+    voiceStyle: "bwave", daysAgo,
+    turns: [
+      { lead: opener("Lentes de porcelana"), action: { kind: "price", treatment: "Lentes de porcelana" } },
+      { lead: "Dá pra ver como fica o resultado antes de decidir?", action: { kind: "general" }, media: "video" },
+      { lead: "Amei! Como faço pra marcar a avaliação?", action: { kind: "slots" } },
+      { lead: "Quero o primeiro horário 😊", action: { kind: "confirm", slotIndex: 1 } },
+    ],
+  };
+}
+
+// Conversa com VOZ premium B-WAVE (mix de áudio e texto). Agendado.
+function tplVoiceBwave(
+  key: string, leadName: string, treatment: string, channel: DemoChannel, daysAgo: number,
+): DemoConversationSpec {
+  return {
+    key, leadName, treatment, channel, status: "appointment_scheduled",
+    temperature: "hot", booked: true, voiceStyle: "bwave", daysAgo,
+    turns: [
+      { lead: opener(treatment), action: { kind: "price", treatment }, voice: true },
+      { lead: "Que atendimento gostoso, e dá pra parcelar?", action: { kind: "general" }, voice: true },
+      { lead: "Perfeito, quero marcar!", action: { kind: "slots" }, voice: true },
+      { lead: "O primeiro tá ótimo pra mim", action: { kind: "confirm", slotIndex: 1 } },
+    ],
+  };
+}
+
+// Conversa com VOZ simples (OpenAI) — mix de áudio e texto. Em conversa.
+function tplVoiceSimple(
+  key: string, leadName: string, treatment: string, channel: DemoChannel, daysAgo: number,
+): DemoConversationSpec {
+  return {
+    key, leadName, treatment, channel, status: "in_conversation",
+    temperature: "warm", booked: false, voiceStyle: "simple", daysAgo,
+    turns: [
+      { lead: opener(treatment), action: { kind: "price", treatment }, voice: true },
+      { lead: "Ah entendi! E funciona bem mesmo?", action: { kind: "general" } },
+      { lead: "Legal, vou pensar e te chamo", action: { kind: "acknowledgment" }, voice: true },
+    ],
+  };
+}
+
+// Recuperação com CONTEÚDO (imagem/vídeo) na reengagem — follow-up atraente. Devido.
+function tplRecoveryMedia(
+  key: string, leadName: string, treatment: string, channel: DemoChannel, daysAgo: number,
+): DemoConversationSpec {
+  return {
+    key, leadName, treatment, channel, status: "follow_up_due",
+    temperature: "warm", booked: false, daysAgo,
+    turns: [
+      { lead: opener(treatment), action: { kind: "price", treatment } },
+      { lead: "Deixa eu pensar aqui e te falo.", action: { kind: "acknowledgment" } },
+      { lead: "", action: { kind: "reengagement", lastAppointmentLabel: "sua avaliação" }, media: "image" },
+    ],
+  };
+}
+
+// ── Montagem: ~40 conversas ricas e distintas ────────────────────────────────
 export const DEMO_CONVERSATIONS: DemoConversationSpec[] = [
   // Fecham (agendados) — o coração da demo
   tplBookWithObjection("book-lentes", "Camila Rocha", "Lentes de porcelana", "instagram", 1),
@@ -196,6 +260,14 @@ export const DEMO_CONVERSATIONS: DemoConversationSpec[] = [
   tplQuickBook("quick-lentes", "Larissa Fonseca", "Lentes de porcelana", "whatsapp", 1),
   tplReschedule("resched-implante", "Rafael Mendes", "Implante dentário", "whatsapp", 0),
   tplReschedule("resched-clareamento", "Bruna Castro", "Clareamento dental", "whatsapp", 1),
+
+  // Vitrine de conteúdo e voz — vídeo de procedimento, voz premium e voz simples
+  tplVideoLentes("video-lentes-1", "Isabela Ramos", "instagram", 1),
+  tplVideoLentes("video-lentes-2", "Sofia Prado", "meta_ads", 2),
+  tplVoiceBwave("voice-bwave-implante", "Clara Vasconcelos", "Implante dentário", "whatsapp", 1),
+  tplVoiceBwave("voice-bwave-harmo", "Lorena Siqueira", "Harmonização facial", "instagram", 2),
+  tplVoiceSimple("voice-simple-clareamento", "Diego Furtado", "Clareamento dental", "whatsapp", 3),
+  tplRecoveryMedia("rec-media-lentes", "Yasmin Rezende", "Lentes de porcelana", "instagram", 4),
 
   // Fora do horário — o argumento de venda
   tplAfterHours("night-lentes", "Sabrina Melo", "Lentes de porcelana", "instagram", 1),

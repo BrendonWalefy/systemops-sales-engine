@@ -27,7 +27,12 @@ export type DemoActionSpec =
   | { kind: "acknowledgment" }
   | { kind: "farewell" };
 
-export type DemoTurn = { lead: string; action: DemoActionSpec };
+export type DemoTurn = {
+  lead: string;
+  action: DemoActionSpec;
+  voice?: boolean; // resposta do agente entregue como ÁUDIO (deliveryFormat "audio")
+  media?: "video" | "image"; // anexa um item da biblioteca de mídia à resposta
+};
 
 export type DemoClinicContext = {
   clinicName: string;
@@ -39,7 +44,13 @@ export type DemoClinicContext = {
   timezone: ClinicTimezone;
 };
 
-export type DemoGeneratedMessage = { author: "lead" | "agent"; body: string; intent: string };
+export type DemoGeneratedMessage = {
+  author: "lead" | "agent";
+  body: string;
+  intent: string;
+  voice?: boolean; // agente respondeu em áudio
+  media?: "video" | "image"; // resposta anexa mídia
+};
 
 // ── Slots realistas (rótulos próximos, dias úteis) ───────────────────────────
 export function buildDemoSlots(count = 3): FormattedSlot[] {
@@ -191,7 +202,13 @@ export async function generateDemoThread(
       text = mockAgentText(turn.action, ctx, slots);
     }
 
-    out.push({ author: "agent", body: text, intent: AGENT_INTENT[turn.action.kind] });
+    out.push({
+      author: "agent",
+      body: text,
+      intent: AGENT_INTENT[turn.action.kind],
+      voice: turn.voice,
+      media: turn.media,
+    });
     history.push(toHistoryMessage("agent", text, i++));
   }
 
