@@ -58,6 +58,7 @@ export function BlockModal({ defaultDate, defaultTime, onClose, onCreated }: Pro
 
   const [submitting, setSubmitting] = useState(false);
   const [partialFailed, setPartialFailed] = useState<string[]>([]);
+  const [failureReason, setFailureReason] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState(0);
 
   // ── Calendar navigation ────────────────────────────────────────
@@ -103,9 +104,11 @@ export function BlockModal({ defaultDate, defaultTime, onClose, onCreated }: Pro
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ date, startTime, endTime, reason: resolvedReason }),
           });
-          return { date, ok: res.ok };
+          if (res.ok) return { date, ok: true as const };
+          const body = await res.json().catch(() => null);
+          return { date, ok: false as const, error: body?.error as string | undefined };
         } catch {
-          return { date, ok: false };
+          return { date, ok: false as const, error: undefined };
         }
       }),
     );
@@ -117,26 +120,29 @@ export function BlockModal({ defaultDate, defaultTime, onClose, onCreated }: Pro
     if (dates.length === 0) return;
     setSubmitting(true);
     setPartialFailed([]);
+    setFailureReason(null);
     setSuccessCount(0);
     const results = await postBlocks(dates);
-    const failed = results.filter(r => !r.ok).map(r => r.date);
+    const failed = results.filter(r => !r.ok);
     const ok = results.filter(r => r.ok).length;
     setSubmitting(false);
     if (ok > 0) onCreated();
     if (failed.length === 0) { onClose(); return; }
-    setPartialFailed(failed);
+    setPartialFailed(failed.map(r => r.date));
+    setFailureReason(failed[0]?.error ?? null);
     setSuccessCount(ok);
   }
 
   async function handleRetry() {
     setSubmitting(true);
     const results = await postBlocks(partialFailed);
-    const stillFailed = results.filter(r => !r.ok).map(r => r.date);
+    const stillFailed = results.filter(r => !r.ok);
     const ok = results.filter(r => r.ok).length;
     setSubmitting(false);
     if (ok > 0) onCreated();
     if (stillFailed.length === 0) { onClose(); return; }
-    setPartialFailed(stillFailed);
+    setPartialFailed(stillFailed.map(r => r.date));
+    setFailureReason(stillFailed[0]?.error ?? null);
     setSuccessCount(prev => prev + ok);
   }
 
@@ -282,6 +288,7 @@ export function BlockModal({ defaultDate, defaultTime, onClose, onCreated }: Pro
                 <p>
                   {successCount > 0 && `${successCount} ${successCount === 1 ? "dia bloqueado" : "dias bloqueados"}. `}
                   Falha em: {partialFailed.map(formatDateShort).join(", ")}
+                  {failureReason && ` — ${failureReason}`}
                 </p>
                 <button
                   type="button"
