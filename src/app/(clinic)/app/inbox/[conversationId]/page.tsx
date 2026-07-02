@@ -15,6 +15,7 @@ import { ConversationReadMarker } from "./ConversationReadMarker";
 import { tempLabel, statusLabel, channelLabel, avatarColor, conversationCategoryLabel } from "../inbox-utils";
 import { LeadAvatar } from "./LeadAvatar";
 import { ConversationCategoryControl } from "./ConversationCategoryControl";
+import { avatarInitial } from "../avatar-initial";
 
 const TZ = "America/Sao_Paulo";
 
@@ -75,7 +76,7 @@ export default async function ConversationPage({
     .limit(1);
 
   const displayName = lead.name ?? lead.phone ?? "Lead";
-  const initial = displayName[0]?.toUpperCase() ?? "?";
+  const initial = avatarInitial(displayName);
   const temp = tempLabel(lead.temperature ?? null);
   const { label: sLabel } = statusLabel(lead.status);
   const accentColor = avatarColor(lead.temperature ?? null);

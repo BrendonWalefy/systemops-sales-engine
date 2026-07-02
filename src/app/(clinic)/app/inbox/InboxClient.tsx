@@ -17,6 +17,7 @@ import { isConversationUnreadByClinic } from "./inbox-visibility";
 import { tempKey, tempLabel, avatarColor, relativeTime, conversationCategoryLabel } from "./inbox-utils";
 import { LeadAvatar } from "./[conversationId]/LeadAvatar";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
+import { avatarInitial } from "./avatar-initial";
 
 export type ConvRow = {
   convId: string;
@@ -360,7 +361,7 @@ function RecoveryCard({
   const [modalOpen, setModalOpen] = useState(false);
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
   const accentColor = avatarColor(row.leadTemperature);
-  const initial = displayName[0]?.toUpperCase() ?? "?";
+  const initial = avatarInitial(displayName);
   const hours = row.hoursWaiting ?? 0;
   const waitLabel = formatWaitTime(hours);
   const reason = row.aiPaused ? "Takeover expirado" : `Sem resposta há ${waitLabel}`;
@@ -516,9 +517,8 @@ function InboxCard({
   row: ConvRow;
   lastMsg: { body: string; author: string; sentAt?: Date | null };
 }) {
-  const initial =
-    row.leadName?.[0]?.toUpperCase() ?? row.leadPhone?.[0]?.toUpperCase() ?? "?";
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
+  const initial = avatarInitial(displayName);
   const tk = tempKey(row.leadTemperature);
   const { label: tLabel } = tempLabel(row.leadTemperature);
   const isSalesRow = isSalesConversationCategory(row.conversationCategory);

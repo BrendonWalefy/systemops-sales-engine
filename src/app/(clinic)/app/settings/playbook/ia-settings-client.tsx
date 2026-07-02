@@ -92,6 +92,13 @@ export function IASettingsClient({
           caret-color: ${S.teal};
           min-width: 0;
         }
+        .ia-settings-shell input,
+        .ia-settings-shell textarea,
+        .ia-settings-shell select,
+        .ia-settings-shell button,
+        .ia-settings-shell a {
+          scroll-margin-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+        }
         .ia-settings-shell input:focus,
         .ia-settings-shell textarea:focus,
         .ia-settings-shell select:focus {
@@ -130,7 +137,7 @@ export function IASettingsClient({
             padding:
               20px
               calc(env(safe-area-inset-right, 0px) + 16px)
-              calc(env(safe-area-inset-bottom, 0px) + 24px)
+              calc(env(safe-area-inset-bottom, 0px) + 132px)
               calc(env(safe-area-inset-left, 0px) + 16px);
           }
           .ia-tabs { width: 100%; overflow-x: auto; scrollbar-width: none; }
