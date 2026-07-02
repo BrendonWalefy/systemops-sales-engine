@@ -4,8 +4,14 @@
  * ("Carregar clínica demo").
  *
  * É um TENANT REAL (não há "modo demo" em runtime): o dashboard, o inbox e a
- * agenda são calculados ao vivo, então geramos VOLUME realista para bater os
- * números do kit de marketing — sem nenhum dado real de pessoas.
+ * agenda são calculados ao vivo. As conversas visíveis são geradas pela IA REAL
+ * (ResponseComposer, mesmo motor da produção) a partir de roteiros curados — ver
+ * `generate-demo-conversation.ts` e `demo-conversation-scripts.ts`. Isso substitui
+ * as threads fabricadas antigas (frases genéricas soltas + padding aleatório) por
+ * conteúdo coerente que serve para demo E para marketing.
+ *
+ * Requer OPENAI_API_KEY para gerar as respostas autênticas. Sem chave (ou com
+ * `DISABLE_REAL_OPENAI=true`), cai em respostas-modelo coerentes (não trava).
  *
  * Idempotente: cada execução APAGA e recria os dados da clínica (reset limpo),
  * datando os registros relativos ao momento da execução.
@@ -15,6 +21,9 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { hashPassword } from "@/lib/password";
 import { syncModulesForPlan } from "@/application/modules/module-gate";
+import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import { generateDemoThread, type DemoClinicContext } from "@/application/demo/generate-demo-conversation";
+import { DEMO_CONVERSATIONS } from "@/application/demo/demo-conversation-scripts";
 import {
   organizations,
   treatments,
@@ -93,57 +102,7 @@ const LAST_NAMES = [
 
 const CHANNELS = ["whatsapp", "whatsapp", "whatsapp", "instagram", "meta_ads", "referral"] as const;
 
-const LEAD_OPENERS: Record<string, string[]> = {
-  "Lentes de porcelana": [
-    "Oi! Vocês fazem lentes de porcelana?",
-    "Queria saber sobre lentes pra fechar uns espaços nos dentes.",
-    "Vi o Instagram de vocês, fiquei interessada nas lentes.",
-  ],
-  "Clareamento dental": [
-    "Boa tarde, quanto custa o clareamento?",
-    "Queria clarear os dentes pra um evento, dá tempo?",
-    "Vocês fazem clareamento a laser?",
-  ],
-  "Implante dentário": [
-    "Perdi um dente e queria avaliar implante.",
-    "Vocês fazem implante? Quanto fica?",
-    "Tenho um espaço de um dente que caiu, dá pra implante?",
-  ],
-  "Alinhadores invisíveis": [
-    "Queria alinhar os dentes sem aparelho fixo, vocês têm?",
-    "Como funcionam os alinhadores invisíveis?",
-    "Meu caso dá pra corrigir com alinhador?",
-  ],
-  "Avaliação estética": [
-    "Queria fazer uma avaliação do meu sorriso.",
-    "Gostaria de agendar uma avaliação estética.",
-    "Posso marcar uma avaliação pra entender o que dá pra melhorar?",
-  ],
-  "Harmonização facial": [
-    "Vocês fazem harmonização facial?",
-    "Queria saber sobre harmonização, preenchimento.",
-    "Fazem harmonização orofacial aí?",
-  ],
-  "Limpeza e profilaxia": [
-    "Quero marcar uma limpeza.",
-    "Faz quanto tempo que não faço limpeza, dá pra agendar?",
-    "Quanto custa a profilaxia?",
-  ],
-};
-
-const AGENT_LINES = [
-  "Olá! Que bom falar com você 😊 Posso te explicar como funciona e já ver horários, tudo bem?",
-  "Fazemos sim! O ideal é uma avaliação rápida pra entender seu caso com segurança. Quer ver os horários?",
-  "Perfeito. Posso te mostrar algumas opções de horário esta semana?",
-  "Ótimo! Vou separar uns horários e já te envio aqui.",
-  "Qualquer dúvida sobre o procedimento eu te explico com calma, viu?",
-  "Combinado! Deixei pré-reservado e a equipe confirma antes da consulta.",
-];
-
-const FOLLOWUP_LINE =
-  "Oi! Passando pra saber se ainda faz sentido seguirmos com sua avaliação. Temos novos horários esta semana — quer que eu te envie as opções?";
-
-// ── Plano de valores (centavos) — somam EXATAMENTE os alvos de receita ──
+// ── Plano de valores (centavos) — para o volume histórico de ganhos ──────
 const PRICE_CYCLE: { t: string; v: number }[] = [
   { t: "Implante dentário", v: 290000 },
   { t: "Lentes de porcelana", v: 180000 },
@@ -158,9 +117,34 @@ function buildValuePlan(count: number, targetCents: number): { t: string; v: num
   const plan: { t: string; v: number }[] = [];
   for (let i = 0; i < count - 1; i++) plan.push({ ...pick(PRICE_CYCLE, i) });
   const partial = plan.reduce((a, b) => a + b.v, 0);
-  plan.push({ t: "Implante dentário", v: targetCents - partial });
+  plan.push({ t: "Implante dentário", v: Math.max(15000, targetCents - partial) });
   return plan;
 }
+
+const TREATMENT_VALUE_CENTS: Record<string, number> = {
+  "Implante dentário": 290000,
+  "Lentes de porcelana": 180000,
+  "Harmonização facial": 89000,
+  "Clareamento dental": 69000,
+  "Alinhadores invisíveis": 35000,
+  "Limpeza e profilaxia": 22000,
+  "Avaliação estética": 15000,
+};
+
+// Fechos curtos e COERENTES para o volume histórico (nunca frases soltas/aleatórias).
+const WON_CLOSERS: [string, string][] = [
+  ["Fiz o tratamento com vocês e amei o resultado, muito obrigada! 💚", "Nós que agradecemos! Ficamos muito felizes 💚"],
+  ["Ficou perfeito, super recomendo!", "Que alegria ler isso! Obrigada pela confiança 😊"],
+  ["Melhor decisão, adorei o atendimento de vocês.", "Obrigada! Estamos sempre por aqui quando precisar 💚"],
+];
+const LOST_CLOSERS: [string, string][] = [
+  ["Por ora vou deixar pra mais pra frente, obrigada.", "Sem problema! Fico à disposição quando quiser 😊"],
+  ["Vou pensar com calma e retorno depois.", "Claro! Qualquer dúvida, é só me chamar por aqui 💚"],
+];
+const HISTORY_TREATMENTS = [
+  "Clareamento dental", "Limpeza e profilaxia", "Avaliação estética",
+  "Lentes de porcelana", "Implante dentário", "Harmonização facial",
+];
 
 // ── Reset idempotente (respeita FKs) ────────────────────────────────────
 async function resetClinic(clinicId: string): Promise<void> {
@@ -219,11 +203,6 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     const d = new Date(now.getTime() - daysFromNow * DAY);
     d.setUTCHours(spHour + 3, spMin, 0, 0);
     return d;
-  }
-
-  function isNight(d: Date): boolean {
-    const spHour = (d.getUTCHours() + 24 - 3) % 24;
-    return spHour >= 18 || spHour < 8;
   }
 
   let nameSeed = 0;
@@ -489,268 +468,127 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     ],
   });
 
-  // ── LEADS / CONVERSAS / MENSAGENS / AGENDAMENTOS ───────────────────────
-  const activeConvIds: string[] = [];
-  const recoveryLeads: { name: string; treatment: string; days: number }[] = [
-    { name: "Larissa Fonseca", treatment: "Lentes de porcelana", days: 3 },
-    { name: "Thiago Barros", treatment: "Clareamento dental", days: 5 },
-    { name: "Patrícia Gomes", treatment: "Implante dentário", days: 7 },
-  ];
+  // ── CONVERSAS REAIS geradas pela IA a partir dos roteiros curados ──────────
+  // Cada conversa é coerente e na voz da Marina (ResponseComposer real). Substitui
+  // as threads fabricadas + o padding aleatório antigos. Ver src/application/demo/.
+  const demoCtx: DemoClinicContext = {
+    clinicName: DEMO_CLINIC_NAME,
+    specialty: "Odontologia estética e reabilitação oral",
+    toneOfVoice: "Consultivo, acolhedor, elegante e objetivo. Trata por você, com cordialidade premium.",
+    playbook:
+      "Procedimentos e valores: avaliação estética R$150; lentes de porcelana a partir de R$1.800 por dente; " +
+      "clareamento a partir de R$690; implante a partir de R$2.900; alinhadores a partir de R$350/mês; " +
+      "limpeza R$220; harmonização facial a partir de R$890. Valores sempre 'a partir de', após avaliação. " +
+      "Objeção de preço: parcelamos no cartão e o plano é montado na avaliação. Recepcionista: Marina.",
+    commercialPolicy:
+      "Valores sempre 'a partir de', pois dependem de avaliação. Lentes por dente. Parcelamos no cartão. " +
+      "Procedimentos estéticos exigem avaliação prévia (R$150).",
+    receptionistName: "Marina",
+    timezone: new ClinicTimezone("America/Sao_Paulo"),
+  };
 
-  let recentBudget = 42; // alvo "leads nos últimos 7 dias"
-  function createdAtFor(preferRecent: boolean): Date {
-    if (preferRecent && recentBudget > 0) {
-      recentBudget--;
-      return spAt(Math.floor(Math.random() * 6) + 0.2 * Math.random(), 9 + Math.floor(Math.random() * 8));
-    }
-    return spAt(8 + Math.floor(Math.random() * 80), 9 + Math.floor(Math.random() * 8));
-  }
-
-  // HOT (12)
-  const hotCast = [
-    { name: "Lucas Ferreira", treatment: "Implante dentário", slots: true },
-    { name: "Ana Beatriz Souza", treatment: "Alinhadores invisíveis" },
-  ];
-  for (let i = 0; i < 12; i++) {
-    const cast = hotCast[i];
-    const treatment = cast?.treatment ?? pick(["Lentes de porcelana", "Clareamento dental", "Implante dentário", "Harmonização facial"], i);
-    const name = cast?.name ?? genName();
-    const created = createdAtFor(true);
-    const opener = pick(LEAD_OPENERS[treatment] ?? LEAD_OPENERS["Avaliação estética"], i);
-    const thread = [
-      { author: "lead" as const, body: opener, at: spAt(2, 10, i), intent: "price_inquiry" },
-      { author: "agent" as const, body: pick(AGENT_LINES, i + 1), at: spAt(2, 10, i + 1), intent: "price_inquiry" },
-      { author: "lead" as const, body: "Pode me mostrar os horários?", at: spAt(1, 11, i), intent: "scheduling" },
-      { author: "agent" as const, body: "Claro! Tenho terça 10h30, quarta 15h ou sexta 11h. Qual prefere?", at: spAt(0, 9, i), intent: "scheduling" },
-    ];
-    const { convId } = makeLead({
-      clinicId, name, status: "in_conversation", temperature: "hot",
-      treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i), thread,
+  let convIdx = 0;
+  for (const conv of DEMO_CONVERSATIONS) {
+    const generated = await generateDemoThread(demoCtx, conv.turns);
+    const startHour = conv.afterHours ? pick([20, 21, 22], convIdx) : 9 + (convIdx % 8);
+    const created = spAt(conv.daysAgo, startHour, (convIdx * 7) % 50);
+    // timestamps crescentes (agente responde ~1-2 min depois do lead)
+    const thread = generated.map((m, k) => ({
+      author: m.author,
+      body: m.body,
+      at: new Date(created.getTime() + k * 90_000),
+      intent: m.intent,
+    }));
+    const { leadId } = makeLead({
+      clinicId,
+      name: conv.leadName,
+      status: conv.status,
+      temperature: conv.temperature,
+      treatmentInterest: conv.treatment,
+      createdAt: created,
+      channel: conv.channel,
+      needsAttention: conv.needsAttention,
+      attentionReason: conv.attentionReason ?? null,
+      aiPaused: conv.aiPaused,
+      thread,
     });
-    activeConvIds.push(convId);
-    if (cast?.slots) {
-      stateRows.push({
-        id: randomUUID(), conversationId: convId, state: "slots_offered",
-        payload: { offered: ["ter 10:30", "qua 15:00", "sex 11:00"] },
-        createdAt: spAt(0, 9, i), expiresAt: spAt(-1, 9),
+    if (conv.afterHours) afterHoursCount += thread.length;
+
+    if (conv.booked) {
+      const isWon = conv.status === "won";
+      const startsAt = isWon
+        ? spAt(2 + (convIdx % 5), 10 + (convIdx % 6))
+        : spAt(-(1 + (convIdx % 12)), 9 + (convIdx % 9));
+      apptRows.push({
+        id: randomUUID(),
+        clinicId,
+        leadId,
+        professionalId: profByTreatment[conv.treatment] ?? profHelena,
+        treatmentId: treatmentIds[conv.treatment] ?? null,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 50 * 60_000),
+        status: isWon ? "completed" : convIdx % 4 === 0 ? "confirmed" : "scheduled",
+        source: "app",
+        valueCents: TREATMENT_VALUE_CENTS[conv.treatment] ?? 15000,
+        createdAt: created,
+        updatedAt: created,
       });
     }
+
+    if (conv.status === "follow_up_due") {
+      followRows.push({
+        id: randomUUID(),
+        clinicId,
+        leadId,
+        dueAt: spAt(-1, 9, convIdx),
+        status: "pending",
+        reason: "reengajamento",
+        suggestedMessage: `Olá, ${conv.leadName.split(" ")[0]}! Passando para saber se ainda faz sentido seguirmos com sua ${conv.treatment.toLowerCase()}. Temos novos horários esta semana. Quer que eu te envie as opções?`,
+      });
+    }
+    convIdx++;
   }
 
-  // WARM (21)
-  const warmCast = [
-    { name: "Renata Lima", treatment: "Lentes de porcelana" },
-    { name: "Sabrina Melo", treatment: "Avaliação estética" },
-    { name: "Juliana Costa", treatment: "Clareamento dental" },
-  ];
-  for (let i = 0; i < 21; i++) {
-    const cast = warmCast[i];
-    const treatment = cast?.treatment ?? pick(["Lentes de porcelana", "Clareamento dental", "Alinhadores invisíveis", "Avaliação estética", "Harmonização facial"], i);
-    const name = cast?.name ?? genName();
-    const created = createdAtFor(true);
-    const thread = [
-      { author: "lead" as const, body: pick(LEAD_OPENERS[treatment] ?? LEAD_OPENERS["Avaliação estética"], i), at: spAt(4, 14, i), intent: "price_inquiry" },
-      { author: "agent" as const, body: pick(AGENT_LINES, i), at: spAt(4, 14, i + 1), intent: "price_inquiry" },
-      { author: "lead" as const, body: "Vou ver minha agenda e retorno, obrigada!", at: spAt(3, 15, i), intent: "unclear" },
-      { author: "agent" as const, body: "Combinado! Fico à disposição quando quiser ver os horários 😊", at: spAt(1, 10, i), intent: "small_talk" },
-    ];
-    const { convId } = makeLead({
-      clinicId, name, status: i % 3 === 0 ? "waiting_response" : "in_conversation",
-      temperature: "warm", treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i + 2), thread,
-    });
-    activeConvIds.push(convId);
-  }
-
-  // COLD (8)
-  const coldCast = [{ name: "Pedro Henrique Dias", treatment: "Alinhadores invisíveis" }];
-  for (let i = 0; i < 8; i++) {
-    const cast = coldCast[i];
-    const treatment = cast?.treatment ?? pick(["Clareamento dental", "Limpeza e profilaxia", "Avaliação estética"], i);
-    const name = cast?.name ?? genName();
-    const created = createdAtFor(false);
-    const thread = [
-      { author: "lead" as const, body: pick(LEAD_OPENERS[treatment] ?? LEAD_OPENERS["Avaliação estética"], i), at: spAt(20 + i, 16, i), intent: "price_inquiry" },
-      { author: "agent" as const, body: "Posso te explicar e já ver horários, tudo bem? 😊", at: spAt(20 + i, 16, i + 1), intent: "price_inquiry" },
-      { author: "agent" as const, body: "Se quiser, deixo uma avaliação pré-reservada pra você esta semana.", at: spAt(9, 11, i), intent: "scheduling" },
-    ];
-    const { convId } = makeLead({
-      clinicId, name, status: "in_conversation", temperature: "cold",
-      treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i + 4), thread,
-    });
-    activeConvIds.push(convId);
-  }
-
-  // ATENÇÃO (4) — needsAttention
-  const attentionCast = [{ name: "Felipe Santos", treatment: "Avaliação estética", reason: "Lead pediu para falar com a equipe" }];
-  for (let i = 0; i < 4; i++) {
-    const cast = attentionCast[i];
-    const name = cast?.name ?? genName();
-    const treatment = cast?.treatment ?? pick(["Implante dentário", "Harmonização facial"], i);
-    const reason = cast?.reason ?? pick(["Negociação fora da política", "Lead relatou dor", "Pediu atendimento humano"], i);
-    makeLead({
-      clinicId, name, status: "in_conversation", temperature: null,
-      treatmentInterest: treatment, createdAt: createdAtFor(false),
-      needsAttention: true, attentionReason: reason, channel: "whatsapp",
-      thread: [
-        { author: "lead", body: "Preciso falar com alguém da equipe, é uma situação específica.", at: spAt(0, 13, i), intent: "needs_human" },
-        { author: "agent", body: "Claro! Já estou chamando a equipe pra te atender com atenção. Um instante 🙏", at: spAt(0, 13, i + 2), intent: "needs_human" },
-      ],
-    });
-  }
-
-  // PAUSADOS (3) — aiPaused, takeover no futuro
-  for (let i = 0; i < 3; i++) {
-    makeLead({
-      clinicId, name: genName(), status: "in_conversation", temperature: null,
-      treatmentInterest: pick(["Lentes de porcelana", "Implante dentário", "Clareamento dental"], i),
-      createdAt: createdAtFor(false), aiPaused: true, takeoverExpiresAt: spAt(-1, 18), channel: "whatsapp",
-      thread: [
-        { author: "lead", body: "Queria entender melhor o parcelamento.", at: spAt(0, 11, i), intent: "price_inquiry" },
-        { author: "clinic_user", body: "Oi! Aqui é a recepção da Odonto Marques, vou te explicar certinho 😊", at: spAt(0, 12, i), intent: "small_talk" },
-      ],
-    });
-  }
-
-  // RECUPERAÇÃO (9) — follow_up_due, última msg da IA
-  for (let i = 0; i < 9; i++) {
-    const r = recoveryLeads[i];
-    const name = r?.name ?? genName();
-    const treatment = r?.treatment ?? pick(["Lentes de porcelana", "Clareamento dental", "Implante dentário", "Avaliação estética"], i);
-    const days = r?.days ?? 3 + (i % 7);
+  // ── Volume histórico (numérico) — cada lead com UMA troca curta e COERENTE,
+  // só para o dashboard ter volume real. Sem frases soltas/aleatórias.
+  const HISTORY_WON = 40;
+  const wonValuePlan = buildValuePlan(HISTORY_WON, 4_800_000);
+  for (let i = 0; i < HISTORY_WON; i++) {
+    const treatment = wonValuePlan[i].t;
+    const created = spAt(10 + i, 10, i % 55);
+    const closer = pick(WON_CLOSERS, i);
     const { leadId } = makeLead({
-      clinicId, name, status: "follow_up_due", temperature: null,
-      treatmentInterest: treatment, createdAt: spAt(days + 6, 10, i), channel: pick(CHANNELS, i),
-      thread: [
-        { author: "lead", body: pick(LEAD_OPENERS[treatment] ?? LEAD_OPENERS["Avaliação estética"], i), at: spAt(days + 6, 10, i), intent: "price_inquiry" },
-        { author: "agent", body: "Posso te mostrar horários esta semana?", at: spAt(days + 5, 11, i), intent: "scheduling" },
-        { author: "agent", body: FOLLOWUP_LINE, at: spAt(days, 9, i), intent: "follow_up" },
-      ],
-    });
-    followRows.push({
-      id: randomUUID(), clinicId, leadId, dueAt: spAt(-1, 9, i), status: "pending",
-      reason: "reengajamento",
-      suggestedMessage: `Olá, ${name.split(" ")[0]}! Passando para saber se ainda faz sentido te ajudarmos com sua ${treatment.toLowerCase()}. Temos novos horários esta semana. Quer que eu te envie as opções?`,
-    });
-  }
-
-  // AGENDADOS (63) — receita potencial = R$ 68.400
-  const valuePlan = buildValuePlan(63, 6_840_000);
-  const scheduledCast = [
-    "Camila Rocha", "Mariana Alves", "Rafael Mendes", "Bruna Castro",
-    "Larissa Monteiro", "Aline Barbosa",
-  ];
-  const todayHours = [8, 9, 10, 11, 14, 16];
-  for (let i = 0; i < 63; i++) {
-    const plan = valuePlan[i];
-    const treatment = plan.t;
-    const name = scheduledCast[i] ?? genName();
-    const created = createdAtFor(i < 9);
-    const apptCreated = spAt(Math.floor(Math.random() * 6), 10, i);
-    let startsAt: Date;
-    if (i < 6) startsAt = spAt(0, todayHours[i]);
-    else startsAt = spAt(-(1 + Math.floor(Math.random() * 13)), 9 + (i % 9));
-    const endsAt = new Date(startsAt.getTime() + 50 * 60_000);
-
-    const { leadId } = makeLead({
-      clinicId, name, status: "appointment_scheduled", temperature: null,
+      clinicId, name: genName(), status: "won", temperature: null,
       treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i),
       thread: [
-        { author: "lead", body: pick(LEAD_OPENERS[treatment] ?? LEAD_OPENERS["Avaliação estética"], i), at: new Date(apptCreated.getTime() - 2 * 3600_000), intent: "price_inquiry" },
-        { author: "agent", body: "Perfeito! Vou te mostrar os horários disponíveis 😊", at: new Date(apptCreated.getTime() - 1 * 3600_000), intent: "scheduling" },
-        { author: "lead", body: "Esse horário fica ótimo!", at: new Date(apptCreated.getTime() - 30 * 60_000), intent: "scheduling" },
-        { author: "agent", body: "Agendamento confirmado ✅ Te espero na Odonto Marques!", at: apptCreated, intent: "confirmation" },
+        { author: "lead", body: closer[0], at: created, intent: "small_talk" },
+        { author: "agent", body: closer[1], at: new Date(created.getTime() + 60_000), intent: "small_talk" },
       ],
     });
-    apptRows.push({
-      id: randomUUID(), clinicId, leadId,
-      professionalId: profByTreatment[treatment] ?? profHelena,
-      treatmentId: treatmentIds[treatment] ?? null,
-      startsAt, endsAt,
-      status: i % 4 === 0 ? "confirmed" : "scheduled",
-      source: "app", valueCents: plan.v,
-      createdAt: apptCreated, updatedAt: apptCreated,
-    });
-  }
-
-  // GANHOS com consulta REALIZADA (14) — receita confirmada R$ 21.700
-  const confirmedPlan = buildValuePlan(14, 2_170_000);
-  for (let i = 0; i < 14; i++) {
-    const plan = confirmedPlan[i];
-    const treatment = plan.t;
-    const name = genName();
-    const created = spAt(10 + i, 10, i);
-    const apptCreated = spAt(Math.floor(Math.random() * 6), 10, i + 20);
-    const startsAt = spAt(2 + (i % 4), 10 + (i % 6));
-    const { leadId } = makeLead({
-      clinicId, name, status: "won", temperature: null,
-      treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i),
-      thread: [
-        { author: "lead", body: pick(LEAD_OPENERS[treatment] ?? LEAD_OPENERS["Avaliação estética"], i), at: created, intent: "price_inquiry" },
-        { author: "agent", body: "Que ótimo! Já deixei tudo certo pra sua consulta 💚", at: spAt(8 + i, 11, i), intent: "confirmation" },
-      ],
-    });
+    const startsAt = spAt(2 + (i % 6), 10 + (i % 6));
     apptRows.push({
       id: randomUUID(), clinicId, leadId,
       professionalId: profByTreatment[treatment] ?? profHelena,
       treatmentId: treatmentIds[treatment] ?? null,
       startsAt, endsAt: new Date(startsAt.getTime() + 50 * 60_000),
-      status: "completed", source: "app", valueCents: plan.v,
-      createdAt: apptCreated, updatedAt: apptCreated,
+      status: "completed", source: "app", valueCents: wonValuePlan[i].v,
+      createdAt: created, updatedAt: created,
     });
   }
 
-  // HISTÓRICO restante para fechar 184 (20 ganhos + 30 perdidos)
-  for (let i = 0; i < 20; i++) {
-    makeLead({
-      clinicId, name: genName(), status: "won", temperature: null,
-      treatmentInterest: pick(["Clareamento dental", "Limpeza e profilaxia", "Avaliação estética"], i),
-      createdAt: spAt(15 + i, 10, i), channel: pick(CHANNELS, i),
-      thread: [
-        { author: "lead", body: "Obrigada pelo atendimento!", at: spAt(15 + i, 10, i), intent: "small_talk" },
-        { author: "agent", body: "Nós que agradecemos 💚 Até a próxima!", at: spAt(15 + i, 11, i), intent: "small_talk" },
-      ],
-    });
-  }
-  for (let i = 0; i < 30; i++) {
+  const HISTORY_LOST = 45;
+  for (let i = 0; i < HISTORY_LOST; i++) {
+    const treatment = pick(HISTORY_TREATMENTS, i + 3);
+    const created = spAt(18 + i, 10, i % 50);
+    const closer = pick(LOST_CLOSERS, i);
     makeLead({
       clinicId, name: genName(), status: "lost", temperature: null,
-      treatmentInterest: pick(["Implante dentário", "Lentes de porcelana", "Harmonização facial", "Alinhadores invisíveis"], i),
-      createdAt: spAt(20 + i, 10, i), channel: pick(CHANNELS, i),
+      treatmentInterest: treatment, createdAt: created, channel: pick(CHANNELS, i),
       thread: [
-        { author: "lead", body: pick(LEAD_OPENERS[pick(["Implante dentário", "Lentes de porcelana"], i)], i), at: spAt(20 + i, 10, i), intent: "price_inquiry" },
-        { author: "agent", body: "Sem problemas! Fico à disposição se mudar de ideia 😊", at: spAt(19 + i, 11, i), intent: "small_talk" },
+        { author: "lead", body: closer[0], at: created, intent: "small_talk" },
+        { author: "agent", body: closer[1], at: new Date(created.getTime() + 60_000), intent: "small_talk" },
       ],
     });
-  }
-
-  // Mensagens fora do horário (58) — leads, à noite, nos últimos 7 dias
-  const nightTexts = [
-    "Oi! Vi vocês agora à noite, ainda dá pra agendar?",
-    "Boa noite! Quanto fica o clareamento?",
-    "Tô pesquisando aqui fora do horário, vocês respondem amanhã?",
-    "Queria muito fazer as lentes, qual o valor?",
-    "Vocês atendem sábado?",
-  ];
-  for (let i = 0; i < 58; i++) {
-    const convId = pick(activeConvIds, i * 3 + 1);
-    const d = spAt(1 + (i % 6), pick([19, 20, 21, 22, 23, 6, 7], i), (i * 7) % 60);
-    addMsg(convId, "lead", pick(nightTexts, i), d, "price_inquiry");
-    if (isNight(d)) afterHoursCount++;
-  }
-
-  // Mensagem FINAL da IA em cada conversa ativa (garante lastMsg = agent)
-  for (let i = 0; i < activeConvIds.length; i++) {
-    addMsg(activeConvIds[i], "agent", pick(AGENT_LINES, i), spAt(0, 8, i % 50), "scheduling");
-  }
-
-  // Top-up de mensagens da IA até ~1.260 (Tempo economizado = 42h)
-  const TARGET_AGENT = 1260;
-  let topup = 0;
-  const fallbackConvIds = convRows.map((c) => c.id ?? "").filter(Boolean);
-  while (agentMsgCount < TARGET_AGENT) {
-    const convId = pick(activeConvIds.length ? activeConvIds : fallbackConvIds, topup);
-    addMsg(convId, "agent", pick(AGENT_LINES, topup), spAt(2 + (topup % 25), 13, topup % 60), "small_talk");
-    topup++;
   }
 
   // Bloqueios de agenda (almoço)
