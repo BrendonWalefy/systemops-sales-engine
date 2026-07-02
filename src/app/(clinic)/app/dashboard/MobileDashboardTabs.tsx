@@ -121,7 +121,7 @@ function leadActionPlan(lead: MobileHotLeadItem) {
   if (lead.statusLabel === "Aguardando") {
     return {
       badge: "RETOMAR",
-      action: "Puxar resposta e oferecer dois horarios",
+      action: "Puxar resposta e oferecer dois horários",
       helper: "Lead quente parado aguardando retorno.",
     };
   }
@@ -130,22 +130,22 @@ function leadActionPlan(lead: MobileHotLeadItem) {
     return {
       badge: "AGIR AGORA",
       action: "Levar direto para agenda",
-      helper: "Ja demonstra intencao forte de marcar.",
+      helper: "Já demonstra intenção forte de marcar.",
     };
   }
 
   if (lead.score >= 76) {
     return {
       badge: "EM RISCO",
-      action: "Fechar proximo passo da conversa",
-      helper: "Bom lead, mas ainda com friccao comercial.",
+      action: "Fechar próximo passo da conversa",
+      helper: "Bom lead, mas ainda com fricção comercial.",
     };
   }
 
   return {
     badge: "AQUECER",
-    action: "Reforcar interesse e qualificar objeção",
-    helper: "Precisa ganhar tracao antes da agenda.",
+    action: "Reforçar interesse e qualificar objeção",
+    helper: "Precisa ganhar tração antes da agenda.",
   };
 }
 
@@ -187,7 +187,7 @@ function leadPrioritySignal(lead: MobileHotLeadItem) {
 
 function TodaySnapshotPanel({ stats }: { stats: MobileSnapshotStat[] }) {
   return (
-    <section className="command-today-stats-panel">
+    <section className="command-today-stats-panel" data-testid="mobile-dashboard-today-stats">
       <div className="command-today-panel-heading">
         <span>Radar de hoje</span>
         <small>Visão rápida da operação que está no ar agora.</small>
@@ -256,7 +256,7 @@ function performanceBottleneck(funnelStages: MobileFunnelStage[]) {
 
 function TodayQuickActions() {
   return (
-    <section className="command-mobile-quick-actions">
+    <section className="command-mobile-quick-actions" data-testid="mobile-dashboard-quick-actions">
       <Link href="/app/inbox?filter=attention" className="command-mobile-action-card warning">
         <span>
           <AlertTriangle size={14} />
@@ -499,7 +499,7 @@ function TabPerformance({
 
   return (
     <div className="command-tab-content">
-      <section className="command-pipeline-hero-card">
+      <section className="command-pipeline-hero-card" data-testid="mobile-dashboard-performance-hero">
         <div className="command-performance-topbar">
           <div className="command-performance-heading">
             <small>Receita em pipeline</small>
@@ -550,7 +550,7 @@ function TabPerformance({
         </div>
       </section>
 
-      <section className="command-mobile-funnel-bars">
+      <section className="command-mobile-funnel-bars" data-testid="mobile-dashboard-funnel">
         <div className="command-funnel-bars-header">
           <span className="command-funnel-bars-eyebrow">Funil</span>
         </div>
@@ -619,10 +619,10 @@ function TabLeads({
 
   return (
     <div className="command-tab-content">
-      <section className="command-mobile-leads-hero">
+      <section className="command-mobile-leads-hero" data-testid="mobile-dashboard-leads-hero">
         <div>
           <span>Fila comercial</span>
-          <strong>{hotLeads.length} leads na mesa de decisao</strong>
+          <strong>{hotLeads.length} leads na mesa de decisão</strong>
           <small>
             {topLead
               ? `Prioridade #1: ${topLead.name} · ${topLead.statusLabel}`
@@ -638,7 +638,7 @@ function TabLeads({
           <strong>{urgentCount}</strong>
         </article>
         <article>
-          <small>Em observacao</small>
+          <small>Em observação</small>
           <strong>{Math.max(hotLeads.length - urgentCount, 0)}</strong>
         </article>
         <article>
@@ -688,7 +688,7 @@ function TabLeads({
           {watchRows.length > 0 && (
             <>
               <div className="command-mobile-section-header command-mobile-subsection-header">
-                <span>Em observacao</span>
+                <span>Em observação</span>
               </div>
             <div className="command-leads-list-rows">
               {watchRows.map((lead) => {
@@ -764,14 +764,16 @@ export function MobileDashboardTabs(props: MobileTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>("hoje");
 
   return (
-    <div className="command-mobile-segmented">
-      <div className="command-mobile-tab-bar" role="tablist">
+    <div className="command-mobile-segmented" data-testid="mobile-dashboard-tabs">
+      <div className="command-mobile-tab-bar" role="tablist" aria-label="Dashboard mobile">
         {(["hoje", "leads", "performance"] as Tab[]).map((tab) => (
           <button
             key={tab}
             role="tab"
+            data-testid={`mobile-dashboard-tab-${tab}`}
             aria-selected={activeTab === tab}
             aria-controls={`command-tab-panel-${tab}`}
+            id={`command-tab-${tab}`}
             className={`command-mobile-tab-btn${activeTab === tab ? " active" : ""}`}
             onClick={() => setActiveTab(tab)}
           >
@@ -781,7 +783,12 @@ export function MobileDashboardTabs(props: MobileTabsProps) {
       </div>
 
       {activeTab === "hoje" && (
-        <div id="command-tab-panel-hoje" role="tabpanel">
+        <div
+          id="command-tab-panel-hoje"
+          role="tabpanel"
+          aria-labelledby="command-tab-hoje"
+          data-testid="mobile-dashboard-panel-hoje"
+        >
           <TabHoje
             needsAttentionCount={props.needsAttentionCount}
             nextAppointment={props.nextAppointment}
@@ -791,12 +798,22 @@ export function MobileDashboardTabs(props: MobileTabsProps) {
         </div>
       )}
       {activeTab === "leads" && (
-        <div id="command-tab-panel-leads" role="tabpanel">
+        <div
+          id="command-tab-panel-leads"
+          role="tabpanel"
+          aria-labelledby="command-tab-leads"
+          data-testid="mobile-dashboard-panel-leads"
+        >
           <TabLeads hotLeads={props.hotLeads} recoveryLeads={props.recoveryLeads} />
         </div>
       )}
       {activeTab === "performance" && (
-        <div id="command-tab-panel-performance" role="tabpanel">
+        <div
+          id="command-tab-panel-performance"
+          role="tabpanel"
+          aria-labelledby="command-tab-performance"
+          data-testid="mobile-dashboard-panel-performance"
+        >
           <TabPerformance
             pipelineHero={props.pipelineHero}
             confirmedRevenue={props.confirmedRevenue}

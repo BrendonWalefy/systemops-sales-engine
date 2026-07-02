@@ -9014,7 +9014,7 @@ textarea:focus {
   .command-mobile-segmented {
     display: flex;
     flex-direction: column;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px));
   }
 
   .command-mobile-tab-bar {
@@ -9044,6 +9044,14 @@ textarea:focus {
 
   .command-mobile-tab-btn {
     min-width: 0;
+  }
+
+  .command-mobile-apt-item,
+  .command-mobile-action-card,
+  .command-open-conv-btn,
+  .command-lead-list-row,
+  .command-recovery-send-btn {
+    scroll-margin-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
   }
 
   .command-performance-topbar {
