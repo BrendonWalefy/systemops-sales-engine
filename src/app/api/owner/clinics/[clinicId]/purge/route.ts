@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { db } from "@/infrastructure/db/client";
 import {
   organizations,
+  messages,
+  conversationStates,
   agentRecommendations,
   outboundMessages,
   followUps,
@@ -33,11 +35,15 @@ export const dynamic = "force-dynamic";
 // para organizações já em "cancelled" (via /archive) — evita apagar uma
 // clínica ativa por engano. `clinic_modules`, `clinic_operational_insights`
 // e `treatment_gap_reports` têm onDelete: cascade no schema, não precisam
-// de delete explícito aqui. `messages` cascade de `conversations`.
+// de delete explícito aqui.
 //
-// Ordem respeita as FKs sem cascade: filhos com referência a leadId/
-// conversationId/professionalId são apagados antes de leads/conversations/
-// professionals; organizations é sempre o último delete.
+// Ordem verificada contra information_schema (não só schema.ts): filhos com
+// referência a leadId/conversationId/professionalId/treatmentId são apagados
+// antes de leads/conversations/professionals/treatments; organizations é
+// sempre o último delete. Se um novo campo com FK para organizations/leads/
+// conversations for adicionado no futuro, rode
+// `npx tsx scripts/check-purge-coverage.ts` para conferir se este arquivo
+// ainda cobre todas as tabelas.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ clinicId: string }> },
@@ -79,7 +85,21 @@ export async function POST(
   // Sem transação: o driver neon-http (usado em produção/serverless) não suporta
   // transações multi-statement. Deletes sequenciais, ordenados para nunca violar
   // FK — se falhar no meio, a organização fica parcialmente limpa e pode rodar
-  // de novo (todos os deletes abaixo são idempotentes por clinicId).
+  // de novo (todos os deletes abaixo são idempotentes por clinicId). Ordem
+  // verificada contra o grafo real de FKs do banco (information_schema), não só
+  // contra o schema.ts — messages e conversation_states não têm organization_id
+  // próprio, só chegam em conversations, por isso o lookup de IDs abaixo.
+  const conversationRows = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.clinicId, clinicId));
+  const conversationIds = conversationRows.map((c) => c.id);
+
+  if (conversationIds.length > 0) {
+    await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
+    await db.delete(conversationStates).where(inArray(conversationStates.conversationId, conversationIds));
+  }
+
   await db.delete(agentRecommendations).where(eq(agentRecommendations.clinicId, clinicId));
   await db.delete(outboundMessages).where(eq(outboundMessages.clinicId, clinicId));
   await db.delete(followUps).where(eq(followUps.clinicId, clinicId));
