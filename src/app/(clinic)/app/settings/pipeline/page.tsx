@@ -55,7 +55,7 @@ export default async function PipelinePage() {
   const pct = total > 0 ? Math.round((configured / total) * 100) : 0;
 
   return (
-    <div style={{ width: "100%", maxWidth: "720px", padding: "0 0 40px" }}>
+    <div className="pipeline-page" style={{ width: "100%", maxWidth: "720px", padding: "0 0 40px", color: T.text }}>
 
       {/* Header */}
       <div style={{ marginBottom: "24px" }}>

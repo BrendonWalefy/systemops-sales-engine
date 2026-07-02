@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { avatarInitial } from "../avatar-initial";
 
 type Props = {
   profilePicUrl: string | null;
@@ -16,6 +17,7 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
   const [open, setOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
   const canUsePortal = typeof document !== "undefined";
+  const safeInitial = avatarInitial(initial || displayName);
 
   useEffect(() => {
     if (!open) return;
@@ -44,7 +46,7 @@ export function LeadAvatar({ profilePicUrl, displayName, initial, accentColor, c
         ...style,
       }}
     >
-      {initial}
+      {safeInitial}
     </div>
   );
 

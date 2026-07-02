@@ -188,7 +188,14 @@
 
 @media (max-width: 700px) {
   .professionals-page {
-    padding: 20px 14px 72px;
+    padding: 20px 14px calc(132px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .professionals-page input,
+  .professionals-page button,
+  .professional-row-card,
+  .professionals-form-card {
+    scroll-margin-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
   }
 
   .professionals-hero {
