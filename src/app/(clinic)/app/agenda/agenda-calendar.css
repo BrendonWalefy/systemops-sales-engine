@@ -757,8 +757,10 @@ body:has(.drawer-overlay) {
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   transition: border-color 0.15s;
   font-family: inherit;
+  color-scheme: dark;
 }
 
 .field-input:focus {
@@ -857,6 +859,7 @@ select.field-input option {
   color: var(--agenda-text);
   min-width: 0;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .lead-selected span {
@@ -1813,6 +1816,15 @@ select.field-input option {
   select.field-input,
   textarea.field-input {
     font-size: 16px;
+    min-height: 44px;
+  }
+
+  input.field-input[type="date"],
+  input.field-input[type="time"] {
+    appearance: none;
+    -webkit-appearance: none;
+    text-align: center;
+    line-height: 1.2;
   }
 
   /* Previne duplo-toque zoom no calendário */

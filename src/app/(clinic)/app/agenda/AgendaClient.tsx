@@ -53,6 +53,7 @@ type Props = {
   initialTo: string;
   openNew?: boolean;
   timezone?: string;
+  defaultDurationMinutes: number;
 };
 
 function addDays(d: Date, n: number): Date {
@@ -81,7 +82,18 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
   };
 }
 
-export function AgendaClient({ professionals, treatments, memberRole, serviceNoun, businessNoun, initialFrom, initialTo, openNew, timezone = "America/Sao_Paulo" }: Props) {
+export function AgendaClient({
+  professionals,
+  treatments,
+  memberRole,
+  serviceNoun,
+  businessNoun,
+  initialFrom,
+  initialTo,
+  openNew,
+  timezone = "America/Sao_Paulo",
+  defaultDurationMinutes,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -533,6 +545,7 @@ export function AgendaClient({ professionals, treatments, memberRole, serviceNou
           defaultDate={appointmentModal.date}
           defaultTime={appointmentModal.time}
           defaultProfessionalId={appointmentModal.professionalId}
+          defaultDurationMinutes={defaultDurationMinutes}
           professionals={professionals}
           onClose={closeAppointmentModal}
           onCreated={refreshAll}
