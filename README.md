@@ -280,8 +280,8 @@ Não existe fallback global. Cada requisição resolve seu tenant antes de qualq
 | Push | Web Push API + VAPID |
 | Calendário | Agenda interna própria + Google Calendar (opt-in) |
 | Execução assíncrona | `inbound_events` + `jobs` + `outbound_messages` no Postgres |
-| Deploy | Vercel (Hobby → Pro conforme escala) |
-| Crons | Vercel Cron + GitHub Actions (para crons que excedem limite do plano) |
+| Deploy | Vercel (Pro) |
+| Crons | Vercel Cron + GitHub Actions (cleanup TTS sub-diário) |
 | Testes | Vitest (lógica de negócio em `src/__tests__`) |
 | Criptografia | AES-256-GCM para credenciais sensíveis em repouso |
 
@@ -369,6 +369,7 @@ Lógica de negócio em `src/__tests__` com Vitest (pura, sem mock de banco). Com
 | `conversation-insights` | 7h UTC diário | Consolida insights de conversa |
 | `operational-alert-digest` | 9h UTC diário | Digest operacional por email |
 | `metrics-aggregate` | 2h UTC diário | Consolida métricas gerais |
+| `media-cleanup` | 4h UTC diário | Apaga do Blob mídia inbound (imagem/vídeo/documento/áudio) com +90 dias e zera `media_url`; texto/transcrição da mensagem é preservado |
 
 ---
 

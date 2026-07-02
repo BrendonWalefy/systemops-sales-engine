@@ -846,7 +846,7 @@ function buildOrganization(row: ClinicRow): Organization {
 async function rehostLeadMedia(
   messageId: string,
   originalUrl: string,
-  mediaType: "image" | "video" | "document",
+  mediaType: "image" | "video" | "document" | "audio",
 ): Promise<void> {
   try {
     const res = await fetch(originalUrl, { signal: AbortSignal.timeout(10_000) });
@@ -857,8 +857,15 @@ async function rehostLeadMedia(
     const buffer = await res.arrayBuffer();
     const contentType =
       res.headers.get("content-type") ??
-      (mediaType === "image" ? "image/jpeg" : mediaType === "video" ? "video/mp4" : "application/octet-stream");
-    const ext = mediaType === "image" ? "jpg" : mediaType === "video" ? "mp4" : "bin";
+      (mediaType === "image"
+        ? "image/jpeg"
+        : mediaType === "video"
+          ? "video/mp4"
+          : mediaType === "audio"
+            ? "audio/ogg"
+            : "application/octet-stream");
+    const ext =
+      mediaType === "image" ? "jpg" : mediaType === "video" ? "mp4" : mediaType === "audio" ? "ogg" : "bin";
     const storage = new VercelBlobStorageGateway();
     const blobUrl = await storage.upload(`lead-media/${messageId}.${ext}`, buffer, { contentType });
     await db.update(messagesTable).set({ mediaUrl: blobUrl }).where(eq(messagesTable.id, messageId));
@@ -1149,6 +1156,15 @@ export class ConversationOrchestrator {
       void fetchAndPersistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
     }
 
+    // ── 3.1b. Rehost de áudio (fire-and-forget) ──
+    // Áudio segue o fluxo normal de transcrição/resposta da IA — só persistimos o
+    // arquivo original no Blob em paralelo, para o player do Inbox não quebrar
+    // quando a URL da Z-API expirar.
+    if (params.mediaType === "audio" && params.mediaUrl) {
+      rehostLeadMedia(incomingMessage.id, params.mediaUrl, "audio")
+        .catch(() => { /* já logado dentro da função */ });
+    }
+
     // ── 3.2. Claim de processamento por conversa ──
     // Serializa webhooks concorrentes da mesma conversa: sem isso, dois handlers
     // processam em paralelo e as respostas saem intercaladas/duplicadas (o check
@@ -1189,7 +1205,8 @@ export class ConversationOrchestrator {
 
     // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
     // Rehospeda no Blob (persistência), encaminha para o doutor no WhatsApp e pausa a IA.
-    // Áudio é tratado separadamente pelo pipeline de transcrição — não entra aqui.
+    // Áudio já foi rehostado em 3.1b e segue o pipeline normal de transcrição/resposta
+    // da IA (não pausa e não é encaminhado ao doutor aqui).
     const inboundMediaType = params.mediaType;
     if (inboundMediaType === "image" || inboundMediaType === "video" || inboundMediaType === "document") {
       // Rehospeda de forma assíncrona: Z-API URLs expiram em horas
