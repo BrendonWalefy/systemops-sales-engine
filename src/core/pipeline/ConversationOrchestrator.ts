@@ -452,6 +452,94 @@ export function resolveDirectTreatmentMention(
   return matchTreatmentByNormalizedMessage(normalized, treatments, TREATMENT_MENTION_STOPWORDS);
 }
 
+// ── Guard determinístico de ambiguidade entre variações do catálogo ──
+// Não confia na LLM para sinalizar ambiguidade: recalcula em código quais
+// tratamentos o termo do lead cobre. Se um mesmo termo (nome ou alias) casa com
+// 2+ tratamentos (ex: "lentes de resina" → Técnica Simplificada E Estratificada)
+// e a mensagem não contém um termo exclusivo de uma das variações, o lead não
+// especificou qual quer — todas devem ser apresentadas.
+export function detectAmbiguousTreatmentTerm(
+  message: string,
+  treatments: Treatment[],
+): string[] | null {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return null;
+
+  // termo normalizado → tratamentos que casam com ele na mensagem
+  const termMatches = new Map<string, Treatment[]>();
+  for (const t of treatments) {
+    const seen = new Set<string>();
+    for (const term of [t.name, ...(t.aliases ?? [])]) {
+      const nt = normalizeFreeText(term);
+      if (nt.length < 4 || seen.has(nt) || !normalized.includes(nt)) continue;
+      seen.add(nt);
+      const group = termMatches.get(nt) ?? [];
+      group.push(t);
+      termMatches.set(nt, group);
+    }
+  }
+
+  const sharedGroups = [...termMatches.values()].filter((g) => g.length >= 2);
+  if (sharedGroups.length === 0) return null;
+  const group = sharedGroups.reduce((a, b) => (b.length > a.length ? b : a));
+
+  // Se a mensagem contém um termo que casa com UM ÚNICO tratamento do grupo
+  // (ex: "estratificada", "premium"), o lead especificou a variação.
+  const exclusive = group.filter((t) =>
+    [t.name, ...(t.aliases ?? [])].some((term) => {
+      const nt = normalizeFreeText(term);
+      return nt.length >= 4 && normalized.includes(nt) && termMatches.get(nt)?.length === 1;
+    }),
+  );
+  if (exclusive.length === 1) return null;
+
+  return group.map((t) => t.name);
+}
+
+// Serviços de manutenção/ajuste aplicados a um trabalho já realizado. Quando o
+// lead pergunta preço de um destes, o tratamento citado junto é apenas contexto
+// ("polimento NAS LENTES") — não é o que ele quer comprar.
+const MAINTENANCE_SERVICE_KEYWORDS = [
+  "polimento",
+  "polir",
+  "manutencao",
+  "retoque",
+  "retocar",
+  "reparo",
+  "reparar",
+  "conserto",
+  "consertar",
+  "ajuste",
+  "ajustar",
+  "troca",
+  "trocar",
+];
+
+// ── Guard determinístico de manutenção não catalogada ──
+// "qual valor pra fazer o polimento nas lentes?" NÃO é pergunta de preço das
+// lentes: é manutenção de trabalho já feito. Se o serviço de manutenção não
+// consta no catálogo, a IA não tem preço para dar — encaminha para a equipe em
+// vez de cotar o tratamento base (funil errado + preço errado).
+// Retorna a palavra-chave encontrada, ou null quando não é caso de manutenção.
+export function detectUncataloguedMaintenanceInquiry(
+  message: string,
+  treatments: Treatment[],
+): string | null {
+  const tokens = new Set(normalizeFreeText(message).split(/\s+/).filter(Boolean));
+  for (const keyword of MAINTENANCE_SERVICE_KEYWORDS) {
+    if (!tokens.has(keyword)) continue;
+    // Se algum tratamento do catálogo cobre a palavra (ex: clínica cadastrou
+    // "Manutenção ortodôntica"), é serviço real com preço — não intercepta.
+    const coveredByCatalog = treatments.some((t) =>
+      [t.name, ...(t.aliases ?? [])].some((term) =>
+        normalizeFreeText(term).split(/\s+/).includes(keyword),
+      ),
+    );
+    if (!coveredByCatalog) return keyword;
+  }
+  return null;
+}
+
 export function resolveInformationalTreatmentTarget(params: {
   message: string;
   treatments: Treatment[];
@@ -1754,6 +1842,37 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── Guard: preço de manutenção não catalogada → equipe ──
+    // A LLM tende a travar no tratamento base ("polimento nas lentes" → cota
+    // lentes). O sistema decide: pergunta de preço sobre serviço de manutenção
+    // fora do catálogo vai para needs_human e registra o gap para o Inbox.
+    let maintenanceHandoffReason: string | null = null;
+    const isPriceShapedIntent =
+      effectiveIntent === "price_inquiry" ||
+      (effectiveIntent === "general_question" && isPriceRequestText(normalizeFreeText(messageText)));
+    if (isPriceShapedIntent) {
+      const maintenanceKeyword = detectUncataloguedMaintenanceInquiry(messageText, clinicTreatments);
+      if (maintenanceKeyword) {
+        effectiveIntent = "needs_human";
+        maintenanceHandoffReason = `Preço de ${maintenanceKeyword} (manutenção) — requer equipe`;
+        maybeLogTreatmentGap(
+          clinicId,
+          conversation.id,
+          lead.name,
+          maintenanceKeyword,
+          messageText,
+        ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+      }
+    }
+
+    // ── Guard: termo genérico cobre 2+ variações do catálogo ──
+    // Recalcula a ambiguidade em código; se o classificador escolheu uma variação
+    // sozinho (ou nenhuma), força a apresentação de todas as opções que o termo cobre.
+    const ambiguousTreatmentOverride =
+      effectiveIntent === "price_inquiry"
+        ? detectAmbiguousTreatmentTerm(messageText, clinicTreatments)
+        : null;
+
     // ── 7. Executa ação e compõe resposta ──
     let replyText = "";
     let composerInputTokens = 0;
@@ -2302,7 +2421,10 @@ export class ConversationOrchestrator {
 
       // ── Precisa de humano (mídia, negociação, falar com dentista, situação especial) ──
       case "needs_human": {
-        const reason = classification.handoffReason ?? "Lead solicitou atendimento humano";
+        const reason =
+          maintenanceHandoffReason ??
+          classification.handoffReason ??
+          "Lead solicitou atendimento humano";
         replyText = await compose({ type: "handoff_requested", handoffReason: reason });
         await db
           .update(conversationsTable)
@@ -2331,7 +2453,11 @@ export class ConversationOrchestrator {
 
       // ── Preço ──
       case "price_inquiry": {
-        const priceIdentifiedTreatment = classification.slotPreference.identifiedTreatment ?? null;
+        // Guard de ambiguidade tem precedência sobre a escolha da LLM: termo
+        // genérico → nenhum tratamento único, todas as variações apresentadas.
+        const priceIdentifiedTreatment = ambiguousTreatmentOverride
+          ? null
+          : classification.slotPreference.identifiedTreatment ?? null;
         // Gap: lead perguntou preço de tratamento não cadastrado
         if (priceIdentifiedTreatment) {
           const matchedInCatalog = clinicTreatments.find(
@@ -2351,7 +2477,10 @@ export class ConversationOrchestrator {
         replyText = await compose({
           type: "price_inquiry",
           identifiedTreatment: priceIdentifiedTreatment,
-          ambiguousTreatmentMatches: classification.slotPreference.ambiguousTreatmentMatches ?? null,
+          ambiguousTreatmentMatches:
+            ambiguousTreatmentOverride ??
+            classification.slotPreference.ambiguousTreatmentMatches ??
+            null,
         });
         break;
       }
