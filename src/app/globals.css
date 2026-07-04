@@ -5080,7 +5080,7 @@ textarea:focus {
     left: 0;
     right: 0;
     bottom: auto;
-    height: var(--vh, 100dvh);
+    height: var(--stable-vh, 100dvh);
     overflow: hidden;
     background: var(--bg);
     /* Garante que o conv-root fique acima do pill nav (z-index: 200) e do body::after (199) */
@@ -5146,6 +5146,7 @@ textarea:focus {
        Sem isso, a row fica auto-sized (content-height) e deixa gap preto abaixo do composer. */
     grid-template-rows: 1fr;
     min-height: 0;
+    padding-bottom: var(--keyboard-height, 0px);
   }
 
   .conv-lead-panel {
@@ -5155,6 +5156,7 @@ textarea:focus {
   /* Ações rápidas do operador — apenas no mobile */
   .conv-messages {
     padding: 12px;
+    padding-bottom: calc(12px + var(--keyboard-height, 0px));
     min-height: 0;
   }
 
@@ -5186,10 +5188,10 @@ textarea:focus {
 
 @media (max-width: 640px) {
   .pipeline-page {
-    width: calc(100% + 60px) !important;
-    max-width: none !important;
-    min-height: var(--vh, 100dvh);
-    margin: -28px -30px -40px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto;
+    margin: 0 !important;
     padding:
       24px
       max(16px, env(safe-area-inset-right))
@@ -5257,8 +5259,148 @@ textarea:focus {
 
 @media (max-width: 640px) {
   .pipeline-editor-header {
+    align-items: stretch;
+    flex-direction: column;
     gap: 10px;
     margin-bottom: 18px;
+  }
+
+  .pipeline-editor-header .primary-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .pipeline-editor-title-group {
+    width: 100%;
+  }
+}
+
+/* ─── Pipeline Settings Mobile Guardrails ───────────────────── */
+
+.pipeline-page,
+.pipeline-page *,
+.page-wrapper:has(.pipeline-editor-header),
+.page-wrapper:has(.pipeline-editor-header) * {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .pipeline-page {
+    overflow-x: hidden;
+  }
+
+  .pipeline-page-header {
+    margin-bottom: 18px !important;
+  }
+
+  .pipeline-page-title-row {
+    align-items: flex-start !important;
+  }
+
+  .pipeline-page-title {
+    font-size: 19px !important;
+    line-height: 1.14;
+  }
+
+  .pipeline-page-subtitle {
+    margin-left: 0 !important;
+    margin-top: 8px !important;
+    line-height: 1.45;
+  }
+
+  .pipeline-progress-row {
+    gap: 10px;
+  }
+
+  .pipeline-treatment-link {
+    align-items: flex-start !important;
+    padding: 13px 14px !important;
+  }
+
+  .pipeline-step-badges {
+    align-items: flex-start !important;
+  }
+
+  .pipeline-step-badges span {
+    white-space: normal;
+  }
+
+  .pipeline-step-card {
+    border-radius: 10px !important;
+  }
+
+  .pipeline-step-card-header {
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+    padding: 10px 12px !important;
+  }
+
+  .pipeline-step-card-header > input {
+    flex-basis: calc(100% - 74px);
+    min-height: 30px;
+  }
+
+  .pipeline-step-card-actions {
+    margin-left: auto;
+  }
+
+  .pipeline-content-block {
+    flex-direction: column;
+    gap: 10px !important;
+  }
+
+  .pipeline-content-block > svg {
+    display: none;
+  }
+
+  .pipeline-content-block-main {
+    width: 100%;
+  }
+
+  .pipeline-block-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pipeline-block-actions button {
+    justify-content: center;
+  }
+
+  .pipeline-qa-turns-row {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: 7px !important;
+  }
+
+  .pipeline-qa-turns-row input {
+    width: 100% !important;
+    text-align: left !important;
+  }
+
+  .pipeline-checkbox-row {
+    align-items: flex-start !important;
+  }
+
+  .pipeline-checkbox-row span {
+    line-height: 1.4;
+  }
+
+  .pipeline-add-step-menu {
+    margin-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .add-step-menu-dropdown {
+    max-height: min(68vh, 480px);
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pipeline-add-step-copy {
+    min-width: 0;
+  }
+
+  .pipeline-add-step-copy div {
+    overflow-wrap: anywhere;
   }
 }
 
