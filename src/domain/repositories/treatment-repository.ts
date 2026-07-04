@@ -13,7 +13,6 @@ export type TreatmentRepository = {
         | "durationMinutes"
         | "description"
         | "requiresEvaluationFirst"
-        | "triggerTemplate"
         | "keywordMatchEnabled"
         | "aliases"
         | "isAesthetic"

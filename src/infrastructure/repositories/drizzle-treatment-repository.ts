@@ -29,7 +29,6 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         durationMinutes: data.durationMinutes,
         description: data.description,
         requiresEvaluationFirst: data.requiresEvaluationFirst,
-        triggerTemplate: data.triggerTemplate,
         keywordMatchEnabled: data.keywordMatchEnabled,
         aliases: data.aliases,
         isAesthetic: data.isAesthetic,
@@ -48,7 +47,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents" | "priceQuotableInChat" | "priceKind" | "priceUnit" | "priceDeductible">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents" | "priceQuotableInChat" | "priceKind" | "priceUnit" | "priceDeductible">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -71,7 +70,6 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     durationMinutes: row.durationMinutes,
     description: row.description,
     requiresEvaluationFirst: row.requiresEvaluationFirst,
-    triggerTemplate: row.triggerTemplate ?? null,
     keywordMatchEnabled: row.keywordMatchEnabled,
     aliases: row.aliases as string[],
     isAesthetic: row.isAesthetic,

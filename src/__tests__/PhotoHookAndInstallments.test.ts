@@ -24,7 +24,6 @@ function makeTreatment(name: string, requiresEval = false): Treatment {
     durationMinutes: 60,
     description: null,
     requiresEvaluationFirst: requiresEval,
-    triggerTemplate: null,
     keywordMatchEnabled: true,
     aliases: [],
     isAesthetic: false,

@@ -135,7 +135,6 @@ describe("AgentResponseThrottle — integração com Orchestrator", () => {
       durationMinutes: 60,
       description: null,
       requiresEvaluationFirst: true,
-      triggerTemplate: null,
       keywordMatchEnabled: true,
       aliases: [],
       isAesthetic: false,

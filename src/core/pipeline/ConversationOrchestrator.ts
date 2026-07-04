@@ -1041,13 +1041,6 @@ function buildPhotoInviteInstruction(): string {
   return `SE O LEAD AINDA NÃO ENVIOU FOTO e demonstrou interesse neste serviço: se fizer sentido depois de esclarecer a dúvida principal, convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Se quiser, e só se se sentir à vontade, você pode me mandar uma foto. Assim consigo te passar uma orientação mais personalizada de como poderia ficar 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use linguagem leve como "se quiser" ou "se se sentir à vontade"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita; (4) NÃO misture o convite da foto com pergunta de agenda no mesmo turno.`;
 }
 
-// Extrai o bloco "FORMATO OBRIGATÓRIO" das notas para entrega determinística.
-// Retorna o texto do template (com tags [MEDIA:id] intercaladas) ou null se não encontrado.
-export function extractTriggerFormatTemplate(playbookText: string): string | null {
-  const match = playbookText.match(/FORMATO OBRIGATÓRIO[^\n]*\n+([\s\S]+?)(?:\n\nPasso 2|\n\nCONDUTA|$)/);
-  return match ? match[1].trim() : null;
-}
-
 export function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
   const shouldDelayScheduling = experience === "concierge" && isAestheticTreatment(item.name);
   const nextStep = shouldDelayScheduling
@@ -2954,39 +2947,12 @@ export class ConversationOrchestrator {
 
           if (selectedTreatment && procedureSelection) {
             clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
-          } else if (matchedTreatment.triggerTemplate) {
-            // Campo estruturado — entrega determinística sem depender das notas do playbook
-            triggerPartsOverride = parseIntoParts(matchedTreatment.triggerTemplate);
-            composedParts = triggerPartsOverride;
-            composedMediaIds = triggerPartsOverride
-              .filter((p): p is { type: "media"; id: string } => p.type === "media")
-              .map((p) => p.id);
-            replyText = triggerPartsOverride
-              .filter((p): p is { type: "text"; content: string } => p.type === "text")
-              .map((p) => p.content)
-              .join("\n\n");
-            clinicContext = "";
           } else {
-            // Backward compat: TRIGGER FORMAT nas notas do playbook (remover após migrar todos os tratamentos)
-            const treatmentKeyword = matchedTreatment.name.toLowerCase().split(" ").find((w) => w.length > 4) ?? "";
-            const notesHasTrigger = !!(editorial?.playbookText && /TRIGGER/i.test(editorial.playbookText) && (treatmentKeyword === "" || editorial.playbookText.toLowerCase().includes(treatmentKeyword)));
-            if (notesHasTrigger) {
-              const template = extractTriggerFormatTemplate(editorial?.playbookText ?? "");
-              if (template) {
-                triggerPartsOverride = parseIntoParts(template);
-                composedParts = triggerPartsOverride;
-                composedMediaIds = triggerPartsOverride
-                  .filter((p): p is { type: "media"; id: string } => p.type === "media")
-                  .map((p) => p.id);
-                replyText = triggerPartsOverride
-                  .filter((p): p is { type: "text"; content: string } => p.type === "text")
-                  .map((p) => p.content)
-                  .join("\n\n");
-              }
-              clinicContext = "";
-            } else {
-              clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
-            }
+            // Item 5 (config ownership): `pipelineSteps` é o ÚNICO mecanismo estruturado
+            // de trigger (tratado acima). Os caminhos legados `treatments.triggerTemplate`
+            // e "TRIGGER FORMAT nas notes" foram removidos — sem uso em produção. Tratamento
+            // casado sem pipeline usa a composição normal da IA.
+            clinicContext = buildDirectTreatmentContext(matchedTreatment, editorial?.commercialPolicy ?? null, experience);
           }
         } else if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
