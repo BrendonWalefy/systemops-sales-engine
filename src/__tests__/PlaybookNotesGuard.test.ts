@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lintPlaybookNotes, blockingPlaybookNotesIssues } from "@/application/config/playbook-lint";
+import { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy } from "@/application/config/playbook-lint";
 
 describe("blockingPlaybookNotesIssues — gate de publish", () => {
   it("BLOQUEIA quando o notes contém um valor de preço concreto", () => {
@@ -7,7 +7,8 @@ describe("blockingPlaybookNotesIssues — gate de publish", () => {
       "Quando o lead perguntar de lentes, informe que é a partir de R$2.500.",
     );
     expect(issues.length).toBe(1);
-    expect(issues[0]).toMatch(/Política Comercial/);
+    // Item 3: o preço agora tem casa no cadastro do procedimento (a IA deriva dele).
+    expect(issues[0]).toMatch(/cadastro do tratamento/);
   });
 
   it("BLOQUEIA variações de formatação do valor (com espaço, centavos)", () => {
@@ -44,5 +45,22 @@ describe("blockingPlaybookNotesIssues — gate de publish", () => {
     expect(blockingPlaybookNotesIssues(notes).length).toBe(1);
     // lintPlaybookNotes (avisos) também sinaliza o preço.
     expect(lintPlaybookNotes(notes).some((w) => /R\$/.test(w))).toBe(true);
+  });
+});
+
+describe("lintCommercialPolicy — preço tem casa no cadastro (Item 3)", () => {
+  it("AVISA (não bloqueia) quando a política carrega valor em R$ à mão", () => {
+    const warnings = lintCommercialPolicy("Lentes a partir de R$ 2.500 para 20 elementos.");
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toMatch(/procedimento/);
+  });
+
+  it("não avisa sobre enquadramento comercial sem valor concreto", () => {
+    expect(lintCommercialPolicy("Parcelamos em até 12x; avaliação abatida do tratamento.")).toEqual([]);
+  });
+
+  it("trata política vazia/nula como sem problema", () => {
+    expect(lintCommercialPolicy(null)).toEqual([]);
+    expect(lintCommercialPolicy("   ")).toEqual([]);
   });
 });

@@ -38,8 +38,26 @@ export function blockingPlaybookNotesIssues(notes: string | null | undefined): s
   const issues: string[] = [];
   if (CONCRETE_PRICE_PATTERN.test(notes)) {
     issues.push(
-      'O campo de conduta (notes) contém um valor em R$. Preço pertence à Política Comercial — mova o valor para lá antes de publicar.',
+      'O campo de conduta (notes) contém um valor em R$. Preço pertence ao valor do procedimento (cadastro do tratamento) — a IA fala o preço a partir dele. Remova o valor daqui antes de publicar.',
     );
   }
   return issues;
+}
+
+/**
+ * Item 3 (config ownership): a partir da derivação de preço, o número em R$ tem
+ * casa em `treatments.priceCents` — a prosa da IA é gerada dele. Escrever preço à
+ * mão na `commercialPolicy` reintroduz o drift que a derivação elimina. AVISO
+ * (não bloqueia): a política pode carregar enquadramento legítimo (parcelamento,
+ * condições) enquanto clínicas antigas ainda não migraram o preço para o cadastro.
+ */
+export function lintCommercialPolicy(policy: string | null | undefined): string[] {
+  if (!policy?.trim()) return [];
+  const warnings: string[] = [];
+  if (CONCRETE_PRICE_PATTERN.test(policy)) {
+    warnings.push(
+      'Contém valor em R$. O preço é gerado automaticamente a partir do valor cadastrado em cada procedimento — cadastre o valor lá (e marque "cotável no chat") em vez de digitá-lo aqui, para o número que a IA fala nunca divergir do Financeiro.',
+    );
+  }
+  return warnings;
 }

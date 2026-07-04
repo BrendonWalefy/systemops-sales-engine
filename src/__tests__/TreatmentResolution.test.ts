@@ -20,6 +20,10 @@ function makeTreatment(name: string, durationMinutes: number): Treatment {
     priceCents: null,
     minPriceCents: null,
     maxPriceCents: null,
+    priceQuotableInChat: false,
+    priceKind: "from",
+    priceUnit: null,
+    priceDeductible: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

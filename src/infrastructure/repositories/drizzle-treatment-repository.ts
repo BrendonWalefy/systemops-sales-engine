@@ -37,6 +37,10 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         priceCents: data.priceCents ?? null,
         minPriceCents: data.minPriceCents ?? null,
         maxPriceCents: data.maxPriceCents ?? null,
+        priceQuotableInChat: data.priceQuotableInChat,
+        priceKind: data.priceKind,
+        priceUnit: data.priceUnit ?? null,
+        priceDeductible: data.priceDeductible,
       })
       .returning();
     return mapRow(row);
@@ -44,7 +48,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents" | "priceQuotableInChat" | "priceKind" | "priceUnit" | "priceDeductible">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -75,6 +79,10 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     priceCents: row.priceCents ?? null,
     minPriceCents: row.minPriceCents ?? null,
     maxPriceCents: row.maxPriceCents ?? null,
+    priceQuotableInChat: row.priceQuotableInChat,
+    priceKind: row.priceKind,
+    priceUnit: row.priceUnit ?? null,
+    priceDeductible: row.priceDeductible,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

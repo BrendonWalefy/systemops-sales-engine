@@ -78,6 +78,12 @@ export type Treatment = {
   priceCents: number | null;
   minPriceCents: number | null;
   maxPriceCents: number | null;
+  // Item 3 (config ownership): a prosa de preço da IA é DERIVADA destes campos
+  // estruturados (composePriceSection), nunca redigitada na commercialPolicy.
+  priceQuotableInChat: boolean;
+  priceKind: "from" | "fixed";
+  priceUnit: string | null;
+  priceDeductible: boolean;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -279,6 +279,18 @@ export const treatments = pgTable(
     priceCents: integer("price_cents"),
     minPriceCents: integer("min_price_cents"),
     maxPriceCents: integer("max_price_cents"),
+    // Item 3 (config ownership): o preço é FATO estruturado; a prosa que a IA fala
+    // é DERIVADA daqui (ver composePriceSection), nunca redigitada na commercialPolicy.
+    // A IA pode cotar este valor por mensagem? Se false, nunca verbaliza número
+    // (ex.: "os valores são definidos na avaliação").
+    priceQuotableInChat: boolean("price_quotable_in_chat").notNull().default(false),
+    // "from" → "a partir de R$ X" (piso). "fixed" → "R$ X" (valor exato).
+    priceKind: text("price_kind").$type<"from" | "fixed">().notNull().default("from"),
+    // Unidade que qualifica o valor, quando existir ("20 elementos", "por dente",
+    // "por sessão"). Sem isto, "R$ 2.500" pode virar cotação enganosa.
+    priceUnit: text("price_unit"),
+    // O valor é abatido do tratamento se o paciente avançar (típico da avaliação).
+    priceDeductible: boolean("price_deductible").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
