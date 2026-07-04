@@ -32,10 +32,10 @@ const ctx: DemoClinicContext = {
 
 const SAMPLE_KEYS = [
   "lentes-resina-noiva",
-  "protese-fixa-mastigacao",
-  "remocao-siso-medo",
-  "botox-bruxismo-estetica",
-  "lentes-porcelana-executiva",
+  "protese-protocolo-indicacao",
+  "implante-follow-up-resgate",
+  "handoff-caso-complexo",
+  "alinhadores-fora-horario",
 ];
 
 async function main(): Promise<void> {
@@ -46,10 +46,10 @@ async function main(): Promise<void> {
       console.log(`\n[!] roteiro '${key}' não encontrado`);
       continue;
     }
-    console.log(`\n\n═════ ${conv.key} · ${conv.treatment} · ${conv.status}${conv.voiceStyle ? " · voz " + conv.voiceStyle : ""} ═════`);
+    console.log(`\n\n═════ ${conv.key} · ${conv.treatment} · ${conv.status} ═════`);
     const msgs = await generateDemoThread(ctx, conv.turns);
     for (const m of msgs) {
-      const who = m.author === "lead" ? "👤 LEAD  " : "💬 MARINA";
+      const who = m.author === "lead" ? "👤 LEAD  " : m.author === "clinic_user" ? "🧑‍⚕️ EQUIPE" : "💬 MARINA";
       const flags = [m.voice ? "🔊" : "", m.media ? `[${m.media}]` : ""].filter(Boolean).join(" ");
       console.log(`${who}${flags ? " " + flags : ""}: ${m.body.replace(/\n/g, " ")}`);
     }
