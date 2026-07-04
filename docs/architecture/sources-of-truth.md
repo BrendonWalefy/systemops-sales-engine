@@ -2,6 +2,11 @@
 
 Atualizado em 2026-06-28.
 
+> Este doc mapeia **qual tabela** é dona de **qual categoria**. Para a camada mais
+> fina — onde o **mesmo fato** ainda vive em mais de um campo hoje, e a fórmula de 3
+> camadas para onboarding com mínimo de erro — veja
+> [`config-ownership-audit.md`](./config-ownership-audit.md).
+
 ## Regra central
 
 **Se você precisar mudar uma regra em mais de um lugar, a arquitetura está errada.**

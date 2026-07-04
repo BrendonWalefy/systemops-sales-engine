@@ -28,7 +28,6 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         name: data.name,
         durationMinutes: data.durationMinutes,
         description: data.description,
-        commonObjections: data.commonObjections,
         requiresEvaluationFirst: data.requiresEvaluationFirst,
         triggerTemplate: data.triggerTemplate,
         keywordMatchEnabled: data.keywordMatchEnabled,
@@ -45,7 +44,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "commonObjections" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "triggerTemplate" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -67,7 +66,6 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     name: row.name,
     durationMinutes: row.durationMinutes,
     description: row.description,
-    commonObjections: row.commonObjections as string[],
     requiresEvaluationFirst: row.requiresEvaluationFirst,
     triggerTemplate: row.triggerTemplate ?? null,
     keywordMatchEnabled: row.keywordMatchEnabled,

@@ -34,6 +34,7 @@ import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voic
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
+import type { LocalDateParts, ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer, parseIntoParts } from "@/core/intelligence/ResponseComposer";
@@ -56,6 +57,7 @@ import type { Organization, MenuItem, MenuItemIntent } from "@/domain/entities/c
 import type { ConversationExperience } from "@/domain/entities/clinic";
 import type { Message } from "@/domain/entities/conversation";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { CalendarSlot } from "@/domain/entities/calendar-slot";
 import {
   CONCIERGE_MENU_ITEMS,
   DEFAULT_MENU_ITEMS,
@@ -378,6 +380,30 @@ function didAgentAskForProcedure(lastAgentMessage?: string | null): boolean {
   );
 }
 
+// Palavras genéricas de categoria clínica: descrevem "algum tratamento existe",
+// não identificam QUAL. Nunca devem, sozinhas, resolver um match — mesmo que
+// apareçam literalmente dentro do nome de um tratamento cadastrado (ex: uma
+// clínica que registra "Tratamento de canal" faz qualquer mensagem contendo a
+// palavra solta "tratamento" — inclusive respostas do próprio bot, como "plano
+// de tratamento personalizado" — colidir com esse tratamento específico, sem o
+// lead ter mencionado canal em momento algum). Isso não é regra de negócio de
+// uma clínica específica: qualquer catálogo com um tratamento cujo nome contenha
+// uma dessas palavras (comuns em português clínico) está sujeito ao mesmo bug.
+const GENERIC_CLINICAL_CATEGORY_WORDS = [
+  "tratamento",
+  "tratamentos",
+  "procedimento",
+  "procedimentos",
+  "consulta",
+  "consultas",
+  "avaliacao",
+  "avaliacoes",
+  "servico",
+  "servicos",
+  "atendimento",
+  "atendimentos",
+];
+
 const TREATMENT_MENTION_STOPWORDS = new Set([
   "sobre",
   "quais",
@@ -395,6 +421,7 @@ const TREATMENT_MENTION_STOPWORDS = new Set([
   "me",
   "fala",
   "explica",
+  ...GENERIC_CLINICAL_CATEGORY_WORDS,
 ]);
 
 const TREATMENT_SCHEDULING_STOPWORDS = new Set([
@@ -405,8 +432,6 @@ const TREATMENT_SCHEDULING_STOPWORDS = new Set([
   "marcar",
   "horario",
   "horarios",
-  "consulta",
-  "avaliacao",
   "fazer",
   "realizar",
   "ver",
@@ -422,6 +447,7 @@ const TREATMENT_SCHEDULING_STOPWORDS = new Set([
   "dos",
   "da",
   "do",
+  ...GENERIC_CLINICAL_CATEGORY_WORDS,
 ]);
 
 function findTreatmentByIdOrName(
@@ -637,6 +663,73 @@ export function findExpressedSlotIndex(params: {
   return matches.length === 1 ? matches[0].index : null;
 }
 
+// ── Verificação exata de um horário pedido explicitamente ──
+// A grade de slots de computeAvailableSlots avança em passos fixos de
+// slotDurationMinutes a partir de `from`. Quando a duração não divide 60min
+// (ex: 40min), horários redondos como 15h podem nunca "cair" na grade mesmo
+// estando genuinamente livres — o sistema então diz "não disponível" só porque
+// aquele instante não foi enumerado, não porque está ocupado.
+// Esta função não reimplementa a checagem de disponibilidade: pede ao mesmo
+// CalendarGateway uma janela do tamanho exato de um slot iniciando no instante
+// pedido, reaproveitando a mesma lógica de horário comercial + conflitos.
+export async function resolveExactRequestedSlot(params: {
+  calendarGateway: CalendarGateway;
+  clinicId: string;
+  dayParts: LocalDateParts;
+  preferredTime: string;
+  businessHours: ParsedBusinessHours;
+  timezone: ClinicTimezone;
+  durationMinutes: number;
+  windowStart: Date;
+  windowEnd: Date;
+  localAppointments: { startsAt: Date; endsAt: Date }[];
+  postAppointmentBufferMinutes: number;
+}): Promise<CalendarSlot | null> {
+  const timeMatch = params.preferredTime.match(/(\d{1,2})(?::|h)?(\d{2})?/);
+  if (!timeMatch) return null;
+
+  let hour = Number(timeMatch[1]);
+  const minute = timeMatch[2] ? Number(timeMatch[2]) : 0;
+
+  // Normaliza hora ambígua para horário comercial: "3" com clínica 8-18 → 15h.
+  // Mesma regra usada ao ordenar por proximidade em fetchAndOfferSlots.
+  const pmCandidate = hour + 12;
+  if (
+    hour < params.businessHours.startHour &&
+    pmCandidate >= params.businessHours.startHour &&
+    pmCandidate < params.businessHours.endHour
+  ) {
+    hour = pmCandidate;
+  }
+
+  const candidateStart = params.timezone.fromLocalParts(
+    params.dayParts.year,
+    params.dayParts.month,
+    params.dayParts.day,
+    hour,
+    minute,
+  );
+  const candidateEnd = new Date(candidateStart.getTime() + params.durationMinutes * 60_000);
+
+  if (candidateStart < params.windowStart || candidateStart >= params.windowEnd) return null;
+
+  const exact = await params.calendarGateway.listAvailableSlots({
+    clinicId: params.clinicId,
+    from: candidateStart,
+    to: candidateEnd,
+    slotDurationMinutes: params.durationMinutes,
+  });
+  if (exact.length === 0) return null;
+
+  const bufferMs = Math.max(0, params.postAppointmentBufferMinutes) * 60_000;
+  const conflictsLocally = params.localAppointments.some(
+    (a) => a.startsAt.getTime() < candidateEnd.getTime() && a.endsAt.getTime() + bufferMs > candidateStart.getTime(),
+  );
+  if (conflictsLocally) return null;
+
+  return exact[0];
+}
+
 // ── Guard determinístico de manutenção não catalogada ──
 // "qual valor pra fazer o polimento nas lentes?" NÃO é pergunta de preço das
 // lentes: é manutenção de trabalho já feito. Se o serviço de manutenção não
@@ -744,7 +837,14 @@ export function inferTreatmentFromConversationHistory(
   treatments: Treatment[],
 ): Treatment | null {
   if (!treatments.length || !messages.length) return null;
-  const recent = [...messages].reverse().slice(0, 12);
+  // Só o que o LEAD disse conta como "discutido anteriormente". Incluir
+  // mensagens do próprio bot aqui faz qualquer palavra-chave que a IA usa nos
+  // seus próprios textos (ex: "plano de tratamento personalizado") ser lida
+  // de volta como se o lead tivesse pedido aquele tratamento.
+  const recent = [...messages]
+    .reverse()
+    .filter((msg) => msg.author === "lead")
+    .slice(0, 12);
   for (const msg of recent) {
     if (!msg.body) continue;
     const matched = matchTreatmentByNormalizedMessage(
@@ -3296,6 +3396,7 @@ export class ConversationOrchestrator {
 
     let filteredToDay = false;
     let preferredDayEmpty = false;
+    let targetDayParts: LocalDateParts | null = null;
 
     if (preferredDate) {
       const now = new Date();
@@ -3305,6 +3406,7 @@ export class ConversationOrchestrator {
           return { slots: [], preferredDayEmpty: false, outsideBookingWindow: true, outsideBusinessHours: false, preferredPeriodUnavailable: false };
         }
         const targetParts = timezone.toLocalParts(targetDay);
+        targetDayParts = targetParts;
         const slotsOnDay = allSlots.filter((slot) => {
           const p = timezone.toLocalParts(slot.startsAt);
           return p.year === targetParts.year && p.month === targetParts.month && p.day === targetParts.day;
@@ -3321,6 +3423,42 @@ export class ConversationOrchestrator {
           // Alternativas NÃO serão salvas na state machine: lead ainda não escolheu nenhum dia.
           preferredDayEmpty = true;
         }
+      }
+    }
+
+    // ── Correção de falso negativo de grade ──
+    // Quando o lead pede um dia + horário específicos (ex: "terça às 15h") e esse
+    // instante exato não apareceu entre os candidatos gerados, não assumimos que
+    // está ocupado: verificamos a disponibilidade real daquele instante antes de
+    // dizer "não temos". Cobre o caso em que a duração do slot não divide 60min
+    // e a grade pula horários redondos que na verdade estão livres.
+    if (preferredTime && targetDayParts) {
+      const exactSlot = await resolveExactRequestedSlot({
+        calendarGateway,
+        clinicId: clinic.id,
+        dayParts: targetDayParts,
+        preferredTime,
+        businessHours,
+        timezone,
+        durationMinutes: duration,
+        windowStart: from,
+        windowEnd: to,
+        localAppointments,
+        postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes ?? 0,
+      });
+      if (exactSlot) {
+        // Reforça a invariante "filteredToDay=true ⇒ allSlots só contém o dia pedido":
+        // se chegamos aqui vindo do ramo preferredDayEmpty, allSlots ainda é o pool
+        // multi-dia completo (mantido como alternativas) — sem este filtro, o slot
+        // exato injetado conviveria com ofertas de OUTROS dias na mesma resposta.
+        const dayOnly = allSlots.filter((s) => {
+          const p = timezone.toLocalParts(s.startsAt);
+          return p.year === targetDayParts!.year && p.month === targetDayParts!.month && p.day === targetDayParts!.day;
+        });
+        const alreadyPresent = dayOnly.some((s) => s.startsAt.getTime() === exactSlot.startsAt.getTime());
+        allSlots = alreadyPresent ? dayOnly : [exactSlot, ...dayOnly];
+        filteredToDay = true;
+        preferredDayEmpty = false;
       }
     }
 
