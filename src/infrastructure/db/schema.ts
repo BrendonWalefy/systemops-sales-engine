@@ -263,10 +263,6 @@ export const treatments = pgTable(
     name: text("name").notNull(),
     durationMinutes: integer("duration_minutes").notNull().default(60),
     description: text("description"),
-    commonObjections: jsonb("common_objections")
-      .$type<string[]>()
-      .notNull()
-      .default([]),
     requiresEvaluationFirst: boolean("requires_evaluation_first")
       .notNull()
       .default(false),
