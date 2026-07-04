@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
-export { lintPlaybookNotes } from "./playbook-lint";
+export { lintPlaybookNotes, blockingPlaybookNotesIssues } from "./playbook-lint";
 
 /**
  * FONTE ÚNICA DA VERDADE EDITORIAL.
