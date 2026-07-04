@@ -7,7 +7,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { MenuItem } from "@/domain/entities/clinic";
-import { publishablePlaybookSchema } from "@/application/config/editorial-config";
+import { publishablePlaybookSchema, blockingPlaybookNotesIssues } from "@/application/config/editorial-config";
 import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import type { VoiceMode } from "@/domain/entities/voice-mode";
 
@@ -104,6 +104,14 @@ export async function activatePlaybookVersion(id: string) {
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("; ");
     throw new Error(`Playbook inválido para ativação: ${issues}`);
+  }
+
+  // Gate anti-drift: um FATO com casa estruturada (preço em R$) no campo de
+  // conduta livre bloqueia a publicação. Evita que o notes vire depósito de
+  // preço — a mesma classe de erro que gerou respostas erradas em produção.
+  const notesIssues = blockingPlaybookNotesIssues(version.notes);
+  if (notesIssues.length > 0) {
+    throw new Error(`Playbook inválido para ativação: ${notesIssues.join("; ")}`);
   }
 
   await db
