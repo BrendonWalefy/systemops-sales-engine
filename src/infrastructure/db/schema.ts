@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
+import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -183,6 +184,10 @@ export const organizations = pgTable("organizations", {
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   greetingMessage: text("greeting_message"),
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),
+  // Diagnóstico comercial capturado no onboarding guiado — entrada bruta +
+  // números-chave (ROI, plano, fit). Dado para decisões e análises futuras.
+  commercialDiagnostic:
+    jsonb("commercial_diagnostic").$type<CommercialDiagnosticSnapshot>(),
   businessHours: text("business_hours"),
   googleCalendarId: text("google_calendar_id"),
   // Fonte de verdade da disponibilidade. Null = derivar de googleCalendarId no resolver.
