@@ -344,7 +344,6 @@ async function main() {
     durationMinutes: t.durationMinutes,
     requiresEvaluationFirst: t.requiresEvaluationFirst,
     description: t.description,
-    commonObjections: [] as string[],
     createdAt: now,
     updatedAt: now,
   }));

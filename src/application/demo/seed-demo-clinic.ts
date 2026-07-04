@@ -617,64 +617,54 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     {
       clinicId, name: "Avaliação estética", durationMinutes: 40, priceCents: 15000,
       description: "Consulta inicial para diagnóstico do sorriso e plano de tratamento.",
-      isAesthetic: true, commonObjections: ["Tem custo?", "Quanto tempo dura?", "Preciso de exames?"],
+      isAesthetic: true,
     },
     {
       clinicId, name: "Lentes de resina", durationMinutes: 60, minPriceCents: 95000,
       description: "A partir de R$ 950 por dente, após avaliação. Melhora formato, cor e harmonia com planejamento conservador.",
       isAesthetic: true, requiresEvaluationFirst: true,
-      commonObjections: ["Fica artificial?", "Mancha?", "Quanto tempo dura?"],
     },
     {
       clinicId, name: "Lentes de porcelana", durationMinutes: 60, minPriceCents: 180000,
       description: "A partir de R$ 1.800 por dente, sempre após avaliação. Melhora formato, cor e harmonia do sorriso.",
       isAesthetic: true, requiresEvaluationFirst: true,
-      commonObjections: ["Muito caro", "Dói?", "Quanto tempo leva?"],
     },
     {
       clinicId, name: "Clareamento dental", durationMinutes: 50, minPriceCents: 69000,
       description: "A partir de R$ 690. A laser na clínica ou com moldeiras para uso em casa.",
-      commonObjections: ["Vai sensibilizar?", "Quanto dura?", "Quanto custa?"],
     },
     {
       clinicId, name: "Implante dentário", durationMinutes: 60, minPriceCents: 290000,
       description: "A partir de R$ 2.900. Implante de titânio para substituir dente ausente, após avaliação e exames.",
       requiresEvaluationFirst: true,
-      commonObjections: ["Muito caro", "Dói?", "Quanto tempo leva?"],
     },
     {
       clinicId, name: "Prótese dentária", durationMinutes: 60, minPriceCents: 240000,
       description: "A partir de R$ 2.400. Reabilitação com prótese fixa, removível ou sobre implantes, conforme avaliação.",
       requiresEvaluationFirst: true,
-      commonObjections: ["Fica firme?", "Parece natural?", "Precisa de implante?"],
     },
     {
       clinicId, name: "Remoção de dentes", durationMinutes: 50, minPriceCents: 65000,
       description: "A partir de R$ 650. Avaliação cirúrgica para sisos, dentes quebrados ou extrações indicadas por planejamento.",
       requiresEvaluationFirst: true,
-      commonObjections: ["Dói?", "Preciso repousar?", "Tira no mesmo dia?"],
     },
     {
       clinicId, name: "Alinhadores invisíveis", durationMinutes: 45, minPriceCents: 35000,
       description: "A partir de R$ 350/mês. Correção ortodôntica com alinhadores transparentes removíveis.",
-      commonObjections: ["Quanto custa?", "Quanto tempo demora?", "É melhor que aparelho fixo?"],
     },
     {
       clinicId, name: "Limpeza e profilaxia", durationMinutes: 40, priceCents: 22000,
       description: "Limpeza profissional, remoção de tártaro e polimento.",
-      commonObjections: ["Quanto custa?", "Dói?", "Com que frequência?"],
     },
     {
       clinicId, name: "Harmonização facial", durationMinutes: 45, minPriceCents: 89000,
       description: "A partir de R$ 890. Procedimentos estéticos faciais realizados pelo dentista.",
       isAesthetic: true,
-      commonObjections: ["É seguro?", "Quanto dura o resultado?", "Quanto custa?"],
     },
     {
       clinicId, name: "Botox", durationMinutes: 45, minPriceCents: 89000,
       description: "A partir de R$ 890. Avaliação para toxina botulínica estética ou apoio em tensão muscular/bruxismo.",
       isAesthetic: true, requiresEvaluationFirst: true,
-      commonObjections: ["Fica congelado?", "Quanto dura?", "É seguro?"],
     },
   ];
   for (const def of treatmentDefs) {

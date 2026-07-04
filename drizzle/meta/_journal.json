@@ -351,6 +351,13 @@
       "when": 1782878713552,
       "tag": "0049_zippy_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1783157014739,
+      "tag": "0050_drop_common_objections_column",
+      "breakpoints": true
     }
   ]
 }
