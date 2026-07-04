@@ -11,6 +11,21 @@ import { resolveClinicCommercialSettings } from "@/application/onboarding/clinic
 import { resolveInitialClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 import { resolveSegmentDefaults } from "@/application/onboarding/segment-options";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
+import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
+
+function parseDiagnostic(
+  raw: string | null,
+): CommercialDiagnosticSnapshot | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as CommercialDiagnosticSnapshot;
+    // Sanidade mínima — não confiar cegamente no payload do cliente.
+    if (parsed && typeof parsed === "object" && parsed.input) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export type ProspectState = {
   ok: boolean;
@@ -57,6 +72,11 @@ export async function createProspectClinic(
     | "avancado"
     | "rede"
     | null;
+  const greetingMessage =
+    (formData.get("greetingMessage") as string | null)?.trim() || null;
+  const diagnostic = parseDiagnostic(
+    formData.get("diagnostic") as string | null,
+  );
   const adminEmail = (formData.get("adminEmail") as string | null)?.trim().toLowerCase() ?? "";
   const adminPassword = (formData.get("adminPassword") as string | null) ?? "";
 
@@ -93,6 +113,8 @@ export async function createProspectClinic(
       slug,
       specialty,
       city: city ?? null,
+      greetingMessage,
+      commercialDiagnostic: diagnostic,
       timezone: "America/Sao_Paulo",
       plan: commercialSettings.plan,
       operationalStatus: resolveInitialClinicOperationalStatus({ isTest: false }),
