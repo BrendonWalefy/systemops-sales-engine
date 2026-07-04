@@ -105,6 +105,7 @@ function ContentBlockEditor({
 }) {
   return (
     <div
+      className="pipeline-content-block"
       style={{
         display: "flex",
         gap: "8px",
@@ -121,7 +122,7 @@ function ContentBlockEditor({
         <Film size={14} strokeWidth={2} style={{ color: "#60a5fa", marginTop: "3px", flexShrink: 0 }} />
       )}
 
-      <div style={{ flex: 1 }}>
+      <div className="pipeline-content-block-main" style={{ flex: 1 }}>
         {block.kind === "text" ? (
           <textarea
             value={block.content}
@@ -218,6 +219,7 @@ function StepCard({
 
   return (
     <div
+      className="pipeline-step-card"
       style={{
         border: "1px solid rgba(255,255,255,0.08)",
         borderRadius: "12px",
@@ -227,6 +229,7 @@ function StepCard({
     >
       {/* Header */}
       <div
+        className="pipeline-step-card-header"
         style={{
           display: "flex",
           alignItems: "center",
@@ -256,7 +259,7 @@ function StepCard({
             padding: "0",
           }}
         />
-        <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
+        <div className="pipeline-step-card-actions" style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => onMove("up")}
@@ -317,7 +320,7 @@ function StepCard({
               }}
             />
           ))}
-          <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+          <div className="pipeline-block-actions" style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
             <button
               type="button"
               onClick={() => onChange({ ...step, blocks: [...step.blocks, { kind: "text", content: "" }] })}
@@ -350,7 +353,7 @@ function StepCard({
               style={{ width: "100%", resize: "vertical", margin: 0, fontSize: "13px", fontFamily: "inherit" }}
             />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div className="pipeline-qa-turns-row" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <label style={{ ...labelStyle, marginBottom: 0 }}>Máx. turnos de Q&A</label>
             <input
               type="number"
@@ -377,7 +380,7 @@ function StepCard({
               style={{ width: "100%", resize: "vertical", margin: 0, fontSize: "13px", fontFamily: "inherit" }}
             />
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+          <label className="pipeline-checkbox-row" style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
             <input
               type="checkbox"
               checked={step.required}
@@ -409,7 +412,7 @@ function AddStepMenu({ onAdd }: { onAdd: (type: StepType) => void }) {
   const markers = STEP_TYPES.filter((s) => ["ask_availability", "offer_slots", "book"].includes(s.type));
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="pipeline-add-step-menu" style={{ position: "relative" }}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -472,7 +475,7 @@ function AddStepMenu({ onAdd }: { onAdd: (type: StepType) => void }) {
               }}
             >
               <Icon size={16} strokeWidth={2} style={{ color, marginTop: "1px", flexShrink: 0 }} />
-              <div>
+              <div className="pipeline-add-step-copy">
                 <div style={{ fontSize: "13px", fontWeight: 600 }}>{label}</div>
                 <div style={{ fontSize: "11px", color: "var(--muted)" }}>{description}</div>
               </div>
@@ -502,7 +505,7 @@ function AddStepMenu({ onAdd }: { onAdd: (type: StepType) => void }) {
               }}
             >
               <Icon size={16} strokeWidth={2} style={{ color, marginTop: "1px", flexShrink: 0 }} />
-              <div>
+              <div className="pipeline-add-step-copy">
                 <div style={{ fontSize: "13px", fontWeight: 600 }}>{label}</div>
                 <div style={{ fontSize: "11px", color: "var(--muted)" }}>{description}</div>
               </div>
@@ -565,7 +568,7 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
     <div className="page-wrapper">
       {/* Header */}
       <div className="pipeline-editor-header">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+        <div className="pipeline-editor-title-group" style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
           <Link
             href="/app/settings/pipeline"
             style={{
@@ -659,7 +662,7 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
       )}
 
       {/* Steps list */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+      <div className="pipeline-steps-list" style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
         {steps.map((step, i) => (
           <StepCard
             key={i}

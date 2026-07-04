@@ -58,8 +58,8 @@ export default async function PipelinePage() {
     <div className="pipeline-page" style={{ width: "100%", maxWidth: "720px", padding: "0 0 40px", color: T.text }}>
 
       {/* Header */}
-      <div style={{ marginBottom: "24px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+      <div className="pipeline-page-header" style={{ marginBottom: "24px" }}>
+        <div className="pipeline-page-title-row" style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
           <div style={{
             width: "32px", height: "32px", borderRadius: "8px",
             background: "rgba(0,224,178,0.08)", border: "1px solid rgba(0,224,178,0.15)",
@@ -68,11 +68,11 @@ export default async function PipelinePage() {
           }}>
             <Workflow size={15} strokeWidth={1.8} />
           </div>
-          <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 700, color: T.text }}>
+          <h1 className="pipeline-page-title" style={{ margin: 0, fontSize: "22px", fontWeight: 700, color: T.text }}>
             Pipeline de Conversa
           </h1>
         </div>
-        <p style={{ margin: "0 0 0 42px", fontSize: "13px", color: T.textSec }}>
+        <p className="pipeline-page-subtitle" style={{ margin: "0 0 0 42px", fontSize: "13px", color: T.textSec }}>
           Configure a sequência de etapas que a IA conduz para cada procedimento
         </p>
       </div>
@@ -80,7 +80,7 @@ export default async function PipelinePage() {
       {/* Progress */}
       {total > 0 && (
         <div style={{ marginBottom: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div className="pipeline-progress-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <p style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Progresso
             </p>
@@ -117,7 +117,7 @@ export default async function PipelinePage() {
           </div>
         </div>
       ) : (
-        <div style={{
+        <div className="pipeline-treatment-list" style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.cardRadius, overflow: "hidden",
         }}>
@@ -130,6 +130,7 @@ export default async function PipelinePage() {
               <Link
                 key={t.id}
                 href={`/app/settings/pipeline/${t.id}`}
+                className="pipeline-treatment-link"
                 style={{
                   display: "flex", alignItems: "center", gap: "12px",
                   padding: "14px 18px",
@@ -157,7 +158,7 @@ export default async function PipelinePage() {
                       Configurar pipeline →
                     </span>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+                    <div className="pipeline-step-badges" style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
                       {t.pipelineSteps!.map((s, i) => (
                         <span
                           key={i}
