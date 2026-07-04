@@ -122,10 +122,8 @@ export const publishablePlaybookSchema = z.object({
     .string()
     .trim()
     .min(1, "política comercial não pode ser vazia (a IA inventaria condições)"),
-  procedureDescription: z
-    .string()
-    .trim()
-    .min(1, "descrição de procedimentos não pode ser vazia"),
+  // Item 4: `procedureDescription` foi aposentado — a descrição de procedimento é
+  // dona da tabela `treatments` (uma por procedimento), não mais um blob no playbook.
   toneOfVoice: z.string().trim().min(1).default("acolhedor"),
   receptionistName: z.string().trim().min(1, "nome da recepcionista é obrigatório").default("Marina"),
   differentials: z.array(z.string()).default([]),
@@ -143,7 +141,6 @@ export type PublishablePlaybook = z.infer<typeof publishablePlaybookSchema>;
  * simulador e produção leem exatamente a mesma coisa.
  */
 export function composePlaybookText(parts: {
-  procedureDescription?: string | null;
   differentials?: string[] | null;
   objections?: { objection: string; response: string }[] | null;
   procedures?: EditorialProcedure[];
@@ -156,14 +153,15 @@ export function composePlaybookText(parts: {
     sections.push(parts.notes.trim());
   }
 
+  // Item 4 (config ownership): a lista estruturada de `treatments` é o ÚNICO dono
+  // da descrição de procedimento. O fallback para `playbook_versions.procedureDescription`
+  // foi aposentado — dois donos para "o que é o procedimento" causavam drift.
   const procedureList = (parts.procedures ?? [])
     .map((p) => (p.description ? `• ${p.name} — ${p.description}` : `• ${p.name}`))
     .join("\n");
 
   if (procedureList) {
     sections.push(`PROCEDIMENTOS OFERECIDOS:\n${procedureList}`);
-  } else if (parts.procedureDescription?.trim()) {
-    sections.push(`PROCEDIMENTOS OFERECIDOS:\n${parts.procedureDescription.trim()}`);
   }
 
   const differentials = (parts.differentials ?? []).filter(Boolean);
@@ -252,7 +250,6 @@ export async function resolveActiveEditorialConfig(
     objections,
     mediaLibrary,
     playbookText: composePlaybookText({
-      procedureDescription: activeVersion.procedureDescription,
       differentials,
       objections,
       procedures,

@@ -71,7 +71,6 @@ export async function POST(req: NextRequest) {
       name: `Sugestão do Advisor — ${new Date().toLocaleDateString("pt-BR")}`,
       status: "active",
       specialty: playbook.specialty,
-      procedureDescription: playbook.procedureDescription,
       toneOfVoice: playbook.toneOfVoice,
       receptionistName: playbook.receptionistName,
       differentials: playbook.differentials,

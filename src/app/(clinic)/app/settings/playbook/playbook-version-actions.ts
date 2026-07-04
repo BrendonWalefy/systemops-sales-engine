@@ -14,7 +14,6 @@ import type { VoiceMode } from "@/domain/entities/voice-mode";
 
 type PlaybookVersionData = {
   specialty?: string | null;
-  procedureDescription?: string | null;
   toneOfVoice?: string;
   receptionistName?: string;
   differentials?: string[];
@@ -29,9 +28,6 @@ function compileToClinicFields(data: PlaybookVersionData) {
 
   if (data.specialty) {
     parts.push(`ESPECIALIDADE: ${data.specialty}`);
-  }
-  if (data.procedureDescription) {
-    parts.push(`\nSOBRE O PROCEDIMENTO:\n${data.procedureDescription}`);
   }
   if (data.differentials && data.differentials.length > 0) {
     parts.push(
@@ -92,7 +88,6 @@ export async function activatePlaybookVersion(id: string) {
 
   const validation = publishablePlaybookSchema.safeParse({
     specialty: version.specialty ?? "",
-    procedureDescription: version.procedureDescription ?? "",
     toneOfVoice: version.toneOfVoice ?? "acolhedor",
     receptionistName: version.receptionistName,
     differentials: version.differentials ?? [],
@@ -132,7 +127,6 @@ export async function activatePlaybookVersion(id: string) {
 
   const clinicFields = compileToClinicFields({
     specialty: version.specialty,
-    procedureDescription: version.procedureDescription,
     toneOfVoice: version.toneOfVoice,
     differentials: version.differentials,
     commercialPolicy: version.commercialPolicy,
@@ -172,7 +166,6 @@ export async function duplicatePlaybookVersion(id: string) {
     name: `${original.name} (cópia)`,
     status: "draft",
     specialty: original.specialty,
-    procedureDescription: original.procedureDescription,
     toneOfVoice: original.toneOfVoice,
     receptionistName: original.receptionistName,
     differentials: original.differentials,

@@ -64,7 +64,6 @@ export default async function SuggestionsPage() {
 
   const currentPlaybook = {
     specialty: activeVersion.specialty ?? "",
-    procedureDescription: activeVersion.procedureDescription ?? "",
     toneOfVoice: activeVersion.toneOfVoice ?? "acolhedor",
     differentials: (activeVersion.differentials as string[] | null) ?? [],
     commercialPolicy: activeVersion.commercialPolicy ?? "",

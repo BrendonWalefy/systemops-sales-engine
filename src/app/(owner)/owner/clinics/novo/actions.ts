@@ -113,7 +113,6 @@ export async function createProspectClinic(
     name: `Pré-cadastro — ${now.toLocaleDateString("pt-BR")}`,
     status: "active",
     specialty,
-    procedureDescription: "",
     toneOfVoice: "acolhedor",
     commercialPolicy: "A definir",
     notes: null,

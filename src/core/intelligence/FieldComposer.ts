@@ -11,7 +11,6 @@
 import { findUnsupportedNumbers } from "@/lib/fact-guard";
 
 export type FieldTarget =
-  | "procedureDescription"
   | "toneOfVoice"
   | "commercialPolicy"
   | "differentials"
@@ -43,8 +42,6 @@ const SENSITIVE_FIELDS: FieldTarget[] = ["commercialPolicy", "greetingMessage", 
 const FIELD_INSTRUCTIONS: Record<FieldTarget, string> = {
   notes:
     "Reescreva como uma lista de regras de comportamento curtas e diretas para a recepcionista virtual. Formato: bullet points com '-'. Começa com 'COMO CONDUZIR A CONVERSA:'.",
-  procedureDescription:
-    "Reescreva como uma descrição clara e consultiva dos procedimentos. Máximo 4 linhas. Sem inventar especificidades técnicas.",
   toneOfVoice:
     "Reescreva como uma instrução de tom concisa (1-2 frases). Ex: 'Profissional e consultivo, sem gírias, nunca insistente.'",
   commercialPolicy:

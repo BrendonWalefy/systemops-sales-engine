@@ -679,12 +679,6 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     name: "Odonto Marques — demo",
     status: "active",
     specialty: "Odontologia estética e reabilitação oral",
-    procedureDescription:
-      "Clínica de odontologia estética e reabilitação oral. Procedimentos: avaliação estética (R$ 150), " +
-      "lentes de resina (a partir de R$ 950 por dente), lentes de porcelana (a partir de R$ 1.800 por dente), " +
-      "prótese dentária (a partir de R$ 2.400), remoção de dentes (a partir de R$ 650), " +
-      "botox (a partir de R$ 890), clareamento dental (a partir de R$ 690), implante dentário (a partir de R$ 2.900), " +
-      "alinhadores invisíveis (a partir de R$ 350/mês), limpeza e profilaxia (R$ 220) e harmonização facial (a partir de R$ 890).",
     toneOfVoice: "Consultivo, acolhedor, elegante e objetivo. Trata por você, com cordialidade premium.",
     commercialPolicy:
       "Valores sempre apresentados como 'a partir de', pois dependem de avaliação. Lentes são cobradas por dente. " +
