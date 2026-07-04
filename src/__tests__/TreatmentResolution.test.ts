@@ -12,7 +12,6 @@ function makeTreatment(name: string, durationMinutes: number): Treatment {
     durationMinutes,
     description: null,
     requiresEvaluationFirst: false,
-    triggerTemplate: null,
     keywordMatchEnabled: true,
     aliases: [],
     isAesthetic: false,

@@ -15,7 +15,6 @@ function treatment(name: string, overrides: Partial<Treatment> = {}): Treatment 
     durationMinutes: 60,
     description: null,
     requiresEvaluationFirst: false,
-    triggerTemplate: null,
     keywordMatchEnabled: true,
     aliases: [],
     isAesthetic: false,

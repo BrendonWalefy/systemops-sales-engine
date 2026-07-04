@@ -70,7 +70,6 @@ export type Treatment = {
   durationMinutes: number;
   description: string | null;
   requiresEvaluationFirst: boolean;
-  triggerTemplate: string | null;
   keywordMatchEnabled: boolean;
   aliases: string[];
   isAesthetic: boolean;

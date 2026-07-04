@@ -313,7 +313,6 @@ const makeTreatment = (overrides: Partial<Treatment> = {}): Treatment => {
     keywordMatchEnabled: true,
     aliases: ["lentes", "resina"],
     pipelineSteps: null,
-    triggerTemplate: null,
     durationMinutes: 60,
     priceCents: null,
     minPriceCents: null,

@@ -20,7 +20,6 @@ function makeTreatment(name: string, requiresEvaluation = false): Treatment {
     durationMinutes: 60,
     description: null,
     requiresEvaluationFirst: requiresEvaluation,
-    triggerTemplate: null,
     keywordMatchEnabled: true,
     aliases: [],
     isAesthetic: false,
