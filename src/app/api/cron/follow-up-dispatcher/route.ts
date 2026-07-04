@@ -14,7 +14,10 @@ import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
-import { selectOneFollowUpPerLead } from "@/application/use-cases/leads/follow-up-dispatch-policy";
+import {
+  selectOneFollowUpPerLead,
+  shouldSuppressFollowUpForOperatorActivity,
+} from "@/application/use-cases/leads/follow-up-dispatch-policy";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { sendVoiceOrText, resolveClinicVoiceConfig } from "@/lib/tts-send";
@@ -109,12 +112,36 @@ async function processOneFollowUp(
   }
 
   const [conv] = await db
-    .select({ id: conversations.id, category: conversations.category })
+    .select({ id: conversations.id, category: conversations.category, aiPaused: conversations.aiPaused })
     .from(conversations)
     .where(eq(conversations.leadId, followUp.leadId))
     .limit(1);
   if (!conv || conv.category !== "sales") {
     await followUpRepository.save({ ...followUp, status: "cancelled", updatedAt: now });
+    return "skipped";
+  }
+
+  // Operador conduzindo a conversa (takeover ou última mensagem humana recente):
+  // não reengajar por cima do atendimento humano. Volta a pending — a próxima
+  // execução reavalia quando o operador tiver saído.
+  const [lastMsg] = await db
+    .select({ author: messages.author, sentAt: messages.sentAt })
+    .from(messages)
+    .where(eq(messages.conversationId, conv.id))
+    .orderBy(desc(messages.sentAt))
+    .limit(1);
+  if (
+    shouldSuppressFollowUpForOperatorActivity({
+      aiPaused: conv.aiPaused,
+      lastMessageAuthor: lastMsg?.author ?? null,
+      lastMessageSentAt: lastMsg?.sentAt ?? null,
+      now,
+    })
+  ) {
+    await followUpRepository.save({ ...followUp, status: "pending", updatedAt: now });
+    console.log(
+      `[FollowUpDispatcher] follow-up ${followUp.id} adiado — operador ativo na conversa ${conv.id}`,
+    );
     return "skipped";
   }
 
