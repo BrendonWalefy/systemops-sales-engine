@@ -40,6 +40,10 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     priceCents,
     minPriceCents: null,
     maxPriceCents: null,
+    priceQuotableInChat: false,
+    priceKind: "from",
+    priceUnit: null,
+    priceDeductible: false,
   });
   revalidatePath("/app/settings/playbook");
   revalidateTag(clinicTreatmentsTag(clinicId), "max");
@@ -68,7 +72,26 @@ export async function updateTreatment(prevState: ActionState, formData: FormData
     priceCents = parseOptionalCents(formData.get("priceCents"));
   }
 
-  await repo.update(id, { name, durationMinutes, priceCents, minPriceCents, maxPriceCents });
+  const patch: Parameters<typeof repo.update>[1] = {
+    name,
+    durationMinutes,
+    priceCents,
+    minPriceCents,
+    maxPriceCents,
+  };
+
+  // Item 3: flags de derivação de preço só são tocadas quando o formulário as
+  // envia (marcador priceFlagsPresent). Assim editar o tratamento por outra aba
+  // (nome/duração) não zera as flags configuradas na aba Financeiro.
+  if (formData.get("priceFlagsPresent") === "1") {
+    patch.priceQuotableInChat = formData.get("priceQuotableInChat") === "1";
+    patch.priceKind = formData.get("priceKind") === "fixed" ? "fixed" : "from";
+    const unit = (formData.get("priceUnit") as string | null)?.trim();
+    patch.priceUnit = unit ? unit : null;
+    patch.priceDeductible = formData.get("priceDeductible") === "1";
+  }
+
+  await repo.update(id, patch);
   revalidatePath("/app/settings/playbook");
   revalidateTag(clinicTreatmentsTag(clinicId), "max");
   return { success: true };

@@ -318,6 +318,10 @@ const makeTreatment = (overrides: Partial<Treatment> = {}): Treatment => {
     priceCents: null,
     minPriceCents: null,
     maxPriceCents: null,
+    priceQuotableInChat: false,
+    priceKind: "from",
+    priceUnit: null,
+    priceDeductible: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -328,6 +332,10 @@ const makeTreatment = (overrides: Partial<Treatment> = {}): Treatment => {
     priceCents: overrides.priceCents ?? null,
     minPriceCents: overrides.minPriceCents ?? null,
     maxPriceCents: overrides.maxPriceCents ?? null,
+    priceQuotableInChat: false,
+    priceKind: "from",
+    priceUnit: null,
+    priceDeductible: false,
   };
 };
 

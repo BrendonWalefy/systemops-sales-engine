@@ -237,6 +237,27 @@ export function TreatmentRow({
               </button>
             </div>
 
+            {/* Item 3: como a IA fala este preço (derivado deste cadastro). */}
+            <input type="hidden" name="priceFlagsPresent" value="1" />
+            <p style={{ fontSize: "11px", color: S.textMuted, margin: 0 }}>
+              Se marcado, a IA fala este valor no chat (gerado deste cadastro, sem digitar preço na Política Comercial). Desmarcado = &ldquo;definido na avaliação&rdquo;.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: S.textSec, cursor: "pointer" }}>
+                <input type="checkbox" name="priceQuotableInChat" value="1" defaultChecked={treatment.priceQuotableInChat} />
+                Cotar no chat
+              </label>
+              <select name="priceKind" defaultValue={treatment.priceKind} style={{ ...inputStyle, height: "32px", padding: "0 8px", fontSize: "12px", width: "auto" }}>
+                <option value="from">a partir de</option>
+                <option value="fixed">valor fixo</option>
+              </select>
+              <input type="text" name="priceUnit" defaultValue={treatment.priceUnit ?? ""} placeholder="unidade (ex: 20 elementos)" style={{ ...inputStyle, height: "32px", fontSize: "12px", width: "180px" }} />
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: S.textSec, cursor: "pointer" }}>
+                <input type="checkbox" name="priceDeductible" value="1" defaultChecked={treatment.priceDeductible} />
+                Abatido do tratamento
+              </label>
+            </div>
+
             <div style={{ display: "flex", gap: "8px" }}>
               <SaveButton />
               {cancelBtn}

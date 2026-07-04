@@ -28,6 +28,10 @@ function makeTreatment(name: string, requiresEvaluation = false): Treatment {
     priceCents: null,
     minPriceCents: null,
     maxPriceCents: null,
+    priceQuotableInChat: false,
+    priceKind: "from",
+    priceUnit: null,
+    priceDeductible: false,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
   };

@@ -18,7 +18,7 @@ import {
   Film,
 } from "lucide-react";
 import { updatePlaybookVersion } from "../playbook-version-actions";
-import { lintPlaybookNotes } from "@/application/config/playbook-lint";
+import { lintPlaybookNotes, lintCommercialPolicy } from "@/application/config/playbook-lint";
 import type { FieldTarget } from "@/core/intelligence/FieldComposer";
 import { useReliableAutosave } from "../use-reliable-autosave";
 
@@ -347,8 +347,7 @@ const quickPromptStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-function NotesLintWarnings({ notes }: { notes: string }) {
-  const warnings = lintPlaybookNotes(notes);
+function LintWarningsBox({ warnings, title }: { warnings: string[]; title: string }) {
   if (warnings.length === 0) return null;
   return (
     <div style={{
@@ -362,13 +361,21 @@ function NotesLintWarnings({ notes }: { notes: string }) {
       gap: "5px",
     }}>
       <span style={{ fontSize: "10px", fontWeight: 700, color: "#f59e0b", letterSpacing: "0.06em" }}>
-        CONTEÚDO FORA DO LUGAR
+        {title}
       </span>
       {warnings.map((w, i) => (
         <span key={i} style={{ fontSize: "11px", color: "#fbbf24", lineHeight: 1.5 }}>• {w}</span>
       ))}
     </div>
   );
+}
+
+function NotesLintWarnings({ notes }: { notes: string }) {
+  return <LintWarningsBox warnings={lintPlaybookNotes(notes)} title="CONTEÚDO FORA DO LUGAR" />;
+}
+
+function CommercialPolicyLintWarnings({ policy }: { policy: string }) {
+  return <LintWarningsBox warnings={lintCommercialPolicy(policy)} title="PREÇO TEM CASA NO CADASTRO" />;
 }
 
 const OBJECTION_EXAMPLES: Objection[] = [
@@ -1007,15 +1014,16 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
 
                 <FieldGroup
                   label="Política comercial"
-                  hint="Por que importa: este campo impede a IA de inventar preço, desconto ou parcelamento. Escreva só condições reais e quando a IA deve encaminhar para avaliação."
+                  hint="Por que importa: enquadramento comercial (parcelamento, condições, quando encaminhar para avaliação). O preço em si a IA fala a partir do valor cadastrado em cada procedimento (aba Financeiro) — não digite valores em R$ aqui."
                 >
                   <textarea
                     value={data.commercialPolicy}
                     onChange={(e) => updateVersion({ commercialPolicy: e.target.value })}
-                    placeholder={"Avaliação R$100, descontada do tratamento.\nParcelamento em até 12x no cartão.\nNão informar preço de procedimentos por mensagem; explicar que o valor depende da avaliação."}
+                    placeholder={"Parcelamento em até 12x no cartão.\nAvaliação abatida do tratamento se o paciente avançar.\nNão informar preço de procedimentos por mensagem; explicar que o valor depende da avaliação."}
                     rows={4}
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
+                  <CommercialPolicyLintWarnings policy={data.commercialPolicy} />
                   <CowriterBox
                     field="commercialPolicy"
                     currentValue={data.commercialPolicy}

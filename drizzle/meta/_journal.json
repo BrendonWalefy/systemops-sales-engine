@@ -358,6 +358,13 @@
       "when": 1783157014739,
       "tag": "0050_drop_common_objections_column",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1783158584679,
+      "tag": "0051_treatment_price_derivation_fields",
+      "breakpoints": true
     }
   ]
 }
