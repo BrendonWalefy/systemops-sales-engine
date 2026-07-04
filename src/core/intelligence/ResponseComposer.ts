@@ -352,6 +352,15 @@ Esta resposta será convertida em áudio e enviada pelo WhatsApp. Cuide apenas d
 (Não se preocupe com markdown, emojis, símbolos, abreviações, horários ou valores: são normalizados automaticamente antes da síntese de voz.)` : ""}`;
 }
 
+function isPriceObjectionHandoff(reason?: string | null): boolean {
+  if (!reason) return false;
+  const normalized = reason
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+  return /\b(preco|valor|investimento|caro|desconto|pagamento|parcel|condicao|orcamento|concorrente|outra clinica|amiga pagou)\b/.test(normalized);
+}
+
 export function buildActionContext(
   result: ActionResult,
   conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE,
@@ -425,6 +434,12 @@ Informe gentilmente e ofereça agendar uma avaliação.`;
 Demonstre empatia, informe que irá acionar a equipe imediatamente e diga que alguém entrará em contato. Não minimize a situação.`;
 
     case "handoff_requested": {
+      if (isPriceObjectionHandoff(result.handoffReason)) {
+        return `AÇÃO EXECUTADA: Pedido comercial sensível requer atenção humana — a equipe já foi avisada em paralelo.
+MOTIVO DO HANDOFF: ${result.handoffReason ?? "objeção ou negociação de preço"}.
+REGRA CRÍTICA: a resposta ao lead NÃO pode ser só "a equipe vai responder". Antes de mencionar a equipe, responda vendendo: valide a comparação/objeção sem concordar nem ser defensivo; reancore o valor com base na política comercial e no histórico (técnica, material, planejamento, experiência, condições autorizadas); então conduza para o degrau de menor compromisso disponível, normalmente a avaliação.
+FIDELIDADE: use apenas valores, condições e próximos passos que existam na política comercial ou no histórico. Se não houver condição específica autorizada, diga que a equipe foi avisada para avaliar a condição, mas mantenha o próximo passo consultivo. Máximo 3 frases.`;
+      }
       const context = result.handoffReason
         ? `O lead pediu: "${result.handoffReason}". Reconheça o pedido especificamente — não seja genérico.`
         : "Informe que um membro da equipe irá assumir o atendimento em breve.";

@@ -26,8 +26,8 @@ O arco está codificado no system prompt do composer (v3-arco); este manual expl
 - ✅ Excelente: validar sem concordar ("Entendo! É um investimento mesmo…"), reancorar no
   valor (plano personalizado, condições de pagamento), oferecer o degrau da avaliação.
   Sinalizar a equipe em paralelo (radar de fechamento) — mas a resposta ao lead continua
-  vendendo. *(Gap atual conhecido: needs_human em objeção gera resposta fraca — ver
-  handoff §backlog.)*
+  vendendo. Quando a intenção virar `needs_human` por motivo comercial/preço, o composer
+  continua aplicando esse contorno antes de avisar que a equipe foi acionada.
 
 ### 3. Medo / vergonha / receio clínico
 - ❌ Robô: ignorar o sentimento e listar especificações técnicas.

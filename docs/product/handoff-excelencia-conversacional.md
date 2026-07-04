@@ -36,13 +36,12 @@ Ximendes: todos os checks determinísticos verdes** — coerção de intent func
 preço com âncora + degrau da avaliação, acolhimento antes de argumento (caso noiva).
 Docs criados: `manual-voz-atendimento.md`, `estrategia-preenchimento-config.md`.
 
-**Achado do replay (novo item de backlog, prioridade alta):** objeção de preço com
-âncora social ("minha amiga fez por menos") classifica como `needs_human` e a resposta
-de handoff é fraca ("a equipe irá responder em breve") — alerta à equipe é desejado
-(F6), mas a resposta ao lead deveria contornar a objeção (validar → reancorar →
-degrau da avaliação) ANTES de sinalizar a equipe. Corrigir no composer
-(`handoff_requested` com handoffReason de objeção de preço → resposta que ainda vende)
-+ radar de fechamento (P2.13). Ver `manual-voz-atendimento.md` §2.
+**Achado do replay:** objeção de preço com âncora social ("minha amiga fez por menos")
+classificava como `needs_human` e a resposta de handoff era fraca ("a equipe irá
+responder em breve"). A resposta ao lead foi corrigida nesta branch: quando
+`handoff_requested` tem motivo comercial/preço, o composer valida a objeção, reancora
+o valor e oferece o degrau da avaliação antes de mencionar a equipe. Ainda fica como
+backlog o radar de fechamento no Inbox (P2.13).
 
 ## Escopo DESTA entrega (estado no fim da sessão — conferir git status/diff)
 

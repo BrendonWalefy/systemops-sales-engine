@@ -19,4 +19,28 @@ describe("ResponseComposer — conversation experience", () => {
     expect(ctx).not.toContain("digitar *menu*");
     expect(ctx).toContain("Não reapresente menu");
   });
+
+  it("price objection handoff still instructs the composer to sell before escalating", () => {
+    const ctx = buildActionContext({
+      type: "handoff_requested",
+      handoffReason: "Lead achou caro e comparou valor com outra clínica",
+    });
+
+    expect(ctx).toContain("Pedido comercial sensível");
+    expect(ctx).toContain("NÃO pode ser só");
+    expect(ctx).toContain("responda vendendo");
+    expect(ctx).toContain("reancore o valor");
+    expect(ctx).toContain("degrau de menor compromisso");
+  });
+
+  it("generic handoff keeps the short human escalation instruction", () => {
+    const ctx = buildActionContext({
+      type: "handoff_requested",
+      handoffReason: "Lead pediu fotos do procedimento realizado",
+    });
+
+    expect(ctx).toContain("Este pedido requer atendimento humano");
+    expect(ctx).toContain("a IA não pode cumprir");
+    expect(ctx).not.toContain("responda vendendo");
+  });
 });
