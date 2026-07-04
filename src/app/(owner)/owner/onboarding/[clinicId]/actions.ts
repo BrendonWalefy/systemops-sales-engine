@@ -188,7 +188,6 @@ export async function saveWizardTreatments(
             requiresEvaluationFirst: item.requiresEvaluationFirst,
             isAesthetic: item.isAesthetic,
             aliases: aliasArray,
-            commonObjections: [],
             keywordMatchEnabled: true,
             pipelineSteps: null,
           })

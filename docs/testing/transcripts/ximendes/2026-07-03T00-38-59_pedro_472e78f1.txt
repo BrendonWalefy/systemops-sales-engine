@@ -1,0 +1,42 @@
+=================================================================
+LEAD: Pedro | null
+Status: lost | Temperatura: —
+Criado em: 09/06/2026, 20:04:50
+=================================================================
+
+  CONVERSA c89c7818
+  Criada: 09/06/2026, 20:04:50
+  Última msg: 15/06/2026, 14:22:12
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [20:04:28] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [20:24:30] 👨‍⚕️ Op.  
+          Boa noite Pedro
+
+  [20:24:35] 👨‍⚕️ Op.  
+          Como posso te ajudar ?
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Olá, Pedro! Fico feliz em saber do seu interesse em nossos serviços de Odontologia Estética e Reabilitação Oral. Estou aqui para esclarecer suas dúvidas e te ajudar com as informações que você precisa.
+
+  [13:09:53] 👨‍⚕️ Op.  
+          Lentes em resina com 500,00 reais de desconto para o sorriso completo!! 🚨🚨🚨
+
+  [13:13:09] 👨‍⚕️ Op.  
+          Estamos localizados no Brooklin novo - zona sul sp
+
+  [13:14:23] 👨‍⚕️ Op.  
+          Rua guararapes 1894 - Brooklin
+
+  [14:21:59] 👨‍⚕️ Op.  
+          26/06
+
+  [14:22:08] 👨‍⚕️ Op.  
+          Condições válidas até 26/06 - 500,00 de bônus 
+          
+          Técnica simplificada  - De 2.500,00 por 2.000,00 
+          
+          Técnica estratificada - de 5.000,00 por 4.500,00
+

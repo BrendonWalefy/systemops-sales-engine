@@ -1,0 +1,41 @@
+=================================================================
+LEAD: Sergio Augusto Massanares | 5511970207577
+Status: waiting_response | Temperatura: warm
+Criado em: 24/06/2026, 10:13:42
+=================================================================
+
+  CONVERSA b7de2ea2
+  Criada: 24/06/2026, 10:13:42
+  Última msg: 24/06/2026, 10:52:11
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [10:13:01] 👤 Lead 
+          Sobre as lentes em resina
+
+  [10:13:53] 🤖 IA    [general_question]
+          Trabalhamos com duas técnicas de lentes em resina: a Simplificada e a Estratificada. Vou te explicar rapidinho as duas para você ver qual faz mais sentido pro seu caso:
+          
+          A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo.
+          
+          A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético.
+
+  [10:14:48] 🤖 IA    [general_question]
+          Lentes – Técnica Simplificada
+
+  [10:15:06] 🤖 IA    [general_question]
+          Lentes – Técnica Estratificada
+
+  [10:24:38] 👤 Lead 
+          No boleto
+
+  [10:24:41] 👤 Lead 
+          ?
+
+  [10:25:30] 🤖 IA    [needs_human]
+          Recebi sua solicitação sobre informações de pagamento no boleto e já avisei a equipe. Eles irão te responder em breve com todos os detalhes necessários.
+
+  [10:52:07] 👨‍⚕️ Op.  
+          Sergio não realizamos boleto.  
+          
+          Pix, débito e crédito…❗️
+

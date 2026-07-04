@@ -1,0 +1,17 @@
+=================================================================
+LEAD: Angeles Pk👑 | 5511915471498
+Status: lost | Temperatura: —
+Criado em: 06/06/2026, 08:53:11
+=================================================================
+
+  CONVERSA e3303a82
+  Criada: 06/06/2026, 08:53:11
+  Última msg: 06/06/2026, 08:53:04
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [08:53:04] 👤 Lead 
+          ¡Hola! Quiero más información
+
+  [02:43:11] 🤖 IA    [reengagement]
+          ¡Hola, Angeles Pk👑! Estoy aquí para ayudarte con la información que necesitas sobre nuestros servicios de odontología estética y rehabilitación oral. Si tienes alguna pregunta específica o necesitas detalles sobre precios, no dudes en decírmelo.
+

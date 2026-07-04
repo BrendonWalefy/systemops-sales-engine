@@ -1,0 +1,53 @@
+=================================================================
+LEAD: bielbygod 🎡 | 5511943870081
+Status: lost | Temperatura: warm
+Criado em: 16/06/2026, 21:36:39
+=================================================================
+
+  CONVERSA b173398f
+  Criada: 16/06/2026, 21:36:39
+  Última msg: 16/06/2026, 21:38:13
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [21:36:32] 👤 Lead 
+          Olá! gostaria de saber valor das lentes
+
+  [21:36:52] 🤖 IA    [price_inquiry]
+          Olá! Na Ximendes Odontologia, trabalhamos com lentes de resina composta, que são as opções que podemos apresentar. Temos duas técnicas:
+          
+          - **Técnica Simplificada (resina nacional)**: a partir de R$2.500 para 20 elementos.
+          - **Técnica Estratificada (resina importada)**: a partir de R$5.000 para 20 elementos.
+          
+          Esses valores são iniciais e o valor final depende da avaliação do Dr. Gregorie.
+          
+          Se você quiser, posso te mostrar mais sobre cada técnica. Aqui estão os vídeos que explicam melhor cada uma delas:
+          
+          [VIDEO] Lentes – Técnica Simplificada
+          [VIDEO] Lentes – Técnica Estratificada
+          
+          Caso tenha interesse, posso verificar a disponibilidade para uma avaliação. O que acha?
+
+  [21:37:31] 👤 Lead 
+          poderia me mostrar a diferença de cada
+
+  [21:37:44] 🤖 IA    [general_question]
+          Claro! Vou explicar as diferenças entre as duas técnicas de lentes de resina composta:
+          
+          **Técnica Simplificada**: Utiliza resina nacional e é uma abordagem mais prática e acessível. O resultado é um sorriso harmonioso e natural, ideal para quem busca uma solução eficaz e com um investimento inicial menor.
+          
+          **Técnica Estratificada**: Utiliza resina importada e é uma opção premium. Essa técnica envolve a aplicação de múltiplas camadas de resina, o que proporciona um resultado mais refinado, com translucidez, profundidade e brilho. É indicada para quem deseja um sorriso com um aspecto mais sofisticado.
+          
+          Se precisar de mais informações ou quiser ver os vídeos que demonstram cada técnica, é só avisar! Você gostaria de saber algo mais específico sobre elas?
+
+  [21:38:13] 👤 Lead 
+          pode ser os vídeos
+
+  [21:38:27] 🤖 IA    [acknowledgment]
+          Aqui estão os vídeos que explicam cada técnica de lentes:
+          
+          **Técnica Simplificada**: [VÍDEO] Lentes – Técnica Simplificada
+          
+          **Técnica Estratificada**: [VÍDEO] Lentes – Técnica Estratificada
+          
+          Esses vídeos mostram as características e resultados de cada técnica. Se surgir alguma dúvida ou se precisar de mais informações, estou à disposição!
+

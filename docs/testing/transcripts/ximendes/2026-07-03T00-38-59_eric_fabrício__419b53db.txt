@@ -1,0 +1,47 @@
+=================================================================
+LEAD: Eric Fabrício ✝️ | 558398548414
+Status: in_conversation | Temperatura: warm
+Criado em: 26/06/2026, 11:30:21
+=================================================================
+
+  CONVERSA 56e93d6a
+  Criada: 26/06/2026, 11:30:21
+  Última msg: 26/06/2026, 11:32:24
+  ai_paused=true | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [11:30:13] 👤 Lead 
+          Opa! Bom dia, tudo certo?
+
+  [11:30:31] 🤖 IA    [acknowledgment]
+          Bom dia, Eric. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [11:30:36] 👤 Lead 
+          Gregorie, né isso?
+
+  [11:31:34] 🤖 IA    [acknowledgment]
+          Sim, o Dr. Gregorie Ximendes é o especialista da clínica. Em que posso te ajudar em relação aos tratamentos ou serviços que ele oferece?
+
+  [11:31:44] 👤 Lead 
+          Te procurei na internet e vi que você não tem um site pra prospectar suas vendas
+
+  [11:32:02] 👤 Lead 
+          Criei um com o objetivo de atrair clientes, gostaria de dar uma olhada sem compromisso?
+
+  [11:32:24] 👤 Lead 
+          Poderia falar diretamente com ele?
+
+  [11:32:33] 🤖 IA    [general_question]
+          Entendo a sua observação. Na verdade, nossa abordagem é focada no atendimento personalizado e na experiência de cada paciente. Isso nos permite entender melhor as necessidades individuais e oferecer um tratamento mais adequado.
+          
+          Se você tiver interesse em conhecer mais sobre os procedimentos ou tirar dúvidas específicas, estou aqui para ajudar. Que tal uma avaliação com o Dr. Gregorie para discutir suas necessidades?
+
+  [11:32:46] 🤖 IA    [general_question]
+          Entendo a sua curiosidade sobre a clínica. Somos especializados em odontologia estética e reabilitação oral, com foco em tratamentos como lentes de resina composta, implantes e harmonização orofacial. O Dr. Gregorie tem uma abordagem personalizada, garantindo que cada paciente receba um plano de tratamento adequado às suas necessidades.
+          
+          Se você estiver interessado em saber mais sobre algum procedimento específico ou tiver dúvidas, estou à disposição. Que tal uma avaliação com o Dr. Gregorie para discutir suas expectativas e necessidades?
+
+  [11:33:33] 🤖 IA    [needs_human]
+          Entendi, Eric. Já avisei a equipe sobre o seu interesse em falar diretamente com o Dr. Gregorie, e eles irão responder em breve.
+

@@ -1,0 +1,51 @@
+=================================================================
+LEAD: Janaína | 5511951632846
+Status: lost | Temperatura: —
+Criado em: 08/06/2026, 10:35:21
+=================================================================
+
+  CONVERSA cd784caa
+  Criada: 08/06/2026, 10:35:21
+  Última msg: 08/06/2026, 13:00:52
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [10:35:15] 👤 Lead 
+          Bom dia! 
+          Tudo bem e contigo?
+
+  [10:43:47] 👨‍⚕️ Op.  
+          Tudo bem tbm
+
+  [10:44:01] 👤 Lead 
+          Que bom 🙏🏻
+
+  [10:44:15] 👨‍⚕️ Op.  
+          Está vendendo os mon ainda ?
+
+  [10:44:19] 👨‍⚕️ Op.  
+          😅
+
+  [10:44:21] 👤 Lead 
+          Estou simmmm
+
+  [10:44:30] 👨‍⚕️ Op.  
+          Quanto?
+
+  [10:47:41] 👨‍⚕️ Op.  
+          Blzzzz
+
+  [10:47:46] 👨‍⚕️ Op.  
+          Minha irmã está querendo
+
+  [10:48:07] 👨‍⚕️ Op.  
+          Vou encaminhar para ela
+
+  [10:48:14] 👨‍⚕️ Op.  
+          Qualquer coisa vou passar seu numero tá bom ?
+
+  [10:49:35] 👤 Lead 
+          Pode passar sim
+
+  [13:00:34] 👨‍⚕️ Op.  
+          Blzzz 🫡😊
+

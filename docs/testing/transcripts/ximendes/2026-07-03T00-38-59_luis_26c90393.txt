@@ -1,0 +1,49 @@
+=================================================================
+LEAD: Luis | 556593446214
+Status: in_conversation | Temperatura: warm
+Criado em: 06/06/2026, 09:25:38
+=================================================================
+
+  CONVERSA a95f45fa
+  Criada: 06/06/2026, 09:25:38
+  Última msg: 30/06/2026, 15:45:19
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [09:25:33] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [09:39:09] 👤 Lead 
+          Bom dia
+
+  [09:39:19] 👤 Lead 
+          Gostaria de saber os valores das lentes
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Olá, Luis! Como você está? Estou aqui para te ajudar com as informações sobre os valores das lentes. Se tiver alguma dúvida específica, fique à vontade para perguntar!
+
+  [11:43:34] 👤 Lead 
+          Quantos sai 20 lente e esse valor
+
+  [11:44:49] 🤖 IA    [price_inquiry]
+          As lentes de resina composta estratificada têm um investimento a partir de R$5.000 para 20 elementos. Esse valor é inicial e pode variar conforme a avaliação do Dr. Gregorie, que irá definir o melhor plano para o seu sorriso.
+          
+          Além disso, oferecemos opções de parcelamento em até 12 vezes. Por exemplo, você pode parcelar em 4 vezes de R$1.344 ou em 12 vezes de R$474. Se você quiser, posso te mostrar um pouco mais sobre as lentes. Aqui estão alguns vídeos que podem te ajudar a visualizar:
+          
+          e
+          
+          .
+          
+          Gostaria de agendar uma avaliação para discutir seu caso?
+
+  [11:46:18] 🤖 IA    [price_inquiry]
+          Lentes – Técnica Simplificada
+
+  [11:46:23] 🤖 IA    [price_inquiry]
+          Lentes – Técnica Estratificada
+
+  [15:45:19] 👨‍⚕️ Op.  
+          As lentes simplificadas estão a partir de 2500 R$, 20 elementos, é um procedimento excelente e com otimo custo beneficio.
+
+  [07:00:58] 🤖 IA    [reengagement]
+          Oi, Luis! Conseguiu dar uma olhada no vídeo sobre as lentes? Temos horários disponíveis essa semana — quer que eu verifique um para você?
+

@@ -1,0 +1,89 @@
+=================================================================
+LEAD: Fe Em Deus | 5511943836290
+Status: appointment_scheduled | Temperatura: —
+Criado em: 03/06/2026, 12:27:47
+=================================================================
+
+  CONVERSA d0cb8fba
+  Criada: 03/06/2026, 12:27:47
+  Última msg: 08/06/2026, 14:49:02
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [12:27:43] 👤 Lead 
+          Boa tarde Gregori blz
+
+  [12:27:48] 👤 Lead 
+          Aqui é o Bruno da Aline
+
+  [12:27:52] 🤖 IA    [acknowledgment]
+          Boa tarde, Fe Em Deus! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [12:27:53] 🤖 IA    [acknowledgment]
+          Boa tarde, Fe Em Deus! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [12:28:04] 👤 Lead 
+          Queria marca uma ma intenção ai e limpeza das lentes
+
+  [12:31:23] 👨‍⚕️ Op.  
+          Olá Bruno, próximo dias e horários disponíveis
+
+  [12:31:52] 👤 Lead 
+          Semana que vem vc atende seg a sexta ?
+
+  [12:32:12] 👤 Lead 
+          Poderia ser segunda msm ou terça parte da tarde após as 14
+
+  [12:33:05] 👨‍⚕️ Op.  
+          Para semana que vem, tenho segunda dia 08/06 as 16h. Pode ser ?
+
+  [12:37:11] 👤 Lead 
+          Não teria outro dia por umas 14 Gregori ?
+
+  [12:39:57] 👨‍⚕️ Op.  
+          Tenho na segunda às 15h e sexta dia 12/06 às 14 ?  Qual melhor ?
+
+  [12:44:06] 👤 Lead 
+          Pode ser segunda às 15 então blzzz
+
+  [12:44:08] 👤 Lead 
+          Obrigado
+
+  [12:46:24] 👨‍⚕️ Op.  
+          Agendamento confirmado segunda dia 08/06 às 15hrs.
+
+  [12:46:50] 👨‍⚕️ Op.  
+          Até breve 😉
+
+  [12:46:53] 👤 Lead 
+          Valeu
+
+  [10:42:29] 👨‍⚕️ Op.  
+          Olá Fe Em Deus! Lembrando que sua consulta é amanhã, 08/06, às 15:00. A equipe estará esperando por você! 😊
+
+  [11:46:07] 👤 Lead 
+          Oi bom dia sim confirmado
+
+  [14:32:44] 👤 Lead 
+          Gregori acho q vou atrasar uns 5/10 min pq o Uber demorou chegar
+
+  [14:32:51] 👤 Lead 
+          Tem algum problema
+
+  [14:33:03] 👤 Lead 
+          ?
+
+  [14:48:59] 👨‍⚕️ Op.  
+          Tranquilo
+

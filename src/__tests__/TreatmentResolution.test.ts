@@ -11,7 +11,6 @@ function makeTreatment(name: string, durationMinutes: number): Treatment {
     name,
     durationMinutes,
     description: null,
-    commonObjections: [],
     requiresEvaluationFirst: false,
     triggerTemplate: null,
     keywordMatchEnabled: true,

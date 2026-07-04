@@ -1,0 +1,27 @@
+=================================================================
+LEAD: 🧜‍♂️🧚🏽‍♀️ | 5511960564731
+Status: waiting_response | Temperatura: warm
+Criado em: 29/06/2026, 03:59:34
+=================================================================
+
+  CONVERSA 144a5b25
+  Criada: 29/06/2026, 03:59:34
+  Última msg: 29/06/2026, 03:59:11
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [03:58:50] 👤 Lead 
+          Posso saber mais sobre sua empresa?
+
+  [03:59:11] 👤 Lead 
+          Você poderia me falar mais sobre seu anúncio?
+
+  [03:59:46] 🤖 IA    [greeting]
+          Boa noite, 🧜‍♂️🧚🏽‍♀️. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [04:00:01] 🤖 IA    [general_question]
+          Entendo seu interesse em saber mais sobre a clínica. Nós somos especializados em odontologia estética e reabilitação oral, oferecendo uma variedade de procedimentos, com ênfase em lentes de resina composta, que transformam sorrisos de forma natural e harmoniosa.
+          
+          Se você estiver curioso sobre algum procedimento específico ou quiser entender melhor como podemos ajudar a alcançar o sorriso que deseja, que tal uma avaliação com o Dr. Gregorie?
+

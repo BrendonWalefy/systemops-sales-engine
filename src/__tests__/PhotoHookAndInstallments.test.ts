@@ -23,7 +23,6 @@ function makeTreatment(name: string, requiresEval = false): Treatment {
     name,
     durationMinutes: 60,
     description: null,
-    commonObjections: [],
     requiresEvaluationFirst: requiresEval,
     triggerTemplate: null,
     keywordMatchEnabled: true,

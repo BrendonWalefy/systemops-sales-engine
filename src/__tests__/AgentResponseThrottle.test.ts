@@ -134,7 +134,6 @@ describe("AgentResponseThrottle — integração com Orchestrator", () => {
       name: "Lentes de resina composta",
       durationMinutes: 60,
       description: null,
-      commonObjections: [],
       requiresEvaluationFirst: true,
       triggerTemplate: null,
       keywordMatchEnabled: true,

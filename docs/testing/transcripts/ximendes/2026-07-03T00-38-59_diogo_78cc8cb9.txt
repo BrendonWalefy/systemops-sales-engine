@@ -1,0 +1,36 @@
+=================================================================
+LEAD: DIOGO | 5511964602092
+Status: in_conversation | Temperatura: warm
+Criado em: 28/06/2026, 04:04:08
+=================================================================
+
+  CONVERSA 2f9a5a29
+  Criada: 28/06/2026, 04:04:08
+  Última msg: 28/06/2026, 04:05:08
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [04:03:27] 👤 Lead 
+          Posso saber mais sobre sua empresa?
+
+  [04:04:19] 🤖 IA    [greeting]
+          Boa noite, DIOGO. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [04:05:08] 👤 Lead 
+          Valores
+
+  [04:06:24] 🤖 IA    [price_inquiry]
+          Trabalhamos com duas técnicas de lentes de resina composta. A técnica simplificada, que é a opção mais acessível, tem um investimento a partir de R$2.500 para 20 elementos. Já a técnica estratificada, que oferece um resultado mais refinado, começa a partir de R$5.000 para 20 elementos. Esses valores são iniciais e a avaliação com o Dr. Gregorie definirá o valor final do seu caso.
+          
+          Se você quiser, posso te mostrar vídeos que explicam melhor cada técnica. Nossa equipe também tem agenda disponível essa semana — posso verificar os horários para você?
+
+  [04:06:47] 🤖 IA    [price_inquiry]
+          Lentes – Técnica Simplificada
+
+  [04:06:54] 🤖 IA    [price_inquiry]
+          Lentes – Técnica Estratificada
+
+  [07:00:07] 🤖 IA    [reengagement]
+          Oi, DIOGO! Conseguiu assistir ao vídeo sobre as lentes? Temos horários disponíveis essa semana — quer que eu verifique um para você?
+

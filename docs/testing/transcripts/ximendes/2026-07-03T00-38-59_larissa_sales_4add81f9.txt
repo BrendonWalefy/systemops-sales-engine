@@ -1,0 +1,60 @@
+=================================================================
+LEAD: Larissa Sales | 5511986905114
+Status: lost | Temperatura: warm
+Criado em: 04/06/2026, 07:41:12
+=================================================================
+
+  CONVERSA 063fec2f
+  Criada: 04/06/2026, 07:41:12
+  Última msg: 15/06/2026, 14:01:32
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [07:41:05] 👤 Lead 
+          Olá bom dia
+
+  [07:41:07] 👤 Lead 
+          Tenho interesse em lentes de resina estratificadas na cor BL2. Gostaria de saber o valor aproximado para o meu caso e se vocês parcelam no boleto bancário, carnê próprio ou financeira
+
+  [07:41:16] 🤖 IA    [acknowledgment]
+          Bom dia, Larissa Sales! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [07:41:16] 🤖 IA    [price_inquiry]
+          Bom dia, Larissa Sales! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [07:59:17] 👤 Lead 
+          3
+
+  [07:59:27] 🤖 IA    [price_inquiry]
+          Os procedimentos podem ser parcelados em até 12 vezes, com os juros da operadora do cartão. Para saber os valores específicos e as condições de cada tratamento, é necessário realizar a avaliação inicial com o Dr. Gregory. 
+          
+          Os R$100 da avaliação são abatidos integralmente do tratamento caso você decida avançar. 
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [13:20:18] 👤 Lead 
+          Bom dia, qual o valor do sorriso completo?
+
+  [13:20:25] 🤖 IA    [acknowledgment]
+          Boa tarde, Larissa Sales. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [14:01:27] 👨‍⚕️ Op.  
+          Condições válidas até 26/06 - 500,00 de bônus 
+          
+          Técnica simplificada  - De 2.500,00 por 2.000,00 
+          
+          Técnica estratificada - de 5.000,00 por 4.500,00
+

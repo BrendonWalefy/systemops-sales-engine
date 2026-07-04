@@ -1,0 +1,49 @@
+=================================================================
+LEAD: Sandy | 556284276578
+Status: waiting_response | Temperatura: warm
+Criado em: 25/06/2026, 19:41:35
+=================================================================
+
+  CONVERSA 8261cd4e
+  Criada: 25/06/2026, 19:41:35
+  Última msg: 25/06/2026, 19:48:49
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [19:40:45] 👤 Lead 
+          Ola boa noite
+
+  [19:41:44] 🤖 IA    [acknowledgment]
+          Boa noite, Sandy. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [19:41:48] 👤 Lead 
+          Quero saber sobre lentes
+
+  [19:42:42] 🤖 IA    [general_question]
+          Trabalhamos com duas técnicas de lentes em resina: a Simplificada e a Estratificada. Vou te explicar rapidinho as duas para você ver qual faz mais sentido pro seu caso:
+          
+          A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo.
+          
+          A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético.
+
+  [19:43:51] 🤖 IA    [general_question]
+          Lentes – Técnica Simplificada
+
+  [19:43:59] 🤖 IA    [general_question]
+          Lentes – Técnica Estratificada
+
+  [19:45:58] 👤 Lead 
+          Ótimo obrigada e vocês também faz implantes?
+
+  [19:46:47] 🤖 IA    [general_question]
+          Sim, fazemos implantes dentários. O procedimento utiliza titânio biocompatível, que se integra ao osso, proporcionando uma substituição durável e funcional para dentes perdidos.
+          
+          Se você tiver interesse, podemos agendar uma avaliação com o Dr. Gregorie. Ele fará uma análise detalhada e poderá explicar melhor como o implante pode se encaixar no seu caso. O que acha?
+
+  [19:48:49] 👤 Lead 
+          Muito obrigada excelente.
+
+  [19:49:43] 🤖 IA    [acknowledgment]
+          Fico feliz que você tenha gostado das informações! Se precisar de mais alguma coisa, estou à disposição.
+

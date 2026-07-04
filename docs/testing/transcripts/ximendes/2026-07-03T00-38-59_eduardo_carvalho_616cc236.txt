@@ -1,0 +1,46 @@
+=================================================================
+LEAD: Eduardo Carvalho | 5511990085972
+Status: waiting_response | Temperatura: hot
+Criado em: 26/06/2026, 09:29:03
+=================================================================
+
+  CONVERSA 0d5dc406
+  Criada: 26/06/2026, 09:29:03
+  Última msg: 26/06/2026, 09:43:25
+  ai_paused=true | needs_attention=true | unclear_count=0
+  attention_reason: Operador acionou atendimento especializado
+  ------------------------------------------------------------
+  [09:28:54] 👤 Lead 
+          Oi bom dia !! Enzo seu irmão passou seu contato, sou Supervisor aqui da empresa q ele trabalha tudo bem ?
+
+  [09:29:12] 🤖 IA    [greeting]
+          Bom dia, Eduardo. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [09:32:35] 👤 Lead 
+          Gostaria de verificar sobre agendamento e valores
+
+  [09:33:12] 🤖 IA    [check_availability]
+          Entendo, Eduardo. Para que eu possa te ajudar melhor com o agendamento e os valores, você poderia me informar qual procedimento específico você gostaria de realizar?
+
+  [09:38:24] 👤 Lead 
+          Avaliação para Lente de Resina
+
+  [09:39:15] 🤖 IA    [general_question]
+          Para a avaliação para lentes de resina, temos os seguintes horários disponíveis:
+          
+          1. Sexta-feira, 26 de junho, às 12 horas
+          2. Segunda-feira, 29 de junho, às 8 horas
+          3. Segunda-feira, 29 de junho, às 12 horas
+          4. Terça-feira, 30 de junho, às 8 horas
+          5. Terça-feira, 30 de junho, às 12 horas
+          
+          Por favor, responda com o número do horário que você prefere. Esses horários ficam disponíveis por 15 minutos.
+
+  [09:43:12] 👨‍⚕️ Op.  
+          Lentes – Técnica Simplificada
+
+  [09:43:12] 👨‍⚕️ Op.  
+          Lentes – Técnica Estratificada
+

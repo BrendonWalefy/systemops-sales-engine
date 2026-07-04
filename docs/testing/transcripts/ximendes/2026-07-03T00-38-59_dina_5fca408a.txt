@@ -1,0 +1,78 @@
+=================================================================
+LEAD: Dina | 5511944560470
+Status: lost | Temperatura: warm
+Criado em: 04/06/2026, 10:02:17
+=================================================================
+
+  CONVERSA 45243d97
+  Criada: 04/06/2026, 10:02:17
+  Última msg: 04/06/2026, 10:18:24
+  ai_paused=true | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [10:02:11] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [10:02:22] 🤖 IA    [acknowledgment]
+          Bom dia, Dina! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [10:02:26] 👤 Lead 
+          Qual o valor de 20 facetas?
+
+  [10:02:33] 🤖 IA    [price_inquiry]
+          Trabalhamos com duas técnicas de lentes em resina:
+          
+          1. **Técnica Simplificada** (resina nacional): a partir de R$2.500 para 20 elementos, proporcionando um sorriso harmonioso e natural.
+          2. **Técnica Estratificada** (resina importada): a partir de R$5.000 para 20 elementos, oferecendo um resultado mais refinado e personalizado.
+          
+          Esses valores são iniciais, e a indicação ideal para o seu caso, assim como o valor final, serão definidos na avaliação com o Dr. Gregory.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [10:03:01] 👤 Lead 
+          Menu
+
+  [10:03:06] 🤖 IA    [acknowledgment]
+          Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+
+  [10:10:02] 👤 Lead 
+          1
+
+  [10:10:33] 🤖 IA    [general_question]
+          Aqui estão os procedimentos que oferecemos:
+          
+          1. Avaliação  
+          2. Botox odontológico  
+          3. Clareamento dental  
+          4. Exodontia (extração)  
+          5. Gengivoplastia  
+          6. Harmonização orofacial  
+          7. Implante dentário  
+          8. Lentes de porcelana (facetas)  
+          9. Lentes de resina composta  
+          10. Limpeza dental  
+          11. Prótese dentária  
+          12. Restauração em resina  
+          13. Tratamento de canal  
+          
+          Quer saber mais sobre algum? É só digitar o número.
+          
+          Se quiser, pode digitar *menu* para ver outras opções.
+
+  [10:18:24] 👤 Lead 
+          8
+
+  [10:18:28] 🤖 IA   
+          Ops, tive um problema técnico por aqui. Pode tentar novamente? 🙏
+
