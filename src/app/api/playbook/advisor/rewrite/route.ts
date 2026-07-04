@@ -5,7 +5,6 @@ import { composeField, type FieldTarget } from "@/core/intelligence/FieldCompose
 export const dynamic = "force-dynamic";
 
 const VALID_FIELDS: FieldTarget[] = [
-  "procedureDescription",
   "toneOfVoice",
   "commercialPolicy",
   "differentials",

@@ -9,7 +9,6 @@ type Props = {
   metricsDate: string;
   currentPlaybook: {
     specialty: string;
-    procedureDescription: string;
     toneOfVoice: string;
     differentials: string[];
     commercialPolicy: string;

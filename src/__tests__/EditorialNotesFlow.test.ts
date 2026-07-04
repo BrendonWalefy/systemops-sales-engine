@@ -7,7 +7,7 @@ describe("EditorialNotesFlow", () => {
       "COMO CONDUZIR A CONVERSA:\n- Nunca pressionar.\n- Sempre mencionar o abatimento dos R$100.";
     const text = composePlaybookText({
       notes,
-      procedureDescription: "Implante dentário e limpeza",
+      procedures: [{ name: "Implante dentário", description: null }, { name: "Limpeza", description: null }],
       differentials: ["Laboratório próprio"],
       objections: [],
     });
@@ -20,7 +20,7 @@ describe("EditorialNotesFlow", () => {
     const notes = "REGRA: nunca citar preço por mensagem.";
     const text = composePlaybookText({
       notes,
-      procedureDescription: "Clareamento dental",
+      procedures: [{ name: "Clareamento dental", description: null }],
       differentials: [],
       objections: [],
     });
@@ -34,7 +34,7 @@ describe("EditorialNotesFlow", () => {
   it("playbookText without notes does not include empty header", () => {
     const text = composePlaybookText({
       notes: null,
-      procedureDescription: "Avaliação odontológica",
+      procedures: [{ name: "Avaliação odontológica", description: null }],
       differentials: [],
       objections: [],
     });
@@ -47,7 +47,7 @@ describe("EditorialNotesFlow", () => {
   it("notes with only whitespace is ignored", () => {
     const text = composePlaybookText({
       notes: "   ",
-      procedureDescription: "Limpeza dental",
+      procedures: [{ name: "Limpeza dental", description: null }],
       differentials: [],
       objections: [],
     });
@@ -55,10 +55,9 @@ describe("EditorialNotesFlow", () => {
     expect(text.startsWith("PROCEDIMENTOS")).toBe(true);
   });
 
-  it("procedures list takes priority over procedureDescription when both provided", () => {
+  it("compõe a seção de procedimentos a partir da lista estruturada (dono único)", () => {
     const text = composePlaybookText({
       notes: "Orientação de comportamento.",
-      procedureDescription: "Fallback description",
       procedures: [
         { name: "Implante", description: "Titânio biocompatível" },
         { name: "Limpeza", description: null },
@@ -69,6 +68,5 @@ describe("EditorialNotesFlow", () => {
 
     expect(text).toContain("• Implante — Titânio biocompatível");
     expect(text).toContain("• Limpeza");
-    expect(text).not.toContain("Fallback description");
   });
 });

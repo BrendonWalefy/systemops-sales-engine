@@ -18,7 +18,6 @@ const onboardingPlaybookSchema = z.object({
     .trim()
     .min(1, "política comercial não pode ser vazia (a IA inventaria condições)"),
   toneOfVoice: z.string().trim().min(1).default("acolhedor"),
-  procedureDescription: z.string().trim().optional(),
   differentials: z.array(z.string()).default([]),
   objections: z
     .array(z.object({ objection: z.string(), response: z.string() }))

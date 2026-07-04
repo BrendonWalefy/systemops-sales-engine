@@ -12,7 +12,6 @@ const BASELINE_SCENARIOS = [
 
 type ProposedPlaybook = {
   specialty: string;
-  procedureDescription: string;
   toneOfVoice: string;
   differentials: string[];
   commercialPolicy: string;

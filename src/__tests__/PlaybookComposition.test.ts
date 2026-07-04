@@ -108,19 +108,18 @@ describe("composePlaybookText — contratos de composição", () => {
     expect(text).not.toContain("[MEDIA:");
   });
 
-  it("usa procedureDescription apenas como fallback quando não há lista de procedimentos", () => {
+  it("Item 4: o fallback procedureDescription foi aposentado — só a lista de treatments compõe procedimentos", () => {
     const withList = composePlaybookText({
-      procedureDescription: "Texto de fallback",
       procedures: [{ name: "Canal", description: null }],
     });
     expect(withList).toContain("• Canal");
-    expect(withList).not.toContain("Texto de fallback");
 
+    // Sem lista de procedimentos → nenhuma seção de procedimentos (nada de fallback).
     const withoutList = composePlaybookText({
-      procedureDescription: "Texto de fallback",
       procedures: [],
+      differentials: ["algo"],
     });
-    expect(withoutList).toContain("PROCEDIMENTOS OFERECIDOS:\nTexto de fallback");
+    expect(withoutList).not.toContain("PROCEDIMENTOS OFERECIDOS:");
   });
 
   it("retorna string vazia quando não há nenhum conteúdo — sem cabeçalhos órfãos", () => {

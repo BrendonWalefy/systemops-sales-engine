@@ -10,7 +10,6 @@ export type PlaybookGap = {
 
 export type ProposedPlaybook = {
   specialty: string;
-  procedureDescription: string;
   toneOfVoice: string;
   differentials: string[];
   commercialPolicy: string;
@@ -27,7 +26,6 @@ export type AdvisorResult = {
 
 export type CurrentPlaybook = {
   specialty: string;
-  procedureDescription: string;
   toneOfVoice: string;
   differentials: string[];
   commercialPolicy: string;
@@ -83,7 +81,6 @@ ${metrics.topUnclearMessages.length > 0 ? metrics.topUnclearMessages.map((m) => 
 ## Playbook atual
 
 Especialidade: ${currentPlaybook.specialty}
-Sobre: ${currentPlaybook.procedureDescription}
 Tom de voz: ${currentPlaybook.toneOfVoice}
 Diferenciais: ${currentPlaybook.differentials.join(", ")}
 Política comercial: ${currentPlaybook.commercialPolicy}
@@ -109,7 +106,6 @@ Responda APENAS em JSON válido com esta estrutura exata:
   ],
   "proposedPlaybook": {
     "specialty": "...",
-    "procedureDescription": "...",
     "toneOfVoice": "acolhedor" | "tecnico" | "persuasivo" | "luxo",
     "differentials": ["..."],
     "commercialPolicy": "...",

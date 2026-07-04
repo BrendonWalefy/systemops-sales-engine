@@ -190,7 +190,6 @@ export async function onboardClinic(
     name: `Onboarding — ${now.toLocaleDateString("pt-BR")}`,
     status: "active",
     specialty: cfg.specialty,
-    procedureDescription: cfg.playbook.procedureDescription ?? "",
     toneOfVoice: cfg.playbook.toneOfVoice,
     commercialPolicy: cfg.playbook.commercialPolicy,
     notes: cfg.playbook.notes ?? null,

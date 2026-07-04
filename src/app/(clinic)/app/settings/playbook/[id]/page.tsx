@@ -44,7 +44,6 @@ export default async function PlaybookEditorPage({
       bookingNoun={bookingNoun}
       initialData={{
         specialty: version.specialty ?? "",
-        procedureDescription: version.procedureDescription ?? "",
         toneOfVoice: version.toneOfVoice,
         receptionistName: version.receptionistName,
         differentials: version.differentials.length > 0 ? version.differentials : [""],

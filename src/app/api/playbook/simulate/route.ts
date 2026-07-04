@@ -34,7 +34,6 @@ type FormattedSlot = { index: number; label: string; startsAt: string; endsAt: s
 
 type PlaybookInput = {
   specialty: string;
-  procedureDescription: string;
   toneOfVoice: string;
   toneOfVoiceRaw?: string; // bypassa TONE_MAP — usado no modo produção
   receptionistName?: string;
@@ -186,7 +185,6 @@ function buildPlaybookText(p: PlaybookInput): string | null {
   const parts: string[] = [];
   if (p.notes?.trim()) parts.push(p.notes.trim());
   if (p.specialty) parts.push(`ESPECIALIDADE: ${p.specialty}`);
-  if (p.procedureDescription) parts.push(`\nSOBRE O PROCEDIMENTO:\n${p.procedureDescription}`);
   const diffs = p.differentials.filter((d) => d.trim());
   if (diffs.length > 0) parts.push(`\nDIFERENCIAIS DO NEGÓCIO:\n${diffs.map((d) => `- ${d}`).join("\n")}`);
   const objections = p.objections?.filter((o) => o.objection.trim() || o.response.trim()) ?? [];
@@ -202,7 +200,6 @@ function buildPlaybookText(p: PlaybookInput): string | null {
 function buildClinicContext(p: PlaybookInput): string {
   return [
     p.specialty && `Especialidade: ${p.specialty}`,
-    p.procedureDescription && `Sobre: ${p.procedureDescription}`,
   ]
     .filter(Boolean)
     .join("\n") || "Negócio";
@@ -395,7 +392,6 @@ export async function POST(req: NextRequest) {
       playbook = {
         specialty: editorial?.specialty ?? clinicRow?.specialty ?? "Odontologia",
         notes: editorial?.playbookText ?? undefined,
-        procedureDescription: "", // vazio: playbookText já compilou tudo
         toneOfVoice: "acolhedor", // ignorado — toneOfVoiceRaw tem prioridade
         toneOfVoiceRaw: editorial?.toneOfVoice ?? undefined,
         differentials: [],
@@ -428,7 +424,6 @@ export async function POST(req: NextRequest) {
 
       playbook = {
         specialty: activeVersion.specialty ?? "",
-        procedureDescription: activeVersion.procedureDescription ?? "",
         toneOfVoice: activeVersion.toneOfVoice ?? "acolhedor",
         receptionistName: activeVersion.receptionistName,
         differentials: (activeVersion.differentials as string[] | null) ?? [],
@@ -614,8 +609,7 @@ export async function POST(req: NextRequest) {
     // ── Contexto clínico — resolve subtype de menu (procedimentos/localização) ──
     let clinicContext = buildClinicContext(playbook);
     if (menuResolution?.subtype === "procedures") {
-      const desc = playbook.procedureDescription?.trim();
-      clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como uma lista numerada, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número. Para voltar ao menu principal, é só digitar *menu*." Sem convite para agendar.\n${desc ?? ""}`;
+      clinicContext = `Lead selecionou "Procedimentos" no menu.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como uma lista numerada, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número. Para voltar ao menu principal, é só digitar *menu*." Sem convite para agendar.`;
     } else if (menuResolution?.subtype === "location") {
       const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
       if (clinicAddress) {
@@ -651,7 +645,6 @@ export async function POST(req: NextRequest) {
       ? {
           playbookBlocksUsed: [
             playbook.specialty ? "specialty" : null,
-            playbook.procedureDescription ? "procedureDescription" : null,
             (playbook.differentials?.length ?? 0) > 0 ? "differentials" : null,
             (playbook.objections?.length ?? 0) > 0 ? "objections" : null,
             playbook.commercialPolicy ? "commercialPolicy" : null,

@@ -28,7 +28,6 @@ type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string }
 
 type EditorData = {
   specialty: string;
-  procedureDescription: string;
   toneOfVoice: string;
   receptionistName: string;
   differentials: string[];
@@ -59,13 +58,12 @@ function completude(data: EditorData): number {
   let filled = 0;
   if (data.notes.trim()) filled++;
   if (data.specialty.trim()) filled++;
-  if (data.procedureDescription.trim()) filled++;
   filled++; // toneOfVoice always has value
   if (data.receptionistName.trim() && data.receptionistName !== "Marina") filled++;
   if (data.differentials.filter((d) => d.trim()).length > 0) filled++;
   if (data.commercialPolicy.trim()) filled++;
   if (data.objections.filter((o) => o.objection.trim()).length > 0) filled++;
-  return Math.round((filled / 8) * 100);
+  return Math.round((filled / 7) * 100);
 }
 
 type ObjectionFilter = "all" | "pending";
@@ -89,7 +87,6 @@ function parseObjectionRewrite(text: string, fallback: Objection): Objection {
 function toPlaybookVersionPayload(data: EditorData): PlaybookVersionPayload {
   return {
     specialty: data.specialty || null,
-    procedureDescription: data.procedureDescription || null,
     toneOfVoice: data.toneOfVoice,
     receptionistName: data.receptionistName || "Marina",
     differentials: data.differentials.filter((d) => d.trim()),
@@ -130,7 +127,6 @@ function SimulatorPanel({ data, greetingMessage }: { data: EditorData; greetingM
           history: messages,
           playbook: {
             specialty: data.specialty,
-            procedureDescription: data.procedureDescription,
             toneOfVoice: data.toneOfVoice,
             receptionistName: data.receptionistName || undefined,
             differentials: data.differentials.filter((d) => d.trim()),
@@ -621,7 +617,7 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
 
 // ── Main editor ───────────────────────────────────────────────────────────────
 
-export function PlaybookEditorClient({ id, name, initialData, greetingMessage, businessNoun, bookingNoun }: Props) {
+export function PlaybookEditorClient({ id, name, initialData, greetingMessage, businessNoun }: Props) {
   const router = useRouter();
   const [data, setData] = useState<EditorData>(initialData);
   const { scheduleSave, flush, saving, saved, pending, error } = useReliableAutosave<PlaybookVersionPayload>({
@@ -949,29 +945,8 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
                   </FieldGroup>
                 </div>
 
-                <FieldGroup
-                  label="Sobre os procedimentos"
-                  hint={`Fallback usado quando os ${bookingNoun ? `${bookingNoun}s` : "serviços"} cadastrados não têm descrição. Descreva em 3–4 linhas o que o negócio oferece e o diferencial técnico.`}
-                >
-                  <textarea
-                    value={data.procedureDescription}
-                    onChange={(e) => updateVersion({ procedureDescription: e.target.value })}
-                    placeholder={"Clínica especializada em estética e reabilitação oral.\n• Clareamento a laser — resultado na mesma sessão, até 8 tons\n• Implantes em titânio com osseointegração de alta durabilidade\n• Lentes de resina ultrafinas sem desgaste do dente\n• Próteses com laboratório próprio — entrega em 48h"}
-                    rows={5}
-                    style={{ ...inputStyle, resize: "vertical" }}
-                  />
-                  <CowriterBox
-                    field="procedureDescription"
-                    currentValue={data.procedureDescription}
-                    clinicContext={{ specialty: data.specialty, toneOfVoice: data.toneOfVoice }}
-                    onApply={(text) => updateVersion({ procedureDescription: text })}
-                    guidedQuestions={[
-                      `Quais ${bookingNoun ? `${bookingNoun}s` : "serviços"} principais o negócio oferece?`,
-                      "Quais tecnologias ou diferenciais técnicos o cliente pode saber?",
-                      "O que deve ser explicado com cuidado para não prometer resultado?",
-                    ]}
-                  />
-                </FieldGroup>
+                {/* Item 4: campo "Sobre os procedimentos" aposentado — a descrição de
+                    cada procedimento vive no cadastro do tratamento (aba Conhecimento). */}
               </EditorSection>
 
               <EditorSection step="2" title={`Argumentos ${businessNoun ? `da ${businessNoun}` : "do negócio"}`} description="Pontos de diferenciação e regras comerciais que ajudam a conduzir o lead.">
