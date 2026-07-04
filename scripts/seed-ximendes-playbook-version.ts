@@ -120,7 +120,7 @@ const OBJECTIONS = [
   {
     objection: "Não quero pagar a avaliação",
     response:
-      "Os R$100 garantem uma consulta completa e dedicada ao seu caso — raio-x, análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você avançar. Não é custo a mais, é o primeiro passo.",
+      "Os R$100 garantem uma consulta completa e dedicada ao seu caso — análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você avançar. Não é custo a mais, é o primeiro passo.",
   },
   {
     objection: "Porcelana não é mais durável que resina?",
@@ -187,7 +187,7 @@ const TREATMENTS: TreatmentSeed[] = [
     durationMinutes: 40,
     requiresEvaluationFirst: false,
     description:
-      "Consulta inicial com o Dr. Gregorie: raio-x, análise do sorriso e plano de tratamento personalizado. R$100, abatido integralmente do tratamento se avançar.",
+      "Consulta inicial com o Dr. Gregorie: análise do sorriso e plano de tratamento personalizado.",
   },
   {
     name: "Limpeza dental",
@@ -243,7 +243,7 @@ const TREATMENTS: TreatmentSeed[] = [
     durationMinutes: 90,
     requiresEvaluationFirst: true,
     description:
-      "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível. A partir de R$2.500 / 20 elementos.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado. A partir de R$5.000 / 20 elementos.\nA indicação e o valor do caso são definidos na avaliação com o Dr. Gregorie.",
+      "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado.\nA indicação e o valor do caso são definidos na avaliação com o Dr. Gregorie.",
   },
   {
     name: "Lentes de porcelana (facetas)",
