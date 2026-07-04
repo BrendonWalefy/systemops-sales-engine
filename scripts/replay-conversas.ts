@@ -25,7 +25,7 @@ import { organizations } from "../src/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "../src/application/config/editorial-config";
 import { DrizzleTreatmentRepository } from "../src/infrastructure/repositories/drizzle-treatment-repository";
 import { IntentClassifier, type IntentType } from "../src/core/intelligence/IntentClassifier";
-import { ResponseComposer, type ActionResult } from "../src/core/intelligence/ResponseComposer";
+import { ResponseComposer, resolveComposerModel, type ActionResult } from "../src/core/intelligence/ResponseComposer";
 import { coerceBusinessIntent } from "../src/core/pipeline/ConversationOrchestrator";
 import { buildPromptContext } from "../src/core/intelligence/PromptContextBuilder";
 import { buildDemoSlots } from "../src/application/demo/generate-demo-conversation";
@@ -123,7 +123,7 @@ async function main() {
   const treatmentOptions = treatments.map((t) => ({ name: t.name, aliases: t.aliases ?? undefined }));
 
   console.log(`\n══ Replay conversacional — ${clinic.name} ══`);
-  console.log(`   playbook ativo: ${editorial ? "sim" : "NÃO (respostas vão sair vagas)"} · tratamentos: ${treatments.length}\n`);
+  console.log(`   playbook ativo: ${editorial ? "sim" : "NÃO (respostas vão sair vagas)"} · tratamentos: ${treatments.length} · composer: ${resolveComposerModel(clinic.plan)}\n`);
 
   let failures = 0;
 
@@ -162,6 +162,7 @@ async function main() {
         conversationHistory: history,
         clinic: {
           name: clinic.name,
+          plan: clinic.plan,
           specialty: editorial?.specialty ?? clinic.specialty,
           toneOfVoice: editorial?.toneOfVoice ?? null,
           playbook: editorial?.playbookText ?? null,

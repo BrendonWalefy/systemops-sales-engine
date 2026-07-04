@@ -149,8 +149,8 @@ curadas sem vergonha.
    medido via `ai_usage_costs`.
 2. **Classificador**: manter mini + guards determinísticos (padrão do produto). Se o
    harness mostrar teto de acurácia de intent mesmo com guards, benchear modelo também.
-3. Tornar `MODEL` configurável por env nos dois componentes para facilitar o A/B
-   (hoje é constante hardcoded em `IntentClassifier.ts:8` e `ResponseComposer.ts:13`).
+3. O `ResponseComposer` já escolhe modelo por plano/env e usa Responses API para GPT-5.x;
+   `IntentClassifier` continua configurável por env para benchmark, com fallback mini.
 4. **Critério de decisão**: upgrade se o delta do judge for perceptível nas situações
    críticas (objeção, medo, preço) — o custo já sabemos que é irrelevante (§4).
 

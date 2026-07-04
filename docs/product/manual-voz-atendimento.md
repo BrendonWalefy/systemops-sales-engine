@@ -7,8 +7,10 @@ playbook (`clinic-playbook-template.md`) e a avaliação de tom no harness de re
 (`npm run replay:conversas`).
 
 **Regra de ouro**: o arco de toda resposta é **acolher → responder → provar → avançar**.
-O arco está codificado no system prompt do composer (v3-arco); este manual explica o
-"porquê" e dá o repertório por situação.
+O arco e o padrão demo estão codificados no system prompt do composer
+(`composer-v4-demo-quality`); este manual explica o "porquê" e dá o repertório por
+situação. Provas específicas (casos anteriores, simulação digital, antes/depois) só
+podem aparecer se estiverem cadastradas no playbook, política ou mídia da clínica.
 
 ---
 

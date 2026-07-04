@@ -8,6 +8,7 @@ import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
 
 const DEMO_CLINIC = {
   name: "Clínica Sorriso Premium",
+  plan: "essencial" as const,
   specialty: "odontologia",
   toneOfVoice: "Informal, acolhedor e consultivo.",
   playbook: "Oferecer sempre a avaliação gratuita como primeiro passo.",
@@ -161,7 +162,7 @@ export async function runAutonomousReceptionistTurn(
   const aiCost = estimateAiCostUsdMicros({
     clinicId: "demo",
     provider: "openai",
-    model: "gpt-4o-mini",
+    model: composed.model,
     operation: "sales_conversation_analysis",
     inputTokens: composed.inputTokens,
     outputTokens: composed.outputTokens,

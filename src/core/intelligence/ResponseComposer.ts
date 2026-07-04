@@ -10,11 +10,63 @@ import type { ConversationExperience } from "@/domain/entities/clinic";
 import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 
-// Configurável por env para A/B de modelo (Fase 5 do plano de excelência
-// conversacional). Ao trocar, adicionar o preço em cost-estimator.ts.
-const MODEL = process.env.OPENAI_COMPOSER_MODEL?.trim() || "gpt-4o-mini";
-const PROMPT_VERSION = "composer-v3-arco";
+type ComposerPlan = "essencial" | "avancado" | "rede" | "custom";
+type OpenAiInvocationResult = {
+  raw: string;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+// Configurável por env para A/B e por plano comercial:
+// - OPENAI_COMPOSER_MODEL força todos os tenants (replay/benchmark).
+// - OPENAI_COMPOSER_MODEL_GROWTH/SCALE/CUSTOM ajustam planos específicos.
+// - OPENAI_COMPOSER_MODEL_PREMIUM troca Growth+ sem alterar código.
+const STANDARD_COMPOSER_MODEL = "gpt-4o-mini";
+const PREMIUM_COMPOSER_MODEL = "gpt-5.5";
+const PROMPT_VERSION = "composer-v4-demo-quality";
 const OPENAI_TIMEOUT_MS = 30_000;
+const CHAT_MAX_TOKENS = 350;
+const RESPONSES_MAX_OUTPUT_TOKENS = 700;
+
+function envModel(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value || null;
+}
+
+export function resolveComposerModel(plan?: ComposerPlan | null): string {
+  const globalOverride = envModel("OPENAI_COMPOSER_MODEL");
+  if (globalOverride) return globalOverride;
+
+  switch (plan) {
+    case "avancado":
+      return envModel("OPENAI_COMPOSER_MODEL_GROWTH")
+        ?? envModel("OPENAI_COMPOSER_MODEL_AVANCADO")
+        ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
+        ?? PREMIUM_COMPOSER_MODEL;
+    case "rede":
+      return envModel("OPENAI_COMPOSER_MODEL_SCALE")
+        ?? envModel("OPENAI_COMPOSER_MODEL_REDE")
+        ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
+        ?? PREMIUM_COMPOSER_MODEL;
+    case "custom":
+      return envModel("OPENAI_COMPOSER_MODEL_CUSTOM")
+        ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
+        ?? PREMIUM_COMPOSER_MODEL;
+    case "essencial":
+    default:
+      return envModel("OPENAI_COMPOSER_MODEL_START")
+        ?? envModel("OPENAI_COMPOSER_MODEL_ESSENCIAL")
+        ?? envModel("OPENAI_COMPOSER_MODEL_DEFAULT")
+        ?? STANDARD_COMPOSER_MODEL;
+  }
+}
+
+export function shouldUseResponsesApi(model: string): boolean {
+  const apiMode = process.env.OPENAI_COMPOSER_API?.trim().toLowerCase();
+  if (apiMode === "responses") return true;
+  if (apiMode === "chat") return false;
+  return /^gpt-5(?:[.-]|$)/.test(model);
+}
 
 export type FormattedAppointment = {
   label: string;   // "Seg 26/05 às 14h"
@@ -60,6 +112,7 @@ export type ComposerInput = {
   conversationHistory: Message[];
   clinic: {
     name: string;
+    plan?: ComposerPlan | null;
     specialty: string;
     toneOfVoice: string | null;
     playbook: string | null;
@@ -122,6 +175,8 @@ function normalizeTextReplyContent(content: string): string {
     // WhatsApp não renderiza markdown: **negrito** vira asteriscos literais.
     // O formato nativo do WhatsApp é *negrito* (auditoria jul/2026, F9).
     .replace(/\*\*(.+?)\*\*/g, "*$1*")
+    .replace(/\.\s+(-\s+)/g, ".\n$1")
+    .replace(/([.!?])\s+(\d+\.\s+)/g, "$1\n$2")
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n")
@@ -160,6 +215,56 @@ export function normalizeResponseParts(parts: ResponsePart[]): ResponsePart[] {
     result.push({ type: "text", content });
   }
   return result;
+}
+
+function normalizeProofGuardText(content: string): string {
+  return content
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
+function splitSentencesPreservingCommonAbbreviations(paragraph: string): string[] {
+  const protectedText = paragraph.replace(/\b(Dr|Dra|Sr|Sra)\./g, "$1§");
+  return protectedText
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.replace(/\b(Dr|Dra|Sr|Sra)§/g, "$1.").trim())
+    .filter(Boolean);
+}
+
+const CASE_PROOF_SUPPORT_RE = /\b(casos? anteriores?|antes e depois|fotos? de (?:resultado|pacientes?)|resultados? (?:anteriores?|reais)|portfolio)\b/;
+const CASE_PROOF_CLAIM_RE = /\b(casos? anteriores?|mostrar[^.!?]*(?:casos|resultados)|ver[^.!?]*(?:casos|resultados)|antes e depois|resultados? anteriores?)\b/;
+const SIMULATION_SUPPORT_RE = /\b(simulacao digital|desenho digital|mockup|preview)\b/;
+const SIMULATION_CLAIM_RE = /\b(simulacao digital|desenho digital|ver[^.!?]*antes de decidir)\b/;
+
+function hasUnsupportedProofClaim(sentence: string, clinicProofContent: string): boolean {
+  const normalizedSentence = normalizeProofGuardText(sentence);
+  const normalizedSource = normalizeProofGuardText(clinicProofContent);
+  const lacksCaseProof = !CASE_PROOF_SUPPORT_RE.test(normalizedSource);
+  const lacksSimulationProof = !SIMULATION_SUPPORT_RE.test(normalizedSource);
+  return (lacksCaseProof && CASE_PROOF_CLAIM_RE.test(normalizedSentence))
+    || (lacksSimulationProof && SIMULATION_CLAIM_RE.test(normalizedSentence));
+}
+
+export function removeUnsupportedProofClaims(
+  parts: ResponsePart[],
+  clinicProofContent: string,
+): ResponsePart[] {
+  if (!clinicProofContent.trim()) clinicProofContent = "";
+  return parts.flatMap<ResponsePart>((part) => {
+    if (part.type === "media") return [part];
+
+    const paragraphs = part.content
+      .split(/\n{2,}/)
+      .map((paragraph) => splitSentencesPreservingCommonAbbreviations(paragraph)
+        .filter((sentence) => !hasUnsupportedProofClaim(sentence, clinicProofContent))
+        .join(" ")
+        .trim())
+      .filter(Boolean);
+
+    const content = paragraphs.join("\n\n").trim();
+    return content ? [{ type: "text", content }] : [];
+  });
 }
 
 export type ComposedResponse = {
@@ -313,14 +418,23 @@ COMO CONDUZIR A RESPOSTA (arco de 4 passos — adapte ao contexto, sem virar fó
 3. PROVAR: quando houver evidência disponível no contexto (vídeo da biblioteca, avaliação com planejamento, experiência da equipe), use-a para sustentar a resposta. Nunca invente evidência.
 4. AVANÇAR: feche com UM próximo passo claro (e no máximo UMA pergunta, conforme a regra do modo de experiência).
 
+PADRÃO DEMO DE QUALIDADE (o objetivo é soar como uma atendente excelente, não como texto institucional):
+- PERSONALIZE O HUMANO: quando o lead trouxer casamento, medo, indicação, pressa, vergonha, compra para outra pessoa ou comparação de preço, use esse detalhe na resposta. Não responda como se fosse um lead genérico.
+- TROQUE CLICHÊ POR CONCRETO: evite frases soltas como "cada caso é único", "avaliação detalhada", "resultado de alta qualidade" e "melhor plano" se elas não vierem acompanhadas de uma prova concreta. Explique o que muda na prática: desenho/planejamento, ver antes de decidir, exames/imagem, orçamento fechado, etapas, naturalidade, segurança, condições.
+- FAÇA O VALOR SER SENTIDO: preço autorizado deve vir com uma ponte de valor ("por isso a avaliação define X", "você sai sabendo Y", "o profissional analisa Z"), não como tabela fria.
+- RESPOSTAS EMOCIONAIS PEDEM IMAGEM MENTAL: medo de artificialidade → fale de naturalidade e harmonia; medo de dor/cirurgia → fale de controle, explicação e decisão no ritmo do paciente; evento com prazo → fale de planejamento sem correria. Sem prometer resultado.
+- FECHAMENTO CONFIANTE: prefira "posso ver os horários para sua avaliação?" a encerramentos passivos como "caso tenha interesse". A pergunta final deve parecer continuação natural da conversa.
+- NÃO INVENTE PROVAS DE DEMO: só mencione simulação digital, desenho prévio, escolha de cor/transparência, casos anteriores, especialista, material de alta qualidade, atendimento exclusivo ou resultado duradouro se isso estiver explícito na política/playbook/histórico. Quando não estiver, use linguagem segura: avaliação, planejamento, naturalidade, harmonia, expectativas e orçamento.
+- EVITE LINGUAGEM DE CALL CENTER: "agradeço pelo contato", "estarei à disposição", "caso tenha interesse" e "para mais informações" deixam a conversa morna. Use frases mais naturais e diretas.
+
 ESPELHAMENTO DE REGISTRO: adapte-se ao tom do lead — humor com humor leve, formalidade com formalidade (use "senhor/senhora" se o lead usar), apreensão com calma. Reaproveite detalhes pessoais que o lead compartilhou no histórico (evento, prazo, quem indicou, o que já tentou) para personalizar — isso mostra que ele foi ouvido.
 
 INVESTIMENTO COM PRÓXIMO PASSO: ao informar um valor autorizado pela política comercial, nunca o deixe "seco": conecte-o em seguida ao passo de menor compromisso disponível (ex.: avaliação) como caminho concreto. Não esconda nem adie valores que a política autoriza informar.
 
 EXEMPLOS DO PADRÃO DE QUALIDADE (ilustram apenas o TOM e o arco — adapte à conversa; NUNCA copie valores, condições ou nomes daqui):
-- Lead com medo ("tenho medo que doa"): "Pode ficar tranquila, esse medo é super comum — e ninguém aqui ignora ele. Durante o procedimento a anestesia cuida da dor, e você sai com todas as orientações. Quer que eu veja um horário de avaliação pra você tirar as dúvidas direto com o profissional?"
-- Objeção de preço ("achei um pouco caro"): "Entendo! É um investimento mesmo — e é justamente por isso que o primeiro passo é a avaliação: nela o plano é montado pro seu caso, com as condições de pagamento certinhas. Quer que eu veja os horários?"
-- Lead adiando ("vou pensar e te falo"): "Claro, sem pressa nenhuma 😊 Fico por aqui — qualquer dúvida que surgir é só chamar. Se quiser, te aviso quando abrirem novos horários."
+- Lead com medo ("tenho medo que doa"): "Pode ficar tranquila, esse medo é super comum — e ninguém aqui ignora ele. O profissional explica cada etapa antes, cuida da anestesia e você não decide nada sem entender. Posso ver um horário de avaliação para você tirar isso com calma?"
+- Objeção de preço ("achei um pouco caro"): "Entendo! É um investimento mesmo — e é por isso que a avaliação é tão importante: ela mostra o que o seu caso precisa de verdade, o que dá para priorizar e as condições certas. Posso ver os horários para você conversar com o profissional?"
+- Lead adiando ("vou pensar e te falo"): "Claro, sem pressa nenhuma 😊 Fico por aqui — qualquer dúvida que surgir é só chamar. Se fizer sentido, posso te avisar quando abrirem novos horários."
 
 ${experienceRules}
 
@@ -438,6 +552,8 @@ Demonstre empatia, informe que irá acionar a equipe imediatamente e diga que al
         return `AÇÃO EXECUTADA: Pedido comercial sensível requer atenção humana — a equipe já foi avisada em paralelo.
 MOTIVO DO HANDOFF: ${result.handoffReason ?? "objeção ou negociação de preço"}.
 REGRA CRÍTICA: a resposta ao lead NÃO pode ser só "a equipe vai responder". Antes de mencionar a equipe, responda vendendo: valide a comparação/objeção sem concordar nem ser defensivo; reancore o valor com base na política comercial e no histórico (técnica, material, planejamento, experiência, condições autorizadas); então conduza para o degrau de menor compromisso disponível, normalmente a avaliação.
+PADRÃO DE QUALIDADE: não use "cada caso é único" como clichê. Se falar isso, explique concretamente o que muda no caso do lead (quantos dentes, técnica, material, planejamento, condições, simulação, exames ou orçamento fechado). A resposta precisa fazer o investimento parecer mais compreensível, não apenas mais caro.
+FIDELIDADE COMERCIAL: não use superlativos genéricos ("material de alta qualidade", "atendimento exclusivo", "resultado duradouro", "especialista", "o melhor") a menos que essa prova esteja explícita na política/playbook. Prefira provas seguras do próprio fluxo: avaliação, planejamento, técnica indicada, orçamento fechado e condições autorizadas.
 FIDELIDADE: use apenas valores, condições e próximos passos que existam na política comercial ou no histórico. Se não houver condição específica autorizada, diga que a equipe foi avisada para avaliar a condição, mas mantenha o próximo passo consultivo. Máximo 3 frases.`;
       }
       const context = result.handoffReason
@@ -460,14 +576,14 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
         ? `REGRA CRÍTICA — LEAD NÃO ESPECIFICOU A VARIAÇÃO: o termo usado corresponde a mais de uma opção do catálogo (${ambiguousMatches.map((n) => `"${n}"`).join(", ")}). Apresente o valor e as condições de TODAS essas opções na mesma resposta, deixando claro o que diferencia cada uma — NUNCA responda com apenas uma delas e omita as demais. Só aprofunde em uma única opção se o lead perguntar especificamente por ela depois.`
         : "";
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço${result.identifiedTreatment ? ` de "${result.identifiedTreatment}"` : ""}.
-Apresente os valores e condições descritos na política comercial do sistema. REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados. Isso inclui manutenção/ajuste de trabalho já realizado (polimento, retoque, reparo, troca): nesses casos NUNCA responda com o preço do procedimento base do catálogo — o lead não está comprando o procedimento, está mantendo um que já fez.
+Apresente os valores e condições descritos na política comercial do sistema. NÃO entregue uma lista seca de preços: explique em linguagem natural o que o valor cobre ou por que o valor final depende da avaliação, usando apenas fatos disponíveis. Se houver avaliação, explique o que ela entrega na prática (ex: planejamento, análise, orçamento fechado, condições, próximos passos) em vez de apenas dizer "avaliação detalhada". REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados. Isso inclui manutenção/ajuste de trabalho já realizado (polimento, retoque, reparo, troca): nesses casos NUNCA responda com o preço do procedimento base do catálogo — o lead não está comprando o procedimento, está mantendo um que já fez.
 REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda especificamente sobre o procedimento perguntado agora. Se a conversa mencionou outro procedimento antes (inclusive se o lead rejeitou ou corrigiu esse procedimento anterior, ex: "não é isso", "não é X"), NÃO volte a falar dele nem misture os dois — a menos que o lead peça explicitamente uma comparação entre ambos.
 ${ambiguityInstruction}
 ${installmentInstruction}
 ${treatmentMediaInstruction}
-SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes.
+SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes. Em seguida, traga de volta para o degrau seguro: avaliação para ver o que o caso realmente precisa e quais condições fazem sentido.
 SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o serviço como se o destinatário fosse o cliente; sugira uma visita presencial para que a equipe avalie o caso da pessoa real.
-${isConcierge ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Exemplo: 'Nossa equipe tem agenda disponível essa semana — posso verificar os horários para você?'" : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
+${isConcierge ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Prefira um fechamento confiante e humano: 'posso ver os horários para sua avaliação?' Evite encerramentos passivos como 'caso tenha interesse'." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
     }
 
 case "general_question":
@@ -477,17 +593,19 @@ REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda sobre o procedime
 PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CLÍNICA contêm uma sequência específica para o assunto perguntado (ex: trigger de procedimento com passos obrigatórios). Se sim, siga a sequência COMPLETA — incluindo perguntas de qualificação — sem substituí-la por um convite de avaliação ou agendamento.
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
 PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
+SE O LEAD EXPRESSAR MEDO DE RESULTADO ARTIFICIAL: acolha o receio e fale de naturalidade/harmonia sem inventar processos específicos. Só diga que escolhe cor/transparência, mostra casos anteriores ou faz simulação se isso estiver nas ORIENTAÇÕES DA CLÍNICA.
 Responda de forma informativa e acolhedora. ${isConcierge ? "Após responder a dúvida, conduza ativamente para o próximo passo: se o assunto for um procedimento estético ou de alto valor e o lead demonstrou interesse genuíno, ofereça gentilmente uma avaliação presencial como próximo passo natural — sem pressionar, sem mencionar horários específicos. Só pule esta etapa se as ORIENTAÇÕES DA CLÍNICA definirem uma sequência diferente para este momento." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
     case "greeting":
       return `AÇÃO EXECUTADA: Lead enviou saudação — primeiro contato ou reinício de conversa.
-Use a saudação temporal correta com base no HORÁRIO ATUAL indicado no sistema: entre 05h e 12h → "Bom dia", entre 12h e 18h → "Boa tarde", fora desse intervalo (incluindo madrugada) → "Boa noite". Se o nome do lead estiver disponível no sistema, inclua-o logo após a saudação (ex: "Boa tarde, João!"). Seja caloroso, se apresente brevemente se for o primeiro contato e pergunte como pode ajudar. Se há histórico de conversa, apenas cumprimente e continue — não reinicie do zero.`;
+Use a saudação temporal correta com base no HORÁRIO ATUAL indicado no sistema: entre 05h e 12h → "Bom dia", entre 12h e 18h → "Boa tarde", fora desse intervalo (incluindo madrugada) → "Boa noite". Se o nome do lead estiver disponível no sistema, inclua-o logo após a saudação (ex: "Boa tarde, João!"). Seja caloroso e se apresente brevemente se for o primeiro contato.
+REGRA CRÍTICA: se a mesma mensagem já contém procedimento, pergunta clara ou contexto pessoal (ex: casamento, medo, indicação, "vocês fazem X?"), responda esse conteúdo antes de qualquer pergunta genérica. Não pule direto para agenda nesse primeiro turno; ofereça explicar as opções ou o funcionamento como próximo passo natural. PROIBIDO mencionar "ver horários", "agenda", "marcar" ou "agendar" nesse primeiro turno, a menos que o lead tenha pedido explicitamente para marcar. Se há histórico de conversa, apenas cumprimente e continue — não reinicie do zero.`;
 
     case "acknowledgment":
       return `AÇÃO EXECUTADA: Lead enviou reconhecimento mid-conversa ("ok", "blz", "entendi", "certo", "obrigado" após info) ou saudação isolada com histórico ativo.
 REGRA PRIORITÁRIA: se a última mensagem do lead for EXATAMENTE uma saudação temporal ("bom dia", "boa tarde", "boa noite"), OBRIGATORIAMENTE comece a resposta com a mesma saudação (ex: "Boa tarde! Estarei por aqui."). Saudações genéricas como "oi", "olá", "ei", "hey" NÃO são saudações temporais — não adicione "Bom dia/Boa tarde/Boa noite" nesse caso.
-Nos demais casos, responda com UMA frase curta e calorosa SEM saudação temporal. NÃO faça perguntas. NÃO use "Como posso ajudar?". NÃO reinicie a conversa.
+Nos demais casos, responda com UMA frase curta e calorosa SEM saudação temporal. Se o lead disse que vai pensar, valide sem pressão e deixe a porta aberta de forma natural. Exemplo de tom: "Claro, sem pressa nenhuma 😊 Qualquer dúvida que surgir é só me chamar." NÃO use "fico à disposição", "estou por aqui, caso", "caso tenha interesse", "mais informações" ou "Como posso ajudar?". NÃO faça perguntas. NÃO reinicie a conversa.
 PROIBIDO ABSOLUTO: NÃO mencione agendamentos, horários, datas ou confirmações de consulta — independente do histórico da conversa. Confirmações de agendamento só ocorrem via ação dedicada do sistema.`;
 
     case "farewell":
@@ -629,6 +747,7 @@ export class ResponseComposer {
   }
 
   async compose(input: ComposerInput): Promise<ComposedResponse> {
+    const model = resolveComposerModel(input.clinic.plan);
     const systemPrompt = buildSystemPrompt(input);
     const actionContext = buildActionContext(
       input.actionResult,
@@ -657,34 +776,39 @@ export class ResponseComposer {
     // Timeout/flake da API ou choices vazio produziam resposta vazia silenciosa
     // enviada ao lead. Retry único e, persistindo vazio, throw — o Orchestrator
     // tem fallback determinístico próprio.
-    let response: OpenAI.Chat.ChatCompletion | null = null;
+    let invocation: OpenAiInvocationResult | null = null;
     let raw = "";
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 2 && !raw; attempt++) {
       try {
-        response = await this.client.chat.completions.create({
-          model: MODEL,
-          temperature: 0.5,
-          max_tokens: 350,
-          messages,
-        });
-        raw = response.choices[0]?.message?.content?.trim() ?? "";
+        invocation = shouldUseResponsesApi(model)
+          ? await this.createWithResponsesApi(model, systemPrompt, recentHistory, actionContext)
+          : await this.createWithChatCompletions(model, messages);
+        raw = invocation.raw.trim();
       } catch (err) {
         lastError = err;
         console.warn(`[ResponseComposer] Tentativa ${attempt + 1} falhou:`, err instanceof Error ? err.message : err);
       }
     }
 
-    if (!raw || !response) {
+    if (!raw || !invocation) {
       throw lastError instanceof Error
         ? lastError
         : new Error("[ResponseComposer] Resposta vazia da API após retry");
     }
 
+    const clinicProofContent = [
+      input.clinic.playbook,
+      input.clinic.commercialPolicy,
+      ...(input.clinic.mediaLibrary ?? []).map((media) => media.title),
+    ].filter(Boolean).join("\n");
     const parts = normalizeResponseParts(
-      guardAgainstSchedulingLeak(
-        parseIntoParts(raw),
-        input.actionResult,
+      removeUnsupportedProofClaims(
+        guardAgainstSchedulingLeak(
+          parseIntoParts(raw),
+          input.actionResult,
+        ),
+        clinicProofContent,
       ),
     );
     const mediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
@@ -698,10 +822,61 @@ export class ResponseComposer {
       parts,
       text,
       mediaIds,
-      model: MODEL,
+      model,
       promptVersion: PROMPT_VERSION,
+      inputTokens: invocation.inputTokens,
+      outputTokens: invocation.outputTokens,
+    };
+  }
+
+  private async createWithChatCompletions(
+    model: string,
+    messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  ): Promise<OpenAiInvocationResult> {
+    const response = await this.client.chat.completions.create({
+      model,
+      temperature: 0.5,
+      max_tokens: CHAT_MAX_TOKENS,
+      messages,
+    });
+
+    return {
+      raw: response.choices[0]?.message?.content?.trim() ?? "",
       inputTokens: response.usage?.prompt_tokens ?? 0,
       outputTokens: response.usage?.completion_tokens ?? 0,
+    };
+  }
+
+  private async createWithResponsesApi(
+    model: string,
+    systemPrompt: string,
+    recentHistory: Message[],
+    actionContext: string,
+  ): Promise<OpenAiInvocationResult> {
+    const input: OpenAI.Responses.ResponseInput = [
+      ...recentHistory.map((m): OpenAI.Responses.EasyInputMessage => ({
+        role: m.author === "lead" ? "user" : "assistant",
+        content: m.body,
+      })),
+      {
+        role: "user",
+        content: `[INSTRUÇÃO INTERNA — NÃO VISÍVEL AO LEAD]\nANTES DE REDIGIR: releia as mensagens anteriores. Se uma informação já foi mencionada (valor, parcelas, condições, endereço), OMITA-a — a menos que a mensagem atual do lead seja uma pergunta explícita sobre esse mesmo assunto. Se a ação/política/playbook trouxer valores, técnicas ou condições obrigatórias ainda não comunicadas sobre o assunto atual, inclua-os exatamente.\n\n${actionContext}\n\nEscreva a resposta agora:`,
+      },
+    ];
+
+    const response = await this.client.responses.create({
+      model,
+      instructions: systemPrompt,
+      input,
+      max_output_tokens: RESPONSES_MAX_OUTPUT_TOKENS,
+      reasoning: { effort: "low" },
+      text: { verbosity: "medium" },
+    });
+
+    return {
+      raw: response.output_text.trim(),
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
     };
   }
 }

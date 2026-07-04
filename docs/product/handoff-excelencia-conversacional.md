@@ -64,11 +64,21 @@ backlog o radar de fechamento no Inbox (P2.13).
      de registro + preço com degrau de baixo compromisso (ver plano §2, as 7 técnicas).
    - 3 exemplares universais de tom (medo, objeção de preço, "vou pensar") SEM dados de
      clínica — comportamento universal vive no prompt (AGENTS.md §Sources of Truth).
-   - Bump `PROMPT_VERSION` para `"composer-v3-arco"`.
-4. **MODEL por env** (Fase 5 prep): `OPENAI_COMPOSER_MODEL` / `OPENAI_CLASSIFIER_MODEL`
-   com fallback `"gpt-4o-mini"` em `ResponseComposer.ts:13` e `IntentClassifier.ts:8`.
-   ATENÇÃO: `cost-estimator.ts` só precifica gpt-4o-mini e gpt-4.1-mini — adicionar
-   preço do modelo novo em `AI_MODEL_PRICES` antes de qualquer A/B, senão custo = 0.
+   - Bump `PROMPT_VERSION` para `"composer-v4-demo-quality"`: arco + padrão demo
+     (calor, prova concreta, fechamento ativo) e guarda contra provas não cadastradas
+     como "casos anteriores" ou "simulação" quando não existem no playbook/mídia.
+4. **Modelo do composer por plano + env** (Fase 5):
+   - `OPENAI_COMPOSER_MODEL` força todos os planos no replay/A/B.
+   - Sem override global: Start (`essencial`) usa `gpt-4o-mini`; Growth (`avancado`),
+     Scale (`rede`) e `custom` usam `gpt-5.5` no `ResponseComposer`.
+   - Overrides finos: `OPENAI_COMPOSER_MODEL_START`, `OPENAI_COMPOSER_MODEL_GROWTH`,
+     `OPENAI_COMPOSER_MODEL_SCALE`, `OPENAI_COMPOSER_MODEL_CUSTOM` ou
+     `OPENAI_COMPOSER_MODEL_PREMIUM`.
+   - GPT-5.x usa Responses API no composer; modelos antigos seguem no Chat Completions.
+   - `cost-estimator.ts` já precifica `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.4-mini`,
+     `gpt-5.4` e `gpt-5.5`. Ao testar outro modelo, adicionar em `AI_MODEL_PRICES`.
+   - O `IntentClassifier` continua com `OPENAI_CLASSIFIER_MODEL` e fallback
+     `gpt-4o-mini`; regra vigente: manter mini + guards até benchmark provar necessidade.
 5. **Harness de replay** (`scripts/replay-conversas.ts`, npm script `replay:conversas`):
    - Roda o pipeline real (IntentClassifier → coerceBusinessIntent → ação → Composer),
      como `generate-demo-conversation.ts` faz, com o editorial config de uma clínica
@@ -134,7 +144,8 @@ gh pr create --base main ...            # UM PR só
    após "Não é lentes") — mexe no sender-worker/fila; mudança arriscada, fazer isolada.
 4. **Fase 4 completa** — LLM-judge com rubrica de 5 eixos sobre o harness de replay;
    golden set = curadas da demo.
-5. **Fase 5** — A/B de modelo no composer via harness (lembrar cost-estimator).
+5. **Fase 5** — A/B de modelo no composer via harness; validar `gpt-5.5` contra demo e
+   transcrições reais antes de promover como padrão em mais planos.
 6. **Implementar itens 1-3 da estratégia de preenchimento** (caixa de perguntas,
    captura de correção, medidor de completude).
 

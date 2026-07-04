@@ -11,11 +11,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const createMock = vi.fn();
+const responsesCreateMock = vi.fn();
 
 vi.mock("openai", () => {
   return {
     default: class {
       chat = { completions: { create: createMock } };
+      responses = { create: responsesCreateMock };
     },
   };
 });
@@ -40,7 +42,14 @@ function composerInput() {
 }
 
 beforeEach(() => {
+  vi.unstubAllEnvs();
+  vi.stubEnv("OPENAI_COMPOSER_MODEL", "");
+  vi.stubEnv("OPENAI_COMPOSER_MODEL_GROWTH", "");
+  vi.stubEnv("OPENAI_COMPOSER_MODEL_SCALE", "");
+  vi.stubEnv("OPENAI_COMPOSER_MODEL_PREMIUM", "");
+  vi.stubEnv("OPENAI_COMPOSER_API", "");
   createMock.mockReset();
+  responsesCreateMock.mockReset();
 });
 
 describe("ResponseComposer — retry e erro em resposta vazia", () => {
@@ -99,6 +108,24 @@ describe("ResponseComposer — retry e erro em resposta vazia", () => {
 
     const composer = new ResponseComposer();
     await expect(composer.compose(composerInput())).rejects.toThrow("ECONNRESET");
+  });
+
+  it("usa Responses API quando o modelo do composer é GPT-5", async () => {
+    vi.stubEnv("OPENAI_COMPOSER_MODEL", "gpt-5.5");
+    responsesCreateMock.mockResolvedValueOnce({
+      output_text: "Resposta premium",
+      usage: { input_tokens: 11, output_tokens: 6 },
+    });
+
+    const composer = new ResponseComposer();
+    const result = await composer.compose(composerInput());
+
+    expect(result.text).toBe("Resposta premium");
+    expect(result.model).toBe("gpt-5.5");
+    expect(result.inputTokens).toBe(11);
+    expect(result.outputTokens).toBe(6);
+    expect(responsesCreateMock).toHaveBeenCalledTimes(1);
+    expect(createMock).not.toHaveBeenCalled();
   });
 });
 

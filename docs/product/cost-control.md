@@ -58,7 +58,7 @@ pelos preços em `docs/product/pricing-strategy.md`). "Driver" = o que faz o cus
 | Serviço | Modelo de cobrança | Custo atual | Driver de custo |
 |---|---|---|---|
 | Z-API | R$79,99 / instância (1 número) | R$79,99/clínica | nº de números conectados — linear por clínica |
-| OpenAI (GPT-4o-mini + Whisper + TTS-1-HD) | pay-as-you-go por token/áudio | ~R$3/mês (piloto) | volume de conversas × tamanho do histórico; áudios transcritos |
+| OpenAI (LLM + Whisper + TTS-1-HD) | pay-as-you-go por token/áudio | Start ~R$3/mês no piloto; Growth/Scale com composer premium ainda fica na ordem de dezenas de reais/mês | volume de conversas × tamanho do histórico; modelo do `ResponseComposer`; áudios transcritos |
 | **ElevenLabs / B-WAVE** | por crédito; **Flash v2.5 ≈ 0,5 crédito/char** | **~$0,12/1k chars no Pro** (~R$0,66) | modo de voz (`impact` < `mix` < `full`) × volume falado. Plano: Pro $99/600k créditos → Scale $299/1,8M. Maior driver variável do Growth. |
 | Vercel | Pro flat US$20/mês | ~R$110/mês (conta toda) | bandwidth/execução; serverless escala — sem gatilho de troca no horizonte |
 | Vercel Blob | Free (1GB / 5GB egress) → pago | R$0 hoje | mídia armazenada (TTL de 90 dias segura o crescimento) |
@@ -166,6 +166,19 @@ o pior caso (1 instância paga por clínica) — a partir da 2ª clínica ele ca
 para Evolution API self-hosted (ver `docs/operations/infra-scaling-thresholds.md`). ElevenLabs
 não entra aqui (Start usa voz OpenAI); para clínicas Growth, somar o driver de voz premium
 da Tabela Mestre acima.
+
+### Modelos do ResponseComposer
+
+O roteamento vigente fica em `ResponseComposer.resolveComposerModel()`:
+
+- Start (`essencial`): `gpt-4o-mini`, salvo override por `OPENAI_COMPOSER_MODEL_START`.
+- Growth (`avancado`), Scale (`rede`) e `custom`: `gpt-5.5`, salvo override por
+  `OPENAI_COMPOSER_MODEL_GROWTH`, `OPENAI_COMPOSER_MODEL_SCALE`,
+  `OPENAI_COMPOSER_MODEL_CUSTOM` ou `OPENAI_COMPOSER_MODEL_PREMIUM`.
+- `OPENAI_COMPOSER_MODEL` força todos os planos e é o caminho para replay/A/B.
+
+`cost-estimator.ts` precisa conter todo modelo liberado em produção. Hoje precifica
+`gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5.4-mini`, `gpt-5.4` e `gpt-5.5`.
 
 ---
 

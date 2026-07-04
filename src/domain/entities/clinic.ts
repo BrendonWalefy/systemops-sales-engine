@@ -40,6 +40,7 @@ export type Organization = {
   id: string;
   name: string;
   specialty: string;
+  plan?: "essencial" | "avancado" | "rede" | "custom";
   segment: string;
   city: string | null;
   address: string | null;

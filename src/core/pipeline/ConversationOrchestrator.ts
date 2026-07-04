@@ -1107,6 +1107,7 @@ function buildOrganization(row: ClinicRow): Organization {
     id: row.id,
     name: row.name,
     specialty: row.specialty,
+    plan: row.plan,
     segment: row.segment,
     city: row.city,
     address: row.address ?? null,
@@ -1580,6 +1581,7 @@ export class ConversationOrchestrator {
               conversationHistory: photoHistory,
               clinic: {
                 name: clinic.name,
+                plan: clinic.plan,
                 specialty: editorial?.specialty ?? clinic.specialty,
                 toneOfVoice: editorial?.toneOfVoice ?? null,
                 playbook: editorial?.playbookText ?? null,
@@ -1633,6 +1635,7 @@ export class ConversationOrchestrator {
         conversationHistory: mediaHistory,
         clinic: {
           name: clinic.name,
+          plan: clinic.plan,
           specialty: editorial?.specialty ?? clinic.specialty,
           toneOfVoice: editorial?.toneOfVoice ?? null,
           playbook: editorial?.playbookText ?? null,
@@ -1830,6 +1833,7 @@ export class ConversationOrchestrator {
               conversationHistory: allMessages.slice(-4),
               clinic: {
                 name: clinic.name,
+                plan: clinic.plan,
                 specialty: editorial?.specialty ?? clinic.specialty,
                 toneOfVoice: editorial?.toneOfVoice ?? null,
                 playbook: editorial?.playbookText ?? null,
@@ -1853,6 +1857,7 @@ export class ConversationOrchestrator {
               conversationHistory: allMessages.slice(-4),
               clinic: {
                 name: clinic.name,
+                plan: clinic.plan,
                 specialty: editorial?.specialty ?? clinic.specialty,
                 toneOfVoice: editorial?.toneOfVoice ?? null,
                 playbook: editorial?.playbookText ?? null,
@@ -2125,6 +2130,7 @@ export class ConversationOrchestrator {
     let replyText = "";
     let composerInputTokens = 0;
     let composerOutputTokens = 0;
+    let composerModel = "gpt-4o-mini";
     // Listas numeradas de horários são muito mais claras em texto do que em voz —
     // nunca sintetizar áudio para essas respostas, independente do modo B-WAVE.
     let forceTextOnlyReply = false;
@@ -2162,26 +2168,28 @@ export class ConversationOrchestrator {
         conversationHistory: allMessagesForContext,
         clinic: {
           name: clinic.name,
-            specialty: editorial?.specialty ?? clinic.specialty,
-            toneOfVoice: editorial?.toneOfVoice ?? null,
-            playbook: editorial?.playbookText ?? null,
-            commercialPolicy: editorial?.commercialPolicy ?? null,
-            installmentTable: clinic.installmentRates && editorial?.commercialPolicy
-              ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
-              : null,
-            mediaLibrary: editorial?.mediaLibrary ?? [],
-            receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-          },
-          context: promptContext,
-          leadName: extractFirstName(lead.name),
-          timezone,
-          isFirstMessage,
-          conversationExperience: experience,
-          resumedFromHumanTakeover,
-          voiceResponseEnabled: voiceEnabled,
-        });
+          plan: clinic.plan,
+          specialty: editorial?.specialty ?? clinic.specialty,
+          toneOfVoice: editorial?.toneOfVoice ?? null,
+          playbook: editorial?.playbookText ?? null,
+          commercialPolicy: editorial?.commercialPolicy ?? null,
+          installmentTable: clinic.installmentRates && editorial?.commercialPolicy
+            ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
+            : null,
+          mediaLibrary: editorial?.mediaLibrary ?? [],
+          receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+        },
+        context: promptContext,
+        leadName: extractFirstName(lead.name),
+        timezone,
+        isFirstMessage,
+        conversationExperience: experience,
+        resumedFromHumanTakeover,
+        voiceResponseEnabled: voiceEnabled,
+      });
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
+      composerModel = composed.model;
       composedMediaIds = composed.mediaIds;
       composedParts = composed.parts;
       return composed.text;
@@ -3175,7 +3183,7 @@ export class ConversationOrchestrator {
       await usageCostTracker.trackAiUsage({
         clinicId,
         provider: "openai",
-        model: "gpt-4o-mini",
+        model: composerModel,
         operation: "sales_conversation_analysis",
         inputTokens: composerInputTokens,
         outputTokens: composerOutputTokens,

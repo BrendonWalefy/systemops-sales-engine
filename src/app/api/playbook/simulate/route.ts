@@ -451,6 +451,7 @@ export async function POST(req: NextRequest) {
           defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
           menuItems: organizations.menuItems,
           address: organizations.address,
+          plan: organizations.plan,
         })
         .from(organizations)
         .where(eq(organizations.id, clinicLookupId))
@@ -628,6 +629,7 @@ export async function POST(req: NextRequest) {
           conversationHistory,
           clinic: {
             name: clinicName,
+            plan: clinic?.plan ?? null,
             specialty: playbook.specialty || "Odontologia",
             toneOfVoice: playbook.toneOfVoiceRaw ?? TONE_MAP[playbook.toneOfVoice] ?? playbook.toneOfVoice,
             playbook: buildPlaybookText(playbook),

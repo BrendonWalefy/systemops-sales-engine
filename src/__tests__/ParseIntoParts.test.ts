@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseIntoParts, normalizeResponseParts } from "@/core/intelligence/ResponseComposer";
+import {
+  parseIntoParts,
+  normalizeResponseParts,
+  removeUnsupportedProofClaims,
+} from "@/core/intelligence/ResponseComposer";
 
 describe("parseIntoParts — extração de partes text/media do output do LLM", () => {
   it("texto puro sem tags retorna uma única parte de texto", () => {
@@ -110,6 +114,24 @@ describe("normalizeResponseParts — higiene de saída (auditoria jul/2026, F9)"
     ]);
   });
 
+  it("quebra bullets colados na mesma linha", () => {
+    const parts = normalizeResponseParts([
+      { type: "text", content: "- Opção A: R$ 100. - Opção B: R$ 200." },
+    ]);
+    expect(parts).toEqual([
+      { type: "text", content: "- Opção A: R$ 100.\n- Opção B: R$ 200." },
+    ]);
+  });
+
+  it("quebra lista numerada colada na mesma linha", () => {
+    const parts = normalizeResponseParts([
+      { type: "text", content: "1. Opção A: R$ 100. 2. Opção B: R$ 200." },
+    ]);
+    expect(parts).toEqual([
+      { type: "text", content: "1. Opção A: R$ 100.\n2. Opção B: R$ 200." },
+    ]);
+  });
+
   it("remove parte de texto que é só conectivo órfão entre mídias (caso Cassia/Diva)", () => {
     // "posso te mostrar: [MEDIA:a] e [MEDIA:b] ." → o "e" e o "." órfãos somem
     const parts = normalizeResponseParts(
@@ -155,5 +177,31 @@ describe("normalizeResponseParts — higiene de saída (auditoria jul/2026, F9)"
       { type: "text", content: "Trabalhamos com resina e porcelana." },
     ]);
     expect(parts).toEqual([{ type: "text", content: "Trabalhamos com resina e porcelana." }]);
+  });
+});
+
+describe("removeUnsupportedProofClaims — não promete prova visual sem fonte", () => {
+  it("remove frase sobre casos anteriores quando o playbook não autoriza", () => {
+    const parts = removeUnsupportedProofClaims([
+      {
+        type: "text",
+        content:
+          "A avaliação ajuda a entender seu sorriso. Além disso, o Dr. Gregorie pode mostrar casos anteriores para você ver os resultados. Posso ver os horários?",
+      },
+    ], "Política: avaliação com planejamento e orçamento fechado.");
+
+    expect(parts).toEqual([
+      { type: "text", content: "A avaliação ajuda a entender seu sorriso. Posso ver os horários?" },
+    ]);
+  });
+
+  it("preserva casos anteriores quando isso está cadastrado no conteúdo da clínica", () => {
+    const parts = removeUnsupportedProofClaims([
+      { type: "text", content: "Na avaliação, o profissional pode mostrar casos anteriores." },
+    ], "Playbook: mostrar casos anteriores durante a avaliação.");
+
+    expect(parts).toEqual([
+      { type: "text", content: "Na avaliação, o profissional pode mostrar casos anteriores." },
+    ]);
   });
 });

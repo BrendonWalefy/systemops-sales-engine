@@ -226,6 +226,7 @@ async function processOneFollowUp(
     conversationHistory,
     clinic: {
       name: clinic.name,
+      plan: clinic.plan,
       specialty: editorial?.specialty ?? clinic.specialty,
       toneOfVoice: editorial?.toneOfVoice ?? null,
       playbook: editorial?.playbookText ?? null,
