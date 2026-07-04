@@ -272,6 +272,13 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
 
   const now = new Date();
 
+  // Quiet hours: fora da janela de contato os follow-ups continuam pending —
+  // a próxima execução dentro da janela os despacha.
+  if (!timezone.isWithinContactWindow(now)) {
+    console.log(`[FollowUpDispatcher] fora da janela de contato (clinic=${clinicId}, tz=${clinic.timezone})`);
+    return { clinicId, dispatched: 0, failed: 0, total: 0 };
+  }
+
   const staleCutoff = new Date(now.getTime() - 30 * 60_000);
   const recovered = await followUpRepository.recoverStaleSending({ clinicId, olderThan: staleCutoff });
   if (recovered > 0) {

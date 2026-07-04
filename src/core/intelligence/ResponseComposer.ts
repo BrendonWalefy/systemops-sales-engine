@@ -40,7 +40,7 @@ export type ActionResult =
   | { type: "greeting" }
   | { type: "acknowledgment" }
   | { type: "farewell" }
-  | { type: "slots_expired"; freshSlots: FormattedSlot[] }
+  | { type: "slots_expired"; freshSlots: FormattedSlot[]; preferredSlotIndex?: number | null }
   | { type: "slot_taken_reoffered"; newSlots: FormattedSlot[] }
   | { type: "reengagement"; lastAppointmentLabel: string }
   | { type: "appointment_reminder"; appointmentLabel: string }
@@ -442,11 +442,14 @@ Responda com despedida calorosa em UMA frase. Deixe a porta aberta para contato 
 
     case "slots_expired": {
       const slotList = result.freshSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
-      return `AÇÃO EXECUTADA: A oferta de horários expirou (lead demorou para responder).
-Informe gentilmente que o horário reservado não está mais disponível e apresente estes novos horários disponíveis.
+      const preferredHint = result.preferredSlotIndex
+        ? `\nO HORÁRIO QUE O LEAD PEDIU CONTINUA DISPONÍVEL — é a opção ${result.preferredSlotIndex}. Destaque isso na introdução (ex: "o horário que você pediu ainda está livre — é a opção ${result.preferredSlotIndex}") e pergunte se ele confirma respondendo com o número.`
+        : "";
+      return `AÇÃO EXECUTADA: A reserva anterior de horários expirou (os horários ficam reservados por 15 minutos) e a lista foi ATUALIZADA.
+Informe gentilmente que a reserva expirou e apresente a lista atualizada. REGRA CRÍTICA: NÃO diga que um horário "não está mais disponível" — todos os horários abaixo ESTÃO disponíveis agora, inclusive se algum coincidir com o que o lead pediu antes.${preferredHint}
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
 FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
-NOVOS HORÁRIOS:
+HORÁRIOS ATUALIZADOS:
 ${slotList}`;
     }
 

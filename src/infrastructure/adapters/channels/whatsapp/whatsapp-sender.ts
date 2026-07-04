@@ -3,6 +3,12 @@ import { sendZApiTextMessage, sendZApiMediaMessage } from "./zapi-channel-adapte
 import type { ClinicChannelConfig } from "./channel-config";
 import type { MediaType } from "@/application/ports/channel-adapter";
 
+// WhatsApp usa *negrito* com um asterisco; o LLM às vezes emite markdown
+// (**negrito**), que o WhatsApp renderiza como asteriscos literais.
+export function toWhatsAppFormatting(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, "*$1*");
+}
+
 export async function sendTextMessage(
   to: string,
   text: string,
@@ -10,12 +16,13 @@ export async function sendTextMessage(
 ): Promise<string | null> {
   if (process.env.DISABLE_REAL_WHATSAPP_SEND === "true") return null;
 
+  const formatted = toWhatsAppFormatting(text);
   if (config.provider === "z_api") {
     if (!config.zapi) throw new Error("Z-API credentials are not configured for this clinic");
-    return sendZApiTextMessage(to, text, config.zapi);
+    return sendZApiTextMessage(to, formatted, config.zapi);
   }
   if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
-  return sendWhatsAppTextMessage(to, text, config.meta);
+  return sendWhatsAppTextMessage(to, formatted, config.meta);
 }
 
 export async function sendMediaMessage(
@@ -27,12 +34,13 @@ export async function sendMediaMessage(
 ): Promise<string | null> {
   if (process.env.DISABLE_REAL_WHATSAPP_SEND === "true") return null;
 
+  const formattedCaption = caption ? toWhatsAppFormatting(caption) : caption;
   if (config.provider === "z_api") {
     if (!config.zapi) throw new Error("Z-API credentials are not configured for this clinic");
-    return sendZApiMediaMessage(to, mediaUrl, mediaType, config.zapi, caption);
+    return sendZApiMediaMessage(to, mediaUrl, mediaType, config.zapi, formattedCaption);
   }
   // Meta Cloud API — upload via media_id not yet implemented; fall back to caption link
   if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
-  const text = caption ? `${caption}\n${mediaUrl}` : mediaUrl;
+  const text = formattedCaption ? `${formattedCaption}\n${mediaUrl}` : mediaUrl;
   return sendWhatsAppTextMessage(to, text, config.meta);
 }

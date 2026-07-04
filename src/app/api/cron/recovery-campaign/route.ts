@@ -12,6 +12,7 @@ import { inferReceptionistNameFromGreeting } from "@/core/intelligence/reception
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import OpenAI from "openai";
 
 export const dynamic = "force-dynamic";
@@ -170,6 +171,14 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
   const specialty = editorial?.specialty ?? clinic.specialty ?? "odontologia estética";
   const treatmentNames = (editorial?.procedures ?? []).map((p) => p.name);
   const now = new Date();
+
+  // Quiet hours: reengajamento fora da janela de contato local é adiado —
+  // a próxima execução dentro da janela cobre os mesmos leads.
+  const timezone = new ClinicTimezone(clinic.timezone);
+  if (!timezone.isWithinContactWindow(now)) {
+    console.log(`[RecoveryCampaign] fora da janela de contato (clinic=${clinicId}, tz=${clinic.timezone})`);
+    return { clinicId, sent: 0, skipped: 0, failed: 0 };
+  }
 
   const unattended = await findUnattendedLeads(clinicId);
   console.log(`[RecoveryCampaign] clinic=${clinicId} elegíveis=${unattended.length}`);

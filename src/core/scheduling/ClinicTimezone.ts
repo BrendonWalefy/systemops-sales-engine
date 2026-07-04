@@ -126,6 +126,15 @@ export class ClinicTimezone {
     return corrected;
   }
 
+  // Janela de contato ativo: mensagens automatizadas (follow-up, reengajamento,
+  // recovery) só podem sair entre startHour (inclusive) e endHour (exclusive)
+  // no horário local da clínica. Protege contra crons mal agendados e execuções
+  // manuais de script de madrugada — o lead nunca deve receber mensagem às 02:43.
+  isWithinContactWindow(utc: Date, startHour = 8, endHour = 20): boolean {
+    const { hour } = this.toLocalParts(utc);
+    return hour >= startHour && hour < endHour;
+  }
+
   // "Seg 26/05 às 14h" — formato padrão para WhatsApp
   formatForHuman(utc: Date): string {
     const p = this.toLocalParts(utc);

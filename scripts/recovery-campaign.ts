@@ -15,6 +15,7 @@ import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsap
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import OpenAI from "openai";
 
 const DRY_RUN = !process.argv.includes("--send");
@@ -31,6 +32,15 @@ const editorial = await resolveActiveEditorialConfig(clinicId);
 const channelConfig = resolveChannelConfig(clinic);
 const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? "Marina";
 const now = new Date();
+
+// Quiet hours: bloqueia envio real fora da janela de contato da clínica
+// (execução manual às 02:43 já mandou reengajamento de madrugada para leads reais).
+const timezone = new ClinicTimezone(clinic.timezone);
+if (!DRY_RUN && !timezone.isWithinContactWindow(now)) {
+  throw new Error(
+    `Fora da janela de contato da clínica (${clinic.timezone}). Rode entre 08h e 20h locais, ou use dry-run.`,
+  );
+}
 
 // 2. Leads elegíveis: takeover expirado OU IA ativa mas sem resposta por 2h
 //    Exclui: lost, won, e leads sem phone/whatsappLid

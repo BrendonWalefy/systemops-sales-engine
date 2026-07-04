@@ -37,7 +37,7 @@ import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/sche
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer, parseIntoParts } from "@/core/intelligence/ResponseComposer";
-import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
+import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
@@ -78,6 +78,46 @@ type MenuResolution =
   | { intent: "needs_human" }
   | { intent: "general_question"; subtype: "procedures"; treatmentKeyword?: string }
   | { intent: "general_question"; subtype: "location" };
+
+export function resolveVoiceOutputFlags(params: {
+  hasElevenLabsModule: boolean;
+  elevenLabsConfig: VoiceElevenLabsConfig | null;
+  hasVoiceTtsModule: boolean;
+  voiceTtsConfig: VoiceTtsConfig | null;
+}): { bwaveEnabled: boolean; voiceBasicEnabled: boolean; voiceEnabled: boolean } {
+  if (params.hasElevenLabsModule) {
+    const bwaveEnabled = params.elevenLabsConfig?.voiceOutputEnabled !== false;
+    return {
+      bwaveEnabled,
+      voiceBasicEnabled: false,
+      voiceEnabled: bwaveEnabled,
+    };
+  }
+
+  const voiceBasicEnabled =
+    params.hasVoiceTtsModule && params.voiceTtsConfig?.voiceOutputEnabled !== false;
+
+  return {
+    bwaveEnabled: false,
+    voiceBasicEnabled,
+    voiceEnabled: voiceBasicEnabled,
+  };
+}
+
+export function shouldForceTextOnlyForActionResult(actionResult: ActionResult): boolean {
+  switch (actionResult.type) {
+    case "slots_found":
+    case "appointment_rescheduled":
+    case "slots_expired":
+    case "slot_taken_reoffered":
+    case "evaluation_redirect":
+      return true;
+    case "no_slots_available":
+      return Boolean(actionResult.alternativeSlots?.length);
+    default:
+      return false;
+  }
+}
 
 function intentToMenuResolution(intent: MenuItemIntent, treatmentKeyword?: string): MenuResolution {
   switch (intent) {
@@ -304,7 +344,7 @@ function isSchedulingRequestText(normalized: string): boolean {
 }
 
 function isPriceRequestText(normalized: string): boolean {
-  return hasAnyKeyword(normalized, ["valor", "preco", "quanto", "custa", "pagamento", "parcela"]);
+  return hasAnyKeyword(normalized, ["valor", "preco", "quanto", "custa", "custo", "pagamento", "parcela"]);
 }
 
 function isLocationRequestText(normalized: string): boolean {
@@ -452,6 +492,56 @@ export function resolveDirectTreatmentMention(
   return matchTreatmentByNormalizedMessage(normalized, treatments, TREATMENT_MENTION_STOPWORDS);
 }
 
+// Frases fortes de chegada física à clínica. Deliberadamente específicas
+// ("estou aqui" sozinho é genérico demais) — falso negativo aqui é tolerável,
+// falso positivo geraria alerta de presença indevido para a equipe.
+const PATIENT_ARRIVAL_PHRASES = [
+  "cheguei",
+  "ja estou ai",
+  "ja estou aqui",
+  "ja to ai",
+  "ja to aqui",
+  "estou na frente",
+  "to na frente",
+  "aqui na frente",
+  "estou na porta",
+  "to na porta",
+  "estou na recepcao",
+  "to na recepcao",
+  "estou esperando aqui",
+];
+
+export function detectPatientArrivalText(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  return PATIENT_ARRIVAL_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+// ── Coerção determinística de intent para conteúdo de negócio ──
+// O classificador (LLM) às vezes rotula pergunta de negócio como
+// greeting/acknowledgment/unclear — e o starter genérico ("me conta o que você
+// gostaria de ver hoje") engole a pergunta do lead. Casos reais: "Posso ter mais
+// informações sobre custo?" → acknowledgment; áudio "estou aqui na frente e
+// ninguém atende" → acknowledgment. O sistema decide: se a mensagem contém
+// conteúdo de negócio detectável, o intent conversacional é sobrescrito.
+export function coerceBusinessIntent(params: {
+  message: string;
+  intent: IntentType;
+  treatments: Treatment[];
+  isClinicSegment: boolean;
+}): IntentType {
+  const { message, intent, treatments, isClinicSegment } = params;
+  if (intent !== "greeting" && intent !== "acknowledgment" && intent !== "unclear") return intent;
+
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return intent;
+
+  if (isClinicSegment && detectPatientArrivalText(message)) return "patient_arrived";
+  if (isPriceRequestText(normalized)) return "price_inquiry";
+  if (resolveDirectTreatmentMention(message, treatments)) return "general_question";
+  return intent;
+}
+
 // ── Guard determinístico de ambiguidade entre variações do catálogo ──
 // Não confia na LLM para sinalizar ambiguidade: recalcula em código quais
 // tratamentos o termo do lead cobre. Se um mesmo termo (nome ou alias) casa com
@@ -514,6 +604,38 @@ const MAINTENANCE_SERVICE_KEYWORDS = [
   "troca",
   "trocar",
 ];
+
+// ── Localiza o horário expresso pelo lead na lista atualizada de slots ──
+// Quando a oferta expirou (TTL 15 min) mas o lead expressou um horário
+// ("As 12hs", "sexta às 9"), procura esse horário na lista recém-buscada.
+// Retorna o índice do slot quando a preferência casa com EXATAMENTE um —
+// ambíguo (dois dias com 12h) ou ausente retorna null.
+export function findExpressedSlotIndex(params: {
+  slots: { index: number; startsAt: string }[];
+  preferredTime: string | null;
+  preferredDay: Date | null;
+  timezone: ClinicTimezone;
+}): number | null {
+  const { slots, preferredTime, preferredDay, timezone } = params;
+  if (!preferredTime && !preferredDay) return null;
+
+  const timeMatch = preferredTime?.match(/(\d{1,2})(?::|h)?(\d{2})?/);
+  const wantedHour = timeMatch ? Number(timeMatch[1]) : null;
+  const wantedMinute = timeMatch?.[2] ? Number(timeMatch[2]) : null;
+  if (preferredTime && wantedHour === null) return null;
+
+  const wantedDay = preferredDay ? timezone.toLocalParts(preferredDay) : null;
+
+  const matches = slots.filter((slot) => {
+    const local = timezone.toLocalParts(new Date(slot.startsAt));
+    if (wantedHour !== null && local.hour !== wantedHour) return false;
+    if (wantedMinute !== null && local.minute !== wantedMinute) return false;
+    if (wantedDay && (local.year !== wantedDay.year || local.month !== wantedDay.month || local.day !== wantedDay.day)) return false;
+    return true;
+  });
+
+  return matches.length === 1 ? matches[0].index : null;
+}
 
 // ── Guard determinístico de manutenção não catalogada ──
 // "qual valor pra fazer o polimento nas lentes?" NÃO é pergunta de preço das
@@ -1158,28 +1280,33 @@ export class ConversationOrchestrator {
     // Derivados de módulos — usados em todo o método no lugar dos campos legados
     const elevenLabsMod = activeModules.find((m) => m.key === "voice_elevenlabs");
     const voiceMod = activeModules.find((m) => m.key === "voice_tts");
-    const bwaveEnabled = !!elevenLabsMod;
-    const voiceBasicEnabled = !!voiceMod;
-    // voiceEnabled: flag global indicando que ALGUMA voz está disponível (usado para hasInterleavedMedia)
-    const voiceEnabled = bwaveEnabled || voiceBasicEnabled;
+    const elevenLabsConfig = (elevenLabsMod?.config ?? null) as VoiceElevenLabsConfig | null;
+    const voiceTtsConfig = (voiceMod?.config ?? null) as VoiceTtsConfig | null;
+    const { bwaveEnabled, voiceBasicEnabled, voiceEnabled } = resolveVoiceOutputFlags({
+      hasElevenLabsModule: !!elevenLabsMod,
+      elevenLabsConfig,
+      hasVoiceTtsModule: !!voiceMod,
+      voiceTtsConfig,
+    });
+    // voiceEnabled: flag global indicando que a saída por voz está habilitada
+    // (usado para prompt, mídia intercalada e decisão final de entrega).
 
     // inputWasAudio: detectado pelo prefixo [áudio] que o WhisperGateway adiciona
     const inputWasAudio = messageText.startsWith("[áudio]");
 
     let ttsConf: TtsConfig;
     let bwaveMode: VoiceMode = "impact";
-    if (elevenLabsMod?.config) {
-      const elConf = elevenLabsMod.config as VoiceElevenLabsConfig;
-      bwaveMode = elConf.mode ?? "impact";
+    if (elevenLabsConfig) {
+      bwaveMode = elevenLabsConfig.mode ?? "impact";
       ttsConf = {
         provider: "elevenlabs",
-        speed: elConf.speed ?? TTS_SPEED_DEFAULTS.elevenlabs,
-        elevenLabsVoiceId: elConf.voiceId,
-        elevenLabsStability: elConf.stability,
-        elevenLabsSimilarityBoost: elConf.similarityBoost,
+        speed: elevenLabsConfig.speed ?? TTS_SPEED_DEFAULTS.elevenlabs,
+        elevenLabsVoiceId: elevenLabsConfig.voiceId,
+        elevenLabsStability: elevenLabsConfig.stability,
+        elevenLabsSimilarityBoost: elevenLabsConfig.similarityBoost,
       };
-    } else if (voiceMod?.config) {
-      ttsConf = ttsConfigFromVoice(String(voiceMod.config.provider ?? "nova"));
+    } else if (voiceTtsConfig) {
+      ttsConf = ttsConfigFromVoice(String(voiceTtsConfig.provider ?? "nova"));
     } else {
       ttsConf = DEFAULT_TTS_CONFIG;
     }
@@ -1189,7 +1316,7 @@ export class ConversationOrchestrator {
     // saudação vem em áudio. Decisão jul/2026 a partir de feedback real (áudio em
     // excesso incomoda) + a voz OpenAI é robótica — ouvida uma vez é novidade, repetida
     // irrita. A clínica pode subir para impact/mix/full no painel. Ver pricing-strategy §6.1.
-    const voiceBasicMode: VoiceMode = (voiceMod?.config as VoiceTtsConfig | undefined)?.mode ?? "greeting_only";
+    const voiceBasicMode: VoiceMode = voiceTtsConfig?.mode ?? "greeting_only";
     function resolveVoiceForReply(messageIntent: IntentType, responseText: string): boolean {
       if (bwaveEnabled) return shouldUseBWaveForMessage(bwaveMode, messageIntent, responseText, inputWasAudio);
       if (voiceBasicEnabled) return shouldUseBWaveForMessage(voiceBasicMode, messageIntent, responseText, inputWasAudio);
@@ -1817,13 +1944,41 @@ export class ConversationOrchestrator {
 
     const { intent, slotPreference } = classification;
 
+    // ── Guard: rajada durante a classificação ──
+    // O debounce cobre a janela pré-classificação; o claim serializa handlers.
+    // Resta a janela da própria chamada de LLM (1-10s): se outra mensagem do
+    // lead chegou nesse meio, descarta esta — a mais recente responde com o
+    // histórico completo. Seguro aqui: nenhum efeito colateral aconteceu ainda.
+    if (!skipLlm) {
+      const latestAfterClassify = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+      if (latestAfterClassify && latestAfterClassify.id !== incomingMessage.id) {
+        console.log(
+          `[Orchestrator] Rajada pós-classificação: msg ${incomingMessage.id} superada por ${latestAfterClassify.id} — descartando resposta (conv=${conversation.id})`,
+        );
+        return { replied: false };
+      }
+    }
+
+    // Coerção determinística: pergunta de negócio classificada como
+    // greeting/acknowledgment/unclear é sobrescrita para o intent de negócio —
+    // evita que o starter genérico engula a pergunta do lead. isolatedGreeting
+    // (saudação pura, sem conteúdo) não passa por aqui e continua com o starter.
+    const coercedIntent = skipLlm
+      ? intent
+      : coerceBusinessIntent({
+          message: messageText,
+          intent,
+          treatments: clinicTreatments,
+          isClinicSegment: promptContext.isClinicSegment,
+        });
+
     // ── Interceptor: resposta de tratamento após clarificação de agendamento ──
     // Quando a AI perguntou "qual procedimento você gostaria de realizar?" e o lead
     // respondeu com um nome de tratamento (ex: "lentes"), o IntentClassifier classifica
     // como general_question porque a mensagem sozinha parece informativa. Aqui detectamos
     // esse padrão e redirecionamos para check_availability para buscar slots reais — sem
     // isso, o ResponseComposer alucinaria horários inventados.
-    let effectiveIntent = intent;
+    let effectiveIntent = coercedIntent;
     let clarificationTreatmentName: string | null = null;
     if (
       intent === "general_question" &&
@@ -1908,6 +2063,7 @@ export class ConversationOrchestrator {
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
     ) => {
+      if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
       const composed = await this.responseComposer.compose({
         actionResult,
         conversationHistory: allMessagesForContext,
@@ -1938,12 +2094,12 @@ export class ConversationOrchestrator {
       return composed.text;
     };
 
-    if (isFirstMessage && shouldShowInitialMenu(experience, intent)) {
+    if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
       await this.stateMachine.offerMenu(conversation.id);
-    } else if (isFirstMessage && shouldSendConciergeStarter(experience, intent)) {
+    } else if (isFirstMessage && shouldSendConciergeStarter(experience, effectiveIntent)) {
       replyText = buildConciergeStarter(clinic, timezone, lead.name);
     } else if (resetRequested) {
       // Zera estado e marca boundary para que a próxima mensagem receba histórico pós-reset
@@ -1956,7 +2112,7 @@ export class ConversationOrchestrator {
       } else {
         replyText = buildConciergeStarter(clinic, timezone, lead.name);
       }
-    } else if (menuReRequested || (isStaleConversation && (intent === "greeting" || intent === "acknowledgment" || intent === "unclear")) || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
+    } else if (menuReRequested || (isStaleConversation && (effectiveIntent === "greeting" || effectiveIntent === "acknowledgment" || effectiveIntent === "unclear")) || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
       if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
         replyText = buildMenuBody(clinic, "reoffer", experience);
         await this.stateMachine.offerMenu(conversation.id);
@@ -2018,8 +2174,8 @@ export class ConversationOrchestrator {
           : null;
 
         if (!chosenSlot) {
-          // Lead tentou escolher um número mas a oferta expirou (15 min TTL)
-          if (slotPreference.slotChoice !== null) {
+          // Lead escolheu (por número OU expressando dia/hora) mas a oferta expirou (15 min TTL)
+          if (slotPreference.slotChoice !== null || slotPreference.preferredTime || slotPreference.preferredDate) {
             const { slots: freshSlots } = await this.fetchAndOfferSlots(
               conversation.id,
               clinic,
@@ -2029,7 +2185,18 @@ export class ConversationOrchestrator {
               undefined, undefined, undefined, undefined, undefined, voiceEnabled,
             );
             if (freshSlots.length > 0) {
-              replyText = await compose({ type: "slots_expired", freshSlots });
+              // Se o horário que o lead pediu segue livre na lista atualizada,
+              // aponta a opção em vez de fazê-lo escolher do zero.
+              const preferredDay = slotPreference.preferredDate
+                ? timezone.resolvePreferredDate(slotPreference.preferredDate, new Date(), businessHours)
+                : null;
+              const preferredSlotIndex = findExpressedSlotIndex({
+                slots: freshSlots,
+                preferredTime: slotPreference.preferredTime ?? null,
+                preferredDay,
+                timezone,
+              });
+              replyText = await compose({ type: "slots_expired", freshSlots, preferredSlotIndex });
               forceTextOnlyReply = true;
             } else {
               replyText = await compose({ type: "no_slots_available" });
@@ -3086,8 +3253,9 @@ export class ConversationOrchestrator {
     preferredTime?: string,
     treatmentName?: string,
     slotDurationMinutes?: number,
-    voiceEnabled?: boolean,
+    _voiceEnabled?: boolean,
   ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean; outsideBookingWindow: boolean; outsideBusinessHours: boolean; preferredPeriodUnavailable: boolean }> {
+    void _voiceEnabled;
     const from = this.slotWindowStart();
     const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
     const duration = slotDurationMinutes ?? clinic.defaultAppointmentDurationMinutes;
@@ -3222,12 +3390,12 @@ export class ConversationOrchestrator {
         index: i + 1,
         startsAt: s.startsAt.toISOString(),
         endsAt: s.endsAt.toISOString(),
-        label: voiceEnabled ? timezone.formatForVoice(s.startsAt) : timezone.formatForHuman(s.startsAt),
+        label: timezone.formatForHuman(s.startsAt),
       }));
       return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
     }
 
-    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes, voiceEnabled);
+    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes, false);
     return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 
