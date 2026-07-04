@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy } from "@/application/config/playbook-lint";
+import { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingTreatmentDescriptionIssues } from "@/application/config/playbook-lint";
 
 describe("blockingPlaybookNotesIssues — gate de publish", () => {
   it("BLOQUEIA quando o notes contém um valor de preço concreto", () => {
@@ -62,5 +62,35 @@ describe("lintCommercialPolicy — preço tem casa no cadastro (Item 3)", () => 
   it("trata política vazia/nula como sem problema", () => {
     expect(lintCommercialPolicy(null)).toEqual([]);
     expect(lintCommercialPolicy("   ")).toEqual([]);
+  });
+});
+
+describe("blockingTreatmentDescriptionIssues — gate §6C no publish (Item 6)", () => {
+  it("BLOQUEIA descrição de procedimento com valor em R$", () => {
+    const issues = blockingTreatmentDescriptionIssues([
+      { name: "Implante", description: "A partir de R$ 2.900. Titânio biocompatível." },
+      { name: "Limpeza", description: "Profilaxia completa, sem cárie." },
+    ]);
+    expect(issues.length).toBe(1);
+    expect(issues[0]).toMatch(/Implante/);
+    expect(issues[0]).toMatch(/valor do procedimento/);
+  });
+
+  it("acumula um issue por procedimento com R$", () => {
+    const issues = blockingTreatmentDescriptionIssues([
+      { name: "A", description: "R$ 100" },
+      { name: "B", description: "R$ 200" },
+      { name: "C", description: "sem preço" },
+    ]);
+    expect(issues.length).toBe(2);
+  });
+
+  it("não bloqueia descrição factual sem valor concreto", () => {
+    expect(
+      blockingTreatmentDescriptionIssues([
+        { name: "Canal", description: "Preserva o dente eliminando a infecção da polpa. Indolor." },
+        { name: "Avaliação", description: null },
+      ]),
+    ).toEqual([]);
   });
 });

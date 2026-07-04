@@ -2,12 +2,12 @@
 
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { organizations, clinicModules, playbookVersions } from "@/infrastructure/db/schema";
+import { organizations, clinicModules, playbookVersions, treatments } from "@/infrastructure/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { MenuItem } from "@/domain/entities/clinic";
-import { publishablePlaybookSchema, blockingPlaybookNotesIssues } from "@/application/config/editorial-config";
+import { publishablePlaybookSchema, blockingPlaybookNotesIssues, blockingTreatmentDescriptionIssues } from "@/application/config/editorial-config";
 import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import type { VoiceMode } from "@/domain/entities/voice-mode";
 
@@ -107,6 +107,17 @@ export async function activatePlaybookVersion(id: string) {
   const notesIssues = blockingPlaybookNotesIssues(version.notes);
   if (notesIssues.length > 0) {
     throw new Error(`Playbook inválido para ativação: ${notesIssues.join("; ")}`);
+  }
+
+  // Item 6 §6C: mesma régua para a descrição do procedimento — preço mora em
+  // treatments.priceCents (a IA fala derivado). R$ na descrição bloqueia o publish.
+  const clinicTreatments = await db
+    .select({ name: treatments.name, description: treatments.description })
+    .from(treatments)
+    .where(eq(treatments.clinicId, CLINIC_ID));
+  const descIssues = blockingTreatmentDescriptionIssues(clinicTreatments);
+  if (descIssues.length > 0) {
+    throw new Error(`Playbook inválido para ativação: ${descIssues.join("; ")}`);
   }
 
   await db

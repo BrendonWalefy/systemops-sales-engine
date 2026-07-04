@@ -61,3 +61,24 @@ export function lintCommercialPolicy(policy: string | null | undefined): string[
   }
   return warnings;
 }
+
+/**
+ * Item 6 §6C (config ownership): gate anti-drift no publish. A descrição do
+ * procedimento é FATO factual — o preço mora em `treatments.priceCents` e a IA o
+ * fala derivado (Item 3). Um valor em R$ na descrição é o mesmo fato em dois
+ * lugares: BLOQUEIA a ativação até ser removido. Mesma régua do fact-guard, agora
+ * na ENTRADA humana.
+ */
+export function blockingTreatmentDescriptionIssues(
+  treatments: { name: string; description: string | null }[],
+): string[] {
+  const issues: string[] = [];
+  for (const t of treatments) {
+    if (t.description && CONCRETE_PRICE_PATTERN.test(t.description)) {
+      issues.push(
+        `O procedimento "${t.name}" tem um valor em R$ na descrição. O preço mora no valor do procedimento (a IA fala a partir dele) — remova o valor da descrição antes de publicar.`,
+      );
+    }
+  }
+  return issues;
+}
