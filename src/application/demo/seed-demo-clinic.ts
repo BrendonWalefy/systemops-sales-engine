@@ -613,57 +613,70 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
 
   // 4) procedimentos
   const treatmentIds: Record<string, string> = {};
+  // Preço é FATO estruturado (Item 3): a IA fala "a partir de R$X" DERIVADO destes
+  // campos, nunca do texto da descrição (§6C bloqueia R$ na descrição).
   const treatmentDefs: (typeof treatments.$inferInsert)[] = [
     {
       clinicId, name: "Avaliação estética", durationMinutes: 40, priceCents: 15000,
+      priceQuotableInChat: true, priceKind: "fixed",
       description: "Consulta inicial para diagnóstico do sorriso e plano de tratamento.",
       isAesthetic: true,
     },
     {
       clinicId, name: "Lentes de resina", durationMinutes: 60, minPriceCents: 95000,
-      description: "A partir de R$ 950 por dente, após avaliação. Melhora formato, cor e harmonia com planejamento conservador.",
+      priceQuotableInChat: true, priceKind: "from", priceUnit: "por dente",
+      description: "Cobrada por dente, após avaliação. Melhora formato, cor e harmonia com planejamento conservador.",
       isAesthetic: true, requiresEvaluationFirst: true,
     },
     {
       clinicId, name: "Lentes de porcelana", durationMinutes: 60, minPriceCents: 180000,
-      description: "A partir de R$ 1.800 por dente, sempre após avaliação. Melhora formato, cor e harmonia do sorriso.",
+      priceQuotableInChat: true, priceKind: "from", priceUnit: "por dente",
+      description: "Cobrada por dente, sempre após avaliação. Melhora formato, cor e harmonia do sorriso.",
       isAesthetic: true, requiresEvaluationFirst: true,
     },
     {
       clinicId, name: "Clareamento dental", durationMinutes: 50, minPriceCents: 69000,
-      description: "A partir de R$ 690. A laser na clínica ou com moldeiras para uso em casa.",
+      priceQuotableInChat: true, priceKind: "from",
+      description: "A laser na clínica ou com moldeiras para uso em casa.",
     },
     {
       clinicId, name: "Implante dentário", durationMinutes: 60, minPriceCents: 290000,
-      description: "A partir de R$ 2.900. Implante de titânio para substituir dente ausente, após avaliação e exames.",
+      priceQuotableInChat: true, priceKind: "from",
+      description: "Implante de titânio para substituir dente ausente, após avaliação e exames.",
       requiresEvaluationFirst: true,
     },
     {
       clinicId, name: "Prótese dentária", durationMinutes: 60, minPriceCents: 240000,
-      description: "A partir de R$ 2.400. Reabilitação com prótese fixa, removível ou sobre implantes, conforme avaliação.",
+      priceQuotableInChat: true, priceKind: "from",
+      description: "Reabilitação com prótese fixa, removível ou sobre implantes, conforme avaliação.",
       requiresEvaluationFirst: true,
     },
     {
       clinicId, name: "Remoção de dentes", durationMinutes: 50, minPriceCents: 65000,
-      description: "A partir de R$ 650. Avaliação cirúrgica para sisos, dentes quebrados ou extrações indicadas por planejamento.",
+      priceQuotableInChat: true, priceKind: "from",
+      description: "Avaliação cirúrgica para sisos, dentes quebrados ou extrações indicadas por planejamento.",
       requiresEvaluationFirst: true,
     },
     {
       clinicId, name: "Alinhadores invisíveis", durationMinutes: 45, minPriceCents: 35000,
-      description: "A partir de R$ 350/mês. Correção ortodôntica com alinhadores transparentes removíveis.",
+      priceQuotableInChat: true, priceKind: "from", priceUnit: "por mês",
+      description: "Correção ortodôntica com alinhadores transparentes removíveis.",
     },
     {
       clinicId, name: "Limpeza e profilaxia", durationMinutes: 40, priceCents: 22000,
+      priceQuotableInChat: true, priceKind: "fixed",
       description: "Limpeza profissional, remoção de tártaro e polimento.",
     },
     {
       clinicId, name: "Harmonização facial", durationMinutes: 45, minPriceCents: 89000,
-      description: "A partir de R$ 890. Procedimentos estéticos faciais realizados pelo dentista.",
+      priceQuotableInChat: true, priceKind: "from",
+      description: "Procedimentos estéticos faciais realizados pelo dentista.",
       isAesthetic: true,
     },
     {
       clinicId, name: "Botox", durationMinutes: 45, minPriceCents: 89000,
-      description: "A partir de R$ 890. Avaliação para toxina botulínica estética ou apoio em tensão muscular/bruxismo.",
+      priceQuotableInChat: true, priceKind: "from",
+      description: "Avaliação para toxina botulínica estética ou apoio em tensão muscular/bruxismo.",
       isAesthetic: true, requiresEvaluationFirst: true,
     },
   ];
@@ -683,7 +696,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     commercialPolicy:
       "Valores sempre apresentados como 'a partir de', pois dependem de avaliação. Lentes são cobradas por dente. " +
       "Prótese, remoção de dentes e botox dependem de avaliação. Alinhadores têm valor mensal. Parcelamos no cartão. " +
-      "Procedimentos estéticos e cirúrgicos exigem avaliação prévia. A avaliação estética/cirúrgica custa R$ 150 e é o ponto de partida.",
+      "Procedimentos estéticos e cirúrgicos exigem avaliação prévia. A avaliação estética/cirúrgica é o ponto de partida.",
     notes: "Recepcionista virtual: Marina. Sempre oferecer horários reais e confirmar antes da consulta.",
     differentials: [
       "Atendimento humanizado e premium",

@@ -37,7 +37,7 @@ import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/sche
 import type { LocalDateParts, ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
-import { ResponseComposer, parseIntoParts } from "@/core/intelligence/ResponseComposer";
+import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
