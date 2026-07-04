@@ -11,3 +11,6 @@ coverage
 .vercel
 .claude/
 tmp/
+
+# Mídia local da demo (sobe pro Blob via scripts/upload-demo-media.ts)
+scripts/demo-media/
