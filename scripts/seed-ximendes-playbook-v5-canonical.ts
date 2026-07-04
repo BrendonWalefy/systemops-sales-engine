@@ -142,7 +142,7 @@ const OBJECTIONS = [
   },
   {
     objection: "Não quero pagar a avaliação",
-    response: "Os R$ 100 garantem uma consulta completa e dedicada ao seu caso, com raio-x, análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você decidir avançar. Não é custo a mais, é o primeiro passo.",
+    response: "Os R$ 100 garantem uma consulta completa e dedicada ao seu caso, com análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você decidir avançar. Não é custo a mais, é o primeiro passo.",
   },
   {
     objection: "Vou pensar...",
@@ -186,7 +186,7 @@ const TREATMENTS: TreatmentSeed[] = [
     name: "Avaliação",
     durationMinutes: 40,
     requiresEvaluationFirst: false,
-    description: "Consulta inicial com o Dr. Gregorie: raio-x, análise do sorriso e montagem do plano de tratamento personalizado. O valor da avaliação é abatido do tratamento se o paciente decidir avançar.",
+    description: "Consulta inicial com o Dr. Gregorie: análise do sorriso e montagem do plano de tratamento personalizado. O valor da avaliação é abatido do tratamento se o paciente decidir avançar.",
   },
   {
     name: "Limpeza dental",
