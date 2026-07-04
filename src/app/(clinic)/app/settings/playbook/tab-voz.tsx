@@ -6,7 +6,7 @@ import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode"
 import type { VoiceElevenLabsConfig, VoiceTtsConfig } from "@/application/modules/module-configs";
 import { TTS_SPEED_DEFAULTS } from "@/domain/entities/tts-config";
 import type { TtsProvider } from "@/domain/entities/tts-config";
-import { S, SettingsCard, SettingsRow, SettingsToggle, SettingsBadge, CollapsibleAdvanced, IconBox, SLabel } from "./settings-primitives";
+import { S, SettingsCard, SettingsToggle, SettingsBadge, CollapsibleAdvanced, IconBox, SLabel } from "./settings-primitives";
 
 type ActiveModule = { key: string; config?: Record<string, unknown> | null };
 type ClinicData = { activeModules: ActiveModule[] };
@@ -23,9 +23,9 @@ export function TabVoz({ clinic }: { clinic: ClinicData }) {
   const ttsOutputEnabledInit = (voiceMod?.config as { voiceOutputEnabled?: boolean } | null)?.voiceOutputEnabled !== false;
 
   const [bwaveOutputEnabled, setBwaveOutputEnabled] = useState(bwaveOutputEnabledInit);
-  const [bwaveOutputPending, startBwaveOutputTransition] = useTransition();
+  const [bwaveOutputPending, setBwaveOutputPending] = useState(false);
   const [ttsOutputEnabled, setTtsOutputEnabled] = useState(ttsOutputEnabledInit);
-  const [ttsOutputPending, startTtsOutputTransition] = useTransition();
+  const [ttsOutputPending, setTtsOutputPending] = useState(false);
 
   const [ttsConfig, setTtsConfig] = useState<VoiceTtsConfig>(
     voiceMod?.config
@@ -49,16 +49,36 @@ export function TabVoz({ clinic }: { clinic: ClinicData }) {
   const [bwaveSpeedPending, startBwaveSpeedTransition] = useTransition();
   const [bwaveConfigPending, startBwaveConfigTransition] = useTransition();
 
-  function handleTtsOutputToggle() {
-    const next = !ttsOutputEnabled;
+  async function handleTtsOutputToggle() {
+    if (ttsOutputPending) return;
+    const previous = ttsOutputEnabled;
+    const next = !previous;
     setTtsOutputEnabled(next);
-    startTtsOutputTransition(async () => { await toggleVoiceOutput("voice_tts", next); });
+    setTtsOutputPending(true);
+    try {
+      await toggleVoiceOutput("voice_tts", next);
+    } catch (error) {
+      setTtsOutputEnabled(previous);
+      console.error("[settings-voice] Failed to toggle TTS output:", error);
+    } finally {
+      setTtsOutputPending(false);
+    }
   }
 
-  function handleBwaveOutputToggle() {
-    const next = !bwaveOutputEnabled;
+  async function handleBwaveOutputToggle() {
+    if (bwaveOutputPending) return;
+    const previous = bwaveOutputEnabled;
+    const next = !previous;
     setBwaveOutputEnabled(next);
-    startBwaveOutputTransition(async () => { await toggleVoiceOutput("voice_elevenlabs", next); });
+    setBwaveOutputPending(true);
+    try {
+      await toggleVoiceOutput("voice_elevenlabs", next);
+    } catch (error) {
+      setBwaveOutputEnabled(previous);
+      console.error("[settings-voice] Failed to toggle B-WAVE output:", error);
+    } finally {
+      setBwaveOutputPending(false);
+    }
   }
 
   function handleTtsProviderChange(provider: TtsProvider) {

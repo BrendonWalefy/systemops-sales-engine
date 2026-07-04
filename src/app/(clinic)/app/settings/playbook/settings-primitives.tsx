@@ -391,7 +391,28 @@ export function EmptyState({
 }
 
 // ─── Save status indicator ───────────────────────────────────────────────────
-export function SaveStatus({ saving, saved }: { saving: boolean; saved: boolean }) {
+export function SaveStatus({
+  saving,
+  saved,
+  pending = false,
+  error = false,
+}: {
+  saving: boolean;
+  saved: boolean;
+  pending?: boolean;
+  error?: boolean;
+}) {
+  const color = error ? "#f87171" : saving || pending ? S.amber : saved ? S.teal : S.textMuted;
+  const label = error
+    ? "Erro ao salvar"
+    : saving
+      ? "Salvando..."
+      : pending
+        ? "Alterações pendentes"
+        : saved
+          ? "Configurações salvas"
+          : "Alterações salvas automaticamente";
+
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: S.textMuted }}>
       <span
@@ -399,13 +420,13 @@ export function SaveStatus({ saving, saved }: { saving: boolean; saved: boolean 
           width: "6px",
           height: "6px",
           borderRadius: "50%",
-          background: saving ? S.amber : saved ? S.teal : S.textMuted,
+          background: color,
           flexShrink: 0,
           display: "inline-block",
           transition: "background 300ms",
         }}
       />
-      {saving ? "Salvando..." : saved ? "Configurações salvas" : "Alterações salvas automaticamente"}
+      {label}
     </div>
   );
 }

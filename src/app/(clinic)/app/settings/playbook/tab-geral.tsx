@@ -1,11 +1,12 @@
 "use client";
-import { useState, useTransition, useRef, useEffect, useCallback } from "react";
+import { useState, useTransition, useRef, useCallback } from "react";
 import { Zap, Sparkles, MessageSquare, GripVertical, Lock } from "lucide-react";
 import { toggleAutoReply } from "./actions";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import type { MenuItem, MenuItemIntent, ConversationExperience } from "@/domain/entities/clinic";
 import { CONCIERGE_MENU_ITEMS, DEFAULT_MENU_ITEMS } from "@/domain/entities/clinic";
 import { S, SettingsCard, SettingsToggle, SettingsBadge, SettingsTextarea, SaveStatus, IconBox, SLabel } from "./settings-primitives";
+import { useReliableAutosave } from "./use-reliable-autosave";
 
 export type SettingsFocusTarget = "takeover" | "buffer" | "hours";
 
@@ -110,23 +111,20 @@ export function TabGeral({ clinic }: { clinic: ClinicData }) {
   const customMenuRef = useRef(clinic.menuItems !== null);
   const [greetingMessage, setGreetingMessage] = useState(clinic.greetingMessage ?? "");
   const [menuItems, setMenuItems] = useState<MenuItem[]>(clinic.menuItems ?? defaultMenuItemsForExperience(derivedExperience));
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { scheduleSave, saving, saved, pending, error } = useReliableAutosave<{
+    greetingMessage: string | null;
+    menuItems: MenuItem[];
+  }>({
+    delayMs: 1000,
+    save: updateClinicOperationalSettings,
+  });
 
   const triggerSave = useCallback((patch: { greetingMessage?: string; menuItems?: MenuItem[] }) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    setSaved(false);
-    saveTimer.current = setTimeout(async () => {
-      setSaving(true);
-      await updateClinicOperationalSettings({
-        greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
-        menuItems: patch.menuItems ?? menuItems,
-      });
-      setSaving(false);
-      setSaved(true);
-    }, 1000);
-  }, [greetingMessage, menuItems]);
+    scheduleSave({
+      greetingMessage: (patch.greetingMessage ?? greetingMessage) || null,
+      menuItems: patch.menuItems ?? menuItems,
+    });
+  }, [greetingMessage, menuItems, scheduleSave]);
 
   function handleToggle() {
     const next = !enabled;
@@ -232,7 +230,7 @@ export function TabGeral({ clinic }: { clinic: ClinicData }) {
         </SettingsCard>
       </div>
 
-      <SaveStatus saving={saving} saved={saved} />
+      <SaveStatus saving={saving} saved={saved} pending={pending} error={error} />
     </div>
   );
 }

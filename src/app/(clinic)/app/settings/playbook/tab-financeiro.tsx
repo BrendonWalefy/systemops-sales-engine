@@ -1,10 +1,11 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { S, SettingsCard, SettingsSection, SettingsBadge, SaveStatus } from "./settings-primitives";
+import { useReliableAutosave } from "./use-reliable-autosave";
 
 type InstallmentRow = { n: number; rate: number; active: boolean };
 
@@ -57,23 +58,19 @@ export function TabFinanceiro({
   });
   const [previewValue, setPreviewValue] = useState(2500);
   const [previewInput, setPreviewInput] = useState("2.500");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { scheduleSave, saving, saved, pending, error } = useReliableAutosave<{
+    installmentRates: InstallmentRow[];
+  }>({
+    delayMs: 800,
+    save: updateClinicOperationalSettings,
+  });
 
   const treatmentsWithoutPrice = treatments.filter(
     (t) => t.priceCents == null && t.minPriceCents == null && t.maxPriceCents == null,
   );
 
   function triggerSave(next: InstallmentRow[]) {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    setSaved(false);
-    saveTimer.current = setTimeout(async () => {
-      setSaving(true);
-      await updateClinicOperationalSettings({ installmentRates: next });
-      setSaving(false);
-      setSaved(true);
-    }, 800);
+    scheduleSave({ installmentRates: next });
   }
 
   function updateRow(n: number, patch: Partial<InstallmentRow>) {
@@ -215,7 +212,7 @@ export function TabFinanceiro({
           </div>
         </div>
 
-        <SaveStatus saving={saving} saved={saved} />
+        <SaveStatus saving={saving} saved={saved} pending={pending} error={error} />
       </SettingsSection>
 
     </div>

@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Timer } from "lucide-react";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import { S, SettingsCard, SettingsSection, SaveStatus, SettingsInput } from "./settings-primitives";
+import { useReliableAutosave } from "./use-reliable-autosave";
 
 export type SettingsFocusTarget = "takeover" | "buffer" | "hours";
 
@@ -108,9 +109,18 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
   const [staleConversationHours, setStaleConversationHours] = useState(clinic.staleConversationHours ?? 4);
   const [slotLookaheadDays, setSlotLookaheadDays] = useState(clinic.slotLookaheadDays ?? 14);
   const [mediaTakeoverTtlHours, setMediaTakeoverTtlHours] = useState(clinic.mediaTakeoverTtlHours ?? 0);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { scheduleSave, saving, saved, pending, error } = useReliableAutosave<{
+    businessHours: string | null;
+    receptionistPhone: string | null;
+    takeoverTtlHours: number;
+    postAppointmentBufferMinutes: number;
+    staleConversationHours: number;
+    slotLookaheadDays: number;
+    mediaTakeoverTtlHours: number | null;
+  }>({
+    delayMs: 1000,
+    save: updateClinicOperationalSettings,
+  });
 
   const businessHoursSectionRef = useRef<HTMLDivElement>(null);
   const takeoverSectionRef = useRef<HTMLDivElement>(null);
@@ -128,26 +138,28 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
     slotLookaheadDays?: number;
     mediaTakeoverTtlHours?: number;
   }) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    setSaved(false);
-    saveTimer.current = setTimeout(async () => {
-      setSaving(true);
-      await updateClinicOperationalSettings({
-        businessHours: (patch.businessHours ?? businessHours) || null,
-        receptionistPhone: (patch.receptionistPhone ?? receptionistPhone) || null,
-        takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
-        postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
-        staleConversationHours: patch.staleConversationHours ?? staleConversationHours,
-        slotLookaheadDays: patch.slotLookaheadDays ?? slotLookaheadDays,
-        mediaTakeoverTtlHours: (() => {
-          const v = patch.mediaTakeoverTtlHours ?? mediaTakeoverTtlHours;
-          return v > 0 ? v : null;
-        })(),
-      });
-      setSaving(false);
-      setSaved(true);
-    }, 1000);
-  }, [businessHours, receptionistPhone, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours]);
+    scheduleSave({
+      businessHours: (patch.businessHours ?? businessHours) || null,
+      receptionistPhone: (patch.receptionistPhone ?? receptionistPhone) || null,
+      takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
+      postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
+      staleConversationHours: patch.staleConversationHours ?? staleConversationHours,
+      slotLookaheadDays: patch.slotLookaheadDays ?? slotLookaheadDays,
+      mediaTakeoverTtlHours: (() => {
+        const v = patch.mediaTakeoverTtlHours ?? mediaTakeoverTtlHours;
+        return v > 0 ? v : null;
+      })(),
+    });
+  }, [
+    businessHours,
+    receptionistPhone,
+    takeoverTtlHours,
+    postAppointmentBufferMinutes,
+    staleConversationHours,
+    slotLookaheadDays,
+    mediaTakeoverTtlHours,
+    scheduleSave,
+  ]);
 
   useEffect(() => {
     if (!focusTarget) return;
@@ -252,7 +264,7 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
 
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <Timer size={13} style={{ color: S.textMuted }} />
-        <SaveStatus saving={saving} saved={saved} />
+        <SaveStatus saving={saving} saved={saved} pending={pending} error={error} />
       </div>
     </div>
   );
