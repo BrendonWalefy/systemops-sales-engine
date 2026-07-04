@@ -20,6 +20,7 @@ import {
 import { updatePlaybookVersion } from "../playbook-version-actions";
 import { lintPlaybookNotes } from "@/application/config/playbook-lint";
 import type { FieldTarget } from "@/core/intelligence/FieldComposer";
+import { useReliableAutosave } from "../use-reliable-autosave";
 
 type Objection = { objection: string; response: string };
 type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
@@ -36,6 +37,7 @@ type EditorData = {
   notes: string;
   mediaLibrary: MediaItem[];
 };
+type PlaybookVersionPayload = Parameters<typeof updatePlaybookVersion>[1];
 
 type Props = {
   id: string;
@@ -81,6 +83,20 @@ function parseObjectionRewrite(text: string, fallback: Objection): Objection {
   return {
     objection: objectionMatch?.[1]?.trim() || fallback.objection,
     response: responseMatch?.[1]?.trim() || text.trim() || fallback.response,
+  };
+}
+
+function toPlaybookVersionPayload(data: EditorData): PlaybookVersionPayload {
+  return {
+    specialty: data.specialty || null,
+    procedureDescription: data.procedureDescription || null,
+    toneOfVoice: data.toneOfVoice,
+    receptionistName: data.receptionistName || "Marina",
+    differentials: data.differentials.filter((d) => d.trim()),
+    commercialPolicy: data.commercialPolicy || null,
+    objections: data.objections.filter((o) => o.objection.trim()),
+    notes: data.notes || null,
+    mediaLibrary: data.mediaLibrary.filter((m) => m.title.trim() && m.url.trim()),
   };
 }
 
@@ -601,38 +617,22 @@ function CowriterBox({ field, currentValue, clinicContext, onApply, guidedQuesti
 export function PlaybookEditorClient({ id, name, initialData, greetingMessage, businessNoun, bookingNoun }: Props) {
   const router = useRouter();
   const [data, setData] = useState<EditorData>(initialData);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { scheduleSave, flush, saving, saved, pending, error } = useReliableAutosave<PlaybookVersionPayload>({
+    delayMs: 1200,
+    save: (payload) => updatePlaybookVersion(id, payload),
+  });
   const [expandedObjectionIndex, setExpandedObjectionIndex] = useState<number | null>(
     initialData.objections.length > 0 ? 0 : null,
   );
   const [objectionQuery, setObjectionQuery] = useState("");
   const [objectionFilter, setObjectionFilter] = useState<ObjectionFilter>("all");
   const [mobileTab, setMobileTab] = useState<"edit" | "test">("edit");
-  const versionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerVersionSave = useCallback(
     (newData: EditorData) => {
-      if (versionSaveTimer.current) clearTimeout(versionSaveTimer.current);
-      setSaved(false);
-      versionSaveTimer.current = setTimeout(async () => {
-        setSaving(true);
-        await updatePlaybookVersion(id, {
-          specialty: newData.specialty || null,
-          procedureDescription: newData.procedureDescription || null,
-          toneOfVoice: newData.toneOfVoice,
-          receptionistName: newData.receptionistName || "Marina",
-          differentials: newData.differentials.filter((d) => d.trim()),
-          commercialPolicy: newData.commercialPolicy || null,
-          objections: newData.objections.filter((o) => o.objection.trim()),
-          notes: newData.notes || null,
-          mediaLibrary: newData.mediaLibrary.filter((m) => m.title.trim() && m.url.trim()),
-        });
-        setSaving(false);
-        setSaved(true);
-      }, 1200);
+      scheduleSave(toPlaybookVersionPayload(newData));
     },
-    [id],
+    [scheduleSave],
   );
 
   function updateVersion(patch: Partial<EditorData>) {
@@ -1274,10 +1274,12 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
         {/* Save status */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#52525b" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: saving ? "#fbbf24" : saved ? "#00d4aa" : "#3f3f46", flexShrink: 0, display: "inline-block" }} />
-            {saving ? "Salvando..." : saved ? "Salvo" : "Aguardando"}
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: error ? "#f87171" : saving || pending ? "#fbbf24" : saved ? "#00d4aa" : "#3f3f46", flexShrink: 0, display: "inline-block" }} />
+            {error ? "Erro ao salvar" : saving ? "Salvando..." : pending ? "Pendente" : saved ? "Salvo" : "Aguardando"}
           </div>
           <button
+            type="button"
+            onClick={() => void flush()}
             disabled={saving}
             style={{ padding: "8px 18px", background: saving ? "rgba(0,212,170,0.42)" : "#00d4aa", border: "none", borderRadius: "8px", color: "#031f1a", fontSize: "13px", fontWeight: 700, cursor: saving ? "default" : "pointer", boxShadow: "0 10px 24px rgba(0,212,170,0.14)" }}
           >
