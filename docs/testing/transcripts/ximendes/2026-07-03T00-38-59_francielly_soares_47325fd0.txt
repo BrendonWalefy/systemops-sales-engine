@@ -1,0 +1,108 @@
+=================================================================
+LEAD: Francielly Soares | 554891011867
+Status: in_conversation | Temperatura: warm
+Criado em: 25/06/2026, 13:43:32
+=================================================================
+
+  CONVERSA bd9cc08c
+  Criada: 25/06/2026, 13:43:32
+  Última msg: 25/06/2026, 18:42:54
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [13:43:21] 👤 Lead 
+          Boa tarde
+
+  [13:43:40] 🤖 IA    [acknowledgment]
+          Boa tarde, Francielly. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [13:47:14] 👤 Lead 
+          Gostaria de saber sobre as manutenções
+
+  [13:47:40] 🤖 IA    [general_question]
+          As manutenções dependem do tipo de tratamento realizado. Por exemplo, no caso das lentes de resina, recomenda-se uma avaliação periódica para garantir que tudo esteja em ordem e que o resultado estético continue satisfatório. O Dr. Gregorie pode orientar sobre a frequência ideal de manutenções de acordo com o seu caso específico.
+          
+          Se você estiver interessada, podemos agendar uma avaliação para que ele possa analisar seu sorriso e discutir as melhores opções. O que acha?
+
+  [13:48:24] 👤 Lead 
+          Fiz a aplicação em Março
+
+  [13:48:40] 🤖 IA    [acknowledgment]
+          Entendo. É importante fazer um acompanhamento após a aplicação para garantir que tudo esteja bem. O Dr. Gregorie pode avaliar seu sorriso e discutir a necessidade de manutenções. Se precisar de mais informações ou quiser agendar uma avaliação, estou à disposição.
+
+  [13:55:47] 👤 Lead 
+          Ele falou que avaliação com 3 meses seria um valor
+
+  [13:55:54] 👤 Lead 
+          Manutenção de 6 meses outro valor
+
+  [13:56:00] 👤 Lead 
+          Quero fazer alguns ajustes
+
+  [13:56:09] 👤 Lead 
+          E teve um dente que trincou
+
+  [13:56:29] 👤 Lead 
+          Eu moro muito longe, não posso ir pr avaliação e depois ir pro procedimento, tem que ser tudo no mesmo dia
+
+  [14:01:12] 👨‍⚕️ Op.  
+          Boa tarde Francielly
+
+  [14:01:15] 👨‍⚕️ Op.  
+          Tudo bem ?
+
+  [14:01:19] 👨‍⚕️ Op.  
+          Dr Gregorie aqui
+
+  [14:01:47] 👨‍⚕️ Op.  
+          Você realizou as lentes comigo na dental luxe ?
+
+  [14:03:00] 👤 Lead 
+          Tudo bem
+
+  [14:03:02] 👤 Lead 
+          Isso
+
+  [14:03:15] 👤 Lead 
+          Você atende em algum outro lugar ?
+
+  [14:03:49] 👨‍⚕️ Op.  
+          Sim
+
+  [14:04:00] 👨‍⚕️ Op.  
+          Lá eu presto serviço
+
+  [14:05:17] 👨‍⚕️ Op.  
+          Esse número é do meu consultório, localizado no Brooklin
+
+  [14:05:31] 👨‍⚕️ Op.  
+          Gostaria de passar lá ?
+
+  [14:06:28] 👤 Lead 
+          Ta bom
+
+  [14:06:31] 👤 Lead 
+          Estou em Florianópolis
+
+  [14:06:41] 👤 Lead 
+          Volto pra São Paulo dia 30
+
+  [14:08:42] 👨‍⚕️ Op.  
+          Entendi, eu tenho horário dia 03/07 as 09h e 14h
+
+  [14:08:47] 👨‍⚕️ Op.  
+          Qual melhor ?
+
+  [15:44:49] 👤 Lead 
+          Dia 02 eu viajo novamente
+
+  [15:44:57] 👤 Lead 
+          Dia 30 à tarde ou dia 01 teria ?
+
+  [18:42:46] 👨‍⚕️ Op.  
+          Estou vendo se consigo um encaixe dia 30, mas provavelmente nessa semana só vou ter no dia 03
+
+  [18:42:51] 👨‍⚕️ Op.  
+          Se eu conseguir te retorno
+

@@ -1,0 +1,66 @@
+=================================================================
+LEAD: Flavia Lobo | 5511998041625
+Status: lost | Temperatura: warm
+Criado em: 16/06/2026, 19:41:17
+=================================================================
+
+  CONVERSA 171c3354
+  Criada: 16/06/2026, 19:41:17
+  Última msg: 17/06/2026, 08:54:35
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [19:41:11] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [19:41:25] 🤖 IA    [acknowledgment]
+          Boa noite, Flavia Lobo. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [19:47:20] 👤 Lead 
+          Valores
+
+  [19:47:32] 🤖 IA    [price_inquiry]
+          Trabalhamos com duas técnicas de lentes em resina composta:
+          
+          **Técnica Simplificada (resina nacional)**: a partir de R$2.500 para 20 elementos.
+          **Técnica Estratificada (resina importada)**: a partir de R$5.000 para 20 elementos.
+          
+          Esses valores são iniciais e a indicação ideal, assim como o valor final, são definidos na avaliação com o Dr. Gregorie.
+          
+          Se você estiver interessada, posso verificar horários disponíveis para a avaliação, onde ele poderá analisar seu caso e montar um plano personalizado.
+
+  [19:55:58] 👤 Lead 
+          E 13 elementos para q normal
+
+  [19:56:31] 🤖 IA    [general_question]
+          Entendo, Flavia. Para 13 elementos, o investimento é proporcional ao número de lentes que você deseja. O Dr. Gregorie poderá detalhar essa parte na avaliação, considerando seu sorriso e suas expectativas.
+          
+          Posso agendar uma avaliação para você, onde ele fará uma análise completa e apresentará um plano personalizado?
+
+  [19:56:32] 👤 Lead 
+          Pois já estou c a estratificada e n me adaptei
+
+  [19:56:43] 🤖 IA    [general_question]
+          Entendo, Flavia. A adaptação às lentes de porcelana pode ser desafiadora para algumas pessoas. É importante discutir suas experiências e expectativas para encontrar a melhor solução para o seu sorriso.
+          
+          Se você quiser, posso agendar uma avaliação com o Dr. Gregorie, onde ele poderá analisar seu caso e discutir opções que podem ser mais adequadas para você. O que acha?
+
+  [19:57:08] 👤 Lead 
+          Falar c atendente
+
+  [19:57:23] 🤖 IA    [needs_human]
+          Entendi, Flavia. Já avisei a equipe e um atendente irá responder a você em breve.
+
+  [08:53:29] 👨‍⚕️ Op.  
+          Bom dia Flávia, seja bem vinda!!
+
+  [08:54:03] 👨‍⚕️ Op.  
+          Dr Gregorie aqui, tudo bem ? vi que você tem lente e não está satisfeita
+
+  [08:54:19] 👨‍⚕️ Op.  
+          Consegue me enviar uma foto nítida do seu sorriso ?
+
+  [08:54:32] 👨‍⚕️ Op.  
+          E me conta o que te incomoda
+

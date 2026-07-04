@@ -1,0 +1,168 @@
+=================================================================
+LEAD: EMERSON   | 5511970352672
+Status: follow_up_due | Temperatura: hot
+Criado em: 29/05/2026, 08:07:41
+=================================================================
+
+  CONVERSA 9c1781f8
+  Criada: 29/05/2026, 08:07:41
+  Última msg: 22/06/2026, 18:25:48
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [08:07:36] 👤 Lead 
+          Bom dia doutor já me encontro a caminho
+
+  [08:07:47] 🤖 IA   
+          Bom dia! Fico feliz em saber que você está a caminho. Qualquer coisa é só chamar 😊.
+
+  [08:12:33] 👤 Lead 
+          👍🏽
+
+  [08:12:41] 🤖 IA   
+          Bom dia! Estou aqui se precisar de algo 😊.
+
+  [17:29:48] 👤 Lead 
+          Doutor depois me enviar as fotos por favor
+
+  [17:29:55] 🤖 IA   
+          Claro! Assim que possível, vou enviar as fotos para você.
+
+  [18:55:52] 👤 Lead 
+          Mano sem palavras , que serviço de vossa excelência super recomendo
+
+  [18:56:01] 🤖 IA   
+          Fico muito feliz em ouvir isso! Estou aqui se precisar de mais alguma coisa. 😊
+
+  [18:56:06] 👤 Lead 
+          Irmão vou compartilhar resposta domingo tudo bem? Por ser meu aniversário
+
+  [18:56:12] 🤖 IA   
+          Sem problemas! Aproveite seu aniversário e qualquer coisa, estou por aqui. 😊
+
+  [18:56:38] 👨‍⚕️ Op.  
+          Valeu mano
+
+  [18:56:44] 👤 Lead 
+          Obrigado bom término bom final de semana
+
+  [18:56:45] 👨‍⚕️ Op.  
+          Obrigado
+
+  [18:57:01] 👨‍⚕️ Op.  
+          Demoro,
+
+  [18:57:10] 👨‍⚕️ Op.  
+          Precisar estamos aqui
+
+  [18:57:28] 👨‍⚕️ Op.  
+          Para você tbm, bom aniversário 🫡👍🏼
+
+  [18:57:41] 👤 Lead 
+          Blz obrigado
+
+  [18:07:16] 👤 Lead 
+          Boa noite doutor , tenho meu retorno lá né
+
+  [18:07:23] 👤 Lead 
+          Ver se consegue pra sexta feira por favor
+
+  [18:07:27] 🤖 IA    [acknowledgment]
+          Boa noite, EMERSON  . Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [18:07:28] 👤 Lead 
+          Dia 03/07
+
+  [18:07:42] 🤖 IA    [reject_slots]
+          Encontrei horários disponíveis para o seu retorno na sexta-feira, 3 de julho. Veja as opções:
+          
+          1. Às 8 horas
+          2. Às 9 horas
+          3. Às 12 horas
+          4. Às 13 horas
+          5. Às 14 horas
+          
+          Por favor, responda com o número do horário que melhor se encaixa para você. Esses horários ficam disponíveis por 15 minutos aguardando sua resposta.
+
+  [18:08:17] 👤 Lead 
+          Teria período da tarde às 16:00
+
+  [18:08:21] 👤 Lead 
+          ?
+
+  [18:08:35] 🤖 IA    [reject_slots]
+          Infelizmente, não temos horários disponíveis às 16 horas. Porém, posso oferecer as seguintes opções para o seu retorno na sexta-feira, 3 de julho:
+          
+          1. Às 12 horas
+          2. Às 13 horas
+          3. Às 14 horas
+          4. Às 15 horas
+          
+          Por favor, responda com o número do horário que melhor se encaixa para você. Esses horários ficam disponíveis por 15 minutos aguardando sua resposta.
+
+  [18:08:59] 👤 Lead 
+          4
+
+  [18:09:03] 👤 Lead 
+          As 15:00
+
+  [18:09:12] 🤖 IA    [confirm_slot]
+          Seu agendamento está confirmado para sexta-feira, 3 de julho, às 15 horas. A equipe estará esperando por você na Rua Guararapes, 1894, Brooklin Novo, São Paulo.
+          
+          Se precisar de mais alguma informação, é só me avisar. Até lá!
+
+  [18:09:22] 🤖 IA    [acknowledgment]
+          Ótimo! Qualquer dúvida ou informação que precisar, estou à disposição.
+
+  [18:15:40] 👨‍⚕️ Op.  
+          Falar Emerson
+
+  [18:15:43] 👨‍⚕️ Op.  
+          Boa noite
+
+  [18:15:54] 👨‍⚕️ Op.  
+          Seu retorno está previsto
+
+  [18:16:08] 👨‍⚕️ Op.  
+          Para início de setembro
+
+  [18:16:32] 👨‍⚕️ Op.  
+          Vai completar 1 mês
+
+  [18:16:38] 👨‍⚕️ Op.  
+          Que realizamos as lentes
+
+  [18:16:44] 👨‍⚕️ Op.  
+          E com 3 meses
+
+  [18:16:49] 👤 Lead 
+          Isso exato
+
+  [18:17:10] 👨‍⚕️ Op.  
+          Então é no mês 9
+
+  [18:17:13] 👤 Lead 
+          [áudio] Então, você não tinha falado que conforme dar um mês pra me voltar, que... não sei qual era o procedimento... ou era dentro de três meses? Porque eu sei que você falou que conforme o tratamento pra cuidar, seria de seis meses que eu não fumo, né?
+
+  [18:17:34] 👤 Lead 
+          Ahhh doutor então cancele por favor pensei que era um mês
+
+  [18:17:44] 👤 Lead 
+          Entendi errado
+
+  [18:18:09] 👤 Lead 
+          3 meses com a metade do valor certo ? Diante disso de 6 em 6 mês com o valor cheio correto ? ✅
+
+  [18:18:17] 👤 Lead 
+          Blz blz
+
+  [18:18:20] 👨‍⚕️ Op.  
+          Isso
+
+  [18:18:50] 👤 Lead 
+          Blz doutor cancele o agendamento obrigado
+
+  [18:25:45] 👨‍⚕️ Op.  
+          Blzzz 😅
+

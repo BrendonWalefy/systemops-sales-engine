@@ -1,0 +1,88 @@
+=================================================================
+LEAD: Mirelly Ramos | 5511948945276
+Status: lost | Temperatura: —
+Criado em: 08/06/2026, 15:51:53
+=================================================================
+
+  CONVERSA f015e7b2
+  Criada: 08/06/2026, 15:51:53
+  Última msg: 15/06/2026, 13:10:28
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [15:51:46] 👤 Lead 
+          Olá
+
+  [15:51:51] 👤 Lead 
+          Gostaria de saber valores por favor
+
+  [16:22:43] 👨‍⚕️ Op.  
+          Olá Mirelly, seja bem vinda !!
+
+  [16:23:08] 👨‍⚕️ Op.  
+          Trabalhamos com duas técnicas que são simplificada e estratificadas 
+          
+          🔹 Técnica Simplificada: utiliza resina de alta qualidade para proporcionar um sorriso harmonioso e bonito, com excelente resultado estético. Por empregar uma abordagem mais prática e materiais de menor custo, é uma opção mais acessível para quem deseja transformar o sorriso.
+          
+          🔹 Técnica Estratificada: realizada com resina premium aplicada em múltiplas camadas, permitindo reproduzir com maior precisão os detalhes naturais dos dentes, como translucidez, profundidade e brilho. O resultado é um sorriso mais refinado, natural e altamente personalizado.
+          
+          A principal diferença entre as técnicas está no nível de detalhamento estético e na personalização do resultado final, permitindo escolher a opção que melhor atende às suas expectativas e necessidades.
+
+  [16:24:27] 👤 Lead 
+          Tem foto de ambos
+
+  [16:24:30] 👤 Lead 
+          E valores ?
+
+  [16:26:06] 👨‍⚕️ Op.  
+          20 lentes técnica simpli - 2.500,00
+          
+          20 lentes técnica estra - 5.000,00
+
+  [16:26:34] 👤 Lead 
+          Qual a forma de pagamento?
+
+  [16:26:48] 👤 Lead 
+          Após quanto tempo e a manutenção e valor?
+
+  [16:27:27] 👨‍⚕️ Op.  
+          Pix, débito e crédito até 21x com taxa da máquina
+
+  [16:27:52] 👨‍⚕️ Op.  
+          Manutenção  6 em 6 meses
+
+  [16:27:59] 👨‍⚕️ Op.  
+          Valor 500,00
+
+  [16:28:14] 👤 Lead 
+          Não importa a quantidade de parcelas tem juros ?
+
+  [16:31:21] 👨‍⚕️ Op.  
+          Até 3x sem juros
+
+  [17:13:27] 👤 Lead 
+          Com a técnica simples
+
+  [17:13:52] 👤 Lead 
+          Dividido em 10x quanto ficaria ?
+
+  [17:15:49] 👨‍⚕️ Op.  
+          10x 280,00
+
+  [11:32:14] 👤 Lead 
+          Desculpa acabei perdendo a conversa consegue me mandar os valores novamente por favor
+
+  [11:40:16] 👨‍⚕️ Op.  
+          Oi bom dia
+
+  [11:41:05] 👨‍⚕️ Op.  
+          Na técnica simplificada 2.500,00 avista ou 10x de 280,00
+
+  [11:42:10] 👨‍⚕️ Op.  
+          Técnica estratificada 5.000,00 avista ou 10x 561,00
+
+  [02:43:11] 🤖 IA    [reengagement]
+          Oi Mirelly, tudo bem? Estou aqui para te ajudar com os valores das lentes de contato dental. Se precisar de mais informações ou tiver alguma dúvida, é só me avisar!
+
+  [13:10:25] 👨‍⚕️ Op.  
+          Lentes em resina com 500,00 reais de desconto para o sorriso completo!! 🚨🚨🚨
+

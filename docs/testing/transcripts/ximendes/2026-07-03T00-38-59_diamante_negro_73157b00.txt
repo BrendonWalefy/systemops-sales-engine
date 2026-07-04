@@ -1,0 +1,23 @@
+=================================================================
+LEAD: Diamante Negro | 5511930128880
+Status: lost | Temperatura: —
+Criado em: 04/06/2026, 00:18:28
+=================================================================
+
+  CONVERSA 56e8533a
+  Criada: 04/06/2026, 00:18:28
+  Última msg: 04/06/2026, 00:18:23
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [00:18:23] 👤 Lead 
+          Olá! Tenho interesse e queria mais informações, por favor.
+
+  [00:18:31] 🤖 IA    [acknowledgment]
+          Bom dia, Diamante Negro! Olá! Sou a recepcionista virtual da Ximendes Odontologia. Posso te ajudar com informações sobre tratamentos, valores da avaliação e agendamentos. Como posso ajudar?
+          
+          1. Procedimentos oferecidos
+          2. Agendar uma consulta
+          3. Formas de pagamento
+          4. Localização e endereço
+          5. Falar com um atendente
+

@@ -69,7 +69,6 @@ export type Treatment = {
   name: string;
   durationMinutes: number;
   description: string | null;
-  commonObjections: string[];
   requiresEvaluationFirst: boolean;
   triggerTemplate: string | null;
   keywordMatchEnabled: boolean;

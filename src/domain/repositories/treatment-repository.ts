@@ -12,7 +12,6 @@ export type TreatmentRepository = {
         | "name"
         | "durationMinutes"
         | "description"
-        | "commonObjections"
         | "requiresEvaluationFirst"
         | "triggerTemplate"
         | "keywordMatchEnabled"

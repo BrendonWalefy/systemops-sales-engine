@@ -31,7 +31,6 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     name,
     durationMinutes,
     description: null,
-    commonObjections: [],
     requiresEvaluationFirst: false,
     triggerTemplate: null,
     keywordMatchEnabled: true,

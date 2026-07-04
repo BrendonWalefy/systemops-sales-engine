@@ -1,0 +1,32 @@
+=================================================================
+LEAD: Uerica | 553191455990
+Status: waiting_response | Temperatura: warm
+Criado em: 27/06/2026, 13:55:36
+=================================================================
+
+  CONVERSA 07e46e7b
+  Criada: 27/06/2026, 13:55:36
+  Última msg: 27/06/2026, 14:15:12
+  ai_paused=false | needs_attention=false | unclear_count=0
+  ------------------------------------------------------------
+  [13:54:52] 👤 Lead 
+          Posso saber mais sobre sua empresa?
+
+  [13:55:45] 🤖 IA    [greeting]
+          Boa tarde, Uerica. Tudo bem?
+          
+          Sou a Marina, assistente virtual da Ximendes Odontologia. Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?
+
+  [14:15:12] 👤 Lead 
+          Valores
+
+  [14:15:48] 🤖 IA    [price_inquiry]
+          Para lentes de resina composta, temos duas opções:
+          
+          1. **Técnica Simplificada** (resina nacional): a partir de R$2.500 para 20 elementos.
+          2. **Técnica Estratificada** (resina importada): a partir de R$5.000 para 20 elementos.
+          
+          Esses são valores iniciais, e cada caso é avaliado individualmente para definir o valor final.
+          
+          Se você estiver interessada, nossa equipe tem horários disponíveis para avaliação com o Dr. Gregorie. Posso verificar os horários para você?
+
