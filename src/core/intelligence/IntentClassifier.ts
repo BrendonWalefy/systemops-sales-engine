@@ -5,7 +5,9 @@ import OpenAI from "openai";
 import type { Message } from "@/domain/entities/conversation";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 
-const MODEL = "gpt-4o-mini";
+// Configurável por env para benchmark de modelo (Fase 5 do plano de excelência
+// conversacional). Ao trocar, adicionar o preço em cost-estimator.ts.
+const MODEL = process.env.OPENAI_CLASSIFIER_MODEL?.trim() || "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 30_000;
 
 export type TreatmentOption = {

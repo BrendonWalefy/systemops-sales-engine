@@ -10,8 +10,10 @@ import type { ConversationExperience } from "@/domain/entities/clinic";
 import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 
-const MODEL = "gpt-4o-mini";
-const PROMPT_VERSION = "composer-v2-experience";
+// Configurável por env para A/B de modelo (Fase 5 do plano de excelência
+// conversacional). Ao trocar, adicionar o preço em cost-estimator.ts.
+const MODEL = process.env.OPENAI_COMPOSER_MODEL?.trim() || "gpt-4o-mini";
+const PROMPT_VERSION = "composer-v3-arco";
 const OPENAI_TIMEOUT_MS = 30_000;
 
 export type FormattedAppointment = {
@@ -117,6 +119,9 @@ function normalizeTextReplyContent(content: string): string {
   return content
     .replace(/\r\n/g, "\n")
     .replace(MEDIA_LABEL_ARTIFACT_RE, "")
+    // WhatsApp não renderiza markdown: **negrito** vira asteriscos literais.
+    // O formato nativo do WhatsApp é *negrito* (auditoria jul/2026, F9).
+    .replace(/\*\*(.+?)\*\*/g, "*$1*")
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n")
@@ -125,17 +130,36 @@ function normalizeTextReplyContent(content: string): string {
     .trim();
 }
 
-function normalizeResponseParts(parts: ResponsePart[]): ResponsePart[] {
-  return parts.reduce<ResponsePart[]>((acc, part) => {
+// Conectivos que sobram órfãos quando o LLM escreve "te mostro: X e Y" e X/Y
+// eram tokens [MEDIA:] extraídos — restam "e", "." ou "e ." soltos no texto
+// (auditoria jul/2026 F9, casos Cassia/Diva/Luis).
+const ORPHAN_CONNECTIVE_ONLY_RE = /^[\s.,;:!?\-–—]*(?:e|ou)?[\s.,;:!?\-–—]*$/i;
+// " ... vídeos: e" antes de uma mídia → o "e" pendurado sai, o restante fica.
+const TRAILING_CONNECTIVE_BEFORE_MEDIA_RE = /[\s,]+(?:e|ou)\b[\s.,]*$/i;
+// "e . Qualquer dúvida..." logo após uma mídia → só remove o conectivo quando
+// seguido de pontuação (preserva início legítimo como "E se preferir...").
+const LEADING_ORPHAN_AFTER_MEDIA_RE = /^(?:(?:e|ou)\b\s*)?[.,;:!?]+\s*/i;
+
+export function normalizeResponseParts(parts: ResponsePart[]): ResponsePart[] {
+  const result: ResponsePart[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
     if (part.type === "media") {
-      acc.push(part);
-      return acc;
+      result.push(part);
+      continue;
     }
 
-    const content = normalizeTextReplyContent(part.content);
-    if (content) acc.push({ type: "text", content });
-    return acc;
-  }, []);
+    let content = normalizeTextReplyContent(part.content);
+    if (i > 0 && parts[i - 1].type === "media") {
+      content = content.replace(LEADING_ORPHAN_AFTER_MEDIA_RE, "").trim();
+    }
+    if (i < parts.length - 1 && parts[i + 1].type === "media") {
+      content = content.replace(TRAILING_CONNECTIVE_BEFORE_MEDIA_RE, "").trim();
+    }
+    if (!content || ORPHAN_CONNECTIVE_ONLY_RE.test(content)) continue;
+    result.push({ type: "text", content });
+  }
+  return result;
 }
 
 export type ComposedResponse = {
@@ -282,6 +306,21 @@ REGRAS ABSOLUTAS:
 7. FIDELIDADE EDITORIAL: se a política comercial ou as orientações da clínica exigirem valores, condições, nomes de técnicas ou limites explícitos para o assunto perguntado, preserve esses dados na resposta. Não resuma removendo preços, quantidades ou condições autorizadas.
 8. VOCABULÁRIO COMERCIAL: use sempre "investimento" no lugar de "custo" ao falar sobre valores e preços dos procedimentos.
 9. ANTI-REDUNDÂNCIA: antes de responder, leia o histórico da conversa. Se a mesma informação (preço, procedimento, diferença entre técnicas, condições de pagamento) já foi explicada nesta sessão, NÃO repita o bloco inteiro — faça referência breve ("como comentei antes, ...") e avance para o próximo passo ou pergunta. Repetir informação que o lead já recebeu transmite falta de atenção e prejudica a experiência.
+
+COMO CONDUZIR A RESPOSTA (arco de 4 passos — adapte ao contexto, sem virar fórmula robótica):
+1. ACOLHER: se a mensagem do lead carrega emoção ou contexto pessoal (medo, vergonha, pressa, ocasião especial, indicação de alguém), reconheça isso PRIMEIRO, em uma frase genuína e específica. Nunca argumente contra um sentimento.
+2. RESPONDER: responda diretamente o que o lead perguntou — sem rodeio, sem repetir saudação, sem menu.
+3. PROVAR: quando houver evidência disponível no contexto (vídeo da biblioteca, avaliação com planejamento, experiência da equipe), use-a para sustentar a resposta. Nunca invente evidência.
+4. AVANÇAR: feche com UM próximo passo claro (e no máximo UMA pergunta, conforme a regra do modo de experiência).
+
+ESPELHAMENTO DE REGISTRO: adapte-se ao tom do lead — humor com humor leve, formalidade com formalidade (use "senhor/senhora" se o lead usar), apreensão com calma. Reaproveite detalhes pessoais que o lead compartilhou no histórico (evento, prazo, quem indicou, o que já tentou) para personalizar — isso mostra que ele foi ouvido.
+
+INVESTIMENTO COM PRÓXIMO PASSO: ao informar um valor autorizado pela política comercial, nunca o deixe "seco": conecte-o em seguida ao passo de menor compromisso disponível (ex.: avaliação) como caminho concreto. Não esconda nem adie valores que a política autoriza informar.
+
+EXEMPLOS DO PADRÃO DE QUALIDADE (ilustram apenas o TOM e o arco — adapte à conversa; NUNCA copie valores, condições ou nomes daqui):
+- Lead com medo ("tenho medo que doa"): "Pode ficar tranquila, esse medo é super comum — e ninguém aqui ignora ele. Durante o procedimento a anestesia cuida da dor, e você sai com todas as orientações. Quer que eu veja um horário de avaliação pra você tirar as dúvidas direto com o profissional?"
+- Objeção de preço ("achei um pouco caro"): "Entendo! É um investimento mesmo — e é justamente por isso que o primeiro passo é a avaliação: nela o plano é montado pro seu caso, com as condições de pagamento certinhas. Quer que eu veja os horários?"
+- Lead adiando ("vou pensar e te falo"): "Claro, sem pressa nenhuma 😊 Fico por aqui — qualquer dúvida que surgir é só chamar. Se quiser, te aviso quando abrirem novos horários."
 
 ${experienceRules}
 

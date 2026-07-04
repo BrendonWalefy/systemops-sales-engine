@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseIntoParts } from "@/core/intelligence/ResponseComposer";
+import { parseIntoParts, normalizeResponseParts } from "@/core/intelligence/ResponseComposer";
 
 describe("parseIntoParts — extração de partes text/media do output do LLM", () => {
   it("texto puro sem tags retorna uma única parte de texto", () => {
@@ -97,5 +97,63 @@ Qual dessas combina mais com o que você busca?`;
     expect(textContent).not.toContain("[MEDIA:");
     expect(textContent).toContain("Texto A.");
     expect(textContent).toContain("Texto B.");
+  });
+});
+
+describe("normalizeResponseParts — higiene de saída (auditoria jul/2026, F9)", () => {
+  it("converte **negrito** markdown para *negrito* do WhatsApp", () => {
+    const parts = normalizeResponseParts([
+      { type: "text", content: "O investimento é **a partir de R$ 1.800** por dente." },
+    ]);
+    expect(parts).toEqual([
+      { type: "text", content: "O investimento é *a partir de R$ 1.800* por dente." },
+    ]);
+  });
+
+  it("remove parte de texto que é só conectivo órfão entre mídias (caso Cassia/Diva)", () => {
+    // "posso te mostrar: [MEDIA:a] e [MEDIA:b] ." → o "e" e o "." órfãos somem
+    const parts = normalizeResponseParts(
+      parseIntoParts("Posso te mostrar alguns vídeos: [MEDIA:vid-a] e [MEDIA:vid-b] ."),
+    );
+    expect(parts).toEqual([
+      { type: "text", content: "Posso te mostrar alguns vídeos:" },
+      { type: "media", id: "vid-a" },
+      { type: "media", id: "vid-b" },
+    ]);
+  });
+
+  it("remove conectivo pendurado no fim de texto que precede mídia", () => {
+    const parts = normalizeResponseParts(
+      parseIntoParts("Te envio o vídeo da técnica e [MEDIA:vid-1]"),
+    );
+    expect(parts).toEqual([
+      { type: "text", content: "Te envio o vídeo da técnica" },
+      { type: "media", id: "vid-1" },
+    ]);
+  });
+
+  it("remove pontuação órfã no início de texto após mídia, preservando frase legítima", () => {
+    const orphan = normalizeResponseParts(
+      parseIntoParts("[MEDIA:vid-1] e . Qualquer dúvida, me chama!"),
+    );
+    expect(orphan).toEqual([
+      { type: "media", id: "vid-1" },
+      { type: "text", content: "Qualquer dúvida, me chama!" },
+    ]);
+
+    const legitimate = normalizeResponseParts(
+      parseIntoParts("[MEDIA:vid-1] E se preferir, agendamos uma avaliação."),
+    );
+    expect(legitimate).toEqual([
+      { type: "media", id: "vid-1" },
+      { type: "text", content: "E se preferir, agendamos uma avaliação." },
+    ]);
+  });
+
+  it("não altera texto sem mídia adjacente que termina em 'e' legítimo dentro da frase", () => {
+    const parts = normalizeResponseParts([
+      { type: "text", content: "Trabalhamos com resina e porcelana." },
+    ]);
+    expect(parts).toEqual([{ type: "text", content: "Trabalhamos com resina e porcelana." }]);
   });
 });
