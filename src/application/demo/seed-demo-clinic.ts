@@ -24,6 +24,9 @@ import { syncModulesForPlan } from "@/application/modules/module-gate";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { generateDemoThread, type DemoClinicContext } from "@/application/demo/generate-demo-conversation";
 import { DEMO_CONVERSATIONS } from "@/application/demo/demo-conversation-scripts";
+import { DEMO_MEDIA_MANIFEST } from "@/application/demo/demo-media-manifest";
+import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
+import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 import {
   organizations,
   treatments,
@@ -333,9 +336,10 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     return { leadId, convId };
   }
 
-  // Reusa da Ximendes: (a) vídeos de procedimento e (b) o voiceId da voz B-WAVE.
-  // Reusar o voiceId NÃO interfere na Ximendes — é só um identificador de voz.
-  // Se a Ximendes não existir (ex.: banco local), segue sem mídia/voz — degrada limpo.
+  // Mídia: prioriza a biblioteca PRÓPRIA da demo (manifest gerado por
+  // scripts/upload-demo-media.ts). Fallback: reusa os vídeos da Ximendes.
+  // O voiceId B-WAVE ainda vem da Ximendes — é só um identificador de voz.
+  // Se nada existir (ex.: banco local), segue sem mídia/voz — degrada limpo.
   type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
   const ximendes = await db
     .select({ id: organizations.id })
@@ -343,7 +347,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     .where(eq(organizations.slug, "ximendes"))
     .limit(1)
     .then((r) => r[0] ?? null);
-  let demoMediaLibrary: MediaItem[] = [];
+  let ximendesMedia: MediaItem[] = [];
   let ximendesVoiceId = "";
   if (ximendes) {
     const pv = await db
@@ -352,7 +356,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       .where(and(eq(playbookVersions.clinicId, ximendes.id), eq(playbookVersions.status, "active")))
       .limit(1)
       .then((r) => r[0] ?? null);
-    demoMediaLibrary = (pv?.media as MediaItem[] | null) ?? [];
+    ximendesMedia = (pv?.media as MediaItem[] | null) ?? [];
     const vm = await db
       .select({ config: clinicModules.config })
       .from(clinicModules)
@@ -361,8 +365,46 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       .then((r) => r[0] ?? null);
     ximendesVoiceId = ((vm?.config as { voiceId?: string } | null)?.voiceId ?? "").trim();
   }
-  const demoVideo = demoMediaLibrary.find((m) => m.type === "video") ?? null;
-  const demoImage = demoMediaLibrary.find((m) => m.type === "image") ?? demoVideo;
+  const demoMediaLibrary: MediaItem[] = DEMO_MEDIA_MANIFEST.length > 0 ? DEMO_MEDIA_MANIFEST : ximendesMedia;
+
+  const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  function findMedia(type: "video" | "image", query?: string): MediaItem | null {
+    const ofType = demoMediaLibrary.filter((m) => m.type === type);
+    const pool = ofType.length > 0 ? ofType : demoMediaLibrary;
+    if (query) {
+      const hit = pool.find((m) => normalize(m.title ?? "").includes(normalize(query)));
+      if (hit) return hit;
+    }
+    return pool[0] ?? null;
+  }
+
+  // Áudios B-WAVE REAIS para os turnos `voice`: sintetiza via ElevenLabs e sobe
+  // para o prefixo permanente demo-media/ (o cron de limpeza só apaga tts/).
+  // Sem chave/voz configurada, degrada para flag de áudio sem arquivo.
+  const canSynthesizeVoice = Boolean(
+    process.env.ELEVENLABS_API_KEY && process.env.BLOB_READ_WRITE_TOKEN && ximendesVoiceId,
+  );
+  async function synthesizeVoiceNote(text: string): Promise<string | null> {
+    if (!canSynthesizeVoice) return null;
+    try {
+      const { gateway, format, contentType, speed } = createTtsProvider({
+        provider: "elevenlabs",
+        speed: 0.96,
+        elevenLabsVoiceId: ximendesVoiceId,
+        elevenLabsStability: 0.58,
+        elevenLabsSimilarityBoost: 0.82,
+      });
+      const audio = await gateway.synthesize(text, { format, speed });
+      return await new VercelBlobStorageGateway().upload(
+        `demo-media/voz-marina-${randomUUID()}.${format}`,
+        audio,
+        { contentType },
+      );
+    } catch (err) {
+      console.error("[seed-demo] TTS falhou — mensagem segue como texto:", err);
+      return null;
+    }
+  }
 
   // 0) reset
   const existing = await db
@@ -586,30 +628,36 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     const generated = await generateDemoThread(demoCtx, conv.turns);
     const startHour = conv.afterHours ? pick([20, 21, 22], convIdx) : 9 + (convIdx % 8);
     const created = spAt(conv.daysAgo, startHour, (convIdx * 7) % 50);
-    // timestamps crescentes (agente responde ~1-2 min depois do lead)
+    // timestamps crescentes (agente responde ~1-2 min depois do lead);
+    // gapMinutes desloca o relógio (follow-up dias depois, pós-procedimento etc.)
     const thread: MakeLeadOpts["thread"] = [];
-    let step = 0;
+    let cursor = created.getTime();
     for (const m of generated) {
-      const mediaItem = m.media === "image" ? demoImage : m.media === "video" ? demoVideo : null;
+      if (m.gapMinutes) cursor += m.gapMinutes * 60_000;
+      const mediaItem = m.media ? findMedia(m.media, m.mediaQuery) : null;
+      const isVoice = m.author === "agent" && m.voice === true;
+      const voiceUrl = isVoice ? await synthesizeVoiceNote(m.body) : null;
       thread.push({
         author: m.author,
         body: m.body,
-        at: new Date(created.getTime() + step * 90_000),
+        at: new Date(cursor),
         intent: m.intent,
-        deliveryFormat: m.author === "agent" && m.voice ? "audio" : undefined,
+        deliveryFormat: isVoice ? "audio" : undefined,
+        mediaUrl: voiceUrl,
+        mediaType: voiceUrl ? "audio" : undefined,
       });
-      step++;
+      cursor += 90_000;
       // Mídia (vídeo/imagem) vai como mensagem PRÓPRIA logo depois do texto.
       if (m.author === "agent" && mediaItem) {
         thread.push({
           author: "agent",
           body: mediaItem.title ?? "",
-          at: new Date(created.getTime() + step * 90_000),
+          at: new Date(cursor),
           intent: "media_sent",
           mediaUrl: mediaItem.url,
           mediaType: mediaItem.type,
         });
-        step++;
+        cursor += 90_000;
       }
     }
     const { leadId } = makeLead({
@@ -628,10 +676,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     if (conv.afterHours) afterHoursCount += thread.length;
 
     if (conv.booked) {
-      const isWon = conv.status === "won";
-      const startsAt = isWon
+      const apptStatus = conv.appointment?.status ?? (convIdx % 4 === 0 ? "confirmed" : "scheduled");
+      const isCompleted = apptStatus === "completed";
+      // Futuro espalhado na semana entre os profissionais; concluídos ficam no passado recente.
+      const startsAt = isCompleted
         ? spAt(2 + (convIdx % 5), 10 + (convIdx % 6))
-        : spAt(-(1 + (convIdx % 12)), 9 + (convIdx % 9));
+        : spAt(-(1 + (convIdx % 6)), 9 + (convIdx % 9));
       apptRows.push({
         id: randomUUID(),
         clinicId,
@@ -640,23 +690,27 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
         treatmentId: treatmentIds[conv.treatment] ?? null,
         startsAt,
         endsAt: new Date(startsAt.getTime() + 50 * 60_000),
-        status: isWon ? "completed" : convIdx % 4 === 0 ? "confirmed" : "scheduled",
+        status: apptStatus,
         source: "app",
-        valueCents: TREATMENT_VALUE_CENTS[conv.treatment] ?? 15000,
+        valueCents: conv.appointment?.valueCents ?? TREATMENT_VALUE_CENTS[conv.treatment] ?? 15000,
         createdAt: created,
         updatedAt: created,
       });
     }
 
-    if (conv.status === "follow_up_due") {
+    if (conv.followUp) {
+      const isDone = conv.followUp.status === "done";
+      // "done" = o resgate já aconteceu na thread (~2 dias após o início da conversa).
+      const dueAt = isDone ? spAt(Math.max(conv.daysAgo - 2, 0), 10) : spAt(-1, 9, convIdx);
       followRows.push({
         id: randomUUID(),
         clinicId,
         leadId,
-        dueAt: spAt(-1, 9, convIdx),
-        status: "pending",
-        reason: "reengajamento",
-        suggestedMessage: `Olá, ${conv.leadName.split(" ")[0]}! Passando para saber se ainda faz sentido seguirmos com sua ${conv.treatment.toLowerCase()}. Temos novos horários esta semana. Quer que eu te envie as opções?`,
+        dueAt,
+        status: conv.followUp.status,
+        reason: conv.followUp.reason,
+        suggestedMessage: `Olá, ${conv.leadName.split(" ")[0]}! Passando para saber se ainda faz sentido seguirmos com sua avaliação de ${conv.treatment.toLowerCase()}. Temos novos horários esta semana. Quer que eu te envie as opções?`,
+        completedAt: isDone ? new Date(dueAt.getTime() + 5 * 60_000) : null,
       });
     }
     convIdx++;
@@ -694,6 +748,54 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       id: randomUUID(), clinicId, name: genName(), phone: genPhone(), channel: pick(CHANNELS, i),
       treatmentInterest: treatment, status: "lost", temperature: null,
       createdAt: created, updatedAt: created,
+    });
+  }
+
+  // ── Fila de follow-up (widget "follow-ups pendentes") — leads mornos com uma
+  // mini-thread coerente que terminou em "vou pensar" e follow-up agendado.
+  const FOLLOW_UP_QUEUE: { name: string; treatment: string; daysAgo: number; ask: string; reply: string }[] = [
+    {
+      name: "Vanessa Siqueira", treatment: "Clareamento dental", daysAgo: 3,
+      ask: "Oi! Quanto custa o clareamento a laser de vocês?",
+      reply: "Oi, Vanessa! Sou a Marina, da Odonto Marques 😊 O clareamento é a partir de R$ 690, e a avaliação custa R$ 150 — nela a Dra. Helena confere seu esmalte e fecha o valor certinho. Parcelamos no cartão. Quer que eu veja os horários?",
+    },
+    {
+      name: "Gustavo Brandão", treatment: "Implante dentário", daysAgo: 4,
+      ask: "Boa tarde, queria saber o valor do implante de um dente.",
+      reply: "Boa tarde, Gustavo! Sou a Marina, da Odonto Marques. O implante é a partir de R$ 2.900, com o valor fechado após a avaliação e a imagem — custa R$ 150 e o Dr. Rafael já monta seu planejamento. Parcelamos no cartão. Posso te mostrar os horários?",
+    },
+    {
+      name: "Tatiana Vasconcelos", treatment: "Lentes de porcelana", daysAgo: 2,
+      ask: "Oi, vi o anúncio de vocês. As lentes de porcelana saem por quanto?",
+      reply: "Oi, Tatiana! Que bom te ver por aqui 😊 Sou a Marina, da Odonto Marques. As lentes de porcelana são a partir de R$ 1.800 por dente, e a avaliação estética (R$ 150) já sai com o desenho digital do seu sorriso. Quer que eu reserve um horário com a Dra. Helena?",
+    },
+  ];
+  for (let i = 0; i < FOLLOW_UP_QUEUE.length; i++) {
+    const q = FOLLOW_UP_QUEUE[i];
+    const created = spAt(q.daysAgo, 11 + i, (i * 13) % 50);
+    const { leadId } = makeLead({
+      clinicId,
+      name: q.name,
+      status: "follow_up_due",
+      temperature: "warm",
+      treatmentInterest: q.treatment,
+      createdAt: created,
+      channel: pick(CHANNELS, i + 2),
+      thread: [
+        { author: "lead", body: q.ask, at: created, intent: "lead" },
+        { author: "agent", body: q.reply, at: new Date(created.getTime() + 90_000), intent: "price_inquiry" },
+        { author: "lead", body: "Entendi! Vou pensar e te retorno, ok?", at: new Date(created.getTime() + 180_000), intent: "lead" },
+        { author: "agent", body: "Claro! Sem pressa 😊 Deixo seu contato guardado e qualquer novidade de horários eu te aviso por aqui, combinado?", at: new Date(created.getTime() + 270_000), intent: "small_talk" },
+      ],
+    });
+    followRows.push({
+      id: randomUUID(),
+      clinicId,
+      leadId,
+      dueAt: spAt(0, 9 + i, 15),
+      status: "pending",
+      reason: "reengajamento",
+      suggestedMessage: `Olá, ${q.name.split(" ")[0]}! Passando para saber se ainda faz sentido seguirmos com sua avaliação de ${q.treatment.toLowerCase()}. Abriram novos horários esta semana — quer que eu te envie as opções?`,
     });
   }
 

@@ -20,6 +20,9 @@ export type DemoTurn = {
   agent?: string;       // resposta curada da Marina; quando ausente, usa ResponseComposer/mock
   voice?: boolean;      // resposta do agente entregue como ÁUDIO (deliveryFormat "audio")
   media?: "video" | "image"; // anexa um item da biblioteca de mídia à resposta
+  mediaQuery?: string;  // seleciona o item da biblioteca pelo título (contains, normalizado)
+  human?: string;       // mensagem de um humano da clínica (clinic_user) após a resposta da Marina
+  gapMinutes?: number;  // salto de tempo ANTES deste turno (ex.: follow-up dias depois)
 };
 
 export type DemoClinicContext = {
@@ -33,11 +36,13 @@ export type DemoClinicContext = {
 };
 
 export type DemoGeneratedMessage = {
-  author: "lead" | "agent";
+  author: "lead" | "agent" | "clinic_user";
   body: string;
   intent: string;
   voice?: boolean;
   media?: "video" | "image";
+  mediaQuery?: string;
+  gapMinutes?: number;
 };
 
 // ── Slots realistas (rótulos próximos, dias úteis) ───────────────────────────
@@ -202,7 +207,7 @@ export async function generateDemoThread(
     const curatedAgentReply = turn.agent?.trim() ?? "";
     const hasCuratedAgentReply = curatedAgentReply.length > 0;
     if (!proactive) {
-      out.push({ author: "lead", body: turn.lead, intent: "lead" });
+      out.push({ author: "lead", body: turn.lead, intent: "lead", gapMinutes: turn.gapMinutes });
       history.push(toHistoryMessage("lead", turn.lead, i++));
     }
 
@@ -250,8 +255,16 @@ export async function generateDemoThread(
       intent: AGENT_INTENT_BY_ACTION[action.type] ?? "general_question",
       voice: turn.voice,
       media: turn.media,
+      mediaQuery: turn.mediaQuery,
+      gapMinutes: proactive ? turn.gapMinutes : undefined,
     });
     history.push(toHistoryMessage("agent", text, i++));
+
+    const humanReply = turn.human?.trim() ?? "";
+    if (humanReply) {
+      out.push({ author: "clinic_user", body: humanReply, intent: "human_takeover" });
+      history.push(toHistoryMessage("agent", humanReply, i++));
+    }
   }
 
   return out;
