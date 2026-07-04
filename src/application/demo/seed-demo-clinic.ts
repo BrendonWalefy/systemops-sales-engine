@@ -105,6 +105,91 @@ const LAST_NAMES = [
 
 const CHANNELS = ["whatsapp", "whatsapp", "whatsapp", "instagram", "meta_ads", "referral"] as const;
 
+const DEMO_AVATAR_BASE_PATH = "/demo/lead-avatars";
+const DEMO_STAFF_AVATAR_BASE_PATH = "/demo/staff-avatars";
+const DEMO_STAFF_AVATAR_URLS = {
+  helena: `${DEMO_STAFF_AVATAR_BASE_PATH}/helena-marques.png`,
+  rafael: `${DEMO_STAFF_AVATAR_BASE_PATH}/rafael-nogueira.png`,
+  camila: `${DEMO_STAFF_AVATAR_BASE_PATH}/camila-torres.png`,
+  andre: `${DEMO_STAFF_AVATAR_BASE_PATH}/andre-vilela.png`,
+} as const;
+const DEMO_LEAD_AVATAR_BY_KEY: Record<string, string> = {
+  "lentes-resina-noiva": `${DEMO_AVATAR_BASE_PATH}/camila-rocha.png`,
+  "lentes-porcelana-executiva": `${DEMO_AVATAR_BASE_PATH}/isabela-ramos.png`,
+  "protese-protocolo-indicacao": `${DEMO_AVATAR_BASE_PATH}/sonia-martins.png`,
+  "remocao-siso-won": `${DEMO_AVATAR_BASE_PATH}/mariana-alves.png`,
+  "implante-follow-up-resgate": `${DEMO_AVATAR_BASE_PATH}/ricardo-menezes.png`,
+  "botox-evento-natural": `${DEMO_AVATAR_BASE_PATH}/renata-lima.png`,
+  "handoff-caso-complexo": `${DEMO_AVATAR_BASE_PATH}/antonio-ferraz.png`,
+  "alinhadores-fora-horario": `${DEMO_AVATAR_BASE_PATH}/thiago-sampaio.png`,
+  "clareamento-remarcacao": `${DEMO_AVATAR_BASE_PATH}/juliana-castro.png`,
+  "porcelana-plano-fechado": `${DEMO_AVATAR_BASE_PATH}/larissa-monteiro.png`,
+};
+const DEMO_FEMALE_AVATAR_POOL = [
+  `${DEMO_AVATAR_BASE_PATH}/camila-rocha.png`,
+  `${DEMO_AVATAR_BASE_PATH}/isabela-ramos.png`,
+  `${DEMO_AVATAR_BASE_PATH}/sonia-martins.png`,
+  `${DEMO_AVATAR_BASE_PATH}/mariana-alves.png`,
+  `${DEMO_AVATAR_BASE_PATH}/renata-lima.png`,
+  `${DEMO_AVATAR_BASE_PATH}/juliana-castro.png`,
+  `${DEMO_AVATAR_BASE_PATH}/larissa-monteiro.png`,
+] as const;
+const DEMO_MALE_AVATAR_POOL = [
+  `${DEMO_AVATAR_BASE_PATH}/ricardo-menezes.png`,
+  `${DEMO_AVATAR_BASE_PATH}/antonio-ferraz.png`,
+  `${DEMO_AVATAR_BASE_PATH}/thiago-sampaio.png`,
+] as const;
+const DEMO_MALE_FIRST_NAMES = new Set([
+  "andre", "antonio", "bruno", "diego", "eduardo", "felipe", "gustavo",
+  "henrique", "leonardo", "lucas", "mateus", "otavio", "pedro", "rafael",
+  "ricardo", "rodrigo", "thiago", "vinicius",
+]);
+
+function stableAvatarIndex(seed: string, poolSize: number): number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  return Math.abs(hash) % poolSize;
+}
+
+function normalizedFirstName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/\s+/)[0]
+    .toLowerCase();
+}
+
+function demoLeadAvatarUrl(name: string, conversationKey?: string): string {
+  if (conversationKey && DEMO_LEAD_AVATAR_BY_KEY[conversationKey]) {
+    return DEMO_LEAD_AVATAR_BY_KEY[conversationKey];
+  }
+  const pool = DEMO_MALE_FIRST_NAMES.has(normalizedFirstName(name))
+    ? DEMO_MALE_AVATAR_POOL
+    : DEMO_FEMALE_AVATAR_POOL;
+  return pool[stableAvatarIndex(name, pool.length)];
+}
+
+function assertDemoMediaLibraryReady(mediaLibrary: { title: string; type: "video" | "image" }[]): void {
+  const normalizedTitles = mediaLibrary.map((item) => normalizeMediaTitle(item.title));
+  const has = (needle: string, type: "video" | "image") =>
+    mediaLibrary.some((item, index) => item.type === type && normalizedTitles[index].includes(needle));
+
+  const missing = [
+    has("implante", "video") ? null : "video: implante",
+    has("lentes", "video") ? null : "video: lentes",
+    has("porcelana", "video") ? null : "video: porcelana",
+    has("sorriso", "image") ? null : "image: sorriso",
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    throw new Error(`[seed-demo] Biblioteca de mídia incompleta para a demo: faltando ${missing.join(", ")}`);
+  }
+}
+
+function normalizeMediaTitle(value: string): string {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 // ── Plano de valores (centavos) — para o volume histórico de ganhos ──────
 const PRICE_CYCLE: { t: string; v: number }[] = [
   { t: "Lentes de resina", v: 95000 },
@@ -274,6 +359,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     treatmentInterest: string;
     createdAt: Date;
     channel?: (typeof CHANNELS)[number];
+    profilePicUrl?: string | null;
     aiPaused?: boolean;
     needsAttention?: boolean;
     attentionReason?: string | null;
@@ -301,6 +387,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       phone: genPhone(),
       channel,
       treatmentInterest: opts.treatmentInterest,
+      profilePicUrl: opts.profilePicUrl ?? demoLeadAvatarUrl(opts.name),
       status: opts.status,
       temperature: opts.temperature,
       createdAt: opts.createdAt,
@@ -366,13 +453,13 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     ximendesVoiceId = ((vm?.config as { voiceId?: string } | null)?.voiceId ?? "").trim();
   }
   const demoMediaLibrary: MediaItem[] = DEMO_MEDIA_MANIFEST.length > 0 ? DEMO_MEDIA_MANIFEST : ximendesMedia;
+  assertDemoMediaLibraryReady(demoMediaLibrary);
 
-  const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   function findMedia(type: "video" | "image", query?: string): MediaItem | null {
     const ofType = demoMediaLibrary.filter((m) => m.type === type);
     const pool = ofType.length > 0 ? ofType : demoMediaLibrary;
     if (query) {
-      const hit = pool.find((m) => normalize(m.title ?? "").includes(normalize(query)));
+      const hit = pool.find((m) => normalizeMediaTitle(m.title ?? "").includes(normalizeMediaTitle(query)));
       if (hit) return hit;
     }
     return pool[0] ?? null;
@@ -380,7 +467,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
 
   // Áudios B-WAVE REAIS para os turnos `voice`: sintetiza via ElevenLabs e sobe
   // para o prefixo permanente demo-media/ (o cron de limpeza só apaga tts/).
-  // Sem chave/voz configurada, degrada para flag de áudio sem arquivo.
+  // Sem chave/voz configurada, degrada para texto normal.
   const canSynthesizeVoice = Boolean(
     process.env.ELEVENLABS_API_KEY && process.env.BLOB_READ_WRITE_TOKEN && ximendesVoiceId,
   );
@@ -485,8 +572,34 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       clinicId,
       email: DEMO_ADMIN_EMAIL,
       role: "org_admin",
+      displayName: "Dra. Helena",
       professionalId: profHelena,
+      avatarUrl: DEMO_STAFF_AVATAR_URLS.helena,
       passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
+    },
+    {
+      clinicId,
+      email: "rafael@odontomarques.com.br",
+      role: "professional",
+      displayName: "Dr. Rafael",
+      professionalId: profRafael,
+      avatarUrl: DEMO_STAFF_AVATAR_URLS.rafael,
+    },
+    {
+      clinicId,
+      email: "camila@odontomarques.com.br",
+      role: "professional",
+      displayName: "Dra. Camila",
+      professionalId: profCamila,
+      avatarUrl: DEMO_STAFF_AVATAR_URLS.camila,
+    },
+    {
+      clinicId,
+      email: "andre@odontomarques.com.br",
+      role: "professional",
+      displayName: "Dr. André",
+      professionalId: profAndre,
+      avatarUrl: DEMO_STAFF_AVATAR_URLS.andre,
     },
     // Owner do sistema — acesso direto à visão de clínica sem trocar de conta
     {
@@ -642,7 +755,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
         body: m.body,
         at: new Date(cursor),
         intent: m.intent,
-        deliveryFormat: isVoice ? "audio" : undefined,
+        deliveryFormat: voiceUrl ? "audio" : undefined,
         mediaUrl: voiceUrl,
         mediaType: voiceUrl ? "audio" : undefined,
       });
@@ -668,6 +781,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       treatmentInterest: conv.treatment,
       createdAt: created,
       channel: conv.channel,
+      profilePicUrl: demoLeadAvatarUrl(conv.leadName, conv.key),
       needsAttention: conv.needsAttention,
       attentionReason: conv.attentionReason ?? null,
       aiPaused: conv.aiPaused,
@@ -724,8 +838,10 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     const treatment = wonValuePlan[i].t;
     const created = spAt(12 + i, 10, i % 55);
     const leadId = randomUUID();
+    const leadName = genName();
     leadRows.push({
-      id: leadId, clinicId, name: genName(), phone: genPhone(), channel: pick(CHANNELS, i),
+      id: leadId, clinicId, name: leadName, phone: genPhone(), channel: pick(CHANNELS, i),
+      profilePicUrl: demoLeadAvatarUrl(leadName),
       treatmentInterest: treatment, status: "won", temperature: null,
       createdAt: created, updatedAt: created,
     });
@@ -744,8 +860,10 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   for (let i = 0; i < HISTORY_LOST; i++) {
     const treatment = pick(HISTORY_TREATMENTS, i + 3);
     const created = spAt(18 + i, 10, i % 50);
+    const leadName = genName();
     leadRows.push({
-      id: randomUUID(), clinicId, name: genName(), phone: genPhone(), channel: pick(CHANNELS, i),
+      id: randomUUID(), clinicId, name: leadName, phone: genPhone(), channel: pick(CHANNELS, i),
+      profilePicUrl: demoLeadAvatarUrl(leadName),
       treatmentInterest: treatment, status: "lost", temperature: null,
       createdAt: created, updatedAt: created,
     });
