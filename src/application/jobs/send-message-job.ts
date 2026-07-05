@@ -5,7 +5,7 @@ import {
   getOutboundCapWindows,
   isOutboundSafetyGatedCategory,
 } from "@/application/channel-safety/outbound-safety-gate";
-import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
+import type { OutboundMessage, OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import type {
   OutboundSafetyContext,
   OutboundSafetyContextReader,
@@ -33,12 +33,13 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { areEquivalentWhatsAppPhones } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { db } from "@/infrastructure/db/client";
-import { organizations, messages } from "@/infrastructure/db/schema";
+import { organizations, messages, followUps, leads } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
   safetyContextReader?: OutboundSafetyContextReader;
+  automationDispatchLifecycle?: AutomationDispatchLifecycle;
   now?: () => Date;
   capJitterMs?: () => number;
   delivery?: (input: {
@@ -46,6 +47,18 @@ export type SendMessageJobDependencies = {
     clinicId: string;
     conversationId: string;
   }) => Promise<string | null>;
+};
+
+export type AutomationDispatchLifecycle = {
+  markDelivered(outbound: OutboundMessageForAutomationLifecycle, deliveredAt: Date): Promise<void>;
+  markCancelled(outbound: OutboundMessageForAutomationLifecycle, reason: string, cancelledAt: Date): Promise<void>;
+};
+
+type OutboundMessageForAutomationLifecycle = {
+  category: string;
+  dedupeKey: string | null;
+  clinicId: string;
+  payload: OutboundPayload;
 };
 
 export type SendMessageJobProcessResult =
@@ -57,12 +70,14 @@ export type SendMessageJobProcessResult =
 export class SendMessageJobHandler {
   private readonly delivery: NonNullable<SendMessageJobDependencies["delivery"]>;
   private readonly safetyContextReader: OutboundSafetyContextReader;
+  private readonly automationDispatchLifecycle: AutomationDispatchLifecycle;
   private readonly now: () => Date;
   private readonly capJitterMs: () => number;
 
   constructor(private readonly deps: SendMessageJobDependencies) {
     this.delivery = deps.delivery ?? deliverOutboundPayload;
     this.safetyContextReader = deps.safetyContextReader ?? new DrizzleOutboundSafetyContextReader();
+    this.automationDispatchLifecycle = deps.automationDispatchLifecycle ?? drizzleAutomationDispatchLifecycle;
     this.now = deps.now ?? (() => new Date());
     this.capJitterMs = deps.capJitterMs ?? (() => Math.floor(Math.random() * 30 * 60_000));
   }
@@ -81,6 +96,7 @@ export class SendMessageJobHandler {
 
     const outbound = await this.deps.outboundMessageStore.findOutboundMessage(outboundMessageId);
     if (!outbound || outbound.status === "sent" || outbound.status === "cancelled" || outbound.status === "dead") {
+      await this.reconcileTerminalAutomationLifecycle(outbound);
       log.info("job.ignored", { reason: "outbound_terminal_or_missing", durationMs: Date.now() - startedAt });
       return "ignored";
     }
@@ -99,6 +115,12 @@ export class SendMessageJobHandler {
     if (!isOutboundPayload(outbound.payload)) {
       throw new Error(`Unsupported outbound payload for ${outbound.id}`);
     }
+    const outboundForLifecycle: OutboundMessageForAutomationLifecycle = {
+      category: outbound.category,
+      dedupeKey: outbound.dedupeKey,
+      clinicId: outbound.clinicId,
+      payload: outbound.payload,
+    };
 
     let safetyContext: OutboundSafetyContext | null = null;
     if (isAutomationOutboundPayload(outbound.payload)) {
@@ -106,6 +128,11 @@ export class SendMessageJobHandler {
         await this.deps.outboundMessageStore.markOutboundCancelled(
           outbound.id,
           "invalid_automation_context",
+        );
+        await this.automationDispatchLifecycle.markCancelled(
+          outboundForLifecycle,
+          "invalid_automation_context",
+          this.now(),
         );
         outboundLog.info("job.ignored", {
           reason: "invalid_automation_context",
@@ -126,6 +153,11 @@ export class SendMessageJobHandler {
           outbound.id,
           "invalid_automation_context",
         );
+        await this.automationDispatchLifecycle.markCancelled(
+          outboundForLifecycle,
+          "invalid_automation_context",
+          this.now(),
+        );
         outboundLog.info("job.ignored", {
           reason: "invalid_automation_context",
           durationMs: Date.now() - startedAt,
@@ -137,6 +169,11 @@ export class SendMessageJobHandler {
         await this.deps.outboundMessageStore.markOutboundCancelled(
           outbound.id,
           "invalid_automation_context",
+        );
+        await this.automationDispatchLifecycle.markCancelled(
+          outboundForLifecycle,
+          "invalid_automation_context",
+          this.now(),
         );
         outboundLog.info("job.ignored", {
           reason: "invalid_automation_context",
@@ -158,6 +195,11 @@ export class SendMessageJobHandler {
           outbound.id,
           "invalid_automation_context",
         );
+        await this.automationDispatchLifecycle.markCancelled(
+          outboundForLifecycle,
+          "invalid_automation_context",
+          this.now(),
+        );
         outboundLog.info("job.ignored", {
           reason: "invalid_automation_context",
           durationMs: Date.now() - startedAt,
@@ -168,6 +210,7 @@ export class SendMessageJobHandler {
 
       if (context.lead?.contactConsentRevokedAt) {
         await this.deps.outboundMessageStore.markOutboundCancelled(outbound.id, "consent_revoked");
+        await this.automationDispatchLifecycle.markCancelled(outboundForLifecycle, "consent_revoked", this.now());
         outboundLog.info("job.ignored", {
           reason: "consent_revoked",
           durationMs: Date.now() - startedAt,
@@ -198,6 +241,7 @@ export class SendMessageJobHandler {
 
       if (gate.action === "cancel") {
         await this.deps.outboundMessageStore.markOutboundCancelled(outbound.id, gate.reason);
+        await this.automationDispatchLifecycle.markCancelled(outboundForLifecycle, gate.reason, this.now());
         outboundLog.info("job.ignored", {
           reason: gate.reason,
           durationMs: Date.now() - startedAt,
@@ -214,6 +258,17 @@ export class SendMessageJobHandler {
         });
         return { status: "deferred", runAt: gate.runAt, reason: gate.reason };
       }
+
+      const obsoleteReason = getObsoleteAutomationReason(outbound.category, context);
+      if (obsoleteReason) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(outbound.id, obsoleteReason);
+        await this.automationDispatchLifecycle.markCancelled(outboundForLifecycle, obsoleteReason, this.now());
+        outboundLog.info("job.ignored", {
+          reason: obsoleteReason,
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
     }
 
     const providerMessageId = await this.delivery({
@@ -225,9 +280,95 @@ export class SendMessageJobHandler {
       id: outbound.id,
       providerMessageId,
     });
+    await this.automationDispatchLifecycle.markDelivered(outboundForLifecycle, this.now());
     outboundLog.info("job.sent", { durationMs: Date.now() - startedAt, providerMessageId });
     return "sent";
   }
+
+  private async reconcileTerminalAutomationLifecycle(outbound: OutboundMessage | null): Promise<void> {
+    if (!outbound || !isOutboundPayload(outbound.payload)) return;
+    const lifecycleInput: OutboundMessageForAutomationLifecycle = {
+      category: outbound.category,
+      dedupeKey: outbound.dedupeKey,
+      clinicId: outbound.clinicId,
+      payload: outbound.payload,
+    };
+    if (outbound.status === "sent") {
+      await this.automationDispatchLifecycle.markDelivered(
+        lifecycleInput,
+        outbound.sentAt ?? this.now(),
+      );
+    }
+    if (outbound.status === "cancelled" || outbound.status === "dead") {
+      await this.automationDispatchLifecycle.markCancelled(
+        lifecycleInput,
+        outbound.lastError ?? "cancelled",
+        this.now(),
+      );
+    }
+  }
+}
+
+const drizzleAutomationDispatchLifecycle: AutomationDispatchLifecycle = {
+  async markDelivered(outbound, deliveredAt) {
+    if (!isAutomationOutboundPayload(outbound.payload)) return;
+
+    if (outbound.category === "follow_up") {
+      const followUpId = parseFollowUpDedupeKey(outbound.dedupeKey);
+      if (!followUpId) return;
+      await db
+        .update(followUps)
+        .set({ status: "done", completedAt: deliveredAt, updatedAt: deliveredAt })
+        .where(
+          and(
+            eq(followUps.id, followUpId),
+            eq(followUps.clinicId, outbound.clinicId),
+            eq(followUps.leadId, outbound.payload.leadId),
+          ),
+        );
+      await db
+        .update(leads)
+        .set({ status: "in_conversation", updatedAt: deliveredAt })
+        .where(and(eq(leads.id, outbound.payload.leadId), eq(leads.clinicId, outbound.clinicId)));
+    }
+  },
+
+  async markCancelled(outbound, reason, cancelledAt) {
+    if (!isAutomationOutboundPayload(outbound.payload)) return;
+
+    if (outbound.category === "follow_up") {
+      const followUpId = parseFollowUpDedupeKey(outbound.dedupeKey);
+      if (!followUpId) return;
+      await db
+        .update(followUps)
+        .set({ status: "cancelled", updatedAt: cancelledAt })
+        .where(
+          and(
+            eq(followUps.id, followUpId),
+            eq(followUps.clinicId, outbound.clinicId),
+            eq(followUps.leadId, outbound.payload.leadId),
+          ),
+        );
+    }
+  },
+};
+
+function parseFollowUpDedupeKey(dedupeKey: string | null): string | null {
+  const prefix = "followup:";
+  return dedupeKey?.startsWith(prefix) ? dedupeKey.slice(prefix.length) : null;
+}
+
+function getObsoleteAutomationReason(
+  category: string,
+  context: OutboundSafetyContext,
+): "automation_obsolete" | null {
+  if (category !== "follow_up") return null;
+  if (context.lead?.status && ["appointment_scheduled", "lost", "won"].includes(context.lead.status)) {
+    return "automation_obsolete";
+  }
+  if (context.conversation?.aiPaused) return "automation_obsolete";
+  if (context.lastMessage && context.lastMessage.author !== "agent") return "automation_obsolete";
+  return null;
 }
 
 function isCompleteAutomationContext(
@@ -482,6 +623,7 @@ async function deliverAutomationOutbound(input: {
     .update(messages)
     .set({
       body: input.payload.text,
+      sentAt: new Date(),
       ...(result.msgId ? { externalId: result.msgId } : {}),
       deliveryFormat: result.deliveryFormat,
       ...(result.blobUrl ? { mediaUrl: result.blobUrl, mediaType: "audio" } : {}),

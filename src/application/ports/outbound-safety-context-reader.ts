@@ -6,8 +6,9 @@ import type {
 export type OutboundSafetyContext = {
   clinic: OutboundSafetyClinic;
   lead: OutboundSafetyLead | null;
-  conversation: { id: string; leadId: string } | null;
+  conversation: { id: string; leadId: string; aiPaused?: boolean } | null;
   agentMessage: { id: string; conversationId: string } | null;
+  lastMessage?: { author: string; sentAt: Date } | null;
 };
 
 export type OutboundSafetyContextReader = {

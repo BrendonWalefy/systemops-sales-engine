@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lt, lte } from "drizzle-orm";
+import { and, asc, desc, eq, lt, lte, sql } from "drizzle-orm";
 import type { FollowUp } from "@/domain/entities/follow-up";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import { db } from "@/infrastructure/db/client";
@@ -109,6 +109,13 @@ export class DrizzleFollowUpRepository implements FollowUpRepository {
           eq(followUps.clinicId, input.clinicId),
           eq(followUps.status, "sending"),
           lt(followUps.updatedAt, input.olderThan),
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM outbound_messages om
+            WHERE om.organization_id = ${followUps.clinicId}
+              AND om.dedupe_key = 'followup:' || ${followUps.id}
+              AND om.status IN ('pending', 'processing')
+          )`,
         ),
       )
       .returning({ id: followUps.id });

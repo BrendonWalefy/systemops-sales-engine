@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type {
   OutboundSafetyContext,
   OutboundSafetyContextReader,
@@ -33,6 +33,7 @@ export class DrizzleOutboundSafetyContextReader implements OutboundSafetyContext
         phone: leads.phone,
         whatsappLid: leads.whatsappLid,
         contactConsentRevokedAt: leads.contactConsentRevokedAt,
+        status: leads.status,
       })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.clinicId, input.clinicId)))
@@ -42,6 +43,7 @@ export class DrizzleOutboundSafetyContextReader implements OutboundSafetyContext
       .select({
         id: conversations.id,
         leadId: conversations.leadId,
+        aiPaused: conversations.aiPaused,
       })
       .from(conversations)
       .where(
@@ -68,11 +70,22 @@ export class DrizzleOutboundSafetyContextReader implements OutboundSafetyContext
       )
       .limit(1);
 
+    const [lastMessage] = await db
+      .select({
+        author: messages.author,
+        sentAt: messages.sentAt,
+      })
+      .from(messages)
+      .where(eq(messages.conversationId, input.conversationId))
+      .orderBy(desc(messages.sentAt))
+      .limit(1);
+
     return {
       clinic,
       lead: lead ?? null,
       conversation: conversation ?? null,
       agentMessage: agentMessage ?? null,
+      lastMessage: lastMessage ?? null,
     };
   }
 }
