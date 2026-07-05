@@ -43,6 +43,7 @@ export type IntentType =
   | "greeting"                // primeiro contato genuíno, sem histórico relevante
   | "acknowledgment"          // reconhecimento mid-conversa: "ok", "blz", "entendi", "certo"
   | "farewell"                // encerramento: "obrigado tchau", "valeu", "até mais"
+  | "stop_contact"            // opt-out: pede para não receber mais mensagens/sair da lista
   | "unclear";                // não foi possível entender
 
 export type IntentClassification = {
@@ -95,6 +96,15 @@ REGRAS CRÍTICAS PARA ENCERRAMENTO E RECONHECIMENTO:
 - "obrigado" + sinal de encerramento ("tchau", "até mais", "até logo", "valeu", "certo obrigado", "ok obrigado", "tá obrigado") → intent = "farewell"
 - "tchau", "até mais", "até logo", "até breve", "foi um prazer", "a gente se fala" → intent = "farewell"
 - Mensagem vaga/ambígua que não tem conteúdo de negócio (ex: "esse é o normal", "né", "é") quando há contexto de conversa → intent = "acknowledgment" (não é unclear)
+
+REGRA PARA stop_contact (opt-out — PRIORIDADE ALTA, avalie antes de farewell/unclear):
+- Use "stop_contact" SOMENTE quando o lead pede claramente para PARAR DE RECEBER MENSAGENS ou sair de contato/lista. Exemplos: "não quero mais receber mensagens", "para de me mandar mensagem", "me tira dessa lista", "não me manda mais nada", "quero cancelar o recebimento", "descadastrar", "sair da lista", "pare de me enviar", "não me chame mais aqui".
+- NÃO confundir com rejeição pontual dentro do fluxo:
+  - "não quero esse horário", "nenhum desses" → reject_slots (é sobre slots, não sobre contato)
+  - "não quero mais fazer o tratamento", "desisti do procedimento" → NÃO é stop_contact (é desistência de compra; siga o fluxo normal)
+  - "não", "não obrigado", "agora não" isolados → acknowledgment ou o intent do contexto, NÃO stop_contact
+  - "tchau", "valeu" → farewell (encerrar a conversa ≠ pedir para nunca mais ser contatado)
+- Na dúvida entre stop_contact e farewell/reject_slots, só escolha stop_contact se houver menção explícita a NÃO RECEBER MAIS mensagens/contato.
 
 REGRA PARA greeting:
 - intent = "greeting" SOMENTE quando é genuinamente o primeiro contato sem histórico OU quando o lead recomeça do zero com nova saudação após longa ausência
@@ -181,7 +191,7 @@ function buildSystemPrompt(treatments: TreatmentOption[], context: PromptContext
 
 // strict: true exige que todo campo em properties conste em required.
 // Campos opcionais são declarados como anyOf [type, null].
-const RESPONSE_SCHEMA = {
+export const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     intent: {
@@ -202,6 +212,7 @@ const RESPONSE_SCHEMA = {
         "greeting",
         "acknowledgment",
         "farewell",
+        "stop_contact",
         "unclear",
       ],
     },
