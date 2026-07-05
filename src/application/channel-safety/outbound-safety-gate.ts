@@ -18,6 +18,7 @@ export type OutboundSafetyLead = {
   phone: string | null;
   whatsappLid: string | null;
   contactConsentRevokedAt: Date | null;
+  status?: string;
 };
 
 export type OutboundSafetyGateInput = {

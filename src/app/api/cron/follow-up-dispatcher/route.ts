@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import type { Message } from "@/domain/entities/conversation";
-import { randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
-import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { organizations, conversations, messages } from "@/infrastructure/db/schema";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
@@ -20,7 +22,7 @@ import {
 } from "@/application/use-cases/leads/follow-up-dispatch-policy";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
-import { sendVoiceOrText, resolveClinicVoiceConfig } from "@/lib/tts-send";
+import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { FollowUp } from "@/domain/entities/follow-up";
 
@@ -30,10 +32,6 @@ export const dynamic = "force-dynamic";
 // function slots from exhausting. When migrating to Inngest, remove this and
 // let Inngest handle concurrency via its `concurrency` step config instead.
 const DISPATCH_CONCURRENCY = 5;
-
-// Per-send timeout. Prevents one slow Z-API call from blocking the whole batch.
-// Must be well below the Vercel function maxDuration (60s).
-const SEND_TIMEOUT_MS = 25_000;
 
 type ClinicResult = { clinicId: string; dispatched: number; failed: number; total: number };
 type FollowUpOutcome = "dispatched" | "failed" | "skipped";
@@ -56,15 +54,6 @@ function createConcurrencyLimiter(max: number) {
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`[FollowUpDispatcher] timeout after ${ms}ms: ${label}`)), ms),
-    ),
-  ]);
-}
-
 type DispatchDeps = {
   followUpRepository: DrizzleFollowUpRepository;
   leadRepository: DrizzleLeadRepository;
@@ -72,7 +61,6 @@ type DispatchDeps = {
   composer: ResponseComposer;
   clinic: typeof organizations.$inferSelect;
   editorial: Awaited<ReturnType<typeof resolveActiveEditorialConfig>>;
-  defaultChannelConfig: ReturnType<typeof resolveChannelConfig>;
   timezone: ClinicTimezone;
   now: Date;
   voiceEnabled: boolean;
@@ -80,6 +68,50 @@ type DispatchDeps = {
   // deferred: used to cancel stale video follow-ups for the same lead after dispatch
   deferred: FollowUp[];
 };
+
+export function buildFollowUpOutboxInput(input: {
+  clinicId: string;
+  conversationId: string;
+  followUpId: string;
+  leadId: string;
+  to: string;
+  text: string;
+  useVoice: boolean;
+  ttsConfig: TtsConfig;
+}) {
+  const agentMessageId = deterministicUuid(`automation-message:followup:${input.followUpId}`);
+  return {
+    agentMessageId,
+    dedupeKey: `followup:${input.followUpId}`,
+    outbound: {
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+      channel: "whatsapp" as const,
+      deliveryKind: input.useVoice ? "audio" as const : "text" as const,
+      category: "follow_up" as const,
+      dedupeKey: `followup:${input.followUpId}`,
+      payload: {
+        version: 1 as const,
+        kind: "automation" as const,
+        to: input.to,
+        text: input.text,
+        leadId: input.leadId,
+        conversationId: input.conversationId,
+        agentMessageId,
+        useVoice: input.useVoice,
+        ttsConfig: input.ttsConfig,
+      },
+    },
+  };
+}
+
+function deterministicUuid(input: string): string {
+  const bytes = Buffer.from(createHash("sha256").update(input).digest("hex").slice(0, 32), "hex");
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 // Isolated unit of work per follow-up. Extracted so Inngest can call it directly
 // as a step function when the time comes — dispatcher becomes a fan-out trigger,
@@ -95,7 +127,6 @@ async function processOneFollowUp(
     composer,
     clinic,
     editorial,
-    defaultChannelConfig,
     timezone,
     now,
     deferred,
@@ -238,32 +269,35 @@ async function processOneFollowUp(
     isFirstMessage: false,
   });
 
-  const { msgId: zapiMessageId, deliveryFormat } = await withTimeout(
-    sendVoiceOrText(channelAddress, composed.text, defaultChannelConfig, deps.voiceEnabled, deps.ttsConfig, clinic.id),
-    SEND_TIMEOUT_MS,
-    `follow-up ${followUp.id} lead=${lead.phone}`,
-  );
+  const { agentMessageId, outbound } = buildFollowUpOutboxInput({
+    clinicId: clinic.id,
+    conversationId: conv.id,
+    followUpId: followUp.id,
+    leadId: followUp.leadId,
+    to: channelAddress,
+    text: composed.text,
+    useVoice: deps.voiceEnabled,
+    ttsConfig: deps.ttsConfig,
+  });
 
-  // Persist the outbound message so the Z-API echo is recognised as already
-  // processed and does not re-trigger the Orchestrator.
-  if (conv) {
-    await db
-      .insert(messages)
-      .values({
-        id: randomUUID(),
-        conversationId: conv.id,
-        author: "agent",
-        body: composed.text,
-        sentAt: now,
-        externalId: zapiMessageId ?? null,
-        intent: "reengagement" as const,
-        deliveryFormat,
-      })
-      .onConflictDoNothing();
-  }
+  await db
+    .insert(messages)
+    .values({
+      id: agentMessageId,
+      conversationId: conv.id,
+      author: "agent",
+      body: composed.text,
+      sentAt: now,
+      externalId: null,
+      intent: "reengagement" as const,
+      deliveryFormat: null,
+    })
+    .onConflictDoNothing();
 
-  await followUpRepository.save({ ...followUp, status: "done", completedAt: now, updatedAt: now });
-  await leadRepository.save({ ...lead, status: "in_conversation", updatedAt: now });
+  await enqueueOutboundMessage(outbound, {
+    outboundMessageStore: new DrizzleOutboundMessageStore(),
+    jobQueue: new DrizzleJobQueue(),
+  });
 
   // Cancel stale video follow-ups for this same lead that were deferred.
   const staleVideoFollowUps = deferred.filter(
@@ -290,7 +324,6 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
     resolveActiveEditorialConfig(clinicId),
     resolveClinicVoiceConfig(clinicId),
   ]);
-  const defaultChannelConfig = resolveChannelConfig(clinic);
 
   const followUpRepository = new DrizzleFollowUpRepository();
   const leadRepository = new DrizzleLeadRepository();
@@ -299,13 +332,6 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const timezone = new ClinicTimezone(clinic.timezone);
 
   const now = new Date();
-
-  // Quiet hours: fora da janela de contato os follow-ups continuam pending —
-  // a próxima execução dentro da janela os despacha.
-  if (!timezone.isWithinContactWindow(now)) {
-    console.log(`[FollowUpDispatcher] fora da janela de contato (clinic=${clinicId}, tz=${clinic.timezone})`);
-    return { clinicId, dispatched: 0, failed: 0, total: 0 };
-  }
 
   const staleCutoff = new Date(now.getTime() - 30 * 60_000);
   const recovered = await followUpRepository.recoverStaleSending({ clinicId, olderThan: staleCutoff });
@@ -325,7 +351,6 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
     composer,
     clinic,
     editorial,
-    defaultChannelConfig,
     timezone,
     now,
     voiceEnabled,

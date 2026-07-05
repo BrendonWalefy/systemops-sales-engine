@@ -100,6 +100,13 @@ function makeSafetyContextReader(patch: {
   };
 }
 
+function makeAutomationDispatchLifecycle() {
+  return {
+    markDelivered: vi.fn().mockResolvedValue(undefined),
+    markCancelled: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe("SendMessageJobHandler", () => {
   it("devolve a mensagem para espera quando existe uma saída anterior ativa", async () => {
     const store = makeStore();
@@ -145,15 +152,59 @@ describe("SendMessageJobHandler", () => {
     expect(store.hasEarlierActiveMessage).not.toHaveBeenCalled();
   });
 
+  it("reconcilia lifecycle de automação quando a outbox já está sent", async () => {
+    const sentAt = new Date("2026-07-06T13:05:00.000Z");
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue(
+      automationOutbound({ status: "sent", sentAt }),
+    );
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      automationDispatchLifecycle,
+      delivery: vi.fn(),
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: "outbound-automation-1" } })).resolves.toBe("ignored");
+    expect(store.hasEarlierActiveMessage).not.toHaveBeenCalled();
+    expect(automationDispatchLifecycle.markDelivered).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: "followup:follow-up-1" }),
+      sentAt,
+    );
+  });
+
+  it("reconcilia lifecycle de automação quando a outbox está dead", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue(
+      automationOutbound({ status: "dead", lastError: "credentials_revoked" }),
+    );
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      automationDispatchLifecycle,
+      delivery: vi.fn(),
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: "outbound-automation-1" } })).resolves.toBe("ignored");
+    expect(store.hasEarlierActiveMessage).not.toHaveBeenCalled();
+    expect(automationDispatchLifecycle.markCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: "followup:follow-up-1" }),
+      "credentials_revoked",
+      expect.any(Date),
+    );
+  });
+
   it("cancela automação quando o lead revogou consentimento antes de contar caps", async () => {
     const store = makeStore();
     store.findOutboundMessage.mockResolvedValue(automationOutbound());
     const safetyContextReader = makeSafetyContextReader({
       contactConsentRevokedAt: new Date("2026-07-05T12:00:00.000Z"),
     });
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       safetyContextReader,
+      automationDispatchLifecycle,
       delivery: vi.fn(),
       now: () => new Date("2026-07-06T13:00:00.000Z"),
       capJitterMs: () => 0,
@@ -161,6 +212,11 @@ describe("SendMessageJobHandler", () => {
 
     await expect(handler.processJob({ payload: { outboundMessageId: "outbound-automation-1" } })).resolves.toBe("ignored");
     expect(store.markOutboundCancelled).toHaveBeenCalledWith("outbound-automation-1", "consent_revoked");
+    expect(automationDispatchLifecycle.markCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: "followup:follow-up-1" }),
+      "consent_revoked",
+      new Date("2026-07-06T13:00:00.000Z"),
+    );
     expect(store.countSentSince).not.toHaveBeenCalled();
   });
 
@@ -181,9 +237,11 @@ describe("SendMessageJobHandler", () => {
       agentMessage: null,
     });
     const delivery = vi.fn();
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       safetyContextReader,
+      automationDispatchLifecycle,
       delivery,
       now: () => new Date("2026-07-06T13:00:00.000Z"),
       capJitterMs: () => 0,
@@ -193,6 +251,11 @@ describe("SendMessageJobHandler", () => {
     expect(store.markOutboundCancelled).toHaveBeenCalledWith(
       "outbound-automation-1",
       "invalid_automation_context",
+    );
+    expect(automationDispatchLifecycle.markCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: "followup:follow-up-1" }),
+      "invalid_automation_context",
+      new Date("2026-07-06T13:00:00.000Z"),
     );
     expect(store.countSentSince).not.toHaveBeenCalled();
     expect(delivery).not.toHaveBeenCalled();
@@ -215,9 +278,11 @@ describe("SendMessageJobHandler", () => {
       }),
     );
     const delivery = vi.fn();
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       safetyContextReader: makeSafetyContextReader(),
+      automationDispatchLifecycle,
       delivery,
     });
 
@@ -225,6 +290,11 @@ describe("SendMessageJobHandler", () => {
     expect(store.markOutboundCancelled).toHaveBeenCalledWith(
       "outbound-automation-1",
       "invalid_automation_context",
+    );
+    expect(automationDispatchLifecycle.markCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: "followup:follow-up-1" }),
+      "invalid_automation_context",
+      expect.any(Date),
     );
     expect(store.countSentSince).not.toHaveBeenCalled();
     expect(delivery).not.toHaveBeenCalled();
@@ -248,9 +318,11 @@ describe("SendMessageJobHandler", () => {
     );
     const safetyContextReader = makeSafetyContextReader();
     const delivery = vi.fn();
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       safetyContextReader,
+      automationDispatchLifecycle,
       delivery,
     });
 
@@ -259,6 +331,11 @@ describe("SendMessageJobHandler", () => {
     expect(store.markOutboundCancelled).toHaveBeenCalledWith(
       "outbound-automation-1",
       "invalid_automation_context",
+    );
+    expect(automationDispatchLifecycle.markCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: "followup:follow-up-1" }),
+      "invalid_automation_context",
+      expect.any(Date),
     );
     expect(delivery).not.toHaveBeenCalled();
   });
@@ -284,6 +361,50 @@ describe("SendMessageJobHandler", () => {
     expect(store.markOutboundPending).toHaveBeenCalledWith(
       "outbound-automation-1",
       "outbound_hourly_cap_exceeded",
+    );
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("cancela follow-up obsoleto antes de entregar", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue(automationOutbound());
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
+    const delivery = vi.fn();
+    const safetyContextReader = makeSafetyContextReader();
+    safetyContextReader.getContext.mockResolvedValue({
+      clinic: {
+        id: "clinic-1",
+        timezone: "America/Sao_Paulo",
+        businessHours: "Seg-Sex 09:00-18:00",
+        outboundHourlyCap: 40,
+        outboundDailyCap: 200,
+      },
+      lead: {
+        id: "lead-1",
+        phone: "5511999999999",
+        whatsappLid: null,
+        contactConsentRevokedAt: null,
+        status: "appointment_scheduled",
+      },
+      conversation: { id: "conversation-1", leadId: "lead-1", aiPaused: false },
+      agentMessage: { id: "agent-message-automation-1", conversationId: "conversation-1" },
+      lastMessage: { author: "agent", sentAt: new Date("2026-07-06T12:00:00.000Z") },
+    });
+    const obsoleteHandler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      automationDispatchLifecycle,
+      safetyContextReader,
+      delivery,
+      now: () => new Date("2026-07-06T13:00:00.000Z"),
+      capJitterMs: () => 0,
+    });
+
+    await expect(obsoleteHandler.processJob({ payload: { outboundMessageId: "outbound-automation-1" } })).resolves.toBe("ignored");
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith("outbound-automation-1", "automation_obsolete");
+    expect(automationDispatchLifecycle.markCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: "followup:follow-up-1" }),
+      "automation_obsolete",
+      new Date("2026-07-06T13:00:00.000Z"),
     );
     expect(delivery).not.toHaveBeenCalled();
   });
