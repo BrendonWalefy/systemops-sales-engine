@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations, messages } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
-import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
@@ -146,6 +147,55 @@ Responda APENAS com o texto da mensagem, sem aspas.`,
   return resp.choices[0]?.message?.content?.trim() ?? null;
 }
 
+// dayBucket torna o dedupeKey único por tentativa (recovery reincide após 7
+// dias) mas idempotente entre execuções do mesmo dia (recovery-campaign +
+// evening reexportam o mesmo GET).
+export function buildRecoveryOutboxInput(input: {
+  clinicId: string;
+  conversationId: string;
+  leadId: string;
+  to: string;
+  text: string;
+  now: Date;
+}) {
+  const dayBucket = input.now.toISOString().slice(0, 10);
+  const agentMessageId = deterministicUuid(
+    `automation-message:recovery:${input.leadId}:${dayBucket}`,
+  );
+  const dedupeKey = `recovery:${input.leadId}:${dayBucket}`;
+  return {
+    agentMessageId,
+    dedupeKey,
+    outbound: {
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+      channel: "whatsapp" as const,
+      deliveryKind: "text" as const,
+      category: "recovery" as const,
+      dedupeKey,
+      payload: {
+        version: 1 as const,
+        kind: "automation" as const,
+        to: input.to,
+        text: input.text,
+        leadId: input.leadId,
+        conversationId: input.conversationId,
+        agentMessageId,
+      },
+    },
+  };
+}
+
+// UUID v5-like determinístico: mesma entrada → mesmo id, para o pré-registro da
+// mensagem casar com o dedupe da outbox em reexecuções de cron.
+function deterministicUuid(input: string): string {
+  const bytes = Buffer.from(createHash("sha256").update(input).digest("hex").slice(0, 32), "hex");
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function shouldSkip(lead: UnattendedLead): string | null {
   if (!lead.phone && !lead.whatsapp_lid) return "sem telefone";
 
@@ -166,7 +216,6 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
   }
 
   const editorial = await resolveActiveEditorialConfig(clinicId);
-  const channelConfig = resolveChannelConfig(clinic);
   const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? "Marina";
   const specialty = editorial?.specialty ?? clinic.specialty ?? "odontologia estética";
   const treatmentNames = (editorial?.procedures ?? []).map((p) => p.name);
@@ -221,18 +270,32 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
         continue;
       }
 
-      const msgId = await sendTextMessage(channelAddress, message, channelConfig);
+      // Reengajamento passa pela outbox → Safety Gate (opt-out, caps, quiet
+      // hours) antes de chegar ao provider.
+      const { agentMessageId, outbound } = buildRecoveryOutboxInput({
+        clinicId,
+        conversationId: lead.conv_id,
+        leadId: lead.lead_id,
+        to: channelAddress,
+        text: message,
+        now,
+      });
 
       await db.insert(messages).values({
-        id: randomUUID(),
+        id: agentMessageId,
         conversationId: lead.conv_id,
         author: "agent",
         body: message,
         sentAt: now,
-        externalId: msgId ?? null,
+        externalId: null,
         intent: "reengagement" as const,
-        deliveryFormat: "text",
+        deliveryFormat: null,
       }).onConflictDoNothing();
+
+      await enqueueOutboundMessage(outbound, {
+        outboundMessageStore: new DrizzleOutboundMessageStore(),
+        jobQueue: new DrizzleJobQueue(),
+      });
 
       if (lead.ai_paused) {
         await db
