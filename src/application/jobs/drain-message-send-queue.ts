@@ -3,11 +3,17 @@ import type { OutboundMessageStore } from "@/application/ports/outbound-message-
 import { getJobRetryAt } from "@/application/services/job-retry-policy";
 import { createLogger } from "@/infrastructure/logging/logger";
 
+export type MessageSendJobProcessResult =
+  | "sent"
+  | "ignored"
+  | "deferred"
+  | { status: "deferred"; runAt: Date; reason: string };
+
 export type MessageSendJobHandler = {
   processJob(job: {
     id: string;
     payload: unknown;
-  }): Promise<"sent" | "ignored" | "deferred">;
+  }): Promise<MessageSendJobProcessResult>;
 };
 
 export type DrainMessageSendQueueResult = {
@@ -58,17 +64,23 @@ export async function drainMessageSendQueue(params: {
     const startedAt = Date.now();
     jobLog.info("job.claimed", { attempt: job.attempts });
 
-    let processingOutcome: "sent" | "ignored" | "deferred" | null = null;
+    let processingOutcome: MessageSendJobProcessResult | null = null;
     try {
       processingOutcome = await params.handler.processJob(job);
-      if (processingOutcome === "deferred") {
+      if (isDeferredOutcome(processingOutcome)) {
         await params.jobQueue.releaseJob(
           job.id,
           params.workerId,
-          new Date(Date.now() + 1_000),
+          processingOutcome === "deferred"
+            ? new Date(Date.now() + 1_000)
+            : processingOutcome.runAt,
         );
         result.deferred++;
-        jobLog.info("job.deferred", { durationMs: Date.now() - startedAt });
+        jobLog.info("job.deferred", {
+          reason: processingOutcome === "deferred" ? "handler_deferred" : processingOutcome.reason,
+          runAt: processingOutcome === "deferred" ? undefined : processingOutcome.runAt.toISOString(),
+          durationMs: Date.now() - startedAt,
+        });
         continue;
       }
 
@@ -113,6 +125,12 @@ export async function drainMessageSendQueue(params: {
   }
 
   return result;
+}
+
+function isDeferredOutcome(
+  outcome: MessageSendJobProcessResult,
+): outcome is "deferred" | { status: "deferred"; runAt: Date; reason: string } {
+  return outcome === "deferred" || (typeof outcome === "object" && outcome.status === "deferred");
 }
 
 export function getOutboundMessageId(payload: unknown): string | null {
