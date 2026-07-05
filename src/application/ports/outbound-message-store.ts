@@ -1,6 +1,13 @@
 import type { Channel } from "@/domain/value-objects/channel";
 
 export type OutboundMessageDeliveryKind = "text" | "audio" | "image" | "video" | "document";
+export type OutboundMessageCategory =
+  | "reply"
+  | "follow_up"
+  | "reminder"
+  | "recovery"
+  | "campaign"
+  | "operational";
 
 export type OutboundMessageStatus =
   | "pending"
@@ -17,6 +24,7 @@ export type OutboundMessage = {
   channel: Channel;
   payload: unknown;
   deliveryKind: OutboundMessageDeliveryKind;
+  category: OutboundMessageCategory;
   sequence: number;
   status: OutboundMessageStatus;
   providerMessageId: string | null;
@@ -33,6 +41,7 @@ export type CreateOutboundMessageInput = {
   channel: Channel;
   payload: unknown;
   deliveryKind: OutboundMessageDeliveryKind;
+  category?: OutboundMessageCategory;
   dedupeKey?: string | null;
 };
 
@@ -56,4 +65,6 @@ export type OutboundMessageStore = {
   markOutboundDelivered(input: MarkOutboundDeliveredInput): Promise<void>;
   markOutboundFailed(id: string, error: string): Promise<void>;
   markOutboundDead(id: string, error: string): Promise<void>;
+  markOutboundCancelled(id: string, error: string): Promise<void>;
+  countSentSince(input: { clinicId: string; since: Date }): Promise<number>;
 };

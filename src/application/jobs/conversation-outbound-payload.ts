@@ -31,6 +31,20 @@ export type ConversationOutboundPayload = {
   pipelineAdvance: PipelineAdvance | null;
 };
 
+export type AutomationOutboundPayload = {
+  version: 1;
+  kind: "automation";
+  to: string;
+  text: string;
+  leadId: string;
+  conversationId: string;
+  agentMessageId: string;
+  useVoice?: boolean;
+  ttsConfig?: TtsConfig;
+};
+
+export type OutboundPayload = ConversationOutboundPayload | AutomationOutboundPayload;
+
 export function isConversationOutboundPayload(
   payload: unknown,
 ): payload is ConversationOutboundPayload {
@@ -47,4 +61,24 @@ export function isConversationOutboundPayload(
     Array.isArray(value.mediaParts) &&
     typeof value.leadId === "string"
   );
+}
+
+export function isAutomationOutboundPayload(
+  payload: unknown,
+): payload is AutomationOutboundPayload {
+  if (!payload || typeof payload !== "object") return false;
+  const value = payload as Record<string, unknown>;
+  return (
+    value.version === 1 &&
+    value.kind === "automation" &&
+    typeof value.to === "string" &&
+    typeof value.text === "string" &&
+    typeof value.leadId === "string" &&
+    typeof value.conversationId === "string" &&
+    typeof value.agentMessageId === "string"
+  );
+}
+
+export function isOutboundPayload(payload: unknown): payload is OutboundPayload {
+  return isConversationOutboundPayload(payload) || isAutomationOutboundPayload(payload);
 }

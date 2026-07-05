@@ -1,9 +1,22 @@
 import { randomUUID } from "crypto";
-import { eq } from "drizzle-orm";
-import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
+import { and, eq } from "drizzle-orm";
 import {
+  evaluateOutboundSafetyGate,
+  getOutboundCapWindows,
+  isOutboundSafetyGatedCategory,
+} from "@/application/channel-safety/outbound-safety-gate";
+import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
+import type {
+  OutboundSafetyContext,
+  OutboundSafetyContextReader,
+} from "@/application/ports/outbound-safety-context-reader";
+import {
+  isAutomationOutboundPayload,
   isConversationOutboundPayload,
+  isOutboundPayload,
+  type AutomationOutboundPayload,
   type ConversationOutboundPayload,
+  type OutboundPayload,
 } from "@/application/jobs/conversation-outbound-payload";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
@@ -17,27 +30,44 @@ import {
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
+import { areEquivalentWhatsAppPhones } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { db } from "@/infrastructure/db/client";
 import { organizations, messages } from "@/infrastructure/db/schema";
+import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
+  safetyContextReader?: OutboundSafetyContextReader;
+  now?: () => Date;
+  capJitterMs?: () => number;
   delivery?: (input: {
-    payload: ConversationOutboundPayload;
+    payload: OutboundPayload;
     clinicId: string;
     conversationId: string;
   }) => Promise<string | null>;
 };
 
+export type SendMessageJobProcessResult =
+  | "sent"
+  | "ignored"
+  | "deferred"
+  | { status: "deferred"; runAt: Date; reason: string };
+
 export class SendMessageJobHandler {
   private readonly delivery: NonNullable<SendMessageJobDependencies["delivery"]>;
+  private readonly safetyContextReader: OutboundSafetyContextReader;
+  private readonly now: () => Date;
+  private readonly capJitterMs: () => number;
 
   constructor(private readonly deps: SendMessageJobDependencies) {
-    this.delivery = deps.delivery ?? deliverConversationOutbound;
+    this.delivery = deps.delivery ?? deliverOutboundPayload;
+    this.safetyContextReader = deps.safetyContextReader ?? new DrizzleOutboundSafetyContextReader();
+    this.now = deps.now ?? (() => new Date());
+    this.capJitterMs = deps.capJitterMs ?? (() => Math.floor(Math.random() * 30 * 60_000));
   }
 
-  async processJob(job: { id?: string; payload: unknown }): Promise<"sent" | "ignored" | "deferred"> {
+  async processJob(job: { id?: string; payload: unknown }): Promise<SendMessageJobProcessResult> {
     const outboundMessageId = getOutboundMessageId(job.payload);
     if (!outboundMessageId) throw new Error("message.send job has no outboundMessageId");
 
@@ -66,8 +96,124 @@ export class SendMessageJobHandler {
       outboundLog.info("job.ignored", { reason: "outbound_claim_lost", durationMs: Date.now() - startedAt });
       return "ignored";
     }
-    if (!isConversationOutboundPayload(outbound.payload)) {
+    if (!isOutboundPayload(outbound.payload)) {
       throw new Error(`Unsupported outbound payload for ${outbound.id}`);
+    }
+
+    let safetyContext: OutboundSafetyContext | null = null;
+    if (isAutomationOutboundPayload(outbound.payload)) {
+      if (outbound.payload.conversationId !== outbound.conversationId) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(
+          outbound.id,
+          "invalid_automation_context",
+        );
+        outboundLog.info("job.ignored", {
+          reason: "invalid_automation_context",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
+
+      safetyContext = await this.safetyContextReader.getContext({
+        clinicId: outbound.clinicId,
+        leadId: outbound.payload.leadId,
+        conversationId: outbound.conversationId,
+        agentMessageId: outbound.payload.agentMessageId,
+      });
+
+      if (!isCompleteAutomationContext(safetyContext)) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(
+          outbound.id,
+          "invalid_automation_context",
+        );
+        outboundLog.info("job.ignored", {
+          reason: "invalid_automation_context",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
+
+      if (!automationDestinationMatchesLead(outbound.payload.to, safetyContext.lead)) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(
+          outbound.id,
+          "invalid_automation_context",
+        );
+        outboundLog.info("job.ignored", {
+          reason: "invalid_automation_context",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
+    }
+
+    if (isOutboundSafetyGatedCategory(outbound.category)) {
+      const context = safetyContext ?? await this.safetyContextReader.getContext({
+        clinicId: outbound.clinicId,
+        leadId: outbound.payload.leadId,
+        conversationId: outbound.conversationId,
+        agentMessageId: outbound.payload.agentMessageId,
+      });
+      if (!context?.lead) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(
+          outbound.id,
+          "invalid_automation_context",
+        );
+        outboundLog.info("job.ignored", {
+          reason: "invalid_automation_context",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
+      const now = this.now();
+
+      if (context.lead?.contactConsentRevokedAt) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(outbound.id, "consent_revoked");
+        outboundLog.info("job.ignored", {
+          reason: "consent_revoked",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
+
+      const windows = getOutboundCapWindows({ clinic: context.clinic, now });
+      const [sentLastHour, sentToday] = await Promise.all([
+        this.deps.outboundMessageStore.countSentSince({
+          clinicId: outbound.clinicId,
+          since: windows.hourlySince,
+        }),
+        this.deps.outboundMessageStore.countSentSince({
+          clinicId: outbound.clinicId,
+          since: windows.dailySince,
+        }),
+      ]);
+      const gate = evaluateOutboundSafetyGate({
+        category: outbound.category,
+        clinic: context.clinic,
+        lead: context.lead,
+        sentLastHour,
+        sentToday,
+        now,
+        capJitterMs: this.capJitterMs(),
+      });
+
+      if (gate.action === "cancel") {
+        await this.deps.outboundMessageStore.markOutboundCancelled(outbound.id, gate.reason);
+        outboundLog.info("job.ignored", {
+          reason: gate.reason,
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
+
+      if (gate.action === "defer") {
+        await this.deps.outboundMessageStore.markOutboundPending(outbound.id, gate.reason);
+        outboundLog.info("job.deferred", {
+          reason: gate.reason,
+          runAt: gate.runAt.toISOString(),
+          durationMs: Date.now() - startedAt,
+        });
+        return { status: "deferred", runAt: gate.runAt, reason: gate.reason };
+      }
     }
 
     const providerMessageId = await this.delivery({
@@ -84,10 +230,49 @@ export class SendMessageJobHandler {
   }
 }
 
+function isCompleteAutomationContext(
+  context: OutboundSafetyContext | null,
+): context is OutboundSafetyContext {
+  return Boolean(context?.clinic && context.lead && context.conversation && context.agentMessage);
+}
+
+function automationDestinationMatchesLead(
+  to: string,
+  lead: OutboundSafetyContext["lead"],
+): boolean {
+  if (!lead) return false;
+  const trimmed = to.trim();
+  if (lead.whatsappLid && trimmed === lead.whatsappLid) return true;
+  if (lead.phone && trimmed === lead.phone) return true;
+  return areEquivalentWhatsAppPhones(trimmed, lead.phone);
+}
+
 function getOutboundMessageId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const value = (payload as Record<string, unknown>).outboundMessageId;
   return typeof value === "string" && value ? value : null;
+}
+
+async function deliverOutboundPayload(input: {
+  payload: OutboundPayload;
+  clinicId: string;
+  conversationId: string;
+}): Promise<string | null> {
+  if (isConversationOutboundPayload(input.payload)) {
+    return deliverConversationOutbound({
+      payload: input.payload,
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+    });
+  }
+  if (isAutomationOutboundPayload(input.payload)) {
+    return deliverAutomationOutbound({
+      payload: input.payload,
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+    });
+  }
+  throw new Error("Unsupported outbound payload");
 }
 
 async function deliverConversationOutbound(input: {
@@ -257,6 +442,57 @@ async function deliverConversationOutbound(input: {
   }
 
   return firstProviderMessageId;
+}
+
+async function deliverAutomationOutbound(input: {
+  payload: AutomationOutboundPayload;
+  clinicId: string;
+  conversationId: string;
+}): Promise<string | null> {
+  const [clinic] = await db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, input.clinicId))
+    .limit(1);
+  if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
+
+  if (clinic.shadowModeEnabled) {
+    await db
+      .update(messages)
+      .set({ simulated: true, deliveryFormat: "text" })
+      .where(
+        and(
+          eq(messages.id, input.payload.agentMessageId),
+          eq(messages.conversationId, input.conversationId),
+        ),
+      );
+    return null;
+  }
+
+  const config = resolveChannelConfig(clinic);
+  const result = await sendVoiceOrText(
+    input.payload.to,
+    input.payload.text,
+    config,
+    input.payload.useVoice ?? false,
+    input.payload.ttsConfig,
+    input.clinicId,
+  );
+  await db
+    .update(messages)
+    .set({
+      body: input.payload.text,
+      ...(result.msgId ? { externalId: result.msgId } : {}),
+      deliveryFormat: result.deliveryFormat,
+      ...(result.blobUrl ? { mediaUrl: result.blobUrl, mediaType: "audio" } : {}),
+    })
+    .where(
+      and(
+        eq(messages.id, input.payload.agentMessageId),
+        eq(messages.conversationId, input.conversationId),
+      ),
+    );
+  return result.msgId;
 }
 
 /**

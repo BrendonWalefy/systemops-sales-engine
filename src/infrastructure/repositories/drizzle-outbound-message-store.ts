@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, count, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type {
   CreateOutboundMessageInput,
   CreateOutboundMessageResult,
@@ -46,6 +46,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
         channel: input.channel,
         payload: input.payload,
         deliveryKind: input.deliveryKind,
+        category: input.category ?? "reply",
         sequence: conversation.nextOutboundSequence,
         dedupeKey: input.dedupeKey,
       })
@@ -146,6 +147,27 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
       .set({ status: "dead", lastError: error })
       .where(eq(outboundMessages.id, id));
   }
+
+  async markOutboundCancelled(id: string, error: string): Promise<void> {
+    await db
+      .update(outboundMessages)
+      .set({ status: "cancelled", lastError: error })
+      .where(eq(outboundMessages.id, id));
+  }
+
+  async countSentSince(input: { clinicId: string; since: Date }): Promise<number> {
+    const [row] = await db
+      .select({ value: count() })
+      .from(outboundMessages)
+      .where(
+        and(
+          eq(outboundMessages.clinicId, input.clinicId),
+          eq(outboundMessages.status, "sent"),
+          gte(outboundMessages.sentAt, input.since),
+        ),
+      );
+    return row?.value ?? 0;
+  }
 }
 
 function mapOutboundMessage(row: typeof outboundMessages.$inferSelect): OutboundMessage {
@@ -156,6 +178,7 @@ function mapOutboundMessage(row: typeof outboundMessages.$inferSelect): Outbound
     channel: row.channel,
     payload: row.payload,
     deliveryKind: row.deliveryKind,
+    category: row.category,
     sequence: row.sequence,
     status: row.status,
     providerMessageId: row.providerMessageId,

@@ -5,6 +5,7 @@ import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-que
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { createLogger } from "@/infrastructure/logging/logger";
 
 export const dynamic = "force-dynamic";
@@ -25,11 +26,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   });
   const startedAt = Date.now();
   const outboundMessageStore = new DrizzleOutboundMessageStore();
+  const safetyContextReader = new DrizzleOutboundSafetyContextReader();
   try {
     const result = await drainMessageSendQueue({
       jobQueue: new DrizzleJobQueue(),
       outboundMessageStore,
-      handler: new SendMessageJobHandler({ outboundMessageStore }),
+      handler: new SendMessageJobHandler({ outboundMessageStore, safetyContextReader }),
       workerId,
       maxJobs: MAX_JOBS_PER_RUN,
     });
