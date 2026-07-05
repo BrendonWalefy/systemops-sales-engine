@@ -379,6 +379,13 @@
       "when": 1783287306169,
       "tag": "0053_channel_safety_fase0",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1783294778265,
+      "tag": "0054_fixed_iron_monger",
+      "breakpoints": true
     }
   ]
 }

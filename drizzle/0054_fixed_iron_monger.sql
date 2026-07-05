@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "automated_reengagement_paused" boolean DEFAULT false NOT NULL;

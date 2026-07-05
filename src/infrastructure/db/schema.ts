@@ -242,6 +242,14 @@ export const organizations = pgTable("organizations", {
   // estouro adia o envio (não descarta). Defaults conservadores, a calibrar.
   outboundHourlyCap: integer("outbound_hourly_cap").notNull().default(40),
   outboundDailyCap: integer("outbound_daily_cap").notNull().default(200),
+  // Flag do Channel Safety Engine: pausa reengajamento proativo (follow-up e
+  // recovery) sem desligar respostas a inbound (autoReplyEnabled). Usado para
+  // colocar a Vitalli em modo reply-only nas semanas iniciais sem cirurgia no banco.
+  // appointment-reminder NUNCA é pausado por este flag — é aviso de compromisso
+  // que o próprio lead marcou; suprimi-lo seria prejuízo ao lead, não proteção.
+  automatedReengagementPaused: boolean("automated_reengagement_paused")
+    .notNull()
+    .default(false),
   unclearThreshold: integer("unclear_threshold").notNull().default(3),
   staleConversationHours: integer("stale_conversation_hours")
     .notNull()
