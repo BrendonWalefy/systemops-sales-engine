@@ -2057,6 +2057,62 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── Opt-out durável (Channel Safety Engine) ──
+    // Lead pediu para parar de receber mensagens. Regra determinística: grava o
+    // consentimento revogado no lead (o Safety Gate passa a bloquear
+    // follow_up/recovery/campaign), confirma com respeito e sinaliza o owner. A
+    // confirmação é texto fixo de propósito — nunca deixar o LLM tentar
+    // reengajar quem acabou de pedir para sair. Reply a inbound não é gated,
+    // então esta confirmação sai normalmente.
+    if (intent === "stop_contact") {
+      const optOutNow = new Date();
+      await db
+        .update(leadsTable)
+        .set({
+          contactConsentRevokedAt: optOutNow,
+          contactConsentSource: "lead_message",
+          updatedAt: optOutNow,
+        })
+        .where(eq(leadsTable.id, lead.id));
+      await db
+        .update(conversationsTable)
+        .set({
+          needsAttention: true,
+          attentionReason: "Lead pediu para não receber mais mensagens (opt-out)",
+          updatedAt: optOutNow,
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+
+      const optOutText =
+        "Entendido, não vou mais te enviar mensagens por aqui. Se precisar de algo no futuro, é só me chamar. 🙏";
+      const optOutAgentId = randomUUID();
+      await this.conversationRepo.appendMessage({
+        id: optOutAgentId,
+        conversationId: conversation.id,
+        author: "agent",
+        body: optOutText,
+        sentAt: optOutNow,
+        externalId: null,
+        intent: "stop_contact",
+        deliveryFormat: null,
+      });
+      await this.enqueueConversationReply(clinicId, conversation.id, {
+        version: 1,
+        kind: "conversation_reply",
+        to: outboundAddress,
+        agentMessageId: optOutAgentId,
+        replyText: optOutText,
+        intent: "stop_contact",
+        useVoice: false,
+        ttsConfig: ttsConf,
+        interleavedParts: [],
+        mediaParts: [],
+        leadId: lead.id,
+        pipelineAdvance: null,
+      });
+      return { replied: true };
+    }
+
     // Coerção determinística: pergunta de negócio classificada como
     // greeting/acknowledgment/unclear é sobrescrita para o intent de negócio —
     // evita que o starter genérico engula a pergunta do lead. isolatedGreeting
