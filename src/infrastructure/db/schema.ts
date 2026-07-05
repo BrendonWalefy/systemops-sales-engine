@@ -130,6 +130,22 @@ export const outboundMessageStatusEnum = pgEnum("outbound_message_status", [
   "cancelled",
 ]);
 
+// Categoria de saída para políticas do Channel Safety Engine (gates no sender).
+// reply: resposta a inbound do lead — sempre entregue, nunca bloqueada.
+// reminder: aviso de compromisso que o próprio lead marcou — isento de opt-out
+//   e de quiet hours (já é agendado para a hora certa).
+// follow_up/recovery/campaign: iniciativa da clínica — sujeitas a consentimento,
+//   caps de cadência e quiet hours.
+// operational: mensagens internas/de sistema — sempre entregues.
+export const outboundMessageCategoryEnum = pgEnum("outbound_message_category", [
+  "reply",
+  "follow_up",
+  "reminder",
+  "recovery",
+  "campaign",
+  "operational",
+]);
+
 export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
   "service",
   "utility",
@@ -220,6 +236,12 @@ export const organizations = pgTable("organizations", {
       { n: number; rate: number; active: boolean }[]
     >(),
   rateLimitPerHour: integer("rate_limit_per_hour").notNull().default(60),
+  // Caps de saída do Channel Safety Engine (gates no sender worker, PR 2).
+  // Distinto de rateLimitPerHour, que limita INBOUND por conversa (anti-flood
+  // do lead). Estes limitam OUTBOUND iniciado pela clínica por número/janela;
+  // estouro adia o envio (não descarta). Defaults conservadores, a calibrar.
+  outboundHourlyCap: integer("outbound_hourly_cap").notNull().default(40),
+  outboundDailyCap: integer("outbound_daily_cap").notNull().default(200),
   unclearThreshold: integer("unclear_threshold").notNull().default(3),
   staleConversationHours: integer("stale_conversation_hours")
     .notNull()
@@ -331,6 +353,14 @@ export const leads = pgTable(
     assignedToUserId: uuid("assigned_to_user_id"),
     nextActionAt: timestamp("next_action_at", { withTimezone: true }),
     lostReason: text("lost_reason"),
+    // Opt-out durável (Channel Safety Engine). revoked_at != null = o lead pediu
+    // para não receber mais mensagens iniciadas pela clínica. Bloqueia
+    // follow_up/recovery/campaign; replies a inbound do próprio lead continuam.
+    // Reversão = limpar o campo (não se auto-reseta se o lead voltar a falar).
+    contactConsentRevokedAt: timestamp("contact_consent_revoked_at", {
+      withTimezone: true,
+    }),
+    contactConsentSource: text("contact_consent_source"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -526,6 +556,10 @@ export const outboundMessages = pgTable(
     channel: channelEnum("channel").notNull(),
     payload: jsonb("payload").notNull(),
     deliveryKind: outboundMessageDeliveryKindEnum("delivery_kind").notNull(),
+    // Default "reply" preserva o comportamento do fluxo conversacional atual —
+    // toda saída existente é resposta a inbound. Gates diferenciados por
+    // categoria entram no PR 2 (Safety Gate no sender worker).
+    category: outboundMessageCategoryEnum("category").notNull().default("reply"),
     sequence: integer("sequence").notNull(),
     status: outboundMessageStatusEnum("status").notNull().default("pending"),
     providerMessageId: text("provider_message_id"),
