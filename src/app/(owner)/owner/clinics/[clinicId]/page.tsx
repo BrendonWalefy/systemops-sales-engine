@@ -33,6 +33,7 @@ import {
   Workflow,
   AlertTriangle,
   Layers,
+  ShieldCheck,
 } from "lucide-react";
 import { hashPassword } from "@/lib/password";
 import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
@@ -47,6 +48,7 @@ import {
   getClinicOperationalStatusColors,
   getClinicOperationalStatusLabel,
 } from "@/application/clinics/clinic-operational-status-presentation";
+import { updateChannelSafetySettings } from "./channel-safety-actions";
 
 async function enterClinicInbox(clinicId: string) {
   "use server";
@@ -345,6 +347,8 @@ export default async function ClinicDetailPage({
   const goLiveOk = sp.goLiveOk === "1";
   const goLiveError = sp.goLiveError;
   const planOk = sp.planOk === "1";
+  const channelSafetyOk = sp.channelSafetyOk === "1";
+  const channelSafetyError = sp.channelSafetyError;
 
   const [clinic] = await db
     .select({
@@ -374,6 +378,9 @@ export default async function ClinicDetailPage({
       zapiToken: organizations.zapiToken,
       metaPhoneNumberId: organizations.metaPhoneNumberId,
       metaAccessToken: organizations.metaAccessToken,
+      outboundHourlyCap: organizations.outboundHourlyCap,
+      outboundDailyCap: organizations.outboundDailyCap,
+      automatedReengagementPaused: organizations.automatedReengagementPaused,
     })
     .from(organizations)
     .where(eq(organizations.id, clinicId))
@@ -445,6 +452,7 @@ export default async function ClinicDetailPage({
   const toggleAutomationAction = toggleClinicAutomation.bind(null, clinic.id, clinic.autoReplyEnabled);
   const toggleShadowModeAction = toggleShadowMode.bind(null, clinic.id, clinic.shadowModeEnabled);
   const reactivateClinicAction = reactivateClinic.bind(null, clinic.id);
+  const channelSafetyAction = updateChannelSafetySettings.bind(null, clinic.id);
   const isArchived = clinic.operationalStatus === "cancelled";
 
   const members = await db
@@ -782,6 +790,22 @@ export default async function ClinicDetailPage({
         {planOk && (
           <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.24)", background: "rgba(16,185,129,0.08)", color: "#34d399", fontSize: 13, fontWeight: 600 }}>
             Plano atualizado com sucesso.
+          </div>
+        )}
+        {channelSafetyOk && (
+          <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.24)", background: "rgba(16,185,129,0.08)", color: "#34d399", fontSize: 13, fontWeight: 600 }}>
+            Configurações de segurança de canal salvas.
+          </div>
+        )}
+        {channelSafetyError && (
+          <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.24)", background: "rgba(245,158,11,0.08)", color: "#f59e0b", fontSize: 13, fontWeight: 600 }}>
+            {channelSafetyError === "unauthorized"
+              ? "Sem permissão para alterar configurações de segurança."
+              : channelSafetyError === "invalid_hourly_cap"
+                ? "Cap horário inválido — deve ser um inteiro maior que 0."
+                : channelSafetyError === "invalid_daily_cap"
+                  ? "Cap diário inválido — deve ser um inteiro maior que 0."
+                  : "Erro ao salvar configurações de segurança."}
           </div>
         )}
 
@@ -1213,6 +1237,86 @@ export default async function ClinicDetailPage({
                   </form>
                 )}
               </div>
+            </div>
+
+            {/* Segurança de canal */}
+            <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <ShieldCheck size={13} style={{ color: "var(--muted)" }} />
+                <p className="eyebrow" style={{ margin: 0 }}>Segurança de canal</p>
+              </div>
+
+              <form action={channelSafetyAction} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Caps de cadência */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
+                      Cap horário (outbound/h)
+                    </label>
+                    <input
+                      id="outbound_hourly_cap"
+                      name="outbound_hourly_cap"
+                      type="number"
+                      min={1}
+                      defaultValue={clinic.outboundHourlyCap}
+                      required
+                      style={{ ...inputStyle }}
+                    />
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
+                      Default 40. Vitalli: 15.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
+                      Cap diário (outbound/dia)
+                    </label>
+                    <input
+                      id="outbound_daily_cap"
+                      name="outbound_daily_cap"
+                      type="number"
+                      min={1}
+                      defaultValue={clinic.outboundDailyCap}
+                      required
+                      style={{ ...inputStyle }}
+                    />
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
+                      Default 200. Vitalli: 60.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Toggle reengajamento */}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: clinic.automatedReengagementPaused ? "#f59e0b" : "var(--text)" }}>
+                      Reengajamento {clinic.automatedReengagementPaused ? "pausado" : "ativo"}
+                    </p>
+                    <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
+                      Pausa follow-up e recovery sem desligar as respostas a inbound.{" "}
+                      <strong>appointment-reminder nunca é pausado</strong>{" — "}
+                      lembrete de compromisso que o lead marcou sempre sai.
+                    </p>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0 }}>
+                    <input
+                      id="automated_reengagement_paused"
+                      name="automated_reengagement_paused"
+                      type="checkbox"
+                      defaultChecked={clinic.automatedReengagementPaused}
+                      style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#f59e0b" }}
+                    />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>Pausar</span>
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  style={{ ...btnStyle, alignSelf: "flex-end" }}
+                >
+                  <ShieldCheck size={12} />
+                  Salvar segurança
+                </button>
+              </form>
             </div>
 
             {/* Zona de risco */}
