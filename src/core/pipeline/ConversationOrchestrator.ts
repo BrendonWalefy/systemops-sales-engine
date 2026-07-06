@@ -52,6 +52,7 @@ import { isSalesConversationCategory } from "@/domain/value-objects/conversation
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 import { getClinicModules } from "@/application/modules/module-gate";
+import { resolveStopContactDecision } from "@/application/channel-safety/stop-contact-policy";
 
 import type { Organization, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import type { ConversationExperience } from "@/domain/entities/clinic";
@@ -2040,7 +2041,15 @@ export class ConversationOrchestrator {
           promptContext,
         );
 
-    const { intent, slotPreference } = classification;
+    const { slotPreference } = classification;
+    const stopContactDecision = resolveStopContactDecision({
+      classifiedIntent: classification.intent,
+      messageText,
+    });
+    const intent = (
+      stopContactDecision?.intent ??
+      (classification.intent === "stop_contact" ? "unclear" : classification.intent)
+    ) as IntentType;
 
     // ── Guard: rajada durante a classificação ──
     // O debounce cobre a janela pré-classificação; o claim serializa handlers.
@@ -2065,12 +2074,14 @@ export class ConversationOrchestrator {
     // reengajar quem acabou de pedir para sair. Reply a inbound não é gated,
     // então esta confirmação sai normalmente.
     if (intent === "stop_contact") {
-      const optOutNow = new Date();
+      const decision = stopContactDecision;
+      if (!decision) return { replied: false };
+      const optOutNow = decision.revokedAt;
       await db
         .update(leadsTable)
         .set({
           contactConsentRevokedAt: optOutNow,
-          contactConsentSource: "lead_message",
+          contactConsentSource: decision.source,
           updatedAt: optOutNow,
         })
         .where(eq(leadsTable.id, lead.id));
@@ -2078,13 +2089,12 @@ export class ConversationOrchestrator {
         .update(conversationsTable)
         .set({
           needsAttention: true,
-          attentionReason: "Lead pediu para não receber mais mensagens (opt-out)",
+          attentionReason: decision.attentionReason,
           updatedAt: optOutNow,
         })
         .where(eq(conversationsTable.id, conversation.id));
 
-      const optOutText =
-        "Entendido, não vou mais te enviar mensagens por aqui. Se precisar de algo no futuro, é só me chamar. 🙏";
+      const optOutText = decision.confirmationText;
       const optOutAgentId = randomUUID();
       await this.conversationRepo.appendMessage({
         id: optOutAgentId,
