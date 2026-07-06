@@ -780,19 +780,21 @@ export default async function ClinicDetailPage({
               <span className="status-dot" /> IA Pausada
             </span>
           )}
+          {/* Acesso Permanente ao Inbox */}
+          <form action={enterClinicInbox.bind(null, clinic.id)}>
+            <button
+              type="submit"
+              title="Entrar como a Clínica no CRM"
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--text)", background: "var(--surface-soft)", border: "1px solid var(--line)", padding: "5px 12px", borderRadius: 8, cursor: "pointer" }}
+            >
+              <ExternalLink size={13} />
+              Acessar CRM
+            </button>
+          </form>
+
           {/* CTA contextual único — Módulos e Onboarding saem do header (ADR-006) */}
           {contextualCta.kind === "link" ? (
-            contextualCta.href === "/app/inbox" ? (
-              <form action={enterClinicInbox.bind(null, clinic.id)}>
-                <button
-                  type="submit"
-                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--accent-strong)", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
-                >
-                  <ExternalLink size={13} />
-                  {contextualCta.label}
-                </button>
-              </form>
-            ) : (
+            contextualCta.href !== "/app/inbox" && (
               <Link
                 href={contextualCta.href}
                 style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--accent-strong)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)" }}
