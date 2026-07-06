@@ -138,7 +138,29 @@ export function SetupStudyCard({ clinicId, study }: SetupStudyCardProps) {
               {highSeverityCount} {highSeverityCount === 1 ? "alerta crítico" : "alertas críticos"}
             </span>
           )}
-          {isDraft && (
+          {isDraft && study.findings.length === 0 ? (
+            <button
+              onClick={() => {
+                if(confirm("Descartar este estudo vazio e gerar um novo?")) {
+                  startSend(async () => {
+                    await generateSetupStudy(clinicId);
+                    router.refresh();
+                  });
+                }
+              }}
+              disabled={isSending}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line)",
+                background: "transparent", color: "var(--muted)",
+                fontSize: 13, fontWeight: 700,
+                cursor: isSending ? "not-allowed" : "pointer",
+                opacity: isSending ? 0.6 : 1,
+              }}
+            >
+              <Sparkles size={14} /> {isSending ? "Gerando..." : "Gerar Novamente"}
+            </button>
+          ) : isDraft && (
             <button
               onClick={handleSend}
               disabled={isSending || study.findings.length === 0}
