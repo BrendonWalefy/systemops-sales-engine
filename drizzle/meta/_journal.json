@@ -400,6 +400,13 @@
       "when": 1783309281143,
       "tag": "0056_powerful_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1783361704561,
+      "tag": "0057_lazy_ted_forrester",
+      "breakpoints": true
     }
   ]
 }
