@@ -61,6 +61,24 @@ export interface SetupFinding {
    * null quando target está fora da allowlist ou LLM não conseguiu inferir.
    */
   proposedChange: SetupFindingProposedChange | null;
+  /**
+   * Resposta do responsável na página pública de validação (Fase 2).
+   * Ausente enquanto o finding não foi respondido.
+   */
+  answer?: SetupFindingAnswer;
+  /**
+   * Trilha de auditoria da aplicação (Fase 3). Ausente enquanto o owner não
+   * aplicou o finding à config. Registrado no próprio jsonb do estudo.
+   */
+  applied?: SetupFindingApplied;
+}
+
+/** Registro de aplicação de um finding à config da clínica (ADR-002 Fase 3). */
+export interface SetupFindingApplied {
+  /** ISO timestamp de quando o owner aplicou. */
+  at: string;
+  /** Resumo legível do que foi escrito (ex: "Preço da Avaliação → R$ 150,00"). */
+  summary: string;
 }
 
 /** Proposta concreta de mudança em um campo do banco. */
@@ -71,6 +89,19 @@ export interface SetupFindingProposedChange {
   newValue: string;
   /** Valor atual no banco no momento da extração. */
   currentValue: string;
+}
+
+/**
+ * Resposta do responsável da clínica a um finding, gravada na página pública
+ * de validação (ADR-002 Fase 2). Ausente enquanto o finding não foi respondido.
+ */
+export interface SetupFindingAnswer {
+  /** "confirmed" = o claim está correto; "corrected" = o cliente reescreveu. */
+  status: "confirmed" | "corrected";
+  /** Texto livre do responsável quando status = "corrected". */
+  correction?: string;
+  /** ISO timestamp de quando o item foi respondido. */
+  answeredAt: string;
 }
 
 /** Status possíveis de um estudo de setup. */

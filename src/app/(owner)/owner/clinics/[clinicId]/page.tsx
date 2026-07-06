@@ -21,7 +21,7 @@ import {
   channelHealthSnapshots,
   setupStudies,
 } from "@/infrastructure/db/schema";
-import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
+import { eq, count, sum, and, gte, desc, sql, notInArray, inArray } from "drizzle-orm";
 import {
   ArrowLeft,
   ExternalLink,
@@ -402,11 +402,14 @@ export default async function ClinicDetailPage({
       .where(eq(channelHealthSnapshots.clinicId, clinicId))
       .orderBy(desc(channelHealthSnapshots.createdAt))
       .limit(1),
+    // Estudo ativo: o mais recente ainda em ciclo (rascunho, enviado ou
+    // respondido). "applied"/"expired" são terminais e não aparecem no card.
     db.query.setupStudies.findFirst({
       where: and(
         eq(setupStudies.organizationId, clinicId),
-        eq(setupStudies.status, "draft")
-      )
+        inArray(setupStudies.status, ["draft", "sent", "answered"]),
+      ),
+      orderBy: (t, { desc: d }) => d(t.createdAt),
     }),
   ]);
   const currentScore = latestSnapshot[0]?.healthScore ?? 100;
@@ -929,7 +932,17 @@ export default async function ClinicDetailPage({
               {/* ── ZONA 1.5: SETUP STUDY (ADR-002 Fase 1) ────────────── */}
               <div style={{ display: "grid", gap: 16 }}>
                 {activeDraftStudy ? (
-                  <SetupStudyCard clinicId={clinic.id} study={activeDraftStudy} />
+                  <SetupStudyCard
+                    clinicId={clinic.id}
+                    study={{
+                      id: activeDraftStudy.id,
+                      status: activeDraftStudy.status,
+                      createdAt: activeDraftStudy.createdAt,
+                      sentAt: activeDraftStudy.sentAt,
+                      expiresAt: activeDraftStudy.expiresAt,
+                      findings: activeDraftStudy.findings,
+                    }}
+                  />
                 ) : (
                   <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
                     <div>
