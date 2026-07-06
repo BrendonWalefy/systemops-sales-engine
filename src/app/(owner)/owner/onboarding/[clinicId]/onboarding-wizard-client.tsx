@@ -453,6 +453,42 @@ function StepIdentidade({
   const [phoneCode, setPhoneCode] = useState<string | null>(null);
   const [phoneForCode, setPhoneForCode] = useState<string>("");
 
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
+  const [provisionWarning, setProvisionWarning] = useState<string | null>(null);
+
+  const provisionZApiInstance = async () => {
+    setProvisioning(true);
+    setProvisionError(null);
+    setProvisionWarning(null);
+    try {
+      const res = await fetch(`/api/owner/clinics/${clinicId}/channel-provision`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? "Erro ao criar instância Z-API");
+      }
+      // Token e Client-Token ficam só no banco (criptografados) — a rota não
+      // os devolve. O "Próximo" do wizard não reenvia estes campos vazios por
+      // cima (saveWizardIdentity trata string vazia como "não alterar").
+      onChannelChange({
+        ...channel,
+        provider: "z_api",
+        zapiInstanceId: json.instanceId,
+      });
+      if (json.presetWarning) {
+        setProvisionWarning(
+          `Instância criada, mas houve um problema ao aplicar a configuração padrão: ${json.presetWarning}`,
+        );
+      }
+    } catch (err) {
+      setProvisionError(err instanceof Error ? err.message : "Erro desconhecido");
+    } finally {
+      setProvisioning(false);
+    }
+  };
+
   // Polling helper
   const recordPairing = useCallback(async () => {
     try {
@@ -646,6 +682,57 @@ function StepIdentidade({
 
           {channel.provider === "z_api" ? (
             <>
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "rgba(255,255,255,0.02)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                <p style={{ margin: 0, fontSize: "12px", color: "var(--muted)", lineHeight: 1.5 }}>
+                  Cria a instância Z-API automaticamente com o preset padrão (webhook, leitura automática, notificação de mensagens enviadas por você e filtro de grupos). Se preferir, preencha os campos manualmente abaixo.
+                </p>
+                <button
+                  type="button"
+                  onClick={provisionZApiInstance}
+                  disabled={provisioning || !!channel.zapiInstanceId}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    padding: "10px 16px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--accent)",
+                    background: "transparent",
+                    color: "var(--accent)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: provisioning || !!channel.zapiInstanceId ? "default" : "pointer",
+                    opacity: provisioning || !!channel.zapiInstanceId ? 0.6 : 1,
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  {provisioning ? (
+                    <Loader2 size={14} className="spin" style={{ animation: "spin 1s linear infinite" }} />
+                  ) : null}
+                  {channel.zapiInstanceId
+                    ? "Instância já criada"
+                    : provisioning
+                      ? "Criando instância..."
+                      : "Criar instância Z-API automaticamente"}
+                </button>
+                {provisionError && (
+                  <p style={{ margin: 0, fontSize: "12px", color: "#f87171" }}>{provisionError}</p>
+                )}
+                {provisionWarning && (
+                  <p style={{ margin: 0, fontSize: "12px", color: "#fbbf24" }}>{provisionWarning}</p>
+                )}
+              </div>
               <div>
                 <FieldLabel>Z-API Instance ID</FieldLabel>
                 <input
@@ -667,7 +754,11 @@ function StepIdentidade({
                   onChange={(e) =>
                     onChannelChange({ ...channel, zapiToken: e.target.value })
                   }
-                  placeholder="Token principal"
+                  placeholder={
+                    channel.zapiInstanceId
+                      ? "Salvo com segurança — deixe em branco para manter"
+                      : "Token principal"
+                  }
                   style={inputStyle}
                 />
               </div>
@@ -681,7 +772,11 @@ function StepIdentidade({
                       zapiClientToken: e.target.value,
                     })
                   }
-                  placeholder="Opcional"
+                  placeholder={
+                    channel.zapiInstanceId
+                      ? "Salvo com segurança — deixe em branco para manter"
+                      : "Opcional"
+                  }
                   style={inputStyle}
                 />
               </div>

@@ -368,6 +368,97 @@ export async function getZApiQrCodeImage(
   }
 }
 
+// ─── Provisionamento automático de instância (parceiro integrador) ────────────
+//
+// Usados pela rota de onboarding do owner para criar a instância Z-API sem
+// abrir o painel deles. Auth nas rotas de parceiro é `Authorization: Bearer
+// <partnerToken>` — SEM Client-Token e sem instanceId/token na URL (a instância
+// ainda não existe). Docs: https://developer.z-api.io/partner/create-instance
+
+export type ZApiCreateInstanceResult = {
+  instanceId: string;
+  token: string;
+  due?: string;
+};
+
+/**
+ * Cria uma instância nova já com o preset padrão embutido no body do create.
+ * O que o create não cobre (notify-sent-by-me, filtro de grupos) é aplicado
+ * em seguida por applyZApiInstancePreset.
+ */
+export async function createZApiInstance(
+  name: string,
+  partnerToken: string,
+  webhookUrl: string,
+): Promise<ZApiCreateInstanceResult> {
+  const response = await fetch("https://api.z-api.io/instances/integrator/on-demand", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${partnerToken}`,
+    },
+    body: JSON.stringify({
+      name,
+      receivedCallbackUrl: webhookUrl,
+      autoReadMessage: true,
+      callRejectAuto: false,
+      autoReadStatus: false,
+      disableEnqueueWhenDisconnected: false,
+      isDevice: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Z-API create instance failed (${response.status}): ${error}`);
+  }
+
+  const data = (await response.json()) as { id?: string; token?: string; due?: string };
+  if (!data.id || !data.token) {
+    throw new Error("Z-API create instance: resposta sem id/token");
+  }
+
+  return { instanceId: data.id, token: data.token, due: data.due };
+}
+
+/**
+ * Aplica, após a criação, as duas configurações que o endpoint de create não
+ * cobre: notificar mensagens enviadas pelo próprio celular (takeover) e
+ * ignorar mensagens de grupo (FILTER_FROM_GROUP em messageFilters).
+ * Docs: https://developer.z-api.io/webhooks/update-notify-sent-by-me
+ *       https://developer.z-api.io/webhooks/update-filters
+ */
+export async function applyZApiInstancePreset(
+  creds: { instanceId: string; token: string; clientToken?: string },
+): Promise<void> {
+  const { instanceId, token } = creds;
+  const rawClientToken = creds.clientToken;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http") ? rawClientToken : undefined;
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (clientToken) headers["Client-Token"] = clientToken;
+
+  const notifySentByMe = fetch(
+    `https://api.z-api.io/instances/${instanceId}/token/${token}/update-notify-sent-by-me`,
+    { method: "PUT", headers, body: JSON.stringify({ notifySentByMe: true }) },
+  );
+  const ignoreGroups = fetch(
+    `https://api.z-api.io/instances/${instanceId}/token/${token}/update-filters`,
+    { method: "PUT", headers, body: JSON.stringify({ messageFilters: ["FILTER_FROM_GROUP"] }) },
+  );
+
+  const [notifyRes, groupsRes] = await Promise.all([notifySentByMe, ignoreGroups]);
+
+  if (!notifyRes.ok) {
+    const error = await notifyRes.text();
+    throw new Error(`Z-API notify-sent-by-me failed (${notifyRes.status}): ${error}`);
+  }
+  if (!groupsRes.ok) {
+    const error = await groupsRes.text();
+    throw new Error(`Z-API update-filters failed (${groupsRes.status}): ${error}`);
+  }
+}
+
 export type ZApiPhoneCodeResult =
   | { status: "code"; code: string }
   | { status: "connected" }

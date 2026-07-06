@@ -56,13 +56,21 @@ export async function saveWizardIdentity(
   if (!(await requireOwner()))
     return { success: false, error: "Sem permissão" };
   try {
+    const { zapiToken, zapiClientToken, metaAccessToken, ...rest } = data;
+    // Campo vazio = "não alterar", não "apagar". O wizard nunca preenche estes
+    // três campos com o valor salvo (channel-pairing e channel-provision não
+    // serializam segredos ao client) — sobrescrever incondicionalmente apagaria
+    // a credencial a cada "Próximo" clicado sem o campo preenchido de novo.
+    const secretUpdates: Partial<Record<"zapiToken" | "zapiClientToken" | "metaAccessToken", string | null>> = {};
+    if (zapiToken) secretUpdates.zapiToken = encryptCredentialNullable(zapiToken);
+    if (zapiClientToken) secretUpdates.zapiClientToken = encryptCredentialNullable(zapiClientToken);
+    if (metaAccessToken) secretUpdates.metaAccessToken = encryptCredentialNullable(metaAccessToken);
+
     await db
       .update(organizations)
       .set({
-        ...data,
-        zapiToken: encryptCredentialNullable(data.zapiToken),
-        zapiClientToken: encryptCredentialNullable(data.zapiClientToken),
-        metaAccessToken: encryptCredentialNullable(data.metaAccessToken),
+        ...rest,
+        ...secretUpdates,
         updatedAt: new Date(),
       })
       .where(eq(organizations.id, clinicId));
