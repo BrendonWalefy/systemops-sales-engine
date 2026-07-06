@@ -1,5 +1,9 @@
 # Vitrine AI — Plano de Execução do Módulo
 
+> **ADR correspondente (decisão + apêndice de execução):**
+> `docs/architecture/adr/adr-007-vitrine-ai-module.md`.
+> Este doc é a fonte canônica do plano (port, schema, fases, guardrails).
+
 Plano de execução para transformar o MVP validado no repo da Linna Cortinas
 (`site-cortinas/dev/linnacortinas`) em módulo do SystemOps, consumível pelo
 sales-engine, com providers de imagem plugáveis para bench e troca de modelo
