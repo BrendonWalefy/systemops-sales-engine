@@ -24,6 +24,29 @@ describe("operational alerts", () => {
     expect(report.alertCount).toBe(0);
   });
 
+  it("ignores demo clinics even when active and misconfigured", () => {
+    const report = evaluateOperationalAlerts(
+      [
+        {
+          clinicId: "demo-1",
+          clinicName: "Odonto Marques (Demo)",
+          operationalStatus: "active",
+          isDemo: true,
+          channelProvider: "z_api",
+          zapiInstanceId: "",
+          zapiToken: "",
+          hasActivePlaybook: false,
+          latestMetricAt: null,
+        },
+      ],
+      new Date("2026-06-14T12:00:00.000Z"),
+    );
+
+    expect(report.status).toBe("ok");
+    expect(report.activeClinicCount).toBe(0);
+    expect(report.alertCount).toBe(0);
+  });
+
   it("raises critical alerts for missing config and stale cron", () => {
     const report = evaluateOperationalAlerts(
       [

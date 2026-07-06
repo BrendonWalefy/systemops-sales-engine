@@ -234,6 +234,13 @@ export const organizations = pgTable("organizations", {
   monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
   billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
   isTest: boolean("is_test").notNull().default(false),
+  // Clínica de demonstração/vitrine: mecanismo real do sistema rodando sobre
+  // dados fictícios, usada para gravar conteúdo de marketing e demos por
+  // segmento. Distinta de isTest (ambiente de testes interno): a demo é
+  // exibida como uma clínica "de verdade". Clínicas demo são excluídas dos
+  // alertas operacionais e do digest de saúde por email — dados fictícios não
+  // geram incidentes reais. Genérico: qualquer clínica demo futura herda isso.
+  isDemo: boolean("is_demo").notNull().default(false),
   // Shadow mode: IA classifica, compõe resposta e avança o pipeline normalmente,
   // mas o envio real ao WhatsApp é suprimido — usado para validar comportamento
   // sem afetar o lead (clínicas problemáticas ou pré-onboarding).

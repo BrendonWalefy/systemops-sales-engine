@@ -1,4 +1,8 @@
-import { hasCompleteChannelConfig, type ClinicHealthInput } from "@/application/health/clinic-health";
+import {
+  hasCompleteChannelConfig,
+  isOperationallyMonitored,
+  type ClinicHealthInput,
+} from "@/application/health/clinic-health";
 
 export type SnapshotMetricAlert = {
   metric: string;
@@ -120,9 +124,7 @@ export function evaluateOperationalAlerts(
   clinics: ClinicOperationalAlertInput[],
   now: Date,
 ): OperationalAlertReport {
-  const activeClinics = clinics.filter(
-    (clinic) => clinic.operationalStatus === "active",
-  );
+  const activeClinics = clinics.filter(isOperationallyMonitored);
   const alerts: OperationalAlert[] = [];
 
   activeClinics.forEach((clinic) => {

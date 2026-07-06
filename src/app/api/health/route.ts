@@ -20,6 +20,7 @@ export async function GET() {
         clinicId: organizations.id,
         clinicName: organizations.name,
         operationalStatus: organizations.operationalStatus,
+        isDemo: organizations.isDemo,
         channelProvider: organizations.channelProvider,
         zapiInstanceId: organizations.zapiInstanceId,
         zapiToken: organizations.zapiToken,
@@ -28,7 +29,12 @@ export async function GET() {
         metaAccessToken: organizations.metaAccessToken,
       })
       .from(organizations)
-      .where(eq(organizations.operationalStatus, "active"));
+      .where(
+        and(
+          eq(organizations.operationalStatus, "active"),
+          eq(organizations.isDemo, false),
+        ),
+      );
 
     const clinicIds = activeClinics.map((clinic) => clinic.clinicId);
 

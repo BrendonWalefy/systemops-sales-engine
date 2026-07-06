@@ -4,6 +4,9 @@ export type ClinicHealthInput = {
   clinicId: string;
   clinicName: string;
   operationalStatus: ClinicOperationalStatus;
+  // Clínica de demonstração/vitrine (dados fictícios). Excluída de toda a
+  // avaliação de saúde e alertas operacionais — não gera incidentes reais.
+  isDemo?: boolean | null;
   channelProvider?: "z_api" | "meta_cloud_api" | null;
   zapiInstanceId?: string | null;
   zapiToken?: string | null;
@@ -35,6 +38,17 @@ function normalize(value?: string | null): string {
   return value?.trim() ?? "";
 }
 
+/**
+ * Uma clínica é monitorada operacionalmente quando está ativa E não é uma
+ * clínica de demonstração. Demos rodam o mecanismo real sobre dados fictícios,
+ * então seus "problemas" não são incidentes — não devem gerar alertas nem
+ * disparar o digest por email. Ponto único de verdade para healthcheck e
+ * alertas operacionais; qualquer clínica demo futura é excluída automaticamente.
+ */
+export function isOperationallyMonitored(clinic: ClinicHealthInput): boolean {
+  return clinic.operationalStatus === "active" && !clinic.isDemo;
+}
+
 export function hasCompleteChannelConfig(clinic: ClinicHealthInput): boolean {
   if (clinic.channelProvider === "z_api") {
     return Boolean(
@@ -55,9 +69,7 @@ export function evaluateClinicHealth(
   clinics: ClinicHealthInput[],
   now: Date,
 ): HealthcheckReport {
-  const activeClinics = clinics.filter(
-    (clinic) => clinic.operationalStatus === "active",
-  );
+  const activeClinics = clinics.filter(isOperationallyMonitored);
 
   const degradedClinics: ClinicHealthIssue[] = activeClinics
     .map((clinic) => {
