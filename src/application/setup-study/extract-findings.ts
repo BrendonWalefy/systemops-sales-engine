@@ -70,7 +70,7 @@ Formato de resposta (JSON apenas, sem markdown):
       "proposedChange": null
     }
   ]
-}\`;
+}`;
 }
 
 /** Tipo bruto retornado pelo LLM antes do parse defensivo. */
