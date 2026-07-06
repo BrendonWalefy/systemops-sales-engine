@@ -64,8 +64,21 @@ export async function buildCorpus(clinicId: string): Promise<AnonymizedTranscrip
     ? new Date(org.channelPairedAt)
     : new Date(now.getTime() - FALLBACK_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
-  // 2. Buscar conversas com ao menos uma mensagem de clinic_user/agent
-  //    (shadow mode = o agente gera respostas mas não envia)
+  // 2. Buscar conversas com ao menos uma mensagem de clinic_user no período
+  //    (ADR-002 apêndice B). A premissa do estudo é aprender das respostas
+  //    REAIS do atendente humano (capturadas em shadow mode via "notificar
+  //    enviadas por mim" → author="clinic_user"). Conversas sem participação
+  //    humana só diluiriam o corpus, então são excluídas na origem.
+  const convsWithHumanReply = db
+    .selectDistinct({ conversationId: messages.conversationId })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.author, "clinic_user"),
+        gte(messages.sentAt, periodStart),
+      ),
+    );
+
   const recentConvs = await db
     .select({ id: conversations.id, leadId: conversations.leadId })
     .from(conversations)
@@ -73,6 +86,7 @@ export async function buildCorpus(clinicId: string): Promise<AnonymizedTranscrip
       and(
         eq(conversations.clinicId, clinicId),
         gte(conversations.lastMessageAt, periodStart),
+        inArray(conversations.id, convsWithHumanReply),
       ),
     )
     .orderBy(desc(conversations.lastMessageAt))

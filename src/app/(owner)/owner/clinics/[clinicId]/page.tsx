@@ -929,7 +929,7 @@ export default async function ClinicDetailPage({
               {/* ── ZONA 1.5: SETUP STUDY (ADR-002 Fase 1) ────────────── */}
               <div style={{ display: "grid", gap: 16 }}>
                 {activeDraftStudy ? (
-                  <SetupStudyCard study={activeDraftStudy as unknown as Parameters<typeof SetupStudyCard>[0]["study"]} />
+                  <SetupStudyCard clinicId={clinic.id} study={activeDraftStudy} />
                 ) : (
                   <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
                     <div>
