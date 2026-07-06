@@ -1,5 +1,10 @@
 # Provisionamento automático de instâncias Z-API
 
+> **Para execução, a fonte canônica é o ADR:**
+> `docs/architecture/adr/adr-005-zapi-instance-provisioning.md`.
+> Este doc guarda o racional de produto e o contexto comercial.
+> Fase 1 já implementada (PR #134).
+
 Plano para eliminar o processo manual de criar e configurar instâncias Z-API no
 painel deles (feito à mão para a Clínica Vitalli em 06/07/2026). Objetivo: no
 onboarding de uma clínica nova, o owner clica um botão e a instância nasce
