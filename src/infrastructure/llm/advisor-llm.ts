@@ -45,7 +45,8 @@ export async function callAdvisorLLM(
       max_tokens: maxTokens,
       messages: [{ role: "user", content: prompt }],
     });
-    return res.content[0].type === "text" ? res.content[0].text : "";
+    const textBlock = res.content.find((b) => b.type === "text");
+    return textBlock && textBlock.type === "text" ? textBlock.text : "";
   }
 
   if (!process.env.OPENAI_API_KEY) {
