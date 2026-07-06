@@ -28,7 +28,7 @@ export async function callAdvisorLLM(
   options: CallLLMOptions = {},
 ): Promise<string> {
   const model =
-    options.model ?? process.env.ADVISOR_MODEL ?? "gpt-4o-mini";
+    options.model || process.env.ADVISOR_MODEL || "gpt-4o-mini";
   const maxTokens = options.maxTokens ?? 2000;
 
   if (model.startsWith("claude-")) {
@@ -68,4 +68,4 @@ export async function callAdvisorLLM(
  *  propósito: o estudo é raro por clínica e a qualidade da extração importa
  *  mais que o custo. Requer ANTHROPIC_API_KEY no ambiente. */
 export const SETUP_STUDY_MODEL =
-  process.env.SETUP_STUDY_MODEL ?? "claude-3-5-sonnet-20240620";
+  process.env.SETUP_STUDY_MODEL || "claude-3-5-sonnet-20240620";
