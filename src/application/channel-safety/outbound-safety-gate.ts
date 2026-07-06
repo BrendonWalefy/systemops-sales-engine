@@ -11,6 +11,8 @@ export type OutboundSafetyClinic = {
   businessHours: string | null;
   outboundHourlyCap: number;
   outboundDailyCap: number;
+  channelSafetyMode?: string | null; // normal | atencao | cooling | frozen
+  channelPairedAt?: Date | null;
 };
 
 export type OutboundSafetyLead = {
@@ -33,7 +35,7 @@ export type OutboundSafetyGateInput = {
 
 export type OutboundSafetyGateDecision =
   | { action: "allow" }
-  | { action: "cancel"; reason: "consent_revoked" }
+  | { action: "cancel"; reason: "consent_revoked" | "channel_cooling" | "channel_frozen" }
   | {
       action: "defer";
       reason: "outbound_hourly_cap_exceeded" | "outbound_daily_cap_exceeded" | "quiet_hours";
@@ -50,17 +52,80 @@ export function isOutboundSafetyGatedCategory(category: OutboundMessageCategory)
   return GATED_CATEGORIES.has(category);
 }
 
+/**
+ * Resolve os caps limites de vazão da clínica considerando o tempo de pareamento (Warmup).
+ */
+export function resolveEffectiveCaps(
+  clinic: Pick<OutboundSafetyClinic, "channelPairedAt" | "outboundHourlyCap" | "outboundDailyCap">,
+  now: Date,
+): { hourlyCap: number; dailyCap: number } {
+  if (!clinic.channelPairedAt) {
+    return { hourlyCap: clinic.outboundHourlyCap, dailyCap: clinic.outboundDailyCap };
+  }
+
+  const ageMs = now.getTime() - clinic.channelPairedAt.getTime();
+  if (ageMs < 0) {
+    return { hourlyCap: 10, dailyCap: 40 };
+  }
+
+  const ageDays = ageMs / (24 * 60 * 60_000);
+
+  if (ageDays <= 7) {
+    return {
+      hourlyCap: Math.min(10, clinic.outboundHourlyCap),
+      dailyCap: Math.min(40, clinic.outboundDailyCap),
+    };
+  }
+  if (ageDays <= 14) {
+    return {
+      hourlyCap: Math.min(20, clinic.outboundHourlyCap),
+      dailyCap: Math.min(80, clinic.outboundDailyCap),
+    };
+  }
+  if (ageDays <= 21) {
+    return {
+      hourlyCap: Math.min(30, clinic.outboundHourlyCap),
+      dailyCap: Math.min(150, clinic.outboundDailyCap),
+    };
+  }
+
+  return { hourlyCap: clinic.outboundHourlyCap, dailyCap: clinic.outboundDailyCap };
+}
+
 export function evaluateOutboundSafetyGate(
   input: OutboundSafetyGateInput,
 ): OutboundSafetyGateDecision {
-  if (!isOutboundSafetyGatedCategory(input.category)) return { action: "allow" };
+  const now = input.now ?? new Date();
 
+  // 1. Aplicação do Modo de Segurança (Reputation Engine)
+  const mode = input.clinic.channelSafetyMode ?? "normal";
+
+  if (mode === "frozen") {
+    // Frozen bloqueia todas as automações e lembretes proativos (gated + reminder)
+    if (isOutboundSafetyGatedCategory(input.category) || input.category === "reminder") {
+      return { action: "cancel", reason: "channel_frozen" };
+    }
+  } else if (mode === "cooling") {
+    // Cooling bloqueia novas automações proativas (gated apenas)
+    if (isOutboundSafetyGatedCategory(input.category)) {
+      return { action: "cancel", reason: "channel_cooling" };
+    }
+  }
+
+  // Se não for categoria controlada (reply, operational, ou reminder ativo), libera direto sem checar caps ou quiet hours
+  if (!isOutboundSafetyGatedCategory(input.category)) {
+    return { action: "allow" };
+  }
+
+  // 2. Consentimento
   if (input.lead?.contactConsentRevokedAt) {
     return { action: "cancel", reason: "consent_revoked" };
   }
 
-  const now = input.now ?? new Date();
-  if (input.sentLastHour >= input.clinic.outboundHourlyCap) {
+  // 3. Pacing / Caps (calcula warmup se ativado)
+  const { hourlyCap, dailyCap } = resolveEffectiveCaps(input.clinic, now);
+
+  if (input.sentLastHour >= hourlyCap) {
     return {
       action: "defer",
       reason: "outbound_hourly_cap_exceeded",
@@ -68,7 +133,7 @@ export function evaluateOutboundSafetyGate(
     };
   }
 
-  if (input.sentToday >= input.clinic.outboundDailyCap) {
+  if (input.sentToday >= dailyCap) {
     return {
       action: "defer",
       reason: "outbound_daily_cap_exceeded",
@@ -76,6 +141,7 @@ export function evaluateOutboundSafetyGate(
     };
   }
 
+  // 4. Quiet Hours
   const timezone = new ClinicTimezone(input.clinic.timezone);
   const businessHours = parseBusinessHours(input.clinic.businessHours);
   if (!timezone.isBusinessHour(now, businessHours)) {

@@ -37,6 +37,12 @@ export async function updateChannelSafetySettings(
   const rawHourly = Number(formData.get("outbound_hourly_cap"));
   const rawDaily = Number(formData.get("outbound_daily_cap"));
   const pauseReengagement = formData.get("automated_reengagement_paused") === "on";
+  const safetyMode = formData.get("channel_safety_mode") as string;
+
+  const validModes = ["normal", "atencao", "cooling", "frozen"];
+  if (!validModes.includes(safetyMode)) {
+    redirect(`/owner/clinics/${clinicId}?channelSafetyError=invalid_safety_mode`);
+  }
 
   if (!Number.isInteger(rawHourly) || rawHourly < 1) {
     redirect(`/owner/clinics/${clinicId}?channelSafetyError=invalid_hourly_cap`);
@@ -51,6 +57,7 @@ export async function updateChannelSafetySettings(
       outboundHourlyCap: rawHourly,
       outboundDailyCap: rawDaily,
       automatedReengagementPaused: pauseReengagement,
+      channelSafetyMode: safetyMode,
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, clinicId));
@@ -59,6 +66,7 @@ export async function updateChannelSafetySettings(
     outboundHourlyCap: rawHourly,
     outboundDailyCap: rawDaily,
     automatedReengagementPaused: pauseReengagement,
+    channelSafetyMode: safetyMode,
   });
 
   redirect(`/owner/clinics/${clinicId}?channelSafetyOk=1`);
