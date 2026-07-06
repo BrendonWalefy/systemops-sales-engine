@@ -1203,7 +1203,10 @@ export const setupStudies = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     status: setupStudyStatusEnum("status").notNull().default("draft"),
     // Array de SetupFinding (domínio). Parse defensivo: campos extras são ignorados.
-    findings: jsonb("findings").notNull().default([]),
+    findings: jsonb("findings")
+      .$type<import("@/domain/entities/setup-study").SetupFinding[]>()
+      .notNull()
+      .default([]),
     // Hash do token de acesso usado na página pública da clínica (Fase 2).
     accessTokenHash: text("access_token_hash"),
     sentAt: timestamp("sent_at", { withTimezone: true }),

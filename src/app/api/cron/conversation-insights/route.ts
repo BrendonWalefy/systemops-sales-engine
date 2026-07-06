@@ -13,6 +13,7 @@ import {
   treatments,
 } from "@/infrastructure/db/schema";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import { callAdvisorLLM } from "@/infrastructure/llm/advisor-llm";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -31,29 +32,6 @@ type InsightDraft = {
   convIds: string[];
   actionData: Record<string, unknown>;
 };
-
-async function callLLM(prompt: string): Promise<string> {
-  if (INSIGHT_MODEL.startsWith("claude-")) {
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const res = await client.messages.create({
-      model: INSIGHT_MODEL,
-      max_tokens: 1500,
-      messages: [{ role: "user", content: prompt }],
-    });
-    return res.content[0].type === "text" ? res.content[0].text : "";
-  }
-
-  const OpenAI = (await import("openai")).default;
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const res = await client.chat.completions.create({
-    model: INSIGHT_MODEL,
-    max_tokens: 1500,
-    response_format: { type: "json_object" },
-    messages: [{ role: "user", content: prompt }],
-  });
-  return res.choices[0]?.message?.content ?? "";
-}
 
 type RawInsight = {
   type?: unknown;
@@ -250,7 +228,7 @@ Responda APENAS com JSON válido (máx 3 insights por categoria, só inclua os r
 
 Se não houver insights relevantes em uma categoria, retorne array vazio para ela.`;
 
-  const raw = await callLLM(prompt);
+  const raw = await callAdvisorLLM(prompt, { model: INSIGHT_MODEL, maxTokens: 1500 });
   return parseInsights(raw, convIdMap);
 }
 
