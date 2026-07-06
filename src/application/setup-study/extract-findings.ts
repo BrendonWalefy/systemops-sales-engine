@@ -33,8 +33,8 @@ function isValidSeverity(sev: unknown): sev is 1 | 2 | 3 {
 
 /** Monta o prompt para extração de findings conforme ADR-002 apêndice D. */
 function buildPrompt(transcript: AnonymizedTranscript): string {
-  return `Você é um auditor de qualidade de atendimento para uma clínica de saúde.
-Analise os transcritos de conversas abaixo e identifique problemas ou inconsistências de setup.
+  return `Você é um Engenheiro de IA configurando o sistema para uma clínica.
+O sistema desta clínica precisa ser configurado (Playbook, Tratamentos, Políticas). Seu trabalho é ler as conversas reais abaixo e EXTRAIR as regras de negócio, preços, serviços, tom de voz e objeções para preencher o setup do sistema.
 
 PERÍODO: ${transcript.periodStart.toISOString().slice(0, 10)} a ${transcript.periodEnd.toISOString().slice(0, 10)}
 CONVERSAS: ${transcript.conversationCount}
@@ -43,31 +43,34 @@ MENSAGENS: ${transcript.totalMessages}
 TRANSCRITOS:
 ${transcript.text}
 
-Retorne um JSON com a estrutura abaixo. Máximo de ${MAX_FINDINGS} findings.
+Retorne um JSON com a estrutura abaixo. Máximo de ${MAX_FINDINGS} apontamentos.
+Para cada regra de negócio importante descoberta (um preço de serviço, uma política de agendamento, uma objeção que o atendente sempre contorna, ou o tom de voz predominante), crie um apontamento.
+
 Cada finding deve ter:
 - category: "price" | "communication" | "qualification" | "policy" | "tone" | "other"
-- claim: afirmação sobre o problema (máx 280 chars, em português)
-- evidence: trecho do transcript que evidencia o problema (máx 400 chars)
-- severity: 1 (baixa), 2 (média) ou 3 (alta)
+- claim: afirmação clara sobre a regra ou dado descoberto (máx 280 chars, em português)
+- evidence: trecho exato do transcript que comprova a descoberta (máx 400 chars)
+- severity: 1 (baixa, ex: tom de voz), 2 (média, ex: qualificação), 3 (alta, ex: preço e serviços)
 - proposedChange: null | { target: string, newValue: string, currentValue: "" }
   Targets válidos: treatment:<uuid>.priceCents, treatment:<uuid>.priceQuotableInChat,
   treatment:<uuid>.aliases, treatment:<uuid>.requiresEvaluationFirst,
   playbook.objections[], playbook.toneOfVoice, playbook.commercialPolicy, playbook.notes
 
-Descarte findings sem evidência clara. Se não conseguir inferir uma mudança concreta, use proposedChange: null.
+Seja proativo: se descobrir que a clínica faz "Clareamento por R$800", crie um apontamento para isso. Se descobrir que eles usam muitos emojis e linguagem informal, crie um apontamento de tom de voz.
+Se não conseguir mapear para um "target" exato, use proposedChange: null, mas NÃO deixe de criar o finding.
 
 Formato de resposta (JSON apenas, sem markdown):
 {
   "findings": [
     {
       "category": "price",
-      "claim": "Preço da consulta mencionado nas conversas diverge do cadastro",
-      "evidence": "CLINICA: O valor é R$150. [trecho relevante]",
-      "severity": 2,
+      "claim": "A clínica cobra R$ 150 pela avaliação inicial.",
+      "evidence": "CLINICA: O valor da nossa consulta de avaliação é R$ 150. [trecho relevante]",
+      "severity": 3,
       "proposedChange": null
     }
   ]
-}`;
+}\`;
 }
 
 /** Tipo bruto retornado pelo LLM antes do parse defensivo. */
