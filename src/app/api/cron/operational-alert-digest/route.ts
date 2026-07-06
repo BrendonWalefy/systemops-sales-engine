@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
       clinicId: organizations.id,
       clinicName: organizations.name,
       operationalStatus: organizations.operationalStatus,
+      isDemo: organizations.isDemo,
       channelProvider: organizations.channelProvider,
       zapiInstanceId: organizations.zapiInstanceId,
       zapiToken: organizations.zapiToken,
@@ -37,7 +38,12 @@ export async function GET(req: NextRequest) {
       metaAccessToken: organizations.metaAccessToken,
     })
     .from(organizations)
-    .where(eq(organizations.operationalStatus, "active"));
+    .where(
+      and(
+        eq(organizations.operationalStatus, "active"),
+        eq(organizations.isDemo, false),
+      ),
+    );
 
   const clinicIds = activeClinics.map((c) => c.clinicId);
 

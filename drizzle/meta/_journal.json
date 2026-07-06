@@ -407,6 +407,13 @@
       "when": 1783361704561,
       "tag": "0057_lazy_ted_forrester",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1783371321893,
+      "tag": "0058_flippant_skin",
+      "breakpoints": true
     }
   ]
 }

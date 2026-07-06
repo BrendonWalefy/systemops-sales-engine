@@ -41,6 +41,33 @@ describe("clinic health", () => {
     expect(report.degradedClinics[0]?.issues).toContain("sem playbook ativo");
   });
 
+  it("excludes demo clinics from health evaluation", () => {
+    const report = evaluateClinicHealth(
+      [
+        {
+          clinicId: "demo-1",
+          clinicName: "Odonto Marques (Demo)",
+          operationalStatus: "active",
+          isDemo: true,
+          channelProvider: "z_api",
+          zapiInstanceId: "inst",
+          zapiToken: "token",
+          hasActivePlaybook: false,
+          latestMetricAt: null,
+          channelStatus: {
+            status: "degraded",
+            detail: "canal fictício",
+          },
+        },
+      ],
+      new Date("2026-06-14T12:00:00.000Z"),
+    );
+
+    expect(report.status).toBe("ok");
+    expect(report.activeClinicCount).toBe(0);
+    expect(report.degradedClinicCount).toBe(0);
+  });
+
   it("marks active organizations as degraded when the channel health probe fails", () => {
     const report = evaluateClinicHealth(
       [

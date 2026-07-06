@@ -69,6 +69,7 @@ type ClinicRow = {
   lastActivity: Date | null;
   hasActivityIn24h: boolean;
   isTest: boolean;
+  isDemo: boolean;
   channelProvider: "z_api" | "meta_cloud_api" | null;
   zapiInstanceId: string | null;
   zapiToken: string | null;
@@ -86,6 +87,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
       operationalStatus: organizations.operationalStatus,
       shadowModeEnabled: organizations.shadowModeEnabled,
       isTest: organizations.isTest,
+      isDemo: organizations.isDemo,
       channelProvider: organizations.channelProvider,
       zapiInstanceId: organizations.zapiInstanceId,
       zapiToken: organizations.zapiToken,
@@ -181,6 +183,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
         lastActivity,
         hasActivityIn24h,
         isTest: clinic.isTest,
+        isDemo: clinic.isDemo,
         channelProvider: clinic.channelProvider,
         zapiInstanceId: clinic.zapiInstanceId,
         zapiToken: clinic.zapiToken,
@@ -250,6 +253,7 @@ async function fetchOperationalAlertReport(clinicRows: ClinicRow[]) {
         clinicId: clinic.id,
         clinicName: clinic.name,
         operationalStatus: clinic.operationalStatus,
+        isDemo: clinic.isDemo,
         channelProvider: clinic.channelProvider,
         zapiInstanceId: clinic.zapiInstanceId,
         zapiToken: clinic.zapiToken,
