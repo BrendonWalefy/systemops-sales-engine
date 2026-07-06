@@ -2407,6 +2407,13 @@
           "notNull": true,
           "default": 200
         },
+        "automated_reengagement_paused": {
+          "name": "automated_reengagement_paused",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "unclear_threshold": {
           "name": "unclear_threshold",
           "type": "integer",
@@ -2507,12 +2514,6 @@
         "meta_access_token": {
           "name": "meta_access_token",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "channel_paired_at": {
-          "name": "channel_paired_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -4298,6 +4299,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "b2ee9535-6773-433d-b591-36de9113a7c0",
+  "id": "53e63676-fc42-4751-a929-fced8ec35e61",
   "prevId": "d63a94dc-40f1-4f3f-ac04-b1a484a70da6"
 }

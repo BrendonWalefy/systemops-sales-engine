@@ -7,6 +7,7 @@ import { organizations, conversations, messages } from "@/infrastructure/db/sche
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
@@ -212,6 +213,10 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
 
   if (!shouldSendAutomatedClinicOutbound(clinic)) {
     console.log(`[RecoveryCampaign] outbound pausado para clinic=${clinicId}`);
+    return { clinicId, sent: 0, skipped: 0, failed: 0 };
+  }
+  if (isReengagementPaused(clinic)) {
+    console.log(`[RecoveryCampaign] reengajamento pausado (automated_reengagement_paused=true) para clinic=${clinicId}`);
     return { clinicId, sent: 0, skipped: 0, failed: 0 };
   }
 
