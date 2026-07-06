@@ -21,6 +21,7 @@ import {
   shouldSuppressFollowUpForOperatorActivity,
 } from "@/application/use-cases/leads/follow-up-dispatch-policy";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 import type { TtsConfig } from "@/domain/entities/tts-config";
@@ -317,6 +318,10 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   if (!clinic) return null;
   if (!shouldSendAutomatedClinicOutbound(clinic)) {
     console.log(`[FollowUpDispatcher] outbound automatizado pausado para clinic=${clinicId}`);
+    return { clinicId, dispatched: 0, failed: 0, total: 0 };
+  }
+  if (isReengagementPaused(clinic)) {
+    console.log(`[FollowUpDispatcher] reengajamento pausado (automated_reengagement_paused=true) para clinic=${clinicId}`);
     return { clinicId, dispatched: 0, failed: 0, total: 0 };
   }
 
