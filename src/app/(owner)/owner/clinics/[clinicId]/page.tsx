@@ -18,6 +18,7 @@ import {
   agentRecommendations,
   playbookVersions,
   treatments,
+  channelHealthSnapshots,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
 import {
@@ -381,11 +382,20 @@ export default async function ClinicDetailPage({
       outboundHourlyCap: organizations.outboundHourlyCap,
       outboundDailyCap: organizations.outboundDailyCap,
       automatedReengagementPaused: organizations.automatedReengagementPaused,
+      channelSafetyMode: organizations.channelSafetyMode,
     })
     .from(organizations)
     .where(eq(organizations.id, clinicId))
     .limit(1);
   if (!clinic) notFound();
+
+  const [latestSnapshot] = await db
+    .select({ healthScore: channelHealthSnapshots.healthScore })
+    .from(channelHealthSnapshots)
+    .where(eq(channelHealthSnapshots.clinicId, clinicId))
+    .orderBy(desc(channelHealthSnapshots.createdAt))
+    .limit(1);
+  const currentScore = latestSnapshot?.healthScore ?? 100;
 
   const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
     getClinicVoiceBlueprintState(clinicId),
@@ -1246,7 +1256,51 @@ export default async function ClinicDetailPage({
                 <p className="eyebrow" style={{ margin: 0 }}>Segurança de canal</p>
               </div>
 
+              {/* Status do Reputation Engine */}
+              <div style={{ display: "flex", alignItems: "center", gap: 15, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)", padding: "10px 12px", borderRadius: 8 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Score de Saúde (Ontem)</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: currentScore >= 80 ? "#22c55e" : currentScore >= 50 ? "#eab308" : currentScore >= 20 ? "#f97316" : "#ef4444" }}>
+                    {currentScore}/100
+                  </p>
+                </div>
+                <div style={{ borderLeft: "1px solid var(--line)", paddingLeft: 15 }}>
+                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Modo de Segurança</p>
+                  <span style={{
+                    display: "inline-block",
+                    marginTop: 4,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    background: clinic.channelSafetyMode === "normal" ? "rgba(34,197,94,0.15)" : clinic.channelSafetyMode === "atencao" ? "rgba(234,179,8,0.15)" : clinic.channelSafetyMode === "cooling" ? "rgba(249,115,22,0.15)" : "rgba(239,68,68,0.15)",
+                    color: clinic.channelSafetyMode === "normal" ? "#22c55e" : clinic.channelSafetyMode === "atencao" ? "#eab308" : clinic.channelSafetyMode === "cooling" ? "#f97316" : "#ef4444"
+                  }}>
+                    {clinic.channelSafetyMode}
+                  </span>
+                </div>
+              </div>
+
               <form action={channelSafetyAction} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Sobrescrita de Modo */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
+                    Sobrescrita Manual de Modo
+                  </label>
+                  <select
+                    id="channel_safety_mode"
+                    name="channel_safety_mode"
+                    defaultValue={clinic.channelSafetyMode ?? "normal"}
+                    style={{ ...inputStyle, width: "100%", background: "#0c0c0e", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px", fontSize: 12 }}
+                  >
+                    <option value="normal">Normal (Sem restrições extras)</option>
+                    <option value="atencao">Atenção (Alerta e monitoramento)</option>
+                    <option value="cooling">Cooling (Bloqueia follow-up, recovery e campanhas)</option>
+                    <option value="frozen">Frozen (Bloqueia tudo exceto respostas diretas)</option>
+                  </select>
+                </div>
+
                 {/* Caps de cadência */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>

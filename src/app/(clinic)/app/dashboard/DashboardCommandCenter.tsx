@@ -20,6 +20,7 @@ import {
   Users,
   WalletCards,
   Zap,
+  ShieldCheck,
 } from "lucide-react";
 import { MobileDashboardAvatar } from "@/components/mobile-dashboard-avatar";
 import { SystemOpsBrand } from "@/components/systemops-brand";
@@ -165,6 +166,8 @@ export type DashboardData = {
   attentionLeads: DashboardActionLead[];
   insightConversations: DashboardInsightConversation[];
   periodFunnel: DashboardPeriodFunnel;
+  channelSafetyMode?: string;
+  healthScore?: number;
 };
 
 type Props = {
@@ -684,6 +687,19 @@ function DashboardHeader({
             <Bot size={11} />
             {data.autoReplyEnabled ? "IA ativa" : "IA pausada"}
           </span>
+          {data.channelSafetyMode && (
+            <span className="command-status-pill command-mobile-ia-pill" style={{
+              background: data.channelSafetyMode === "normal" ? "rgba(34,197,94,0.15)" : data.channelSafetyMode === "atencao" ? "rgba(234,179,8,0.15)" : data.channelSafetyMode === "cooling" ? "rgba(249,115,22,0.15)" : "rgba(239,68,68,0.15)",
+              color: data.channelSafetyMode === "normal" ? "#22c55e" : data.channelSafetyMode === "atencao" ? "#eab308" : data.channelSafetyMode === "cooling" ? "#f97316" : "#ef4444",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 4
+            }}>
+              <ShieldCheck size={11} />
+              Whats {data.channelSafetyMode === "normal" ? "Estável" : data.channelSafetyMode === "atencao" ? "Atenção" : data.channelSafetyMode === "cooling" ? "Resfriar" : "Congelado"} ({data.healthScore ?? 100})
+            </span>
+          )}
         </div>
       </section>
 
@@ -694,6 +710,19 @@ function DashboardHeader({
         </div>
 
         <div className="command-dashboard-actions">
+          {data.channelSafetyMode && (
+            <span className="command-status-pill" style={{
+              background: data.channelSafetyMode === "normal" ? "rgba(34,197,94,0.15)" : data.channelSafetyMode === "atencao" ? "rgba(234,179,8,0.15)" : data.channelSafetyMode === "cooling" ? "rgba(249,115,22,0.15)" : "rgba(239,68,68,0.15)",
+              color: data.channelSafetyMode === "normal" ? "#22c55e" : data.channelSafetyMode === "atencao" ? "#eab308" : data.channelSafetyMode === "cooling" ? "#f97316" : "#ef4444",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 5
+            }} title={`Score de reputação do número: ${data.healthScore ?? 100}/100. Modo: ${data.channelSafetyMode}`}>
+              <ShieldCheck size={15} />
+              WhatsApp {data.channelSafetyMode === "normal" ? "Saudável" : data.channelSafetyMode === "atencao" ? "Atenção" : data.channelSafetyMode === "cooling" ? "Resfriamento" : "Congelado"} ({data.healthScore ?? 100})
+            </span>
+          )}
           <span className={`command-status-pill ${data.autoReplyEnabled ? "active" : "muted"}`}>
             <Bot size={15} />
             {data.autoReplyEnabled ? "IA ativa" : "IA pausada"}

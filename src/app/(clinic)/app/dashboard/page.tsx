@@ -7,7 +7,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canViewFinancials, canViewOwnRevenue } from "@/application/tenancy/member-role";
 import { db } from "@/infrastructure/db/client";
-import { leads, conversations, messages, clinicMembers, appointments, treatments, organizations, professionals } from "@/infrastructure/db/schema";
+import { leads, conversations, messages, clinicMembers, appointments, treatments, organizations, professionals, channelHealthSnapshots } from "@/infrastructure/db/schema";
 import {
   DashboardCommandCenter,
   type DashboardData,
@@ -511,7 +511,11 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
       .where(eq(treatments.clinicId, CLINIC_ID))
       .limit(200),
     db
-      .select({ name: organizations.name, autoReplyEnabled: organizations.autoReplyEnabled })
+      .select({
+        name: organizations.name,
+        autoReplyEnabled: organizations.autoReplyEnabled,
+        channelSafetyMode: organizations.channelSafetyMode,
+      })
       .from(organizations)
       .where(eq(organizations.id, CLINIC_ID))
       .limit(1),
@@ -609,9 +613,15 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
         eq(conversations.category, "sales"),
         notInArray(leads.status, ["appointment_scheduled", "won"]),
       ))
-      .orderBy(desc(activityAtSql))
-      .limit(24),
   ]);
+
+  const [latestSnapshot] = await db
+    .select({ healthScore: channelHealthSnapshots.healthScore })
+    .from(channelHealthSnapshots)
+    .where(eq(channelHealthSnapshots.clinicId, CLINIC_ID))
+    .orderBy(desc(channelHealthSnapshots.createdAt))
+    .limit(1);
+  const currentScore = latestSnapshot?.healthScore ?? 100;
 
   const periodFunnel = buildPeriodFunnel(periodLeadSnapshotResult);
 
@@ -650,6 +660,8 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
     attentionLeads: attentionLeadsResult,
     insightConversations: insightConversationsResult,
     periodFunnel,
+    channelSafetyMode: clinicInfoResult[0]?.channelSafetyMode ?? "normal",
+    healthScore: currentScore,
   };
 }
 

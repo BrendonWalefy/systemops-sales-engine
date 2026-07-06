@@ -277,6 +277,9 @@ export const organizations = pgTable("organizations", {
   // Uso futuro (Fase 1): ancoragem para warmup — número novo entra com caps
   // reduzidos que sobem por semana de idade a partir deste timestamp.
   channelPairedAt: timestamp("channel_paired_at", { withTimezone: true }),
+  // Modo operacional de segurança do canal (Reputation Engine - Fase 1):
+  // normal | atencao | cooling | frozen
+  channelSafetyMode: text("channel_safety_mode").notNull().default("normal"),
   // Terminologia adaptada por segmento (ex: "tratamento", "serviço", "procedimento")
   serviceNoun: text("service_noun").notNull().default("tratamento"),
   // Segmento do negócio: "dental" | "barbershop" | "hair_salon" | "aesthetics" | "atelier" | "other"
@@ -1151,3 +1154,30 @@ export const treatmentGapReports = pgTable(
     convIdx: index("treatment_gap_reports_conv_idx").on(t.conversationId),
   }),
 );
+
+export const channelHealthSnapshots = pgTable(
+  "channel_health_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // Formato YYYY-MM-DD
+    optOutCount: integer("opt_out_count").notNull().default(0),
+    outboundSent: integer("outbound_sent").notNull().default(0),
+    outboundCancelled: integer("outbound_cancelled").notNull().default(0),
+    outboundDeferred: integer("outbound_deferred").notNull().default(0),
+    inboundReceived: integer("inbound_received").notNull().default(0),
+    healthScore: integer("health_score").notNull().default(100),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    clinicDateIdx: index("channel_health_snapshots_org_date_idx").on(
+      t.clinicId,
+      t.date,
+    ),
+  }),
+);
+
