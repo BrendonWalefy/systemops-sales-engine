@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getZApiInstanceStatus,
   sendZApiTextMessage,
+  getZApiQrCodeImage,
+  getZApiPhoneCode,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -160,3 +162,93 @@ describe("sendTextMessage", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("getZApiQrCodeImage", () => {
+  it("retorna QR base64 quando a API responde 200 com value", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ value: "base64-string-here", connected: false }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getZApiQrCodeImage({
+      instanceId: "instance-123",
+      token: "token-abc",
+    });
+
+    expect(result).toEqual({ status: "qr", base64: "base64-string-here" });
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.z-api.io/instances/instance-123/token/token-abc/qr-code/image");
+  });
+
+  it("retorna status connected quando já estiver conectado", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ connected: true }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getZApiQrCodeImage({
+      instanceId: "instance-123",
+      token: "token-abc",
+    });
+
+    expect(result).toEqual({ status: "connected" });
+  });
+
+  it("retorna status expired quando a resposta for HTTP 400 ou 404", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "Instance not initialized" }), { status: 400 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getZApiQrCodeImage({
+      instanceId: "instance-123",
+      token: "token-abc",
+    });
+
+    expect(result).toEqual({ status: "expired" });
+  });
+
+  it("inclui header Client-Token se configurado", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ value: "base64", connected: false }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getZApiQrCodeImage({
+      instanceId: "instance-123",
+      token: "token-abc",
+      clientToken: "client-token-xyz",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toEqual({ "Client-Token": "client-token-xyz" });
+  });
+});
+
+describe("getZApiPhoneCode", () => {
+  it("retorna pairing code de 8 dígitos quando a API responde 200 com code", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: "ABCDEF12" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getZApiPhoneCode(
+      { instanceId: "instance-123", token: "token-abc" },
+      "5511999999999",
+    );
+
+    expect(result).toEqual({ status: "code", code: "ABCDEF12" });
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.z-api.io/instances/instance-123/token/token-abc/phone-code/5511999999999");
+  });
+
+  it("retorna error se o número de telefone for inválido", async () => {
+    const result = await getZApiPhoneCode(
+      { instanceId: "instance-123", token: "token-abc" },
+      "abc",
+    );
+
+    expect(result.status).toBe("error");
+  });
+});
+

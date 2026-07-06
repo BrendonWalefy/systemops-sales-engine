@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -21,6 +21,9 @@ import {
   Film,
   MessageSquare,
   Camera,
+  QrCode,
+  Smartphone,
+  RefreshCw,
 } from "lucide-react";
 import {
   saveWizardIdentity,
@@ -419,16 +422,166 @@ function StepIdentidade({
   channel,
   onChange,
   onChannelChange,
+  clinicId,
 }: {
   data: WizardInitial["identity"];
   channel: WizardInitial["channel"];
   onChange: (d: WizardInitial["identity"]) => void;
   onChannelChange: (d: WizardInitial["channel"]) => void;
+  clinicId: string;
 }) {
   const f =
     (field: keyof typeof data) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       onChange({ ...data, [field]: e.target.value });
+
+  // ─── WA Pairing States ───────────────────────────────────────────────────────
+  type PairingPhase =
+    | "idle"
+    | "saving"
+    | "loading_qr"
+    | "showing_qr"
+    | "loading_phone_code"
+    | "showing_phone_code"
+    | "polling"
+    | "connected"
+    | "error";
+
+  const [pairingPhase, setPairingPhase] = useState<PairingPhase>("idle");
+  const [pairingError, setPairingError] = useState<string | null>(null);
+  const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
+  const [phoneCode, setPhoneCode] = useState<string | null>(null);
+  const [phoneForCode, setPhoneForCode] = useState<string>("");
+
+  // Polling helper
+  const recordPairing = useCallback(async () => {
+    try {
+      await fetch(`/api/owner/clinics/${clinicId}/channel-pairing?action=record-pairing`, {
+        method: "POST",
+      });
+    } catch (e) {
+      console.error("Failed to record pairing timestamp:", e);
+    }
+  }, [clinicId]);
+
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/owner/clinics/${clinicId}/channel-pairing?action=status`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.connected) {
+          setPairingPhase("connected");
+          await recordPairing();
+          return true; // connected
+        }
+      }
+    } catch (e) {
+      console.error("Polling error:", e);
+    }
+    return false;
+  }, [clinicId, recordPairing]);
+
+  const startPairing = async (mode: "qr" | "phone") => {
+    setPairingError(null);
+    if (!channel.zapiInstanceId || !channel.zapiToken) {
+      setPairingPhase("error");
+      setPairingError("Preencha Z-API Instance ID e Z-API Token para conectar.");
+      return;
+    }
+
+    setPairingPhase("saving");
+    // Salvar credenciais no banco primeiro para que o endpoint de pairing do backend as encontre criptografadas.
+    const saveResult = await saveWizardIdentity(clinicId, {
+      ...data,
+      channelProvider: channel.provider,
+      zapiInstanceId: channel.zapiInstanceId,
+      zapiToken: channel.zapiToken,
+      zapiClientToken: channel.zapiClientToken,
+      metaPhoneNumberId: channel.metaPhoneNumberId,
+      metaAccessToken: channel.metaAccessToken,
+    });
+
+    if (!saveResult.success) {
+      setPairingPhase("error");
+      setPairingError(saveResult.error ?? "Erro ao salvar credenciais antes de parear.");
+      return;
+    }
+
+    if (mode === "qr") {
+      await fetchQrCode();
+    } else {
+      await fetchPhoneCode();
+    }
+  };
+
+  const fetchQrCode = async () => {
+    setPairingPhase("loading_qr");
+    try {
+      const res = await fetch(`/api/owner/clinics/${clinicId}/channel-pairing?action=qr-code`);
+      if (!res.ok) {
+        throw new Error("Erro ao buscar QR code da API");
+      }
+      const json = await res.json();
+      if (json.status === "qr" && json.base64) {
+        setQrCodeBase64(json.base64);
+        setPairingPhase("showing_qr");
+      } else if (json.status === "connected") {
+        setPairingPhase("connected");
+        await recordPairing();
+      } else {
+        setPairingPhase("error");
+        setPairingError(json.message ?? "QR Code expirado ou indisponível. Tente novamente.");
+      }
+    } catch (err) {
+      setPairingPhase("error");
+      setPairingError(err instanceof Error ? err.message : "Erro desconhecido");
+    }
+  };
+
+  const fetchPhoneCode = async () => {
+    if (!phoneForCode) {
+      setPairingPhase("error");
+      setPairingError("Digite um número de telefone com DDI e DDD (ex: 5511999999999)");
+      return;
+    }
+    setPairingPhase("loading_phone_code");
+    try {
+      const res = await fetch(`/api/owner/clinics/${clinicId}/channel-pairing?action=phone-code&phone=${encodeURIComponent(phoneForCode)}`);
+      if (!res.ok) {
+        throw new Error("Erro ao buscar código de telefone da API");
+      }
+      const json = await res.json();
+      if (json.status === "code" && json.code) {
+        setPhoneCode(json.code);
+        setPairingPhase("showing_phone_code");
+      } else if (json.status === "connected") {
+        setPairingPhase("connected");
+        await recordPairing();
+      } else {
+        setPairingPhase("error");
+        setPairingError(json.message ?? "Não foi possível gerar o código. Verifique as credenciais.");
+      }
+    } catch (err) {
+      setPairingPhase("error");
+      setPairingError(err instanceof Error ? err.message : "Erro desconhecido");
+    }
+  };
+
+  // Poll connection status every 3 seconds when showing QR or Phone Code
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | undefined = undefined;
+    if (pairingPhase === "showing_qr" || pairingPhase === "showing_phone_code") {
+      intervalId = setInterval(async () => {
+        const isConnected = await pollStatus();
+        if (isConnected) {
+          clearInterval(intervalId);
+        }
+      }, 3000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [pairingPhase, pollStatus]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -531,6 +684,270 @@ function StepIdentidade({
                   placeholder="Opcional"
                   style={inputStyle}
                 />
+              </div>
+
+              {/* Sub-passo: Conectar WhatsApp */}
+              <div
+                style={{
+                  marginTop: "12px",
+                  padding: "16px 20px",
+                  borderRadius: "12px",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "rgba(255,255,255,0.02)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "14px",
+                }}
+              >
+                <div style={{ fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>Conectar WhatsApp (Z-API)</span>
+                  <span style={{ fontSize: "11px", fontWeight: "normal", color: "var(--muted)" }}>(Opcional)</span>
+                </div>
+
+                {pairingPhase === "idle" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <p style={{ margin: 0, fontSize: "12px", color: "var(--muted)", lineHeight: 1.5 }}>
+                      Você pode conectar o celular escaneando o QR Code ou digitando um código no WhatsApp. As credenciais acima serão salvas automaticamente ao iniciar.
+                    </p>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => startPairing("qr")}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "10px 16px",
+                          borderRadius: "8px",
+                          border: "1px solid var(--accent)",
+                          background: "transparent",
+                          color: "var(--accent)",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <QrCode size={14} />
+                        Gerar QR Code
+                      </button>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <input
+                          value={phoneForCode}
+                          onChange={(e) => setPhoneForCode(e.target.value)}
+                          placeholder="5511999999999"
+                          style={{
+                            ...inputStyle,
+                            width: "140px",
+                            padding: "8px 10px",
+                            fontSize: "13px",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => startPairing("phone")}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "10px 16px",
+                            borderRadius: "8px",
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            background: "rgba(255,255,255,0.05)",
+                            color: "var(--foreground)",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Smartphone size={14} />
+                          Gerar Código
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {(pairingPhase === "saving" ||
+                  pairingPhase === "loading_qr" ||
+                  pairingPhase === "loading_phone_code") && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 0" }}>
+                    <Loader2 size={16} className="spin" style={{ animation: "spin 1s linear infinite" }} />
+                    <span style={{ fontSize: "13px", color: "var(--muted)" }}>
+                      {pairingPhase === "saving" && "Salvando credenciais..."}
+                      {pairingPhase === "loading_qr" && "Gerando QR Code..."}
+                      {pairingPhase === "loading_phone_code" && "Gerando código de pareamento..."}
+                    </span>
+                  </div>
+                )}
+
+                {pairingPhase === "showing_qr" && qrCodeBase64 && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", padding: "10px 0" }}>
+                    <div style={{ background: "white", padding: "10px", borderRadius: "12px", display: "inline-block" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`data:image/png;base64,${qrCodeBase64}`}
+                        alt="Z-API QR Code"
+                        style={{ width: "180px", height: "180px", display: "block" }}
+                      />
+                    </div>
+                    <div style={{ textAlign: "center", maxWidth: "320px" }}>
+                      <p style={{ margin: 0, fontSize: "12px", color: "var(--foreground)", fontWeight: 600 }}>
+                        Escaneie o QR Code no seu WhatsApp
+                      </p>
+                      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--muted)", lineHeight: 1.4 }}>
+                        Acesse WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho.
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent)", fontSize: "12px" }}>
+                      <Loader2 size={12} className="spin" style={{ animation: "spin 1.5s linear infinite" }} />
+                      <span>Aguardando leitura do QR Code...</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchQrCode()}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--muted)",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <RefreshCw size={12} /> Atualizar QR Code
+                    </button>
+                  </div>
+                )}
+
+                {pairingPhase === "showing_phone_code" && phoneCode && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", padding: "10px 0" }}>
+                    <div
+                      style={{
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "10px",
+                        padding: "12px 24px",
+                        fontSize: "24px",
+                        fontWeight: 700,
+                        letterSpacing: "4px",
+                        fontFamily: "monospace",
+                        color: "var(--accent)",
+                      }}
+                    >
+                      {phoneCode}
+                    </div>
+                    <div style={{ textAlign: "center", maxWidth: "340px" }}>
+                      <p style={{ margin: 0, fontSize: "12px", color: "var(--foreground)", fontWeight: 600 }}>
+                        Insira o código acima no seu WhatsApp
+                      </p>
+                      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--muted)", lineHeight: 1.4 }}>
+                        Acesse Aparelhos conectados &gt; Conectar com número de telefone.
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent)", fontSize: "12px" }}>
+                      <Loader2 size={12} className="spin" style={{ animation: "spin 1.5s linear infinite" }} />
+                      <span>Aguardando pareamento do código...</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchPhoneCode()}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--muted)",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <RefreshCw size={12} /> Gerar novo código
+                    </button>
+                  </div>
+                )}
+
+                {pairingPhase === "connected" && (
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      background: "rgba(16,185,129,0.08)",
+                      border: "1px solid rgba(16,185,129,0.22)",
+                      borderRadius: "8px",
+                      color: "#34d399",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <CheckCircle2 size={14} />
+                    WhatsApp conectado com sucesso!
+                  </div>
+                )}
+
+                {pairingPhase === "error" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div
+                      style={{
+                        padding: "10px 14px",
+                        background: "rgba(248,113,113,0.08)",
+                        border: "1px solid rgba(248,113,113,0.22)",
+                        borderRadius: "8px",
+                        color: "#f87171",
+                        fontSize: "13px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <AlertCircle size={14} />
+                      <span>{pairingError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPairingPhase("idle")}
+                      style={{
+                        alignSelf: "flex-start",
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--accent)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Tentar novamente
+                    </button>
+                  </div>
+                )}
+
+                {pairingPhase !== "idle" && pairingPhase !== "connected" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPairingPhase("idle");
+                      setQrCodeBase64(null);
+                      setPhoneCode(null);
+                    }}
+                    style={{
+                      alignSelf: "flex-start",
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--muted)",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Voltar / Cancelar
+                  </button>
+                )}
               </div>
             </>
           ) : (
@@ -2225,6 +2642,7 @@ export function OnboardingWizardClient({
             channel={channel}
             onChange={setIdentity}
             onChannelChange={setChannel}
+            clinicId={clinicId}
           />
         )}
         {step === 2 && (
