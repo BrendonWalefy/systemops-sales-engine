@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "channel_paired_at" timestamp with time zone;

@@ -263,6 +263,12 @@ export const organizations = pgTable("organizations", {
   zapiClientToken: text("zapi_client_token"),
   metaPhoneNumberId: text("meta_phone_number_id"),
   metaAccessToken: text("meta_access_token"),
+  // Momento em que a instância Z-API foi conectada com sucesso pela primeira vez
+  // via o fluxo de pareamento dentro do nosso portal (P0.5). Nullable: clínicas
+  // existentes e as que conectaram pelo painel Z-API têm null.
+  // Uso futuro (Fase 1): ancoragem para warmup — número novo entra com caps
+  // reduzidos que sobem por semana de idade a partir deste timestamp.
+  channelPairedAt: timestamp("channel_paired_at", { withTimezone: true }),
   // Terminologia adaptada por segmento (ex: "tratamento", "serviço", "procedimento")
   serviceNoun: text("service_noun").notNull().default("tratamento"),
   // Segmento do negócio: "dental" | "barbershop" | "hair_salon" | "aesthetics" | "atelier" | "other"
