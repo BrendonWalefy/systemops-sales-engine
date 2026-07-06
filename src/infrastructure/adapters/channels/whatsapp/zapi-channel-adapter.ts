@@ -296,3 +296,139 @@ function resolveZApiMedia(data: ZApiInboundPayload): { mediaUrl: string | null; 
   if (data.document) return { mediaUrl: data.document.documentUrl, mediaType: "document" };
   return { mediaUrl: null, mediaType: null };
 }
+
+// ─── Pareamento por QR / código de telefone ───────────────────────────────────
+//
+// Usados pelo fluxo de onboarding no portal (P0.5). O token da clínica NUNCA
+// é serializado na resposta ao client — o backend chama estas funções e entrega
+// apenas o base64/código/status ao front-end.
+//
+// Credenciais SEMPRE passadas por parâmetro (resolveChannelConfig no caller),
+// nunca lidas de env.
+
+export type ZApiQrCodeResult =
+  | { status: "qr"; base64: string }
+  | { status: "connected" }
+  | { status: "expired" }
+  | { status: "error"; message: string };
+
+/**
+ * Busca o QR code da instância Z-API em base64.
+ * Endpoints Z-API: GET .../qr-code/image
+ * - 200 com campo `value` (base64) → QR disponível.
+ * - 200 com `value = null` / `connected = true` → já conectado.
+ * - 4xx ou `value` ausente → QR expirado ou instância não inicializada.
+ */
+export async function getZApiQrCodeImage(
+  creds: { instanceId: string; token: string; clientToken?: string },
+): Promise<ZApiQrCodeResult> {
+  const { instanceId, token } = creds;
+  const rawClientToken = creds.clientToken;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http") ? rawClientToken : undefined;
+
+  if (!instanceId || !token) {
+    return { status: "error", message: "Missing instanceId or token" };
+  }
+
+  const headers: Record<string, string> = {};
+  if (clientToken) headers["Client-Token"] = clientToken;
+
+  try {
+    const response = await fetch(
+      `https://api.z-api.io/instances/${instanceId}/token/${token}/qr-code/image`,
+      { method: "GET", headers, signal: AbortSignal.timeout(10_000) },
+    );
+
+    if (!response.ok) {
+      // 4xx → instância não inicializada ou QR expirado
+      return { status: "expired" };
+    }
+
+    const text = await response.text();
+    let data: unknown;
+    try { data = JSON.parse(text); } catch { data = null; }
+
+    if (data && typeof data === "object") {
+      const obj = data as Record<string, unknown>;
+      // Já conectado: { connected: true } ou { value: null }
+      if (obj.connected === true) return { status: "connected" };
+      // QR disponível: { value: "<base64>" }
+      if (typeof obj.value === "string" && obj.value.length > 0) {
+        return { status: "qr", base64: obj.value };
+      }
+    }
+
+    // value vazio ou formato inesperado → expirado / não disponível
+    return { status: "expired" };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Network error",
+    };
+  }
+}
+
+export type ZApiPhoneCodeResult =
+  | { status: "code"; code: string }
+  | { status: "connected" }
+  | { status: "error"; message: string };
+
+/**
+ * Solicita o código de pareamento por número de telefone (sem câmera).
+ * O código de 8 dígitos é digitado no WhatsApp em Dispositivos vinculados.
+ * Endpoints Z-API: GET .../phone-code/{phone}
+ */
+export async function getZApiPhoneCode(
+  creds: { instanceId: string; token: string; clientToken?: string },
+  phone: string,
+): Promise<ZApiPhoneCodeResult> {
+  const { instanceId, token } = creds;
+  const rawClientToken = creds.clientToken;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http") ? rawClientToken : undefined;
+
+  if (!instanceId || !token) {
+    return { status: "error", message: "Missing instanceId or token" };
+  }
+  if (!phone || !/^\d{10,15}$/.test(phone.replace(/\D/g, ""))) {
+    return { status: "error", message: "Número de telefone inválido" };
+  }
+
+  const headers: Record<string, string> = {};
+  if (clientToken) headers["Client-Token"] = clientToken;
+
+  const normalizedPhone = phone.replace(/\D/g, "");
+
+  try {
+    const response = await fetch(
+      `https://api.z-api.io/instances/${instanceId}/token/${token}/phone-code/${encodeURIComponent(normalizedPhone)}`,
+      { method: "GET", headers, signal: AbortSignal.timeout(15_000) },
+    );
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => `HTTP ${response.status}`);
+      return { status: "error", message: errText || `HTTP ${response.status}` };
+    }
+
+    const text = await response.text();
+    let data: unknown;
+    try { data = JSON.parse(text); } catch { data = null; }
+
+    if (data && typeof data === "object") {
+      const obj = data as Record<string, unknown>;
+      if (obj.connected === true) return { status: "connected" };
+      // Código retornado como `code` ou `pairingCode`
+      const code = obj.code ?? obj.pairingCode;
+      if (typeof code === "string" && code.length > 0) {
+        return { status: "code", code };
+      }
+    }
+
+    return { status: "error", message: "Resposta inesperada da Z-API" };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Network error",
+    };
+  }
+}
+
