@@ -19,6 +19,7 @@ import {
   playbookVersions,
   treatments,
   channelHealthSnapshots,
+  setupStudies,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, desc, sql, notInArray } from "drizzle-orm";
 import {
@@ -50,6 +51,7 @@ import {
   getClinicOperationalStatusLabel,
 } from "@/application/clinics/clinic-operational-status-presentation";
 import { updateChannelSafetySettings } from "./channel-safety-actions";
+import { GenerateSetupStudyButton, SetupStudyCard } from "./setup-study-ui";
 
 async function enterClinicInbox(clinicId: string) {
   "use server";
@@ -389,13 +391,21 @@ export default async function ClinicDetailPage({
     .limit(1);
   if (!clinic) notFound();
 
-  const [latestSnapshot] = await db
-    .select({ healthScore: channelHealthSnapshots.healthScore })
-    .from(channelHealthSnapshots)
-    .where(eq(channelHealthSnapshots.clinicId, clinicId))
-    .orderBy(desc(channelHealthSnapshots.createdAt))
-    .limit(1);
-  const currentScore = latestSnapshot?.healthScore ?? 100;
+  const [latestSnapshot, activeDraftStudy] = await Promise.all([
+    db
+      .select({ healthScore: channelHealthSnapshots.healthScore })
+      .from(channelHealthSnapshots)
+      .where(eq(channelHealthSnapshots.clinicId, clinicId))
+      .orderBy(desc(channelHealthSnapshots.createdAt))
+      .limit(1),
+    db.query.setupStudies.findFirst({
+      where: and(
+        eq(setupStudies.organizationId, clinicId),
+        eq(setupStudies.status, "draft")
+      )
+    }),
+  ]);
+  const currentScore = latestSnapshot[0]?.healthScore ?? 100;
 
   const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
     getClinicVoiceBlueprintState(clinicId),
@@ -878,6 +888,25 @@ export default async function ClinicDetailPage({
                   <span key={item} style={{ fontSize: 12, color: "var(--muted)" }}>· {item}</span>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── ZONA 1.5: SETUP STUDY (ADR-002 Fase 1) ────────────── */}
+        <div style={{ display: "grid", gap: 16 }}>
+          {activeDraftStudy ? (
+            <SetupStudyCard study={activeDraftStudy as unknown as Parameters<typeof SetupStudyCard>[0]["study"]} />
+          ) : (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                  Estudo de Setup
+                </h3>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
+                  Gere um relatório analisando as conversas recentes para identificar divergências entre a operação real e o cadastro.
+                </p>
+              </div>
+              <GenerateSetupStudyButton clinicId={clinic.id} />
             </div>
           )}
         </div>
