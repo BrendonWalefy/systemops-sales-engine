@@ -24,7 +24,11 @@ export function GenerateSetupStudyButton({ clinicId }: GenerateSetupStudyButtonP
   const handleGenerate = () => {
     startTransition(async () => {
       try {
-        await generateSetupStudy(clinicId);
+        const res = await generateSetupStudy(clinicId);
+        if (res && res.error) {
+          alert(res.error);
+          return;
+        }
         router.refresh();
       } catch (err: unknown) {
         alert((err as Error).message || "Erro ao gerar estudo.");
