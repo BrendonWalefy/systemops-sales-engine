@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { RESPONSE_SCHEMA } from "@/core/intelligence/IntentClassifier";
 import { evaluateOutboundSafetyGate } from "@/application/channel-safety/outbound-safety-gate";
+import {
+  resolveStopContactDecision,
+  shouldTreatAsStopContact,
+} from "@/application/channel-safety/stop-contact-policy";
 
 // Contrato: o classificador só pode emitir stop_contact se ele estiver no enum
 // do JSON schema strict. Sem isso, o opt-out nunca seria classificado e todo o
@@ -9,6 +13,56 @@ describe("stop_contact — contrato do classificador", () => {
   it("expõe stop_contact no enum do RESPONSE_SCHEMA", () => {
     const intents = RESPONSE_SCHEMA.properties.intent.enum as string[];
     expect(intents).toContain("stop_contact");
+  });
+});
+
+describe("stop_contact — regra determinística", () => {
+  it("reconhece pedidos explícitos de opt-out", () => {
+    const positives = [
+      "não quero mais receber mensagens",
+      "para de me mandar mensagem",
+      "me tira dessa lista",
+      "não me chama mais aqui",
+      "quero descadastrar",
+      "cancela o recebimento",
+    ];
+
+    for (const messageText of positives) {
+      expect(shouldTreatAsStopContact(messageText, "unclear")).toBe(true);
+    }
+  });
+
+  it("bloqueia falsos positivos comuns", () => {
+    const negatives = [
+      "não quero esse horário",
+      "não quero mais fazer o tratamento",
+      "desisti do procedimento",
+      "para",
+      "tchau",
+      "agora não",
+    ];
+
+    for (const messageText of negatives) {
+      expect(shouldTreatAsStopContact(messageText, "stop_contact")).toBe(false);
+    }
+  });
+
+  it("monta a decisão de consentimento e confirmação sem LLM", () => {
+    const now = new Date("2026-07-06T12:00:00.000Z");
+    const decision = resolveStopContactDecision({
+      classifiedIntent: "unclear",
+      messageText: "por favor me tira dessa lista",
+      now,
+    });
+
+    expect(decision).toEqual({
+      intent: "stop_contact",
+      shouldRevokeConsent: true,
+      revokedAt: now,
+      source: "lead_message",
+      confirmationText: "Entendido, não vou mais te enviar mensagens por aqui. Se precisar de algo no futuro, é só me chamar. 🙏",
+      attentionReason: "Lead pediu para não receber mais mensagens (opt-out)",
+    });
   });
 });
 
