@@ -50,7 +50,10 @@ do estudo), mas não bloqueia. Executor sugerido do 5–6: agente `designer-ux`.
   novos provedores) e `adr-004-tiered-ai-models-architecture.md` (modelos de
   IA por tier/caso de uso). Status "Proposto" — priorizar quando houver
   demanda real (2º provedor / reclamação de qualidade por plano).
-- **Vitrine AI** (módulo, 4 fases) — `docs/product/vitrine-ai-plano-execucao.md`.
+- **Vitrine AI** (módulo, 4 fases) — ADR:
+  `docs/architecture/adr/adr-007-vitrine-ai-module.md` (pronto para execução);
+  plano de produto em `docs/product/vitrine-ai-plano-execucao.md`. Fase 0
+  pode adiantar como "uau" de demo se surgir venda no segmento decoração.
 - **Excelência conversacional** — backlog no handoff do plano; ganha um
   gabarito novo quando o setup study existir (comparação IA shadow × humano).
 - **Painel owner — Fase C** (consolidar wizard/blueprint na timeline; home).
