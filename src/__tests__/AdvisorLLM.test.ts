@@ -26,7 +26,7 @@ describe("callAdvisorLLM — guard de API key", () => {
 
   it("lança erro claro para modelo claude-* sem ANTHROPIC_API_KEY", async () => {
     await expect(
-      callAdvisorLLM("oi", { model: "claude-sonnet-5" }),
+      callAdvisorLLM("oi", { model: "claude-3-5-sonnet-20240620" }),
     ).rejects.toThrow(/ANTHROPIC_API_KEY ausente/);
   });
 
@@ -41,7 +41,7 @@ describe("SETUP_STUDY_MODEL", () => {
   it("usa modelo Claude forte por padrão (ADR-002)", () => {
     // Sem override de env, o default é um modelo claude-* de geração atual.
     if (!process.env.SETUP_STUDY_MODEL) {
-      expect(SETUP_STUDY_MODEL).toBe("claude-sonnet-5");
+      expect(SETUP_STUDY_MODEL).toBe("claude-3-5-sonnet-20240620");
     }
     expect(SETUP_STUDY_MODEL.length).toBeGreaterThan(0);
   });
