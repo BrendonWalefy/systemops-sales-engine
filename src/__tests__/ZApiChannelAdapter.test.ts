@@ -4,6 +4,8 @@ import {
   sendZApiTextMessage,
   getZApiQrCodeImage,
   getZApiPhoneCode,
+  createZApiInstance,
+  applyZApiInstancePreset,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -222,6 +224,102 @@ describe("getZApiQrCodeImage", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.headers).toEqual({ "Client-Token": "client-token-xyz" });
+  });
+});
+
+describe("createZApiInstance", () => {
+  it("cria a instância com Authorization Bearer e o preset padrão no body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "instance-new", token: "token-new", due: 1_719_000_000_000 }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createZApiInstance(
+      "Clínica Teste",
+      "partner-token-abc",
+      "https://app.systemops.com.br/api/whatsapp/zapi",
+    );
+
+    expect(result).toEqual({ instanceId: "instance-new", token: "token-new", due: 1_719_000_000_000 });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.z-api.io/instances/integrator/on-demand");
+    expect(init.headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer partner-token-abc",
+    });
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({
+      name: "Clínica Teste",
+      receivedCallbackUrl: "https://app.systemops.com.br/api/whatsapp/zapi",
+      autoReadMessage: true,
+      callRejectAuto: false,
+      autoReadStatus: false,
+      disableEnqueueWhenDisconnected: false,
+      isDevice: false,
+    });
+  });
+
+  it("lança erro quando a Z-API responde com falha", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "Limite de 25 instâncias atingido" }), { status: 403 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createZApiInstance("Clínica Teste", "partner-token-abc", "https://app.systemops.com.br/api/whatsapp/zapi"),
+    ).rejects.toThrow(/403/);
+  });
+
+  it("lança erro quando a resposta não traz id/token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createZApiInstance("Clínica Teste", "partner-token-abc", "https://app.systemops.com.br/api/whatsapp/zapi"),
+    ).rejects.toThrow(/sem id\/token/);
+  });
+});
+
+describe("applyZApiInstancePreset", () => {
+  it("chama notify-sent-by-me e update-filters com os bodies certos", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ value: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await applyZApiInstancePreset({
+      instanceId: "instance-1",
+      token: "token-1",
+      clientToken: "client-token-1",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const calls = fetchMock.mock.calls as [string, RequestInit][];
+
+    const notifyCall = calls.find(([url]) => url.endsWith("/update-notify-sent-by-me"));
+    expect(notifyCall?.[0]).toBe("https://api.z-api.io/instances/instance-1/token/token-1/update-notify-sent-by-me");
+    expect(JSON.parse(notifyCall![1].body as string)).toEqual({ notifySentByMe: true });
+    expect(notifyCall![1].headers).toEqual({
+      "Content-Type": "application/json",
+      "Client-Token": "client-token-1",
+    });
+
+    const filtersCall = calls.find(([url]) => url.endsWith("/update-filters"));
+    expect(filtersCall?.[0]).toBe("https://api.z-api.io/instances/instance-1/token/token-1/update-filters");
+    expect(JSON.parse(filtersCall![1].body as string)).toEqual({ messageFilters: ["FILTER_FROM_GROUP"] });
+  });
+
+  it("lança erro se qualquer uma das chamadas falhar", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/update-filters")) {
+        return Promise.resolve(new Response("erro interno", { status: 500 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ value: true }), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      applyZApiInstancePreset({ instanceId: "instance-1", token: "token-1" }),
+    ).rejects.toThrow(/update-filters/);
   });
 });
 
