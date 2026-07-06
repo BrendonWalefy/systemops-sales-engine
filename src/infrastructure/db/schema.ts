@@ -189,6 +189,15 @@ export const calendarModeEnum = pgEnum("calendar_mode", [
   "google_calendar",
 ]);
 
+// ADR-002: estados do ciclo de vida de um estudo de setup gerado pelo shadow mode.
+export const setupStudyStatusEnum = pgEnum("setup_study_status", [
+  "draft",     // Gerado e aguardando curadoria do owner
+  "sent",      // Enviado para a clínica validar (Fase 2)
+  "answered",  // Clínica respondeu (Fase 2)
+  "applied",   // Diff aplicado pelo owner (Fase 3)
+  "expired",   // Prazo de resposta esgotado sem ação
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -1181,3 +1190,40 @@ export const channelHealthSnapshots = pgTable(
   }),
 );
 
+// ADR-002: tabela de estudos de setup gerados a partir do shadow mode.
+// Cada estudo é um snapshot de findings extraídos pelo LLM a partir dos
+// transcritos anonimizados da clínica. Uma clínica pode ter vários estudos
+// mas apenas um é o ativo por vez (status = 'draft').
+export const setupStudies = pgTable(
+  "setup_studies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    status: setupStudyStatusEnum("status").notNull().default("draft"),
+    // Array de SetupFinding (domínio). Parse defensivo: campos extras são ignorados.
+    findings: jsonb("findings").notNull().default([]),
+    // Hash do token de acesso usado na página pública da clínica (Fase 2).
+    accessTokenHash: text("access_token_hash"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    orgStatusIdx: index("setup_studies_org_status_idx").on(
+      t.organizationId,
+      t.status,
+    ),
+    orgCreatedAtIdx: index("setup_studies_org_created_at_idx").on(
+      t.organizationId,
+      t.createdAt,
+    ),
+  }),
+);
