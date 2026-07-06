@@ -31,10 +31,11 @@ import {
   Building2,
   KeyRound,
   UserPlus,
-  Workflow,
   AlertTriangle,
-  Layers,
   ShieldCheck,
+  BookOpen,
+  Settings,
+  Rocket,
 } from "lucide-react";
 import { hashPassword } from "@/lib/password";
 import { buildClinicBlueprint } from "@/application/onboarding/clinic-blueprint";
@@ -50,6 +51,8 @@ import {
   getClinicOperationalStatusLabel,
 } from "@/application/clinics/clinic-operational-status-presentation";
 import { updateChannelSafetySettings } from "./channel-safety-actions";
+import { ClinicTabs } from "./clinic-tabs";
+import { resolveDefaultTab, resolveContextualCta } from "./clinic-tab-helpers";
 
 async function enterClinicInbox(clinicId: string) {
   "use server";
@@ -383,6 +386,7 @@ export default async function ClinicDetailPage({
       outboundDailyCap: organizations.outboundDailyCap,
       automatedReengagementPaused: organizations.automatedReengagementPaused,
       channelSafetyMode: organizations.channelSafetyMode,
+      channelPairedAt: organizations.channelPairedAt,
     })
     .from(organizations)
     .where(eq(organizations.id, clinicId))
@@ -464,6 +468,15 @@ export default async function ClinicDetailPage({
   const reactivateClinicAction = reactivateClinic.bind(null, clinic.id);
   const channelSafetyAction = updateChannelSafetySettings.bind(null, clinic.id);
   const isArchived = clinic.operationalStatus === "cancelled";
+
+  // ADR-006 Fase A — aba padrão e CTA contextual
+  const defaultTab = resolveDefaultTab(clinic.operationalStatus);
+  const contextualCta = resolveContextualCta({
+    clinicId: clinic.id,
+    channelPairedAt: clinic.channelPairedAt ?? null,
+    shadowModeEnabled: clinic.shadowModeEnabled,
+    operationalStatus: clinic.operationalStatus,
+  });
 
   const members = await db
     .select({
@@ -708,7 +721,7 @@ export default async function ClinicDetailPage({
 
   return (
     <div style={{ minWidth: 0, overflow: "hidden" }}>
-      {/* ── TOPBAR ────────────────────────────────────────────── */}
+      {/* ── TOPBAR (ADR-006 Fase A — header enxuto com CTA contextual) ────── */}
       <div className="product-topbar">
         <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: 1 }}>
           <Link
@@ -754,35 +767,42 @@ export default async function ClinicDetailPage({
               <span className="status-dot" /> IA Pausada
             </span>
           )}
-          <Link
-            href={`/owner/clinics/${clinic.id}/modules`}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)" }}
-          >
-            <Layers size={13} />
-            Módulos
-          </Link>
-          <Link
-            href={`/owner/onboarding/${clinic.id}`}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)" }}
-          >
-            <Workflow size={13} />
-            Onboarding
-          </Link>
-          <form action={enterClinicInbox.bind(null, clinic.id)}>
-            <button
-              type="submit"
-              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--accent-strong)", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+          {/* CTA contextual único — Módulos e Onboarding saem do header (ADR-006) */}
+          {contextualCta.kind === "link" ? (
+            contextualCta.href === "/app/inbox" ? (
+              <form action={enterClinicInbox.bind(null, clinic.id)}>
+                <button
+                  type="submit"
+                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--accent-strong)", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+                >
+                  <ExternalLink size={13} />
+                  {contextualCta.label}
+                </button>
+              </form>
+            ) : (
+              <Link
+                href={contextualCta.href}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--accent-strong)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)" }}
+              >
+                <Rocket size={13} />
+                {contextualCta.label}
+              </Link>
+            )
+          ) : (
+            <Link
+              href={`?tab=${contextualCta.tab}`}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--accent-strong)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)" }}
             >
-              <ExternalLink size={13} />
-              Inbox
-            </button>
-          </form>
+              <Rocket size={13} />
+              {contextualCta.label}
+            </Link>
+          )}
         </div>
       </div>
 
       <div className="page-content" style={{ paddingBottom: 60, display: "grid", gap: 16, minWidth: 0 }}>
 
-        {/* ── FLASH ALERTS ────────────────────────────────────── */}
+        {/* ── FLASH ALERTS (fora das abas — persistem em qualquer aba) ── */}
         {goLiveOk && (
           <div style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.24)", background: "rgba(16,185,129,0.08)", color: "#34d399", fontSize: 13, fontWeight: 600 }}>
             Go-live ativado. A organização entrou em produção com automação liberada.
@@ -819,71 +839,88 @@ export default async function ClinicDetailPage({
           </div>
         )}
 
-        {/* ── ZONA 1: BLUEPRINT COMPACTO ──────────────────────── */}
-        <div style={{ border: blueprintBorderColor, borderRadius: 14, overflow: "hidden", background: blueprintBg }}>
-          <div style={{ padding: "16px 20px", borderBottom: staleConvs.length > 0 || goLiveBlockingIssues.length > 0 ? "1px solid var(--line)" : undefined, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
-            {/* Left: progress + chips */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <p className="eyebrow" style={{ margin: 0, flex: 1 }}>Clinic Blueprint</p>
-                <strong style={{ fontSize: 13, color: blueprintProgressColor, fontWeight: 800 }}>
-                  {blueprint.readinessPercent}%
-                </strong>
+        {/* ── 3 ABAS (ADR-006 Fase A) ─────────────────────────────────────── */}
+        <ClinicTabs
+          defaultTab={defaultTab}
+          tabImplantacao={(
+            <div style={{ display: "grid", gap: 16 }}>
+              {/* Blueprint compacto (seção "Clinic Blueprint" duplicada na página some — só link) */}
+              <div style={{ border: blueprintBorderColor, borderRadius: 14, overflow: "hidden", background: blueprintBg }}>
+                <div style={{ padding: "16px 20px", borderBottom: goLiveBlockingIssues.length > 0 ? "1px solid var(--line)" : undefined, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <p className="eyebrow" style={{ margin: 0, flex: 1 }}>Prontidão de implantação</p>
+                      <strong style={{ fontSize: 13, color: blueprintProgressColor, fontWeight: 800 }}>
+                        {blueprint.readinessPercent}%
+                      </strong>
+                    </div>
+                    <div style={{ marginTop: 8, height: 5, borderRadius: 999, background: "rgba(255,255,255,0.07)" }}>
+                      <div style={{ height: 5, borderRadius: 999, width: `${blueprint.readinessPercent}%`, background: blueprintProgressColor }} />
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
+                      {blueprint.sections
+                        .filter((s) => s.id !== "go_live")
+                        .map((section) => {
+                          const chip = sectionChipColor(section.status);
+                          return (
+                            <span key={section.id} style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: chip.color, background: chip.bg }}>
+                              {section.title}
+                            </span>
+                          );
+                        })}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
+                    {canActivateGoLive ? (
+                      <form action={activateGoLiveAction}>
+                        <button type="submit" style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#000", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                          Promover para active →
+                        </button>
+                      </form>
+                    ) : clinic.operationalStatus === "active" ? (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>Organização ativa</span>
+                    ) : null}
+                    <Link
+                      href={`/owner/clinics/${clinic.id}/blueprint`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 700, color: "var(--muted)", border: "1px solid var(--line)", background: "var(--surface-soft)" }}
+                    >
+                      <Building2 size={12} />
+                      Ver Blueprint
+                    </Link>
+                    <Link
+                      href={`/owner/onboarding/${clinic.id}`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 700, color: "var(--muted)", border: "1px solid var(--line)", background: "var(--surface-soft)" }}
+                    >
+                      <BookOpen size={12} />
+                      Wizard de implantação
+                    </Link>
+                  </div>
+                </div>
+                {goLiveBlockingIssues.length > 0 && (
+                  <div style={{ padding: "10px 20px", background: "rgba(245,158,11,0.04)", borderTop: "1px solid rgba(245,158,11,0.12)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      <AlertTriangle size={12} style={{ color: "#f59e0b" }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>Bloqueios de go-live</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 20px" }}>
+                      {goLiveBlockingIssues.slice(0, 6).map((item) => (
+                        <span key={item} style={{ fontSize: 12, color: "var(--muted)" }}>· {item}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div style={{ marginTop: 8, height: 5, borderRadius: 999, background: "rgba(255,255,255,0.07)" }}>
-                <div style={{ height: 5, borderRadius: 999, width: `${blueprint.readinessPercent}%`, background: blueprintProgressColor }} />
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                {blueprint.sections
-                  .filter((s) => s.id !== "go_live")
-                  .map((section) => {
-                    const chip = sectionChipColor(section.status);
-                    return (
-                      <span key={section.id} style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: chip.color, background: chip.bg }}>
-                        {section.title}
-                      </span>
-                    );
-                  })}
-              </div>
-            </div>
-            {/* Right: CTA + links */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
-              {canActivateGoLive ? (
-                <form action={activateGoLiveAction}>
-                  <button type="submit" style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#000", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
-                    Promover para active →
-                  </button>
-                </form>
-              ) : clinic.operationalStatus === "active" ? (
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>Organização ativa</span>
-              ) : null}
-              <Link
-                href={`/owner/clinics/${clinic.id}/blueprint`}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 700, color: "var(--muted)", border: "1px solid var(--line)", background: "var(--surface-soft)" }}
-              >
-                <Building2 size={12} />
-                Ver Blueprint
-              </Link>
-            </div>
-          </div>
-          {/* Blocking issues footer */}
-          {goLiveBlockingIssues.length > 0 && (
-            <div style={{ padding: "10px 20px", background: "rgba(245,158,11,0.04)", borderTop: "1px solid rgba(245,158,11,0.12)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                <AlertTriangle size={12} style={{ color: "#f59e0b" }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>Bloqueios de go-live</span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 20px" }}>
-                {goLiveBlockingIssues.slice(0, 6).map((item) => (
-                  <span key={item} style={{ fontSize: 12, color: "var(--muted)" }}>· {item}</span>
-                ))}
+              {/* Placeholder da timeline (ADR-006 Fase B — será preenchido com o componente de timeline) */}
+              <div style={{ border: "1px dashed var(--line)", borderRadius: 12, padding: "20px 24px", textAlign: "center" as const }}>
+                <p className="eyebrow" style={{ margin: "0 0 6px" }}>Timeline de implantação</p>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>Disponível na Fase B do ADR-006 — mostrará cada etapa com seu status e CTA.</p>
               </div>
             </div>
           )}
-        </div>
-
-        {/* ── ZONA 2: PERFORMANCE ─────────────────────────────── */}
-        <div className="clinic-detail-perf-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 200px", gap: 12, alignItems: "start" }}>
+          tabOperacao={(
+            <div style={{ display: "grid", gap: 16 }}>
+              {/* ── PERFORMANCE ─────────────────────────────── */}
+              <div className="clinic-detail-perf-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 200px", gap: 12, alignItems: "start" }}>
           {/* KPIs */}
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px" }}>
             <p className="eyebrow" style={{ margin: "0 0 14px" }}>
@@ -1038,29 +1075,19 @@ export default async function ClinicDetailPage({
               <p className="eyebrow" style={{ margin: 0 }}>Volume — últimos 14 dias</p>
             </div>
             {allDays.length === 0 ? (
-              <div style={{ padding: "13px 14px", fontSize: 13, color: "var(--muted)" }}>
-                Sem dados no período.
-              </div>
+              <div style={{ padding: "13px 14px", fontSize: 13, color: "var(--muted)" }}>Sem dados no período.</div>
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "var(--surface-soft)", borderBottom: "1px solid var(--line)" }}>
                     {["Data", "Leads", "Msgs"].map((col) => (
-                      <th
-                        key={col}
-                        style={{ padding: "8px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}
-                      >
-                        {col}
-                      </th>
+                      <th key={col} style={{ padding: "8px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {allDays.slice(0, 14).map((day, i) => (
-                    <tr
-                      key={day}
-                      style={{ background: i % 2 === 1 ? "var(--surface-soft)" : "transparent", borderBottom: i < Math.min(allDays.length, 14) - 1 ? "1px solid var(--line)" : "none" }}
-                    >
+                    <tr key={day} style={{ background: i % 2 === 1 ? "var(--surface-soft)" : "transparent", borderBottom: i < Math.min(allDays.length, 14) - 1 ? "1px solid var(--line)" : "none" }}>
                       <td style={{ padding: "9px 14px", color: "var(--text-soft)" }}>{day}</td>
                       <td style={{ padding: "9px 14px", fontWeight: 600 }}>{dailyLeadsMap[day] ?? 0}</td>
                       <td style={{ padding: "9px 14px", color: "var(--text-soft)" }}>{dailyMsgMap[day] ?? 0}</td>
@@ -1070,353 +1097,232 @@ export default async function ClinicDetailPage({
               </table>
             )}
           </div>
+          </div>
         </div>
-
-        {/* ── ZONA 4: ADMINISTRAÇÃO ───────────────────────────── */}
-        <div className="clinic-detail-two-col-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
-
-          {/* Acesso da organização */}
-          <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
-            <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", alignItems: "center", gap: 7 }}>
-              <KeyRound size={13} style={{ color: "var(--muted)" }} />
-              <p className="eyebrow" style={{ margin: 0 }}>Acesso da organização</p>
+          )}
+          tabConfig={(
+            <div style={{ display: "grid", gap: 16 }}>
+            {/* Links rápidos para módulos e onboarding (foram removidos do header) */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+              <a
+                href={`/owner/clinics/${clinic.id}/modules`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "7px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)" }}
+              >
+                <Settings size={13} /> Módulos
+              </a>
+              <a
+                href={`/owner/onboarding/${clinic.id}`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--muted)", textDecoration: "none", padding: "7px 14px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-soft)" }}
+              >
+                <BookOpen size={13} /> Wizard de implantação
+              </a>
             </div>
-            <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-              {memberOk && (
-                <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399", fontSize: 13 }}>
-                  Senha salva com sucesso.
+
+            {/* Acesso da organização + controles */}
+            <div className="clinic-detail-two-col-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+
+              {/* Acesso da organização */}
+              <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--line)", background: "var(--surface-soft)", display: "flex", alignItems: "center", gap: 7 }}>
+                  <KeyRound size={13} style={{ color: "var(--muted)" }} />
+                  <p className="eyebrow" style={{ margin: 0 }}>Acesso da organização</p>
                 </div>
-              )}
-              {memberError && (
-                <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)", fontSize: 13 }}>
-                  Senha inválida — mínimo 8 caracteres.
+                <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+                  {memberOk && (
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#34d399", fontSize: 13 }}>Senha salva com sucesso.</div>
+                  )}
+                  {memberError && (
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--danger)", fontSize: 13 }}>Senha inválida — mínimo 8 caracteres.</div>
+                  )}
+                  {members.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>Membros cadastrados</p>
+                      {members.map((m) => (
+                        <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 8, background: "var(--surface-soft)", border: "1px solid var(--line)" }}>
+                          <div>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>{m.email}</span>
+                            <span style={{ marginLeft: 7, fontSize: 11, color: "var(--muted)" }}>{m.role}</span>
+                          </div>
+                          <span style={{ fontSize: 11, color: m.hasPassword ? "#34d399" : "#f59e0b", fontWeight: 700 }}>
+                            {m.hasPassword ? "Senha ✓" : "Sem senha"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <form action={upsertMemberAction} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>Adicionar / redefinir senha</p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+                      <input name="email" type="email" placeholder="admin@empresa.com" required style={{ ...inputStyle, flex: "1 1 160px" }} />
+                      <input name="password" type="password" placeholder="Senha (mín. 8)" required minLength={8} style={{ ...inputStyle, flex: "1 1 130px" }} />
+                      <button type="submit" style={btnStyle}><UserPlus size={13} /> Salvar</button>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>Se o e-mail já for membro, apenas a senha é atualizada.</p>
+                  </form>
                 </div>
-              )}
-              {members.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
-                    Membros cadastrados
+              </div>
+
+              {/* Controles */}
+              <div style={{ display: "grid", gap: 10 }}>
+                {/* Plano */}
+                <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px" }}>
+                  <p className="eyebrow" style={{ margin: "0 0 12px" }}>Plano de assinatura</p>
+                  <form action={updatePlanAction} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <select name="plan" defaultValue={clinic.plan} style={{ ...inputStyle, flex: 1 }}>
+                      <option value="essencial">Essencial — R$897/mês</option>
+                      <option value="avancado">Growth — R$1.497/mês</option>
+                      <option value="rede">Rede — R$2.997/mês</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <button type="submit" style={btnStyle}>Salvar</button>
+                  </form>
+                  {clinic.billingStartedAt && (
+                    <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--muted)" }}>Cobrança iniciada em {new Date(clinic.billingStartedAt).toLocaleDateString("pt-BR")}.</p>
+                  )}
+                </div>
+
+                {/* Produção / Teste */}
+                <div style={{ border: clinic.isTest ? "1px solid rgba(99,102,241,0.3)" : "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", background: clinic.isTest ? "rgba(99,102,241,0.04)" : "transparent" }}>
+                  <p className="eyebrow" style={{ margin: "0 0 8px", color: clinic.isTest ? "#818cf8" : "var(--muted)" }}>
+                    {clinic.isTest ? "Ambiente de testes" : "Organização em produção"}
                   </p>
-                  {members.map((m) => (
-                    <div
-                      key={m.id}
-                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 8, background: "var(--surface-soft)", border: "1px solid var(--line)" }}
-                    >
-                      <div>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{m.email}</span>
-                        <span style={{ marginLeft: 7, fontSize: 11, color: "var(--muted)" }}>{m.role}</span>
-                      </div>
-                      <span style={{ fontSize: 11, color: m.hasPassword ? "#34d399" : "#f59e0b", fontWeight: 700 }}>
-                        {m.hasPassword ? "Senha ✓" : "Sem senha"}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                      {clinic.isTest ? "Custos e leads excluídos dos KPIs de produção." : "Leads e receita entram nos KPIs do painel financeiro."}
+                    </p>
+                    <form action={toggleTestAction}>
+                      <button type="submit" style={btnStyle}>
+                        {clinic.isTest ? (<><Building2 size={12} /> Para produção</>) : (<><FlaskConical size={12} /> Marcar teste</>)}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                {/* Automação */}
+                <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+                  <p className="eyebrow" style={{ margin: 0 }}>Automação</p>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--text)" }}>IA {clinic.autoReplyEnabled ? "ativa" : "pausada"}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                        {clinic.autoReplyEnabled ? "Responde automaticamente aos leads no WhatsApp." : "Nenhuma resposta automática é enviada — use para clientes inadimplentes ou em revisão."}
+                      </p>
+                    </div>
+                    {isArchived ? (
+                      <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>Organização arquivada</span>
+                    ) : (
+                      <form action={toggleAutomationAction}>
+                        <button type="submit" style={btnStyle}>{clinic.autoReplyEnabled ? "Pausar IA" : "Reativar IA"}</button>
+                      </form>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: clinic.shadowModeEnabled ? "#c084fc" : "var(--text)" }}>Shadow mode {clinic.shadowModeEnabled ? "ligado" : "desligado"}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                        IA classifica, responde e avança o funil normalmente, mas nada é enviado ao lead — use para validar comportamento em organizações com problemas ou em pré-onboarding.
+                      </p>
+                    </div>
+                    {isArchived ? (
+                      <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>—</span>
+                    ) : (
+                      <form action={toggleShadowModeAction}>
+                        <button type="submit" style={{ ...btnStyle, borderColor: clinic.shadowModeEnabled ? "rgba(192,132,252,0.5)" : btnStyle.border, color: clinic.shadowModeEnabled ? "#c084fc" : btnStyle.color }}>
+                          {clinic.shadowModeEnabled ? "Desligar shadow mode" : "Ligar shadow mode"}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+
+                {/* Segurança de canal */}
+                <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <ShieldCheck size={13} style={{ color: "var(--muted)" }} />
+                    <p className="eyebrow" style={{ margin: 0 }}>Segurança de canal</p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 15, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)", padding: "10px 12px", borderRadius: 8 }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Score de Saúde (Ontem)</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: currentScore >= 80 ? "#22c55e" : currentScore >= 50 ? "#eab308" : currentScore >= 20 ? "#f97316" : "#ef4444" }}>{currentScore}/100</p>
+                    </div>
+                    <div style={{ borderLeft: "1px solid var(--line)", paddingLeft: 15 }}>
+                      <p style={{ margin: 0, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Modo de Segurança</p>
+                      <span style={{ display: "inline-block", marginTop: 4, padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, background: clinic.channelSafetyMode === "normal" ? "rgba(34,197,94,0.15)" : clinic.channelSafetyMode === "atencao" ? "rgba(234,179,8,0.15)" : clinic.channelSafetyMode === "cooling" ? "rgba(249,115,22,0.15)" : "rgba(239,68,68,0.15)", color: clinic.channelSafetyMode === "normal" ? "#22c55e" : clinic.channelSafetyMode === "atencao" ? "#eab308" : clinic.channelSafetyMode === "cooling" ? "#f97316" : "#ef4444" }}>
+                        {clinic.channelSafetyMode}
                       </span>
                     </div>
-                  ))}
-                </div>
-              )}
-              <form action={upsertMemberAction} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
-                  Adicionar / redefinir senha
-                </p>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <input
-                    name="email"
-                    type="email"
-                    placeholder="admin@empresa.com"
-                    required
-                    style={{ ...inputStyle, flex: "1 1 160px" }}
-                  />
-                  <input
-                    name="password"
-                    type="password"
-                    placeholder="Senha (mín. 8)"
-                    required
-                    minLength={8}
-                    style={{ ...inputStyle, flex: "1 1 130px" }}
-                  />
-                  <button type="submit" style={btnStyle}>
-                    <UserPlus size={13} /> Salvar
-                  </button>
-                </div>
-                <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-                  Se o e-mail já for membro, apenas a senha é atualizada.
-                </p>
-              </form>
-            </div>
-          </div>
-
-          {/* Controles */}
-          <div style={{ display: "grid", gap: 10 }}>
-
-            {/* Plano */}
-            <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px" }}>
-              <p className="eyebrow" style={{ margin: "0 0 12px" }}>Plano de assinatura</p>
-              <form action={updatePlanAction} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <select
-                  name="plan"
-                  defaultValue={clinic.plan}
-                  style={{ ...inputStyle, flex: 1 }}
-                >
-                  <option value="essencial">Essencial — R$897/mês</option>
-                  <option value="avancado">Growth — R$1.497/mês</option>
-                  <option value="rede">Rede — R$2.997/mês</option>
-                  <option value="custom">Custom</option>
-                </select>
-                <button type="submit" style={btnStyle}>Salvar</button>
-              </form>
-              {clinic.billingStartedAt && (
-                <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--muted)" }}>
-                  Cobrança iniciada em{" "}
-                  {new Date(clinic.billingStartedAt).toLocaleDateString("pt-BR")}.
-                </p>
-              )}
-            </div>
-
-            {/* Produção / Teste */}
-            <div style={{ border: clinic.isTest ? "1px solid rgba(99,102,241,0.3)" : "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", background: clinic.isTest ? "rgba(99,102,241,0.04)" : "transparent" }}>
-              <p className="eyebrow" style={{ margin: "0 0 8px", color: clinic.isTest ? "#818cf8" : "var(--muted)" }}>
-                {clinic.isTest ? "Ambiente de testes" : "Organização em produção"}
-              </p>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                  {clinic.isTest
-                    ? "Custos e leads excluídos dos KPIs de produção."
-                    : "Leads e receita entram nos KPIs do painel financeiro."}
-                </p>
-                <form action={toggleTestAction}>
-                  <button type="submit" style={btnStyle}>
-                    {clinic.isTest ? (
-                      <><Building2 size={12} /> Para produção</>
-                    ) : (
-                      <><FlaskConical size={12} /> Marcar teste</>
-                    )}
-                  </button>
-                </form>
-              </div>
-            </div>
-
-            {/* Automação */}
-            <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-              <p className="eyebrow" style={{ margin: 0 }}>Automação</p>
-
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
-                    IA {clinic.autoReplyEnabled ? "ativa" : "pausada"}
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                    {clinic.autoReplyEnabled
-                      ? "Responde automaticamente aos leads no WhatsApp."
-                      : "Nenhuma resposta automática é enviada — use para clientes inadimplentes ou em revisão."}
-                  </p>
-                </div>
-                {isArchived ? (
-                  <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>Organização arquivada</span>
-                ) : (
-                  <form action={toggleAutomationAction}>
-                    <button type="submit" style={btnStyle}>
-                      {clinic.autoReplyEnabled ? "Pausar IA" : "Reativar IA"}
+                  </div>
+                  <form action={channelSafetyAction} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>Sobrescrita Manual de Modo</label>
+                      <select id="channel_safety_mode" name="channel_safety_mode" defaultValue={clinic.channelSafetyMode ?? "normal"} style={{ ...inputStyle, width: "100%", background: "#0c0c0e", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px", fontSize: 12 }}>
+                        <option value="normal">Normal (Sem restrições extras)</option>
+                        <option value="atencao">Atenção (Alerta e monitoramento)</option>
+                        <option value="cooling">Cooling (Bloqueia follow-up, recovery e campanhas)</option>
+                        <option value="frozen">Frozen (Bloqueia tudo exceto respostas diretas)</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>Cap horário (outbound/h)</label>
+                        <input id="outbound_hourly_cap" name="outbound_hourly_cap" type="number" min={1} defaultValue={clinic.outboundHourlyCap} required style={{ ...inputStyle }} />
+                        <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>Default 40. Vitalli: 15.</p>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>Cap diário (outbound/dia)</label>
+                        <input id="outbound_daily_cap" name="outbound_daily_cap" type="number" min={1} defaultValue={clinic.outboundDailyCap} required style={{ ...inputStyle }} />
+                        <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>Default 200. Vitalli: 60.</p>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: clinic.automatedReengagementPaused ? "#f59e0b" : "var(--text)" }}>Reengajamento {clinic.automatedReengagementPaused ? "pausado" : "ativo"}</p>
+                        <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>Pausa follow-up e recovery sem desligar as respostas a inbound. <strong>appointment-reminder nunca é pausado</strong> — lembrete de compromisso que o lead marcou sempre sai.</p>
+                      </div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0 }}>
+                        <input id="automated_reengagement_paused" name="automated_reengagement_paused" type="checkbox" defaultChecked={clinic.automatedReengagementPaused} style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#f59e0b" }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>Pausar</span>
+                      </label>
+                    </div>
+                    <button type="submit" style={{ ...btnStyle, alignSelf: "flex-end" }}>
+                      <ShieldCheck size={12} /> Salvar segurança
                     </button>
                   </form>
-                )}
-              </div>
-
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: clinic.shadowModeEnabled ? "#c084fc" : "var(--text)" }}>
-                    Shadow mode {clinic.shadowModeEnabled ? "ligado" : "desligado"}
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                    IA classifica, responde e avança o funil normalmente, mas nada é enviado ao lead —
-                    use para validar comportamento em organizações com problemas ou em pré-onboarding.
-                  </p>
                 </div>
-                {isArchived ? (
-                  <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>—</span>
-                ) : (
-                  <form action={toggleShadowModeAction}>
-                    <button
-                      type="submit"
-                      style={{
-                        ...btnStyle,
-                        borderColor: clinic.shadowModeEnabled ? "rgba(192,132,252,0.5)" : btnStyle.border,
-                        color: clinic.shadowModeEnabled ? "#c084fc" : btnStyle.color,
-                      }}
-                    >
-                      {clinic.shadowModeEnabled ? "Desligar shadow mode" : "Ligar shadow mode"}
-                    </button>
-                  </form>
-                )}
               </div>
             </div>
 
-            {/* Segurança de canal */}
-            <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <ShieldCheck size={13} style={{ color: "var(--muted)" }} />
-                <p className="eyebrow" style={{ margin: 0 }}>Segurança de canal</p>
-              </div>
-
-              {/* Status do Reputation Engine */}
-              <div style={{ display: "flex", alignItems: "center", gap: 15, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)", padding: "10px 12px", borderRadius: 8 }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Score de Saúde (Ontem)</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: currentScore >= 80 ? "#22c55e" : currentScore >= 50 ? "#eab308" : currentScore >= 20 ? "#f97316" : "#ef4444" }}>
-                    {currentScore}/100
-                  </p>
-                </div>
-                <div style={{ borderLeft: "1px solid var(--line)", paddingLeft: 15 }}>
-                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Modo de Segurança</p>
-                  <span style={{
-                    display: "inline-block",
-                    marginTop: 4,
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    background: clinic.channelSafetyMode === "normal" ? "rgba(34,197,94,0.15)" : clinic.channelSafetyMode === "atencao" ? "rgba(234,179,8,0.15)" : clinic.channelSafetyMode === "cooling" ? "rgba(249,115,22,0.15)" : "rgba(239,68,68,0.15)",
-                    color: clinic.channelSafetyMode === "normal" ? "#22c55e" : clinic.channelSafetyMode === "atencao" ? "#eab308" : clinic.channelSafetyMode === "cooling" ? "#f97316" : "#ef4444"
-                  }}>
-                    {clinic.channelSafetyMode}
-                  </span>
-                </div>
-              </div>
-
-              <form action={channelSafetyAction} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {/* Sobrescrita de Modo */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
-                    Sobrescrita Manual de Modo
-                  </label>
-                  <select
-                    id="channel_safety_mode"
-                    name="channel_safety_mode"
-                    defaultValue={clinic.channelSafetyMode ?? "normal"}
-                    style={{ ...inputStyle, width: "100%", background: "#0c0c0e", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px", fontSize: 12 }}
-                  >
-                    <option value="normal">Normal (Sem restrições extras)</option>
-                    <option value="atencao">Atenção (Alerta e monitoramento)</option>
-                    <option value="cooling">Cooling (Bloqueia follow-up, recovery e campanhas)</option>
-                    <option value="frozen">Frozen (Bloqueia tudo exceto respostas diretas)</option>
-                  </select>
-                </div>
-
-                {/* Caps de cadência */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
-                      Cap horário (outbound/h)
-                    </label>
-                    <input
-                      id="outbound_hourly_cap"
-                      name="outbound_hourly_cap"
-                      type="number"
-                      min={1}
-                      defaultValue={clinic.outboundHourlyCap}
-                      required
-                      style={{ ...inputStyle }}
-                    />
-                    <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-                      Default 40. Vitalli: 15.
-                    </p>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>
-                      Cap diário (outbound/dia)
-                    </label>
-                    <input
-                      id="outbound_daily_cap"
-                      name="outbound_daily_cap"
-                      type="number"
-                      min={1}
-                      defaultValue={clinic.outboundDailyCap}
-                      required
-                      style={{ ...inputStyle }}
-                    />
-                    <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>
-                      Default 200. Vitalli: 60.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Toggle reengajamento */}
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: clinic.automatedReengagementPaused ? "#f59e0b" : "var(--text)" }}>
-                      Reengajamento {clinic.automatedReengagementPaused ? "pausado" : "ativo"}
-                    </p>
-                    <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
-                      Pausa follow-up e recovery sem desligar as respostas a inbound.{" "}
-                      <strong>appointment-reminder nunca é pausado</strong>{" — "}
-                      lembrete de compromisso que o lead marcou sempre sai.
-                    </p>
-                  </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0 }}>
-                    <input
-                      id="automated_reengagement_paused"
-                      name="automated_reengagement_paused"
-                      type="checkbox"
-                      defaultChecked={clinic.automatedReengagementPaused}
-                      style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#f59e0b" }}
-                    />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>Pausar</span>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  style={{ ...btnStyle, alignSelf: "flex-end" }}
-                >
-                  <ShieldCheck size={12} />
-                  Salvar segurança
-                </button>
-              </form>
-            </div>
-
-            {/* Zona de risco */}
+            {/* ── ZONA DE PERIGO (ADR-006: dentro da aba Configuração, demarcada) ── */}
             <div style={{ border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14, background: "rgba(239,68,68,0.03)" }}>
-              <p className="eyebrow" style={{ margin: 0, color: "var(--danger)", opacity: 0.8 }}>
-                Zona de risco
-              </p>
-
+              <p className="eyebrow" style={{ margin: 0, color: "var(--danger)", opacity: 0.8 }}>Zona de perigo</p>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                  Apaga todos os leads, conversas e agendamentos de teste.
-                </p>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>Apaga todos os leads, conversas e agendamentos de teste.</p>
                 <ResetClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
               </div>
-
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, borderTop: "1px solid rgba(239,68,68,0.15)" }}>
                 {isArchived ? (
                   <>
-                    <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                      Organização arquivada — automação desligada e fora dos KPIs de faturamento.
-                    </p>
-                    <form action={reactivateClinicAction}>
-                      <button type="submit" style={btnStyle}>Reativar organização</button>
-                    </form>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>Organização arquivada — automação desligada e fora dos KPIs de faturamento.</p>
+                    <form action={reactivateClinicAction}><button type="submit" style={btnStyle}>Reativar organização</button></form>
                   </>
                 ) : (
                   <>
-                    <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                      Arquiva a organização: desliga a IA e para de contar no faturamento. Não apaga nenhum dado.
-                    </p>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>Arquiva a organização: desliga a IA e para de contar no faturamento. Não apaga nenhum dado.</p>
                     <ArchiveClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
                   </>
                 )}
               </div>
-
               {isArchived && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, borderTop: "1px solid rgba(239,68,68,0.15)" }}>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                    Apaga permanentemente todo o dado da organização. Só disponível para organizações já arquivadas.
-                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>Apaga permanentemente todo o dado da organização. Só disponível para organizações já arquivadas.</p>
                   <PurgeClinicDialog clinicId={clinic.id} clinicName={clinic.name} />
                 </div>
               )}
             </div>
           </div>
-        </div>
+          )}
+        />
 
       </div>
     </div>
