@@ -414,6 +414,13 @@
       "when": 1783371321893,
       "tag": "0058_flippant_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1783463343714,
+      "tag": "0059_noisy_silhouette",
+      "breakpoints": true
     }
   ]
 }

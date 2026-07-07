@@ -55,6 +55,9 @@ import { updateChannelSafetySettings } from "./channel-safety-actions";
 import { ClinicTabs } from "./clinic-tabs";
 import { resolveDefaultTab, resolveContextualCta } from "./clinic-tab-helpers";
 import { GenerateSetupStudyButton, SetupStudyCard } from "./setup-study-ui";
+import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
+
+const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
 async function enterClinicInbox(clinicId: string) {
   "use server";
@@ -275,7 +278,7 @@ async function activateClinicGoLive(clinicId: string) {
     redirect(`/owner/clinics/${clinicId}?goLiveError=cancelled`);
   }
 
-  const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
+  const [voiceState, activePlaybook, clinicTreatments, mediaAssetCount] = await Promise.all([
     getClinicVoiceBlueprintState(clinicId),
     db.query.playbookVersions.findFirst({
       where: and(
@@ -287,7 +290,6 @@ async function activateClinicGoLive(clinicId: string) {
         commercialPolicy: true,
         notes: true,
         differentials: true,
-        mediaLibrary: true,
         objections: true,
       },
     }),
@@ -297,6 +299,7 @@ async function activateClinicGoLive(clinicId: string) {
         pipelineSteps: true,
       },
     }),
+    mediaAssetRepo.countByClinic(clinicId),
   ]);
 
   const blueprint = buildClinicBlueprint({
@@ -308,9 +311,7 @@ async function activateClinicGoLive(clinicId: string) {
       differentialsCount: Array.isArray(activePlaybook?.differentials)
         ? activePlaybook.differentials.length
         : 0,
-      mediaLibraryCount: Array.isArray(activePlaybook?.mediaLibrary)
-        ? activePlaybook.mediaLibrary.length
-        : 0,
+      mediaLibraryCount: mediaAssetCount,
       objectionsCount: Array.isArray(activePlaybook?.objections)
         ? activePlaybook.objections.length
         : 0,
@@ -414,7 +415,7 @@ export default async function ClinicDetailPage({
   ]);
   const currentScore = latestSnapshot[0]?.healthScore ?? 100;
 
-  const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
+  const [voiceState, activePlaybook, clinicTreatments, mediaAssetCount] = await Promise.all([
     getClinicVoiceBlueprintState(clinicId),
     db.query.playbookVersions.findFirst({
       where: and(
@@ -426,7 +427,6 @@ export default async function ClinicDetailPage({
         commercialPolicy: true,
         notes: true,
         differentials: true,
-        mediaLibrary: true,
         objections: true,
       },
     }),
@@ -436,6 +436,7 @@ export default async function ClinicDetailPage({
         pipelineSteps: true,
       },
     }),
+    mediaAssetRepo.countByClinic(clinicId),
   ]);
 
   const blueprint = buildClinicBlueprint({
@@ -447,9 +448,7 @@ export default async function ClinicDetailPage({
       differentialsCount: Array.isArray(activePlaybook?.differentials)
         ? activePlaybook.differentials.length
         : 0,
-      mediaLibraryCount: Array.isArray(activePlaybook?.mediaLibrary)
-        ? activePlaybook.mediaLibrary.length
-        : 0,
+      mediaLibraryCount: mediaAssetCount,
       objectionsCount: Array.isArray(activePlaybook?.objections)
         ? activePlaybook.objections.length
         : 0,

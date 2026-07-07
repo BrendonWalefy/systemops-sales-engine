@@ -1,30 +1,24 @@
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
-import { eq, and } from "drizzle-orm";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
-import { db } from "@/infrastructure/db/client";
-import { playbookVersions } from "@/infrastructure/db/schema";
+import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 import { PipelineEditorClient } from "./pipeline-editor-client";
 
-type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
+const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
 export default async function PipelineEditorPage({ params }: { params: Promise<{ treatmentId: string }> }) {
   const { treatmentId } = await params;
   const clinicId = await requireSessionClinicId();
 
-  const [treatment, activeVersion] = await Promise.all([
+  const [treatment, mediaAssets] = await Promise.all([
     new DrizzleTreatmentRepository().listByClinic(clinicId).then((list) => list.find((t) => t.id === treatmentId)),
-    db.query.playbookVersions.findFirst({
-      where: and(eq(playbookVersions.clinicId, clinicId), eq(playbookVersions.status, "active")),
-      columns: { mediaLibrary: true },
-    }),
+    // Isolamento entre procedimentos: só oferece mídia geral + a deste tratamento.
+    mediaAssetRepo.listByClinicAndTreatment(clinicId, treatmentId),
   ]);
 
   if (!treatment) notFound();
-
-  const mediaLibrary = (activeVersion?.mediaLibrary as MediaItem[] | null) ?? [];
 
   return (
     <PipelineEditorClient
@@ -33,7 +27,9 @@ export default async function PipelineEditorPage({ params }: { params: Promise<{
         name: treatment.name,
         pipelineSteps: treatment.pipelineSteps,
       }}
-      mediaLibrary={mediaLibrary}
+      mediaLibrary={mediaAssets
+        .filter((a) => a.type === "video" || a.type === "image")
+        .map((a) => ({ id: a.id, title: a.title, url: a.url, type: a.type as "video" | "image" }))}
     />
   );
 }

@@ -29,6 +29,9 @@ import {
 } from "lucide-react";
 import { buildClinicBlueprint, type BlueprintSection } from "@/application/onboarding/clinic-blueprint";
 import { getClinicVoiceBlueprintState } from "@/application/modules/module-gate";
+import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
+
+const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
 type Params = Promise<{ clinicId: string }>;
 
@@ -148,7 +151,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
 
   if (!clinic) notFound();
 
-  const [voiceState, activePlaybook, clinicTreatments] = await Promise.all([
+  const [voiceState, activePlaybook, clinicTreatments, mediaAssetCount] = await Promise.all([
     getClinicVoiceBlueprintState(clinicId),
     db.query.playbookVersions.findFirst({
       where: and(
@@ -160,7 +163,6 @@ export default async function BlueprintPage({ params }: { params: Params }) {
         commercialPolicy: true,
         notes: true,
         differentials: true,
-        mediaLibrary: true,
         objections: true,
       },
     }),
@@ -168,6 +170,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
       where: eq(treatments.clinicId, clinicId),
       columns: { pipelineSteps: true },
     }),
+    mediaAssetRepo.countByClinic(clinicId),
   ]);
 
   const blueprint = buildClinicBlueprint({
@@ -182,9 +185,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
       differentialsCount: Array.isArray(activePlaybook?.differentials)
         ? activePlaybook.differentials.length
         : 0,
-      mediaLibraryCount: Array.isArray(activePlaybook?.mediaLibrary)
-        ? activePlaybook.mediaLibrary.length
-        : 0,
+      mediaLibraryCount: mediaAssetCount,
       objectionsCount: Array.isArray(activePlaybook?.objections)
         ? activePlaybook.objections.length
         : 0,

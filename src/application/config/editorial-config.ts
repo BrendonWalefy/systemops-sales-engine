@@ -2,7 +2,11 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
+import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
+import { createLogger } from "@/infrastructure/logging/logger";
 export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingTreatmentDescriptionIssues } from "./playbook-lint";
+
+const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
 /**
  * FONTE ÚNICA DA VERDADE EDITORIAL.
@@ -96,7 +100,60 @@ export type MediaLibraryItem = {
   title: string;
   url: string;
   type: "video" | "image";
+  /**
+   * Procedimento dono desta mídia (null = geral). Gate de isolamento entre
+   * procedimentos: ConversationOrchestrator filtra o prompt e bloqueia o envio
+   * quando este id diverge do tratamento ativo da conversa — nunca confiar só
+   * na instrução textual do prompt para esse isolamento.
+   */
+  treatmentId: string | null;
 };
+
+/**
+ * FONTE ÚNICA de leitura da biblioteca de mídia de uma versão de playbook.
+ * Lê `media_asset_ids` (ponteiros para a tabela clinic-level `media_assets`,
+ * que é a dona real do arquivo). Se vier vazio mas o jsonb legado
+ * `media_library` tiver itens — versão anterior à migração que promoveu a
+ * biblioteca para tabela própria — cai no legado e loga warn (sinal de que o
+ * backfill não cobriu essa versão; nunca deve acontecer em produção pós-deploy,
+ * mas evita omitir mídia ao lead silenciosamente enquanto investiga).
+ */
+export async function resolveMediaLibraryForVersion(
+  clinicId: string,
+  version: {
+    id: string;
+    mediaAssetIds?: string[] | null;
+    mediaLibrary?: unknown;
+  },
+): Promise<MediaLibraryItem[]> {
+  const assetIds = version.mediaAssetIds ?? [];
+  if (assetIds.length > 0) {
+    const assets = await mediaAssetRepo.findByIds(clinicId, assetIds);
+    return assets.map((a) => ({
+      id: a.id,
+      title: a.title,
+      url: a.url,
+      // Fase 3 (documentos) amplia este tipo fim-a-fim; até lá a seleção do
+      // playbook só oferece video/image no upload, então o cast é seguro.
+      type: a.type as "video" | "image",
+      treatmentId: a.treatmentId,
+    }));
+  }
+
+  const legacy = (version.mediaLibrary as
+    | { id: string; title: string; url: string; type: "video" | "image" }[]
+    | null
+    | undefined) ?? [];
+  if (legacy.length > 0) {
+    createLogger({ scope: "EditorialConfig", clinicId }).warn(
+      "playbook version com media_library legado não migrado para media_asset_ids",
+      { playbookVersionId: version.id, legacyCount: legacy.length },
+    );
+    return legacy.map((m) => ({ ...m, treatmentId: null }));
+  }
+
+  return [];
+}
 
 export type EditorialConfig = {
   specialty: string | null;
@@ -237,8 +294,7 @@ export async function resolveActiveEditorialConfig(
   const differentials = (activeVersion.differentials as string[] | null) ?? [];
   const objections =
     (activeVersion.objections as { objection: string; response: string }[] | null) ?? [];
-  const mediaLibrary =
-    (activeVersion.mediaLibrary as MediaLibraryItem[] | null) ?? [];
+  const mediaLibrary = await resolveMediaLibraryForVersion(clinicId, activeVersion);
 
   return {
     specialty: activeVersion.specialty,

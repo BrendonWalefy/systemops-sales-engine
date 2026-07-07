@@ -96,8 +96,8 @@ describe("composePlaybookText — contratos de composição", () => {
       procedures: [{ name: "Lentes", description: "Facetas em resina" }],
       objections: [{ objection: "Tem vídeo?", response: "Posso te enviar." }],
       mediaLibrary: [
-        { id: "vid-1", title: "Lentes – Técnica Simplificada", url: "https://blob/v1.mp4", type: "video" },
-        { id: "img-2", title: "Antes e depois", url: "https://blob/img2.png", type: "image" },
+        { id: "vid-1", title: "Lentes – Técnica Simplificada", url: "https://blob/v1.mp4", type: "video", treatmentId: null },
+        { id: "img-2", title: "Antes e depois", url: "https://blob/img2.png", type: "image", treatmentId: null },
       ],
     });
 

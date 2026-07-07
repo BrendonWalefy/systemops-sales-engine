@@ -20,7 +20,9 @@ type PlaybookVersionData = {
   commercialPolicy?: string | null;
   objections?: { objection: string; response: string }[];
   notes?: string | null;
-  mediaLibrary?: { id: string; title: string; url: string; type: "video" | "image" }[];
+  // Seleção de ids da biblioteca clinic-level (`media_assets`) que este playbook
+  // autoriza a IA a enviar. A biblioteca é gerenciada em /app/settings/biblioteca.
+  mediaAssetIds?: string[];
 };
 
 function compileToClinicFields(data: PlaybookVersionData) {
@@ -183,6 +185,7 @@ export async function duplicatePlaybookVersion(id: string) {
     commercialPolicy: original.commercialPolicy,
     objections: original.objections,
     notes: original.notes,
+    mediaAssetIds: original.mediaAssetIds,
   });
 
   revalidatePath("/app/settings/playbook");
