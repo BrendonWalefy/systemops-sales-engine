@@ -145,6 +145,56 @@ export async function sendSetupStudyForValidation(
 }
 
 /**
+ * Gera um novo link de validação para um estudo já enviado (link perdido ou
+ * expirado). Substitui o hash anterior — o link antigo deixa de funcionar — e
+ * renova a validade por mais 7 dias. Como no envio, o token cru é retornado
+ * uma única vez. Owner-only; só age em estudo "sent" da própria clínica.
+ */
+export async function regenerateSetupStudyValidationLink(
+  clinicId: string,
+  studyId: string,
+): Promise<{ token: string; url: string; expiresAt: string }> {
+  await assertOwnerSession();
+
+  const { token, hash } = generateAccessToken();
+  const now = new Date();
+  const expiresAt = new Date(
+    now.getTime() + VALIDATION_LINK_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  // Escopo por clinicId da rota + status sent: não revive estudo respondido,
+  // encerrado ou de outra clínica.
+  const updated = await db
+    .update(setupStudies)
+    .set({
+      accessTokenHash: hash,
+      sentAt: now,
+      expiresAt,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(setupStudies.id, studyId),
+        eq(setupStudies.organizationId, clinicId),
+        eq(setupStudies.status, "sent"),
+      ),
+    )
+    .returning({ id: setupStudies.id });
+
+  if (updated.length === 0) {
+    throw new Error("Estudo não encontrado ou não está aguardando o cliente.");
+  }
+
+  revalidatePath(`/owner/clinics/${clinicId}`);
+
+  return {
+    token,
+    url: `${appBaseUrl()}/validacao/${token}`,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+/**
  * Lê os findings de um estudo em rascunho, garantindo tenant (clinicId) e status.
  * Retorna null se não existir ou não for editável.
  */

@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, AlertTriangle, CheckCircle2, ChevronRight, Info, Trash2, Pencil, Check, X, Send, Copy, Clock, Wand2, CheckCheck } from "lucide-react";
+import { Sparkles, AlertTriangle, CheckCircle2, ChevronRight, Info, Trash2, Pencil, Check, X, Send, Copy, Clock, Wand2, CheckCheck, RefreshCw } from "lucide-react";
 import {
   generateSetupStudy,
   deleteSetupFinding,
   updateSetupFindingClaim,
   sendSetupStudyForValidation,
+  regenerateSetupStudyValidationLink,
   applySetupFinding,
   finalizeSetupStudy,
 } from "./setup-study-actions";
@@ -91,6 +92,18 @@ export function SetupStudyCard({ clinicId, study }: SetupStudyCardProps) {
         setSentLink(url); // link exibido uma única vez
       } catch (err: unknown) {
         alert((err as Error).message || "Erro ao enviar para validação.");
+      }
+    });
+  };
+
+  const handleRegenerate = () => {
+    if (!confirm("Gerar um novo link de validação? O link anterior deixará de funcionar.")) return;
+    startSend(async () => {
+      try {
+        const { url } = await regenerateSetupStudyValidationLink(clinicId, study.id);
+        setSentLink(url); // link exibido uma única vez
+      } catch (err: unknown) {
+        alert((err as Error).message || "Erro ao gerar novo link.");
       }
     });
   };
@@ -205,13 +218,28 @@ export function SetupStudyCard({ clinicId, study }: SetupStudyCardProps) {
 
       {/* Estado enviado (sem link revelado — já foi mostrado no envio) */}
       {study.status === "sent" && !sentLink && (
-        <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted)" }}>
+        <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted)", flexWrap: "wrap" }}>
           <Clock size={15} style={{ color: "#f59e0b" }} />
-          <span>
+          <span style={{ flex: 1, minWidth: 220 }}>
             Aguardando o cliente responder pelo link.
             {study.expiresAt && ` Expira em ${study.expiresAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}.`}
             {" "}O link só é exibido no momento do envio, por segurança.
           </span>
+          <button
+            onClick={handleRegenerate}
+            disabled={isSending}
+            title="Perdeu o link ou ele expirou? Gera um novo — o anterior deixa de funcionar."
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "8px 14px", borderRadius: 8, border: "1px solid var(--line)",
+              background: "var(--surface-soft)", color: "var(--text)",
+              fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+              cursor: isSending ? "not-allowed" : "pointer",
+              opacity: isSending ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw size={13} /> {isSending ? "Gerando..." : "Gerar novo link"}
+          </button>
         </div>
       )}
 
