@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
+  Clock,
   Loader2,
   Palette,
   Plus,
@@ -13,6 +14,8 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
+import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
+import { formatWorkScheduleSummary, isWindowInvalid } from "@/domain/entities/professional";
 
 type Professional = {
   id: string;
@@ -20,7 +23,108 @@ type Professional = {
   specialty: string | null;
   color: string;
   isActive: boolean;
+  workSchedule: ProfessionalWorkSchedule | null;
 };
+
+type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+const WEEKDAY_SHORT_PT: Record<Weekday, string> = {
+  0: "Dom", 1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex", 6: "Sáb",
+};
+const WEEKDAY_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
+
+function formatTime(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function WeeklyScheduleEditor({
+  value,
+  onChange,
+}: {
+  value: ProfessionalWorkSchedule | null;
+  onChange: (next: ProfessionalWorkSchedule | null) => void;
+}) {
+  const hasOwnSchedule = value !== null;
+
+  function toggleOwnSchedule(enabled: boolean) {
+    onChange(enabled ? (value ?? {}) : null);
+  }
+
+  function toggleDay(day: Weekday, enabled: boolean) {
+    if (value === null) return;
+    const next = { ...value };
+    if (enabled) {
+      next[day] = next[day] ?? { startHour: 8, startMinute: 0, endHour: 18, endMinute: 0 };
+    } else {
+      delete next[day];
+    }
+    onChange(next);
+  }
+
+  function updateWindow(day: Weekday, field: "start" | "end", time: string) {
+    if (value === null) return;
+    const window = value[day];
+    if (!window) return;
+    const [h, m] = time.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return;
+    onChange({
+      ...value,
+      [day]: { ...window, ...(field === "start" ? { startHour: h, startMinute: m } : { endHour: h, endMinute: m }) },
+    });
+  }
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+        <input type="checkbox" checked={hasOwnSchedule} onChange={(e) => toggleOwnSchedule(e.target.checked)} style={{ margin: 0 }} />
+        <span style={{ fontSize: "12px", color: "var(--text)" }}>Grade própria (dias e horários específicos)</span>
+      </label>
+      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--muted)" }}>
+        {hasOwnSchedule
+          ? "Só os dias marcados abaixo ficam disponíveis para agendamento — nos demais, este profissional não atende."
+          : "Sem grade própria, este profissional segue o horário geral da clínica."}
+      </p>
+
+      {hasOwnSchedule && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+          {WEEKDAY_ORDER.map((day) => {
+            const window = value?.[day];
+            const enabled = Boolean(window);
+            const invalid = window ? isWindowInvalid(window) : false;
+            return (
+              <div key={day} style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", width: "58px", flexShrink: 0, cursor: "pointer" }}>
+                  <input type="checkbox" checked={enabled} onChange={(e) => toggleDay(day, e.target.checked)} style={{ margin: 0 }} />
+                  <span style={{ fontSize: "12px", color: "var(--text)" }}>{WEEKDAY_SHORT_PT[day]}</span>
+                </label>
+                {enabled && window && (
+                  <>
+                    <input
+                      type="time"
+                      value={formatTime(window.startHour, window.startMinute)}
+                      onChange={(e) => updateWindow(day, "start", e.target.value)}
+                      style={{ margin: 0, fontSize: "12px", padding: "4px 6px", width: "auto" }}
+                    />
+                    <span style={{ color: "var(--muted)", fontSize: "12px" }}>até</span>
+                    <input
+                      type="time"
+                      value={formatTime(window.endHour, window.endMinute)}
+                      onChange={(e) => updateWindow(day, "end", e.target.value)}
+                      style={{ margin: 0, fontSize: "12px", padding: "4px 6px", width: "auto" }}
+                    />
+                    {invalid && (
+                      <span style={{ fontSize: "11px", color: "#ef4444" }}>Fim deve ser depois do início</span>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Props = {
   initialProfessionals: Professional[];
@@ -118,16 +222,21 @@ function ProfessionalRow({
   const [specialty, setSpecialty] = useState(professional.specialty ?? "");
   const [color, setColor] = useState(professional.color);
   const [isActive, setIsActive] = useState(professional.isActive);
+  const [workSchedule, setWorkSchedule] = useState<ProfessionalWorkSchedule | null>(professional.workSchedule);
+
+  const scheduleInvalid =
+    workSchedule !== null && Object.values(workSchedule).some((w) => w && isWindowInvalid(w));
+  const scheduleSummary = formatWorkScheduleSummary(professional.workSchedule);
 
   async function handleSave() {
-    if (!name.trim()) return;
+    if (!name.trim() || scheduleInvalid) return;
     setSaving(true);
     setSavedOk(false);
     try {
       const res = await fetch(`/api/professionals/${professional.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), specialty: specialty.trim() || null, color, isActive }),
+        body: JSON.stringify({ name: name.trim(), specialty: specialty.trim() || null, color, isActive, workSchedule }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -216,6 +325,12 @@ function ProfessionalRow({
               {professional.specialty}
             </div>
           )}
+          {scheduleSummary && (
+            <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "var(--accent-strong)", marginTop: "3px" }}>
+              <Clock size={11} strokeWidth={2} />
+              {scheduleSummary}
+            </div>
+          )}
         </div>
 
         <ChevronRight
@@ -275,6 +390,14 @@ function ProfessionalRow({
               Cor no calendário
             </span>
             <ColorSwatch selected={color} onChange={setColor} />
+          </div>
+
+          {/* Grade semanal */}
+          <div>
+            <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 500, display: "block", marginBottom: "8px" }}>
+              Disponibilidade
+            </span>
+            <WeeklyScheduleEditor value={workSchedule} onChange={setWorkSchedule} />
           </div>
 
           {/* Actions row */}
@@ -378,7 +501,7 @@ function ProfessionalRow({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || !name.trim()}
+              disabled={saving || !name.trim() || scheduleInvalid}
               className="primary-button"
               style={{ padding: "6px 14px", fontSize: "13px", gap: "6px", opacity: saving ? 0.7 : 1 }}
             >

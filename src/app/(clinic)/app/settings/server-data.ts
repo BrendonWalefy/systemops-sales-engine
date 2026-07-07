@@ -20,6 +20,7 @@ export async function getCachedProfessionals(clinicId: string) {
           specialty: professionals.specialty,
           color: professionals.color,
           isActive: professionals.isActive,
+          workSchedule: professionals.workSchedule,
         })
         .from(professionals)
         .where(eq(professionals.clinicId, clinicId))

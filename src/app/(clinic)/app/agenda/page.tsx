@@ -53,6 +53,7 @@ export default async function AgendaPage({
         color: p.color,
         specialty: p.specialty,
         isActive: p.isActive,
+        workSchedule: p.workSchedule ?? null,
       }))}
       treatments={treatments.map((t) => ({
         id: t.id,

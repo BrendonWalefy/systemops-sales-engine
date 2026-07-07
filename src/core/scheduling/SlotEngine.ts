@@ -2,6 +2,7 @@
 // Recebe configuração + eventos existentes e retorna slots livres.
 
 import type { CalendarSlot } from "@/domain/entities/calendar-slot";
+import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import { type ParsedBusinessHours, type ClinicTimezone } from "./ClinicTimezone";
 
 export type SlotEngineParams = {
@@ -14,7 +15,38 @@ export type SlotEngineParams = {
   clinicId: string;
   postEventBufferMinutes?: number;
   maxSlots?: number;
+  // Grade própria do profissional filtrado (ver ProfessionalWorkSchedule). Quando
+  // presente, um slot só é válido se couber inteiro na janela do profissional para
+  // aquele dia da semana, ALÉM de já caber no horário comercial da clínica — a grade
+  // do profissional restringe, nunca amplia, o horário da clínica.
+  professionalSchedule?: ProfessionalWorkSchedule | null;
 };
+
+// Verifica se o slot [cursor, slotEndDate) cabe inteiro na janela do profissional
+// para o dia da semana em que o slot COMEÇA. Sem grade própria (schedule null/
+// undefined), o profissional segue o horário da clínica sem restrição adicional.
+function fitsProfessionalSchedule(
+  schedule: ProfessionalWorkSchedule | null | undefined,
+  timezone: ClinicTimezone,
+  cursor: Date,
+  slotEndDate: Date,
+): boolean {
+  if (!schedule) return true;
+
+  const startParts = timezone.toLocalParts(cursor);
+  const window = schedule[startParts.weekday as 0 | 1 | 2 | 3 | 4 | 5 | 6];
+  if (!window) return false;
+
+  const startMin = startParts.hour * 60 + startParts.minute;
+  const windowStartMin = window.startHour * 60 + window.startMinute;
+  const windowEndMin = window.endHour * 60 + window.endMinute;
+  if (startMin < windowStartMin || startMin >= windowEndMin) return false;
+
+  const endParts = timezone.toLocalParts(slotEndDate);
+  if (endParts.weekday !== startParts.weekday) return false;
+  const endMin = endParts.hour * 60 + endParts.minute;
+  return endMin <= windowEndMin;
+}
 
 export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] {
   const {
@@ -27,6 +59,7 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
     clinicId,
     postEventBufferMinutes = 0,
     maxSlots = 100,
+    professionalSchedule = null,
   } = params;
 
   const slotMs = slotDurationMinutes * 60_000;
@@ -58,7 +91,7 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
         businessHours.days.includes(endParts.weekday) &&
         endTimeMin <= endBusinessMin;
 
-      if (endStillInBusiness) {
+      if (endStillInBusiness && fitsProfessionalSchedule(professionalSchedule, timezone, cursor, slotEndDate)) {
         const isBusy = busyRanges.some((r) => r.start < slotEnd && r.end > slotStart);
 
         if (!isBusy) {

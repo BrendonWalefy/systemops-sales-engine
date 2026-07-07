@@ -1,6 +1,7 @@
 import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import type { BlockEvent, CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
+import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { computeAvailableSlots } from "@/core/scheduling/SlotEngine";
 import {
@@ -9,7 +10,7 @@ import {
   type BusyEvent,
 } from "@/core/scheduling/internal-availability";
 import { db } from "@/infrastructure/db/client";
-import { appointments, calendarBlocks } from "@/infrastructure/db/schema";
+import { appointments, calendarBlocks, professionals } from "@/infrastructure/db/schema";
 
 /**
  * Gateway de calendário cuja FONTE DE VERDADE é o banco de dados.
@@ -22,8 +23,7 @@ import { appointments, calendarBlocks } from "@/infrastructure/db/schema";
  * calendário externo: o BookingService e o use-case updateAppointment já persistem o
  * appointment no banco. Aqui só construímos/validamos.
  *
- * TODO (Fase C): quando professionals.workSchedule e rooms tiverem shape definido,
- * usar a janela do profissional/sala em vez do businessHours da clínica.
+ * TODO (Fase C): quando rooms tiver shape definido, usar a janela da sala também.
  */
 export class InternalCalendarGateway implements CalendarGateway {
   private readonly timezone: ClinicTimezone;
@@ -92,7 +92,10 @@ export class InternalCalendarGateway implements CalendarGateway {
     slotDurationMinutes: number;
     professionalId?: string;
   }): Promise<CalendarSlot[]> {
-    const existingEvents = await this.loadBusyEvents(input);
+    const [existingEvents, professionalSchedule] = await Promise.all([
+      this.loadBusyEvents(input),
+      this.loadProfessionalSchedule(input.clinicId, input.professionalId),
+    ]);
 
     return computeAvailableSlots({
       timezone: this.timezone,
@@ -103,7 +106,21 @@ export class InternalCalendarGateway implements CalendarGateway {
       slotDurationMinutes: input.slotDurationMinutes,
       clinicId: input.clinicId,
       postEventBufferMinutes: this.postAppointmentBufferMinutes,
+      professionalSchedule,
     }).map((slot) => ({ ...slot, source: "manual" }));
+  }
+
+  /** Grade própria do profissional filtrado, escopada à clínica. null = sem grade (segue a clínica). */
+  private async loadProfessionalSchedule(
+    clinicId: string,
+    professionalId: string | undefined,
+  ): Promise<ProfessionalWorkSchedule | null> {
+    if (!professionalId) return null;
+    const row = await db.query.professionals.findFirst({
+      where: and(eq(professionals.id, professionalId), eq(professionals.clinicId, clinicId)),
+      columns: { workSchedule: true },
+    });
+    return row?.workSchedule ?? null;
   }
 
   async isSlotFree(input: {

@@ -14,6 +14,7 @@ import {
 import type { MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
+import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -708,7 +709,10 @@ export const professionals = pgTable(
     name: text("name").notNull(),
     specialty: text("specialty"),
     color: text("color").notNull().default("#10B981"),
-    workSchedule: jsonb("work_schedule"),
+    // Grade semanal do profissional (ver ProfessionalWorkSchedule). null = segue o
+    // horário da clínica inteira — SlotEngine.computeAvailableSlots trata a ausência
+    // como "sem restrição própria", nunca como "não atende nenhum dia".
+    workSchedule: jsonb("work_schedule").$type<ProfessionalWorkSchedule>(),
     googleCalendarId: text("google_calendar_id"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })

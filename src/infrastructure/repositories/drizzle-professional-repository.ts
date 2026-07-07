@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Professional } from "@/domain/entities/professional";
 import type { ProfessionalRepository } from "@/domain/repositories/professional-repository";
 import { db } from "@/infrastructure/db/client";
@@ -38,18 +38,19 @@ export class DrizzleProfessionalRepository implements ProfessionalRepository {
 
   async update(
     id: string,
+    clinicId: string,
     data: Partial<Pick<Professional, "name" | "specialty" | "color" | "workSchedule" | "googleCalendarId" | "isActive">>,
-  ): Promise<Professional> {
+  ): Promise<Professional | null> {
     const [row] = await db
       .update(professionals)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(professionals.id, id))
+      .where(and(eq(professionals.id, id), eq(professionals.clinicId, clinicId)))
       .returning();
-    return mapRow(row);
+    return row ? mapRow(row) : null;
   }
 
-  async delete(id: string): Promise<void> {
-    await db.delete(professionals).where(eq(professionals.id, id));
+  async delete(id: string, clinicId: string): Promise<void> {
+    await db.delete(professionals).where(and(eq(professionals.id, id), eq(professionals.clinicId, clinicId)));
   }
 }
 
