@@ -132,6 +132,37 @@ describe("POST /api/owner/clinics/[clinicId]/channel-provision", () => {
     expect(mocks.createZApiInstance).not.toHaveBeenCalled();
   });
 
+  it("traduz 'Bad credentials' da Z-API em mensagem acionável sobre o Partner Token", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.createZApiInstance.mockRejectedValue(
+      new Error('Z-API create instance failed (401): {"error":"Bad credentials"}'),
+    );
+
+    const res = await POST(request(), ctx());
+    const json = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(json.error).toContain("cadastro de integrador");
+    expect(json.error).toContain("ZAPI_PARTNER_TOKEN");
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("clinic-1"));
+    expect(mocks.db.update).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("mantém a mensagem original para falhas que não são de credencial", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.createZApiInstance.mockRejectedValue(
+      new Error("Z-API create instance failed (500): internal error"),
+    );
+
+    const res = await POST(request(), ctx());
+    const json = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(json.error).toBe("Z-API create instance failed (500): internal error");
+    consoleSpy.mockRestore();
+  });
+
   it("propaga presetWarning quando o preset falha, mas mantém as credenciais salvas", async () => {
     mocks.applyZApiInstancePreset.mockRejectedValue(new Error("update-filters failed"));
 
