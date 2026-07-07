@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/infrastructure/db/client";
-import { setupStudies } from "@/infrastructure/db/schema";
+import { setupStudies, treatments } from "@/infrastructure/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -42,7 +42,25 @@ export async function generateSetupStudy(clinicId: string): Promise<{ error?: st
   try {
     await assertOwnerSession();
 
-    // 1. Expira rascunhos anteriores
+    // 1. Constrói o corpus anonimizado
+    const transcript = await buildCorpus(clinicId);
+
+    // Se não houver conversas suficientes, podemos lançar um erro informativo
+    if (transcript.conversationCount === 0) {
+      return { error: "Não há conversas suficientes no período para gerar o estudo." };
+    }
+
+    // 2. Catálogo da clínica — permite ao LLM propor targets treatment:<uuid> reais
+    const clinicTreatments = await db
+      .select({ id: treatments.id, name: treatments.name, priceCents: treatments.priceCents })
+      .from(treatments)
+      .where(eq(treatments.clinicId, clinicId));
+
+    // 3. Extrai findings usando o LLM (lança erro se a resposta for inválida)
+    const findings = await extractFindings(transcript, { treatments: clinicTreatments });
+
+    // 4. Só depois da extração dar certo: expira o rascunho anterior e salva o novo.
+    //    Na ordem inversa, uma falha do LLM destruía o draft existente.
     await db
       .update(setupStudies)
       .set({ status: "expired", updatedAt: new Date() })
@@ -53,18 +71,6 @@ export async function generateSetupStudy(clinicId: string): Promise<{ error?: st
         )
       );
 
-    // 2. Constrói o corpus anonimizado
-    const transcript = await buildCorpus(clinicId);
-
-    // Se não houver conversas suficientes, podemos lançar um erro informativo
-    if (transcript.conversationCount === 0) {
-      return { error: "Não há conversas suficientes no período para gerar o estudo." };
-    }
-
-    // 3. Extrai findings usando o LLM
-    const findings = await extractFindings(transcript);
-
-    // 4. Salva no banco como draft
     await db.insert(setupStudies).values({
       organizationId: clinicId,
       status: "draft",

@@ -45,6 +45,14 @@ export async function callAdvisorLLM(
       max_tokens: maxTokens,
       messages: [{ role: "user", content: prompt }],
     });
+    // Resposta truncada é inútil para os callers (todos parseiam JSON) e o
+    // bloco de thinking do modelo consome do mesmo orçamento de max_tokens.
+    if (res.stop_reason === "max_tokens") {
+      throw new Error(
+        `Resposta do LLM truncada em ${maxTokens} tokens (modelo "${model}"). ` +
+          `Aumente maxTokens na chamada.`,
+      );
+    }
     const textBlock = res.content.find((b) => b.type === "text");
     return textBlock && textBlock.type === "text" ? textBlock.text : "";
   }
@@ -62,6 +70,12 @@ export async function callAdvisorLLM(
     response_format: { type: "json_object" },
     messages: [{ role: "user", content: prompt }],
   });
+  if (res.choices[0]?.finish_reason === "length") {
+    throw new Error(
+      `Resposta do LLM truncada em ${maxTokens} tokens (modelo "${model}"). ` +
+        `Aumente maxTokens na chamada.`,
+    );
+  }
   return res.choices[0]?.message?.content ?? "";
 }
 
