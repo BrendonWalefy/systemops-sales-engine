@@ -8,6 +8,8 @@ import type {
   SetupFinding,
   SetupFindingCategory,
 } from "@/domain/entities/setup-study";
+import { parseEvidenceSegments } from "@/application/setup-study/format-evidence";
+import type { EvidenceRole } from "@/application/setup-study/format-evidence";
 
 /** Rótulos leigos por categoria (o cliente não vê os nomes técnicos). */
 const CATEGORY_LABEL: Record<SetupFindingCategory, string> = {
@@ -25,9 +27,11 @@ type LocalAnswer =
 
 export function ValidationForm({
   token,
+  clinicName,
   findings,
 }: {
   token: string;
+  clinicName: string;
   findings: SetupFinding[];
 }) {
   const router = useRouter();
@@ -71,7 +75,7 @@ export function ValidationForm({
           SystemOps
         </span>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, lineHeight: 1.25 }}>
-          Confira o que aprendemos com os atendimentos de vocês
+          Confira o que aprendemos com os atendimentos da {clinicName}
         </h1>
         <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: "#a1a1aa" }}>
           Lemos as conversas recentes e anotamos alguns pontos. Em cada um, toque
@@ -123,7 +127,7 @@ export function ValidationForm({
           ? "Enviando..."
           : allAnswered
             ? "Concluir e enviar"
-            : `Responda todos para concluir`}
+            : `Responda todos para concluir — falta${findings.length - answeredCount === 1 ? "" : "m"} ${findings.length - answeredCount}`}
       </button>
     </div>
   );
@@ -200,9 +204,7 @@ function FindingCard({
       </p>
 
       {finding.evidence && (
-        <div style={{ padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, borderLeft: "2px solid #3f3f46", fontSize: 13, color: "#a1a1aa", fontStyle: "italic", lineHeight: 1.5 }}>
-          &ldquo;{finding.evidence}&rdquo;
-        </div>
+        <EvidenceRenderer evidence={finding.evidence} />
       )}
 
       {/* Correção existente (não editando) */}
@@ -280,6 +282,41 @@ function FindingCard({
       {error && (
         <p style={{ margin: 0, fontSize: 13, color: "#f87171" }}>{error}</p>
       )}
+    </div>
+  );
+}
+
+function EvidenceRenderer({ evidence }: { evidence: string }) {
+  const segments = parseEvidenceSegments(evidence);
+  const hasRole = segments.some((s) => s.role !== null);
+
+  if (!hasRole) {
+    return (
+      <div style={{ padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, borderLeft: "2px solid #3f3f46", fontSize: 13, color: "#a1a1aa", fontStyle: "italic", lineHeight: 1.5 }}>
+        &ldquo;{evidence}&rdquo;
+      </div>
+    );
+  }
+
+  const roleLabel: Record<Exclude<EvidenceRole, null>, string> = {
+    clinica: "Atendente",
+    paciente: "Paciente",
+    ia: "Assistente IA (em observação)",
+    sistema: "Sistema",
+  };
+
+  return (
+    <div style={{ padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, borderLeft: "2px solid #3f3f46", fontSize: 13, color: "#a1a1aa", lineHeight: 1.5, display: "grid", gap: 6 }}>
+      {segments.map((s, idx) => (
+        <div key={idx}>
+          {s.role && (
+            <span style={{ fontWeight: 700, color: "#fafafa", fontSize: 12, marginRight: 6 }}>
+              {roleLabel[s.role]}:
+            </span>
+          )}
+          <span>{s.text}</span>
+        </div>
+      ))}
     </div>
   );
 }

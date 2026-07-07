@@ -8,7 +8,7 @@
  */
 
 import { db } from "@/infrastructure/db/client";
-import { setupStudies } from "@/infrastructure/db/schema";
+import { setupStudies, organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import {
   hashAccessToken,
@@ -27,9 +27,18 @@ export default async function ValidacaoPage({
 }) {
   const { token } = await params;
 
-  const study = await db.query.setupStudies.findFirst({
-    where: eq(setupStudies.accessTokenHash, hashAccessToken(token)),
-  });
+  const result = await db
+    .select({
+      study: setupStudies,
+      organizationName: organizations.name,
+    })
+    .from(setupStudies)
+    .innerJoin(organizations, eq(setupStudies.organizationId, organizations.id))
+    .where(eq(setupStudies.accessTokenHash, hashAccessToken(token)))
+    .limit(1);
+
+  const study = result[0]?.study;
+  const clinicName = result[0]?.organizationName;
 
   const state = resolveStudyState(study, new Date());
 
@@ -63,5 +72,5 @@ export default async function ValidacaoPage({
 
   const findings = (study.findings ?? []) as SetupFinding[];
 
-  return <ValidationForm token={token} findings={findings} />;
+  return <ValidationForm token={token} clinicName={clinicName} findings={findings} />;
 }
