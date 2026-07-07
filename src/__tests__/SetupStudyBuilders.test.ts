@@ -30,6 +30,10 @@ describe("anonymizeText", () => {
     expect(anonymizeText(text, "Maria da Silva dos Santos")).toBe(text);
   });
 
+  it("redige nome completo mesmo com menos de 3 caracteres", () => {
+    expect(anonymizeText("Oi Lu, tudo bem?", "Lu")).toBe("Oi [PACIENTE], tudo bem?");
+  });
+
   it("substitui números de telefone", () => {
     expect(anonymizeText("Meu número é 11987654321", null))
       .toBe("Meu número é [TELEFONE]");

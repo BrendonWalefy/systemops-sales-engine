@@ -32,11 +32,14 @@ export function anonymizeText(text: string, leadName: string | null): string {
   // 1. Substituir nome do lead (case-insensitive, palavra inteira).
   //    Além do nome completo, cada parte isolada — nas conversas o atendente
   //    quase sempre chama só pelo primeiro nome ("Boa noite, Cintia").
+  //    O nome completo é redigido incondicionalmente (mesmo com <3 chars,
+  //    ex: "Zé"); os guardas de tamanho/partícula valem só para as partes.
   if (leadName && leadName.trim().length > 0) {
     const fullName = leadName.trim();
-    const parts = [fullName, ...fullName.split(/\s+/)];
-    for (const part of parts) {
-      if (part.length < 3 || NAME_PARTICLES.has(part.toLowerCase())) continue;
+    const parts = fullName
+      .split(/\s+/)
+      .filter((p) => p.length >= 3 && !NAME_PARTICLES.has(p.toLowerCase()));
+    for (const part of [fullName, ...parts]) {
       const safeName = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       result = result.replace(new RegExp(`\\b${safeName}\\b`, "gi"), "[PACIENTE]");
     }
