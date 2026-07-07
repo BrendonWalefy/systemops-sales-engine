@@ -26,6 +26,7 @@ import {
   pushSubscriptions,
   playbookVersions,
   clinicMetrics,
+  mediaAssets,
 } from "@/infrastructure/db/schema";
 import { createLogger } from "@/infrastructure/logging/logger";
 
@@ -111,6 +112,8 @@ export async function POST(
   await db.delete(leads).where(eq(leads.clinicId, clinicId));
   await db.delete(professionals).where(eq(professionals.clinicId, clinicId));
   await db.delete(rooms).where(eq(rooms.clinicId, clinicId));
+  // media_assets referencia organizations e treatments — precisa sair antes dos dois.
+  await db.delete(mediaAssets).where(eq(mediaAssets.clinicId, clinicId));
   await db.delete(treatments).where(eq(treatments.clinicId, clinicId));
   await db.delete(inboundEvents).where(eq(inboundEvents.clinicId, clinicId));
   await db.delete(aiUsageCosts).where(eq(aiUsageCosts.clinicId, clinicId));
