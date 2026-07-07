@@ -19,6 +19,7 @@ export default async function ProfissionaisPage() {
         specialty: p.specialty,
         color: p.color,
         isActive: p.isActive,
+        workSchedule: p.workSchedule ?? null,
       }))}
     />
   );

@@ -247,3 +247,88 @@ describe("SlotEngine — Saturday short hours", () => {
     expect(starts[starts.length - 1]).toBe("12:00");
   });
 });
+
+// ─── Grade própria de profissional (disponibilidade Victor/Gregorie) ─────────
+
+describe("SlotEngine — professionalSchedule", () => {
+  // 05/Jan/2026 = segunda, 06/Jan/2026 = terça, 08/Jan/2026 = quinta
+  function dateOn(day: number, hour: number, minute = 0): Date {
+    return tz.fromLocalParts(2026, 0, day, hour, minute);
+  }
+
+  it("restringe os slots à janela do profissional, mais estreita que o horário da clínica", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: dateOn(6, 8),
+      to: dateOn(6, 18),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-test",
+      professionalSchedule: { 2: { startHour: 14, startMinute: 0, endHour: 18, endMinute: 0 } },
+    });
+
+    expect(starts).toEqual(["14:00", "15:00", "16:00", "17:00"]);
+  });
+
+  it("não oferece nenhum slot num dia que a grade do profissional não inclui", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: dateOn(5, 8),
+      to: dateOn(5, 18),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-test",
+      professionalSchedule: { 2: { startHour: 14, startMinute: 0, endHour: 18, endMinute: 0 } },
+    });
+
+    expect(starts).toEqual([]);
+  });
+
+  it("exclui slot cujo fim ultrapassa o fim da janela do profissional mesmo com a clínica aberta", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: dateOn(8, 9),
+      to: dateOn(8, 13),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-test",
+      professionalSchedule: { 4: { startHour: 9, startMinute: 0, endHour: 12, endMinute: 0 } },
+    });
+
+    // 12h-13h cabe no horário comercial (8h-18h) mas estoura a janela do profissional (9h-12h)
+    expect(starts).toEqual(["09:00", "10:00", "11:00"]);
+  });
+
+  it("trata grade própria vazia como profissional totalmente indisponível", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: dateOn(5, 8),
+      to: dateOn(5, 18),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-test",
+      professionalSchedule: {},
+    });
+
+    expect(starts).toEqual([]);
+  });
+
+  it("sem grade própria (null), segue o horário da clínica normalmente", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: dateOn(5, 8),
+      to: dateOn(5, 11),
+      slotDurationMinutes: 60,
+      clinicId: "clinic-test",
+      professionalSchedule: null,
+    });
+
+    expect(starts).toEqual(["08:00", "09:00", "10:00"]);
+  });
+});

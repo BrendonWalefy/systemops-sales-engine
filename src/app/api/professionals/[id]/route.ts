@@ -5,6 +5,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 import { clinicProfessionalsTag, clinicEquipeTag } from "@/lib/cache-tags";
+import { isValidWorkSchedule, type ProfessionalWorkSchedule } from "@/domain/entities/professional";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     color?: string;
     isActive?: boolean;
     googleCalendarId?: string | null;
+    workSchedule?: ProfessionalWorkSchedule | null;
   };
   try {
     body = await request.json();
@@ -39,14 +41,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     return NextResponse.json({ error: "Payload inválido" }, { status: 400 });
   }
 
+  if (body.workSchedule !== undefined && body.workSchedule !== null && !isValidWorkSchedule(body.workSchedule)) {
+    return NextResponse.json({ error: "Grade semanal inválida" }, { status: 400 });
+  }
+
   try {
-    const updated = await repo.update(id, {
+    const updated = await repo.update(id, clinicId, {
       ...(body.name !== undefined && { name: body.name.trim() }),
       ...(body.specialty !== undefined && { specialty: body.specialty?.trim() || null }),
       ...(body.color !== undefined && { color: body.color }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
       ...(body.googleCalendarId !== undefined && { googleCalendarId: body.googleCalendarId }),
+      ...(body.workSchedule !== undefined && { workSchedule: body.workSchedule }),
     });
+    if (!updated) {
+      return NextResponse.json({ error: "Profissional não encontrado" }, { status: 404 });
+    }
     revalidateTag(clinicProfessionalsTag(clinicId), "max");
     revalidateTag(clinicEquipeTag(clinicId), "max");
     return NextResponse.json({ professional: updated });
@@ -65,7 +75,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams): Pr
   const { id } = await params;
 
   try {
-    await repo.delete(id);
+    await repo.delete(id, clinicId);
     revalidateTag(clinicProfessionalsTag(clinicId), "max");
     revalidateTag(clinicEquipeTag(clinicId), "max");
     return NextResponse.json({ ok: true });

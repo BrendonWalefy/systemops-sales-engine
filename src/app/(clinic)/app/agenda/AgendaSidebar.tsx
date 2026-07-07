@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Loader2, UserX } from "lucide-react";
 import { useState } from "react";
+import { formatWorkScheduleSummary } from "@/domain/entities/professional";
 import type { AppointmentEvent, Professional } from "./types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -239,16 +240,28 @@ export function AgendaSidebar({
         <section className="agenda-sidebar-section">
           <h3 className="agenda-sidebar-heading">Profissionais</h3>
           <ul className="agenda-sidebar-prof-list">
-            {profCounts.map((p) => (
-              <li key={p.id} className="agenda-sidebar-prof-item">
-                <span
-                  className="agenda-sidebar-prof-dot"
-                  style={{ background: p.color }}
-                />
-                <span className="agenda-sidebar-prof-name">{p.name}</span>
-                <span className="agenda-sidebar-prof-count">{p.count}</span>
-              </li>
-            ))}
+            {profCounts.map((p) => {
+              const scheduleSummary = formatWorkScheduleSummary(p.workSchedule ?? null);
+              return (
+                <li key={p.id} className="agenda-sidebar-prof-item" style={{ alignItems: scheduleSummary ? "flex-start" : "center" }}>
+                  <span
+                    className="agenda-sidebar-prof-dot"
+                    style={{ background: p.color, marginTop: scheduleSummary ? "3px" : 0 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <span className="agenda-sidebar-prof-name">{p.name}</span>
+                      <span className="agenda-sidebar-prof-count">{p.count}</span>
+                    </div>
+                    {scheduleSummary && (
+                      <div style={{ fontSize: "10.5px", color: "var(--accent-strong)", marginTop: "1px" }}>
+                        {scheduleSummary}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

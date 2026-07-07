@@ -1,3 +1,5 @@
+import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
+
 export type AppointmentEvent = {
   id: string;
   leadId: string;
@@ -29,4 +31,5 @@ export type Professional = {
   color: string;
   specialty: string | null;
   isActive?: boolean;
+  workSchedule?: ProfessionalWorkSchedule | null;
 };
