@@ -14,6 +14,19 @@ import type { SetupFinding, SetupFindingCategory, AnonymizedTranscript } from "@
 
 const MAX_FINDINGS = 15;
 
+// 15 findings detalhados em JSON + bloco de thinking do modelo (que consome do
+// mesmo orçamento) não cabem em 4k tokens — o JSON chegava truncado e o estudo
+// era salvo vazio. A chamada é rara por clínica; folga custa quase nada.
+const MAX_OUTPUT_TOKENS = 16000;
+
+/** Tratamento cadastrado da clínica, injetado no prompt para o LLM poder
+ *  propor mudanças com targets treatment:<uuid> reais (aplicáveis em 1 clique). */
+export interface TreatmentForStudy {
+  id: string;
+  name: string;
+  priceCents: number | null;
+}
+
 const FINDING_CATEGORIES: SetupFindingCategory[] = [
   "price",
   "communication",
@@ -31,14 +44,31 @@ function isValidSeverity(sev: unknown): sev is 1 | 2 | 3 {
   return sev === 1 || sev === 2 || sev === 3;
 }
 
+/** Formata o catálogo de tratamentos para o prompt. */
+function formatTreatments(treatments: TreatmentForStudy[]): string {
+  if (treatments.length === 0) return "(nenhum tratamento cadastrado ainda)";
+  return treatments
+    .map((t) => {
+      const price =
+        t.priceCents != null
+          ? `preço atual: R$ ${(t.priceCents / 100).toFixed(2).replace(".", ",")}`
+          : "sem preço cadastrado";
+      return `- ${t.id} — ${t.name} (${price})`;
+    })
+    .join("\n");
+}
+
 /** Monta o prompt para extração de findings conforme ADR-002 apêndice D. */
-function buildPrompt(transcript: AnonymizedTranscript): string {
+function buildPrompt(transcript: AnonymizedTranscript, treatments: TreatmentForStudy[]): string {
   return `Você é um Engenheiro de IA configurando o sistema para uma clínica.
 O sistema desta clínica precisa ser configurado (Playbook, Tratamentos, Políticas). Seu trabalho é ler as conversas reais abaixo e EXTRAIR as regras de negócio, preços, serviços, tom de voz e objeções para preencher o setup do sistema.
 
 PERÍODO: ${transcript.periodStart.toISOString().slice(0, 10)} a ${transcript.periodEnd.toISOString().slice(0, 10)}
 CONVERSAS: ${transcript.conversationCount}
 MENSAGENS: ${transcript.totalMessages}
+
+TRATAMENTOS JÁ CADASTRADOS NO SISTEMA:
+${formatTreatments(treatments)}
 
 TRANSCRITOS:
 ${transcript.text}
@@ -55,6 +85,9 @@ Cada finding deve ter:
   Targets válidos: treatment:<uuid>.priceCents, treatment:<uuid>.priceQuotableInChat,
   treatment:<uuid>.aliases, treatment:<uuid>.requiresEvaluationFirst,
   playbook.objections[], playbook.toneOfVoice, playbook.commercialPolicy, playbook.notes
+  Em targets treatment:<uuid>, use APENAS uuids da lista "TRATAMENTOS JÁ CADASTRADOS" acima.
+  Se o serviço mencionado nas conversas não está na lista, use proposedChange: null.
+  Em treatment:<uuid>.priceCents, newValue é o valor em CENTAVOS (ex: R$ 1.700,00 → "170000").
 
 Seja proativo: se descobrir que a clínica faz "Clareamento por R$800", crie um apontamento para isso. Se descobrir que eles usam muitos emojis e linguagem informal, crie um apontamento de tom de voz.
 Se não conseguir mapear para um "target" exato, use proposedChange: null, mas NÃO deixe de criar o finding.
@@ -140,15 +173,18 @@ export function parseFindings(raw: unknown): SetupFinding[] {
 /**
  * Envia o corpus ao LLM e retorna os findings parseados.
  * Testável: aceita um modelo mockado via injeção de dependência.
+ *
+ * Lança erro quando a resposta não é JSON interpretável — retornar [] aqui
+ * fazia a action salvar um estudo vazio sem ninguém perceber a falha.
  */
 export async function extractFindings(
   transcript: AnonymizedTranscript,
-  opts: { model?: string } = {},
+  opts: { model?: string; treatments?: TreatmentForStudy[] } = {},
 ): Promise<SetupFinding[]> {
   const model = opts.model ?? SETUP_STUDY_MODEL;
-  const prompt = buildPrompt(transcript);
+  const prompt = buildPrompt(transcript, opts.treatments ?? []);
 
-  const raw = await callAdvisorLLM(prompt, { model, maxTokens: 4000 });
+  const raw = await callAdvisorLLM(prompt, { model, maxTokens: MAX_OUTPUT_TOKENS });
 
   // Parse JSON — tenta extrair o bloco JSON mesmo se vier com texto extra
   let parsed: unknown;
@@ -158,14 +194,13 @@ export async function extractFindings(
   } catch {
     // Extrai primeiro bloco JSON da resposta
     const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        parsed = JSON.parse(match[0]);
-      } catch {
-        return [];
-      }
-    } else {
-      return [];
+    if (!match) {
+      throw new Error("A resposta do modelo não contém JSON. Gere o estudo novamente.");
+    }
+    try {
+      parsed = JSON.parse(match[0]);
+    } catch {
+      throw new Error("A resposta do modelo veio com JSON inválido. Gere o estudo novamente.");
     }
   }
 

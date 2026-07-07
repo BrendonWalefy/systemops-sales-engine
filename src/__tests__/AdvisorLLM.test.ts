@@ -41,7 +41,7 @@ describe("SETUP_STUDY_MODEL", () => {
   it("usa modelo Claude forte por padrão (ADR-002)", () => {
     // Sem override de env, o default é um modelo claude-* de geração atual.
     if (!process.env.SETUP_STUDY_MODEL) {
-      expect(SETUP_STUDY_MODEL).toBe("claude-3-5-sonnet-20240620");
+      expect(SETUP_STUDY_MODEL).toBe("claude-sonnet-5");
     }
     expect(SETUP_STUDY_MODEL.length).toBeGreaterThan(0);
   });

@@ -21,14 +21,25 @@ const MAX_CONVERSATIONS = 50;
 const MAX_MESSAGES_PER_CONV = 30;
 const FALLBACK_LOOKBACK_DAYS = 21;
 
+// Partículas de nomes compostos que são palavras comuns em português —
+// substituí-las isoladamente mutilaria o texto ("dois dos três" etc).
+const NAME_PARTICLES = new Set(["de", "da", "do", "das", "dos", "e"]);
+
 /** Anonimiza um texto substituindo padrões sensíveis. */
 export function anonymizeText(text: string, leadName: string | null): string {
   let result = text;
 
-  // 1. Substituir nome do lead (case-insensitive, palavra inteira)
+  // 1. Substituir nome do lead (case-insensitive, palavra inteira).
+  //    Além do nome completo, cada parte isolada — nas conversas o atendente
+  //    quase sempre chama só pelo primeiro nome ("Boa noite, Cintia").
   if (leadName && leadName.trim().length > 0) {
-    const safeName = leadName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    result = result.replace(new RegExp(`\\b${safeName}\\b`, "gi"), "[PACIENTE]");
+    const fullName = leadName.trim();
+    const parts = [fullName, ...fullName.split(/\s+/)];
+    for (const part of parts) {
+      if (part.length < 3 || NAME_PARTICLES.has(part.toLowerCase())) continue;
+      const safeName = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      result = result.replace(new RegExp(`\\b${safeName}\\b`, "gi"), "[PACIENTE]");
+    }
   }
 
   // 2. Substituir sequências de 8+ dígitos (telefones, CPFs, etc.)
