@@ -87,8 +87,20 @@ export async function POST(_request: NextRequest, { params }: RouteContext): Pro
   try {
     created = await createZApiInstance(clinic.name, partnerToken, buildWebhookUrl());
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao criar instância Z-API";
+    console.error(`[channel-provision] clinicId=${clinicId}: ${message}`);
+    // "Bad credentials" (401/403) = o valor em ZAPI_PARTNER_TOKEN não é um
+    // Partner Token de integrador — as rotas de parceiro não aceitam o
+    // Client-Token da conta. Sem tradução, o owner só vê um erro críptico.
+    const badCredentials = /\((401|403)\)|bad credentials/i.test(message);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Falha ao criar instância Z-API" },
+      {
+        error: badCredentials
+          ? "A Z-API recusou o token de parceiro (Bad credentials). Conclua o cadastro de " +
+            "integrador no painel da Z-API, gere o Partner Token e atualize a env " +
+            "ZAPI_PARTNER_TOKEN no Vercel. Enquanto isso, crie a instância manualmente pelo painel."
+          : message,
+      },
       { status: 502 },
     );
   }
