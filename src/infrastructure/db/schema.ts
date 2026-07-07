@@ -980,10 +980,20 @@ export const playbookVersions = pgTable(
       .$type<{ objection: string; response: string }[]>()
       .notNull()
       .default([]),
+    // DEPRECATED (biblioteca de mídia): substituída por media_assets +
+    // mediaAssetIds abaixo. Mantida só como fallback de leitura até a Fase 4
+    // (contração) da migração — não escrever mais aqui.
     mediaLibrary: jsonb("media_library")
       .$type<
         { id: string; title: string; url: string; type: "video" | "image" }[]
       >()
+      .notNull()
+      .default([]),
+    // Seleção de mídias (da biblioteca clinic-level `media_assets`) que este
+    // playbook autoriza a IA a enviar. A biblioteca é a dona do arquivo; o
+    // playbook só curadoriza o subconjunto que entra no prompt.
+    mediaAssetIds: jsonb("media_asset_ids")
+      .$type<string[]>()
       .notNull()
       .default([]),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -998,6 +1008,37 @@ export const playbookVersions = pgTable(
       table.clinicId,
       table.status,
     ),
+  }),
+);
+
+// Biblioteca de mídia clinic-level (vídeos, fotos; documentos em fase futura).
+// treatmentId nullable = mídia geral. Quando setado, é o gate determinístico
+// de isolamento entre procedimentos: nem o prompt oferece, nem o envio libera
+// mídia de um treatmentId para uma conversa de outro (ver resolveOutboundParts
+// em ConversationOrchestrator.ts). NUNCA relaxar esse isolamento via prompt.
+export const mediaAssets = pgTable(
+  "media_assets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    treatmentId: uuid("treatment_id").references(() => treatments.id),
+    title: text("title").notNull(),
+    url: text("url").notNull(),
+    type: text("type").$type<"video" | "image" | "document">().notNull(),
+    mimeType: text("mime_type"),
+    sizeBytes: integer("size_bytes"),
+    folder: text("folder"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicIdx: index("media_assets_org_idx").on(table.clinicId),
   }),
 );
 

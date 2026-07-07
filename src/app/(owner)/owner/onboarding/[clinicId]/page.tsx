@@ -11,13 +11,9 @@ import {
 import { OnboardingWizardClient } from "./onboarding-wizard-client";
 import type { PipelineStep } from "@/domain/entities/treatment";
 import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
+import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 
-type MediaItem = {
-  id: string;
-  title: string;
-  url: string;
-  type: "video" | "image";
-};
+const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
 export default async function OnboardingWizardPage({
   params,
@@ -26,7 +22,7 @@ export default async function OnboardingWizardPage({
 }) {
   const { clinicId } = await params;
 
-  const [clinic, activePlaybook, existingTreatments] = await Promise.all([
+  const [clinic, activePlaybook, existingTreatments, mediaAssets] = await Promise.all([
     db.query.organizations.findFirst({
       where: eq(organizations.id, clinicId),
       columns: {
@@ -66,7 +62,6 @@ export default async function OnboardingWizardPage({
         differentials: true,
         commercialPolicy: true,
         notes: true,
-        mediaLibrary: true,
       },
     }),
     db.query.treatments.findMany({
@@ -82,6 +77,7 @@ export default async function OnboardingWizardPage({
         pipelineSteps: true,
       },
     }),
+    mediaAssetRepo.listByClinic(clinicId),
   ]);
 
   if (!clinic) notFound();
@@ -146,8 +142,9 @@ export default async function OnboardingWizardPage({
             : "",
           isTest: clinic.isTest,
         },
-        mediaLibrary:
-          (activePlaybook?.mediaLibrary as MediaItem[] | null) ?? [],
+        mediaLibrary: mediaAssets
+          .filter((a) => a.type === "video" || a.type === "image")
+          .map((a) => ({ id: a.id, title: a.title, url: a.url, type: a.type as "video" | "image" })),
         autoReplyEnabled: clinic.autoReplyEnabled,
       }}
     />

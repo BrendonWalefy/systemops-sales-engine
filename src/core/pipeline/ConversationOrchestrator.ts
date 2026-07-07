@@ -1180,13 +1180,33 @@ async function rehostLeadMedia(
   }
 }
 
+// Isolamento entre procedimentos, aplicado na COMPOSIÇÃO do prompt: quando há
+// um tratamento ativo nesta virada, a LLM só vê mídia geral (treatmentId null)
+// ou dela — mídia de OUTRO procedimento nem aparece como opção no [MEDIA:id].
+// Sem tratamento ativo, comportamento de hoje (lista completa da seleção do
+// playbook). Reduz a chance de alucinação; a garantia dura é o gate abaixo,
+// em resolveOutboundParts, que não depende da LLM ter obedecido este filtro.
+export function filterMediaLibraryForTreatment<T extends { treatmentId?: string | null }>(
+  items: T[],
+  activeTreatmentId: string | null,
+): T[] {
+  if (!activeTreatmentId) return items;
+  return items.filter((m) => !m.treatmentId || m.treatmentId === activeTreatmentId);
+}
+
 // Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
 // produzindo partes prontas para entrega. IDs ausentes são logados como erro crítico
 // (vídeo perdido silenciosamente é pior do que log ruidoso) e pulados.
-function resolveOutboundParts(
+//
+// activeTreatmentId é o GATE DETERMINÍSTICO de isolamento entre procedimentos
+// (ver AGENTS.md "o sistema decide, a LLM verbaliza"): mesmo que a LLM emita
+// um [MEDIA:id] de outro procedimento (alucinação ou prompt mal seguido), este
+// gate bloqueia o envio — não depende do filtro de prompt acima ter funcionado.
+export function resolveOutboundParts(
   parts: ResponsePart[],
-  mediaLibrary: { id: string; title: string; type: "video" | "image"; url: string }[] | undefined,
+  mediaLibrary: { id: string; title: string; type: "video" | "image"; url: string; treatmentId?: string | null }[] | undefined,
   log: Logger,
+  activeTreatmentId: string | null = null,
 ): OutboundPart[] {
   const out: OutboundPart[] = [];
   const libraryIds = mediaLibrary?.map((m) => m.id) ?? [];
@@ -1206,6 +1226,14 @@ function resolveOutboundParts(
         mediaId: part.id,
         libraryIds,
         librarySize: libraryIds.length,
+      });
+      continue;
+    }
+    if (item.treatmentId && activeTreatmentId && item.treatmentId !== activeTreatmentId) {
+      log.error("mediaId pertence a outro procedimento — vídeo será omitido ao lead (isolamento entre procedimentos)", {
+        mediaId: item.id,
+        itemTreatmentId: item.treatmentId,
+        activeTreatmentId,
       });
       continue;
     }
@@ -2042,6 +2070,16 @@ export class ConversationOrchestrator {
         );
 
     const { slotPreference } = classification;
+    // Isolamento de mídia entre procedimentos: o tratamento "ativo" desta virada
+    // — pipeline em curso tem prioridade sobre o que o classificador identificou
+    // na mensagem livre. Usado para (a) filtrar o que entra na BIBLIOTECA DE
+    // MÍDIA do prompt e (b) bloquear no envio qualquer [MEDIA:id] cujo
+    // treatmentId divirja deste (ver resolveOutboundParts). null = sem
+    // isolamento aplicável nesta virada (comportamento de hoje, sem filtro).
+    const activeTreatmentId: string | null =
+      pipelineState?.treatmentId ??
+      findTreatmentByIdOrName(clinicTreatments, { treatmentName: slotPreference.identifiedTreatment })?.id ??
+      null;
     const stopContactDecision = resolveStopContactDecision({
       classifiedIntent: classification.intent,
       messageText,
@@ -2242,7 +2280,7 @@ export class ConversationOrchestrator {
           installmentTable: clinic.installmentRates && editorial?.commercialPolicy
             ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
             : null,
-          mediaLibrary: editorial?.mediaLibrary ?? [],
+          mediaLibrary: filterMediaLibraryForTreatment(editorial?.mediaLibrary ?? [], activeTreatmentId),
           receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
         },
         context: promptContext,
@@ -3193,7 +3231,7 @@ export class ConversationOrchestrator {
       conversationId: conversation.id,
     });
     const outboundParts = hasInterleavedMedia
-      ? resolveOutboundParts(composedParts, editorial?.mediaLibrary, deliveryLog)
+      ? resolveOutboundParts(composedParts, editorial?.mediaLibrary, deliveryLog, activeTreatmentId)
       : [];
 
     // ── 9. Persiste resposta e outbox antes do envio técnico ──
@@ -3217,6 +3255,7 @@ export class ConversationOrchestrator {
             composedParts.filter((part) => part.type === "media"),
             editorial.mediaLibrary,
             deliveryLog,
+            activeTreatmentId,
           )
         : [];
     await this.enqueueConversationReply(clinicId, conversation.id, {

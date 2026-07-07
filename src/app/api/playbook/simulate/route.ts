@@ -16,7 +16,7 @@ import {
   DEFAULT_MENU_ITEMS,
 } from "@/domain/entities/clinic";
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
-import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import { resolveActiveEditorialConfig, resolveMediaLibraryForVersion } from "@/application/config/editorial-config";
 import { getClinicModules } from "@/application/modules/module-gate";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 
@@ -431,7 +431,7 @@ export async function POST(req: NextRequest) {
         objections: (activeVersion.objections as { objection: string; response: string }[] | null) ?? [],
         greetingMessage: clinicRow?.greetingMessage ?? "",
         notes: activeVersion.notes ?? null,
-        mediaLibrary: (activeVersion.mediaLibrary as { id: string; title: string; url: string; type: "video" | "image" }[] | null) ?? [],
+        mediaLibrary: await resolveMediaLibraryForVersion(body.clinicId, activeVersion),
       };
     } else if (body.playbook) {
       playbook = body.playbook;

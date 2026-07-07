@@ -7,6 +7,9 @@ import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PlaybookEditorClient } from "./editor-client";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
+import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
+
+const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
 export default async function PlaybookEditorPage({
   params,
@@ -16,7 +19,7 @@ export default async function PlaybookEditorPage({
   const { id } = await params;
   const clinicId = await requireSessionClinicId();
 
-  const [[version], clinicRow] = await Promise.all([
+  const [[version], clinicRow, libraryAssets] = await Promise.all([
     db
       .select()
       .from(playbookVersions)
@@ -28,6 +31,7 @@ export default async function PlaybookEditorPage({
       .where(eq(organizations.id, clinicId))
       .limit(1)
       .then((r) => r[0] ?? null),
+    mediaAssetRepo.listByClinic(clinicId),
   ]);
 
   if (!version) notFound();
@@ -42,6 +46,7 @@ export default async function PlaybookEditorPage({
       greetingMessage={clinicRow?.greetingMessage ?? ""}
       businessNoun={businessNoun}
       bookingNoun={bookingNoun}
+      libraryAssets={libraryAssets.map((a) => ({ id: a.id, title: a.title, type: a.type }))}
       initialData={{
         specialty: version.specialty ?? "",
         toneOfVoice: version.toneOfVoice,
@@ -50,7 +55,7 @@ export default async function PlaybookEditorPage({
         commercialPolicy: version.commercialPolicy ?? "",
         objections: version.objections.length > 0 ? version.objections : [],
         notes: version.notes ?? "",
-        mediaLibrary: (version.mediaLibrary as { id: string; title: string; url: string; type: "video" | "image" }[] | null) ?? [],
+        mediaAssetIds: version.mediaAssetIds ?? [],
       }}
     />
   );
