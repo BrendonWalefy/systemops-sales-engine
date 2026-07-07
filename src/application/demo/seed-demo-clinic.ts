@@ -44,6 +44,7 @@ import {
   clinicModules,
   agentRecommendations,
   slotReservations,
+  mediaAssets,
 } from "@/infrastructure/db/schema";
 
 // ── Identidade da demo ──────────────────────────────────────────────────
@@ -253,6 +254,8 @@ async function resetClinic(clinicId: string): Promise<void> {
   await db.delete(followUps).where(eq(followUps.clinicId, clinicId));
   await db.delete(conversations).where(eq(conversations.clinicId, clinicId));
   await db.delete(clinicMembers).where(eq(clinicMembers.clinicId, clinicId));
+  // media_assets referencia organizations e treatments — precisa sair antes dos dois.
+  await db.delete(mediaAssets).where(eq(mediaAssets.clinicId, clinicId));
   await db.delete(treatments).where(eq(treatments.clinicId, clinicId));
   await db.delete(professionals).where(eq(professionals.clinicId, clinicId));
   await db.delete(playbookVersions).where(eq(playbookVersions.clinicId, clinicId));
