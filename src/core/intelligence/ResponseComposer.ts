@@ -33,28 +33,37 @@ function envModel(name: string): string | null {
   return value || null;
 }
 
-// P0.7: Deduplicar saudações repetidas ("Boa noite" 2x, "Bom dia" 2x, etc)
-function deduplicateGreetings(text: string): string {
-  const lines = text.split("\n");
-  const result: string[] = [];
-  const greetingPattern = /^(boa noite|bom dia|olá|oi|tudo bem|como você está)[,!?]?/i;
+// P0.7: Deduplicar saudações repetidas ("Boa noite" 2x, "Bom dia" 2x, etc).
+// Apesar da instrução no prompt para a LLM não se auto-saudar quando a mensagem
+// já leva a saudação canônica prependada (isFirstMessage), o modelo às vezes
+// abre um SEGUNDO parágrafo da própria resposta com saudação + nome (ex: "Boa
+// noite, Ariana. Tudo bem?\nSou a assistente virtual...\n\nBoa noite, Ariana!
+// Nós somos especialistas..."). Como não há tag [MEDIA:] separando os blocos,
+// isso chega como um ÚNICO ResponsePart de texto — prependFirstMessageSalutation
+// (ConversationOrchestrator.ts) só teria como agir se fossem parts distintos, e
+// stripLeadingGreeting só olha o início do texto. Por isso a dedupe roda aqui,
+// por parágrafo, no texto já concatenado.
+const GREETING_OPENER_RE = /^(bom\s*dia|boa\s*tarde|boa\s*noite)\s*,?\s*([A-ZÀ-Ú][\wà-úÀ-Ú']*\s*)?[!,.]+\s*/i;
 
-  let lastWasGreeting = false;
+export function deduplicateGreetings(text: string): string {
+  const paragraphs = text.split(/\n{2,}/);
+  let greetingSeen = false;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    const isGreeting = greetingPattern.test(trimmed);
+  const processed = paragraphs.map((paragraph) => {
+    const match = paragraph.match(GREETING_OPENER_RE);
+    if (!match) return paragraph;
 
-    // Se é saudação e a linha anterior também era, pula
-    if (isGreeting && lastWasGreeting) {
-      continue;
+    if (greetingSeen) {
+      const stripped = paragraph.slice(match[0].length).trimStart();
+      if (stripped.length === 0) return "";
+      return stripped.charAt(0).toUpperCase() + stripped.slice(1);
     }
 
-    result.push(line);
-    lastWasGreeting = isGreeting && trimmed.length > 0;
-  }
+    greetingSeen = true;
+    return paragraph;
+  });
 
-  return result.join("\n").trim();
+  return processed.filter((p) => p.trim().length > 0).join("\n\n").trim();
 }
 
 export function resolveComposerModel(plan?: ComposerPlan | null): string {

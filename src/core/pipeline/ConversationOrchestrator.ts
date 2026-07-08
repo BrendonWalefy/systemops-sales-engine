@@ -242,7 +242,10 @@ function buildConciergeStarter(clinic: Organization, timezone: ClinicTimezone, l
 // defesa de profundidade: não depender só do prompt, mesmo que ele já peça pra LLM
 // não se auto-saudar. O pipeline de tratamento nunca abre com saudação (texto fixo do
 // playbook), então isto é um no-op seguro para esse caminho.
-const LEADING_GREETING_RE = /^(bom\s*dia|boa\s*tarde|boa\s*noite|ol[áa]|oi)[!,.\s]+/i;
+// Contempla nome do lead intercalado entre a saudação e a pontuação (ex: "Boa noite,
+// Ariana! ...") — sem o grupo de nome opcional, "Boa noite, Ariana!" não batia e a
+// saudação da LLM sobrevivia ao lado da saudação canônica prependada (bug P0.7).
+const LEADING_GREETING_RE = /^(bom\s*dia|boa\s*tarde|boa\s*noite|ol[áa]|oi)\s*,?\s*([A-ZÀ-Ú][\wà-úÀ-Ú']*\s*)?[!,.]+\s*/i;
 
 function stripLeadingGreeting(text: string): string {
   const stripped = text.replace(LEADING_GREETING_RE, "").trimStart();
@@ -267,12 +270,21 @@ export function prependFirstMessageSalutation(
 
   if (parts.length === 0) return [{ type: "text", content: opener }];
 
+  // Strip em TODOS os parts de texto, não só no primeiro: quando a LLM quebra a
+  // resposta em múltiplos parágrafos/parts, ela às vezes reabre com saudação em
+  // mais de um deles (contra a instrução do prompt) — sem isso, só a saudação do
+  // primeiro part era removida e a dos parts seguintes sobrevivia ao lado da
+  // saudação canônica prependada (bug P0.7, ex: "Boa noite, Ariana!" duplicado).
   const [first, ...rest] = parts;
+  const cleanedRest = rest.map((part) =>
+    part.type === "text" ? { ...part, content: stripLeadingGreeting(part.content) } : part,
+  );
+
   if (first.type === "text") {
     const body = stripLeadingGreeting(first.content);
-    return [{ type: "text", content: `${opener} ${body}`.trim() }, ...rest];
+    return [{ type: "text", content: `${opener} ${body}`.trim() }, ...cleanedRest];
   }
-  return [{ type: "text", content: opener }, first, ...rest];
+  return [{ type: "text", content: opener }, first, ...cleanedRest];
 }
 
 function isMenuRerequest(message: string): boolean {
