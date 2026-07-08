@@ -141,9 +141,27 @@ function getMenuItemsForExperience(clinic: Organization, experience: Conversatio
 
 // Retorna apenas o primeiro nome do lead para saudações — evita usar nome completo
 // ou apelidos de contato como "Tânia Mara/Sinal Verde" na conversa.
+// Guard: rejeita nomes de WhatsApp que não são nomes próprios de pessoa:
+// frases religiosas ("Deus Ele É Deus."), siglas, nomes de negócios, etc.
 function extractFirstName(fullName: string | null | undefined): string | null {
   if (!fullName) return null;
-  return fullName.split(/[\s\/]+/)[0] ?? null;
+  const first = fullName.split(/[\s\/]+/)[0] ?? null;
+  if (!first) return null;
+
+  // Menos de 2 caracteres → sem sentido como nome
+  if (first.replace(/\./g, "").length < 2) return null;
+
+  const cleanFirst = first.replace(/\./g, "");
+
+  // Nomes de perfil com números não são tratados como nomes pessoais válidos (ex: "LOJA123")
+  if (/\d/.test(cleanFirst)) return null;
+
+  // Prefixos que indicam não ser nome de pessoa: religiosos, negócios, títulos
+  const INVALID_FIRST_NAME_PREFIX_RE =
+    /^(deus|senhor|sra?|nosso|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|atendimento|dr|dra)/i;
+  if (INVALID_FIRST_NAME_PREFIX_RE.test(cleanFirst)) return null;
+
+  return first;
 }
 
 // Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
@@ -1520,6 +1538,41 @@ export class ConversationOrchestrator {
     // da IA (não pausa e não é encaminhado ao doutor aqui).
     const inboundMediaType = params.mediaType;
     if (inboundMediaType === "image" || inboundMediaType === "video" || inboundMediaType === "document") {
+      // ── Guard: mídia de anúncio (Click-to-WhatsApp) ──
+      // Quando o lead clica em "Saiba mais" de um anúncio, o WhatsApp envia automaticamente
+      // o card do anúncio (imagem/vídeo) junto com a mensagem de texto do lead.
+      // Critérios para identificar como mídia de anúncio (não foto clínica do paciente):
+      //   1. É o primeiro contato da conversa (IA ainda não respondeu), E
+      //   2. Há poucas mensagens do lead no histórico (burst de chegada de anúncio), E
+      //   3. A legenda (caption) coincide com frases típicas de preenchimento automático de anúncios.
+      const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
+      const caption = params.messageText?.trim() ?? "";
+      // Usa contagem de mensagens na conversa sem carregar todo o histórico (allMessages é carregado mais adiante)
+      const [totalMsgRow] = await db
+        .select({ total: count() })
+        .from(messagesTable)
+        .where(eq(messagesTable.conversationId, conversation.id));
+      const [agentMsgRow] = await db
+        .select({ total: count() })
+        .from(messagesTable)
+        .where(and(eq(messagesTable.conversationId, conversation.id), eq(messagesTable.author, "agent")));
+      const earlyLeadMsgTotal = Number(totalMsgRow?.total ?? 0);
+      const hasAnyAgentMsg = Number(agentMsgRow?.total ?? 0) > 0;
+      const isLikelyAdMedia =
+        !hasAnyAgentMsg &&
+        earlyLeadMsgTotal <= 3 &&
+        AD_CAPTION_RE.test(caption);
+
+      if (isLikelyAdMedia) {
+        console.log(
+          `[Orchestrator] Mídia detectada como card de anúncio — não encaminhando ao doutor nem pausando IA` +
+          ` (conv=${conversation.id} lead=${lead.id} caption="${caption.slice(0, 80)}")`,
+        );
+        // Deixa o fluxo continuar normalmente como se fosse uma mensagem de texto.
+        // O LLM responderá com base no texto que o lead enviou junto ao anúncio.
+        // Não retorna aqui — o código abaixo não será atingido por causa do `if`.
+      } else {
+
       // Rehospeda de forma assíncrona: Z-API URLs expiram em horas
       if (params.mediaUrl) {
         rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType)
@@ -1692,6 +1745,7 @@ export class ConversationOrchestrator {
       });
 
       return { replied: true };
+      } // end else (não é mídia de anúncio)
     }
 
     if (!replyEnabled) {
