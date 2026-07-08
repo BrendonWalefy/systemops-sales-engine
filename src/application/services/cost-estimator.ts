@@ -14,6 +14,10 @@ const AI_MODEL_PRICES: Record<string, AiModelPrice> = {
     inputUsdMicrosPerMillionTokens: 150_000,
     outputUsdMicrosPerMillionTokens: 600_000,
   },
+  "gpt-4o": {
+    inputUsdMicrosPerMillionTokens: 2_500_000,
+    outputUsdMicrosPerMillionTokens: 10_000_000,
+  },
   "gpt-4.1-mini": {
     inputUsdMicrosPerMillionTokens: 400_000,
     outputUsdMicrosPerMillionTokens: 1_600_000,
@@ -31,6 +35,7 @@ const AI_MODEL_PRICES: Record<string, AiModelPrice> = {
     outputUsdMicrosPerMillionTokens: 30_000_000,
   },
 };
+
 
 const WHATSAPP_BRAZIL_PRICE_USD_MICROS = {
   service: 0,
