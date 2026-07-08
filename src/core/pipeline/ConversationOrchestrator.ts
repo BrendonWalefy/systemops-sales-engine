@@ -2322,6 +2322,7 @@ export class ConversationOrchestrator {
     // Helper para compor resposta
     let composedMediaIds: string[] = [];
     let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
+    let triggerPartsOverride: import("@/core/intelligence/ResponseComposer").ResponsePart[] | null = null;
     // Avanço de pipeline adiado: executado APÓS todo o conteúdo ser enviado para evitar
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
@@ -2394,7 +2395,8 @@ export class ConversationOrchestrator {
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
-    } else switch (effectiveIntent) {
+    } else {
+      switch (effectiveIntent) {
       // ── Confirmação de slot ──
       case "confirm_slot": {
         // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
@@ -2990,7 +2992,6 @@ export class ConversationOrchestrator {
       // ── Pergunta geral (inclui seleções de menu: procedimentos e localização) ──
       case "general_question": {
         let clinicContext: string;
-        let triggerPartsOverride: ResponsePart[] | null = null;
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
         const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
@@ -3238,6 +3239,26 @@ export class ConversationOrchestrator {
           });
         }
         break;
+      }
+      } // End of switch
+    } // End of else
+
+    if (isFirstMessage && !shouldSendConciergeStarter(experience, effectiveIntent) && triggerPartsOverride && triggerPartsOverride.length > 0) {
+      // Se for a primeira mensagem e disparou um pipeline direto (pulando o ConciergeStarter),
+      // precisamos injetar a saudação antes do conteúdo do pipeline para não ficar robótico.
+      const salutation = getDayGreeting(timezone);
+      const firstName = extractFirstName(lead.name);
+      const nameGreeting = firstName ? `, ${firstName}` : "";
+      const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage);
+      const intro = receptionistName ? `Sou a ${receptionistName}, assistente virtual da ${clinic.name}.` : `Sou a assistente virtual da ${clinic.name}.`;
+
+      const greetingPrefix = `${salutation}${nameGreeting}. Tudo bem?\n${intro}\n\n`;
+
+      const firstTextPart = triggerPartsOverride.find((p) => p.type === "text");
+      if (firstTextPart && firstTextPart.type === "text") {
+        firstTextPart.content = greetingPrefix + firstTextPart.content;
+        replyText = triggerPartsOverride.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
+        composedParts = triggerPartsOverride;
       }
     }
 
