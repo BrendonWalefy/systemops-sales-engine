@@ -151,10 +151,15 @@ function extractFirstName(fullName: string | null | undefined): string | null {
   // Menos de 2 caracteres → sem sentido como nome
   if (first.replace(/\./g, "").length < 2) return null;
 
-  // Termos que indicam não ser nome de pessoa: religiosos, negócios, números
-  const INVALID_FIRST_NAME_RE =
-    /^(deus|senhor|senhora|nosso|sr|sra|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|\d+)$/i;
-  if (INVALID_FIRST_NAME_RE.test(first.replace(/\./g, ""))) return null;
+  const cleanFirst = first.replace(/\./g, "");
+
+  // Nomes de perfil com números não são tratados como nomes pessoais válidos (ex: "LOJA123")
+  if (/\d/.test(cleanFirst)) return null;
+
+  // Prefixos que indicam não ser nome de pessoa: religiosos, negócios, títulos
+  const INVALID_FIRST_NAME_PREFIX_RE =
+    /^(deus|senhor|sra?|nosso|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|atendimento|dr|dra)/i;
+  if (INVALID_FIRST_NAME_PREFIX_RE.test(cleanFirst)) return null;
 
   return first;
 }
