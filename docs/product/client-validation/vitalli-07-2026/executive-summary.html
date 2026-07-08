@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vitalli Go-Live | Resumo Executivo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    header p {
+      font-size: 1.1em;
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 40px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+
+    @media (max-width: 768px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .section {
+      border-left: 4px solid #667eea;
+      padding-left: 20px;
+    }
+
+    .section h2 {
+      font-size: 1.4em;
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .metric {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .metric .value {
+      font-size: 1.8em;
+      font-weight: 700;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+
+    .metric .label {
+      font-size: 0.9em;
+      color: #666;
+    }
+
+    .timeline {
+      margin: 20px 0;
+    }
+
+    .day {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 15px;
+      padding: 12px;
+      background: #f9f9f9;
+      border-radius: 6px;
+    }
+
+    .day-label {
+      font-weight: 700;
+      min-width: 60px;
+      color: #667eea;
+    }
+
+    .day-content {
+      font-size: 0.95em;
+      color: #555;
+      line-height: 1.4;
+    }
+
+    .issues {
+      margin-top: 20px;
+    }
+
+    .issue {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 12px;
+      padding: 10px;
+      background: #fff3cd;
+      border-left: 3px solid #ffc107;
+      border-radius: 4px;
+    }
+
+    .issue-icon {
+      font-size: 1.2em;
+      margin-right: 10px;
+      min-width: 20px;
+    }
+
+    .issue-text {
+      font-size: 0.9em;
+      color: #333;
+    }
+
+    .checklist {
+      background: #e8f4f8;
+      padding: 15px;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #333;
+      line-height: 1.6;
+      border-left: 3px solid #0dcaf0;
+    }
+
+    .checklist li {
+      margin-left: 20px;
+      margin-bottom: 8px;
+    }
+
+    .success {
+      background: #d4edda;
+      color: #155724;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 20px;
+      border-left: 3px solid #28a745;
+    }
+
+    .warning {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 20px;
+      border-left: 3px solid #dc3545;
+    }
+
+    footer {
+      background: #f5f5f5;
+      padding: 20px 40px;
+      text-align: center;
+      font-size: 0.9em;
+      color: #666;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .card {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 6px;
+      border-left: 3px solid #667eea;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #333;
+    }
+
+    .card em {
+      font-size: 0.85em;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎯 Vitalli — Plano de Go-Live</h1>
+      <p>Validação E2E REAL com garantia de qualidade (T+7 dias)</p>
+    </header>
+
+    <div class="content">
+      <div class="section">
+        <h2>📊 Situação Atual</h2>
+
+        <div class="metrics">
+          <div class="metric">
+            <div class="value">60%</div>
+            <div class="label">Acurácia IA</div>
+          </div>
+          <div class="metric">
+            <div class="value">30%</div>
+            <div class="label">Intervenção manual</div>
+          </div>
+          <div class="metric">
+            <div class="value">10</div>
+            <div class="label">F1 saudações falsas</div>
+          </div>
+          <div class="metric">
+            <div class="value">3</div>
+            <div class="label">Falhas de manutenção</div>
+          </div>
+        </div>
+
+        <div class="issues">
+          <h3 style="margin-bottom: 10px; font-size: 1em; color: #333;">Problemas identificados:</h3>
+          <div class="issue">
+            <div class="issue-icon">❌</div>
+            <div class="issue-text"><strong>F1 (47%)</strong>: Saudação genérica quando lead pergunta preço</div>
+          </div>
+          <div class="issue">
+            <div class="issue-icon">❌</div>
+            <div class="issue-text"><strong>F5 (18%)</strong>: Manutenção não respondida pela IA</div>
+          </div>
+          <div class="issue">
+            <div class="issue-icon">⚠️</div>
+            <div class="issue-text"><strong>Simulador engana</strong>: Não reflete pipeline real de produção</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>🚀 Plano de Ação</h2>
+
+        <div class="timeline">
+          <div class="day">
+            <div class="day-label">T (08/07)</div>
+            <div class="day-content"><strong>Baseline</strong> com replay real + aprovação estratégia</div>
+          </div>
+          <div class="day">
+            <div class="day-label">T+1-2</div>
+            <div class="day-content"><strong>P0.1</strong> (anti-saudação) — Crítica, reduz F1 de 50% → 10%</div>
+          </div>
+          <div class="day">
+            <div class="day-label">T+2-3</div>
+            <div class="day-content"><strong>P0.2</strong> (manutenção) — Elimina F5 completamente</div>
+          </div>
+          <div class="day">
+            <div class="day-label">T+3-4</div>
+            <div class="day-content"><strong>P0.3-P0.6</strong> (paralelo) — Caps UI, termos desconhecidos, crash fix</div>
+          </div>
+          <div class="day">
+            <div class="day-label">T+5-6</div>
+            <div class="day-content"><strong>E2E com Gleice</strong> — 5 conversas REAIS no WhatsApp (não simulador)</div>
+          </div>
+          <div class="day">
+            <div class="day-label">T+7</div>
+            <div class="day-content"><strong>🚀 GO-LIVE</strong> — Desligar shadow mode às 21:00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>✅ Checklist de Go-Live</h2>
+
+        <div class="checklist">
+          <ul>
+            <li><strong>Vitalli score ≥85%</strong> no replay (vs 60% hoje)</li>
+            <li><strong>Ximendes sem regressão</strong> (≥58%)</li>
+            <li><strong>E2E com Gleice:</strong> 5/5 conversas OK</li>
+            <li><strong>Caps 15/60 + quiet hours 9-20</strong> aplicadas</li>
+            <li><strong>Monitoring ativo</strong> (Sentry + Analytics)</li>
+            <li><strong>Rollback plan documentado</strong></li>
+          </ul>
+        </div>
+
+        <div class="success">
+          <strong>✅ If all checks pass:</strong><br/>
+          Desligar shadow mode e ir para LIVE com confiança. Métricas esperadas em 1 semana: 87%+ acurácia, <10% intervenção manual
+        </div>
+
+        <div class="warning">
+          <strong>🔴 If any check fails:</strong><br/>
+          +3 dias de iteração. Não forçar go-live sem atingir 85%+.
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>👥 Responsáveis</h2>
+
+        <div class="grid-2">
+          <div class="card">
+            <strong>engenheiro-conversa</strong>
+            <em>P0.1 (2d), P0.2 (1d), P0.5/P0.6 (1d)</em>
+          </div>
+          <div class="card">
+            <strong>especialista-infra</strong>
+            <em>P0.3 UI de caps (2d)</em>
+          </div>
+          <div class="card">
+            <strong>revisor-multitenant</strong>
+            <em>Code review todas PRs, validação segurança</em>
+          </div>
+          <div class="card">
+            <strong>Gleice</strong>
+            <em>E2E testes, operacional 24h pós-launch</em>
+          </div>
+        </div>
+
+        <h3 style="margin-top: 20px; font-size: 1em; color: #333;">Daily standup (10:00 São Paulo):</h3>
+        <div class="card">
+          15 min, print de `/tmp/*after*.log`, decisão de merge vs blocker. Owner: Brendon
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>📈 Métricas Esperadas</h2>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 10px; font-weight: 700;">Métrica</td>
+            <td style="padding: 10px; font-weight: 700; text-align: right;">Hoje</td>
+            <td style="padding: 10px; font-weight: 700; text-align: right;">Target</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 10px;">Acurácia IA</td>
+            <td style="padding: 10px; text-align: right; color: #dc3545;">60%</td>
+            <td style="padding: 10px; text-align: right; color: #28a745;">≥85%</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 10px;">Intervenção manual</td>
+            <td style="padding: 10px; text-align: right; color: #dc3545;">30%</td>
+            <td style="padding: 10px; text-align: right; color: #28a745;">≤10%</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 10px;">F1 (saudação)</td>
+            <td style="padding: 10px; text-align: right;">10</td>
+            <td style="padding: 10px; text-align: right;">≤2</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 10px;">F5 (manutenção)</td>
+            <td style="padding: 10px; text-align: right;">3</td>
+            <td style="padding: 10px; text-align: right;">0</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px;">Primeira resposta &lt;1min</td>
+            <td style="padding: 10px; text-align: right;">TBD</td>
+            <td style="padding: 10px; text-align: right;">>95%</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>🔧 Por que desta vez vai funcionar</h2>
+
+        <div style="background: #d1ecf1; padding: 15px; border-radius: 6px; border-left: 3px solid #0c5460;">
+          <ol style="margin-left: 20px; font-size: 0.95em; color: #0c5460; line-height: 1.6;">
+            <li><strong>Teste REAL</strong>: Não simulador. Replay roda IntentClassifier + Orchestrator + Composer (pipeline completo).</li>
+            <li><strong>Validação retroativa</strong>: Cada P0.x testado não apenas em Vitalli, mas também em Ximendes (garante sem regressão).</li>
+            <li><strong>E2E antes do go-live</strong>: Gleice testa 5 conversas reais no WhatsApp (não simulation).</li>
+            <li><strong>Baseline conhecida</strong>: Não está mexendo no escuro. Sabe-se exatamente o que vai mudar e em quanto (10→2, 3→0, etc).</li>
+            <li><strong>Monitoring 24h</strong>: Rollback automático se qualquer métrica explodir (não "rezar que funcionou").</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>🎯 Próximo Passo</h2>
+
+        <div style="background: #fff3cd; padding: 20px; border-radius: 6px; border-left: 3px solid #ffc107; font-size: 1em;">
+          <strong>TODAY (T):</strong><br/>
+          1. Compartilhar este doc com time<br/>
+          2. Briefing de 30 min com Brendon, tech lead, revisor-multitenant<br/>
+          3. Rodar baseline: <code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px;">npm run replay:conversas -- --clinic vitalli</code><br/>
+          4. Capturar `/tmp/baseline-08-07.log`<br/>
+          5. Assinar go/no-go para começar implementação amanhã
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <strong>Clínica Vitalli — Plano de Go-Live com Garantia</strong><br/>
+      Análise + Estratégia Criada: 08/07/2026 | Próximo Update: 09/07/2026 10:00 São Paulo
+    </footer>
+  </div>
+</body>
+</html>
