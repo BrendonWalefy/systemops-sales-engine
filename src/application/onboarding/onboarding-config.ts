@@ -68,7 +68,7 @@ export const onboardingConfigSchema = z.object({
   calendarMode: z.enum(["internal", "google_calendar"]).default("internal"),
   googleCalendarId: z.string().trim().optional(),
   isTest: z.boolean().default(true),
-  plan: z.enum(["essencial", "avancado", "rede", "custom"] satisfies [OrgPlan, ...OrgPlan[]]).default("custom"),
+  plan: z.enum(["start", "growth", "scale", "enterprise"] satisfies [OrgPlan, ...OrgPlan[]]).default("enterprise"),
   billingActive: z.boolean().default(false),
   monthlyRevenueBrl: z.number().nonnegative().optional(),
   billingStartedAt: z.string().trim().optional(),

@@ -68,11 +68,11 @@ export async function onboardClinic(
         : "internal",
     googleCalendarId: (formData.get("googleCalendarId") as string) || undefined,
     isTest: formData.get("isTest") === "on",
-    plan: ((formData.get("plan") as string) || "custom") as
-      | "essencial"
-      | "avancado"
-      | "rede"
-      | "custom",
+    plan: ((formData.get("plan") as string) || "enterprise") as
+      | "start"
+      | "growth"
+      | "scale"
+      | "enterprise",
     billingActive: formData.get("billingActive") === "on",
     monthlyRevenueBrl: (() => {
       const rawValue = formData.get("monthlyRevenueBrl");

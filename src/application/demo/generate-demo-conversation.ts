@@ -27,7 +27,7 @@ export type DemoTurn = {
 
 export type DemoClinicContext = {
   clinicName: string;
-  plan?: "essencial" | "avancado" | "rede" | "custom" | null;
+  plan?: "start" | "growth" | "scale" | "enterprise" | null;
   specialty: string;
   toneOfVoice: string | null;
   playbook: string | null;
@@ -235,7 +235,7 @@ export async function generateDemoThread(
         conversationHistory: history,
         clinic: {
           name: ctx.clinicName,
-          plan: ctx.plan ?? "essencial",
+          plan: ctx.plan ?? "start",
           specialty: ctx.specialty,
           toneOfVoice: ctx.toneOfVoice,
           playbook: ctx.playbook,

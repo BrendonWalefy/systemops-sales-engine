@@ -128,7 +128,7 @@ export default async function OnboardingWizardPage({
         policy: {
           commercialPolicy: activePlaybook?.commercialPolicy ?? "",
           notes: activePlaybook?.notes ?? "",
-          plan: clinic.plan ?? "custom",
+          plan: clinic.plan ?? "enterprise",
           billingActive:
             !clinic.isTest &&
             ((clinic.monthlyRevenueBrl ?? 0) > 0 ||

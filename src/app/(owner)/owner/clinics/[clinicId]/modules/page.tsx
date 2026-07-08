@@ -14,7 +14,7 @@ import { REDE_RECOMMENDED_BWAVE_CONFIG } from "@/application/modules/plan-preset
 import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
 import { toggleModule, updateClinicPlan, updateModuleConfig } from "./actions";
 
-const PLAN_OPTIONS = ["essencial", "avancado", "rede", "custom"] as const;
+const PLAN_OPTIONS = ["start", "growth", "scale", "enterprise"] as const;
 const CONFIGURABLE_MODULE_KEYS = ["voice_tts", "voice_elevenlabs"] as const;
 
 type ConfigurableModuleKey = (typeof CONFIGURABLE_MODULE_KEYS)[number];
@@ -111,10 +111,10 @@ export default async function ClinicModulesPage({
                 padding: "8px 10px",
               }}
             >
-              <option value="essencial">Essencial</option>
-              <option value="avancado">Growth</option>
-              <option value="rede">Rede</option>
-              <option value="custom">Custom</option>
+              <option value="start">Essencial</option>
+              <option value="growth">Growth</option>
+              <option value="scale">Rede</option>
+              <option value="enterprise">Custom</option>
             </select>
             <button
               type="submit"

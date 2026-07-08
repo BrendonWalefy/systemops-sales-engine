@@ -72,13 +72,13 @@ describe("computeCommercialDiagnostic", () => {
     const base = { ...EMPTY, ticketBucket: "600-1000" as const };
     expect(
       computeCommercialDiagnostic({ ...base, leadsBucket: "0-200" }).plan.key,
-    ).toBe("essencial");
+    ).toBe("start");
     expect(
       computeCommercialDiagnostic({ ...base, leadsBucket: "200-400" }).plan.key,
-    ).toBe("avancado");
+    ).toBe("growth");
     expect(
       computeCommercialDiagnostic({ ...base, leadsBucket: "800+" }).plan.key,
-    ).toBe("rede");
+    ).toBe("scale");
   });
 
   it("keeps fit and close probability within bounds and coherent", () => {

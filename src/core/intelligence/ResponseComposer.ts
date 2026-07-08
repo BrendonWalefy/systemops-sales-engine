@@ -10,7 +10,7 @@ import type { ConversationExperience } from "@/domain/entities/clinic";
 import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 
-type ComposerPlan = "essencial" | "avancado" | "rede" | "custom";
+type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
   raw: string;
   inputTokens: number;
@@ -38,24 +38,24 @@ export function resolveComposerModel(plan?: ComposerPlan | null): string {
   if (globalOverride) return globalOverride;
 
   switch (plan) {
-    case "avancado":
+    case "growth":
       return envModel("OPENAI_COMPOSER_MODEL_GROWTH")
-        ?? envModel("OPENAI_COMPOSER_MODEL_AVANCADO")
-        ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
-        ?? PREMIUM_COMPOSER_MODEL;
-    case "rede":
+        ?? envModel("OPENAI_COMPOSER_MODEL_GROWTH")
+        ?? envModel("OPENAI_COMPOSER_MODEL_DEFAULT")
+        ?? STANDARD_COMPOSER_MODEL;
+    case "scale":
       return envModel("OPENAI_COMPOSER_MODEL_SCALE")
-        ?? envModel("OPENAI_COMPOSER_MODEL_REDE")
+        ?? envModel("OPENAI_COMPOSER_MODEL_SCALE")
         ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
         ?? PREMIUM_COMPOSER_MODEL;
-    case "custom":
-      return envModel("OPENAI_COMPOSER_MODEL_CUSTOM")
+    case "enterprise":
+      return envModel("OPENAI_COMPOSER_MODEL_ENTERPRISE")
         ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
         ?? PREMIUM_COMPOSER_MODEL;
-    case "essencial":
+    case "start":
     default:
       return envModel("OPENAI_COMPOSER_MODEL_START")
-        ?? envModel("OPENAI_COMPOSER_MODEL_ESSENCIAL")
+        ?? envModel("OPENAI_COMPOSER_MODEL_START")
         ?? envModel("OPENAI_COMPOSER_MODEL_DEFAULT")
         ?? STANDARD_COMPOSER_MODEL;
   }

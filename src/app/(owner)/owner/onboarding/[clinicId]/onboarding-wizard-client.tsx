@@ -1958,10 +1958,10 @@ function StepPolitica({
               }
               style={inputStyle}
             >
-              <option value="custom">Customizado / ainda definindo</option>
-              <option value="essencial">Essencial</option>
-              <option value="avancado">Growth</option>
-              <option value="rede">Rede</option>
+              <option value="enterprise">Customizado / ainda definindo</option>
+              <option value="start">Essencial</option>
+              <option value="growth">Growth</option>
+              <option value="scale">Rede</option>
             </select>
           </div>
           <label
@@ -1995,7 +1995,7 @@ function StepPolitica({
                   onChange={(e) =>
                     onChange({ ...data, monthlyRevenueBrl: e.target.value })
                   }
-                  placeholder="1497"
+                  placeholder="2100"
                   style={inputStyle}
                 />
               </div>
@@ -2263,7 +2263,7 @@ function StepRevisao({
       value: `${pipelines.filter((p) => p.enabled).length} de ${pipelines.length}`,
       ok: true,
     },
-    { label: "Plano", value: policy.plan, ok: policy.plan !== "custom" },
+    { label: "Plano", value: policy.plan, ok: policy.plan !== "enterprise" },
     {
       label: "Cobrança",
       value: policy.billingActive

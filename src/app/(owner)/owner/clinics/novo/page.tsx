@@ -55,7 +55,7 @@ const PLANS: {
   benefits: string[];
 }[] = [
   {
-    key: "essencial",
+    key: "start",
     label: "Start",
     price: 1300,
     desc: "~300 conversas/mês",
@@ -68,7 +68,7 @@ const PLANS: {
     ],
   },
   {
-    key: "avancado",
+    key: "growth",
     label: "Growth",
     price: 2100,
     desc: "~800 conversas/mês",
@@ -81,7 +81,7 @@ const PLANS: {
     ],
   },
   {
-    key: "rede",
+    key: "scale",
     label: "Scale",
     price: 3500,
     desc: "~2.000 conversas/mês",

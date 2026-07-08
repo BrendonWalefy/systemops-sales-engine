@@ -49,7 +49,7 @@ function normalizeTone(value: string | null | undefined): string {
 }
 
 export function resolvePlanModules(plan: OrgPlan): ModuleKey[] {
-  if (plan === "custom") return [];
+  if (plan === "enterprise") return [];
   return MODULE_CATALOG.filter((moduleDef) => moduleDef.plans.includes(plan)).map(
     (moduleDef) => moduleDef.key,
   );
@@ -59,7 +59,7 @@ export function applyPlanActivations(
   currentState: Partial<Record<ModuleKey, boolean>>,
   plan: OrgPlan,
 ): Partial<Record<ModuleKey, boolean>> {
-  if (plan === "custom") return currentState;
+  if (plan === "enterprise") return currentState;
 
   const nextState = { ...currentState };
   for (const key of resolvePlanModules(plan)) {

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { PlaybookAdvisor } from "@/core/intelligence/PlaybookAdvisor";
+import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
+import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
+import { randomUUID } from "crypto";
 import type { ClinicMetrics } from "@/core/intelligence/MetricsAggregator";
 import type { CurrentPlaybook } from "@/core/intelligence/PlaybookAdvisor";
 
@@ -42,8 +45,13 @@ export async function POST(req: NextRequest) {
         to: new Date(rawMetrics.period.to),
       },
     };
-    const advisor = new PlaybookAdvisor();
-    const result = await advisor.analyze(metrics, body.currentPlaybook);
+    const tracker = new DefaultUsageCostTracker({
+      usageCostRepository: new DrizzleUsageCostRepository(),
+      idGenerator: () => randomUUID(),
+      now: () => new Date(),
+    });
+    const advisor = new PlaybookAdvisor(tracker);
+    const result = await advisor.analyze(body.clinicId, metrics, body.currentPlaybook);
 
     return NextResponse.json(result);
   } catch (err) {

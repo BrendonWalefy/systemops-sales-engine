@@ -68,9 +68,9 @@ export async function createProspectClinic(
   const specialty = (formData.get("specialty") as string | null)?.trim() || segmentDefaults.specialtyDefault;
   const city = (formData.get("city") as string | null)?.trim() || null;
   const plan = (formData.get("plan") as string | null) as
-    | "essencial"
-    | "avancado"
-    | "rede"
+    | "start"
+    | "growth"
+    | "scale"
     | null;
   const greetingMessage =
     (formData.get("greetingMessage") as string | null)?.trim() || null;
@@ -86,7 +86,7 @@ export async function createProspectClinic(
   if (adminPassword.length < 8) errors.adminPassword = "Mínimo 8 caracteres";
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
-  const resolvedPlan = plan ?? "essencial";
+  const resolvedPlan = plan ?? "start";
   const commercialSettings = resolveClinicCommercialSettings({
     plan: resolvedPlan,
     billingActive: false,
