@@ -12,7 +12,7 @@ export type ClinicBlueprintInput = {
     receptionistPhone?: string | null;
     autoReplyEnabled: boolean;
     isTest: boolean;
-    plan?: "essencial" | "avancado" | "rede" | "custom" | null;
+    plan?: "start" | "growth" | "scale" | "enterprise" | null;
     monthlyRevenueBrl?: number | null;
     billingStartedAt?: Date | null;
     defaultAppointmentDurationMinutes?: number | null;
@@ -179,7 +179,7 @@ export function buildClinicBlueprint(
       "Plano, valor contratado e status de cobrança da organização.",
       [
         !clinic.plan ? "plano comercial" : null,
-        clinic.plan === "custom" ? "plano final ainda não definido" : null,
+        clinic.plan === "enterprise" ? "plano final ainda não definido" : null,
         !clinic.isTest && !clinic.monthlyRevenueBrl
           ? "valor mensal contratado"
           : null,

@@ -8,7 +8,7 @@ import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
 
 const DEMO_CLINIC = {
   name: "Clínica Sorriso Premium",
-  plan: "essencial" as const,
+  plan: "start" as const,
   specialty: "odontologia",
   toneOfVoice: "Informal, acolhedor e consultivo.",
   playbook: "Oferecer sempre a avaliação gratuita como primeiro passo.",

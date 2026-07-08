@@ -7,15 +7,15 @@ import {
 describe("resolveClinicCommercialSettings", () => {
   it("keeps test organizations out of revenue even when billing is marked active", () => {
     const result = resolveClinicCommercialSettings({
-      plan: "avancado",
+      plan: "growth",
       billingActive: true,
-      monthlyRevenueBrl: 1497,
+      monthlyRevenueBrl: 2100,
       billingStartedAt: "2026-06-14",
       isTest: true,
     });
 
     expect(result).toEqual({
-      plan: "avancado",
+      plan: "growth",
       monthlyRevenueBrl: 0,
       billingStartedAt: null,
       isTest: true,
@@ -27,13 +27,13 @@ describe("resolveClinicCommercialSettings", () => {
     vi.setSystemTime(new Date("2026-06-14T12:00:00.000Z"));
 
     const result = resolveClinicCommercialSettings({
-      plan: "essencial",
+      plan: "start",
       billingActive: true,
       isTest: false,
     });
 
-    expect(result.plan).toBe("essencial");
-    expect(result.monthlyRevenueBrl).toBe(PLAN_PRICE_BRL_CENTS.essencial);
+    expect(result.plan).toBe("start");
+    expect(result.monthlyRevenueBrl).toBe(PLAN_PRICE_BRL_CENTS.start);
     expect(result.billingStartedAt).toEqual(new Date("2026-06-14T12:00:00.000Z"));
     expect(result.isTest).toBe(false);
 
@@ -42,7 +42,7 @@ describe("resolveClinicCommercialSettings", () => {
 
   it("uses the manual revenue and explicit billing date when provided", () => {
     const result = resolveClinicCommercialSettings({
-      plan: "custom",
+      plan: "enterprise",
       billingActive: true,
       monthlyRevenueBrl: 2500,
       billingStartedAt: "2026-07-01",
@@ -50,7 +50,7 @@ describe("resolveClinicCommercialSettings", () => {
     });
 
     expect(result).toEqual({
-      plan: "custom",
+      plan: "enterprise",
       monthlyRevenueBrl: 250000,
       billingStartedAt: new Date("2026-07-01T00:00:00"),
       isTest: false,

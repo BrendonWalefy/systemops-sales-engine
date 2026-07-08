@@ -1535,10 +1535,19 @@ export class ConversationOrchestrator {
         console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
         return { replied: false };
       }
-      // Adquiriu após espera: outro handler terminou. Se chegou mensagem mais
-      // recente do lead nesse meio tempo, ela (ou seu handler) cobre a resposta.
-      const latestAfterWait = await this.conversationRepo.findLatestLeadMessage(conversation.id);
-      if (latestAfterWait && latestAfterWait.id !== incomingMessage.id) {
+    }
+
+    // ── 3.3. Batching / Debounce de burst de mensagens ──
+    // Independentemente de ter adquirido o claim de primeira ou após espera:
+    // se uma mensagem MAIS RECENTE do lead já foi inserida no banco (por ex, 
+    // um webhook concorrente no mesmo run do worker), nós abortamos este processamento.
+    // O job da mensagem mais recente vai assumir a resposta com todo o contexto unificado.
+    const latestAfterClaim = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+    if (latestAfterClaim && latestAfterClaim.id !== incomingMessage.id) {
+      if (latestAfterClaim.sentAt.getTime() >= incomingMessage.sentAt.getTime()) {
+        console.log(
+          `[Orchestrator] Batching/Debounce: Mensagem mais recente detectada para conv=${conversation.id}. Abortando msg=${incomingMessage.id}`
+        );
         await this.releaseConversationClaim(conversation.id);
         return { replied: false };
       }

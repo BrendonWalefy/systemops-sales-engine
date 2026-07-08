@@ -52,7 +52,7 @@ export const DEMO_CLINIC_NAME = "Odonto Marques";
 export const DEMO_CLINIC_SLUG = "odonto-marques";
 export const DEMO_ADMIN_EMAIL = "helena@odontomarques.com.br";
 export const DEMO_ADMIN_PASSWORD = "OdontoMarques2026!";
-const PLAN = "avancado" as const;
+const PLAN = "growth" as const;
 
 export type DemoSeedResult = {
   clinicId: string;

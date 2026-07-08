@@ -201,11 +201,11 @@ async function upsertMemberPassword(clinicId: string, formData: FormData) {
 async function updateClinicPlan(clinicId: string, formData: FormData) {
   "use server";
   const plan = formData.get("plan") as string;
-  const valid = ["essencial", "avancado", "rede", "custom"] as const;
+  const valid = ["start", "growth", "scale", "enterprise"] as const;
   if (!(valid as readonly string[]).includes(plan)) {
     redirect(`/owner/clinics/${clinicId}`);
   }
-  const typedPlan = plan as "essencial" | "avancado" | "rede" | "custom";
+  const typedPlan = plan as "start" | "growth" | "scale" | "enterprise";
   await db
     .update(organizations)
     .set({ plan: typedPlan, updatedAt: new Date() })
@@ -1212,10 +1212,10 @@ export default async function ClinicDetailPage({
                   <p className="eyebrow" style={{ margin: "0 0 12px" }}>Plano de assinatura</p>
                   <form action={updatePlanAction} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <select name="plan" defaultValue={clinic.plan} style={{ ...inputStyle, flex: 1 }}>
-                      <option value="essencial">Essencial — R$897/mês</option>
-                      <option value="avancado">Growth — R$1.497/mês</option>
-                      <option value="rede">Rede — R$2.997/mês</option>
-                      <option value="custom">Custom</option>
+                      <option value="start">Start — R$1.300/mês</option>
+                      <option value="growth">Growth — R$2.100/mês</option>
+                      <option value="scale">Scale — R$3.500/mês</option>
+                      <option value="enterprise">Enterprise (Custom)</option>
                     </select>
                     <button type="submit" style={btnStyle}>Salvar</button>
                   </form>

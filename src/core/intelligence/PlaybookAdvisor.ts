@@ -1,4 +1,5 @@
 import type { ClinicMetrics } from "./MetricsAggregator";
+import type { UsageCostTracker } from "@/application/ports/usage-cost-tracker";
 
 export type PlaybookGap = {
   type: "missing_objection" | "missing_faq" | "unclear_scenario" | "low_conversion" | "wrong_tone";
@@ -35,7 +36,9 @@ export type CurrentPlaybook = {
 
 const ADVISOR_MODEL = process.env.ADVISOR_MODEL ?? "gpt-4o-mini";
 
-async function callAdvisorLLM(prompt: string): Promise<string> {
+type LLMResult = { text: string; usage?: { inputTokens: number; outputTokens: number } };
+
+async function callAdvisorLLM(prompt: string): Promise<LLMResult> {
   // 2000 tokens já cortou a resposta no meio do array "gaps" em produção (JSON
   // truncado → SyntaxError no parse, usuário via só "internal error" sem pista da
   // causa). proposedPlaybook completo + vários gaps facilmente passa de 2000 tokens.
@@ -47,7 +50,10 @@ async function callAdvisorLLM(prompt: string): Promise<string> {
       max_tokens: 4000,
       messages: [{ role: "user", content: prompt }],
     });
-    return res.content[0].type === "text" ? res.content[0].text : "";
+    return {
+      text: res.content[0].type === "text" ? res.content[0].text : "",
+      usage: res.usage ? { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens } : undefined
+    };
   }
 
   const OpenAI = (await import("openai")).default;
@@ -57,7 +63,10 @@ async function callAdvisorLLM(prompt: string): Promise<string> {
     max_tokens: 4000,
     messages: [{ role: "user", content: prompt }],
   });
-  return res.choices[0]?.message?.content ?? "";
+  return {
+    text: res.choices[0]?.message?.content ?? "",
+    usage: res.usage ? { inputTokens: res.usage.prompt_tokens, outputTokens: res.usage.completion_tokens } : undefined
+  };
 }
 
 function buildAdvisorPrompt(metrics: ClinicMetrics, currentPlaybook: CurrentPlaybook): string {
@@ -120,8 +129,21 @@ Identifique apenas gaps reais com evidência nas métricas. Se não houver gaps 
 }
 
 export class PlaybookAdvisor {
-  async analyze(metrics: ClinicMetrics, currentPlaybook: CurrentPlaybook): Promise<AdvisorResult> {
-    const raw = await callAdvisorLLM(buildAdvisorPrompt(metrics, currentPlaybook));
+  constructor(private readonly usageCostTracker?: UsageCostTracker) {}
+
+  async analyze(clinicId: string, metrics: ClinicMetrics, currentPlaybook: CurrentPlaybook): Promise<AdvisorResult> {
+    const { text: raw, usage } = await callAdvisorLLM(buildAdvisorPrompt(metrics, currentPlaybook));
+
+    if (usage && this.usageCostTracker) {
+      await this.usageCostTracker.trackAiUsage({
+        clinicId,
+        provider: ADVISOR_MODEL.startsWith("claude-") ? "anthropic" : "openai",
+        model: ADVISOR_MODEL,
+        operation: "playbook_analysis",
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+      });
+    }
 
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

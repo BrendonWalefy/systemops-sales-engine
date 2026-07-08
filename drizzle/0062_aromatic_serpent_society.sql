@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ALTER COLUMN "monthly_revenue_brl" SET DEFAULT 130000;

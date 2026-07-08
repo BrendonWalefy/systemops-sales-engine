@@ -421,6 +421,34 @@
       "when": 1783463343714,
       "tag": "0059_noisy_silhouette",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1783527167857,
+      "tag": "0060_short_bloodaxe",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1783527516534,
+      "tag": "0061_melodic_silhouette",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1783529357890,
+      "tag": "0062_aromatic_serpent_society",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1783531335798,
+      "tag": "0063_vengeful_emma_frost",
+      "breakpoints": true
     }
   ]
 }

@@ -1,13 +1,14 @@
 export type AiUsageCost = {
   id: string;
   clinicId: string;
-  provider: "openai";
+  provider: "openai" | "anthropic";
   model: string;
   operation:
     | "sales_conversation_analysis"
     | "conversation_summary"
     | "follow_up_suggestion"
-    | "manual_analysis";
+    | "manual_analysis"
+    | "playbook_analysis";
   inputTokens: number;
   outputTokens: number;
   estimatedCostUsdMicros: number;

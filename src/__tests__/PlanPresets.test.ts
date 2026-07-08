@@ -15,7 +15,7 @@ describe("plan presets", () => {
         voice_elevenlabs: true,
         video_library: true,
       },
-      "essencial",
+      "start",
     );
 
     expect(nextState.menu_mode).toBe(true);

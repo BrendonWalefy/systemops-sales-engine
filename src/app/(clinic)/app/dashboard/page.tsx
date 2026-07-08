@@ -218,7 +218,7 @@ async function fetchRevenueData(
       total: Number(r.total),
       count: r.cnt,
     })),
-    monthlyRevenueBrl: clinicRow[0]?.monthlyRevenueBrl ?? 89700,
+    monthlyRevenueBrl: clinicRow[0]?.monthlyRevenueBrl ?? 130000,
     series: buildValueSeries(seriesRows, periodStart, numDays),
   };
 }

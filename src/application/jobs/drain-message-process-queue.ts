@@ -47,6 +47,7 @@ export async function drainMessageProcessQueue(params: {
     queue: "message.process",
   });
 
+  const jobs = [];
   for (let index = 0; index < params.maxJobs; index++) {
     const job = await params.jobQueue.claimNextJob({
       queues: ["message.process"],
@@ -54,55 +55,58 @@ export async function drainMessageProcessQueue(params: {
       now,
     });
     if (!job) break;
-
-    result.claimed++;
-    const jobLog = log.child({ jobId: job.id, traceId: getInboundEventId(job) ?? undefined });
-    const startedAt = Date.now();
-    jobLog.info("job.claimed", { attempt: job.attempts });
-    let processingResult: JobResult | null = null;
-    try {
-      processingResult = await params.handler.processJob(job);
-      const completed = await params.jobQueue.completeJob(job.id, params.workerId, new Date());
-      if (!completed) continue;
-
-      if (processingResult.outcome === "processed") result.processed++;
-      else result.ignored++;
-      jobLog.info("job.completed", {
-        outcome: processingResult.outcome,
-        durationMs: Date.now() - startedAt,
-      });
-    } catch (error) {
-      // The domain journey may already have persisted its result. If only the
-      // queue acknowledgement failed, keep the event terminal; stale recovery
-      // will claim the job and complete it without replaying the conversation.
-      if (processingResult?.outcome === "processed") {
-        jobLog.error("job.acknowledgement.failed", error, { durationMs: Date.now() - startedAt });
-        continue;
-      }
-
-      const status = await params.jobQueue.failJob({
-        job,
-        workerId: params.workerId,
-        error: error instanceof Error ? error.message : String(error),
-        retryAt: getJobRetryAt(job, now),
-        now: new Date(),
-      });
-      const inboundEventId = getInboundEventId(job);
-      if (inboundEventId && status === "pending") {
-        await params.inboundEventStore.markInboundEventPending(inboundEventId);
-      }
-      if (inboundEventId && status === "dead") {
-        await params.inboundEventStore.markInboundEventFailed(inboundEventId);
-      }
-
-      if (status === "pending") result.retried++;
-      else if (status === "dead") result.dead++;
-      jobLog.error("job.failed", error, {
-        status,
-        durationMs: Date.now() - startedAt,
-      });
-    }
+    jobs.push(job);
   }
+
+  result.claimed = jobs.length;
+
+  await Promise.all(
+    jobs.map(async (job) => {
+      const jobLog = log.child({ jobId: job.id, traceId: getInboundEventId(job) ?? undefined });
+      const startedAt = Date.now();
+      jobLog.info("job.claimed", { attempt: job.attempts });
+      let processingResult: JobResult | null = null;
+      try {
+        processingResult = await params.handler.processJob(job);
+        const completed = await params.jobQueue.completeJob(job.id, params.workerId, new Date());
+        if (!completed) return;
+
+        if (processingResult.outcome === "processed") result.processed++;
+        else result.ignored++;
+        jobLog.info("job.completed", {
+          outcome: processingResult.outcome,
+          durationMs: Date.now() - startedAt,
+        });
+      } catch (error) {
+        if (processingResult?.outcome === "processed") {
+          jobLog.error("job.acknowledgement.failed", error, { durationMs: Date.now() - startedAt });
+          return;
+        }
+
+        const status = await params.jobQueue.failJob({
+          job,
+          workerId: params.workerId,
+          error: error instanceof Error ? error.message : String(error),
+          retryAt: getJobRetryAt(job, now),
+          now: new Date(),
+        });
+        const inboundEventId = getInboundEventId(job);
+        if (inboundEventId && status === "pending") {
+          await params.inboundEventStore.markInboundEventPending(inboundEventId);
+        }
+        if (inboundEventId && status === "dead") {
+          await params.inboundEventStore.markInboundEventFailed(inboundEventId);
+        }
+
+        if (status === "pending") result.retried++;
+        else if (status === "dead") result.dead++;
+        jobLog.error("job.failed", error, {
+          status,
+          durationMs: Date.now() - startedAt,
+        });
+      }
+    })
+  );
 
   return result;
 }

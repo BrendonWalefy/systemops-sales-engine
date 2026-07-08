@@ -182,11 +182,11 @@ export default function NewClinicPage() {
             </label>
             <label>
               Plano comercial
-              <select name="plan" defaultValue="custom">
-                <option value="custom">Customizado / ainda definindo</option>
-                <option value="essencial">Essencial</option>
-                <option value="avancado">Growth</option>
-                <option value="rede">Rede</option>
+              <select name="plan" defaultValue="enterprise">
+                <option value="enterprise">Customizado / ainda definindo</option>
+                <option value="start">Essencial</option>
+                <option value="growth">Growth</option>
+                <option value="scale">Rede</option>
               </select>
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -195,7 +195,7 @@ export default function NewClinicPage() {
             </label>
             <label>
               Receita mensal contratada (R$)
-              <input name="monthlyRevenueBrl" type="number" min="0" step="1" placeholder="Ex: 1497" />
+              <input name="monthlyRevenueBrl" type="number" min="0" step="1" placeholder="Ex: 2100" />
             </label>
             <label>
               Início da cobrança

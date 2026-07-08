@@ -25,13 +25,13 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     key: "menu_mode",
     label: "Modo Menu",
     description: "IA responde com opções numeradas para guiar o lead",
-    plans: ["essencial", "avancado", "rede", "custom"],
+    plans: ["start", "growth", "scale", "enterprise"],
   },
   {
     key: "concierge_mode",
     label: "Modo Concierge",
     description: "IA conversa naturalmente, sem menu — experiência premium",
-    plans: ["avancado", "rede", "custom"],
+    plans: ["growth", "scale", "enterprise"],
   },
   {
     key: "voice_tts",
@@ -40,7 +40,7 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     // Liberado já no Start: voz robotizada (OpenAI, mais barata) como diferencial
     // real do plano, configurável em 3 modos (impact/mix/full) pelo próprio painel
     // da clínica, igual ao seletor do B-WAVE. Ver docs/product/pricing-strategy.md.
-    plans: ["essencial", "avancado", "rede", "custom"],
+    plans: ["start", "growth", "scale", "enterprise"],
   },
   {
     key: "voice_elevenlabs",
@@ -49,7 +49,7 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     // avancado (Growth) inclui B-WAVE em "impact" — voz premium nos momentos de
     // conversão — ver GROWTH_VALIDATION_BWAVE_CONFIG em plan-presets.ts e
     // docs/product/pricing-strategy.md §6.2. "full" fica como opt-in por clínica.
-    plans: ["avancado", "rede", "custom"],
+    plans: ["growth", "scale", "enterprise"],
   },
   {
     key: "revenue_pipeline",
@@ -58,24 +58,24 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     // Reativar comercialmente só após docs/operations/billing-roadmap.md Fase 5.
     label: "Pipeline de Receita",
     description: "Dashboard financeiro com receita potencial e confirmada",
-    plans: ["custom"],
+    plans: ["enterprise"],
   },
   {
     key: "team_roles",
     label: "Controle de Equipe",
     description: "Papéis por membro: admin, profissional, recepcionista",
-    plans: ["avancado", "rede", "custom"],
+    plans: ["growth", "scale", "enterprise"],
   },
   {
     key: "video_library",
     label: "Biblioteca de Mídia",
     description: "IA envia vídeos e áudios personalizados na conversa",
-    plans: ["avancado", "rede", "custom"],
+    plans: ["growth", "scale", "enterprise"],
   },
   {
     key: "ai_co_writer",
     label: "Co-escritor IA",
     description: "Assistente IA para redigir e melhorar o playbook",
-    plans: ["avancado", "rede", "custom"],
+    plans: ["growth", "scale", "enterprise"],
   },
 ];

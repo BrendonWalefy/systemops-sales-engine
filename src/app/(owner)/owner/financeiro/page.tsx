@@ -37,22 +37,22 @@ import type { ClinicOperationalStatus } from "@/application/clinics/clinic-opera
 const INFRA_FIXED_BRL = {
   vercel: usdCentsToBrlCents(VERCEL_PRO_PLATFORM_FEE_USD_CENTS),
   neon: 0, // Free tier (gratuito até 512 MB / 100 CU-hrs)
-  zapi_per_clinic: 7999, // R$ 79,99 por instância (confirmado fatura jun/2026)
+  elevenlabs: usdCentsToBrlCents(2200), // Creator Plan: US$ 22
 };
 
 // Preços dos planos em centavos
 const PLAN_PRICE_BRL: Record<string, number> = {
-  essencial: 89700,
-  clinica: 149700,
-  rede: 299700,
+  essencial: 130000,
+  avancado: 210000,
+  rede: 350000,
   custom: 0,
 };
 
 const PLAN_LABEL: Record<string, string> = {
-  essencial: "Essencial",
-  clinica: "Growth",
-  rede: "Rede",
-  custom: "Customizado",
+  essencial: "Start",
+  avancado: "Growth",
+  rede: "Scale",
+  custom: "Enterprise",
 };
 
 function formatBrl(cents: number): string {
@@ -95,6 +95,7 @@ type ClinicFinancial = {
   ttsCostMicros: number;
   waCostMicros: number;
   isTest: boolean;
+  zapiMonthlyCostBrl: number | null;
 };
 
 async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
@@ -109,6 +110,7 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
       monthlyRevenueBrl: organizations.monthlyRevenueBrl,
       billingStartedAt: organizations.billingStartedAt,
       isTest: organizations.isTest,
+      zapiMonthlyCostBrl: organizations.zapiMonthlyCostBrl,
     })
     .from(organizations)
     .orderBy(organizations.name);
@@ -160,6 +162,7 @@ async function fetchClinicFinancials(): Promise<ClinicFinancial[]> {
         ttsCostMicros: Number(ttsResult[0]?.total ?? 0),
         waCostMicros: Number(waResult[0]?.total ?? 0),
         isTest: clinic.isTest,
+        zapiMonthlyCostBrl: clinic.zapiMonthlyCostBrl,
       };
     }),
   );
@@ -199,13 +202,17 @@ export default async function FinanceiroPage() {
   const vercelOverageBrl = vercelSpendAlert
     ? vercelSpendUsdToBrlCents(vercelSpendAlert.currentSpendUsd)
     : 0;
-  const infraFixed = INFRA_FIXED_BRL.vercel + INFRA_FIXED_BRL.neon;
-  const infraVar = nProdClinics * INFRA_FIXED_BRL.zapi_per_clinic;
-  const infraTotal = infraFixed + infraVar + vercelOverageBrl;
+  const infraFixed = INFRA_FIXED_BRL.vercel + INFRA_FIXED_BRL.neon + INFRA_FIXED_BRL.elevenlabs;
+  
+  // Z-API de TODAS as clínicas (produção, prospects e testes)
+  const zapiTotalCost = allClinics.reduce((s, c) => s + (c.zapiMonthlyCostBrl ?? 0), 0);
+  const nZapiInstances = allClinics.filter((c) => c.zapiMonthlyCostBrl != null && c.zapiMonthlyCostBrl > 0).length;
 
-  // Custos variáveis de IA+TTS+WA de produção
+  const infraTotal = infraFixed + zapiTotalCost + vercelOverageBrl;
+
+  // Custos variáveis de IA+TTS+WA de produção (O TTS não é somado no total pois é coberto pela assinatura, mostrado só para unit economics)
   const aiWaTotal = billableClinics.reduce(
-    (s, c) => s + microsBrlCents(c.aiCostMicros + c.ttsCostMicros + c.waCostMicros),
+    (s, c) => s + microsBrlCents(c.aiCostMicros + c.waCostMicros),
     0,
   );
 
@@ -213,16 +220,15 @@ export default async function FinanceiroPage() {
   const grossProfit = mrr - totalCosts;
   const grossMarginPct = mrr > 0 ? Math.round((grossProfit / mrr) * 100) : 0;
 
-  // Custo de testes
-  const testZapiCost = nTestClinics * INFRA_FIXED_BRL.zapi_per_clinic;
+  // Custo de testes (agora apenas IA, pois Z-API já está no custo total de infra)
   const testAiWaCost = testClinics.reduce(
     (s, c) => s + microsBrlCents(c.aiCostMicros + c.ttsCostMicros + c.waCostMicros),
     0,
   );
-  const totalTestCost = testZapiCost + testAiWaCost;
+  const totalTestCost = testAiWaCost;
 
   const unconfiguredClinics = billableClinics.filter(
-    (c) => c.plan === "custom" && c.monthlyRevenueBrl === 0,
+    (c) => c.plan === "enterprise" && c.monthlyRevenueBrl === 0,
   );
 
   return (
@@ -484,7 +490,7 @@ export default async function FinanceiroPage() {
             >
               {formatBrl(infraTotal)}
             </span>
-            <span className="metric-context">Vercel + Neon + Z-API</span>
+            <span className="metric-context">Vercel + ElevenLabs + Neon + Z-API</span>
           </div>
 
           <div className="metric">
@@ -500,7 +506,7 @@ export default async function FinanceiroPage() {
             >
               {formatBrl(aiWaTotal)}
             </span>
-            <span className="metric-context">OpenAI + mensagens</span>
+            <span className="metric-context">OpenAI/Anthropic + mensagens</span>
           </div>
         </div>
 
@@ -540,27 +546,25 @@ export default async function FinanceiroPage() {
                 value: INFRA_FIXED_BRL.neon,
               },
               {
-                label: `Z-API (${nProdClinics} instância${nProdClinics !== 1 ? "s" : ""})`,
-                note: `${nProdClinics} × R$79,99`,
-                value: infraVar,
+                label: `Z-API (${nZapiInstances} instância${nZapiInstances !== 1 ? "s" : ""})`,
+                note: `Todas as instâncias pagas (Ativas/Prospects/Testes)`,
+                value: zapiTotalCost,
               },
               {
-                label: "OpenAI API",
-                note: "variável",
+                label: "ElevenLabs (B-WAVE)",
+                note: "Creator Plan (US$ 22 / mês) · o consumo variável não entra na soma final",
+                value: INFRA_FIXED_BRL.elevenlabs,
+              },
+              {
+                label: "OpenAI / Anthropic API",
+                note: "consumo real abatido de créditos pré-pagos",
                 value: microsBrlCents(
                   billableClinics.reduce((s, c) => s + c.aiCostMicros, 0),
                 ),
               },
               {
-                label: "ElevenLabs (B-WAVE)",
-                note: "variável · ~$0,30/1k chars",
-                value: microsBrlCents(
-                  billableClinics.reduce((s, c) => s + c.ttsCostMicros, 0),
-                ),
-              },
-              {
                 label: "WhatsApp (Meta msgs)",
-                note: "variável",
+                note: "consumo real",
                 value: microsBrlCents(
                   billableClinics.reduce((s, c) => s + c.waCostMicros, 0),
                 ),
@@ -636,14 +640,14 @@ export default async function FinanceiroPage() {
                         color: "#818cf8",
                       }}
                     >
-                      Infra de testes (
+                      IA de testes (
                       {nTestClinics === 1
                         ? "1 organização"
                         : `${nTestClinics} organizações`}
                       )
                     </span>
                     <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                      Z-API + IA · não entra no MRR
+                      OpenAI/Anthropic + WhatsApp · não entra no MRR
                     </span>
                   </div>
                 </div>
@@ -724,7 +728,7 @@ export default async function FinanceiroPage() {
                 const planLabel = PLAN_LABEL[clinic.plan] ?? clinic.plan;
                 const planDefault = PLAN_PRICE_BRL[clinic.plan] ?? 0;
                 const revenueMismatch =
-                  clinic.plan !== "custom" &&
+                  clinic.plan !== "enterprise" &&
                   clinic.monthlyRevenueBrl !== planDefault;
 
                 return (
@@ -777,9 +781,9 @@ export default async function FinanceiroPage() {
                             fontWeight: 700,
                             padding: "2px 7px",
                             color:
-                              clinic.plan === "rede"
+                              clinic.plan === "scale"
                                 ? "var(--accent-strong)"
-                                : clinic.plan === "avancado"
+                                : clinic.plan === "growth"
                                   ? "var(--text)"
                                   : "var(--muted)",
                           }}
@@ -896,6 +900,14 @@ export default async function FinanceiroPage() {
                     </span>
                     <span style={{ fontSize: 11, color: "var(--muted)" }}>
                       Ainda não entra no MRR nem na margem operacional
+                      {clinic.aiCostMicros > 0 || clinic.waCostMicros > 0 || clinic.zapiMonthlyCostBrl ? (
+                        <>
+                          <br />
+                          Custos gerados:{" "}
+                          {clinic.zapiMonthlyCostBrl ? `Z-API ${formatBrl(clinic.zapiMonthlyCostBrl)} + ` : ""}
+                          IA/WA {formatBrl(microsBrlCents(clinic.aiCostMicros + clinic.ttsCostMicros + clinic.waCostMicros))}
+                        </>
+                      ) : null}
                     </span>
                   </div>
                   <span
@@ -939,7 +951,7 @@ export default async function FinanceiroPage() {
                 const aiWaBrl = microsBrlCents(
                   clinic.aiCostMicros + clinic.ttsCostMicros + clinic.waCostMicros,
                 );
-                const clinicTotal = INFRA_FIXED_BRL.zapi_per_clinic + aiWaBrl;
+                const clinicTotal = (clinic.zapiMonthlyCostBrl ?? 0) + aiWaBrl;
 
                 return (
                   <div
@@ -968,7 +980,7 @@ export default async function FinanceiroPage() {
                         {clinic.name}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                        Z-API {formatBrl(INFRA_FIXED_BRL.zapi_per_clinic)} + IA{" "}
+                        {clinicTotal > 0 && clinic.zapiMonthlyCostBrl ? `Z-API ${formatBrl(clinic.zapiMonthlyCostBrl)} + ` : ""}IA{" "}
                         {formatBrl(aiWaBrl)}
                       </span>
                     </div>
@@ -1084,7 +1096,7 @@ export default async function FinanceiroPage() {
               },
               {
                 label: "Receita (Starter)",
-                value: "R$ 897,00",
+                value: "R$ 1.300,00",
                 note: "plano confirmado",
               },
               {
@@ -1166,9 +1178,9 @@ export default async function FinanceiroPage() {
           Cotação USD/BRL utilizada: R${USD_TO_BRL.toFixed(2)} (estimativa
           estática). Custos de IA em USD são convertidos apenas para referência.
           {(nTestClinics > 0 || prospectClinics.length > 0) &&
-            " Organizações de teste e prospect são excluídas do MRR e da margem."}{" "}
-          Custos de infra auditados em jun/2026: Vercel Pro ({formatBrl(INFRA_FIXED_BRL.vercel)}), Neon Free
-          (R$0), Z-API R$79,99/instância. O Spend Management da Vercel mede
+            " Organizações de teste e prospect são excluídas do MRR e da margem (mas Z-API de prospects entra nos custos totais)."}{" "}
+          Custos de infra: Vercel Pro ({formatBrl(INFRA_FIXED_BRL.vercel)}), Neon Free
+          (R$0), ElevenLabs ({formatBrl(INFRA_FIXED_BRL.elevenlabs)}), Z-API lida do cadastro da clínica. O Spend Management da Vercel mede
           apenas excedente de uso, não a mensalidade do plano.
         </p>
       </div>

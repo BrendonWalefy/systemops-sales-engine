@@ -77,7 +77,7 @@ export const followUpStatusEnum = pgEnum("follow_up_status", [
   "expired",
 ]);
 
-export const aiProviderEnum = pgEnum("ai_provider", ["openai"]);
+export const aiProviderEnum = pgEnum("ai_provider", ["openai", "anthropic"]);
 
 export const ttsProviderEnum = pgEnum("tts_provider", ["elevenlabs", "openai_tts"]);
 
@@ -86,6 +86,7 @@ export const aiOperationEnum = pgEnum("ai_operation", [
   "conversation_summary",
   "follow_up_suggestion",
   "manual_analysis",
+  "playbook_analysis",
 ]);
 
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", [
@@ -156,10 +157,10 @@ export const whatsappCategoryEnum = pgEnum("whatsapp_category", [
 ]);
 
 export const orgPlanEnum = pgEnum("org_plan", [
-  "essencial",
-  "avancado",
-  "rede",
-  "custom",
+  "start",
+  "growth",
+  "scale",
+  "enterprise",
 ]);
 export const orgOperationalStatusEnum = pgEnum("org_operational_status", [
   "prospect",
@@ -228,11 +229,12 @@ export const organizations = pgTable("organizations", {
   )
     .notNull()
     .default(60),
-  plan: orgPlanEnum("plan").notNull().default("essencial"),
+  plan: orgPlanEnum("plan").notNull().default("start"),
   operationalStatus: orgOperationalStatusEnum("operational_status")
     .notNull()
     .default("prospect"),
-  monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(89700), // centavos
+  monthlyRevenueBrl: integer("monthly_revenue_brl").notNull().default(130000), // centavos
+  zapiMonthlyCostBrl: integer("zapi_monthly_cost_brl"), // null = não tem instância própria ou desconhecida
   billingStartedAt: timestamp("billing_started_at", { withTimezone: true }),
   isTest: boolean("is_test").notNull().default(false),
   // Clínica de demonstração/vitrine: mecanismo real do sistema rodando sobre

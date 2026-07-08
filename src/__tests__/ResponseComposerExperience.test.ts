@@ -8,13 +8,13 @@ import {
 function clearComposerModelEnv() {
   vi.stubEnv("OPENAI_COMPOSER_MODEL", "");
   vi.stubEnv("OPENAI_COMPOSER_MODEL_START", "");
-  vi.stubEnv("OPENAI_COMPOSER_MODEL_ESSENCIAL", "");
+  vi.stubEnv("OPENAI_COMPOSER_MODEL_START", "");
   vi.stubEnv("OPENAI_COMPOSER_MODEL_DEFAULT", "");
   vi.stubEnv("OPENAI_COMPOSER_MODEL_GROWTH", "");
-  vi.stubEnv("OPENAI_COMPOSER_MODEL_AVANCADO", "");
+  vi.stubEnv("OPENAI_COMPOSER_MODEL_GROWTH", "");
   vi.stubEnv("OPENAI_COMPOSER_MODEL_SCALE", "");
-  vi.stubEnv("OPENAI_COMPOSER_MODEL_REDE", "");
-  vi.stubEnv("OPENAI_COMPOSER_MODEL_CUSTOM", "");
+  vi.stubEnv("OPENAI_COMPOSER_MODEL_SCALE", "");
+  vi.stubEnv("OPENAI_COMPOSER_MODEL_ENTERPRISE", "");
   vi.stubEnv("OPENAI_COMPOSER_MODEL_PREMIUM", "");
   vi.stubEnv("OPENAI_COMPOSER_API", "");
 }
@@ -114,31 +114,31 @@ describe("ResponseComposer — model routing", () => {
   it("keeps Start on the standard composer model by default", () => {
     clearComposerModelEnv();
 
-    expect(resolveComposerModel("essencial")).toBe("gpt-4o-mini");
+    expect(resolveComposerModel("start")).toBe("gpt-4o-mini");
   });
 
-  it("routes Growth, Scale and custom plans to the premium composer model by default", () => {
+  it("routes Scale and custom plans to the premium composer model by default", () => {
     clearComposerModelEnv();
 
-    expect(resolveComposerModel("avancado")).toBe("gpt-5.5");
-    expect(resolveComposerModel("rede")).toBe("gpt-5.5");
-    expect(resolveComposerModel("custom")).toBe("gpt-5.5");
+    expect(resolveComposerModel("scale")).toBe("gpt-5.5");
+    expect(resolveComposerModel("scale")).toBe("gpt-5.5");
+    expect(resolveComposerModel("enterprise")).toBe("gpt-5.5");
   });
 
   it("lets a global env override force all plans during replay or benchmark", () => {
     clearComposerModelEnv();
     vi.stubEnv("OPENAI_COMPOSER_MODEL", "gpt-5.4");
 
-    expect(resolveComposerModel("essencial")).toBe("gpt-5.4");
-    expect(resolveComposerModel("avancado")).toBe("gpt-5.4");
+    expect(resolveComposerModel("start")).toBe("gpt-5.4");
+    expect(resolveComposerModel("growth")).toBe("gpt-5.4");
   });
 
-  it("lets Growth use a different premium model without code changes", () => {
+  it("lets Growth use a different model via override", () => {
     clearComposerModelEnv();
     vi.stubEnv("OPENAI_COMPOSER_MODEL_GROWTH", "gpt-5.4");
 
-    expect(resolveComposerModel("avancado")).toBe("gpt-5.4");
-    expect(resolveComposerModel("rede")).toBe("gpt-5.5");
+    expect(resolveComposerModel("growth")).toBe("gpt-5.4");
+    expect(resolveComposerModel("scale")).toBe("gpt-5.5");
   });
 
   it("uses Responses API for GPT-5 family unless explicitly forced to chat", () => {

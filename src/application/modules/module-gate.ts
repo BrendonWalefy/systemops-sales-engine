@@ -111,14 +111,14 @@ export async function getClinicVoiceBlueprintState(
 /**
  * Sincroniza os módulos de uma clínica com base no plano.
  * Chamado ao criar clínica ou ao mudar de plano.
- * Para plano "custom": não faz nada (owner configura manualmente).
+ * Para plano "enterprise": não faz nada (owner configura manualmente).
  */
 export async function syncModulesForPlan(
   clinicId: string,
   plan: OrgPlan,
   updatedBy: string,
 ): Promise<void> {
-  if (plan === "custom") return;
+  if (plan === "enterprise") return;
 
   const currentRows = await db
     .select({
@@ -155,9 +155,9 @@ export async function applyClinicPlanPreset(
   // Fase de validação inicial: rede segue o preset "mix"; avancado (Growth) recebe
   // B-WAVE em "impact" (voz premium nos momentos de conversão), não "full" — protege
   // margem e responde a feedback de cliente (áudio em excesso). Ver pricing-strategy §6.2.
-  if (plan !== "rede" && plan !== "avancado") return;
+  if (plan !== "scale" && plan !== "growth") return;
   const bwaveBase =
-    plan === "rede" ? REDE_RECOMMENDED_BWAVE_CONFIG : GROWTH_VALIDATION_BWAVE_CONFIG;
+    plan === "scale" ? REDE_RECOMMENDED_BWAVE_CONFIG : GROWTH_VALIDATION_BWAVE_CONFIG;
 
   const [bwaveModule, activePlaybook] = await Promise.all([
     db
@@ -208,7 +208,7 @@ export async function applyClinicPlanPreset(
     });
 
   if (
-    plan === "rede" &&
+    plan === "scale" &&
     activePlaybook?.id &&
     shouldApplyRedeToneRecommendation(activePlaybook.toneOfVoice)
   ) {

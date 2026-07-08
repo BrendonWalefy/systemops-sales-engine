@@ -122,7 +122,7 @@ export type CommercialDiagnosticInput = {
   pains: PainId[];
 };
 
-export type OrgPlanKey = "essencial" | "avancado" | "rede";
+export type OrgPlanKey = "start" | "growth" | "scale";
 
 export type PlanRecommendation = {
   key: OrgPlanKey;
@@ -188,15 +188,15 @@ function round(n: number): number {
 // Nomes e valores canônicos: docs/product/pricing-strategy.md + landing
 // (Start/Growth/Scale, mono-unidade). NÃO inventar — refletem site e contrato.
 const PLAN_LABEL: Record<OrgPlanKey, string> = {
-  essencial: "Start",
-  avancado: "Growth",
-  rede: "Scale",
+  start: "Start",
+  growth: "Growth",
+  scale: "Scale",
 };
 
 const PLAN_COST: Record<OrgPlanKey, number> = {
-  essencial: 1300,
-  avancado: 2100,
-  rede: 3500,
+  start: 1300,
+  growth: 2100,
+  scale: 3500,
 };
 
 // ─── Núcleo ──────────────────────────────────────────────────────────────────
@@ -255,14 +255,14 @@ export function computeCommercialDiagnostic(
   let planKey: OrgPlanKey;
   let planRationale: string;
   if (leads <= 150) {
-    planKey = "essencial";
+    planKey = "start";
     planRationale = "Volume inicial — o Start cobre a operação com folga.";
   } else if (leads <= 700) {
-    planKey = "avancado";
+    planKey = "growth";
     planRationale =
       "Volume que já justifica automação alta e playbooks ilimitados.";
   } else {
-    planKey = "rede";
+    planKey = "scale";
     planRationale =
       team >= 6
         ? "Alto volume e equipe grande — precisa de processo, governança e métricas."
