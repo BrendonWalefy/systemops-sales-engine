@@ -624,8 +624,9 @@ export function coerceBusinessIntent(params: {
   intent: IntentType;
   treatments: Treatment[];
   isClinicSegment: boolean;
+  commercialPolicy?: string | null;
 }): IntentType {
-  const { message, intent, treatments, isClinicSegment } = params;
+  const { message, intent, treatments, isClinicSegment, commercialPolicy } = params;
   if (intent !== "greeting" && intent !== "acknowledgment" && intent !== "unclear") return intent;
 
   const normalized = normalizeFreeText(message);
@@ -634,6 +635,14 @@ export function coerceBusinessIntent(params: {
   // P0.1: Guard Anti-Saudação — Se a pergunta contém conteúdo de negócio,
   // NUNCA responder com saudação genérica. O sistema decide (determinístico).
   if (isClinicSegment && detectPatientArrivalText(message)) return "patient_arrived";
+  // P0.5: Menção ao nome antigo da clínica ou pergunta sobre mudança de
+  // endereço precisa ir para general_question (composer). Sem este guard, o
+  // intent permanecia "greeting" e shouldShowInitialMenu/shouldSendConciergeStarter
+  // capturavam a mensagem ANTES que o contexto de nome antigo (calculado mais
+  // adiante no pipeline) tivesse qualquer chance de ser usado — a menção a
+  // "Dental Luxe" era completamente ignorada (bug real: 5+ conversas
+  // idênticas pós-deploy P0.5, ex: Julie, Thiago, Jeny, Jose Mota).
+  if (isClinicNameOrAddressChangeQuestion(normalized, commercialPolicy).isMatch) return "general_question";
   // P0.2: Prioridade — Garantia antes de Manutenção (ambos redirectam para needs_human, mas contexto diferente)
   if (isWarrantyQuestion(normalized)) return "needs_human";
   if (isMaintenanceInquiryText(normalized)) return "needs_human";
@@ -745,23 +754,34 @@ function isClinicNameOrAddressChangeQuestion(normalized: string, policy: string 
   type: "clinic_name" | "address" | null;
 } {
   const info = extractPreviousClinicInfo(policy);
-  if (!info.previousClinicName && !info.previousAddress) {
-    return { isMatch: false, type: null };
-  }
 
-  const keywords = ["mudaram", "mudou", "eram", "era", "vocês eram", "vocês é", "nome", "endereço"];
-  const hasChangeKeyword = keywords.some((kw) => normalized.includes(kw));
-
-  if (!hasChangeKeyword) return { isMatch: false, type: null };
-
-  // Detectar se é pergunta sobre nome antigo
-  if (info.previousClinicName && normalized.includes(info.previousClinicName.toLowerCase())) {
+  // Menção direta ao nome antigo da clínica já é sinal suficiente — o lead pode
+  // só estar repetindo um nome que viu num anúncio/indicação antiga ("queria
+  // informações sobre a Dental Luxe"), sem usar nenhuma palavra de "mudança".
+  // Exigir uma keyword de mudança aqui fazia essa menção cair como "greeting"
+  // genérico e ignorar completamente o nome antigo citado (bug real: Julie,
+  // Thiago, Jeny, Jose Mota — 5+ ocorrências idênticas pós-deploy P0.5).
+  // `normalized` já passou por normalizeFreeText (sem acento) — o nome antigo
+  // extraído da política precisa da mesma normalização, senão nomes com acento
+  // nunca bateriam.
+  if (info.previousClinicName && normalized.includes(normalizeFreeText(info.previousClinicName))) {
     return { isMatch: true, type: "clinic_name" };
   }
 
-  // Detectar se é pergunta sobre endereço antigo
-  if (info.previousAddress && normalized.includes("endereço")) {
-    return { isMatch: true, type: "address" };
+  // Pergunta sobre endereço, essa sim, só faz sentido junto de uma keyword de
+  // mudança — "qual o endereço" sozinho não indica que o lead desconfia de uma
+  // mudança. Lista inclui "trocaram/trocou" (bug real: Rafaela perguntou "Vcs
+  // trocaram de endereço?" e não batia com a lista antiga, que só tinha
+  // "mudaram/mudou"). "endereco" sem cedilha porque normalized não tem acentos
+  // (bug adicional: a checagem original comparava "endereço" com cedilha contra
+  // um texto já normalizado sem acento — nunca batia).
+  if (info.previousAddress && normalized.includes("endereco")) {
+    const addressChangeKeywords = [
+      "mudaram", "mudou", "trocaram", "trocou", "eram", "era", "sempre foi", "sempre esteve",
+    ];
+    if (addressChangeKeywords.some((kw) => normalized.includes(kw))) {
+      return { isMatch: true, type: "address" };
+    }
   }
 
   return { isMatch: false, type: null };
@@ -2352,6 +2372,7 @@ export class ConversationOrchestrator {
           intent,
           treatments: clinicTreatments,
           isClinicSegment: promptContext.isClinicSegment,
+          commercialPolicy: editorial?.commercialPolicy,
         });
 
     // ── Interceptor: resposta de tratamento após clarificação de agendamento ──
@@ -3566,36 +3587,38 @@ export class ConversationOrchestrator {
     return { replied: true };
 
     } catch (err) {
-      console.error("[Orchestrator] Falha no processamento:", err);
-      // Persistir o fallback antes de entregar evita recomputar a conversa em retry técnico.
+      // P0.6/P0.7: falha em qualquer ponto do processamento (não só no compose()
+      // do ResponseComposer, que já tinha proteção própria) — silencioso para o
+      // lead, handoff automático para a equipe via needsAttention + notificação.
+      // Antes disto, esse catch enviava "Ops, tive um problema técnico por aqui"
+      // diretamente ao lead, contrariando a diretiva explícita do P0.6 (bug real:
+      // 3 conversas — Janaina, Romanosax, Luiz — receberam essa mensagem de erro
+      // visível pós-deploy, porque este catch de nível superior envolve TODO o
+      // processamento da mensagem, não só a chamada ao LLM).
+      const errorContext = {
+        clinicId,
+        conversationId: conversation.id,
+        leadId: lead.id,
+        leadName: lead.name,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      };
+      console.error("[Orchestrator] Falha no processamento — needs_human silencioso:", errorContext);
+      // TODO: Sentry.captureException(err, { tags: { clinicId }, extra: errorContext })
+      // Agregação por org, alerta só se taxa de erro > 3%/hora (ver P0.6-CRASH-TIMEOUT-FALLBACK.md)
+
       try {
-        const fallback = "Ops, tive um problema técnico por aqui. Pode tentar novamente? 🙏";
-        const fallbackAgentId = randomUUID();
-        await this.conversationRepo.appendMessage({
-          id: fallbackAgentId,
-          conversationId: conversation.id,
-          author: "agent",
-          body: fallback,
-          sentAt: new Date(),
-          externalId: null,
-          intent: null,
-        });
-        await this.enqueueConversationReply(clinicId, conversation.id, {
-          version: 1,
-          kind: "conversation_reply",
-          to: outboundAddress,
-          agentMessageId: fallbackAgentId,
-          replyText: fallback,
-          intent: null,
-          useVoice: false,
-          ttsConfig: ttsConf,
-          interleavedParts: [],
-          mediaParts: [],
-          leadId: lead.id,
-          pipelineAdvance: null,
-        });
-      } catch (fallbackErr) {
-        console.error("[Orchestrator] Fallback não foi persistido:", fallbackErr);
+        await db
+          .update(conversationsTable)
+          .set({
+            needsAttention: true,
+            attentionReason: "IA indisponível (erro técnico) — operador intervém",
+            updatedAt: new Date(),
+          })
+          .where(eq(conversationsTable.id, conversation.id));
+        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "IA indisponível — erro técnico no processamento");
+      } catch (handoffErr) {
+        console.error("[Orchestrator] Falha ao registrar handoff de erro:", handoffErr);
       }
       return { replied: false };
     }
