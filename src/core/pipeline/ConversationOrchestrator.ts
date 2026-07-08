@@ -713,6 +713,48 @@ function isWarrantyQuestion(normalized: string): boolean {
   return warrantyKeywords.some((keyword) => normalized.includes(keyword));
 }
 
+// P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
+// Extrai nome antigo e endereço anterior da policy/playbook
+function extractPreviousClinicInfo(policy: string | null | undefined): {
+  previousClinicName?: string;
+  previousAddress?: string;
+} {
+  if (!policy) return {};
+  const clinicNameMatch = policy.match(/(?:éramos?|era|somos?)\s+["']?([^"'.,;!\n?]+?)["']?(?:\s*[,;\n]|$)/i);
+  const addressMatch = policy.match(/(?:Avenida|Av\.)\s+([^,;!\n?]+)/i);
+  return {
+    previousClinicName: clinicNameMatch?.[1]?.trim(),
+    previousAddress: addressMatch?.[1]?.trim(),
+  };
+}
+
+function isClinicNameOrAddressChangeQuestion(normalized: string, policy: string | null | undefined): {
+  isMatch: boolean;
+  type: "clinic_name" | "address" | null;
+} {
+  const info = extractPreviousClinicInfo(policy);
+  if (!info.previousClinicName && !info.previousAddress) {
+    return { isMatch: false, type: null };
+  }
+
+  const keywords = ["mudaram", "mudou", "eram", "era", "vocês eram", "vocês é", "nome", "endereço"];
+  const hasChangeKeyword = keywords.some((kw) => normalized.includes(kw));
+
+  if (!hasChangeKeyword) return { isMatch: false, type: null };
+
+  // Detectar se é pergunta sobre nome antigo
+  if (info.previousClinicName && normalized.includes(info.previousClinicName.toLowerCase())) {
+    return { isMatch: true, type: "clinic_name" };
+  }
+
+  // Detectar se é pergunta sobre endereço antigo
+  if (info.previousAddress && normalized.includes("endereço")) {
+    return { isMatch: true, type: "address" };
+  }
+
+  return { isMatch: false, type: null };
+}
+
 // ── Localiza o horário expresso pelo lead na lista atualizada de slots ──
 // Quando a oferta expirou (TTL 15 min) mas o lead expressou um horário
 // ("As 12hs", "sexta às 9"), procura esse horário na lista recém-buscada.
@@ -1795,7 +1837,7 @@ export class ConversationOrchestrator {
           playbook: editorial?.playbookText ?? null,
           commercialPolicy: editorial?.commercialPolicy ?? null,
           installmentTable: null,
-          receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
         },
         leadName: lead.name,
         timezone,
@@ -2358,6 +2400,22 @@ export class ConversationOrchestrator {
       }
     }
 
+    // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
+    let previousClinicNameContext: string | null = null;
+    if (effectiveIntent === "general_question" || effectiveIntent === "greeting") {
+      const normalized = normalizeFreeText(messageText);
+      const changeInfo = isClinicNameOrAddressChangeQuestion(normalized, editorial?.commercialPolicy);
+      if (changeInfo.isMatch) {
+        const info = extractPreviousClinicInfo(editorial?.commercialPolicy);
+        if (changeInfo.type === "clinic_name" && info.previousClinicName) {
+          previousClinicNameContext = `Pergunta sobre nome antigo: era "${info.previousClinicName}", agora é "${clinic.name}"`;
+        } else if (changeInfo.type === "address" && info.previousAddress) {
+          previousClinicNameContext = `Pergunta sobre endereço antigo: era "${info.previousAddress}", agora é "${clinic.address}"`;
+        }
+        // Não muda intent, apenas adiciona contexto para ResponseComposer
+      }
+    }
+
     // ── Guard: termo genérico cobre 2+ variações do catálogo ──
     // Recalcula a ambiguidade em código; se o classificador escolheu uma variação
     // sozinho (ou nenhuma), força a apresentação de todas as opções que o termo cobre.
@@ -2418,7 +2476,7 @@ export class ConversationOrchestrator {
             ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
             : null,
           mediaLibrary: filterMediaLibraryForTreatment(editorial?.mediaLibrary ?? [], activeTreatmentId),
-          receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
         },
         context: promptContext,
         leadName: extractFirstName(lead.name),
@@ -3282,8 +3340,12 @@ export class ConversationOrchestrator {
             clinicContext = `${clinic.name} — ${clinic.specialty}.`;
           }
         }
+        // P0.5: Se detectou pergunta sobre nome antigo ou mudança de endereço, adiciona ao contexto
+        const finalClinicContext = previousClinicNameContext
+          ? `${previousClinicNameContext}\n\n${clinicContext}`
+          : clinicContext;
         if (!triggerPartsOverride) {
-          replyText = await compose({ type: "general_question", clinicContext });
+          replyText = await compose({ type: "general_question", clinicContext: finalClinicContext });
         }
         if ((menuGeneralSubtype === "procedures" || directProcedureCatalogRequested) && clinicTreatments.length > 0) {
           await this.stateMachine.offerProcedureList(conversation.id, clinicTreatments);
