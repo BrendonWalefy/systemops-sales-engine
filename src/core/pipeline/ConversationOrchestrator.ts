@@ -2458,47 +2458,71 @@ export class ConversationOrchestrator {
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
     let pendingPipelineAdvance: PipelineAdvance | null = null;
+    // P0.6: Fallback para IA indisponível (timeout, OpenAI errors)
+    // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
     ) => {
-      if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
-      const composed = await this.responseComposer.compose({
-        actionResult,
-        conversationHistory: allMessagesForContext,
-        clinic: {
-          name: clinic.name,
-          plan: clinic.plan,
-          specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? null,
-          playbook: editorial?.playbookText ?? null,
-          commercialPolicy: editorial?.commercialPolicy ?? null,
-          installmentTable: clinic.installmentRates && editorial?.commercialPolicy
-            ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
-            : null,
-          mediaLibrary: filterMediaLibraryForTreatment(editorial?.mediaLibrary ?? [], activeTreatmentId),
-          receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-        },
-        context: promptContext,
-        leadName: extractFirstName(lead.name),
-        timezone,
-        isFirstMessage,
-        conversationExperience: experience,
-        resumedFromHumanTakeover,
-        voiceResponseEnabled: voiceEnabled,
-      });
-      composerInputTokens = composed.inputTokens;
-      composerOutputTokens = composed.outputTokens;
-      composerModel = composed.model;
-      const parts = isFirstMessage
-        ? prependFirstMessageSalutation(composed.parts, timezone, lead.name)
-        : composed.parts;
-      composedMediaIds = composed.mediaIds;
-      composedParts = parts;
-      return parts
-        .filter((p): p is { type: "text"; content: string } => p.type === "text")
-        .map((p) => p.content)
-        .join("\n\n")
-        .trim();
+      try {
+        if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
+        const composed = await this.responseComposer.compose({
+          actionResult,
+          conversationHistory: allMessagesForContext,
+          clinic: {
+            name: clinic.name,
+            plan: clinic.plan,
+            specialty: editorial?.specialty ?? clinic.specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: editorial?.commercialPolicy ?? null,
+            installmentTable: clinic.installmentRates && editorial?.commercialPolicy
+              ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
+              : null,
+            mediaLibrary: filterMediaLibraryForTreatment(editorial?.mediaLibrary ?? [], activeTreatmentId),
+            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          },
+          context: promptContext,
+          leadName: extractFirstName(lead.name),
+          timezone,
+          isFirstMessage,
+          conversationExperience: experience,
+          resumedFromHumanTakeover,
+          voiceResponseEnabled: voiceEnabled,
+        });
+        composerInputTokens = composed.inputTokens;
+        composerOutputTokens = composed.outputTokens;
+        composerModel = composed.model;
+        const parts = isFirstMessage
+          ? prependFirstMessageSalutation(composed.parts, timezone, lead.name)
+          : composed.parts;
+        composedMediaIds = composed.mediaIds;
+        composedParts = parts;
+        return parts
+          .filter((p): p is { type: "text"; content: string } => p.type === "text")
+          .map((p) => p.content)
+          .join("\n\n")
+          .trim();
+      } catch (err) {
+        // P0.6: IA falhou — aciona needs_human silenciosamente
+        // Log em Sentry para monitoramento (sem alerta por mensagem)
+        const errorContext = {
+          clinicId: clinic.id,
+          clinicName: clinic.name,
+          conversationId: conversation.id,
+          leadName: lead.name,
+          actionResult: actionResult.type,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        };
+        console.error("[P0.6] IA indisponível, acionando needs_human:", errorContext);
+        // TODO: Log estruturado em Sentry com agregação de erros
+        // Se taxa de erro > 3% em organização, dispara alerta
+
+        // Aciona needs_human sem mensagem ao lead
+        effectiveIntent = "needs_human";
+        maintenanceHandoffReason = "IA indisponível (timeout/OpenAI) — operador intervém";
+        return ""; // Sem resposta ao lead
+      }
     };
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
