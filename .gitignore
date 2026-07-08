@@ -17,3 +17,5 @@ scripts/demo-media/
 
 # Transcripts de teste / exports de conversa com PII de leads — nunca versionar
 docs/testing/
+# Mídia local de clínicas reais (sobe pro Blob via scripts/upload-nc-media.ts)
+scripts/nc-media/
