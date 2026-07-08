@@ -622,6 +622,7 @@ export function coerceBusinessIntent(params: {
   // P0.1: Guard Anti-Saudação — Se a pergunta contém conteúdo de negócio,
   // NUNCA responder com saudação genérica. O sistema decide (determinístico).
   if (isClinicSegment && detectPatientArrivalText(message)) return "patient_arrived";
+  if (isMaintenanceInquiryText(normalized)) return "needs_human";      // ← P0.2: Prioridade (manutenção)
   if (isPriceRequestText(normalized)) return "price_inquiry";
   if (isSchedulingRequestText(normalized)) return "book_appointment";  // ← P0.1: Novo
   if (resolveDirectTreatmentMention(message, treatments)) return "general_question";
@@ -690,6 +691,11 @@ const MAINTENANCE_SERVICE_KEYWORDS = [
   "troca",
   "trocar",
 ];
+
+// P0.2: Detectar pergunta de manutenção (não é novo tratamento, é serviço em já-realizado)
+function isMaintenanceInquiryText(normalized: string): boolean {
+  return MAINTENANCE_SERVICE_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
 
 // ── Localiza o horário expresso pelo lead na lista atualizada de slots ──
 // Quando a oferta expirou (TTL 15 min) mas o lead expressou um horário

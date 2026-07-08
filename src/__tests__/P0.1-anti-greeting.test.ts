@@ -113,6 +113,38 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
     });
   });
 
+  describe("F5 — Pergunta de manutenção (P0.2)", () => {
+    it("deve converter 'Quanto custa manutenção?' de greeting → needs_human", () => {
+      const result = coerceBusinessIntent({
+        message: "Quanto custa manutenção?",
+        intent: "greeting",
+        treatments: mockTreatments,
+        isClinicSegment: false,
+      });
+      expect(result).toBe("needs_human");
+    });
+
+    it("deve converter 'Quanto é o reparo?' de greeting → needs_human", () => {
+      const result = coerceBusinessIntent({
+        message: "Quanto é o reparo?",
+        intent: "greeting",
+        treatments: mockTreatments,
+        isClinicSegment: false,
+      });
+      expect(result).toBe("needs_human");
+    });
+
+    it("deve converter 'Qual o preço do polimento?' de greeting → needs_human", () => {
+      const result = coerceBusinessIntent({
+        message: "Qual o preço do polimento?",
+        intent: "greeting",
+        treatments: mockTreatments,
+        isClinicSegment: false,
+      });
+      expect(result).toBe("needs_human");
+    });
+  });
+
   describe("Saudação pura (não deve converter)", () => {
     it("deve manter 'Oi tudo bem?' como greeting", () => {
       const result = coerceBusinessIntent({
