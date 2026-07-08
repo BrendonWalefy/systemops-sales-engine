@@ -478,6 +478,19 @@ function isPriceObjectionHandoff(reason?: string | null): boolean {
   return /\b(preco|valor|investimento|caro|desconto|pagamento|parcel|condicao|orcamento|concorrente|outra clinica|amiga pagou)\b/.test(normalized);
 }
 
+// P0.2: Detectar tipo de handoff para manutenção ou garantia
+function detectHandoffType(handoffReason?: string | null): "maintenance" | "warranty" | "default" {
+  if (!handoffReason) return "default";
+  const normalized = handoffReason.toLowerCase();
+  if (normalized.includes("manutenção") || normalized.includes("reparo") || normalized.includes("avaliação com foto")) {
+    return "maintenance";
+  }
+  if (normalized.includes("garantia") || normalized.includes("cobertura")) {
+    return "warranty";
+  }
+  return "default";
+}
+
 export function buildActionContext(
   result: ActionResult,
   conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE,
@@ -551,6 +564,36 @@ Informe gentilmente e ofereça agendar uma avaliação.`;
 Demonstre empatia, informe que irá acionar a equipe imediatamente e diga que alguém entrará em contato. Não minimize a situação.`;
 
     case "handoff_requested": {
+      // P0.2: Detectar fluxos de manutenção ou garantia
+      const handoffType = detectHandoffType(result.handoffReason);
+
+      if (handoffType === "maintenance") {
+        return `AÇÃO EXECUTADA: Pergunta sobre manutenção/reparo requer avaliação técnica com foto.
+INSTRUÇÕES ESPECÍFICAS:
+1. ACOLHER: comece reconhecendo que precisa avaliar o caso visualmente
+2. PEDIR FOTO/VÍDEO: solicite de forma educada uma foto ou vídeo do detalhe
+3. MENCIONAR PREÇO: informe o valor "a partir de R$" conforme configurado para o serviço de manutenção
+4. TRANQUILIZAR: avise que a equipe foi notificada e irá avaliar
+REGRA CRÍTICA: NÃO faça diagnóstico ou prometa valor exato antes da foto. Seu papel é coletar informações.
+PADRÃO DE RESPOSTA: "Para avaliar melhor, você poderia enviar uma foto/vídeo mostrando o detalhe? Manutenção normalmente sai a partir de R$ [valor]. Já aviso a equipe para analisar seu caso!"
+MÁXIMO 2 FRASES.`;
+      }
+
+      if (handoffType === "warranty") {
+        return `AÇÃO EXECUTADA: Pergunta sobre cobertura de garantia requer verificação da política.
+INSTRUÇÕES ESPECÍFICAS:
+1. ACOLHER: comece reconhecendo a pergunta
+2. TENTAR VERIFICAR: baseado na data do procedimento (se mencionada), verifique se está em garantia
+3. PEDIR CONTEXTO: se não souber data, pergunte quando foi o procedimento
+4. SOLICITAR FOTO/VÍDEO: peça foto ou vídeo para que a equipe avalie (defin
+
+itivo para garantia ou manutenção)
+5. TRANQUILIZAR: avise que a equipe foi notificada
+REGRA CRÍTICA: se NÃO TIVER CERTEZA sobre a cobertura de garantia, NÃO afirme — apenas diga "pode estar em garantia" e deixe a equipe confirmar.
+NÃO invente regras de garantia que não estão na política.
+MÁXIMO 3 FRASES.`;
+      }
+
       if (isPriceObjectionHandoff(result.handoffReason)) {
         return `AÇÃO EXECUTADA: Pedido comercial sensível requer atenção humana — a equipe já foi avisada em paralelo.
 MOTIVO DO HANDOFF: ${result.handoffReason ?? "objeção ou negociação de preço"}.
@@ -559,6 +602,7 @@ PADRÃO DE QUALIDADE: não use "cada caso é único" como clichê. Se falar isso
 FIDELIDADE COMERCIAL: não use superlativos genéricos ("material de alta qualidade", "atendimento exclusivo", "resultado duradouro", "especialista", "o melhor") a menos que essa prova esteja explícita na política/playbook. Prefira provas seguras do próprio fluxo: avaliação, planejamento, técnica indicada, orçamento fechado e condições autorizadas.
 FIDELIDADE: use apenas valores, condições e próximos passos que existam na política comercial ou no histórico. Se não houver condição específica autorizada, diga que a equipe foi avisada para avaliar a condição, mas mantenha o próximo passo consultivo. Máximo 3 frases.`;
       }
+
       const context = result.handoffReason
         ? `O lead pediu: "${result.handoffReason}". Reconheça o pedido especificamente — não seja genérico.`
         : "Informe que um membro da equipe irá assumir o atendimento em breve.";

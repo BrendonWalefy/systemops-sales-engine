@@ -622,7 +622,9 @@ export function coerceBusinessIntent(params: {
   // P0.1: Guard Anti-Saudação — Se a pergunta contém conteúdo de negócio,
   // NUNCA responder com saudação genérica. O sistema decide (determinístico).
   if (isClinicSegment && detectPatientArrivalText(message)) return "patient_arrived";
-  if (isMaintenanceInquiryText(normalized)) return "needs_human";      // ← P0.2: Prioridade (manutenção)
+  // P0.2: Prioridade — Garantia antes de Manutenção (ambos redirectam para needs_human, mas contexto diferente)
+  if (isWarrantyQuestion(normalized)) return "needs_human";
+  if (isMaintenanceInquiryText(normalized)) return "needs_human";
   if (isPriceRequestText(normalized)) return "price_inquiry";
   if (isSchedulingRequestText(normalized)) return "book_appointment";  // ← P0.1: Novo
   if (resolveDirectTreatmentMention(message, treatments)) return "general_question";
@@ -695,6 +697,20 @@ const MAINTENANCE_SERVICE_KEYWORDS = [
 // P0.2: Detectar pergunta de manutenção (não é novo tratamento, é serviço em já-realizado)
 function isMaintenanceInquiryText(normalized: string): boolean {
   return MAINTENANCE_SERVICE_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+// P0.2: Detectar pergunta de garantia (cobertura, procedimento recente, etc)
+function isWarrantyQuestion(normalized: string): boolean {
+  const warrantyKeywords = [
+    "garantia",
+    "cobre",
+    "cobertura",
+    "procedimento recente",
+    "ainda está coberto",
+    "caiu em garantia",
+    "é grátis",
+  ];
+  return warrantyKeywords.some((keyword) => normalized.includes(keyword));
 }
 
 // ── Localiza o horário expresso pelo lead na lista atualizada de slots ──
@@ -1725,7 +1741,7 @@ export class ConversationOrchestrator {
                 playbook: editorial?.playbookText ?? null,
                 commercialPolicy: editorial?.commercialPolicy ?? null,
                 installmentTable: null,
-                receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
               },
               leadName: extractFirstName(lead.name),
               timezone,
@@ -1977,7 +1993,7 @@ export class ConversationOrchestrator {
                 toneOfVoice: editorial?.toneOfVoice ?? null,
                 playbook: editorial?.playbookText ?? null,
                 commercialPolicy: editorial?.commercialPolicy ?? null,
-                receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
               },
               leadName: extractFirstName(lead.name),
               timezone,
@@ -2001,7 +2017,7 @@ export class ConversationOrchestrator {
                 toneOfVoice: editorial?.toneOfVoice ?? null,
                 playbook: editorial?.playbookText ?? null,
                 commercialPolicy: editorial?.commercialPolicy ?? null,
-                receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
               },
               leadName: extractFirstName(lead.name),
               timezone,
@@ -2329,6 +2345,16 @@ export class ConversationOrchestrator {
           maintenanceKeyword,
           messageText,
         ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+      }
+    }
+
+    // P0.2: Detectar pergunta de garantia (cobertura de procedimento recente)
+    if (effectiveIntent === "needs_human" && !maintenanceHandoffReason) {
+      const normalized = normalizeFreeText(messageText);
+      if (isWarrantyQuestion(normalized)) {
+        maintenanceHandoffReason = "Pergunta sobre cobertura de garantia — avaliar conforme política";
+      } else if (isMaintenanceInquiryText(normalized)) {
+        maintenanceHandoffReason = "Pergunta sobre manutenção/reparo — requer avaliação com foto";
       }
     }
 
