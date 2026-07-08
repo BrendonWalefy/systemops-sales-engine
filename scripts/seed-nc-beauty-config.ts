@@ -37,7 +37,7 @@ import {
   professionals,
 } from "../src/infrastructure/db/schema";
 import type { ProfessionalWorkSchedule } from "../src/domain/entities/professional";
-import { and, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) { console.error("❌ DATABASE_URL not set"); process.exit(1); }
@@ -82,6 +82,9 @@ FUNIL DE CÍLIOS — execute quando a lead pedir extensão de cílios sem especi
 Passo 1 — pergunte que estilo ela prefere: um efeito mais natural e delicado ou um olhar mais marcado e volumoso. Pergunte também se ela já usou extensão antes.
 Passo 2 — indique a técnica mais próxima do perfil dela: técnicas comuns para efeito clássico e natural; técnicas gringas como Fox Eyes, Wispy e CostaLash para olhar mais marcado.
 Passo 3 — se ela já tem extensão feita aqui, pergunte há quantos dias foi a aplicação, para direcionar entre manutenção e nova aplicação conforme a política comercial. Lembre que os volumes Sirena, Express e Capping não possuem manutenção.
+
+VÍDEO DO SPA FACIAL PREMIUM:
+Quando a lead demonstrar interesse no SPA Facial Premium, ou quando você o indicar no funil de pele, apresente o procedimento em uma frase acolhedora e, na linha seguinte, envie o vídeo da biblioteca cujo título contém "Limpeza Facial Premium" usando a tag [MEDIA:id] com o id desse vídeo. Envie esse vídeo no máximo uma vez por conversa e somente se ele existir na biblioteca.
 
 SOBRANCELHAS:
 O designer é personalizado conforme a estrutura da sobrancelha e do rosto da cliente. Se a cliente gosta de efeito bem marcado, sugira o designer com henna. Nunca combine henna com Brow Lamination — nesse caso usamos tintura. A durabilidade da henna varia com a pele de cada cliente.
@@ -412,6 +415,22 @@ async function main() {
     console.log(`✅ Arquivada(s): ${archived.map((v) => v.name).join(", ")}`);
   }
 
+  // 2b. Preserva a curadoria de mídia da versão recém-arquivada (media_asset_ids
+  // são ponteiros para media_assets, que é a dona do arquivo — re-rodar o seed
+  // não pode desautorizar mídias já vinculadas via upload-nc-media.ts).
+  const previousMediaIds = await db
+    .select({ ids: playbookVersions.mediaAssetIds })
+    .from(playbookVersions)
+    .where(
+      and(
+        eq(playbookVersions.clinicId, CLINIC_ID),
+        eq(playbookVersions.status, "historical"),
+      ),
+    )
+    .orderBy(desc(playbookVersions.updatedAt))
+    .limit(1)
+    .then((r) => r[0]?.ids ?? []);
+
   // 3. Nova versão ativa
   const newVersion = await db
     .insert(playbookVersions)
@@ -427,40 +446,63 @@ async function main() {
       commercialPolicy: COMMERCIAL_POLICY,
       differentials: DIFFERENTIALS,
       objections: OBJECTIONS,
+      mediaAssetIds: previousMediaIds,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
     .returning({ id: playbookVersions.id, name: playbookVersions.name });
   console.log(`✅ Playbook ativo: "${newVersion[0].name}"`);
 
-  // 4. Substitui treatments pelos 21 do Guia de Serviços
-  const deleted = await db
-    .delete(treatments)
-    .where(eq(treatments.clinicId, CLINIC_ID))
-    .returning({ id: treatments.id });
-  if (deleted.length > 0) console.log(`✅ ${deleted.length} treatment(s) anterior(es) removido(s)`);
-
+  // 4. Upsert dos 21 treatments do Guia de Serviços por (clinicId, name).
+  // Upsert (e não delete+insert) para preservar os ids — media_assets.treatmentId
+  // e appointments referenciam treatments; recriar quebraria os vínculos.
   const now = new Date();
-  await db.insert(treatments).values(
-    TREATMENTS.map((t) => ({
-      id: randomUUID(),
-      clinicId: CLINIC_ID,
-      name: t.name,
-      durationMinutes: t.durationMinutes,
-      description: t.description,
-      requiresEvaluationFirst: false,
-      aliases: t.aliases,
-      isAesthetic: true,
-      priceCents: t.priceCents,
-      priceKind: "fixed" as const,
-      priceUnit: t.priceUnit ?? null,
-      priceQuotableInChat: true,
-      priceDeductible: false,
-      createdAt: now,
-      updatedAt: now,
-    })),
-  );
-  console.log(`✅ ${TREATMENTS.length} treatments inseridos (preço estruturado, cotável no chat)`);
+  for (const t of TREATMENTS) {
+    await db
+      .insert(treatments)
+      .values({
+        id: randomUUID(),
+        clinicId: CLINIC_ID,
+        name: t.name,
+        durationMinutes: t.durationMinutes,
+        description: t.description,
+        requiresEvaluationFirst: false,
+        aliases: t.aliases,
+        isAesthetic: true,
+        priceCents: t.priceCents,
+        priceKind: "fixed" as const,
+        priceUnit: t.priceUnit ?? null,
+        priceQuotableInChat: true,
+        priceDeductible: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [treatments.clinicId, treatments.name],
+        set: {
+          durationMinutes: t.durationMinutes,
+          description: t.description,
+          aliases: t.aliases,
+          isAesthetic: true,
+          priceCents: t.priceCents,
+          priceKind: "fixed" as const,
+          priceUnit: t.priceUnit ?? null,
+          priceQuotableInChat: true,
+          priceDeductible: false,
+          updatedAt: now,
+        },
+      });
+  }
+  const seededNames = new Set(TREATMENTS.map((t) => t.name));
+  const extras = await db
+    .select({ name: treatments.name })
+    .from(treatments)
+    .where(eq(treatments.clinicId, CLINIC_ID))
+    .then((rows) => rows.filter((r) => !seededNames.has(r.name)));
+  console.log(`✅ ${TREATMENTS.length} treatments upserted (preço estruturado, cotável no chat)`);
+  if (extras.length > 0) {
+    console.log(`⚠️  Treatments fora do seed (mantidos, revisar): ${extras.map((e) => e.name).join(", ")}`);
+  }
 
   // 5. Profissionais (upsert por nome)
   for (const p of PROFESSIONALS) {
