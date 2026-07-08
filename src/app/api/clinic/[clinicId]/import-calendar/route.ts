@@ -3,6 +3,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
+import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 
 export const runtime = "nodejs";
@@ -67,14 +68,18 @@ export async function POST(
       );
     }
 
-    // TODO: Importar eventos para DB quando fizer implementação de appointments
-    // Por enquanto, apenas validamos que o arquivo é válido
+    // Importar eventos para DB
+    const importResult = await importCalendarEvents(clinicId, parseResult.events);
 
     return NextResponse.json({
-      success: true,
-      imported: parseResult.events.length,
-      errors: parseResult.errors,
-      message: `${parseResult.events.length} consultas prontas para importar`,
+      success: importResult.imported > 0 || importResult.errors.length === 0,
+      imported: importResult.imported,
+      skipped: importResult.skipped,
+      errors: [
+        ...parseResult.errors,
+        ...importResult.errors.map((e) => `${e.event}: ${e.error}`),
+      ],
+      message: `${importResult.imported} consultas importadas${importResult.skipped > 0 ? `, ${importResult.skipped} puladas` : ""}`,
     });
   } catch (error) {
     console.error("[import-calendar] Erro:", error);
