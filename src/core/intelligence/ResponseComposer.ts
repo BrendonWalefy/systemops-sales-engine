@@ -33,6 +33,30 @@ function envModel(name: string): string | null {
   return value || null;
 }
 
+// P0.7: Deduplicar saudações repetidas ("Boa noite" 2x, "Bom dia" 2x, etc)
+function deduplicateGreetings(text: string): string {
+  const lines = text.split("\n");
+  const result: string[] = [];
+  const greetingPattern = /^(boa noite|bom dia|olá|oi|tudo bem|como você está)[,!?]?/i;
+
+  let lastWasGreeting = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isGreeting = greetingPattern.test(trimmed);
+
+    // Se é saudação e a linha anterior também era, pula
+    if (isGreeting && lastWasGreeting) {
+      continue;
+    }
+
+    result.push(line);
+    lastWasGreeting = isGreeting && trimmed.length > 0;
+  }
+
+  return result.join("\n").trim();
+}
+
 export function resolveComposerModel(plan?: ComposerPlan | null): string {
   const globalOverride = envModel("OPENAI_COMPOSER_MODEL");
   if (globalOverride) return globalOverride;
@@ -859,11 +883,14 @@ export class ResponseComposer {
       ),
     );
     const mediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
-    const text = parts
+    let text = parts
       .filter((p): p is { type: "text"; content: string } => p.type === "text")
       .map((p) => p.content)
       .join("\n\n")
       .trim();
+
+    // P0.7: Deduplicar saudações repetidas (ex: "Boa noite" 2x)
+    text = deduplicateGreetings(text);
 
     return {
       parts,
