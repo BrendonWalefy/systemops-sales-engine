@@ -156,9 +156,6 @@ function extractFirstName(fullName: string | null | undefined): string | null {
     /^(deus|senhor|senhora|nosso|sr|sra|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|\d+)$/i;
   if (INVALID_FIRST_NAME_RE.test(first.replace(/\./g, ""))) return null;
 
-  // Todos caps com mais de 4 letras → provavelmente sigla ou username (ex: "LOJA123")
-  if (first.length > 4 && first === first.toUpperCase() && /[A-Z]{4,}/.test(first)) return null;
-
   return first;
 }
 
@@ -1542,7 +1539,7 @@ export class ConversationOrchestrator {
       // Critérios para identificar como mídia de anúncio (não foto clínica do paciente):
       //   1. É o primeiro contato da conversa (IA ainda não respondeu), E
       //   2. Há poucas mensagens do lead no histórico (burst de chegada de anúncio), E
-      //   3. Não há caption com conteúdo clínico (texto da legenda é vazio ou genérico).
+      //   3. A legenda (caption) coincide com frases típicas de preenchimento automático de anúncios.
       const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
       const caption = params.messageText?.trim() ?? "";
       // Usa contagem de mensagens na conversa sem carregar todo o histórico (allMessages é carregado mais adiante)
@@ -1559,7 +1556,7 @@ export class ConversationOrchestrator {
       const isLikelyAdMedia =
         !hasAnyAgentMsg &&
         earlyLeadMsgTotal <= 3 &&
-        (caption === "" || caption === "[imagem recebida]" || caption === "[vídeo recebido]" || AD_CAPTION_RE.test(caption));
+        AD_CAPTION_RE.test(caption);
 
       if (isLikelyAdMedia) {
         console.log(
