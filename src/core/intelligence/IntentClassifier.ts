@@ -107,7 +107,8 @@ REGRA PARA stop_contact (opt-out — PRIORIDADE ALTA, avalie antes de farewell/u
 - Na dúvida entre stop_contact e farewell/reject_slots, só escolha stop_contact se houver menção explícita a NÃO RECEBER MAIS mensagens/contato.
 
 REGRA PARA greeting:
-- intent = "greeting" SOMENTE quando é genuinamente o primeiro contato sem histórico OU quando o lead recomeça do zero com nova saudação após longa ausência
+- intent = "greeting" SOMENTE para saudações PURAS ("Oi", "Bom dia", "Tudo bem?").
+- SE a mensagem contiver qualquer pergunta, pedido ou assunto além da saudação (ex: "Olá! Posso ter mais informações sobre isso?", "Oi, gostaria de agendar"), classifique pela intenção principal (general_question, book_appointment, etc). NÃO use greeting nesses casos.
 - "oi", "olá", "bom dia", "boa tarde" COM histórico de conversa ativo → intent = "acknowledgment", NÃO "greeting"
 
 REGRA CRÍTICA — confirm_slot com data diferente dos slots oferecidos:
