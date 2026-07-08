@@ -4,6 +4,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, clinicMetrics, playbookVersions } from "@/infrastructure/db/schema";
 import { appendOperationalAlerts, evaluateOperationalAlerts } from "@/application/health/operational-alerts";
 import { probeClinicChannelHealth } from "@/application/health/channel-health";
+import { inspectCreditBalances } from "@/application/health/credit-balance";
 import { inspectQueueHealth, mapQueueHealthAlertsToOperationalAlerts } from "@/application/health/queue-health";
 import { buildAlertDigestEmail } from "@/infrastructure/notifications/alert-email-template";
 import { sendEmail } from "@/infrastructure/notifications/email-sender";
@@ -85,7 +86,10 @@ export async function GET(req: NextRequest) {
     })),
   );
 
-  const queueHealth = await inspectQueueHealth();
+  const [queueHealth, creditAlerts] = await Promise.all([
+    inspectQueueHealth(),
+    inspectCreditBalances(),
+  ]);
   const clinicAlertReport = evaluateOperationalAlerts(
     clinicsWithChannelStatus.map((clinic) => {
       const latestMetric = latestMetrics.find((r) => r.clinicId === clinic.clinicId);
@@ -109,10 +113,10 @@ export async function GET(req: NextRequest) {
     }),
     new Date(),
   );
-  const alertReport = appendOperationalAlerts(
-    clinicAlertReport,
-    mapQueueHealthAlertsToOperationalAlerts(queueHealth.alerts),
-  );
+  const alertReport = appendOperationalAlerts(clinicAlertReport, [
+    ...mapQueueHealthAlertsToOperationalAlerts(queueHealth.alerts),
+    ...creditAlerts,
+  ]);
 
   if (alertReport.alertCount === 0) {
     return NextResponse.json({

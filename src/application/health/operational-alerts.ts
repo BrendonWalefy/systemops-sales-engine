@@ -23,7 +23,7 @@ export type ClinicOperationalAlertInput = ClinicHealthInput & {
 export type OperationalAlert = {
   clinicId: string;
   clinicName: string;
-  source: "configuration" | "cron" | "quality" | "webhook" | "channel" | "queue";
+  source: "configuration" | "cron" | "quality" | "webhook" | "channel" | "queue" | "credits";
   level: "warn" | "critical";
   title: string;
   detail: string;
