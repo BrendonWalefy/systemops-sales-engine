@@ -21,11 +21,12 @@ import {
   AlignLeft,
   ChevronDown,
   GripVertical,
+  Info,
 } from "lucide-react";
 import { savePipelineSteps } from "../actions";
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 
-type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
+type MediaItem = { id: string; title: string; url: string; type: "video" | "image"; treatmentId: string | null };
 
 type Props = {
   treatment: { id: string; name: string; pipelineSteps: PipelineStep[] | null };
@@ -44,6 +45,32 @@ const STEP_TYPES = [
 ] as const;
 
 type StepType = (typeof STEP_TYPES)[number]["type"];
+
+// Aviso não-bloqueante: o tratamento tem mídia própria cadastrada (treatmentId bate
+// com este tratamento — mídia geral fica de fora para não gerar ruído, já que
+// legitimamente nunca aparece em um step de conteúdo), mas nenhum step de Conteúdo
+// do pipeline a referencia. Sinal de que o vídeo/imagem foi esquecido na apresentação
+// inicial — o mesmo gap que deixou a Vitalli sem vídeo na primeira resposta sobre
+// lentes (o Q&A livre da IA continua tendo acesso à mídia normalmente).
+export function computeMediaGapWarning(
+  steps: PipelineStep[],
+  mediaLibrary: { id: string; treatmentId: string | null }[],
+  treatmentId: string,
+): { show: boolean; contentStepIndexes: number[]; treatmentSpecificMediaCount: number } {
+  const treatmentSpecificMedia = mediaLibrary.filter((m) => m.treatmentId === treatmentId);
+  const contentStepIndexes = steps
+    .map((s, i) => (s.type === "content" ? i : -1))
+    .filter((i) => i !== -1);
+  const usedMediaIds = new Set(
+    steps.flatMap((s) => (s.type === "content" ? s.blocks.filter((b) => b.kind === "media").map((b) => b.mediaId) : [])),
+  );
+  const show =
+    contentStepIndexes.length > 0 &&
+    treatmentSpecificMedia.length > 0 &&
+    treatmentSpecificMedia.every((m) => !usedMediaIds.has(m.id));
+
+  return { show, contentStepIndexes, treatmentSpecificMediaCount: treatmentSpecificMedia.length };
+}
 
 function stepColor(type: string): string {
   return STEP_TYPES.find((s) => s.type === type)?.color ?? "var(--muted)";
@@ -551,6 +578,19 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
     setSteps((prev) => [...prev, defaultStep(type)]);
   }
 
+  const { show: showMediaGapWarning, contentStepIndexes, treatmentSpecificMediaCount } = computeMediaGapWarning(
+    steps,
+    mediaLibrary,
+    treatment.id,
+  );
+
+  function addMediaToFirstContentStep() {
+    const idx = contentStepIndexes[0];
+    const step = steps[idx];
+    if (step.type !== "content") return;
+    updateStep(idx, { ...step, blocks: [...step.blocks, { kind: "media", mediaId: "" }] });
+  }
+
   function handleSave() {
     setError(null);
     startTransition(async () => {
@@ -639,6 +679,51 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {showMediaGapWarning && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "10px",
+            padding: "10px 14px",
+            background: "rgba(251,191,36,0.08)",
+            border: "1px solid rgba(251,191,36,0.25)",
+            borderRadius: "8px",
+            marginBottom: "16px",
+          }}
+        >
+          <Info size={15} strokeWidth={2} style={{ color: "#fbbf24", marginTop: "2px", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: "13px", margin: 0, color: "var(--foreground)" }}>
+              Este tratamento tem {treatmentSpecificMediaCount}{" "}
+              {treatmentSpecificMediaCount === 1 ? "mídia" : "mídias"} própria na biblioteca, mas nenhum step de
+              Conteúdo do pipeline usa nenhuma delas — hoje elas só entram se a IA decidir puxar durante o Q&A livre.
+            </p>
+            <button
+              type="button"
+              onClick={addMediaToFirstContentStep}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                marginTop: "8px",
+                padding: "5px 10px",
+                background: "rgba(251,191,36,0.12)",
+                border: "1px solid rgba(251,191,36,0.3)",
+                borderRadius: "6px",
+                color: "#fbbf24",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: 600,
+              }}
+            >
+              <Film size={12} strokeWidth={2} />
+              Adicionar bloco de mídia ao primeiro step de Conteúdo
+            </button>
+          </div>
         </div>
       )}
 

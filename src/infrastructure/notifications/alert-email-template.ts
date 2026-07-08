@@ -17,6 +17,7 @@ const SOURCE_LABEL: Record<string, string> = {
   webhook: "Webhook / Entrada",
   channel: "Canal / Saída",
   queue: "Fila / Workers",
+  credits: "Créditos / Saldo",
 };
 
 function alertRow(alert: OperationalAlertReport["alerts"][number]): string {

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { db } from "@/infrastructure/db/client";
 import {
   organizations,
@@ -79,120 +80,117 @@ type ClinicRow = {
 };
 
 async function fetchAllClinics(): Promise<ClinicRow[]> {
-  const allClinics = await db
-    .select({
-      id: organizations.id,
-      name: organizations.name,
-      autoReplyEnabled: organizations.autoReplyEnabled,
-      operationalStatus: organizations.operationalStatus,
-      shadowModeEnabled: organizations.shadowModeEnabled,
-      isTest: organizations.isTest,
-      isDemo: organizations.isDemo,
-      channelProvider: organizations.channelProvider,
-      zapiInstanceId: organizations.zapiInstanceId,
-      zapiToken: organizations.zapiToken,
-      zapiClientToken: organizations.zapiClientToken,
-      metaPhoneNumberId: organizations.metaPhoneNumberId,
-      metaAccessToken: organizations.metaAccessToken,
-    })
-    .from(organizations)
-    .orderBy(organizations.name);
   const monthStart = startOfMonth();
 
-  const rows = await Promise.all(
-    allClinics.map(async (clinic) => {
-      const [
-        leadsResult,
-        scheduledResult,
-        aiCostResult,
-        waCostResult,
-        lastActivityResult,
-      ] = await Promise.all([
-        db
-          .select({ count: count() })
-          .from(leads)
-          .innerJoin(conversations, eq(conversations.leadId, leads.id))
-          .where(
-            and(
-              eq(leads.clinicId, clinic.id),
-              eq(conversations.category, "sales"),
-              gte(leads.createdAt, monthStart),
-            ),
-          ),
+  const [
+    allClinics,
+    allLeadsCounts,
+    allScheduledCounts,
+    allAiCosts,
+    allWaCosts,
+    allLastActivity,
+  ] = await Promise.all([
+    db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        autoReplyEnabled: organizations.autoReplyEnabled,
+        operationalStatus: organizations.operationalStatus,
+        shadowModeEnabled: organizations.shadowModeEnabled,
+        isTest: organizations.isTest,
+        isDemo: organizations.isDemo,
+        channelProvider: organizations.channelProvider,
+        zapiInstanceId: organizations.zapiInstanceId,
+        zapiToken: organizations.zapiToken,
+        zapiClientToken: organizations.zapiClientToken,
+        metaPhoneNumberId: organizations.metaPhoneNumberId,
+        metaAccessToken: organizations.metaAccessToken,
+      })
+      .from(organizations)
+      .orderBy(organizations.name),
 
-        db
-          .select({ count: count() })
-          .from(leads)
-          .innerJoin(conversations, eq(conversations.leadId, leads.id))
-          .where(
-            and(
-              eq(leads.clinicId, clinic.id),
-              eq(conversations.category, "sales"),
-              eq(leads.status, "appointment_scheduled"),
-              gte(leads.createdAt, monthStart),
-            ),
-          ),
+    db
+      .select({ clinicId: leads.clinicId, count: count() })
+      .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(
+        and(
+          eq(conversations.category, "sales"),
+          gte(leads.createdAt, monthStart),
+        ),
+      )
+      .groupBy(leads.clinicId),
 
-        db
-          .select({ total: sum(aiUsageCosts.estimatedCostUsdMicros) })
-          .from(aiUsageCosts)
-          .where(
-            and(
-              eq(aiUsageCosts.clinicId, clinic.id),
-              gte(aiUsageCosts.createdAt, monthStart),
-            ),
-          ),
+    db
+      .select({ clinicId: leads.clinicId, count: count() })
+      .from(leads)
+      .innerJoin(conversations, eq(conversations.leadId, leads.id))
+      .where(
+        and(
+          eq(conversations.category, "sales"),
+          eq(leads.status, "appointment_scheduled"),
+          gte(leads.createdAt, monthStart),
+        ),
+      )
+      .groupBy(leads.clinicId),
 
-        db
-          .select({ total: sum(whatsappMessageCosts.estimatedCostUsdMicros) })
-          .from(whatsappMessageCosts)
-          .where(
-            and(
-              eq(whatsappMessageCosts.clinicId, clinic.id),
-              gte(whatsappMessageCosts.createdAt, monthStart),
-            ),
-          ),
+    db
+      .select({ clinicId: aiUsageCosts.clinicId, total: sum(aiUsageCosts.estimatedCostUsdMicros) })
+      .from(aiUsageCosts)
+      .where(gte(aiUsageCosts.createdAt, monthStart))
+      .groupBy(aiUsageCosts.clinicId),
 
-        db
-          .select({ last: max(conversations.lastMessageAt) })
-          .from(conversations)
-          .where(eq(conversations.clinicId, clinic.id)),
-      ]);
+    db
+      .select({ clinicId: whatsappMessageCosts.clinicId, total: sum(whatsappMessageCosts.estimatedCostUsdMicros) })
+      .from(whatsappMessageCosts)
+      .where(gte(whatsappMessageCosts.createdAt, monthStart))
+      .groupBy(whatsappMessageCosts.clinicId),
 
-      const leadsCount = leadsResult[0]?.count ?? 0;
-      const scheduledCount = scheduledResult[0]?.count ?? 0;
-      const aiCostMicros = Number(aiCostResult[0]?.total ?? 0);
-      const waCostMicros = Number(waCostResult[0]?.total ?? 0);
-      const lastActivity = lastActivityResult[0]?.last
-        ? new Date(lastActivityResult[0].last)
-        : null;
-      const hasActivityIn24h = lastActivity
-        ? Date.now() - lastActivity.getTime() < 24 * 60 * 60 * 1000
-        : false;
+    db
+      .select({ clinicId: conversations.clinicId, last: max(conversations.lastMessageAt) })
+      .from(conversations)
+      .groupBy(conversations.clinicId),
+  ]);
 
-      return {
-        id: clinic.id,
-        name: clinic.name,
-        autoReplyEnabled: clinic.autoReplyEnabled,
-        operationalStatus: clinic.operationalStatus,
-        shadowModeEnabled: clinic.shadowModeEnabled,
-        leadsThisMonth: leadsCount,
-        scheduledThisMonth: scheduledCount,
-        aiCostMicros,
-        waCostMicros,
-        lastActivity,
-        hasActivityIn24h,
-        isTest: clinic.isTest,
-        isDemo: clinic.isDemo,
-        channelProvider: clinic.channelProvider,
-        zapiInstanceId: clinic.zapiInstanceId,
-        zapiToken: clinic.zapiToken,
-        zapiClientToken: clinic.zapiClientToken,
-        metaPhoneNumberId: clinic.metaPhoneNumberId,
-        metaAccessToken: clinic.metaAccessToken,
-      };
-    }),
-  );
+  const leadsMap = new Map(allLeadsCounts.map((r) => [r.clinicId, r.count]));
+  const scheduledMap = new Map(allScheduledCounts.map((r) => [r.clinicId, r.count]));
+  const aiCostMap = new Map(allAiCosts.map((r) => [r.clinicId, Number(r.total ?? 0)]));
+  const waCostMap = new Map(allWaCosts.map((r) => [r.clinicId, Number(r.total ?? 0)]));
+  const lastActivityMap = new Map(allLastActivity.map((r) => [r.clinicId, r.last]));
+
+  const rows = allClinics.map((clinic) => {
+    const leadsCount = leadsMap.get(clinic.id) ?? 0;
+    const scheduledCount = scheduledMap.get(clinic.id) ?? 0;
+    const aiCostMicros = aiCostMap.get(clinic.id) ?? 0;
+    const waCostMicros = waCostMap.get(clinic.id) ?? 0;
+    const lastMessageRaw = lastActivityMap.get(clinic.id);
+    const lastActivity = lastMessageRaw ? new Date(lastMessageRaw) : null;
+    const hasActivityIn24h = lastActivity
+      ? Date.now() - lastActivity.getTime() < 24 * 60 * 60 * 1000
+      : false;
+
+    return {
+      id: clinic.id,
+      name: clinic.name,
+      autoReplyEnabled: clinic.autoReplyEnabled,
+      operationalStatus: clinic.operationalStatus,
+      shadowModeEnabled: clinic.shadowModeEnabled,
+      leadsThisMonth: leadsCount,
+      scheduledThisMonth: scheduledCount,
+      aiCostMicros,
+      waCostMicros,
+      lastActivity,
+      hasActivityIn24h,
+      isTest: clinic.isTest,
+      isDemo: clinic.isDemo,
+      channelProvider: clinic.channelProvider,
+      zapiInstanceId: clinic.zapiInstanceId,
+      zapiToken: clinic.zapiToken,
+      zapiClientToken: clinic.zapiClientToken,
+      metaPhoneNumberId: clinic.metaPhoneNumberId,
+      metaAccessToken: clinic.metaAccessToken,
+    };
+  });
 
   return rows;
 }
@@ -349,16 +347,6 @@ function ShadowModeBadge() {
 
 export default async function OwnerPage() {
   const clinicRows = await fetchAllClinics();
-  const operationalAlertReport = await fetchOperationalAlertReport(clinicRows);
-  const alertsByClinicId = new Map<string, typeof operationalAlertReport.alerts>(
-    clinicRows.map((clinic) => [
-      clinic.id,
-      operationalAlertReport.alerts.filter(
-        (alert) => alert.clinicId === clinic.id,
-      ),
-    ]),
-  );
-
   const liveRows = clinicRows.filter((r) =>
     isBillableOperationalStatus(r.operationalStatus),
   );
@@ -537,10 +525,55 @@ export default async function OwnerPage() {
           })}
         </div>
 
-        <div
-          style={{
-            border:
-              operationalAlertReport.alertCount > 0
+        <Suspense
+          fallback={
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: 13, border: "1px solid var(--line)", borderRadius: 12 }}>
+              Carregando status operacionais e verificando instâncias...
+            </div>
+          }
+        >
+          <DashboardLists
+            clinicRows={clinicRows}
+            liveRows={liveRows}
+            cancelledRows={cancelledRows}
+            prospectRows={prospectRows}
+            testRows={testRows}
+          />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+async function DashboardLists({
+  clinicRows,
+  liveRows,
+  cancelledRows,
+  prospectRows,
+  testRows,
+}: {
+  clinicRows: ClinicRow[];
+  liveRows: ClinicRow[];
+  cancelledRows: ClinicRow[];
+  prospectRows: ClinicRow[];
+  testRows: ClinicRow[];
+}) {
+  const operationalAlertReport = await fetchOperationalAlertReport(clinicRows);
+  const alertsByClinicId = new Map<string, typeof operationalAlertReport.alerts>(
+    clinicRows.map((clinic) => [
+      clinic.id,
+      operationalAlertReport.alerts.filter(
+        (alert) => alert.clinicId === clinic.id,
+      ),
+    ]),
+  );
+
+  return (
+    <>
+      <div
+        style={{
+          border:
+            operationalAlertReport.alertCount > 0
                 ? `1px solid ${
                     operationalAlertReport.criticalCount > 0
                       ? "rgba(239,68,68,0.25)"
@@ -1191,7 +1224,8 @@ export default async function OwnerPage() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+
+
+    </>
   );
 }

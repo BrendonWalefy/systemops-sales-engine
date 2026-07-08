@@ -237,6 +237,44 @@ function buildConciergeStarter(clinic: Organization, timezone: ClinicTimezone, l
   return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?`;
 }
 
+// Remove uma saudação redundante que a própria LLM tenha aberto no texto (apesar da
+// instrução em ResponseComposer.ts para não fazer isso quando isFirstMessage=true) —
+// defesa de profundidade: não depender só do prompt, mesmo que ele já peça pra LLM
+// não se auto-saudar. O pipeline de tratamento nunca abre com saudação (texto fixo do
+// playbook), então isto é um no-op seguro para esse caminho.
+const LEADING_GREETING_RE = /^(bom\s*dia|boa\s*tarde|boa\s*noite|ol[áa]|oi)[!,.\s]+/i;
+
+function stripLeadingGreeting(text: string): string {
+  const stripped = text.replace(LEADING_GREETING_RE, "").trimStart();
+  if (stripped.length === 0) return text;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+// Prefixa a saudação temporal (Bom dia/Boa tarde/Boa noite [, nome]) no primeiro bloco
+// de texto da resposta. Usado quando isFirstMessage=true para intents que NÃO são
+// greeting/acknowledgment/unclear (esses já ganham abertura própria via
+// buildConciergeStarter/shouldShowInitialMenu, antes do switch principal) — cobre o
+// pipeline de tratamento e a resposta geral da LLM, que hoje entregam o conteúdo "seco"
+// direto ao ponto quando a primeira mensagem do lead já vem com uma pergunta real.
+export function prependFirstMessageSalutation(
+  parts: ResponsePart[],
+  timezone: ClinicTimezone,
+  leadName?: string | null,
+): ResponsePart[] {
+  const salutation = getDayGreeting(timezone);
+  const nameGreeting = extractFirstName(leadName) ? `, ${extractFirstName(leadName)}` : "";
+  const opener = `${salutation}${nameGreeting}!`;
+
+  if (parts.length === 0) return [{ type: "text", content: opener }];
+
+  const [first, ...rest] = parts;
+  if (first.type === "text") {
+    const body = stripLeadingGreeting(first.content);
+    return [{ type: "text", content: `${opener} ${body}`.trim() }, ...rest];
+  }
+  return [{ type: "text", content: opener }, first, ...rest];
+}
+
 function isMenuRerequest(message: string): boolean {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   return (
@@ -2357,9 +2395,16 @@ export class ConversationOrchestrator {
       composerInputTokens = composed.inputTokens;
       composerOutputTokens = composed.outputTokens;
       composerModel = composed.model;
+      const parts = isFirstMessage
+        ? prependFirstMessageSalutation(composed.parts, timezone, lead.name)
+        : composed.parts;
       composedMediaIds = composed.mediaIds;
-      composedParts = composed.parts;
-      return composed.text;
+      composedParts = parts;
+      return parts
+        .filter((p): p is { type: "text"; content: string } => p.type === "text")
+        .map((p) => p.content)
+        .join("\n\n")
+        .trim();
     };
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
@@ -3089,7 +3134,10 @@ export class ConversationOrchestrator {
                 clinic.staleConversationHours * 60,
               );
               if (firstActive.step.type === "content") {
-                const parts = buildPipelineContentParts(firstActive.step.blocks);
+                const rawParts = buildPipelineContentParts(firstActive.step.blocks);
+                const parts = isFirstMessage
+                  ? prependFirstMessageSalutation(rawParts, timezone, lead.name)
+                  : rawParts;
                 triggerPartsOverride = parts;
                 composedParts = parts;
                 composedMediaIds = parts
@@ -3151,7 +3199,10 @@ export class ConversationOrchestrator {
                     conversation.id, keywordTreatment.id, keywordTreatment.name, clinic.staleConversationHours * 60,
                   );
                   if (firstActive.step.type === "content") {
-                    const parts = buildPipelineContentParts(firstActive.step.blocks);
+                    const rawParts = buildPipelineContentParts(firstActive.step.blocks);
+                    const parts = isFirstMessage
+                      ? prependFirstMessageSalutation(rawParts, timezone, lead.name)
+                      : rawParts;
                     triggerPartsOverride = parts;
                     composedParts = parts;
                     composedMediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);

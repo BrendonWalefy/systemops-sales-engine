@@ -56,7 +56,7 @@ async function findUnattendedLeads(clinicId: string): Promise<UnattendedLead[]> 
       (SELECT m2.body   FROM messages m2 WHERE m2.conversation_id = c.id ORDER BY m2.sent_at DESC LIMIT 1) AS last_body
     FROM leads l
     JOIN conversations c ON c.lead_id = l.id
-    WHERE l.clinic_id = ${clinicId}
+    WHERE l.organization_id = ${clinicId}
       AND c.category = 'sales'
       AND l.status NOT IN ('lost', 'won', 'appointment_scheduled')
       AND (l.phone IS NOT NULL OR l.whatsapp_lid IS NOT NULL)

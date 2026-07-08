@@ -29,7 +29,7 @@ export default async function PipelineEditorPage({ params }: { params: Promise<{
       }}
       mediaLibrary={mediaAssets
         .filter((a) => a.type === "video" || a.type === "image")
-        .map((a) => ({ id: a.id, title: a.title, url: a.url, type: a.type as "video" | "image" }))}
+        .map((a) => ({ id: a.id, title: a.title, url: a.url, type: a.type as "video" | "image", treatmentId: a.treatmentId }))}
     />
   );
 }
