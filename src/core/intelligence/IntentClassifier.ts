@@ -83,12 +83,12 @@ REGRAS GERAIS:
 - "quanto custa", "qual o valor", "tem plano" → intent = "price_inquiry"
 - "dor", "urgência", "emergência", "urgente" → intent = "clinical_urgency"
 
-REGRA CRÍTICA — nome de serviço SEM intenção de agendar → "general_question":
-- "book_appointment" exige INTENÇÃO EXPLÍCITA de agendar: palavras como "marcar", "agendar", "reservar", "quero fazer", "quero agendar", "pode marcar", "queria agendar".
-- Quando o lead menciona um serviço SEM nenhuma dessas palavras (ex: "quero saber sobre X", "me fala de Y", "o que é Z") → intent = "general_question", NÃO "book_appointment".
-- Isso vale mesmo que o serviço esteja na lista de procedimentos da clínica.
-- Exemplos de "general_question": mencionar nome de um serviço sem intenção de agendar, "como funciona?", "quanto tempo dura?", "tem risco?", "qual a diferença entre X e Y?".
-- Exemplos de "book_appointment": "quero agendar X", "pode marcar um horário para Y", "quero fazer Z".
+REGRA CRÍTICA — general_question (dúvidas e perguntas gerais):
+- Use "general_question" para perguntas gerais sobre a clínica (ex: "qual o instagram?", "onde fica?", "qual o endereço?", "tem estacionamento?").
+- Use "general_question" (NÃO "book_appointment") quando o lead menciona um serviço SEM INTENÇÃO EXPLÍCITA de agendar.
+  - "book_appointment" exige palavras como "marcar", "agendar", "reservar", "quero fazer".
+  - Se o lead diz "quero saber sobre X", "me fala de Y", "como funciona?", "quanto tempo dura?", "qual a diferença entre X e Y?" → intent = "general_question".
+  - Isso vale mesmo que o serviço mencionado esteja na lista de procedimentos da clínica.
 
 REGRAS CRÍTICAS PARA ENCERRAMENTO E RECONHECIMENTO:
 - "opa blz", "blz", "ok", "entendi", "certo", "tá", "tá bom", "legal", "bacana", "perfeito", "combinado", "show" quando há histórico de conversa → intent = "acknowledgment"
