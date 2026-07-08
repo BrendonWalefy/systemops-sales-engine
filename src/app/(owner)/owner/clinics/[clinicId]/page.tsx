@@ -483,6 +483,9 @@ export default async function ClinicDetailPage({
 
   // ADR-006 Fase A — aba padrão e CTA contextual
   const defaultTab = resolveDefaultTab(clinic.operationalStatus);
+  const activeTab = sp.tab ?? defaultTab;
+  const isConfigTab = activeTab === "config";
+  const isOperacaoTab = activeTab === "operacao";
   const contextualCta = resolveContextualCta({
     clinicId: clinic.id,
     channelPairedAt: clinic.channelPairedAt ?? null,
@@ -490,7 +493,7 @@ export default async function ClinicDetailPage({
     operationalStatus: clinic.operationalStatus,
   });
 
-  const members = await db
+  const members = isConfigTab ? await db
     .select({
       id: clinicMembers.id,
       email: clinicMembers.email,
@@ -498,7 +501,7 @@ export default async function ClinicDetailPage({
       hasPassword: clinicMembers.passwordHash,
     })
     .from(clinicMembers)
-    .where(eq(clinicMembers.clinicId, clinicId));
+    .where(eq(clinicMembers.clinicId, clinicId)) : [];
 
   const monthStart = startOfMonth();
   const fourteenDays = fourteenDaysAgo();
@@ -511,7 +514,7 @@ export default async function ClinicDetailPage({
     tempHotResult,
     tempWarmResult,
     tempColdResult,
-  ] = await Promise.all([
+  ] = isOperacaoTab ? await Promise.all([
     db
       .select({ count: count() })
       .from(leads)
@@ -580,7 +583,7 @@ export default async function ClinicDetailPage({
         eq(conversations.category, "sales"),
         eq(leads.temperature, "cold"),
       )),
-  ]);
+  ]) : [[], [], [], [], [], [], []];
 
   const leadsCount = leadsMonthResult[0]?.count ?? 0;
   const scheduledCount = scheduledMonthResult[0]?.count ?? 0;
@@ -595,7 +598,7 @@ export default async function ClinicDetailPage({
   };
 
   // Daily volume (last 14 days)
-  const dailyLeadsResult = await db
+  const dailyLeadsResult = !isOperacaoTab ? [] : await db
     .select({
       day: sql<string>`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo')`,
       count: count(),
@@ -612,7 +615,7 @@ export default async function ClinicDetailPage({
       sql`DATE(${leads.createdAt} AT TIME ZONE 'America/Sao_Paulo') DESC`,
     );
 
-  const dailyMessagesResult = await db
+  const dailyMessagesResult = !isOperacaoTab ? [] : await db
     .select({
       day: sql<string>`DATE(${messages.sentAt} AT TIME ZONE 'America/Sao_Paulo')`,
       count: count(),
@@ -641,7 +644,7 @@ export default async function ClinicDetailPage({
     new Set([...Object.keys(dailyLeadsMap), ...Object.keys(dailyMsgMap)]),
   ).sort((a, b) => b.localeCompare(a));
 
-  const handoffConvs = await db
+  const handoffConvs = !isOperacaoTab ? [] : await db
     .select({
       convId: agentRecommendations.conversationId,
       leadId: agentRecommendations.leadId,
@@ -660,7 +663,7 @@ export default async function ClinicDetailPage({
     .orderBy(desc(agentRecommendations.createdAt))
     .limit(10);
 
-  const staleConvs = await db
+  const staleConvs = !isOperacaoTab ? [] : await db
     .select({
       id: conversations.id,
       lastMessageAt: conversations.lastMessageAt,
