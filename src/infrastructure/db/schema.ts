@@ -1284,3 +1284,22 @@ export const setupStudies = pgTable(
     ),
   }),
 );
+
+export const calendarImportTokens = pgTable(
+  "calendar_import_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    orgTokenIdx: index("calendar_import_tokens_org_idx").on(t.organizationId),
+    expiresAtIdx: index("calendar_import_tokens_expires_idx").on(t.expiresAt),
+  }),
+);

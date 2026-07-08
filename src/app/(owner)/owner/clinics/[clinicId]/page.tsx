@@ -55,6 +55,7 @@ import { updateChannelSafetySettings } from "./channel-safety-actions";
 import { ClinicTabs } from "./clinic-tabs";
 import { resolveDefaultTab, resolveContextualCta } from "./clinic-tab-helpers";
 import { GenerateSetupStudyButton, SetupStudyCard } from "./setup-study-ui";
+import { CalendarImportPanel } from "./calendar-import-panel";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
@@ -1163,6 +1164,9 @@ export default async function ClinicDetailPage({
                 <BookOpen size={13} /> Wizard de implantação
               </a>
             </div>
+
+            {/* Importação de Calendário */}
+            <CalendarImportPanel clinicId={clinic.id} />
 
             {/* Acesso da organização + controles */}
             <div className="clinic-detail-two-col-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
