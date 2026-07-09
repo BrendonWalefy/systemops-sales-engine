@@ -14,7 +14,7 @@ function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
     clinicId: "clinic-1",
     leadId: "lead-1",
     professionalId: null,
-    roomId: null,
+    roomId: null, description: null,
     calendarEventId: "gcal-abc",
     calendarEventUrl: null,
     startsAt: new Date("2026-06-10T14:00:00Z"),

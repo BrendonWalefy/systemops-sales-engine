@@ -80,7 +80,7 @@ const existingAppt: Appointment = {
   clinicId: clinic.id,
   leadId: lead.id,
   professionalId: null,
-  roomId: null,
+  roomId: null, description: null,
   calendarEventId: null,      // interno: sem evento externo
   calendarEventUrl: null,
   startsAt: new Date("2026-06-08T14:00:00.000Z"),
@@ -112,7 +112,7 @@ function makeInternalGateway(opts: { isSlotFree?: boolean } = {}) {
         clinicId: input.clinicId,
         leadId: input.leadId,
         professionalId: null,
-        roomId: null,
+        roomId: null, description: null,
         calendarEventId: null,
         calendarEventUrl: null,
         startsAt: input.startsAt,

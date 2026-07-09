@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/infrastructure/db/client";
-import { organizations, leads, appointments, treatments, professionals } from "@/infrastructure/db/schema";
+import { organizations, leads, appointments, professionals } from "@/infrastructure/db/schema";
 import { eq, and } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
 import { importCalendarEvents, extractPatientName } from "@/application/calendar/import-calendar-events";

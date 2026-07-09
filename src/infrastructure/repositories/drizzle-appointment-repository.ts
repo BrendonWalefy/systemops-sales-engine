@@ -22,6 +22,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         source: appointment.source,
         treatmentId: appointment.treatmentId,
         valueCents: appointment.valueCents,
+        description: appointment.description,
         createdAt: appointment.createdAt,
         updatedAt: appointment.updatedAt,
       })
@@ -38,6 +39,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
           reminderSentAt: appointment.reminderSentAt,
           treatmentId: appointment.treatmentId,
           valueCents: appointment.valueCents,
+          description: appointment.description,
           updatedAt: appointment.updatedAt,
         },
       });
@@ -136,6 +138,7 @@ function mapRow(row: typeof appointments.$inferSelect): Appointment {
     reminderSentAt: row.reminderSentAt ?? null,
     treatmentId: row.treatmentId ?? null,
     valueCents: row.valueCents ?? null,
+    description: row.description ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

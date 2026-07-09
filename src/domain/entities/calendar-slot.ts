@@ -22,6 +22,7 @@ export type Appointment = {
   reminderSentAt: Date | null;
   treatmentId: string | null;
   valueCents: number | null;
+  description: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

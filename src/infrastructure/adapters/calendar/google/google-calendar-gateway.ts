@@ -226,7 +226,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       clinicId: input.clinicId,
       leadId: input.leadId,
       professionalId: null,
-      roomId: null,
+      roomId: null, description: null,
       calendarEventId: event.id,
       calendarEventUrl: event.htmlLink ?? null,
       startsAt: input.startsAt,
