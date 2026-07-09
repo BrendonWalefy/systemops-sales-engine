@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { deduplicateGreetings } from "@/core/intelligence/ResponseComposer";
-import { prependFirstMessageSalutation } from "@/core/pipeline/ConversationOrchestrator";
+import { prependFirstMessageSalutation, prependPipelineIntroGreeting } from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
 
 const SAO_PAULO = new ClinicTimezone("America/Sao_Paulo");
 
@@ -98,5 +99,69 @@ Boa tarde, Fernandoeng! A técnica simplificada custa a partir de R$ 800 por den
       expect(lastPart.content).not.toMatch(/boa noite/i);
       expect(lastPart.content).toContain("Aqui está o resultado");
     }
+  });
+});
+
+describe("P0.7 (pipeline) — saudação ÚNICA quando pipeline de conteúdo dispara na 1ª msg", () => {
+  // Blocos crus do playbook da Vitalli (técnicas de lente), exatamente como o
+  // pipeline monta antes de saudar. NÃO contêm saudação.
+  const lentesBlocks: ResponsePart[] = [
+    { type: "text", content: "Nós somos especialistas em lentes de resina composta e trabalhamos com opções personalizadas, como a técnica simplificada e a estratificada. Vou te explicar rapidinho como funciona:" },
+    { type: "text", content: "A Técnica Simplificada é feita com resina de altíssima qualidade..." },
+    { type: "media", id: "5ffd33e9" },
+    { type: "text", content: "Já a Técnica Estratificada é feita com resina premium em várias camadas..." },
+    { type: "media", id: "0c771e1b" },
+  ];
+
+  it("prependPipelineIntroGreeting adiciona EXATAMENTE uma saudação aos blocos do pipeline", () => {
+    const parts = prependPipelineIntroGreeting(lentesBlocks, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
+    const fullText = parts.filter((p): p is Extract<ResponsePart, { type: "text" }> => p.type === "text").map((p) => p.content).join("\n\n");
+
+    expect((fullText.match(/boa (?:dia|tarde|noite)/gi) || []).length).toBe(1);
+    expect(fullText).toContain("Tudo bem?");
+    expect(fullText).toContain("assistente virtual da Clínica Vitalli");
+    expect(fullText).toContain("Nós somos especialistas em lentes de resina composta");
+  });
+
+  it("preserva os blocos de mídia intactos (não engole os vídeos)", () => {
+    const parts = prependPipelineIntroGreeting(lentesBlocks, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
+    const mediaIds = parts.filter((p): p is Extract<ResponsePart, { type: "media" }> => p.type === "media").map((p) => p.id);
+    expect(mediaIds).toEqual(["5ffd33e9", "0c771e1b"]);
+  });
+
+  it("defensivo: se o primeiro bloco já abrir com saudação, ainda assim NÃO duplica", () => {
+    const blocksComSaudacao: ResponsePart[] = [
+      { type: "text", content: "Boa noite, RR! Nós somos especialistas em lentes." },
+    ];
+    const parts = prependPipelineIntroGreeting(blocksComSaudacao, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
+    const fullText = (parts[0] as Extract<ResponsePart, { type: "text" }>).content;
+    expect((fullText.match(/boa noite/gi) || []).length).toBe(1);
+    expect(fullText).toContain("Nós somos especialistas em lentes");
+  });
+
+  it("REGRESSÃO do bug real: mesmo re-aplicado sobre parts já saudadas, resulta em UMA saudação", () => {
+    // ANTES (bug): o caminho de pipeline chamava prependFirstMessageSalutation
+    // ("Boa noite, RR!") e DEPOIS o pós-switch somava o prefixo rico → DUAS saudações
+    // (exatamente o print da Vitalli). Reproduzimos essa entrada já-saudada e provamos
+    // que a defesa (stripLeadingGreeting dentro de prependPipelineIntroGreeting) a colapsa
+    // para uma só — dupla proteção além do fix estrutural (pipeline não sauda mais lá).
+    const preSaluted = prependFirstMessageSalutation(lentesBlocks, SAO_PAULO, "RR");
+    expect((preSaluted[0] as Extract<ResponsePart, { type: "text" }>).content).toMatch(/^Boa (?:dia|tarde|noite)/);
+
+    const collapsed = prependPipelineIntroGreeting(preSaluted, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
+    const collapsedFirst = (collapsed[0] as Extract<ResponsePart, { type: "text" }>).content;
+    expect((collapsedFirst.match(/boa noite/gi) || []).length).toBe(1);
+
+    // E o caminho de produção pós-fix (blocos crus) também dá exatamente uma.
+    const fixed = prependPipelineIntroGreeting(lentesBlocks, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
+    const fixedFirst = (fixed[0] as Extract<ResponsePart, { type: "text" }>).content;
+    expect((fixedFirst.match(/boa noite/gi) || []).length).toBe(1);
+  });
+
+  it("sem nome do lead: sauda sem vírgula-nome mas mantém o intro", () => {
+    const parts = prependPipelineIntroGreeting(lentesBlocks, SAO_PAULO, "Clínica Vitalli", null, "Gleice");
+    const first = (parts[0] as Extract<ResponsePart, { type: "text" }>).content;
+    expect(first).toMatch(/^Boa (?:dia|tarde|noite)\. Tudo bem\?/);
+    expect(first).toContain("Sou a Gleice, assistente virtual da Clínica Vitalli.");
   });
 });

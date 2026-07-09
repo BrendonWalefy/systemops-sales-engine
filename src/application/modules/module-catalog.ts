@@ -9,6 +9,7 @@ export const MODULE_KEYS = [
   "team_roles",
   "video_library",
   "ai_co_writer",
+  "price_campaigns",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -77,5 +78,14 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     label: "Co-escritor IA",
     description: "Assistente IA para redigir e melhorar o playbook",
     plans: ["growth", "scale", "enterprise"],
+  },
+  {
+    key: "price_campaigns",
+    label: "Campanhas de Preço",
+    description: "Preço promocional com prazo por procedimento — a IA fala o valor 'de X por Y' e o dashboard usa o preço vigente",
+    // plans: [] deliberado — feature nova, rollout controlado clínica a clínica
+    // pelo painel do owner (não entra em resolvePlanModules/syncModulesForPlan).
+    // Promover para um ou mais planos quando validada além do piloto inicial.
+    plans: [],
   },
 ];

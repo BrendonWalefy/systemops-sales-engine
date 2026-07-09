@@ -4,6 +4,7 @@ import { Zap, Mic, CalendarDays, BookOpen, Workflow, CreditCard, Timer, Calendar
 import type { MenuItem } from "@/domain/entities/clinic";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { ActiveModule } from "@/application/modules/module-gate";
+import type { PriceCampaign } from "../tratamentos/CampaignRow";
 import { TabGeral } from "./tab-geral";
 import { TabVoz } from "./tab-voz";
 import { TabAgenda, type SettingsFocusTarget } from "./tab-agenda";
@@ -52,14 +53,17 @@ export function IASettingsClient({
   treatments,
   canEditPrices,
   serviceNoun,
+  campaigns = [],
 }: {
   clinic: ClinicData;
   versions: Version[];
   treatments: Treatment[];
   canEditPrices: boolean;
   serviceNoun: string;
+  campaigns?: PriceCampaign[];
 }) {
   const [tab, setTab] = useState<Tab>("geral");
+  const hasPriceCampaigns = clinic.activeModules.some((m) => m.key === "price_campaigns");
   const [focusTarget, setFocusTarget] = useState<SettingsFocusTarget | null>(null);
   const handleFocusHandled = useCallback(() => setFocusTarget(null), []);
 
@@ -233,6 +237,8 @@ export function IASettingsClient({
             treatments={treatments}
             canEditPrices={canEditPrices}
             serviceNoun={serviceNoun}
+            campaigns={campaigns}
+            hasPriceCampaigns={hasPriceCampaigns}
           />
         )}
       </div>

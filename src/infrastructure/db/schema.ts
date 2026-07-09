@@ -369,6 +369,44 @@ export const treatments = pgTable(
   }),
 );
 
+export const priceCampaigns = pgTable(
+  "price_campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    treatmentId: uuid("treatment_id")
+      .notNull()
+      .references(() => treatments.id),
+    name: text("name").notNull(),
+    priceCents: integer("price_cents"),
+    minPriceCents: integer("min_price_cents"),
+    maxPriceCents: integer("max_price_cents"),
+    // "from" → "a partir de R$ X". "fixed" → "R$ X". Mesma semântica de treatments.priceKind.
+    priceKind: text("price_kind").$type<"from" | "fixed">().notNull().default("from"),
+    // Janela de validade (opcional). null em ambos = sem expiração automática,
+    // controlado só por isActive.
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    // Chave-mestra de ativação — a clínica liga/desliga a campanha independente
+    // da janela de datas.
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicTreatmentIdx: index("price_campaigns_org_treatment_idx").on(
+      table.clinicId,
+      table.treatmentId,
+    ),
+  }),
+);
+
 export const leads = pgTable(
   "leads",
   {

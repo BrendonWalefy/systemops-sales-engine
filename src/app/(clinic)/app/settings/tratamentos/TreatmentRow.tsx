@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { Loader2, Save, Trash2, Pencil, X } from "lucide-react";
 import type { Treatment } from "@/domain/entities/treatment";
 import { deleteTreatment, updateTreatment } from "./actions";
-import { S, inputStyle } from "../playbook/settings-primitives";
+import { S, inputStyle, formatPriceBRL } from "../playbook/settings-primitives";
 import { DurationHoursInput } from "@/components/DurationHoursInput";
 import { formatDurationLabel } from "@/core/scheduling/durationFormat";
 
@@ -29,12 +29,6 @@ function SaveButton() {
       {pending ? "Salvando..." : "Salvar"}
     </button>
   );
-}
-
-function formatPrice(cents: number | null | undefined): string {
-  if (cents == null) return "—";
-  const val = cents / 100;
-  return val.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 export function TreatmentRow({
@@ -190,9 +184,9 @@ export function TreatmentRow({
                   <span style={{ fontSize: "14px", fontWeight: 700, color: S.text }}>
                     {hasRange
                       ? treatment.maxPriceCents != null
-                        ? `${formatPrice(treatment.minPriceCents)} – ${formatPrice(treatment.maxPriceCents)}`
-                        : formatPrice(treatment.minPriceCents)
-                      : formatPrice(treatment.priceCents)}
+                        ? `${formatPriceBRL(treatment.minPriceCents)} – ${formatPriceBRL(treatment.maxPriceCents)}`
+                        : formatPriceBRL(treatment.minPriceCents)
+                      : formatPriceBRL(treatment.priceCents)}
                   </span>
                   <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "5px", background: S.card, border: `1px solid ${S.border}`, color: S.textMuted }}>
                     {hasRange ? "faixa" : "único"}

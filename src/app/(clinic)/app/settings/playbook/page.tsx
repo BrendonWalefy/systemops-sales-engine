@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { getSessionMemberProfile, canEditPrices } from "@/application/tenancy/member-role";
-import { organizations, playbookVersions } from "@/infrastructure/db/schema";
+import { organizations, playbookVersions, priceCampaigns } from "@/infrastructure/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { IASettingsClient } from "./ia-settings-client";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
@@ -12,7 +12,7 @@ import { getClinicModules } from "@/application/modules/module-gate";
 
 async function getData() {
   const clinicId = await requireSessionClinicId();
-  const [clinic, versions, treatments, activeModules, memberProfile] = await Promise.all([
+  const [clinic, versions, treatments, activeModules, memberProfile, campaigns] = await Promise.all([
     db
       .select({
         name: organizations.name,
@@ -46,12 +46,27 @@ async function getData() {
     new DrizzleTreatmentRepository().listByClinic(clinicId),
     getClinicModules(clinicId),
     getSessionMemberProfile(clinicId),
+    db
+      .select({
+        id: priceCampaigns.id,
+        treatmentId: priceCampaigns.treatmentId,
+        name: priceCampaigns.name,
+        priceCents: priceCampaigns.priceCents,
+        minPriceCents: priceCampaigns.minPriceCents,
+        maxPriceCents: priceCampaigns.maxPriceCents,
+        priceKind: priceCampaigns.priceKind,
+        startsAt: priceCampaigns.startsAt,
+        endsAt: priceCampaigns.endsAt,
+        isActive: priceCampaigns.isActive,
+      })
+      .from(priceCampaigns)
+      .where(eq(priceCampaigns.clinicId, clinicId)),
   ]);
-  return { clinic, versions, treatments, activeModules, memberProfile };
+  return { clinic, versions, treatments, activeModules, memberProfile, campaigns };
 }
 
 export default async function PlaybookPage() {
-  const { clinic, versions, treatments, activeModules, memberProfile } = await getData();
+  const { clinic, versions, treatments, activeModules, memberProfile, campaigns } = await getData();
   const pricesEditable = memberProfile ? canEditPrices(memberProfile) : true;
   const serviceNoun = clinic?.serviceNoun ?? "tratamento";
 
@@ -81,6 +96,7 @@ export default async function PlaybookPage() {
       treatments={treatments}
       canEditPrices={pricesEditable}
       serviceNoun={serviceNoun}
+      campaigns={campaigns}
     />
   );
 }

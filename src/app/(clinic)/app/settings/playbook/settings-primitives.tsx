@@ -205,6 +205,13 @@ export function SettingsTextarea(props: React.TextareaHTMLAttributes<HTMLTextAre
   );
 }
 
+// ─── Formatação de preço (BRL, a partir de centavos) ───────────────────────
+export function formatPriceBRL(cents: number | null | undefined): string {
+  if (cents == null) return "—";
+  const val = cents / 100;
+  return val.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
 // ─── Toggle ─────────────────────────────────────────────────────────────────
 export function SettingsToggle({
   checked,

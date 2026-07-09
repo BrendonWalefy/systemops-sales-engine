@@ -7,7 +7,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { MenuItem } from "@/domain/entities/clinic";
-import { publishablePlaybookSchema, blockingPlaybookNotesIssues, blockingTreatmentDescriptionIssues } from "@/application/config/editorial-config";
+import { publishablePlaybookSchema, blockingPlaybookNotesIssues, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "@/application/config/editorial-config";
 import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import type { VoiceMode } from "@/domain/entities/voice-mode";
 
@@ -109,6 +109,13 @@ export async function activatePlaybookVersion(id: string) {
   const notesIssues = blockingPlaybookNotesIssues(version.notes);
   if (notesIssues.length > 0) {
     throw new Error(`Playbook inválido para ativação: ${notesIssues.join("; ")}`);
+  }
+
+  // Preço em Campanhas (aba Financeiro) tem casa própria agora — não sobra motivo
+  // legítimo para número em R$ na política comercial. Bloqueia igual a notes/description.
+  const policyIssues = blockingCommercialPolicyIssues(version.commercialPolicy);
+  if (policyIssues.length > 0) {
+    throw new Error(`Playbook inválido para ativação: ${policyIssues.join("; ")}`);
   }
 
   // Item 6 §6C: mesma régua para a descrição do procedimento — preço mora em

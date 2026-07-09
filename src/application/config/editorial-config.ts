@@ -4,7 +4,8 @@ import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 import { createLogger } from "@/infrastructure/logging/logger";
-export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingTreatmentDescriptionIssues } from "./playbook-lint";
+import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "./price-campaigns";
+export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "./playbook-lint";
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
@@ -35,6 +36,10 @@ export type EditorialProcedure = {
 /**
  * Fato de preço estruturado de um tratamento (Camada 1). A prosa que a IA fala
  * é DERIVADA daqui por `composePriceSection` — nunca redigitada na commercialPolicy.
+ * `originalPriceCents`/`campaignName`/`campaignEndsAt` só vêm preenchidos quando
+ * há uma campanha ativa (`price_campaigns`) sobrepondo o preço de lista — ver
+ * `resolveEffectivePrice` em `price-campaigns.ts`. Nunca digite um segundo preço
+ * na commercialPolicy para expressar promoção: a campanha é a única casa disso.
  */
 export type TreatmentPriceFact = {
   name: string;
@@ -44,6 +49,9 @@ export type TreatmentPriceFact = {
   priceKind: "from" | "fixed";
   priceUnit: string | null;
   priceDeductible: boolean;
+  originalPriceCents?: number | null;
+  campaignName?: string | null;
+  campaignEndsAt?: Date | null;
 };
 
 function formatBrl(cents: number): string {
@@ -53,6 +61,10 @@ function formatBrl(cents: number): string {
     minimumFractionDigits: isRound ? 0 : 2,
     maximumFractionDigits: isRound ? 0 : 2,
   })}`;
+}
+
+function formatDateBr(date: Date): string {
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
 /**
@@ -75,8 +87,15 @@ export function composePriceSection(treatments: TreatmentPriceFact[]): string {
   const lines = quotable.map((t) => {
     const value = t.priceKind === "fixed" ? (t.priceCents ?? t.minPriceCents)! : (t.minPriceCents ?? t.priceCents)!;
     const unit = t.priceUnit?.trim() ? ` (${t.priceUnit.trim()})` : "";
-    const base =
-      t.priceKind === "from"
+    const hasCampaign = t.originalPriceCents != null && t.campaignName;
+    const campaignSuffix = hasCampaign
+      ? ` [Promoção "${t.campaignName}"${t.campaignEndsAt ? `, válida até ${formatDateBr(t.campaignEndsAt)}` : ""}]`
+      : "";
+    const base = hasCampaign
+      ? t.priceKind === "from"
+        ? `${t.name}: a partir de ${formatBrl(value)}${unit} (de ${formatBrl(t.originalPriceCents!)}); o valor exato é definido na avaliação.${campaignSuffix}`
+        : `${t.name}: de ${formatBrl(t.originalPriceCents!)} por ${formatBrl(value)}${unit}.${campaignSuffix}`
+      : t.priceKind === "from"
         ? `${t.name}: a partir de ${formatBrl(value)}${unit}; o valor exato é definido na avaliação.`
         : `${t.name}: ${formatBrl(value)}${unit}.`;
     const deductible = t.priceDeductible
@@ -247,7 +266,7 @@ export function composePlaybookText(parts: {
 export async function resolveActiveEditorialConfig(
   clinicId: string,
 ): Promise<EditorialConfig | null> {
-  const [activeVersion, clinicTreatments] = await Promise.all([
+  const [activeVersion, clinicTreatments, activeCampaigns] = await Promise.all([
     db
       .select()
       .from(playbookVersions)
@@ -262,10 +281,12 @@ export async function resolveActiveEditorialConfig(
       .then((rows) => rows[0] ?? null),
     db
       .select({
+        id: treatments.id,
         name: treatments.name,
         description: treatments.description,
         priceCents: treatments.priceCents,
         minPriceCents: treatments.minPriceCents,
+        maxPriceCents: treatments.maxPriceCents,
         priceQuotableInChat: treatments.priceQuotableInChat,
         priceKind: treatments.priceKind,
         priceUnit: treatments.priceUnit,
@@ -273,6 +294,7 @@ export async function resolveActiveEditorialConfig(
       })
       .from(treatments)
       .where(eq(treatments.clinicId, clinicId)),
+    getActivePriceCampaignsByTreatment(clinicId),
   ]);
 
   if (!activeVersion) return null;
@@ -282,11 +304,28 @@ export async function resolveActiveEditorialConfig(
     description: t.description,
   }));
 
-  // Item 3: a seção de preço é DERIVADA dos fatos estruturados do treatment e
-  // prefixada à política comercial que o runtime lê. A `commercialPolicy` humana
-  // (campo do playbook) permanece só com enquadramento não-numérico. Aditivo:
-  // sem preço estruturado, a política humana segue intacta (zero regressão).
-  const derivedPriceSection = composePriceSection(clinicTreatments);
+  // Item 3: a seção de preço é DERIVADA dos fatos estruturados do treatment,
+  // com o override de campanha ativa (se houver) já resolvido — e prefixada à
+  // política comercial que o runtime lê. A `commercialPolicy` humana (campo do
+  // playbook) permanece só com enquadramento não-numérico. Aditivo: sem preço
+  // estruturado, a política humana segue intacta (zero regressão).
+  const treatmentPriceFacts: TreatmentPriceFact[] = clinicTreatments.map((t) => {
+    const campaign = activeCampaigns.get(t.id) ?? null;
+    const effective = resolveEffectivePrice(t, campaign);
+    return {
+      name: t.name,
+      priceCents: effective.priceCents,
+      minPriceCents: effective.minPriceCents,
+      priceQuotableInChat: t.priceQuotableInChat,
+      priceKind: effective.priceKind,
+      priceUnit: t.priceUnit,
+      priceDeductible: t.priceDeductible,
+      originalPriceCents: effective.originalPriceCents,
+      campaignName: effective.campaignName,
+      campaignEndsAt: effective.campaignEndsAt,
+    };
+  });
+  const derivedPriceSection = composePriceSection(treatmentPriceFacts);
   const humanPolicy = activeVersion.commercialPolicy?.trim() || null;
   const commercialPolicy =
     [derivedPriceSection || null, humanPolicy].filter(Boolean).join("\n\n") || null;
