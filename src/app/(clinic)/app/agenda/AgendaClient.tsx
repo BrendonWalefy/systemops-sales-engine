@@ -77,6 +77,7 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
     conversationId: null,
     startsAt: block.startsAt,
     endsAt: block.endsAt,
+    description: null,
     status: "block",
     source: "app",
   };
