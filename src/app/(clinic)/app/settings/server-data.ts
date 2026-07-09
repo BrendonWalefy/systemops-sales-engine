@@ -95,7 +95,11 @@ export async function getCachedTreatmentsForAgenda(clinicId: string) {
         .select({
           id: treatments.id,
           name: treatments.name,
+          durationMinutes: treatments.durationMinutes,
           priceCents: treatments.priceCents,
+          minPriceCents: treatments.minPriceCents,
+          maxPriceCents: treatments.maxPriceCents,
+          priceKind: treatments.priceKind,
         })
         .from(treatments)
         .where(eq(treatments.clinicId, clinicId))

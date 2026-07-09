@@ -3,7 +3,7 @@ import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { cookies } from "next/headers";
 import { and, between, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, organizations, conversations, leads, professionals } from "@/infrastructure/db/schema";
+import { appointments, organizations, conversations, leads, professionals, treatments } from "@/infrastructure/db/schema";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
@@ -12,6 +12,8 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
+import { getActivePriceCampaignsByTreatment, effectiveBookableValueCents } from "@/application/config/price-campaigns";
+import type { Lead } from "@/domain/entities/lead";
 
 export const dynamic = "force-dynamic";
 
@@ -97,12 +99,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: {
-    leadId: string;
+    leadId?: string;
+    // Nome livre digitado pelo operador (paciente walk-in / sem lead).
+    patientName?: string;
+    phone?: string;
     date: string;
     time: string;
     durationMinutes?: number;
     professionalId?: string;
+    // Nome livre (legado). Preferir treatmentIds — múltiplos procedimentos combinados.
     treatmentName?: string;
+    treatmentIds?: string[];
+    // Anotação livre do operador sobre o agendamento.
+    description?: string;
   };
 
   try {
@@ -111,8 +120,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Payload inválido" }, { status: 400 });
   }
 
-  if (!body.leadId || !body.date || !body.time) {
-    return NextResponse.json({ error: "leadId, date e time são obrigatórios" }, { status: 400 });
+  if (!body.date || !body.time || (!body.leadId && !body.patientName?.trim())) {
+    return NextResponse.json({ error: "Informe o paciente, a data e o horário" }, { status: 400 });
   }
 
   try {
@@ -127,9 +136,92 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!clinicRow) return NextResponse.json({ error: "Clínica não encontrada" }, { status: 404 });
 
+    // Resolve o paciente: lead existente (fluxo com busca) OU nome livre digitado
+    // pelo operador. Para nome livre, reaproveita um lead pelo telefone quando houver,
+    // senão cria um lead novo (canal "manual") — o agendamento sempre precisa de um lead.
     const leadRepo = new DrizzleLeadRepository();
-    const lead = await leadRepo.findById(body.leadId);
-    if (!lead) return NextResponse.json({ error: "Lead não encontrado" }, { status: 404 });
+    let lead: Lead | null = null;
+
+    if (body.leadId) {
+      lead = await leadRepo.findById(body.leadId);
+      if (!lead) return NextResponse.json({ error: "Lead não encontrado" }, { status: 404 });
+    } else {
+      const patientName = body.patientName?.trim();
+      if (!patientName) {
+        return NextResponse.json({ error: "Informe o nome do paciente" }, { status: 400 });
+      }
+      const phone = body.phone?.trim() || null;
+      if (phone) {
+        lead = await leadRepo.findByPhone(clinicId, phone);
+      }
+      if (!lead) {
+        const nowLead = new Date();
+        lead = {
+          id: crypto.randomUUID(),
+          clinicId,
+          name: patientName,
+          phone,
+          whatsappLid: null,
+          email: null,
+          channel: "manual",
+          campaignId: null,
+          treatmentInterest: body.treatmentName?.trim() || null,
+          profilePicUrl: null,
+          status: "appointment_scheduled",
+          temperature: null,
+          assignedToUserId: null,
+          nextActionAt: null,
+          lostReason: null,
+          createdAt: nowLead,
+          updatedAt: nowLead,
+        };
+        await leadRepo.save(lead);
+      }
+    }
+
+    // Procedimentos combinados: resolve nome (junção), valor (soma do preço efetivo,
+    // campanha ativa incluída) e id primário a partir dos treatmentIds selecionados.
+    // O valor é AUTORITATIVO no backend (não confia em preço vindo do cliente) e vira
+    // o snapshot valueCents do appointment — é o que o dashboard soma como receita.
+    let bookingTreatmentName: string | undefined = body.treatmentName?.trim() || undefined;
+    let primaryTreatmentId: string | null = null;
+    let summedValueCents: number | null = null;
+
+    const treatmentIds = (body.treatmentIds ?? []).filter((id) => typeof id === "string" && id.length > 0);
+    if (treatmentIds.length > 0) {
+      const [selected, activeCampaigns] = await Promise.all([
+        db
+          .select({
+            id: treatments.id,
+            name: treatments.name,
+            priceCents: treatments.priceCents,
+            minPriceCents: treatments.minPriceCents,
+            maxPriceCents: treatments.maxPriceCents,
+            priceKind: treatments.priceKind,
+          })
+          .from(treatments)
+          .where(and(eq(treatments.clinicId, clinicId), inArray(treatments.id, treatmentIds))),
+        getActivePriceCampaignsByTreatment(clinicId),
+      ]);
+      // Preserva a ordem em que o operador selecionou.
+      const ordered = treatmentIds
+        .map((id) => selected.find((t) => t.id === id))
+        .filter((t): t is (typeof selected)[number] => Boolean(t));
+      if (ordered.length > 0) {
+        bookingTreatmentName = ordered.map((t) => t.name).join(" + ");
+        primaryTreatmentId = ordered[0].id;
+        let sum = 0;
+        let anyPriced = false;
+        for (const t of ordered) {
+          const value = effectiveBookableValueCents(t, activeCampaigns.get(t.id) ?? null);
+          if (value != null) {
+            sum += value;
+            anyPriced = true;
+          }
+        }
+        summedValueCents = anyPriced ? sum : null;
+      }
+    }
 
     const timezone = new ClinicTimezone(clinicRow.timezone);
     const durationMinutes = body.durationMinutes ?? clinicRow.defaultAppointmentDurationMinutes ?? 60;
@@ -190,7 +282,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       lead,
       startsAt,
       endsAt,
-      treatmentName: body.treatmentName,
+      treatmentName: bookingTreatmentName,
+      treatmentId: primaryTreatmentId,
+      valueCents: summedValueCents,
     });
 
     if (!result.success) {
@@ -202,11 +296,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: message, reason: result.reason }, { status: statusCode });
     }
 
-    // Atualiza professionalId se fornecido
-    if (body.professionalId) {
+    // Persiste ajustes que o book() não cobre: profissional escolhido e descrição livre.
+    const professionalId = body.professionalId?.trim() || null;
+    const description = body.description?.trim() || null;
+    if (professionalId || description) {
       await apptRepo.save({
         ...result.appointment,
-        professionalId: body.professionalId,
+        professionalId: professionalId ?? result.appointment.professionalId,
+        description: description ?? result.appointment.description,
         updatedAt: new Date(),
       });
     }

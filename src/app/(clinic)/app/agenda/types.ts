@@ -34,3 +34,11 @@ export type Professional = {
   isActive?: boolean;
   workSchedule?: ProfessionalWorkSchedule | null;
 };
+
+export type TreatmentOption = {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  // Preço efetivo (campanha ativa já resolvida). null = sem preço cadastrado.
+  priceCents: number | null;
+};

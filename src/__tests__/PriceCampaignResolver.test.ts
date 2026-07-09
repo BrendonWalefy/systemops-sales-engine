@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isCampaignCurrentlyActive,
   resolveEffectivePrice,
+  effectiveBookableValueCents,
   type PriceCampaignRow,
   type TreatmentPriceBase,
 } from "@/application/config/price-campaigns";
@@ -94,5 +95,27 @@ describe("resolveEffectivePrice", () => {
   it("propaga o priceKind da campanha, não do preço de lista", () => {
     const effective = resolveEffectivePrice(base({ priceKind: "from" }), campaign({ priceKind: "fixed" }));
     expect(effective.priceKind).toBe("fixed");
+  });
+});
+
+describe("effectiveBookableValueCents — snapshot de valor para agendamento/receita", () => {
+  it("preço fixo sem campanha retorna priceCents", () => {
+    expect(effectiveBookableValueCents(base({ priceKind: "fixed", priceCents: 30000 }), null)).toBe(30000);
+  });
+
+  it("campanha ativa sobrepõe o valor de lista", () => {
+    expect(effectiveBookableValueCents(base({ priceCents: 170000 }), campaign({ priceCents: 150000 }))).toBe(150000);
+  });
+
+  it("kind 'from' sem priceCents cai para minPriceCents", () => {
+    expect(effectiveBookableValueCents(base({ priceKind: "from", priceCents: null, minPriceCents: 250000 }), null)).toBe(250000);
+  });
+
+  it("sem nenhum preço cadastrado retorna null (não vira 0 na soma)", () => {
+    expect(effectiveBookableValueCents(base({ priceCents: null, minPriceCents: null, maxPriceCents: null }), null)).toBeNull();
+  });
+
+  it("campanha inativa é ignorada — volta ao valor de lista", () => {
+    expect(effectiveBookableValueCents(base({ priceCents: 170000 }), campaign({ isActive: false, priceCents: 150000 }))).toBe(170000);
   });
 });

@@ -102,6 +102,22 @@ export function resolveEffectivePrice(
 }
 
 /**
+ * Valor único "cotável" de um tratamento para snapshot de agendamento/receita:
+ * preço efetivo (campanha ativa sobrepõe lista) colapsado em um número. Mesma
+ * ordem de precedência que o dashboard e a derivação de prosa usam
+ * (`priceCents ?? minPriceCents ?? maxPriceCents`). Retorna null quando o
+ * tratamento não tem preço cadastrado.
+ */
+export function effectiveBookableValueCents(
+  base: TreatmentPriceBase,
+  campaign: PriceCampaignRow | null,
+  now: Date = new Date(),
+): number | null {
+  const eff = resolveEffectivePrice(base, campaign, now);
+  return eff.priceCents ?? eff.minPriceCents ?? eff.maxPriceCents ?? null;
+}
+
+/**
  * Uma clínica só deve rodar UMA campanha ativa por tratamento por vez —
  * simplicidade deliberada (sem empilhamento de promoções concorrentes).
  * Retorna a mais recente por `createdAt` caso o dado fique inconsistente.

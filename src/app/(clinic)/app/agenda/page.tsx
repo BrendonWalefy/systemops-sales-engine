@@ -10,6 +10,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
+import { getActivePriceCampaignsByTreatment, effectiveBookableValueCents } from "@/application/config/price-campaigns";
 
 export default async function AgendaPage({
   searchParams,
@@ -20,7 +21,7 @@ export default async function AgendaPage({
   const clinicId = await getSessionClinicId();
   if (!clinicId) redirect("/login");
 
-  const [professionals, clinicRow, treatments, memberProfile] = await Promise.all([
+  const [professionals, clinicRow, treatments, activeCampaigns, memberProfile] = await Promise.all([
     getCachedProfessionals(clinicId),
     db
       .select({
@@ -33,6 +34,7 @@ export default async function AgendaPage({
       .where(eq(organizations.id, clinicId))
       .limit(1),
     getCachedTreatmentsForAgenda(clinicId),
+    getActivePriceCampaignsByTreatment(clinicId),
     getSessionMemberProfile(clinicId),
   ]);
   const timezone = clinicRow[0]?.timezone ?? "America/Sao_Paulo";
@@ -58,7 +60,9 @@ export default async function AgendaPage({
       treatments={treatments.map((t) => ({
         id: t.id,
         name: t.name,
-        priceCents: t.priceCents,
+        durationMinutes: t.durationMinutes,
+        // Preço efetivo (campanha ativa sobrepõe a lista) — mesma regra da IA e do dashboard.
+        priceCents: effectiveBookableValueCents(t, activeCampaigns.get(t.id) ?? null),
       }))}
       memberRole={memberRole}
       serviceNoun={serviceNoun}
