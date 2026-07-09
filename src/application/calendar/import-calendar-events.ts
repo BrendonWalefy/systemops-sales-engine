@@ -1,5 +1,5 @@
 import { db } from "@/infrastructure/db/client";
-import { appointments, leads, treatments } from "@/infrastructure/db/schema";
+import { appointments, leads, treatments, professionals } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import type { CalendarEvent } from "./parse-ics";
 
@@ -15,6 +15,11 @@ export interface ImportOptions {
   // (processamento sequencial, 1 req/evento) e polui o banco com consultas
   // já passadas sem valor operacional. Default: só a partir de agora.
   cutoffDate?: Date;
+  // Profissional usado quando o SUMMARY não menciona nenhum profissional
+  // cadastrado (agenda real da Vitalli: só 3 de 24 eventos futuros mencionam
+  // "gregorie" no texto — os demais não indicam quem atende, então caem no
+  // profissional padrão informado pelo chamador).
+  defaultProfessionalId?: string;
 }
 
 export async function importCalendarEvents(
@@ -49,6 +54,11 @@ export async function importCalendarEvents(
 
   const clinicTreatments = await db.query.treatments.findMany({
     where: eq(treatments.clinicId, clinicId),
+    columns: { id: true, name: true },
+  });
+
+  const clinicProfessionals = await db.query.professionals.findMany({
+    where: eq(professionals.clinicId, clinicId),
     columns: { id: true, name: true },
   });
 
@@ -89,9 +99,15 @@ export async function importCalendarEvents(
         normalizedSummary.includes(normalizeWord(t.name)),
       );
 
+      const matchedProfessional = clinicProfessionals.find((p) =>
+        matchesProfessionalMention(normalizedSummary, normalizeProfessionalName(p.name)),
+      );
+      const professionalId = matchedProfessional?.id ?? options.defaultProfessionalId ?? null;
+
       const appointmentResult = await db.insert(appointments).values({
         clinicId,
         leadId,
+        professionalId,
         startsAt: event.startTime,
         endsAt: event.endTime,
         status: "scheduled",
@@ -138,6 +154,21 @@ function normalizeWord(word: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "");
+}
+
+// "Dr. Gregorie" → "gregorie" — o SUMMARY real menciona só o núcleo do nome
+// ("avaliação gregorie", "já pagou GREGORI"), nunca com o prefixo "Dr./Dra.".
+function normalizeProfessionalName(name: string): string {
+  return normalizeWord(name).replace(/^dra?\.?\s+/, "");
+}
+
+// Tolerância a variação de digitação real: "Polyane 20 lentes já pagou
+// GREGORI" (sem o "e" final) não bate com includes("gregorie") direto —
+// checa também o nome sem a última letra.
+function matchesProfessionalMention(normalizedSummary: string, professionalCore: string): boolean {
+  if (!professionalCore) return false;
+  if (normalizedSummary.includes(professionalCore)) return true;
+  return professionalCore.length >= 5 && normalizedSummary.includes(professionalCore.slice(0, -1));
 }
 
 function toTitleCase(word: string): string {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/infrastructure/db/client";
-import { organizations, leads, appointments, treatments } from "@/infrastructure/db/schema";
+import { organizations, leads, appointments, treatments, professionals } from "@/infrastructure/db/schema";
 import { eq, and } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
 import { importCalendarEvents, extractPatientName } from "@/application/calendar/import-calendar-events";
@@ -411,5 +411,58 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
     );
 
     expect(importResult.imported).toBeGreaterThan(0);
+  });
+
+  it("vincula ao profissional mencionado no texto, e ao default quando nenhum é mencionado", async () => {
+    // Caso real pedido pelo usuário: Vitalli tem Dr. Gregorie (funcionário) e
+    // Dr. Victor (dono). Só 3 de 24 eventos futuros reais mencionam
+    // "gregorie" no SUMMARY — os demais não indicam profissional nenhum e
+    // devem cair no default (Victor).
+    const [gregorie] = await db
+      .insert(professionals)
+      .values({ clinicId: demoClinicId, name: "Dr. Gregorie", specialty: "Odontologia" })
+      .returning({ id: professionals.id });
+    const [victor] = await db
+      .insert(professionals)
+      .values({ clinicId: demoClinicId, name: "Dr. Victor", specialty: "Odontologia" })
+      .returning({ id: professionals.id });
+
+    const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260710T110000Z
+DTEND:20260710T120000Z
+UID:prof-test-1@test
+SUMMARY:Vilma avaliação gregorie
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260710T120000Z
+DTEND:20260710T130000Z
+UID:prof-test-2@test
+SUMMARY:Polyane 20 lentes já pagou GREGORI
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260710T130000Z
+DTEND:20260710T140000Z
+UID:prof-test-3@test
+SUMMARY:Pedro manutenção sem custo
+END:VEVENT
+END:VCALENDAR`;
+
+    const parseResult = parseIcs(ics);
+    await importCalendarEvents(demoClinicId, parseResult.events, {
+      cutoffDate: FAR_PAST_CUTOFF,
+      defaultProfessionalId: victor.id,
+    });
+
+    const apts = await db.query.appointments.findMany({
+      where: eq(appointments.clinicId, demoClinicId),
+      columns: { calendarEventId: true, professionalId: true },
+    });
+
+    const byUid = new Map(apts.map((a) => [a.calendarEventId, a.professionalId]));
+    expect(byUid.get("prof-test-1@test")).toBe(gregorie.id);
+    expect(byUid.get("prof-test-2@test")).toBe(gregorie.id); // "GREGORI" sem o "e" final
+    expect(byUid.get("prof-test-3@test")).toBe(victor.id); // sem menção → default
   });
 });

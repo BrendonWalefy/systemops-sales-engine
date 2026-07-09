@@ -4,6 +4,7 @@ import { calendarImportTokens, organizations } from "@/infrastructure/db/schema"
 import { eq } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
 import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
+import { resolveDefaultProfessionalId } from "@/application/calendar/resolve-default-professional";
 
 export const runtime = "nodejs";
 
@@ -75,9 +76,11 @@ export async function POST(
     }
 
     // Importar eventos para DB
+    const defaultProfessionalId = await resolveDefaultProfessionalId(importToken.organizationId);
     const importResult = await importCalendarEvents(
       importToken.organizationId,
       parseResult.events,
+      { defaultProfessionalId: defaultProfessionalId ?? undefined },
     );
 
     return NextResponse.json({
