@@ -413,6 +413,13 @@ export function AppointmentDrawer({
               )}
             </div>
 
+            {event.description && (
+              <div className="drawer-section">
+                <span style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "4px" }}>Anotações da Agenda</span>
+                <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.4, whiteSpace: "pre-wrap" }}>{event.description}</p>
+              </div>
+            )}
+
             {event.professionalName && (
               <div className="drawer-section">
                 <div className="professional-row">
