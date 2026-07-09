@@ -13,7 +13,12 @@ const ICS_FILE_PATH = path.join(
   "vitalli-agenda-exemplo.ics",
 );
 
-describe("Calendar Import — Parse + DB", () => {
+// Teste de integração: grava de verdade numa clínica demo no banco real.
+// Nenhum outro teste da suíte depende de DATABASE_URL (todos usam mocks) —
+// esse é o único, então roda só quando a env var está disponível (ambiente
+// local com .env.local). CI não tem DATABASE_URL configurada de propósito,
+// para não gravar/rodar contra um banco real a cada push.
+describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () => {
   let demoClinicId: string;
 
   beforeAll(async () => {

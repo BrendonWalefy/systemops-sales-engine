@@ -26,7 +26,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { coerceBusinessIntent } from "@/core/pipeline/ConversationOrchestrator";
+import { coerceBusinessIntent, extractPreviousClinicInfo } from "@/core/pipeline/ConversationOrchestrator";
 import type { Treatment } from "@/domain/entities/treatment";
 
 describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
@@ -34,8 +34,36 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
     { id: "1", name: "Lentes de Resina", aliases: ["lentes", "facetas"], basePrice: 1500000 } as unknown as Treatment,
   ];
 
-  // Política comercial real da Vitalli (formato usado por extractPreviousClinicInfo)
-  const VITALLI_POLICY = `Éramos Dental Luxe, hoje somos Clínica Vitalli. Ficamos na Avenida Adolfo Pinheiro, 1029, Santo Amaro.`;
+  // Política comercial REAL em produção (após correção do endereço antigo —
+  // a clínica mudou de bairro, não só de nome: Sabará/Interlagos → Santo Amaro).
+  const VITALLI_POLICY = `Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.`;
+
+  describe("extractPreviousClinicInfo — endereço antigo vs. atual", () => {
+    it("extrai o endereço ANTIGO (Sabará), não o atual (Adolfo Pinheiro)", () => {
+      // Bug real: a regex de fallback pega o PRIMEIRO "Avenida/Av." do texto,
+      // que é o endereço ATUAL ("hoje estamos na Avenida Adolfo Pinheiro") —
+      // sem o padrão "ficávamos", isso capturava "Adolfo Pinheiro" como se
+      // fosse o endereço anterior, quando na verdade a clínica ficava em
+      // outro bairro (Sabará, próximo a Interlagos) antes da mudança.
+      const info = extractPreviousClinicInfo(VITALLI_POLICY);
+      expect(info.previousClinicName).toBe("Dental Luxe");
+      expect(info.previousAddress).toContain("Sabará");
+      expect(info.previousAddress).not.toContain("Adolfo Pinheiro");
+    });
+
+    it("fallback para padrão 'Avenida/Av.' quando não há 'ficávamos' no texto", () => {
+      const info = extractPreviousClinicInfo(
+        "Éramos Dental Luxe. Ficamos na Avenida Antiga, 123.",
+      );
+      expect(info.previousAddress).toBe("Antiga");
+    });
+
+    it("retorna vazio quando a política não menciona nome nem endereço antigo", () => {
+      const info = extractPreviousClinicInfo("Trabalhamos com lentes de resina.");
+      expect(info.previousClinicName).toBeUndefined();
+      expect(info.previousAddress).toBeUndefined();
+    });
+  });
 
   describe("Menção direta ao nome antigo (sem palavra de 'mudança')", () => {
     const casosReais = [

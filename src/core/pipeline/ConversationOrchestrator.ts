@@ -736,16 +736,26 @@ function isWarrantyQuestion(normalized: string): boolean {
 
 // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
 // Extrai nome antigo e endereço anterior da policy/playbook
-function extractPreviousClinicInfo(policy: string | null | undefined): {
+export function extractPreviousClinicInfo(policy: string | null | undefined): {
   previousClinicName?: string;
   previousAddress?: string;
 } {
   if (!policy) return {};
   const clinicNameMatch = policy.match(/(?:éramos?|era|somos?)\s+["']?([^"'.,;!\n?]+?)["']?(?:\s*[,;\n]|$)/i);
-  const addressMatch = policy.match(/(?:Avenida|Av\.)\s+([^,;!\n?]+)/i);
+  // "ficávamos/ficava" é o padrão usado para descrever o endereço ANTIGO (ex:
+  // "Antes ficávamos no bairro Sabará... hoje estamos na Avenida X"). Precisa
+  // ser checado ANTES do fallback de "Avenida/Av." — esse fallback captura o
+  // PRIMEIRO "Avenida/Av." do texto, que normalmente é o endereço ATUAL, não o
+  // antigo (bug real: capturava "Adolfo Pinheiro" — o endereço de hoje — como
+  // se fosse o endereço anterior, quando o antigo era "Sabará, próximo a
+  // Interlagos").
+  const previousAddressMatch = policy.match(/fic[áa]vamos?\s+(?:no|na|em)\s+([^;.\n]+)/i);
+  const fallbackAddressMatch = previousAddressMatch
+    ? null
+    : policy.match(/(?:Avenida|Av\.)\s+([^,;!\n?]+)/i);
   return {
     previousClinicName: clinicNameMatch?.[1]?.trim(),
-    previousAddress: addressMatch?.[1]?.trim(),
+    previousAddress: (previousAddressMatch ?? fallbackAddressMatch)?.[1]?.trim(),
   };
 }
 
