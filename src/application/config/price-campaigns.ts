@@ -118,6 +118,35 @@ export function effectiveBookableValueCents(
 }
 
 /**
+ * Combina os valores de vários procedimentos de UM agendamento numa receita única,
+ * tratando corretamente o SINAL (procedimento com `deductible = true`, ex.: a
+ * avaliação de R$30 que é abatida do total quando o cliente fecha o procedimento).
+ *
+ * Regra (confirmada com o produto):
+ *  - Se há procedimento real (não-dedutível) junto: o sinal é ABSORVIDO no total —
+ *    não soma por cima. Receita = soma dos não-dedutíveis. (Lentes R$1.500 +
+ *    Avaliação R$30 → R$1.500, não R$1.530.)
+ *  - Se o agendamento é só sinal (nenhum procedimento real): vale o próprio sinal
+ *    (o depósito coletado na avaliação). (Avaliação R$30 sozinha → R$30.)
+ *  - Nenhum item com preço → null.
+ *
+ * Isto evita superfaturar a receita do dashboard contando o sinal duas vezes.
+ */
+export function combineAppointmentValueCents(
+  items: { valueCents: number | null; deductible: boolean }[],
+): number | null {
+  const nonDeductible = items.filter((i) => !i.deductible && i.valueCents != null);
+  if (nonDeductible.length > 0) {
+    return nonDeductible.reduce((sum, i) => sum + (i.valueCents ?? 0), 0);
+  }
+  const deductible = items.filter((i) => i.deductible && i.valueCents != null);
+  if (deductible.length > 0) {
+    return deductible.reduce((sum, i) => sum + (i.valueCents ?? 0), 0);
+  }
+  return null;
+}
+
+/**
  * Uma clínica só deve rodar UMA campanha ativa por tratamento por vez —
  * simplicidade deliberada (sem empilhamento de promoções concorrentes).
  * Retorna a mais recente por `createdAt` caso o dado fique inconsistente.

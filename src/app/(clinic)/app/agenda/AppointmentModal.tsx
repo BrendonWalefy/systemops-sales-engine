@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { X, Loader2, ChevronDown, Check } from "lucide-react";
 import type { Professional, TreatmentOption } from "./types";
 import { DurationHoursInput } from "@/components/DurationHoursInput";
+import { combineAppointmentValueCents } from "@/application/config/price-campaigns";
 
 type Props = {
   defaultDate?: string;
@@ -54,13 +55,21 @@ export function AppointmentModal({
     [treatments, selectedTreatmentIds],
   );
 
-  // Valor estimado (soma dos preços efetivos). null quando nenhum selecionado tem preço.
-  const estimatedValueCents = useMemo(() => {
-    const withPrice = selectedTreatments.filter((t) => t.priceCents != null);
-    if (withPrice.length === 0) return null;
-    return withPrice.reduce((sum, t) => sum + (t.priceCents ?? 0), 0);
-  }, [selectedTreatments]);
+  // Valor estimado: sinal (dedutível) é abatido, não somado — mesma regra do backend.
+  const estimatedValueCents = useMemo(
+    () => combineAppointmentValueCents(selectedTreatments.map((t) => ({ valueCents: t.priceCents, deductible: t.deductible }))),
+    [selectedTreatments],
+  );
   const someWithoutPrice = selectedTreatments.some((t) => t.priceCents == null);
+  // Sinal abatido quando combinado com um procedimento real (para a nota da UI).
+  const abatedDeposit = useMemo(() => {
+    const hasRealProcedure = selectedTreatments.some((t) => !t.deductible && t.priceCents != null);
+    if (!hasRealProcedure) return null;
+    const deposit = selectedTreatments
+      .filter((t) => t.deductible && t.priceCents != null)
+      .reduce((sum, t) => sum + (t.priceCents ?? 0), 0);
+    return deposit > 0 ? deposit : null;
+  }, [selectedTreatments]);
 
   function toggleTreatment(id: string) {
     const next = selectedTreatmentIds.includes(id)
@@ -217,7 +226,8 @@ export function AppointmentModal({
                   {estimatedValueCents != null && (
                     <> · valor estimado <strong style={{ color: "var(--agenda-text)" }}>{formatBRL(estimatedValueCents)}</strong></>
                   )}
-                  {someWithoutPrice && estimatedValueCents != null && " (alguns sem preço cadastrado)"}
+                  {abatedDeposit != null && ` (inclui sinal de ${formatBRL(abatedDeposit)} abatido do total)`}
+                  {someWithoutPrice && estimatedValueCents != null && " · alguns sem preço cadastrado"}
                 </p>
               )}
             </div>

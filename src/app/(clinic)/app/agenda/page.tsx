@@ -63,6 +63,7 @@ export default async function AgendaPage({
         durationMinutes: t.durationMinutes,
         // Preço efetivo (campanha ativa sobrepõe a lista) — mesma regra da IA e do dashboard.
         priceCents: effectiveBookableValueCents(t, activeCampaigns.get(t.id) ?? null),
+        deductible: t.priceDeductible,
       }))}
       memberRole={memberRole}
       serviceNoun={serviceNoun}

@@ -41,4 +41,6 @@ export type TreatmentOption = {
   durationMinutes: number;
   // Preço efetivo (campanha ativa já resolvida). null = sem preço cadastrado.
   priceCents: number | null;
+  // Sinal abatido do total (ex.: avaliação de R$30). Não soma por cima do procedimento.
+  deductible: boolean;
 };

@@ -12,7 +12,7 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
-import { getActivePriceCampaignsByTreatment, effectiveBookableValueCents } from "@/application/config/price-campaigns";
+import { getActivePriceCampaignsByTreatment, effectiveBookableValueCents, combineAppointmentValueCents } from "@/application/config/price-campaigns";
 import type { Lead } from "@/domain/entities/lead";
 
 export const dynamic = "force-dynamic";
@@ -198,6 +198,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             minPriceCents: treatments.minPriceCents,
             maxPriceCents: treatments.maxPriceCents,
             priceKind: treatments.priceKind,
+            priceDeductible: treatments.priceDeductible,
           })
           .from(treatments)
           .where(and(eq(treatments.clinicId, clinicId), inArray(treatments.id, treatmentIds))),
@@ -210,16 +211,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (ordered.length > 0) {
         bookingTreatmentName = ordered.map((t) => t.name).join(" + ");
         primaryTreatmentId = ordered[0].id;
-        let sum = 0;
-        let anyPriced = false;
-        for (const t of ordered) {
-          const value = effectiveBookableValueCents(t, activeCampaigns.get(t.id) ?? null);
-          if (value != null) {
-            sum += value;
-            anyPriced = true;
-          }
-        }
-        summedValueCents = anyPriced ? sum : null;
+        // Sinal (dedutível) é abatido no total, não somado por cima — ver combineAppointmentValueCents.
+        summedValueCents = combineAppointmentValueCents(
+          ordered.map((t) => ({
+            valueCents: effectiveBookableValueCents(t, activeCampaigns.get(t.id) ?? null),
+            deductible: t.priceDeductible,
+          })),
+        );
       }
     }
 

@@ -100,6 +100,7 @@ export async function getCachedTreatmentsForAgenda(clinicId: string) {
           minPriceCents: treatments.minPriceCents,
           maxPriceCents: treatments.maxPriceCents,
           priceKind: treatments.priceKind,
+          priceDeductible: treatments.priceDeductible,
         })
         .from(treatments)
         .where(eq(treatments.clinicId, clinicId))
