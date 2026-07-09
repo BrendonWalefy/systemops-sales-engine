@@ -1,6 +1,4 @@
 {
-  "id": "1fb19f8d-6009-4984-a436-ed7054f1d5cf",
-  "prevId": "89986527-6ad9-49b8-b99d-1178064d3c8d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4819,8 +4817,10 @@
   "policies": {},
   "views": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
-  }
+    "tables": {},
+    "columns": {}
+  },
+  "id": "1fb19f8d-6009-4984-a436-ed7054f1d5cf",
+  "prevId": "89986527-6ad9-49b8-b99d-1178064d3c8d"
 }

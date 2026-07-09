@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Upload, Check, AlertCircle, Calendar, ArrowLeft } from "lucide-react";
+import { Upload, Check, AlertCircle, Calendar } from "lucide-react";
 import Link from "next/link";
 
 export default function CalendarSetupPage({ params }: { params: { token: string } }) {
@@ -129,8 +129,8 @@ export default function CalendarSetupPage({ params }: { params: { token: string 
                 >
                   <li>Abra seu Google Calendar</li>
                   <li>Clique com direito no calendário desejado</li>
-                  <li>Selecione "Configurações"</li>
-                  <li>Vá em "Integrar calendário"</li>
+                  <li>Selecione &quot;Configurações&quot;</li>
+                  <li>Vá em &quot;Integrar calendário&quot;</li>
                   <li>Copie a URL (termina em .ics)</li>
                   <li>Abra a URL no navegador para baixar</li>
                 </ol>
@@ -254,7 +254,7 @@ export default function CalendarSetupPage({ params }: { params: { token: string 
                     color: "var(--text)",
                   }}
                 >
-                  {importResult.imported} consultas importadas
+                  {importResult.imported} consultas importadas{clinicName ? ` em ${clinicName}` : ""}
                 </p>
                 {importResult.errors.length > 0 && (
                   <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted)" }}>
