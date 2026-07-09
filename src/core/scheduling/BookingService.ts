@@ -140,7 +140,7 @@ export class BookingService {
         clinicId: clinic.id,
         leadId: lead.id,
         professionalId: null,
-        roomId: null,
+        roomId: null, description: null,
         calendarEventId: null,
         calendarEventUrl: null,
         startsAt,

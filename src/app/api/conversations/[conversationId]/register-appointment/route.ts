@@ -113,7 +113,7 @@ export async function POST(
         clinicId: clinic.id,
         leadId: lead.id,
         professionalId: null,
-        roomId: null,
+        roomId: null, description: null,
         calendarEventId: body.calendarEventId,
         calendarEventUrl: body.calendarEventUrl ?? null,
         startsAt,

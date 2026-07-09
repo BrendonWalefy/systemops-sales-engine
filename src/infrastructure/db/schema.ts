@@ -810,6 +810,7 @@ export const appointments = pgTable(
     reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
     treatmentId: uuid("treatment_id").references(() => treatments.id),
     valueCents: integer("value_cents"),
+    description: text("description"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

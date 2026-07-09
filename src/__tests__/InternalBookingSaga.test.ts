@@ -91,7 +91,7 @@ function internalGateway(over: Partial<{ isSlotFree: boolean }> = {}) {
         clinicId: input.clinicId,
         leadId: input.leadId,
         professionalId: null,
-        roomId: null,
+        roomId: null, description: null,
         calendarEventId: null, // interno: sem evento externo
         calendarEventUrl: null,
         startsAt: input.startsAt,
@@ -281,7 +281,7 @@ describe("BookingService — modo interno", () => {
       clinicId: clinic.id,
       leadId: "outro-lead",
       professionalId: null,
-      roomId: null,
+      roomId: null, description: null,
       calendarEventId: null,
       calendarEventUrl: null,
       startsAt,
@@ -319,7 +319,7 @@ describe("BookingService — modo interno", () => {
       clinicId: clinic.id,
       leadId: lead.id,
       professionalId: null,
-      roomId: null,
+      roomId: null, description: null,
       calendarEventId: null, // interno
       calendarEventUrl: null,
       startsAt,
