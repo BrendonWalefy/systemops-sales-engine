@@ -74,6 +74,58 @@ describe("extractPatientName — casos reais da agenda Vitalli", () => {
   });
 });
 
+// P0.9: parseIcs deve interpretar timestamps "Z" (UTC) como UTC de verdade,
+// independente do timezone do processo que roda o código. Bug real: a
+// implementação original usava new Date(y, mo, d, h, mi, s) mesmo para
+// timestamps com sufixo Z — esse construtor SEMPRE interpreta os componentes
+// como horário LOCAL do processo. Em produção (Vercel, UTC) o bug não
+// aparecia por coincidência (local do processo == UTC), mas rodando local
+// (America/Sao_Paulo, UTC-3) o mesmo DTSTART:...Z saía 3h adiantado —
+// confirmado comparando a saída de um script local contra os appointments já
+// gravados em produção para o mesmo evento real ("Pedro manutenção 1
+// cortesia", DTSTART:20260710T110000Z): produção gravou 11:00 UTC (correto),
+// o mesmo parser rodando local calculava 14:00 UTC (+3h, exatamente o offset
+// de America/Sao_Paulo).
+describe("parseIcs — timestamps UTC independem do timezone do processo", () => {
+  it("DTSTART/DTEND com sufixo Z retorna o mesmo instante UTC, não deslocado pelo TZ local", () => {
+    const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260710T110000Z
+DTEND:20260710T120000Z
+UID:tz-test-1@test
+SUMMARY:Pedro manutenção 1 cortesia
+END:VEVENT
+END:VCALENDAR`;
+
+    const result = parseIcs(ics);
+    expect(result.events).toHaveLength(1);
+    // toISOString() sempre imprime em UTC — se o bug estivesse presente aqui
+    // (rodando em qualquer TZ != UTC), isso acusaria o deslocamento.
+    expect(result.events[0].startTime.toISOString()).toBe("2026-07-10T11:00:00.000Z");
+    expect(result.events[0].endTime.toISOString()).toBe("2026-07-10T12:00:00.000Z");
+  });
+
+  it("DTSTART sem sufixo Z (floating time) usa o timezone local do processo — comportamento distinto do UTC", () => {
+    const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260710T110000
+DTEND:20260710T120000
+UID:tz-test-2@test
+SUMMARY:Evento sem timezone
+END:VEVENT
+END:VCALENDAR`;
+
+    const result = parseIcs(ics);
+    // Sem "Z", o valor é ambíguo por design do formato iCalendar (floating
+    // time) — aqui só confirmamos que o parser não falha e produz uma data
+    // com os componentes locais corretos (hora 11, não deslocada).
+    expect(result.events[0].startTime.getHours()).toBe(11);
+    expect(result.events[0].startTime.getDate()).toBe(10);
+  });
+});
+
 // Teste de integração: grava de verdade numa clínica demo no banco real.
 // Nenhum outro teste da suíte depende de DATABASE_URL (todos usam mocks) —
 // esse é o único, então roda só quando a env var está disponível (ambiente

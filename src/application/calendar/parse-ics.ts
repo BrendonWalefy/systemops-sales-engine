@@ -92,8 +92,8 @@ export function parseIcs(content: string): ParseIcsResult {
 
 function parseIcsDateTime(dtString: string): Date | null {
   // Formatos esperados:
-  // 20260708T150000 (sem timezone)
-  // 20260708T150000Z (UTC)
+  // 20260708T150000 (sem timezone — "floating time", horário local do processo)
+  // 20260708T150000Z (UTC — sufixo Z indica timestamp absoluto)
   // 20260708 (apenas data)
 
   const dateMatch = dtString.match(/^(\d{4})(\d{2})(\d{2})(T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
@@ -102,16 +102,26 @@ function parseIcsDateTime(dtString: string): Date | null {
     return null;
   }
 
-  const [, year, month, day, , hours, minutes, seconds] = dateMatch;
+  const [, year, month, day, , hours, minutes, seconds, utcFlag] = dateMatch;
 
-  const dateObj = new Date(
-    parseInt(year, 10),
-    parseInt(month, 10) - 1,
-    parseInt(day, 10),
-    hours ? parseInt(hours, 10) : 0,
-    minutes ? parseInt(minutes, 10) : 0,
-    seconds ? parseInt(seconds, 10) : 0,
-  );
+  const y = parseInt(year, 10);
+  const mo = parseInt(month, 10) - 1;
+  const d = parseInt(day, 10);
+  const h = hours ? parseInt(hours, 10) : 0;
+  const mi = minutes ? parseInt(minutes, 10) : 0;
+  const s = seconds ? parseInt(seconds, 10) : 0;
 
-  return dateObj;
+  // Google Calendar exporta DTSTART/DTEND com sufixo "Z" (UTC de verdade).
+  // new Date(y, mo, d, h, mi, s) SEMPRE interpreta os componentes como
+  // horário LOCAL do processo — ignorar isso e usar esse construtor para um
+  // timestamp com "Z" faz o resultado depender do timezone de quem roda o
+  // código: em produção (Vercel, UTC) o bug não aparecia por coincidência
+  // (local do processo == UTC), mas rodando localmente (ex: America/Sao_Paulo,
+  // UTC-3) o mesmo evento saía 3h adiantado. Date.UTC() ignora o timezone do
+  // processo e sempre trata os componentes como UTC, then.
+  if (utcFlag) {
+    return new Date(Date.UTC(y, mo, d, h, mi, s));
+  }
+
+  return new Date(y, mo, d, h, mi, s);
 }
