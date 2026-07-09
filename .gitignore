@@ -19,3 +19,9 @@ scripts/demo-media/
 docs/testing/
 # Mídia local de clínicas reais (sobe pro Blob via scripts/upload-nc-media.ts)
 scripts/nc-media/
+
+# Exports de calendário de clientes (nomes de pacientes + valores cobrados) —
+# nunca versionar, usados só localmente para testar o parser de import
+public/*.ical.zip
+public/*.ics
+*.ics

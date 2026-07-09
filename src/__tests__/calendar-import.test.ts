@@ -3,7 +3,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, leads, appointments, treatments } from "@/infrastructure/db/schema";
 import { eq, and } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
-import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
+import { importCalendarEvents, extractPatientName } from "@/application/calendar/import-calendar-events";
 import fs from "fs";
 import path from "path";
 
@@ -12,6 +12,67 @@ const ICS_FILE_PATH = path.join(
   process.cwd(),
   "vitalli-agenda-exemplo.ics",
 );
+
+// Fixo no passado — os testes de import chamam importCalendarEvents com este
+// cutoffDate para não depender de "agora" (o cutoffDate default é new Date(),
+// e o arquivo de exemplo tem datas fixas de 2026-07-10/11; sem fixar, o teste
+// quebraria sozinho assim que essa data ficasse no passado).
+const FAR_PAST_CUTOFF = new Date("2020-01-01T00:00:00Z");
+
+// P0.8: extractPatientName — casos reais da agenda da Vitalli (export do
+// Google Calendar, e-mail antigo dental.luxe98@gmail.com, 09/07/2026).
+// Confirmou o bug real: a primeira tentativa em produção assumia o padrão
+// "Tratamento - Nome" (usado só no fixture de exemplo criado antes de ver o
+// arquivo real), mas a agenda de verdade não usa separador nenhum — o nome do
+// paciente é sempre a primeira sequência de palavra(s) capitalizada(s) no
+// início do SUMMARY, com uma exceção clara: quando a frase abre com uma
+// palavra de tratamento ("Manutenção Fabio"), o nome vem em seguida.
+describe("extractPatientName — casos reais da agenda Vitalli", () => {
+  const casosReais: Array<[string, string]> = [
+    ["Alex 20 Lentes 2 mil", "Alex"],
+    ["Manutenção Fabio", "Fabio"],
+    ["Isac paciente R$2.000", "Isac"],
+    ["Evelin 20 lentes R$2.000", "Evelin"],
+    ["Laís Manutenção R$400", "Laís"],
+    ["Pedro manutenção 1 cortesia", "Pedro"],
+    ["Jeniffer manutenção sem custo", "Jeniffer"],
+    ["Riquelme manutenção R$400", "Riquelme"],
+    ["Denis William R$3.000 com a plástica + R$400 da remoção", "Denis William"],
+    ["Gabriel Reparo canino R$200", "Gabriel"],
+    ["Leonardo Paciente R$2.000", "Leonardo"],
+    ["Vilma avaliação gregorie", "Vilma"],
+    ["Ana Cristina manutenção 400 + limpeza 250 + Manutenção filho", "Ana Cristina"],
+    ["Milena 20 lentes 2 mil", "Milena"],
+    ["Ana Julia 20 lentes", "Ana Julia"],
+    ["Thalyta ajustes", "Thalyta"],
+    ["Regina Silva Rodrigues 2 mil 200 remoção", "Regina Silva Rodrigues"],
+    ["ROSÂNGELA REPARO e avaliação vizinha", "Rosângela"],
+    ["Jairan 20 lentes R$2.000", "Jairan"],
+    ["MURILO 20 lentes + PLÁSTICA SUPERIOR 2500 se fizer raspagem 2650", "Murilo"],
+    ["Vitor manutenção gratuita", "Vitor"],
+    ["Polyane 20 lentes já pagou GREGORI", "Polyane"],
+    ["Keyla remoção 20 lentes", "Keyla"],
+    ["Poliana paciente R$2.100 gregorie", "Poliana"],
+  ];
+
+  for (const [summary, expected] of casosReais) {
+    it(`"${summary}" → "${expected}"`, () => {
+      expect(extractPatientName(summary)).toBe(expected);
+    });
+  }
+
+  it("string vazia retorna fallback", () => {
+    expect(extractPatientName("")).toBe("Paciente Importado");
+  });
+
+  it("evento sem nome capitalizável (ex: compromisso administrativo) usa a primeira palavra como fallback", () => {
+    // Caso real do histórico: "8:00 medir para móveis planejados em MDF" —
+    // não é um paciente, é um compromisso da clínica. Não há como distinguir
+    // isso de um paciente real sem contexto adicional; o comportamento atual
+    // (usar a primeira palavra) é um fallback aceitável, não uma garantia.
+    expect(extractPatientName("8:00 medir para móveis planejados em MDF")).toBe("8:00");
+  });
+});
 
 // Teste de integração: grava de verdade numa clínica demo no banco real.
 // Nenhum outro teste da suíte depende de DATABASE_URL (todos usam mocks) —
@@ -69,29 +130,22 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
 
     // Validar primeiro evento
     const event1 = result.events[0];
-    expect(event1.summary).toContain("Lentes de Contato");
     expect(event1.summary).toContain("João Silva");
     expect(event1.uid).toBe("google-calendar-vitalli-001@google.com");
     expect(event1.startTime).toBeDefined();
     expect(event1.endTime).toBeDefined();
   });
 
-  it("deve extrair informações de eventos com padrão Tratamento - Nome", async () => {
+  it("deve extrair informações de eventos no formato real da agenda (Nome + texto livre, sem separador)", async () => {
     const content = fs.readFileSync(ICS_FILE_PATH, "utf-8");
     const result = parseIcs(content);
 
     const events = result.events;
 
-    // Evento 1: "Consulta - Lentes de Contato (João Silva)"
-    expect(events[0].summary).toMatch(/Lentes de Contato/);
+    // Formato real observado na exportação da Vitalli: sem "-" nem
+    // parênteses, o nome do paciente abre a frase.
     expect(events[0].summary).toMatch(/João Silva/);
-
-    // Evento 2: "Manutenção - Higiene Ocular (Maria Santos)"
-    expect(events[1].summary).toMatch(/Higiene Ocular/);
     expect(events[1].summary).toMatch(/Maria Santos/);
-
-    // Evento 3: "Avaliação - Facetas Dentárias (Pedro Costa)"
-    expect(events[2].summary).toMatch(/Facetas/);
     expect(events[2].summary).toMatch(/Pedro Costa/);
   });
 
@@ -99,7 +153,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
     const content = fs.readFileSync(ICS_FILE_PATH, "utf-8");
     const parseResult = parseIcs(content);
 
-    const importResult = await importCalendarEvents(demoClinicId, parseResult.events);
+    const importResult = await importCalendarEvents(demoClinicId, parseResult.events, { cutoffDate: FAR_PAST_CUTOFF });
 
     console.log("Import result:", importResult);
 
@@ -185,7 +239,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
     const countBefore = appointmentsBefore.length;
 
     // Segunda importação (deveria ser idempotente por UID)
-    const importResult = await importCalendarEvents(demoClinicId, parseResult.events);
+    const importResult = await importCalendarEvents(demoClinicId, parseResult.events, { cutoffDate: FAR_PAST_CUTOFF });
 
     // Contar appointments depois
     const appointmentsAfter = await db.query.appointments.findMany({
@@ -210,26 +264,14 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
     );
   });
 
-  it("deve extrair detalhes do evento (patient + treatment)", async () => {
+  it("deve extrair o nome do paciente de cada evento do fixture", async () => {
     const content = fs.readFileSync(ICS_FILE_PATH, "utf-8");
     const parseResult = parseIcs(content);
 
     const testCases = [
-      {
-        summary: "Consulta - Lentes de Contato (João Silva)",
-        expectedTreatment: "Consulta - Lentes de Contato",
-        expectedPatient: "João Silva",
-      },
-      {
-        summary: "Manutenção - Higiene Ocular (Maria Santos)",
-        expectedTreatment: "Manutenção - Higiene Ocular",
-        expectedPatient: "Maria Santos",
-      },
-      {
-        summary: "Avaliação - Facetas Dentárias (Pedro Costa)",
-        expectedTreatment: "Avaliação - Facetas Dentárias",
-        expectedPatient: "Pedro Costa",
-      },
+      { summary: "João Silva 20 lentes R$2.000", expectedPatient: "João Silva" },
+      { summary: "Maria Santos manutenção", expectedPatient: "Maria Santos" },
+      { summary: "Pedro Costa avaliação facetas", expectedPatient: "Pedro Costa" },
     ];
 
     for (const testCase of testCases) {
@@ -237,12 +279,27 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
         (e) => e.summary === testCase.summary,
       );
       expect(event).toBeDefined();
-      expect(event?.summary).toContain(testCase.expectedPatient);
-
-      console.log(
-        `✅ Event: ${testCase.summary}`,
-      );
+      expect(extractPatientName(event?.summary ?? "")).toBe(testCase.expectedPatient);
     }
+  });
+
+  it("cutoffDate filtra eventos passados — não importa nem conta como erro, só como skipped", async () => {
+    // Caso real que motivou este filtro: a exportação real do Google Calendar
+    // da Vitalli trazia 1488 eventos desde 2024 (todo o histórico). Sem
+    // filtro, a primeira tentativa em produção processou centenas de
+    // consultas já passadas antes de travar. cutoffDate no futuro distante
+    // deve pular TODOS os eventos do fixture (que são de 2026-07-10/11).
+    const content = fs.readFileSync(ICS_FILE_PATH, "utf-8");
+    const parseResult = parseIcs(content);
+
+    const farFutureCutoff = new Date("2030-01-01T00:00:00Z");
+    const importResult = await importCalendarEvents(demoClinicId, parseResult.events, {
+      cutoffDate: farFutureCutoff,
+    });
+
+    expect(importResult.imported).toBe(0);
+    expect(importResult.skipped).toBe(parseResult.events.length);
+    expect(importResult.errors.length).toBe(0);
   });
 
   it("deve validar datas/horários corretamente", async () => {
@@ -266,7 +323,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
     const content = fs.readFileSync(ICS_FILE_PATH, "utf-8");
     const parseResult = parseIcs(content);
 
-    const importResult = await importCalendarEvents(demoClinicId, parseResult.events);
+    const importResult = await importCalendarEvents(demoClinicId, parseResult.events, { cutoffDate: FAR_PAST_CUTOFF });
 
     console.log("\n📊 IMPORT SUMMARY");
     console.log("─".repeat(50));

@@ -35,6 +35,11 @@ export default function CalendarSetupPage({ params }: { params: { token: string 
     setStatus("uploading");
     setErrorMessage("");
 
+    // Timeout defensivo — evita a tela ficar presa em "Importando..." para
+    // sempre se o servidor não responder (ver calendar-import-panel.tsx).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -42,6 +47,7 @@ export default function CalendarSetupPage({ params }: { params: { token: string 
       const response = await fetch(`/api/setup/calendar/${params.token}/import`, {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
       const data = await response.json();
@@ -58,10 +64,17 @@ export default function CalendarSetupPage({ params }: { params: { token: string 
         setStatus("error");
       }
     } catch (error) {
+      const isTimeout = error instanceof Error && error.name === "AbortError";
       setErrorMessage(
-        error instanceof Error ? error.message : "Erro na importação",
+        isTimeout
+          ? "A importação demorou demais e foi interrompida. Avise o administrador."
+          : error instanceof Error
+            ? error.message
+            : "Erro na importação",
       );
       setStatus("error");
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (fileInputRef.current) {

@@ -24,6 +24,14 @@ export function CalendarImportPanel({ clinicId }: CalendarImportPanelProps) {
     setStep("uploading");
     setErrorMessage("");
 
+    // Timeout defensivo: sem isso, uma falha no servidor (ex: função
+    // serverless que estoura o limite de tempo no meio do processamento)
+    // deixa o fetch pendurado para sempre e a tela presa em "Importando..."
+    // sem qualquer feedback (caso real: teste em produção com arquivo de
+    // 1488 eventos históricos, sem filtro de data, travou visivelmente).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -31,6 +39,7 @@ export function CalendarImportPanel({ clinicId }: CalendarImportPanelProps) {
       const response = await fetch(`/api/clinic/${clinicId}/import-calendar`, {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
       const data = await response.json();
@@ -46,10 +55,17 @@ export function CalendarImportPanel({ clinicId }: CalendarImportPanelProps) {
         setStep("error");
       }
     } catch (error) {
+      const isTimeout = error instanceof Error && error.name === "AbortError";
       setErrorMessage(
-        error instanceof Error ? error.message : "Erro na importação",
+        isTimeout
+          ? "A importação demorou demais e foi interrompida. Tente um arquivo menor ou avise o suporte."
+          : error instanceof Error
+            ? error.message
+            : "Erro na importação",
       );
       setStep("error");
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (fileInputRef.current) {
