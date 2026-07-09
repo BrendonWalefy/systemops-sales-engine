@@ -16,6 +16,7 @@ import {
   type RevenueData,
 } from "./DashboardCommandCenter";
 import type { PeriodKey } from "./DashboardPeriodToggle";
+import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 
 const DASHBOARD_TZ = "America/Sao_Paulo";
 type DateLike = Date | string | number;
@@ -502,10 +503,12 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
       .groupBy(leads.status),
     db
       .select({
+        id: treatments.id,
         name: treatments.name,
         priceCents: treatments.priceCents,
         minPriceCents: treatments.minPriceCents,
         maxPriceCents: treatments.maxPriceCents,
+        priceKind: treatments.priceKind,
       })
       .from(treatments)
       .where(eq(treatments.clinicId, CLINIC_ID))
@@ -623,6 +626,19 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
     .limit(1);
   const currentScore = latestSnapshot?.healthScore ?? 100;
 
+  // Receita prevista do pipeline deve refletir o preço EFETIVO (promoção ativa
+  // sobrepõe o preço de lista) — mesma regra que a IA usa para cotar no chat.
+  const activePriceCampaigns = await getActivePriceCampaignsByTreatment(CLINIC_ID);
+  const treatmentCatalogWithEffectivePrice = treatmentCatalogResult.map((t) => {
+    const effective = resolveEffectivePrice(t, activePriceCampaigns.get(t.id) ?? null);
+    return {
+      name: t.name,
+      priceCents: effective.priceCents,
+      minPriceCents: effective.minPriceCents,
+      maxPriceCents: effective.maxPriceCents,
+    };
+  });
+
   const periodFunnel = buildPeriodFunnel(periodLeadSnapshotResult);
 
   return {
@@ -638,7 +654,7 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
     previousPeriodLeadCount: previousLeadPeriodResult[0]?.count ?? 0,
     recentLeads: recentLeadsResult,
     hotLeads: hotLeadsResult,
-    treatmentCatalog: treatmentCatalogResult,
+    treatmentCatalog: treatmentCatalogWithEffectivePrice,
     flowSeries: buildFlowSeries(currentFlowLeadsResult, flowStart, days),
     tempCounts: {
       hot: tempHotResult[0]?.count ?? 0,

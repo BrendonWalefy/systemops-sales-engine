@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingTreatmentDescriptionIssues } from "@/application/config/playbook-lint";
+import { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "@/application/config/playbook-lint";
 
 describe("blockingPlaybookNotesIssues — gate de publish", () => {
   it("BLOQUEIA quando o notes contém um valor de preço concreto", () => {
@@ -62,6 +62,29 @@ describe("lintCommercialPolicy — preço tem casa no cadastro (Item 3)", () => 
   it("trata política vazia/nula como sem problema", () => {
     expect(lintCommercialPolicy(null)).toEqual([]);
     expect(lintCommercialPolicy("   ")).toEqual([]);
+  });
+});
+
+describe("blockingCommercialPolicyIssues — gate no publish (campanhas de preço)", () => {
+  it("BLOQUEIA quando a política comercial contém um valor de preço concreto", () => {
+    const issues = blockingCommercialPolicyIssues("Lentes a partir de R$ 2.500 para 20 elementos.");
+    expect(issues.length).toBe(1);
+    expect(issues[0]).toMatch(/Campanhas/);
+  });
+
+  it("NÃO bloqueia enquadramento comercial sem valor concreto", () => {
+    expect(blockingCommercialPolicyIssues("Parcelamos em até 12x; avaliação abatida do tratamento.")).toEqual([]);
+  });
+
+  it("trata política vazia/nula como sem problema", () => {
+    expect(blockingCommercialPolicyIssues(null)).toEqual([]);
+    expect(blockingCommercialPolicyIssues("   ")).toEqual([]);
+  });
+
+  it("é o equivalente bloqueante do aviso de lintCommercialPolicy", () => {
+    const policy = "Avaliação sai por R$ 100.";
+    expect(blockingCommercialPolicyIssues(policy).length).toBe(1);
+    expect(lintCommercialPolicy(policy).length).toBe(1);
   });
 });
 

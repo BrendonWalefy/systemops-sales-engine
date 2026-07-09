@@ -42,6 +42,7 @@ import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseCom
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
@@ -285,6 +286,47 @@ export function prependFirstMessageSalutation(
     return [{ type: "text", content: `${opener} ${body}`.trim() }, ...cleanedRest];
   }
   return [{ type: "text", content: opener }, first, ...cleanedRest];
+}
+
+/**
+ * Saudação RICA de primeira mensagem para quando um pipeline de CONTEÚDO dispara
+ * (ex.: lead abre com "quero saber das lentes"). É o DONO ÚNICO da saudação nesse
+ * caminho.
+ *
+ * Por que existe separada de `prependFirstMessageSalutation`: o caminho de pipeline
+ * de conteúdo monta as `parts` a partir dos blocos do playbook e NÃO passa pelo
+ * ResponseComposer — então o `deduplicateGreetings` do composer nunca roda nele.
+ * Antes, esse caminho chamava `prependFirstMessageSalutation` ("Boa noite, X!") E
+ * ainda recebia este prefixo rico ("Boa noite, X. Tudo bem? Sou a assistente...")
+ * depois do switch: as duas saudações se somavam (bug P0.7 reaparecendo só no
+ * pipeline). Agora o pipeline de conteúdo entrega os blocos crus e esta função é a
+ * única a saudar.
+ *
+ * Defensivo: limpa qualquer saudação que o primeiro bloco de texto já traga
+ * (`stripLeadingGreeting`), para nunca duplicar mesmo se um bloco for mal configurado.
+ */
+export function prependPipelineIntroGreeting(
+  parts: ResponsePart[],
+  timezone: ClinicTimezone,
+  clinicName: string,
+  leadName: string | null,
+  receptionistName: string | null,
+): ResponsePart[] {
+  const salutation = getDayGreeting(timezone);
+  const firstName = extractFirstName(leadName);
+  const nameGreeting = firstName ? `, ${firstName}` : "";
+  const intro = receptionistName
+    ? `Sou a ${receptionistName}, assistente virtual da ${clinicName}.`
+    : `Sou a assistente virtual da ${clinicName}.`;
+  const greetingPrefix = `${salutation}${nameGreeting}. Tudo bem?\n${intro}\n\n`;
+
+  const firstTextIdx = parts.findIndex((p) => p.type === "text");
+  if (firstTextIdx === -1) return parts;
+  return parts.map((part, i) =>
+    i === firstTextIdx && part.type === "text"
+      ? { type: "text", content: greetingPrefix + stripLeadingGreeting(part.content) }
+      : part,
+  );
 }
 
 function isMenuRerequest(message: string): boolean {
@@ -2689,11 +2731,21 @@ export class ConversationOrchestrator {
 
         const offeredTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
 
-        // Infere treatmentId e valueCents a partir do tratamento identificado
+        // Infere treatmentId e valueCents a partir do tratamento identificado.
+        // valueCents é um SNAPSHOT imutável do preço no momento do booking — se uma
+        // campanha promocional estiver ativa agora, ela é o valor gravado aqui, e
+        // continua correto no histórico mesmo depois que a campanha expirar.
         const matchedTreatmentForBooking = offeredTreatment?.treatmentName
           ? clinicTreatments.find(
               (t) => t.name.toLowerCase() === offeredTreatment.treatmentName!.toLowerCase(),
             ) ?? null
+          : null;
+
+        const bookingValueCents = matchedTreatmentForBooking
+          ? resolveEffectivePrice(
+              matchedTreatmentForBooking,
+              (await getActivePriceCampaignsByTreatment(clinicId)).get(matchedTreatmentForBooking.id) ?? null,
+            ).priceCents
           : null;
 
         const result = await bookingService.book({
@@ -2703,7 +2755,7 @@ export class ConversationOrchestrator {
           endsAt: new Date(chosenSlot.endsAt),
           treatmentName: offeredTreatment?.treatmentName,
           treatmentId: matchedTreatmentForBooking?.id ?? null,
-          valueCents: matchedTreatmentForBooking?.priceCents ?? null,
+          valueCents: bookingValueCents,
         });
 
         if (result.success) {
@@ -3295,10 +3347,10 @@ export class ConversationOrchestrator {
                 clinic.staleConversationHours * 60,
               );
               if (firstActive.step.type === "content") {
-                const rawParts = buildPipelineContentParts(firstActive.step.blocks);
-                const parts = isFirstMessage
-                  ? prependFirstMessageSalutation(rawParts, timezone, lead.name)
-                  : rawParts;
+                // Blocos crus: a saudação da primeira mensagem é aplicada UMA vez
+                // pelo bloco pós-switch (prependPipelineIntroGreeting). Saudar aqui
+                // também duplicava a saudação (bug P0.7 no caminho de pipeline).
+                const parts = buildPipelineContentParts(firstActive.step.blocks);
                 triggerPartsOverride = parts;
                 composedParts = parts;
                 composedMediaIds = parts
@@ -3360,10 +3412,9 @@ export class ConversationOrchestrator {
                     conversation.id, keywordTreatment.id, keywordTreatment.name, clinic.staleConversationHours * 60,
                   );
                   if (firstActive.step.type === "content") {
-                    const rawParts = buildPipelineContentParts(firstActive.step.blocks);
-                    const parts = isFirstMessage
-                      ? prependFirstMessageSalutation(rawParts, timezone, lead.name)
-                      : rawParts;
+                    // Blocos crus: saudação aplicada uma única vez pelo bloco
+                    // pós-switch (prependPipelineIntroGreeting), nunca aqui (bug P0.7).
+                    const parts = buildPipelineContentParts(firstActive.step.blocks);
                     triggerPartsOverride = parts;
                     composedParts = parts;
                     composedMediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
@@ -3459,22 +3510,15 @@ export class ConversationOrchestrator {
     } // End of else
 
     if (isFirstMessage && !shouldSendConciergeStarter(experience, effectiveIntent) && triggerPartsOverride && triggerPartsOverride.length > 0) {
-      // Se for a primeira mensagem e disparou um pipeline direto (pulando o ConciergeStarter),
-      // precisamos injetar a saudação antes do conteúdo do pipeline para não ficar robótico.
-      const salutation = getDayGreeting(timezone);
-      const firstName = extractFirstName(lead.name);
-      const nameGreeting = firstName ? `, ${firstName}` : "";
+      // Primeira mensagem que disparou um pipeline de conteúdo (pulando o ConciergeStarter):
+      // injeta a saudação rica UMA vez, aqui — este é o dono único da saudação nesse caminho.
       const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage);
-      const intro = receptionistName ? `Sou a ${receptionistName}, assistente virtual da ${clinic.name}.` : `Sou a assistente virtual da ${clinic.name}.`;
-
-      const greetingPrefix = `${salutation}${nameGreeting}. Tudo bem?\n${intro}\n\n`;
-
-      const firstTextPart = triggerPartsOverride.find((p) => p.type === "text");
-      if (firstTextPart && firstTextPart.type === "text") {
-        firstTextPart.content = greetingPrefix + firstTextPart.content;
-        replyText = triggerPartsOverride.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
-        composedParts = triggerPartsOverride;
-      }
+      const parts = prependPipelineIntroGreeting(triggerPartsOverride, timezone, clinic.name, lead.name, receptionistName);
+      composedParts = parts;
+      replyText = parts
+        .filter((p): p is { type: "text"; content: string } => p.type === "text")
+        .map((p) => p.content)
+        .join("\n\n");
     }
 
     // ── 8. Atualiza contador de unclear e flag needsAttention ──

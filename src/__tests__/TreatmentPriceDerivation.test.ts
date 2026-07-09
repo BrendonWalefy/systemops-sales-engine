@@ -117,6 +117,61 @@ describe("composePriceSection — derivação de preço", () => {
     expect(text).toContain("R$ 150,50");
   });
 
+  it("campanha ativa com valor diferente do de lista vira 'de X por Y' com o nome da campanha", () => {
+    const text = composePriceSection([
+      fact({
+        name: "Lentes",
+        priceCents: 150000,
+        priceQuotableInChat: true,
+        priceKind: "fixed",
+        originalPriceCents: 170000,
+        campaignName: "Promoção de lançamento",
+      }),
+    ]);
+    expect(text).toContain("Lentes: de R$ 1.700 por R$ 1.500.");
+    expect(text).toContain('[Promoção "Promoção de lançamento"]');
+  });
+
+  it("campanha ativa com data de término inclui o prazo na prosa", () => {
+    const endsAt = new Date("2026-07-31T23:59:59Z");
+    const text = composePriceSection([
+      fact({
+        name: "Lentes",
+        priceCents: 150000,
+        priceQuotableInChat: true,
+        priceKind: "fixed",
+        originalPriceCents: 170000,
+        campaignName: "Promoção de lançamento",
+        campaignEndsAt: endsAt,
+      }),
+    ]);
+    expect(text).toMatch(/válida até \d{2}\/\d{2}/);
+  });
+
+  it("sem campanha (originalPriceCents ausente), não menciona 'de X por Y' nem promoção", () => {
+    const text = composePriceSection([
+      fact({ name: "Lentes", priceCents: 150000, priceQuotableInChat: true, priceKind: "fixed" }),
+    ]);
+    expect(text).toContain("Lentes: R$ 1.500.");
+    expect(text).not.toContain("Promoção");
+    expect(text).not.toContain(" por ");
+  });
+
+  it("kind 'from' com campanha mantém 'a partir de' e aponta o preço de lista entre parênteses", () => {
+    const text = composePriceSection([
+      fact({
+        name: "Lentes",
+        minPriceCents: 150000,
+        priceQuotableInChat: true,
+        priceKind: "from",
+        originalPriceCents: 170000,
+        campaignName: "Promoção de lançamento",
+      }),
+    ]);
+    expect(text).toContain("Lentes: a partir de R$ 1.500 (de R$ 1.700)");
+    expect(text).toContain("o valor exato é definido na avaliação");
+  });
+
   it("shape Ximendes: avaliação abatida + 2 técnicas de lentes + demais na avaliação", () => {
     const text = composePriceSection([
       fact({ name: "Avaliação", priceCents: 10000, priceQuotableInChat: true, priceKind: "fixed", priceDeductible: true }),

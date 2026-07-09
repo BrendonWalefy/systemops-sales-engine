@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import { updateClinicOperationalSettings } from "./playbook-version-actions";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
+import { CampaignRow, type PriceCampaign } from "../tratamentos/CampaignRow";
 import { S, SettingsCard, SettingsSection, SettingsBadge, SaveStatus } from "./settings-primitives";
 import { useReliableAutosave } from "./use-reliable-autosave";
 
@@ -43,12 +44,17 @@ export function TabFinanceiro({
   treatments,
   canEditPrices,
   serviceNoun,
+  campaigns = [],
+  hasPriceCampaigns = false,
 }: {
   clinic: ClinicData;
   treatments: Treatment[];
   canEditPrices: boolean;
   serviceNoun: string;
+  campaigns?: PriceCampaign[];
+  hasPriceCampaigns?: boolean;
 }) {
+  const campaignsByTreatmentId = new Map(campaigns.map((c) => [c.treatmentId, c]));
   const [rows, setRows] = useState<InstallmentRow[]>(() => {
     if (clinic.installmentRates && clinic.installmentRates.length > 0) {
       const saved = new Map(clinic.installmentRates.map((r) => [r.n, r]));
@@ -116,14 +122,20 @@ export function TabFinanceiro({
             </div>
             <div>
               {treatments.map((t, idx) => (
-                <TreatmentRow
-                  key={t.id}
-                  treatment={t}
-                  isLast={idx === treatments.length - 1}
-                  canEditPrices={canEditPrices}
-                  serviceNoun={serviceNoun}
-                  mode="price"
-                />
+                <div key={t.id} style={{ borderBottom: idx === treatments.length - 1 ? "none" : `1px solid ${S.border}` }}>
+                  <TreatmentRow
+                    treatment={t}
+                    isLast={true}
+                    canEditPrices={canEditPrices}
+                    serviceNoun={serviceNoun}
+                    mode="price"
+                  />
+                  {hasPriceCampaigns && (
+                    <div style={{ padding: "0 18px 12px" }}>
+                      <CampaignRow treatment={t} campaign={campaignsByTreatmentId.get(t.id) ?? null} />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </SettingsCard>

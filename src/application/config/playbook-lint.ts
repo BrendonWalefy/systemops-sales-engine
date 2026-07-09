@@ -56,10 +56,29 @@ export function lintCommercialPolicy(policy: string | null | undefined): string[
   const warnings: string[] = [];
   if (CONCRETE_PRICE_PATTERN.test(policy)) {
     warnings.push(
-      'Contém valor em R$. O preço é gerado automaticamente a partir do valor cadastrado em cada procedimento — cadastre o valor lá (e marque "cotável no chat") em vez de digitá-lo aqui, para o número que a IA fala nunca divergir do Financeiro.',
+      'Contém valor em R$. Preço de lista: cadastre no procedimento (aba Financeiro) e marque "cotável no chat". Preço promocional/temporário: cadastre uma Campanha para o procedimento. A IA fala os dois a partir de lá, nunca desta política.',
     );
   }
   return warnings;
+}
+
+/**
+ * Item 6 §6C (config ownership): agora que campanhas promocionais (`price_campaigns`)
+ * têm casa estruturada própria, não sobra motivo legítimo para digitar um preço à
+ * mão na `commercialPolicy` — nem o valor de lista (mora em `treatments.priceCents`)
+ * nem o promocional (mora em `price_campaigns`). BLOQUEIA a ativação até ser
+ * removido, mesma régua do fact-guard. Antes deste ponto era só aviso porque
+ * clínicas migrando ainda não tinham onde cadastrar promoção.
+ */
+export function blockingCommercialPolicyIssues(policy: string | null | undefined): string[] {
+  if (!policy?.trim()) return [];
+  const issues: string[] = [];
+  if (CONCRETE_PRICE_PATTERN.test(policy)) {
+    issues.push(
+      'A política comercial contém um valor em R$. O preço de lista mora no cadastro do procedimento (aba Financeiro) e o preço promocional mora em Campanhas — a IA fala os dois a partir de lá. Remova o valor daqui antes de publicar.',
+    );
+  }
+  return issues;
 }
 
 /**

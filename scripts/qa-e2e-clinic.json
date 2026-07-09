@@ -18,7 +18,7 @@
     }
   },
   "playbook": {
-    "commercialPolicy": "Consulta de avaliação gratuita. Lentes de contato dental a partir de R$ 2.500 (resina) ou R$ 5.000 (porcelana). Parcelamento em até 12x sem juros.",
+    "commercialPolicy": "Consulta de avaliação gratuita. Lentes de contato dental disponíveis em resina ou porcelana, valor definido na avaliação. Parcelamento em até 12x sem juros.",
     "toneOfVoice": "acolhedor",
     "procedureDescription": "Avaliação clínica presencial antes de qualquer procedimento estético.",
     "differentials": ["Atendimento 24h via IA", "Parcelamento facilitado"],

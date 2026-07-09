@@ -964,7 +964,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
 
                 <FieldGroup
                   label="Política comercial"
-                  hint="Por que importa: enquadramento comercial (parcelamento, condições, quando encaminhar para avaliação). O preço em si a IA fala a partir do valor cadastrado em cada procedimento (aba Financeiro) — não digite valores em R$ aqui."
+                  hint="Por que importa: enquadramento comercial (parcelamento, condições, quando encaminhar para avaliação). Preço de lista e preço promocional/campanha a IA fala a partir do cadastro (aba Financeiro) — não digite valores em R$ aqui."
                 >
                   <textarea
                     value={data.commercialPolicy}
