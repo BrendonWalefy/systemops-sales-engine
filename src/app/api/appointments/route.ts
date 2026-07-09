@@ -56,6 +56,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         endsAt: appointments.endsAt,
         status: appointments.status,
         source: appointments.source,
+        description: appointments.description,
         createdAt: appointments.createdAt,
       })
       .from(appointments)
