@@ -84,7 +84,7 @@ function appointment(): Appointment {
     clinicId: clinic.id,
     leadId: lead.id,
     professionalId: null,
-    roomId: null,
+    roomId: null, description: null,
     calendarEventId: "event-1",
     calendarEventUrl: null,
     startsAt,

@@ -113,6 +113,7 @@ export async function importCalendarEvents(
         status: "scheduled",
         source: "gcal_import",
         treatmentId: matchedTreatment?.id ?? null,
+        description: event.summary ?? null,
         calendarEventId: event.uid,
       }).returning({ id: appointments.id });
 

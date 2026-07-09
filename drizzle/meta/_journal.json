@@ -463,6 +463,13 @@
       "when": 1783569145394,
       "tag": "0065_complex_leech",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1783575111934,
+      "tag": "0066_old_nightmare",
+      "breakpoints": true
     }
   ]
 }
