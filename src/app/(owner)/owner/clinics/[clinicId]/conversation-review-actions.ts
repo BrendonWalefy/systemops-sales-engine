@@ -23,6 +23,7 @@ import {
   MIN_EXCERPTS_PER_REVIEW,
   MAX_EXCERPTS_PER_REVIEW,
   MAX_EXCERPT_CONTEXT_CHARS,
+  MAX_REVIEW_TITLE_CHARS,
 } from "@/domain/entities/conversation-review";
 import type { ConversationExcerpt } from "@/domain/entities/conversation-review";
 
@@ -63,7 +64,7 @@ export async function createReview(
 ): Promise<{ reviewId: string }> {
   await assertOwnerSession();
 
-  const trimmed = title.trim().slice(0, 140);
+  const trimmed = title.trim().slice(0, MAX_REVIEW_TITLE_CHARS);
   if (!trimmed) throw new Error("Dê um título à rodada (ex.: \"Rodada 1 — semana de 14/07\").");
 
   const active = await db.query.conversationReviews.findFirst({

@@ -95,5 +95,7 @@ export const MIN_MESSAGES_PER_EXCERPT = 3;
 export const MAX_MESSAGES_PER_EXCERPT = 15;
 /** Máximo de caracteres da linha de contexto do owner. */
 export const MAX_EXCERPT_CONTEXT_CHARS = 140;
+/** Máximo de caracteres do título da rodada. */
+export const MAX_REVIEW_TITLE_CHARS = 140;
 /** Máximo de caracteres dos textos de feedback (mesmo limite da validação). */
 export const MAX_FEEDBACK_TEXT_CHARS = 1000;
