@@ -200,6 +200,17 @@ export const setupStudyStatusEnum = pgEnum("setup_study_status", [
   "expired",   // Prazo de resposta esgotado sem ação
 ]);
 
+// Revisão de Conversas (docs/product/revisao-conversas-plano.md): estados do
+// ciclo de vida de uma rodada de curadoria de trechos do shadow mode enviada
+// ao responsável da clínica. Enum próprio — não reutiliza setupStudyStatusEnum
+// (não existe "applied" aqui; a aplicação do feedback é manual no playbook).
+export const conversationReviewStatusEnum = pgEnum("conversation_review_status", [
+  "draft",     // Owner está curando os trechos
+  "sent",      // Enviada para o cliente responder
+  "answered",  // Cliente concluiu a revisão
+  "expired",   // Prazo de resposta esgotado sem ação
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -1318,6 +1329,53 @@ export const setupStudies = pgTable(
       t.status,
     ),
     orgCreatedAtIdx: index("setup_studies_org_created_at_idx").on(
+      t.organizationId,
+      t.createdAt,
+    ),
+  }),
+);
+
+// Revisão de Conversas (docs/product/revisao-conversas-plano.md): rodadas de
+// curadoria de trechos reais do shadow mode enviadas ao responsável da
+// clínica para feedback (👍 Ficou bom / ✏️ Eu ajustaria) antes do go-live.
+// Snapshot congelado: os trechos (jsonb) são cópias imutáveis das mensagens
+// no momento da curadoria — a página pública nunca faz live-query a
+// `messages`, então editar/apagar a conversa de origem não afeta uma rodada
+// já enviada (Apêndice G do plano).
+export const conversationReviews = pgTable(
+  "conversation_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    status: conversationReviewStatusEnum("status").notNull().default("draft"),
+    title: text("title").notNull(),
+    // Array de ConversationExcerpt (domínio). Parse defensivo: campos extras são ignorados.
+    excerpts: jsonb("excerpts")
+      .$type<import("@/domain/entities/conversation-review").ConversationExcerpt[]>()
+      .notNull()
+      .default([]),
+    // Comentário geral opcional do cliente ao concluir a revisão.
+    overallComment: text("overall_comment"),
+    // Hash do token de acesso usado na página pública `/conversas/[token]` (PR 2).
+    accessTokenHash: text("access_token_hash"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    orgStatusIdx: index("conversation_reviews_org_status_idx").on(
+      t.organizationId,
+      t.status,
+    ),
+    orgCreatedAtIdx: index("conversation_reviews_org_created_at_idx").on(
       t.organizationId,
       t.createdAt,
     ),
