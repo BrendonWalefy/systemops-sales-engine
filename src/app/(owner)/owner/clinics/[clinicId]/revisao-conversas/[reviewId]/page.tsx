@@ -14,8 +14,10 @@ export const dynamic = "force-dynamic";
  */
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { ArrowLeft } from "lucide-react";
+import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { db } from "@/infrastructure/db/client";
 import {
   conversationReviews,
@@ -107,6 +109,12 @@ async function loadPickerConversations(clinicId: string): Promise<PickerConversa
 }
 
 export default async function RevisaoConversasPage({ params }: { params: Params }) {
+  // Guarda de sessão na própria página (irmãs não têm, mas esta serve mensagens cruas de pacientes pré-anonimização — código novo não replica padrão fraco; finding da auditoria multitenant).
+  const store = await cookies();
+  const sessionToken = store.get(COOKIE_NAME)?.value;
+  const session = sessionToken ? await verifyToken(sessionToken) : null;
+  if (!session || session.role !== "owner") redirect("/login");
+
   const { clinicId, reviewId } = await params;
 
   const [review, clinic] = await Promise.all([
