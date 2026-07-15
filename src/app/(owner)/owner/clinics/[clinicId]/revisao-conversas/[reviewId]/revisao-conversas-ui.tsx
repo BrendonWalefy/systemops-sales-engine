@@ -585,25 +585,29 @@ function ConversationPicker({
                           disabled={!selectable || isPending}
                           title={selectable ? "Clique para marcar o início/fim do intervalo" : "Mensagens de sistema não entram no trecho"}
                           style={{
-                            display: "flex", alignItems: "baseline", gap: 8,
+                            display: "flex", alignItems: "flex-start", gap: 8,
                             padding: "6px 10px", borderRadius: 8, textAlign: "left",
                             border: selected ? "1px solid var(--accent)" : "1px solid transparent",
                             background: selected ? "rgba(163,230,53,0.08)" : "transparent",
                             color: selectable ? "var(--text)" : "var(--muted)",
                             fontSize: 13, cursor: selectable ? "pointer" : "default",
                             opacity: selectable ? 1 : 0.55,
+                            width: "100%",
                           }}
                         >
-                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: msg.author === "agent" ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: msg.author === "agent" ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 2 }}>
                             {PICKER_AUTHOR_LABELS[msg.author]}
                             {msg.author === "agent" && msg.simulated && " · shadow"}
                           </span>
-                          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {/* Mensagem completa, quebrando em múltiplas linhas — antes truncava
+                              em nowrap sem que a elipse aparecesse (o contêiner vazava a
+                              largura da tela em vez de encolher), tornando o texto ilegível. */}
+                          <span style={{ flex: 1, minWidth: 0, whiteSpace: "normal", overflowWrap: "break-word", lineHeight: 1.45 }}>
                             {msg.mediaType ? `📎 [${msg.mediaType}] ` : ""}
                             {msg.deliveryFormat === "audio" ? "🎤 " : ""}
                             {msg.body}
                           </span>
-                          <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 2 }}>
                             {new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         </button>
