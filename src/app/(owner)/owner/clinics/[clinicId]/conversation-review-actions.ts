@@ -316,6 +316,54 @@ export async function sendReviewForFeedback(
 }
 
 /**
+ * Gera um novo link para uma rodada já enviada, sem tocar nos trechos
+ * curados. Existe porque o token só é exibido uma única vez (padrão de API
+ * key) — se o owner fechar a página, o navegador travar, ou o link nunca
+ * chegar a aparecer por qualquer motivo, não há como recuperá-lo (o banco só
+ * guarda o hash). Sem isso, a única saída seria expirar a rodada e recomeçar
+ * a curadoria dos trechos do zero.
+ *
+ * Invalida o link anterior (novo hash sobrescreve o antigo) e reinicia a
+ * validade de 7 dias. Só age em rodada "sent" da própria clínica.
+ */
+export async function regenerateReviewLink(
+  clinicId: string,
+  reviewId: string,
+): Promise<{ token: string; url: string; expiresAt: string }> {
+  await assertOwnerSession();
+
+  const { token, hash } = generateAccessToken();
+  const now = new Date();
+  const expiresAt = new Date(
+    now.getTime() + CONVERSATION_REVIEW_LINK_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  const updated = await db
+    .update(conversationReviews)
+    .set({ accessTokenHash: hash, sentAt: now, expiresAt, updatedAt: now })
+    .where(
+      and(
+        eq(conversationReviews.id, reviewId),
+        eq(conversationReviews.organizationId, clinicId),
+        eq(conversationReviews.status, "sent"),
+      ),
+    )
+    .returning({ id: conversationReviews.id });
+
+  if (updated.length === 0) {
+    throw new Error("Rodada não encontrada ou não está mais aguardando o cliente.");
+  }
+
+  revalidateReviewPaths(clinicId, reviewId);
+
+  return {
+    token,
+    url: `${appBaseUrl()}/conversas/${token}`,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+/**
  * Expira manualmente uma rodada em rascunho ou enviada (descarta o rascunho /
  * invalida o link). Terminal — a rodada fica só no histórico.
  */
