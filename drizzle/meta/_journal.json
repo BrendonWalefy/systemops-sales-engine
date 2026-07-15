@@ -470,6 +470,13 @@
       "when": 1783575111934,
       "tag": "0066_old_nightmare",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1784061258027,
+      "tag": "0067_parched_pet_avengers",
+      "breakpoints": true
     }
   ]
 }

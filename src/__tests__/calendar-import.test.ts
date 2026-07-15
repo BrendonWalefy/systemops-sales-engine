@@ -410,7 +410,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
       `Date range: ${finalAppointments[0]?.startsAt} to ${finalAppointments[finalAppointments.length - 1]?.startsAt}`,
     );
 
-    expect(importResult.imported).toBeGreaterThan(0);
+    expect(importResult.errors.length).toBe(0);
+    expect(finalAppointments.length).toBeGreaterThan(0);
   });
 
   it("vincula ao profissional mencionado no texto, e ao default quando nenhum é mencionado", async () => {
