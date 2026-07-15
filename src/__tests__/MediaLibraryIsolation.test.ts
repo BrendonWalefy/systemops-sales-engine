@@ -1,7 +1,11 @@
 // Guardas de isolamento da Biblioteca de Mídia — mídia NUNCA vaza entre
 // organizações nem entre procedimentos. Ver docs/product/biblioteca-midia-plano.md.
 import { describe, expect, it, vi } from "vitest";
-import { filterMediaLibraryForTreatment, resolveOutboundParts } from "@/core/pipeline/ConversationOrchestrator";
+import {
+  filterMediaLibraryForTreatment,
+  mergeDeliveryMediaLibrary,
+  resolveOutboundParts,
+} from "@/core/pipeline/ConversationOrchestrator";
 import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
 import type { Logger } from "@/infrastructure/logging/logger";
 
@@ -101,5 +105,34 @@ describe("resolveOutboundParts — gate determinístico de isolamento no ENVIO",
     const parts: ResponsePart[] = [{ type: "text", content: "Olá!" }];
     const out = resolveOutboundParts(parts, library, log, "treatment-lentes");
     expect(out).toEqual([{ type: "text", content: "Olá!" }]);
+  });
+});
+
+describe("mergeDeliveryMediaLibrary — mídia declarada no pipeline", () => {
+  it("entrega asset referenciado diretamente pelo pipeline mesmo fora da curadoria do playbook ativo", () => {
+    const log = fakeLogger();
+    const merged = mergeDeliveryMediaLibrary([], [LENTES_VIDEO]);
+    const parts: ResponsePart[] = [{ type: "media", id: "lentes-1" }];
+
+    const out = resolveOutboundParts(parts, merged, log, "treatment-lentes");
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      type: "media",
+      mediaId: "lentes-1",
+      url: "https://blob/lentes.mp4",
+    });
+    expect(log.errors).toHaveLength(0);
+  });
+
+  it("mantém o gate de tratamento mesmo para asset adicionado por referência direta", () => {
+    const log = fakeLogger();
+    const merged = mergeDeliveryMediaLibrary([], [IMPLANTE_VIDEO]);
+    const parts: ResponsePart[] = [{ type: "media", id: "implante-1" }];
+
+    const out = resolveOutboundParts(parts, merged, log, "treatment-lentes");
+
+    expect(out).toHaveLength(0);
+    expect(log.errors[0].message).toContain("outro procedimento");
   });
 });
