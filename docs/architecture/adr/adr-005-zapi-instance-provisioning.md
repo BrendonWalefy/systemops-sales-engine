@@ -48,10 +48,22 @@ Detalhe de produto complementar em
 | Notificar enviadas por mim | ON (takeover pelo celular depende disso) | endpoint `webhooks/update-notify-sent-by-me` pós-create |
 | Ignorar mensagens de grupos | ON | endpoint de filtros (`webhooks/update-filters`) pós-create |
 | Demais webhooks | vazios | omitir no create |
-| `autoReadMessage` | `true` | create |
+| `autoReadMessage` | `false` (era `true` até 15/07/2026 — ver incidente abaixo) | create |
 | `autoReadStatus` / `callRejectAuto` | `false` | create |
 | `disableEnqueueWhenDisconnected` | `false` | create |
 | `isDevice` | `false` (instância web) | create |
+
+**Incidente 15/07/2026 — `autoReadMessage: true` suprimia notificação no celular
+do cliente.** Múltiplos clientes reclamaram que pararam de receber notificação
+do WhatsApp no próprio celular depois de conectar via Z-API. Causa: com
+`autoReadMessage` ligado, o Z-API marca a mensagem como lida via API assim que
+ela chega; o multi-device do WhatsApp sincroniza esse status pro celular quase
+na hora, e em muitos aparelhos isso suprime o banner/som de notificação — a IA
+recebe e processa normal, mas o dono da clínica não vê nada. Corrigido o
+default no `createZApiInstance` para `false`. **Instâncias já provisionadas
+antes dessa data continuam com o toggle ligado** — desligar manualmente em
+"Ao receber" → "Configurações do WhatsApp" → "Ler mensagens automático" no
+painel de cada instância (`app.z-api.io/app/instances/visualization/<id>`).
 
 ## Decisão
 
