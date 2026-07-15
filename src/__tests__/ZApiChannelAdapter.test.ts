@@ -252,7 +252,7 @@ describe("createZApiInstance", () => {
     expect(body).toMatchObject({
       name: "Clínica Teste",
       receivedCallbackUrl: "https://app.systemops.com.br/api/whatsapp/zapi",
-      autoReadMessage: true,
+      autoReadMessage: false,
       callRejectAuto: false,
       autoReadStatus: false,
       disableEnqueueWhenDisconnected: false,
