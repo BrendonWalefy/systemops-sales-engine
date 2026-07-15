@@ -8,7 +8,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, User, Bot, Building2 } from "lucide-react";
 import { answerExcerpt, concludeReview } from "./actions";
 import type {
   ConversationExcerpt,
@@ -33,6 +33,18 @@ const BUBBLE_STYLE: Record<
   lead: { align: "flex-start", background: "#1f1f23", border: "1px solid transparent" },
   ia: { align: "flex-end", background: "rgba(163,230,53,0.12)", border: "1px solid rgba(163,230,53,0.35)" },
   clinica: { align: "flex-end", background: "#131316", border: "1px dashed #3f3f46" },
+};
+
+/** Ícone e cor do rótulo por papel — reforça a distinção lado a lado (seção 6). */
+const ROLE_ICON: Record<ExcerptRole, typeof User> = {
+  lead: User,
+  ia: Bot,
+  clinica: Building2,
+};
+const ROLE_ICON_COLOR: Record<ExcerptRole, string> = {
+  lead: "#a1a1aa",
+  ia: "#a3e635",
+  clinica: "#d4d4d8",
 };
 
 type LocalFeedback = {
@@ -108,15 +120,29 @@ export function ConversationReviewForm({
       </header>
 
       {/* Progresso — informativo, não bloqueia a conclusão (Apêndice D) */}
-      <div style={{ fontSize: 13, color: "#a1a1aa", fontWeight: 600 }}>
-        {answeredCount} de {excerpts.length} trechos com feedback
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ fontSize: 13, color: "#a1a1aa", fontWeight: 600 }}>
+          {answeredCount} de {excerpts.length} trechos com feedback
+        </div>
+        <div style={{ height: 4, borderRadius: 999, background: "#1f1f23", overflow: "hidden" }}>
+          <div
+            style={{
+              height: "100%",
+              width: `${excerpts.length ? (answeredCount / excerpts.length) * 100 : 0}%`,
+              background: "#a3e635",
+              borderRadius: 999,
+              transition: "width 200ms ease",
+            }}
+          />
+        </div>
       </div>
 
       {/* Trechos */}
       <div style={{ display: "grid", gap: 14 }}>
-        {excerpts.map((excerpt) => (
+        {excerpts.map((excerpt, index) => (
           <ExcerptCard
             key={excerpt.id}
+            index={index}
             token={token}
             excerpt={excerpt}
             answer={answers[excerpt.id]}
@@ -151,35 +177,51 @@ export function ConversationReviewForm({
         <p style={{ margin: 0, fontSize: 14, color: "#f87171", textAlign: "center" }}>{error}</p>
       )}
 
-      <button
-        onClick={handleConclude}
-        disabled={concluding}
+      {/* Wrapper sticky com fade — dá elevação ao CTA sem cortar bruscamente
+          os cards que passam por baixo dele ao rolar. */}
+      <div
         style={{
-          padding: "16px 20px",
-          borderRadius: 12,
-          border: "none",
-          background: "#a3e635",
-          color: "#000",
-          fontSize: 16,
-          fontWeight: 800,
-          cursor: concluding ? "not-allowed" : "pointer",
-          opacity: concluding ? 0.7 : 1,
           position: "sticky",
-          bottom: 12,
+          bottom: 0,
+          paddingTop: 24,
+          marginTop: 4,
+          background: "linear-gradient(to bottom, transparent, #09090b 55%)",
         }}
       >
-        {concluding ? "Enviando..." : "Concluir revisão"}
-      </button>
+        <button
+          onClick={handleConclude}
+          disabled={concluding}
+          style={{
+            width: "100%",
+            padding: "16px 20px",
+            borderRadius: 12,
+            border: "none",
+            background: "#a3e635",
+            color: "#000",
+            fontSize: 16,
+            fontWeight: 800,
+            cursor: concluding ? "not-allowed" : "pointer",
+            opacity: concluding ? 0.7 : 1,
+            marginBottom: 12,
+            boxShadow: "0 8px 24px rgba(163,230,53,0.25)",
+            transition: "opacity 160ms ease",
+          }}
+        >
+          {concluding ? "Enviando..." : "Concluir revisão"}
+        </button>
+      </div>
     </div>
   );
 }
 
 function ExcerptCard({
+  index,
   token,
   excerpt,
   answer,
   onAnswered,
 }: {
+  index: number;
   token: string;
   excerpt: ConversationExcerpt;
   answer: LocalFeedback | undefined;
@@ -217,22 +259,66 @@ function ExcerptCard({
         display: "grid",
         gap: 12,
         opacity: saving ? 0.6 : 1,
+        transition: "border-color 160ms ease, background 160ms ease, opacity 160ms ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        {excerpt.context ? (
-          <p style={{ margin: 0, fontSize: 13, color: "#a1a1aa", fontStyle: "italic", lineHeight: 1.4, flex: 1 }}>
-            {excerpt.context}
-          </p>
-        ) : (
-          <span style={{ flex: 1 }} />
-        )}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span
+          aria-hidden
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            background: "#1f1f23",
+            color: "#a1a1aa",
+            fontSize: 11,
+            fontWeight: 800,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {index + 1}
+        </span>
         {answer && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "#a3e635", whiteSpace: "nowrap" }}>
-            <CheckCircle2 size={14} /> {isGood ? "Ficou bom" : "Vai ajustar"}
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#a3e635",
+              background: "rgba(163,230,53,0.12)",
+              border: "1px solid rgba(163,230,53,0.3)",
+              borderRadius: 999,
+              padding: "3px 10px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <CheckCircle2 size={13} /> {isGood ? "Ficou bom" : "Vai ajustar"}
           </span>
         )}
       </div>
+
+      {excerpt.context && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: 13,
+            color: "#a1a1aa",
+            fontStyle: "italic",
+            lineHeight: 1.5,
+            padding: "8px 12px",
+            background: "rgba(255,255,255,0.03)",
+            borderLeft: "2px solid #3f3f46",
+            borderRadius: 8,
+          }}
+        >
+          {excerpt.context}
+        </p>
+      )}
 
       {/* Bolhas estilo WhatsApp */}
       <div style={{ display: "grid", gap: 8 }}>
@@ -284,7 +370,7 @@ function ExcerptCard({
             <button
               onClick={() => save({ rating: "adjust", comment, suggestedReply })}
               disabled={saving}
-              style={{ flex: 1, padding: "12px", borderRadius: 10, border: "none", background: "#a3e635", color: "#000", fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}
+              style={{ flex: 1, minHeight: 46, padding: "12px", borderRadius: 10, border: "none", background: "#a3e635", color: "#000", fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", transition: "opacity 160ms ease" }}
             >
               Salvar
             </button>
@@ -295,19 +381,20 @@ function ExcerptCard({
                 setSuggestedReply(answer?.suggestedReply ?? "");
               }}
               disabled={saving}
-              style={{ padding: "12px 16px", borderRadius: 10, border: "1px solid #3f3f46", background: "transparent", color: "#a1a1aa", fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+              style={{ minHeight: 46, padding: "12px 16px", borderRadius: 10, border: "1px solid #3f3f46", background: "transparent", color: "#a1a1aa", fontSize: 15, fontWeight: 600, cursor: "pointer" }}
             >
               Cancelar
             </button>
           </div>
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={() => save({ rating: "good" })}
             disabled={saving}
             style={{
               flex: 1,
+              minHeight: 46,
               padding: "12px",
               borderRadius: 10,
               border: isGood ? "none" : "1px solid #3f3f46",
@@ -316,6 +403,7 @@ function ExcerptCard({
               fontSize: 15,
               fontWeight: 700,
               cursor: saving ? "not-allowed" : "pointer",
+              transition: "background 160ms ease, border-color 160ms ease",
             }}
           >
             👍 Ficou bom
@@ -325,6 +413,7 @@ function ExcerptCard({
             disabled={saving}
             style={{
               flex: 1,
+              minHeight: 46,
               padding: "12px",
               borderRadius: 10,
               border: isAdjust ? "none" : "1px solid #3f3f46",
@@ -333,6 +422,7 @@ function ExcerptCard({
               fontSize: 15,
               fontWeight: 700,
               cursor: saving ? "not-allowed" : "pointer",
+              transition: "background 160ms ease, border-color 160ms ease",
             }}
           >
             ✏️ Eu ajustaria
@@ -350,35 +440,43 @@ function ExcerptCard({
 /** Uma bolha de chat — lado, cor e rótulo por papel (seção 6). */
 function Bubble({ message }: { message: ExcerptMessage }) {
   const style = BUBBLE_STYLE[message.role];
+  const Icon = ROLE_ICON[message.role];
   const roleLabel = ROLE_LABEL[message.role];
   // wasAudio: prefixo 🎤 e sufixo "(enviada como áudio)" no rótulo (seção 6).
   const label = message.wasAudio ? `🎤 ${roleLabel} (enviada como áudio)` : roleLabel;
+  const isLeft = style.align === "flex-start";
 
   return (
     <div style={{ display: "flex", justifyContent: style.align }}>
       <div style={{ maxWidth: "82%", display: "grid", gap: 4 }}>
         <span
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
             fontSize: 11,
             fontWeight: 700,
-            color: "#a1a1aa",
-            textAlign: style.align === "flex-start" ? "left" : "right",
+            color: ROLE_ICON_COLOR[message.role],
+            justifyContent: isLeft ? "flex-start" : "flex-end",
             textTransform: "uppercase",
             letterSpacing: "0.03em",
           }}
         >
+          <Icon size={12} aria-hidden />
           {label}
         </span>
         <div
           style={{
             background: style.background,
             border: style.border,
-            borderRadius: 12,
+            // Canto "achatado" do lado do remetente — imita o rabinho de bolha de chat real.
+            borderRadius: isLeft ? "14px 14px 14px 4px" : "14px 14px 4px 14px",
             padding: "10px 14px",
             fontSize: 14,
-            lineHeight: 1.45,
+            lineHeight: 1.5,
             color: "#fafafa",
             whiteSpace: "pre-wrap",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
           }}
         >
           {message.body}
