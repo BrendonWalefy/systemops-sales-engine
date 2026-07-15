@@ -498,6 +498,15 @@ function ConversationPicker({
   };
 
   const handleExpand = (convId: string) => {
+    // Trocar de conversa (ou recolher a atual) descarta a seleção em
+    // andamento — ela só é salva de fato ao clicar "Adicionar trecho".
+    // Confirma antes de perder uma seleção não trivial silenciosamente.
+    if (anchorId && expandedId && expandedId !== convId && selectableCount > 0) {
+      const ok = window.confirm(
+        `Você selecionou ${selectableCount} mensagem${selectableCount === 1 ? "" : "s"} nesta conversa e ainda não adicionou como trecho. Trocar de conversa agora descarta essa seleção. Continuar?`,
+      );
+      if (!ok) return;
+    }
     setExpandedId((prev) => (prev === convId ? null : convId));
     clearSelection();
   };
