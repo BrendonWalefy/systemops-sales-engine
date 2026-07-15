@@ -5,7 +5,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports } from "@/infrastructure/db/schema";
+import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets } from "@/infrastructure/db/schema";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
@@ -1401,6 +1401,80 @@ export function filterMediaLibraryForTreatment<T extends { treatmentId?: string 
   return items.filter((m) => !m.treatmentId || m.treatmentId === activeTreatmentId);
 }
 
+type DeliveryMediaLibraryItem = {
+  id: string;
+  title: string;
+  type: "video" | "image";
+  url: string;
+  treatmentId?: string | null;
+};
+
+function collectMediaIds(parts: ResponsePart[]): string[] {
+  return Array.from(new Set(parts.filter((p): p is Extract<ResponsePart, { type: "media" }> => p.type === "media").map((p) => p.id)));
+}
+
+export function mergeDeliveryMediaLibrary(
+  editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
+  directlyReferencedAssets: DeliveryMediaLibraryItem[],
+): DeliveryMediaLibraryItem[] {
+  const merged = [...(editorialMediaLibrary ?? [])];
+  const known = new Set(merged.map((m) => m.id));
+
+  for (const asset of directlyReferencedAssets) {
+    if (known.has(asset.id)) continue;
+    merged.push(asset);
+    known.add(asset.id);
+  }
+
+  return merged;
+}
+
+async function resolveDeliveryMediaLibrary(params: {
+  clinicId: string;
+  parts: ResponsePart[];
+  editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined;
+  log: Logger;
+}): Promise<DeliveryMediaLibraryItem[]> {
+  const editorialMediaLibrary = params.editorialMediaLibrary ?? [];
+  const requestedMediaIds = collectMediaIds(params.parts);
+  if (requestedMediaIds.length === 0) return editorialMediaLibrary;
+
+  const editorialIds = new Set(editorialMediaLibrary.map((m) => m.id));
+  const missingIds = requestedMediaIds.filter((id) => !editorialIds.has(id));
+  if (missingIds.length === 0) return editorialMediaLibrary;
+
+  const rows = await db
+    .select({
+      id: mediaAssets.id,
+      title: mediaAssets.title,
+      type: mediaAssets.type,
+      url: mediaAssets.url,
+      treatmentId: mediaAssets.treatmentId,
+    })
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.clinicId, params.clinicId), inArray(mediaAssets.id, missingIds)));
+
+  const deliverableAssets: DeliveryMediaLibraryItem[] = [];
+  for (const row of rows) {
+    if (row.type !== "video" && row.type !== "image") {
+      params.log.error("mediaId aponta para tipo não entregável no WhatsApp — mídia será omitida", {
+        mediaId: row.id,
+        mediaType: row.type,
+      });
+      continue;
+    }
+    deliverableAssets.push({
+      id: row.id,
+      title: row.title,
+      type: row.type,
+      url: row.url,
+      treatmentId: row.treatmentId,
+    });
+  }
+
+  return mergeDeliveryMediaLibrary(editorialMediaLibrary, deliverableAssets);
+}
+
 // Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
 // produzindo partes prontas para entrega. IDs ausentes são logados como erro crítico
 // (vídeo perdido silenciosamente é pior do que log ruidoso) e pulados.
@@ -1411,7 +1485,7 @@ export function filterMediaLibraryForTreatment<T extends { treatmentId?: string 
 // gate bloqueia o envio — não depende do filtro de prompt acima ter funcionado.
 export function resolveOutboundParts(
   parts: ResponsePart[],
-  mediaLibrary: { id: string; title: string; type: "video" | "image"; url: string; treatmentId?: string | null }[] | undefined,
+  mediaLibrary: DeliveryMediaLibraryItem[] | undefined,
   log: Logger,
   activeTreatmentId: string | null = null,
 ): OutboundPart[] {
@@ -3573,8 +3647,17 @@ export class ConversationOrchestrator {
       clinicId,
       conversationId: conversation.id,
     });
+    const needsMediaResolution = composedParts.some((p) => p.type === "media");
+    const deliveryMediaLibrary = needsMediaResolution
+      ? await resolveDeliveryMediaLibrary({
+          clinicId,
+          parts: composedParts,
+          editorialMediaLibrary: editorial?.mediaLibrary,
+          log: deliveryLog,
+        })
+      : editorial?.mediaLibrary;
     const outboundParts = hasInterleavedMedia
-      ? resolveOutboundParts(composedParts, editorial?.mediaLibrary, deliveryLog, activeTreatmentId)
+      ? resolveOutboundParts(composedParts, deliveryMediaLibrary, deliveryLog, activeTreatmentId)
       : [];
 
     // ── 9. Persiste resposta e outbox antes do envio técnico ──
@@ -3593,10 +3676,10 @@ export class ConversationOrchestrator {
     );
 
     const mediaParts =
-      !hasInterleavedMedia && composedMediaIds.length > 0 && editorial?.mediaLibrary
+      !hasInterleavedMedia && composedMediaIds.length > 0 && deliveryMediaLibrary
         ? resolveOutboundParts(
             composedParts.filter((part) => part.type === "media"),
-            editorial.mediaLibrary,
+            deliveryMediaLibrary,
             deliveryLog,
             activeTreatmentId,
           )
