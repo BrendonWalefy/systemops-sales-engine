@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, User, Bot, Building2 } from "lucide-react";
 import { answerExcerpt, concludeReview } from "./actions";
 import type {
-  ConversationExcerpt,
+  PublicConversationExcerpt,
   ExcerptFeedbackRating,
   ExcerptMessage,
   ExcerptRole,
@@ -60,7 +60,7 @@ export function ConversationReviewForm({
 }: {
   token: string;
   clinicName: string;
-  excerpts: ConversationExcerpt[];
+  excerpts: PublicConversationExcerpt[];
 }) {
   const router = useRouter();
   const [concluding, startConclude] = useTransition();
@@ -223,7 +223,7 @@ function ExcerptCard({
 }: {
   index: number;
   token: string;
-  excerpt: ConversationExcerpt;
+  excerpt: PublicConversationExcerpt;
   answer: LocalFeedback | undefined;
   onAnswered: (feedback: LocalFeedback) => void;
 }) {

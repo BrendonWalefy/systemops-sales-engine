@@ -58,6 +58,22 @@ export interface ConversationExcerpt {
   feedback?: ExcerptFeedback;
 }
 
+/**
+ * Forma de um trecho segura para a página pública: sem `sourceConversationId`.
+ * A Server Component→Client Component boundary do Next serializa as props no
+ * payload RSC enviado ao browser — mesmo que a UI não renderize o campo, ele
+ * chegaria ao cliente não autenticado se `ConversationExcerpt` fosse passado
+ * direto. Use este tipo em qualquer superfície pública (page → client
+ * component) e monte-o com `toPublicExcerpt` abaixo.
+ */
+export type PublicConversationExcerpt = Omit<ConversationExcerpt, "sourceConversationId">;
+
+/** Remove o campo de rastreabilidade interna antes de expor um trecho publicamente. */
+export function toPublicExcerpt(excerpt: ConversationExcerpt): PublicConversationExcerpt {
+  const { sourceConversationId: _sourceConversationId, ...publicExcerpt } = excerpt;
+  return publicExcerpt;
+}
+
 /** Status possíveis de uma rodada de revisão (enum próprio — sem "applied"). */
 export type ConversationReviewStatus =
   | "draft"
