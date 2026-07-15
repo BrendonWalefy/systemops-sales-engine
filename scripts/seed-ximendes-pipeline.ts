@@ -20,10 +20,10 @@ import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "../src/infrastructure/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { PipelineStep, ContentBlock } from "../src/domain/entities/treatment";
 
-const { playbookVersions, treatments } = schema;
+const { mediaAssets, playbookVersions, treatments } = schema;
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) { console.error("❌ DATABASE_URL not set"); process.exit(1); }
@@ -207,7 +207,7 @@ async function main() {
       eq(playbookVersions.clinicId, CLINIC_ID),
       eq(playbookVersions.status, "active"),
     ),
-    columns: { id: true, mediaLibrary: true, name: true },
+    columns: { id: true, mediaAssetIds: true, mediaLibrary: true, name: true },
   });
 
   if (!activePlaybook) {
@@ -218,7 +218,23 @@ async function main() {
   console.log(`✅ Playbook ativo: "${activePlaybook.name}" (${activePlaybook.id})`);
 
   type MediaItem = { id: string; title: string; url: string; type: string };
-  const mediaLibrary = (activePlaybook.mediaLibrary ?? []) as MediaItem[];
+  const selectedMediaAssetIds = activePlaybook.mediaAssetIds ?? [];
+  const mediaAssetRows =
+    selectedMediaAssetIds.length > 0
+      ? await db.query.mediaAssets.findMany({
+          where: and(
+            eq(mediaAssets.clinicId, CLINIC_ID),
+            inArray(mediaAssets.id, selectedMediaAssetIds),
+          ),
+        })
+      : await db.query.mediaAssets.findMany({
+          where: eq(mediaAssets.clinicId, CLINIC_ID),
+        });
+  const legacyMediaLibrary = (activePlaybook.mediaLibrary ?? []) as MediaItem[];
+  const mediaLibrary: MediaItem[] =
+    mediaAssetRows.length > 0
+      ? mediaAssetRows.map((m) => ({ id: m.id, title: m.title, url: m.url, type: m.type }))
+      : legacyMediaLibrary;
 
   const videoSimplificada = mediaLibrary.find((m) =>
     m.title.toLowerCase().includes("simplificada"),
