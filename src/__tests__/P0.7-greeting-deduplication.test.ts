@@ -1,10 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { deduplicateGreetings } from "@/core/intelligence/ResponseComposer";
 import { prependFirstMessageSalutation, prependPipelineIntroGreeting } from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
 
 const SAO_PAULO = new ClinicTimezone("America/Sao_Paulo");
+
+// getDayGreeting deriva a saudação da hora ATUAL (new Date()). Fixamos o relógio
+// numa noite determinística (20h em São Paulo → "Boa noite") para que as asserções
+// de saudação não sejam flaky conforme a hora em que a suíte roda.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-07-15T23:00:00Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("P0.7 — Deduplicação de saudação repetida", () => {
   it("remove a segunda saudação quando o texto real da Vitalli (Ariana) é processado", () => {
@@ -135,7 +146,9 @@ describe("P0.7 (pipeline) — saudação ÚNICA quando pipeline de conteúdo dis
     ];
     const parts = prependPipelineIntroGreeting(blocksComSaudacao, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
     const fullText = (parts[0] as Extract<ResponsePart, { type: "text" }>).content;
-    expect((fullText.match(/boa noite/gi) || []).length).toBe(1);
+    // Período-agnóstico: getDayGreeting depende da hora atual, então conta QUALQUER
+    // saudação (a do bloco foi limpa e substituída pela canônica) — nunca duas.
+    expect((fullText.match(/boa (?:dia|tarde|noite)/gi) || []).length).toBe(1);
     expect(fullText).toContain("Nós somos especialistas em lentes");
   });
 
@@ -150,12 +163,12 @@ describe("P0.7 (pipeline) — saudação ÚNICA quando pipeline de conteúdo dis
 
     const collapsed = prependPipelineIntroGreeting(preSaluted, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
     const collapsedFirst = (collapsed[0] as Extract<ResponsePart, { type: "text" }>).content;
-    expect((collapsedFirst.match(/boa noite/gi) || []).length).toBe(1);
+    expect((collapsedFirst.match(/boa (?:dia|tarde|noite)/gi) || []).length).toBe(1);
 
     // E o caminho de produção pós-fix (blocos crus) também dá exatamente uma.
     const fixed = prependPipelineIntroGreeting(lentesBlocks, SAO_PAULO, "Clínica Vitalli", "RR", "Gleice");
     const fixedFirst = (fixed[0] as Extract<ResponsePart, { type: "text" }>).content;
-    expect((fixedFirst.match(/boa noite/gi) || []).length).toBe(1);
+    expect((fixedFirst.match(/boa (?:dia|tarde|noite)/gi) || []).length).toBe(1);
   });
 
   it("sem nome do lead: sauda sem vírgula-nome mas mantém o intro", () => {

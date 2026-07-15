@@ -20,6 +20,7 @@ import {
   treatments,
   channelHealthSnapshots,
   setupStudies,
+  conversationReviews,
 } from "@/infrastructure/db/schema";
 import { eq, count, sum, and, gte, desc, sql, notInArray, inArray } from "drizzle-orm";
 import {
@@ -55,6 +56,7 @@ import { updateChannelSafetySettings } from "./channel-safety-actions";
 import { ClinicTabs } from "./clinic-tabs";
 import { resolveDefaultTab, resolveContextualCta } from "./clinic-tab-helpers";
 import { GenerateSetupStudyButton, SetupStudyCard } from "./setup-study-ui";
+import { ConversationReviewCard, CreateReviewButton } from "./conversation-review-ui";
 import { CalendarImportPanel } from "./calendar-import-panel";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 
@@ -397,7 +399,7 @@ export default async function ClinicDetailPage({
     .limit(1);
   if (!clinic) notFound();
 
-  const [latestSnapshot, activeDraftStudy] = await Promise.all([
+  const [latestSnapshot, activeDraftStudy, activeReview, reviewRounds] = await Promise.all([
     db
       .select({ healthScore: channelHealthSnapshots.healthScore })
       .from(channelHealthSnapshots)
@@ -413,8 +415,30 @@ export default async function ClinicDetailPage({
       ),
       orderBy: (t, { desc: d }) => d(t.createdAt),
     }),
+    // Revisão de conversas: rodada atual = a mais recente ainda em ciclo
+    // (rascunho, enviada ou respondida). "expired" é terminal — só histórico.
+    db.query.conversationReviews.findFirst({
+      where: and(
+        eq(conversationReviews.organizationId, clinicId),
+        inArray(conversationReviews.status, ["draft", "sent", "answered"]),
+      ),
+      orderBy: (t, { desc: d }) => d(t.createdAt),
+    }),
+    // Histórico compacto das rodadas de revisão (a atual é filtrada no card).
+    db
+      .select({
+        id: conversationReviews.id,
+        title: conversationReviews.title,
+        status: conversationReviews.status,
+        createdAt: conversationReviews.createdAt,
+      })
+      .from(conversationReviews)
+      .where(eq(conversationReviews.organizationId, clinicId))
+      .orderBy(desc(conversationReviews.createdAt))
+      .limit(10),
   ]);
   const currentScore = latestSnapshot[0]?.healthScore ?? 100;
+  const reviewHistory = reviewRounds.filter((r) => r.id !== activeReview?.id);
 
   const [voiceState, activePlaybook, clinicTreatments, mediaAssetCount] = await Promise.all([
     getClinicVoiceBlueprintState(clinicId),
@@ -959,6 +983,44 @@ export default async function ClinicDetailPage({
                       </p>
                     </div>
                     <GenerateSetupStudyButton clinicId={clinic.id} />
+                  </div>
+                )}
+              </div>
+
+              {/* ── ZONA 1.6: REVISÃO DE CONVERSAS (docs/product/revisao-conversas-plano.md) ── */}
+              <div style={{ display: "grid", gap: 16 }}>
+                {activeReview ? (
+                  <ConversationReviewCard
+                    clinicId={clinic.id}
+                    review={{
+                      id: activeReview.id,
+                      status: activeReview.status,
+                      title: activeReview.title,
+                      excerpts: activeReview.excerpts,
+                      overallComment: activeReview.overallComment,
+                      createdAt: activeReview.createdAt,
+                      sentAt: activeReview.sentAt,
+                      answeredAt: activeReview.answeredAt,
+                      expiresAt: activeReview.expiresAt,
+                    }}
+                    history={reviewHistory}
+                  />
+                ) : (
+                  <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                        Revisão de conversas
+                      </h3>
+                      <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
+                        Cure trechos reais do shadow e envie ao responsável para ele apontar o que ajustaria antes do go-live.
+                      </p>
+                      {reviewHistory.length > 0 && (
+                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--muted)" }}>
+                          {reviewHistory.length} {reviewHistory.length === 1 ? "rodada anterior" : "rodadas anteriores"} no histórico.
+                        </p>
+                      )}
+                    </div>
+                    <CreateReviewButton clinicId={clinic.id} />
                   </div>
                 )}
               </div>

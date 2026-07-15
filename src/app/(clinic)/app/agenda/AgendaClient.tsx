@@ -25,7 +25,7 @@ import {
   hasFreshJsonCache,
   invalidateJsonCacheByPrefix,
 } from "@/lib/client-json-cache";
-import type { AppointmentEvent, BlockEvent, Professional } from "./types";
+import type { AppointmentEvent, BlockEvent, Professional, TreatmentOption } from "./types";
 import { createViewWeek, createViewDay, createViewMonthGrid } from "@schedule-x/calendar";
 
 type ScheduleView = "week" | "day" | "month";
@@ -37,11 +37,7 @@ const SX_VIEW_NAMES: Record<ScheduleView, string> = {
   month: createViewMonthGrid().name,
 };
 
-export type TreatmentOption = {
-  id: string;
-  name: string;
-  priceCents: number | null;
-};
+export type { TreatmentOption };
 
 type Props = {
   professionals: Professional[];
@@ -77,6 +73,7 @@ function blockToEvent(block: BlockEvent): AppointmentEvent {
     conversationId: null,
     startsAt: block.startsAt,
     endsAt: block.endsAt,
+    description: null,
     status: "block",
     source: "app",
   };
@@ -547,6 +544,8 @@ export function AgendaClient({
           defaultProfessionalId={appointmentModal.professionalId}
           defaultDurationMinutes={defaultDurationMinutes}
           professionals={professionals}
+          treatments={treatments}
+          serviceNoun={serviceNoun}
           onClose={closeAppointmentModal}
           onCreated={refreshAll}
         />

@@ -104,6 +104,22 @@ export async function importCalendarEvents(
       );
       const professionalId = matchedProfessional?.id ?? options.defaultProfessionalId ?? null;
 
+      // Deduplication: check if an appointment with this calendarEventId already exists
+      const existingAppointment = await db.query.appointments.findFirst({
+        where: (appts, { eq, and }) => 
+          and(eq(appts.clinicId, clinicId), eq(appts.calendarEventId, event.uid)),
+        columns: { id: true }
+      });
+
+      if (existingAppointment) {
+        // Update the description just in case it was imported before the description column existed
+        await db.update(appointments)
+          .set({ description: event.summary ?? null })
+          .where(eq(appointments.id, existingAppointment.id));
+        result.skipped++;
+        continue;
+      }
+
       const appointmentResult = await db.insert(appointments).values({
         clinicId,
         leadId,

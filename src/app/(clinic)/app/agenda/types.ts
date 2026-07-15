@@ -34,3 +34,13 @@ export type Professional = {
   isActive?: boolean;
   workSchedule?: ProfessionalWorkSchedule | null;
 };
+
+export type TreatmentOption = {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  // Preço efetivo (campanha ativa já resolvida). null = sem preço cadastrado.
+  priceCents: number | null;
+  // Sinal abatido do total (ex.: avaliação de R$30). Não soma por cima do procedimento.
+  deductible: boolean;
+};
