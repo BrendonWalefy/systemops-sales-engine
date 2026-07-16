@@ -10,6 +10,8 @@ import { isSalesConversationCategory } from "@/domain/value-objects/conversation
 import { AiPauseButton } from "./AiPauseButton";
 import { ChatWindow } from "./ChatWindow";
 import { ConvComposer } from "./ConvComposer";
+import { DepositBanner } from "./DepositBanner";
+import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { ManualAppointmentForm } from "./ManualAppointmentForm";
 import { ConversationReadMarker } from "./ConversationReadMarker";
 import { tempLabel, statusLabel, channelLabel, avatarColor, conversationCategoryLabel } from "../inbox-utils";
@@ -75,6 +77,11 @@ export default async function ConversationPage({
     .where(eq(organizations.id, conv.clinicId))
     .limit(1);
 
+  // Fluxo de sinal: se o comprovante foi recebido, mostra o banner de validação.
+  const depositState = await new ConversationStateMachine().getDepositState(conversationId);
+  const depositProofPending =
+    depositState?.state === "deposit_proof_received" ? depositState.payload : null;
+
   const displayName = lead.name ?? lead.phone ?? "Lead";
   const initial = avatarInitial(displayName);
   const temp = tempLabel(lead.temperature ?? null);
@@ -129,7 +136,19 @@ export default async function ConversationPage({
         </div>
       </div>
 
-      {conv.needsAttention && (
+      {depositProofPending && (
+        <DepositBanner
+          conversationId={conversationId}
+          slotLabel={depositProofPending.slotLabel}
+          amountLabel={
+            depositProofPending.depositAmountCents
+              ? `R$ ${(depositProofPending.depositAmountCents / 100).toLocaleString("pt-BR")}`
+              : null
+          }
+        />
+      )}
+
+      {conv.needsAttention && !depositProofPending && (
         <div className="attention-card-conv">
           <div className="attention-card-icon">!</div>
           <div style={{ flex: 1, minWidth: 0 }}>

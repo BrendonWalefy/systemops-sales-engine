@@ -46,6 +46,12 @@ import { detectAtypicalClinicalCase, detectOldPriceObjection } from "@/core/inte
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
+import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
+import {
+  buildDepositRequestMessage,
+  buildDepositProofReceivedMessage,
+  buildDepositProofMissingMessage,
+} from "@/core/conversation/DepositTemplates";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
@@ -1402,6 +1408,14 @@ function buildOrganization(row: ClinicRow): Organization {
     slotOfferTtlMinutes: row.slotOfferTtlMinutes,
     maxSlotsToOffer: row.maxSlotsToOffer,
     slotLookaheadDays: row.slotLookaheadDays,
+    depositEnabled: row.depositEnabled,
+    depositAmountCents: row.depositAmountCents ?? null,
+    depositPixKey: row.depositPixKey ?? null,
+    depositPixKeyType: row.depositPixKeyType ?? null,
+    depositRecipientName: row.depositRecipientName ?? null,
+    depositTtlHours: row.depositTtlHours,
+    depositNotes: row.depositNotes ?? null,
+    depositConfirmationNotes: row.depositConfirmationNotes ?? null,
     mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
     rapidThrottleMs: row.rapidThrottleMs,
     messageDebounceMs: row.messageDebounceMs ?? null,
@@ -1638,6 +1652,7 @@ function nextActivePipelineStep(
 
 export class ConversationOrchestrator {
   private stateMachine = new ConversationStateMachine();
+  private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
   private responseComposer = new ResponseComposer();
 
@@ -1905,6 +1920,78 @@ export class ConversationOrchestrator {
     // da IA (não pausa e não é encaminhado ao doutor aqui).
     const inboundMediaType = params.mediaType;
     if (inboundMediaType === "image" || inboundMediaType === "video" || inboundMediaType === "document") {
+      // ── A7: Intercept de comprovante do sinal ──
+      // Qualquer imagem/PDF enviada enquanto aguardamos o comprovante É o comprovante
+      // (decisão de produto: a IA NÃO valida comprovante). Estende o hold, sinaliza
+      // atenção para o operador validar e responde com confirmação de recebimento.
+      if (inboundMediaType === "image" || inboundMediaType === "document") {
+        const depositState = await this.stateMachine.getDepositState(conversation.id);
+        if (depositState?.state === "awaiting_deposit_proof") {
+          if (params.mediaUrl) {
+            rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType).catch(() => {});
+          }
+          const receptionistPhone = clinic.receptionistPhone;
+          if (receptionistPhone) {
+            const leadName = lead.name ?? outboundAddress;
+            sendTextMessage(
+              receptionistPhone,
+              `💸 *${leadName}* enviou o comprovante do sinal. Valide o Pix e confirme o agendamento no painel.`,
+              channelConfig,
+            ).catch(() => {});
+            if (params.mediaUrl) {
+              sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
+            }
+          }
+          await this.notifier.execute(clinicId, {
+            title: lead.name ?? phone,
+            body: "Enviou o comprovante do sinal — validar e confirmar",
+            url: `/app/inbox/${conversation.id}`,
+          }).catch(() => {});
+
+          if (depositState.payload.reservationId) {
+            await this.reservationService.extend(depositState.payload.reservationId, (clinic.depositTtlHours ?? 24) * 60);
+          }
+          await this.stateMachine.markDepositProofReceived(conversation.id, incomingMessage.id);
+          await db
+            .update(conversationsTable)
+            .set({
+              needsAttention: true,
+              attentionReason: "Comprovante de sinal recebido — validar Pix e confirmar agendamento",
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+
+          if (replyEnabled && !conversation.aiPaused) {
+            const proofAgentId = randomUUID();
+            const proofText = buildDepositProofReceivedMessage();
+            await this.conversationRepo.appendMessage({
+              id: proofAgentId,
+              conversationId: conversation.id,
+              author: "agent",
+              body: proofText,
+              sentAt: new Date(),
+              externalId: null,
+              intent: "acknowledgment",
+              deliveryFormat: null,
+            });
+            await this.enqueueConversationReply(clinicId, conversation.id, {
+              version: 1,
+              kind: "conversation_reply",
+              to: outboundAddress,
+              agentMessageId: proofAgentId,
+              replyText: proofText,
+              intent: "acknowledgment",
+              useVoice: false,
+              ttsConfig: ttsConf,
+              interleavedParts: [],
+              mediaParts: [],
+              leadId: lead.id,
+              pipelineAdvance: null,
+            });
+          }
+          return { replied: replyEnabled && !conversation.aiPaused };
+        }
+      }
       // ── Guard: mídia de anúncio (Click-to-WhatsApp) ──
       // Quando o lead clica em "Saiba mais" de um anúncio, o WhatsApp envia automaticamente
       // o card do anúncio (imagem/vídeo) junto com a mensagem de texto do lead.
@@ -2842,6 +2929,67 @@ export class ConversationOrchestrator {
       }
     };
 
+    // ── A7: Guards de texto do fluxo de sinal ──
+    // Roda antes da decisão normal. Comprovante em si (imagem/PDF) já foi tratado na
+    // seção de mídia; aqui cobrimos os caminhos de TEXTO enquanto há sinal pendente.
+    const depositTextState = await this.stateMachine.getDepositState(conversation.id);
+    if (depositTextState) {
+      const normalizedDep = normalizeFreeText(messageText);
+      const saysPaid = /\b(paguei|ja paguei|fiz o pix|fiz pix|transferi|enviei o pix|pix feito|comprovante|mandei o pix)\b/.test(normalizedDep);
+      const wantsChange =
+        effectiveIntent === "book_appointment" ||
+        effectiveIntent === "check_availability" ||
+        effectiveIntent === "reject_slots" ||
+        effectiveIntent === "reschedule_appointment" ||
+        effectiveIntent === "cancel_appointment";
+
+      if (depositTextState.state === "awaiting_deposit_proof") {
+        if (saysPaid) {
+          // Diz que pagou mas não anexou o comprovante → pede o anexo, mantém o hold.
+          const missingText = buildDepositProofMissingMessage();
+          const missingAgentId = randomUUID();
+          await this.conversationRepo.appendMessage({
+            id: missingAgentId,
+            conversationId: conversation.id,
+            author: "agent",
+            body: missingText,
+            sentAt: new Date(),
+            externalId: null,
+            intent: "acknowledgment",
+            deliveryFormat: null,
+          });
+          await this.enqueueConversationReply(clinicId, conversation.id, {
+            version: 1,
+            kind: "conversation_reply",
+            to: outboundAddress,
+            agentMessageId: missingAgentId,
+            replyText: missingText,
+            intent: "acknowledgment",
+            useVoice: false,
+            ttsConfig: ttsConf,
+            interleavedParts: [],
+            mediaParts: [],
+            leadId: lead.id,
+            pipelineAdvance: null,
+          });
+          return { replied: true };
+        }
+        if (wantsChange) {
+          // Quer outro horário/cancelar → libera o hold e deixa o fluxo normal reofertar.
+          if (depositTextState.payload.reservationId) {
+            await this.reservationService.release(depositTextState.payload.reservationId);
+          }
+          await this.stateMachine.invalidate(conversation.id);
+          // Cai para o fluxo normal abaixo (estado de sinal já limpo).
+        }
+        // Pergunta geral durante a espera → responde normalmente, mantém o estado.
+      } else if (depositTextState.state === "deposit_proof_received" && wantsChange) {
+        // Comprovante já enviado (dinheiro em jogo) e lead quer mudar → operador decide.
+        effectiveIntent = "needs_human";
+        maintenanceHandoffReason = "Lead pagou o sinal e pediu alteração — operador decide";
+      }
+    }
+
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
@@ -2979,6 +3127,68 @@ export class ConversationOrchestrator {
               (await getActivePriceCampaignsByTreatment(clinicId)).get(matchedTreatmentForBooking.id) ?? null,
             ).priceCents
           : null;
+
+        // ── A7: Fluxo de sinal ──
+        // Com sinal habilitado, NÃO agenda direto: faz uma reserva provisória, cobra o
+        // sinal (texto determinístico) e aguarda o comprovante. O operador valida e
+        // confirma (a IA nunca valida comprovante). Em shadow mode pulamos a reserva
+        // real para não travar a agenda de verdade.
+        if (clinic.depositEnabled && clinic.depositAmountCents && clinic.depositPixKey) {
+          const startsAt = new Date(chosenSlot.startsAt);
+          const endsAt = new Date(chosenSlot.endsAt);
+          const ttlHours = clinic.depositTtlHours ?? 24;
+          const shadow = clinicRows[0].shadowModeEnabled;
+
+          let reservationId: string | null = null;
+          if (!shadow) {
+            const held = await this.reservationService.reserve(
+              clinic.id, lead.id, startsAt, endsAt, ttlHours * 60,
+            );
+            if (!held) {
+              // Slot tomado entre a oferta e a escolha → reoferta.
+              const { slots: newSlots } = await this.fetchAndOfferSlots(
+                conversation.id, clinic, calendarGateway, timezone, businessHours,
+                undefined, undefined, undefined, undefined, undefined, voiceEnabled,
+              );
+              replyText = newSlots.length > 0
+                ? await compose({ type: "slot_taken_reoffered", newSlots })
+                : await compose({ type: "no_slots_available" });
+              forceTextOnlyReply = true;
+              break;
+            }
+            reservationId = held.id;
+          }
+
+          const holdExpiresAt = new Date(Date.now() + ttlHours * 3600_000).toISOString();
+          await this.stateMachine.startDepositWait(
+            conversation.id,
+            {
+              slotStartsAt: startsAt.toISOString(),
+              slotEndsAt: endsAt.toISOString(),
+              slotLabel: chosenSlot.label,
+              reservationId,
+              treatmentId: matchedTreatmentForBooking?.id ?? null,
+              treatmentName: offeredTreatment?.treatmentName,
+              valueCents: bookingValueCents,
+              depositAmountCents: clinic.depositAmountCents,
+              holdExpiresAt,
+            },
+            ttlHours * 60,
+          );
+          replyText = buildDepositRequestMessage(
+            {
+              depositAmountCents: clinic.depositAmountCents,
+              depositPixKey: clinic.depositPixKey,
+              depositPixKeyType: clinic.depositPixKeyType,
+              depositRecipientName: clinic.depositRecipientName,
+              depositTtlHours: ttlHours,
+              depositNotes: clinic.depositNotes,
+            },
+            chosenSlot.label,
+          );
+          forceTextOnlyReply = true;
+          break;
+        }
 
         const result = await bookingService.book({
           clinic,

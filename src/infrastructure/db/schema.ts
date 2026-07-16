@@ -287,6 +287,20 @@ export const organizations = pgTable("organizations", {
   slotOfferTtlMinutes: integer("slot_offer_ttl_minutes").notNull().default(15),
   maxSlotsToOffer: integer("max_slots_to_offer").notNull().default(5),
   slotLookaheadDays: integer("slot_lookahead_days").notNull().default(14),
+  // ── Fluxo de sinal (depósito via Pix para garantir o horário) ──
+  // Quando habilitado, ao escolher um slot a IA envia um pedido de sinal determinístico
+  // (Pix), faz uma reserva provisória e aguarda o comprovante; o OPERADOR valida o
+  // comprovante e confirma (a IA nunca valida comprovante). Ver DepositTemplates.
+  depositEnabled: boolean("deposit_enabled").notNull().default(false),
+  depositAmountCents: integer("deposit_amount_cents"),
+  depositPixKey: text("deposit_pix_key"),
+  depositPixKeyType: text("deposit_pix_key_type").$type<
+    "cnpj" | "cpf" | "email" | "phone" | "random"
+  >(),
+  depositRecipientName: text("deposit_recipient_name"),
+  depositTtlHours: integer("deposit_ttl_hours").notNull().default(24),
+  depositNotes: text("deposit_notes"),
+  depositConfirmationNotes: text("deposit_confirmation_notes"),
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
   messageDebounceMs: integer("message_debounce_ms"),
