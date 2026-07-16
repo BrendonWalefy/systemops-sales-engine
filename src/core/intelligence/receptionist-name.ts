@@ -6,6 +6,7 @@ export function inferReceptionistNameFromGreeting(
 
   const patterns = [
     /\b(?:sou|eu sou)\s+[ao]\s+([A-Za-zÀ-ÿ'-]+)/i,
+    /\bme chamo\s+([A-Za-zÀ-ÿ'-]+)/i,
     /\bmeu nome é\s+([A-Za-zÀ-ÿ'-]+)/i,
     /\bquem fala é\s+([A-Za-zÀ-ÿ'-]+)/i,
   ];

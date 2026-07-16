@@ -119,10 +119,17 @@ function buildConciergeStarter(
   greetingMessage?: string | null,
 ): string {
   const salutation = getDayGreeting(timezone);
+  // Espelha o Orchestrator: o opener curado da clínica é o corpo do starter e a
+  // persona nunca se apresenta como "assistente virtual".
+  const custom = greetingMessage?.trim();
+  if (custom) {
+    if (/^(bom\s*dia|boa\s*tarde|boa\s*noite)/i.test(custom)) return custom;
+    return `${salutation}! ${stripGreetingPrefix(custom)}`;
+  }
   const receptionistName = inferReceptionistNameFromGreeting(greetingMessage);
   const intro = receptionistName
-    ? `Sou a ${receptionistName}, assistente virtual da ${clinicName}.`
-    : `Sou a assistente virtual da ${clinicName}.`;
+    ? `Sou a ${receptionistName}, da ${clinicName}.`
+    : `Aqui é a equipe da ${clinicName}.`;
   return `${salutation}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: avaliação, lentes, valores ou algum tratamento específico?`;
 }
 
