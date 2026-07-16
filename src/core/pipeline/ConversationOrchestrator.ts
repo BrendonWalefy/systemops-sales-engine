@@ -41,6 +41,8 @@ import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
+import { resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
+import { detectAtypicalClinicalCase, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -2549,6 +2551,39 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── A6: Triagem de caso clínico atípico ──
+    // Dente fraturado, só raiz, ponte, prótese, implante, extração: a IA empurrava o
+    // pitch padrão de lentes. O sistema decide: não cotar; fazer a triagem que o doutor
+    // precisa (radiografia/foto) e sinalizar atenção. Não interrompe pipeline em curso.
+    let atypicalTriageContext: string | null = null;
+    if (
+      (effectiveIntent === "general_question" || effectiveIntent === "price_inquiry") &&
+      !pipelineState
+    ) {
+      const atypical = detectAtypicalClinicalCase(messageText);
+      if (atypical) {
+        atypicalTriageContext =
+          `CASO CLÍNICO ATÍPICO detectado (${atypical}). NÃO cote o preço padrão de lentes nem empurre o pitch de lentes. ` +
+          `Acolha o relato com empatia e explique que, nesses casos (${atypical}), o doutor precisa avaliar individualmente. ` +
+          `Peça, se possível, uma radiografia recente e uma foto do sorriso atual, e explique que a partir disso a equipe ` +
+          `orienta o melhor caminho e o orçamento certo para o caso. Conduza gentilmente para agendar a avaliação. ` +
+          `Seja acolhedor e específico ao que o lead relatou.`;
+        effectiveIntent = "general_question";
+        await db
+          .update(conversationsTable)
+          .set({
+            needsAttention: true,
+            attentionReason: `Caso clínico atípico (${atypical}) — avaliar antes de cotar`,
+            updatedAt: new Date(),
+          })
+          .where(eq(conversationsTable.id, conversation.id));
+      }
+    }
+
+    // A5: Objeção de preço antigo ("vocês me passaram um valor menor antes").
+    const oldPriceObjectionDetected =
+      isPriceShapedIntent && !atypicalTriageContext && detectOldPriceObjection(messageText);
+
     // P0.2: Detectar pergunta de garantia (cobertura de procedimento recente)
     if (effectiveIntent === "needs_human" && !maintenanceHandoffReason) {
       const normalized = normalizeFreeText(messageText);
@@ -2582,6 +2617,13 @@ export class ConversationOrchestrator {
       effectiveIntent === "price_inquiry"
         ? detectAmbiguousTreatmentTerm(messageText, clinicTreatments)
         : null;
+
+    // ── A4: Guard determinístico de preço por quantidade (pacotes) ──
+    // Pergunta com quantidade de pacote (ex.: "16 lentes") é resolvida pelo sistema:
+    // valor exato do pacote OU escalonamento para a equipe. A LLM nunca extrapola.
+    const quantityPriceResolution = isPriceShapedIntent
+      ? resolveQuantityPriceQuery(messageText, clinicTreatments)
+      : null;
 
     // ── 7. Executa ação e compõe resposta ──
     let replyText = "";
@@ -3242,6 +3284,39 @@ export class ConversationOrchestrator {
             ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
           }
         }
+
+        // A4 — Nota determinística de quantidade: valor exato do pacote ou escalonamento.
+        let quantityNote: string | null = null;
+        if (quantityPriceResolution?.kind === "exact") {
+          quantityNote =
+            `O lead perguntou o valor de ${quantityPriceResolution.quantity} (ver mensagem). ` +
+            `Os valores EXATOS do pacote são: ${quantityPriceResolution.lines.join("; ")}. ` +
+            `Responda com estes valores exatos e não cite valores de outras quantidades.`;
+        } else if (quantityPriceResolution?.kind === "unknown") {
+          quantityNote =
+            `O lead perguntou por ${quantityPriceResolution.quantity} unidades, que NÃO é um pacote com valor fechado. ` +
+            `NUNCA invente nem calcule um valor proporcional para essa quantidade. Diga com naturalidade que os ` +
+            `pacotes fechados são de ${quantityPriceResolution.availableSummary} unidades e que, para ` +
+            `${quantityPriceResolution.quantity}, você confirma o valor exato com a equipe e já retorna. ` +
+            `Ofereça seguir com a avaliação enquanto isso.`;
+          // Escalonamento: registra o gap e sinaliza atenção para a equipe cotar.
+          maybeLogTreatmentGap(
+            clinicId,
+            conversation.id,
+            lead.name,
+            `${quantityPriceResolution.quantity} lentes (quantidade não-padrão)`,
+            messageText,
+          ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+          await db
+            .update(conversationsTable)
+            .set({
+              needsAttention: true,
+              attentionReason: `Lead pediu preço de ${quantityPriceResolution.quantity} unidades (fora dos pacotes fechados) — confirmar valor`,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+        }
+
         replyText = await compose({
           type: "price_inquiry",
           identifiedTreatment: priceIdentifiedTreatment,
@@ -3249,6 +3324,8 @@ export class ConversationOrchestrator {
             ambiguousTreatmentOverride ??
             classification.slotPreference.ambiguousTreatmentMatches ??
             null,
+          quantityNote,
+          oldPriceObjection: oldPriceObjectionDetected,
         });
         break;
       }
@@ -3322,6 +3399,12 @@ export class ConversationOrchestrator {
 
       // ── Pergunta geral (inclui seleções de menu: procedimentos e localização) ──
       case "general_question": {
+        // A6 — Triagem de caso atípico tem precedência: responde com a condução clínica
+        // (pedir radiografia/foto, doutor avalia) em vez do fluxo normal de pergunta.
+        if (atypicalTriageContext) {
+          replyText = await compose({ type: "general_question", clinicContext: atypicalTriageContext });
+          break;
+        }
         let clinicContext: string;
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);

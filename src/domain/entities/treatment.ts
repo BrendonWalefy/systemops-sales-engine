@@ -63,6 +63,17 @@ export type PipelineStep =
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Preço por quantidade fechada (ex.: pacotes de lentes: 10 = R$1.500, 20 = R$1.800).
+// Existe porque clínicas vendem "pacotes" cujo preço NÃO é proporcional à quantidade
+// — a IA não pode extrapolar (10 não é metade de 20). `scope` distingue a arcada quando
+// o preço muda ("só as de cima"). Regra de ouro: só cotamos quantidades presentes nesta
+// tabela; qualquer outra vira escalonamento para a equipe (nunca chutar um valor).
+export type TreatmentQuantityPrice = {
+  quantity: number;
+  scope?: "total" | "superior" | "inferior";
+  priceCents: number;
+};
+
 export type Treatment = {
   id: string;
   clinicId: string;
@@ -83,6 +94,10 @@ export type Treatment = {
   priceKind: "from" | "fixed";
   priceUnit: string | null;
   priceDeductible: boolean;
+  // Tabela de preço por quantidade fechada (pacotes). Ausente/null = sem pacotes por
+  // quantidade (comportamento atual: só priceCents/minPriceCents). Opcional para não
+  // exigir o campo em todo construtor de Treatment — o repositório sempre popula.
+  quantityPrices?: TreatmentQuantityPrice[] | null;
   createdAt: Date;
   updatedAt: Date;
 };

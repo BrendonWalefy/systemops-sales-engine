@@ -365,6 +365,12 @@ export const treatments = pgTable(
     priceUnit: text("price_unit"),
     // O valor é abatido do tratamento se o paciente avançar (típico da avaliação).
     priceDeductible: boolean("price_deductible").notNull().default(false),
+    // Preço por quantidade fechada (pacotes cujo valor não é proporcional à quantidade,
+    // ex.: lentes 10=R$1.500, 20=R$1.800). Null = sem pacotes. Ver composePriceSection.
+    quantityPrices:
+      jsonb("quantity_prices").$type<
+        import("@/domain/entities/treatment").TreatmentQuantityPrice[]
+      >(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
