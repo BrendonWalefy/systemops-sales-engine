@@ -122,7 +122,7 @@ export type ActionResult =
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
   | { type: "handoff_requested"; handoffReason?: string | null }
-  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null }
+  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; oldPriceObjection?: boolean }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
   | { type: "acknowledgment" }
@@ -655,9 +655,20 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       const ambiguityInstruction = ambiguousMatches.length > 1
         ? `REGRA CRÍTICA — LEAD NÃO ESPECIFICOU A VARIAÇÃO: o termo usado corresponde a mais de uma opção do catálogo (${ambiguousMatches.map((n) => `"${n}"`).join(", ")}). Apresente o valor e as condições de TODAS essas opções na mesma resposta, deixando claro o que diferencia cada uma — NUNCA responda com apenas uma delas e omita as demais. Só aprofunde em uma única opção se o lead perguntar especificamente por ela depois.`
         : "";
+      // A4 — Instrução determinística de quantidade: o sistema já resolveu (valor exato
+      // do pacote OU escalonamento). Vai como REGRA MÁXIMA para a LLM não recalcular.
+      const quantityInstruction = result.quantityNote
+        ? `REGRA MÁXIMA (quantidade) — obedeça acima de qualquer outra: ${result.quantityNote}`
+        : "";
+      // A5 — Objeção de preço antigo: o lead cita uma cotação anterior mais barata.
+      const oldPriceInstruction = result.oldPriceObjection
+        ? `O LEAD CITOU UM PREÇO NOSSO ANTERIOR (mais barato): reconheça com naturalidade que ele lembra de uma cotação anterior; explique gentilmente que aquele valor era de uma promoção com validade que já passou; apresente o valor VIGENTE (o dos dados da clínica) como o atual. NUNCA repita nem confirme o valor antigo que o lead citou — você não tem esse número; não o invente. Conduza para a avaliação.`
+        : "";
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço${result.identifiedTreatment ? ` de "${result.identifiedTreatment}"` : ""}.
 Apresente os valores e condições descritos na política comercial do sistema. NÃO entregue uma lista seca de preços: explique em linguagem natural o que o valor cobre ou por que o valor final depende da avaliação, usando apenas fatos disponíveis. Se houver avaliação, explique o que ela entrega na prática (ex: planejamento, análise, orçamento fechado, condições, próximos passos) em vez de apenas dizer "avaliação detalhada". REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados. Isso inclui manutenção/ajuste de trabalho já realizado (polimento, retoque, reparo, troca): nesses casos NUNCA responda com o preço do procedimento base do catálogo — o lead não está comprando o procedimento, está mantendo um que já fez.
 REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda especificamente sobre o procedimento perguntado agora. Se a conversa mencionou outro procedimento antes (inclusive se o lead rejeitou ou corrigiu esse procedimento anterior, ex: "não é isso", "não é X"), NÃO volte a falar dele nem misture os dois — a menos que o lead peça explicitamente uma comparação entre ambos.
+${quantityInstruction}
+${oldPriceInstruction}
 ${ambiguityInstruction}
 ${installmentInstruction}
 ${treatmentMediaInstruction}

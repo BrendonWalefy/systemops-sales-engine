@@ -1,5 +1,5 @@
 import { and, eq, ilike } from "drizzle-orm";
-import type { PipelineStep, Treatment } from "@/domain/entities/treatment";
+import type { PipelineStep, Treatment, TreatmentQuantityPrice } from "@/domain/entities/treatment";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
 import { db } from "@/infrastructure/db/client";
 import { treatments } from "@/infrastructure/db/schema";
@@ -40,6 +40,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         priceKind: data.priceKind,
         priceUnit: data.priceUnit ?? null,
         priceDeductible: data.priceDeductible,
+        quantityPrices: data.quantityPrices ?? null,
       })
       .returning();
     return mapRow(row);
@@ -47,7 +48,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents" | "priceQuotableInChat" | "priceKind" | "priceUnit" | "priceDeductible">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "priceCents" | "minPriceCents" | "maxPriceCents" | "priceQuotableInChat" | "priceKind" | "priceUnit" | "priceDeductible" | "quantityPrices">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -81,6 +82,7 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     priceKind: row.priceKind,
     priceUnit: row.priceUnit ?? null,
     priceDeductible: row.priceDeductible,
+    quantityPrices: (row.quantityPrices as TreatmentQuantityPrice[] | null) ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
