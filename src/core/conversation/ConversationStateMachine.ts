@@ -272,16 +272,20 @@ export class ConversationStateMachine {
   // ─── Pipeline de tratamento ───────────────────────────────────────────────
 
   // Inicia o pipeline para um tratamento. TTL: 4 horas (mesmo que staleConversationHours default).
+  // startStepIndex permite posicionar o pipeline já em um passo específico sem emiti-lo —
+  // usado para "deferir" o passo de conteúdo no 1º contato concierge (envia só o opener de
+  // qualificação; o conteúdo/mídia dispara na continuação, na próxima mensagem do lead).
   async startTreatmentPipeline(
     conversationId: string,
     treatmentId: string,
     treatmentName: string,
     ttlMinutes = 240,
+    startStepIndex = 0,
   ): Promise<void> {
     const payload: TreatmentPipelinePayload = {
       treatmentId,
       treatmentName,
-      stepIndex: 0,
+      stepIndex: startStepIndex,
       qaTurns: 0,
       photoReceived: false,
     };

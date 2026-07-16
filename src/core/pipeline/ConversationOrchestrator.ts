@@ -145,7 +145,7 @@ function getMenuItemsForExperience(clinic: Organization, experience: Conversatio
 // ou apelidos de contato como "Tânia Mara/Sinal Verde" na conversa.
 // Guard: rejeita nomes de WhatsApp que não são nomes próprios de pessoa:
 // frases religiosas ("Deus Ele É Deus."), siglas, nomes de negócios, etc.
-function extractFirstName(fullName: string | null | undefined): string | null {
+export function extractFirstName(fullName: string | null | undefined): string | null {
   if (!fullName) return null;
   const first = fullName.split(/[\s\/]+/)[0] ?? null;
   if (!first) return null;
@@ -158,12 +158,57 @@ function extractFirstName(fullName: string | null | undefined): string | null {
   // Nomes de perfil com números não são tratados como nomes pessoais válidos (ex: "LOJA123")
   if (/\d/.test(cleanFirst)) return null;
 
+  // Token precisa ter ao menos uma letra "de nome" (não pode ser só emoji/pontuação/
+  // decoração), senão "🌻✨" ou "★" viraria saudação. Exige 2+ letras latinas.
+  const letters = cleanFirst.match(/[A-Za-zÀ-ÿ]/g);
+  if (!letters || letters.length < 2) return null;
+
   // Prefixos que indicam não ser nome de pessoa: religiosos, negócios, títulos
   const INVALID_FIRST_NAME_PREFIX_RE =
     /^(deus|senhor|sra?|nosso|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|atendimento|dr|dra)/i;
   if (INVALID_FIRST_NAME_PREFIX_RE.test(cleanFirst)) return null;
 
+  // Palavras comuns / status de WhatsApp que não são nome próprio. O nome de exibição
+  // do WhatsApp é livre — leads reais aparecem como "ocupado", "Seja Forte", "trabalho",
+  // "2D". Saudar "Boa tarde, ocupado" soa robótico; melhor saudar sem nome. Casos reais
+  // do histórico Vitalli: "ocupado", "Seja Forte E Corajoso", "2D".
+  const COMMON_WORD_NAMES = new Set([
+    "ocupado", "ocupada", "disponivel", "disponível", "trabalho", "trabalhando",
+    "vida", "paz", "amor", "fe", "fé", "deus", "casa", "sim", "nao", "não",
+    "seja", "eu", "voce", "você", "gente", "amigo", "amiga", "cliente",
+  ]);
+  if (COMMON_WORD_NAMES.has(cleanFirst.toLowerCase())) return null;
+
   return first;
+}
+
+// A9 — Detecta reenvio idêntico do lead: mesma mensagem (≥ minChars) já enviada antes,
+// dentro da janela, e que JÁ recebeu resposta do agente. Casos reais: duplo clique no
+// anúncio CTWA reenvia o mesmo texto-template horas depois. Retorna a mensagem anterior
+// casada (para logging/contexto) ou null. Pura para testabilidade — o Orchestrator a usa
+// apenas quando não há pipeline ativo (com pipeline, a 2ª msg dispara o conteúdo deferido).
+export function findLeadMessageRepeat(params: {
+  currentBody: string;
+  history: Pick<Message, "author" | "body" | "sentAt">[];
+  now: number;
+  minChars?: number;
+  windowMs?: number;
+}): Pick<Message, "author" | "body" | "sentAt"> | null {
+  const minChars = params.minChars ?? 20;
+  const windowMs = params.windowMs ?? 24 * 3600_000;
+  const body = params.currentBody.trim();
+  if (body.length < minChars) return null;
+
+  const leadMsgs = params.history.filter((m) => m.author === "lead");
+  // A última mensagem do lead no histórico é a atual — comparamos com as anteriores.
+  const prior = leadMsgs.slice(0, -1).find((m) => m.body.trim() === body);
+  if (!prior) return null;
+
+  const withinWindow = params.now - prior.sentAt.getTime() < windowMs;
+  const gotReplyAfter = params.history.some(
+    (m) => m.author === "agent" && m.sentAt > prior.sentAt,
+  );
+  return withinWindow && gotReplyAfter ? prior : null;
 }
 
 // Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
@@ -226,14 +271,33 @@ function shouldSendConciergeStarter(experience: ConversationExperience, intent: 
   return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
 }
 
-function buildConciergeStarter(clinic: Organization, timezone: ClinicTimezone, leadName?: string | null): string {
+export function buildConciergeStarter(
+  clinic: Organization,
+  timezone: ClinicTimezone,
+  leadName?: string | null,
+  receptionistName?: string | null,
+): string {
   const salutation = getDayGreeting(timezone);
   const firstName = extractFirstName(leadName);
   const nameGreeting = firstName ? `, ${firstName}` : "";
-  const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage);
-  const intro = receptionistName
-    ? `Sou a ${receptionistName}, assistente virtual da ${clinic.name}.`
-    : `Sou a assistente virtual da ${clinic.name}.`;
+
+  // greetingMessage é o opener curado da clínica — quando existe, ele é o corpo do
+  // starter (a clínica é dona do próprio tom, não um template genérico). A persona
+  // nunca se apresenta como "assistente virtual": o atendimento fala como a equipe.
+  const custom = clinic.greetingMessage?.trim();
+  if (custom) {
+    if (/^(bom\s*dia|boa\s*tarde|boa\s*noite)/i.test(custom)) {
+      // Já abre com saudação temporal própria — usa verbatim para não duplicar.
+      return custom;
+    }
+    return `${salutation}${nameGreeting}! ${stripGreetingPrefix(custom)}`;
+  }
+
+  const persona =
+    receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage);
+  const intro = persona
+    ? `Sou a ${persona}, da ${clinic.name}.`
+    : `Aqui é a equipe da ${clinic.name}.`;
 
   return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?`;
 }
@@ -316,8 +380,8 @@ export function prependPipelineIntroGreeting(
   const firstName = extractFirstName(leadName);
   const nameGreeting = firstName ? `, ${firstName}` : "";
   const intro = receptionistName
-    ? `Sou a ${receptionistName}, assistente virtual da ${clinicName}.`
-    : `Sou a assistente virtual da ${clinicName}.`;
+    ? `Sou a ${receptionistName}, da ${clinicName}.`
+    : `Aqui é a equipe da ${clinicName}.`;
   const greetingPrefix = `${salutation}${nameGreeting}. Tudo bem?\n${intro}\n\n`;
 
   const firstTextIdx = parts.findIndex((p) => p.type === "text");
@@ -2150,6 +2214,58 @@ export class ConversationOrchestrator {
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
     const experience = clinicExperience;
 
+    // A3 — Qualificar antes do pitch: no 1º contato em modo concierge, o opener curado
+    // da clínica já faz a pergunta de qualificação (padrão da operadora humana). Nesse
+    // caso não despejamos explicação + mídia do pipeline junto; posicionamos o pipeline
+    // no passo de conteúdo (deferido) e ele dispara na resposta seguinte do lead.
+    const deferFirstContactPitch = isFirstMessage && experience === "concierge";
+
+    // A9 — Reenvio idêntico do lead (duplo clique no anúncio CTWA dispara o mesmo texto
+    // 2x com horas de intervalo; a janela de dedup de 2min lá em cima não pega). Sem
+    // pipeline ativo, reprocessar geraria um SEGUNDO pitch, possivelmente diferente do
+    // primeiro (LLM) — o lead percebe como "a IA não presta atenção". Respondemos com um
+    // aceno curto e determinístico. Com pipeline ativo NÃO entra aqui: a 2ª mensagem é o
+    // gatilho que faz o conteúdo deferido (A3) disparar.
+    if (!pipelineState && replyEnabled) {
+      const priorIdentical = findLeadMessageRepeat({
+        currentBody: messageText,
+        history: allMessages,
+        now: Date.now(),
+      });
+      if (priorIdentical) {
+        const mentioned = resolveDirectTreatmentMention(messageText, clinicTreatments);
+        const nudge = mentioned
+          ? `Oi de novo! 😊 Ficou alguma dúvida sobre ${mentioned.name}? Me conta que eu te ajudo.`
+          : "Oi de novo! 😊 Ficou alguma dúvida? Me conta que eu te ajudo.";
+        const nudgeAgentId = randomUUID();
+        await this.conversationRepo.appendMessage({
+          id: nudgeAgentId,
+          conversationId: conversation.id,
+          author: "agent",
+          body: nudge,
+          sentAt: new Date(),
+          externalId: null,
+          intent: "acknowledgment",
+          deliveryFormat: null,
+        });
+        await this.enqueueConversationReply(clinicId, conversation.id, {
+          version: 1,
+          kind: "conversation_reply",
+          to: outboundAddress,
+          agentMessageId: nudgeAgentId,
+          replyText: nudge,
+          intent: "acknowledgment",
+          useVoice: false,
+          ttsConfig: ttsConf,
+          interleavedParts: [],
+          mediaParts: [],
+          leadId: lead.id,
+          pipelineAdvance: null,
+        });
+        return { replied: true };
+      }
+    }
+
     const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
 
     // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
@@ -2690,7 +2806,7 @@ export class ConversationOrchestrator {
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (isFirstMessage && shouldSendConciergeStarter(experience, effectiveIntent)) {
-      replyText = buildConciergeStarter(clinic, timezone, lead.name);
+      replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
     } else if (resetRequested) {
       // Zera estado e marca boundary para que a próxima mensagem receba histórico pós-reset
       await this.stateMachine.markResetBoundary(conversation.id);
@@ -2700,7 +2816,7 @@ export class ConversationOrchestrator {
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else {
-        replyText = buildConciergeStarter(clinic, timezone, lead.name);
+        replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
       }
     } else if (menuReRequested || (isStaleConversation && (effectiveIntent === "greeting" || effectiveIntent === "acknowledgment" || effectiveIntent === "unclear")) || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
       if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
@@ -2712,7 +2828,7 @@ export class ConversationOrchestrator {
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "stale", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else if (isStaleConversation) {
-        replyText = buildConciergeStarter(clinic, timezone, lead.name);
+        replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
@@ -3335,6 +3451,26 @@ export class ConversationOrchestrator {
           const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
           const currentStep = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex];
 
+          // A3 — Conteúdo deferido: pipeline foi posicionado no passo de conteúdo no 1º
+          // contato (só o opener foi enviado). Agora que o lead respondeu, emitimos a
+          // explicação + mídia e avançamos para o próximo passo.
+          if (currentStep?.type === "content" && pipelineTreatment) {
+            const parts = buildPipelineContentParts(currentStep.blocks);
+            composedParts = parts;
+            composedMediaIds = parts
+              .filter((p): p is { type: "media"; id: string } => p.type === "media")
+              .map((p) => p.id);
+            replyText = parts
+              .filter((p): p is { type: "text"; content: string } => p.type === "text")
+              .map((p) => p.content)
+              .join("\n\n");
+            const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
+            pendingPipelineAdvance = next
+              ? { action: "advance", nextStepIndex: next.index }
+              : { action: "exit" };
+            break;
+          }
+
           if (currentStep?.type === "qa" && pipelineTreatment) {
             const maxTurns = currentStep.maxTurns ?? 10;
             const optionalPhotoStep = pipelineTreatment.pipelineSteps?.find(
@@ -3414,6 +3550,23 @@ export class ConversationOrchestrator {
           if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
             const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0);
             if (firstActive) {
+              // A3 — 1º contato concierge com passo de conteúdo: envia só o opener de
+              // qualificação e deixa o pipeline POSICIONADO no passo de conteúdo (sem
+              // emiti-lo). A explicação + mídia dispara na continuação, quando o lead
+              // responde — espelhando o ritmo da operadora humana (qualifica, depois
+              // apresenta). Passos que começam com "qa" não têm mídia e seguem normais.
+              if (deferFirstContactPitch && firstActive.step.type === "content") {
+                await this.stateMachine.startTreatmentPipeline(
+                  conversation.id,
+                  matchedTreatment.id,
+                  matchedTreatment.name,
+                  clinic.staleConversationHours * 60,
+                  firstActive.index,
+                );
+                replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
+                clinicContext = "";
+                break;
+              }
               await this.stateMachine.startTreatmentPipeline(
                 conversation.id,
                 matchedTreatment.id,
