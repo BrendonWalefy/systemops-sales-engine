@@ -74,6 +74,18 @@ export type TreatmentQuantityPrice = {
   priceCents: number;
 };
 
+// Janela de INÍCIO permitida para agendar este tratamento (ex.: lentes só começam
+// 09:00 e 16:00). Quando o tratamento tem janelas, os únicos horários ofertáveis são
+// exatamente estes — a grade horária de 60min do businessHours é ignorada para ele.
+// `weekdays` (0=Dom..6=Sáb) restringe os dias; ausente = todos os dias de operação da
+// clínica. O FIM do slot pode ultrapassar o fim do expediente: a janela é config mais
+// específica e vence (sem isso, lentes de 300min às 16:00 nunca seriam ofertáveis).
+export type TreatmentBookingWindow = {
+  startHour: number;   // 0-23
+  startMinute: number; // 0-59
+  weekdays?: number[];
+};
+
 export type Treatment = {
   id: string;
   clinicId: string;
@@ -98,6 +110,8 @@ export type Treatment = {
   // quantidade (comportamento atual: só priceCents/minPriceCents). Opcional para não
   // exigir o campo em todo construtor de Treatment — o repositório sempre popula.
   quantityPrices?: TreatmentQuantityPrice[] | null;
+  // Janelas de início permitidas. Ausente/null = grade horária padrão (businessHours).
+  bookingWindows?: TreatmentBookingWindow[] | null;
   createdAt: Date;
   updatedAt: Date;
 };

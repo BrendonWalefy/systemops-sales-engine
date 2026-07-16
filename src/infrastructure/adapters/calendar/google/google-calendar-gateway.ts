@@ -1,5 +1,6 @@
 import type { BlockEvent, CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
+import type { TreatmentBookingWindow } from "@/domain/entities/treatment";
 import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { computeAvailableSlots } from "@/core/scheduling/SlotEngine";
 
@@ -118,6 +119,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
     to: Date;
     slotDurationMinutes: number;
     professionalId?: string;
+    allowedStartWindows?: TreatmentBookingWindow[] | null;
   }): Promise<CalendarSlot[]> {
     const calendarId = getCalendarId(this.clinicCalendarId);
     const token = await getAccessToken();
@@ -182,6 +184,7 @@ export class GoogleCalendarGateway implements CalendarGateway {
       slotDurationMinutes: input.slotDurationMinutes,
       clinicId: input.clinicId,
       postEventBufferMinutes: this.postAppointmentBufferMinutes,
+      allowedStartWindows: input.allowedStartWindows,
     });
   }
 

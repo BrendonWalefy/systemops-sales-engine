@@ -484,6 +484,13 @@
       "when": 1784213359225,
       "tag": "0068_treatment_quantity_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1784215127024,
+      "tag": "0069_treatment_booking_windows",
+      "breakpoints": true
     }
   ]
 }

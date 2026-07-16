@@ -2,6 +2,7 @@ import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import type { BlockEvent, CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
+import type { TreatmentBookingWindow } from "@/domain/entities/treatment";
 import { ClinicTimezone, parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { computeAvailableSlots } from "@/core/scheduling/SlotEngine";
 import {
@@ -91,6 +92,7 @@ export class InternalCalendarGateway implements CalendarGateway {
     to: Date;
     slotDurationMinutes: number;
     professionalId?: string;
+    allowedStartWindows?: TreatmentBookingWindow[] | null;
   }): Promise<CalendarSlot[]> {
     const [existingEvents, professionalSchedule] = await Promise.all([
       this.loadBusyEvents(input),
@@ -107,6 +109,7 @@ export class InternalCalendarGateway implements CalendarGateway {
       clinicId: input.clinicId,
       postEventBufferMinutes: this.postAppointmentBufferMinutes,
       professionalSchedule,
+      allowedStartWindows: input.allowedStartWindows,
     }).map((slot) => ({ ...slot, source: "manual" }));
   }
 
