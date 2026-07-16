@@ -32,15 +32,18 @@ export function detectOldPriceObjection(message: string): boolean {
   return OLD_PRICE_RE.test(normalize(message));
 }
 
-// Caso clínico atípico: sinais de que não é um caso estético direto de lentes, e sim
-// algo que exige avaliação clínica prévia (radiografia/foto) antes de qualquer cotação.
+// Caso clínico atípico: sinais de PROBLEMA ESTRUTURAL que impede o plano padrão de
+// lentes e exige avaliação clínica prévia (radiografia/foto) antes de qualquer cotação.
+// IMPORTANTE (multi-tenant): NÃO listamos nomes de tratamentos que a clínica pode vender
+// normalmente (implante, canal, extração, prótese) — cotá-los é o fluxo normal. Só
+// disparamos em sinais de dente comprometido/ausente. Ex. real: Gaab (dentes fraturados,
+// só a raiz, dentista indicou ponte fixa) querendo lentes.
 const ATYPICAL_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bfratur/, label: "dente fraturado" },
-  { re: /\b(so a raiz|somente a raiz|so tem a raiz|so sobrou a raiz|apenas a raiz)\b/, label: "só a raiz do dente" },
-  { re: /\b(ponte fixa|ponte movel|ponte moveu|protese fixa|protese movel)\b/, label: "ponte/prótese" },
-  { re: /\b(implante|implantes)\b/, label: "implante" },
-  { re: /\b(canal tratado|tratamento de canal|fiz canal|dente com canal)\b/, label: "dente tratado de canal" },
-  { re: /\b(extrai|extracao|extraido|arranca|arrancar|caiu o dente|perdi o dente|nao tenho o dente|sem o dente)\b/, label: "dente extraído/ausente" },
+  { re: /\b(dente quebrado|quebrou o dente|quebrei o dente|quebrado por dentro)\b/, label: "dente quebrado" },
+  { re: /\b(so a raiz|somente a raiz|so tem a raiz|so sobrou a raiz|apenas a raiz|so a raizinha|so tenho a raiz)\b/, label: "só a raiz do dente" },
+  { re: /\b(ponte fixa|ponte movel|ponte moveu)\b/, label: "ponte indicada" },
+  { re: /\b(caiu o dente|caiu um dente|perdi o dente|perdi um dente|nao tenho o dente|nao tenho mais o dente|sem o dente|falta o dente|falta um dente)\b/, label: "dente ausente" },
 ];
 
 export function detectAtypicalClinicalCase(message: string): string | null {

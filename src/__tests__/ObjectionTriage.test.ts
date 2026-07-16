@@ -25,12 +25,19 @@ describe("detectOldPriceObjection", () => {
 // A6 — Triagem de caso atípico. Caso real: Gaab (15/07) — dois dentes fraturados,
 // só a raiz, indicação de ponte fixa.
 describe("detectAtypicalClinicalCase", () => {
-  it("detecta dente fraturado / só raiz / ponte / prótese / implante / extração", () => {
+  it("detecta problema estrutural: dente fraturado / só raiz / ponte indicada / dente ausente", () => {
     expect(detectAtypicalClinicalCase("esses dois dentes estão fraturados")).toBe("dente fraturado");
     expect(detectAtypicalClinicalCase("tem somente a raiz por dentro")).toBe("só a raiz do dente");
-    expect(detectAtypicalClinicalCase("meu dentista indicou uma ponte fixa")).toBe("ponte/prótese");
-    expect(detectAtypicalClinicalCase("preciso de um implante")).toBe("implante");
-    expect(detectAtypicalClinicalCase("esse dente eu já perdi, caiu o dente")).toBe("dente extraído/ausente");
+    expect(detectAtypicalClinicalCase("meu dentista indicou uma ponte fixa")).toBe("ponte indicada");
+    expect(detectAtypicalClinicalCase("esse dente eu já perdi, caiu o dente")).toBe("dente ausente");
+  });
+
+  it("NÃO dispara em nomes de tratamentos que a clínica pode vender (implante, canal, extração, prótese)", () => {
+    // Multi-tenant: cotar esses tratamentos é o fluxo normal — não é caso atípico.
+    expect(detectAtypicalClinicalCase("quanto custa um implante?")).toBeNull();
+    expect(detectAtypicalClinicalCase("vocês fazem tratamento de canal?")).toBeNull();
+    expect(detectAtypicalClinicalCase("preciso fazer uma extração, qual o valor?")).toBeNull();
+    expect(detectAtypicalClinicalCase("qual o preço da prótese?")).toBeNull();
   });
 
   it("não dispara para caso estético direto de lentes", () => {
