@@ -371,6 +371,12 @@ export const treatments = pgTable(
       jsonb("quantity_prices").$type<
         import("@/domain/entities/treatment").TreatmentQuantityPrice[]
       >(),
+    // Janelas de início permitidas para agendar (ex.: lentes só 09:00 e 16:00). Null =
+    // grade horária padrão do businessHours. Ver SlotEngine.computeAvailableSlots.
+    bookingWindows:
+      jsonb("booking_windows").$type<
+        import("@/domain/entities/treatment").TreatmentBookingWindow[]
+      >(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

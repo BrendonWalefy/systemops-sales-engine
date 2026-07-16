@@ -1,4 +1,5 @@
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
+import type { TreatmentBookingWindow } from "@/domain/entities/treatment";
 
 export type BlockEvent = {
   calendarEventId: string;
@@ -14,6 +15,8 @@ export type CalendarGateway = {
     to: Date;
     slotDurationMinutes: number;
     professionalId?: string;
+    // Janelas de início do tratamento (ex.: lentes 09:00/16:00). Ver SlotEngine.
+    allowedStartWindows?: TreatmentBookingWindow[] | null;
   }): Promise<CalendarSlot[]>;
   createAppointment(input: {
     clinicId: string;

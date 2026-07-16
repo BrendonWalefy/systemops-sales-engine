@@ -4103,11 +4103,22 @@ export class ConversationOrchestrator {
     const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
     const duration = slotDurationMinutes ?? clinic.defaultAppointmentDurationMinutes;
 
+    // A7 — Janelas de início por tratamento (ex.: lentes só 09:00/16:00). Resolvemos
+    // pelo nome do tratamento agendado; quando há janelas, a grade horária é ignorada
+    // e o injetor de horário exato é suprimido (senão "terça às 15h" ofertaria 15:00
+    // para lentes, fora da janela).
+    const windowTreatment = treatmentName
+      ? await this.treatmentRepo.findByName(clinic.id, treatmentName)
+      : null;
+    const allowedStartWindows = windowTreatment?.bookingWindows ?? null;
+    const hasBookingWindows = (allowedStartWindows?.length ?? 0) > 0;
+
     let allSlots = await calendarGateway.listAvailableSlots({
       clinicId: clinic.id,
       from,
       to,
       slotDurationMinutes: duration,
+      allowedStartWindows,
     });
 
     // Remove slots que conflitam com appointments locais (inclui blocos sintéticos de E2E
@@ -4175,7 +4186,7 @@ export class ConversationOrchestrator {
     // está ocupado: verificamos a disponibilidade real daquele instante antes de
     // dizer "não temos". Cobre o caso em que a duração do slot não divide 60min
     // e a grade pula horários redondos que na verdade estão livres.
-    if (preferredTime && targetDayParts) {
+    if (preferredTime && targetDayParts && !hasBookingWindows) {
       const exactSlot = await resolveExactRequestedSlot({
         calendarGateway,
         clinicId: clinic.id,
