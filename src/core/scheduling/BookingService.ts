@@ -31,10 +31,11 @@ export type BookingResult =
 
 export type BookingReservationService = {
   releaseExpired(): Promise<void>;
-  reserve(clinicId: string, leadId: string, startsAt: Date, endsAt: Date): Promise<SlotReservation | null>;
+  reserve(clinicId: string, leadId: string, startsAt: Date, endsAt: Date, ttlMinutes?: number): Promise<SlotReservation | null>;
   confirm(reservationId: string, calendarEventId: string | null): Promise<void>;
   release(reservationId: string): Promise<void>;
   releaseBySlot(clinicId: string, startsAt: Date): Promise<void>;
+  findById?(reservationId: string): Promise<SlotReservation | null>;
 };
 
 export class BookingService {
@@ -54,16 +55,29 @@ export class BookingService {
     treatmentName?: string;
     treatmentId?: string | null;
     valueCents?: number | null;
+    // Reserva provisória já feita (fluxo de sinal). Reaproveita o hold do próprio lead
+    // em vez de tentar reservar de novo e colidir consigo mesmo (slot_taken falso).
+    heldReservationId?: string | null;
   }): Promise<BookingResult> {
-    const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null } = params;
+    const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null, heldReservationId = null } = params;
 
-    // Passo 1: Lock otimista — previne double-booking (reserve() já chama releaseExpired internamente)
-    const reservation = await this.reservationService.reserve(
-      clinic.id,
-      lead.id,
-      startsAt,
-      endsAt,
-    );
+    // Passo 1: Lock otimista — previne double-booking. Se veio um hold do fluxo de
+    // sinal ainda pendente para o mesmo lead/slot, reaproveita-o; senão, reserva do zero.
+    let reservation: SlotReservation | null = null;
+    if (heldReservationId && this.reservationService.findById) {
+      const held = await this.reservationService.findById(heldReservationId);
+      if (
+        held &&
+        held.status === "pending" &&
+        held.leadId === lead.id &&
+        held.startsAt.getTime() === startsAt.getTime()
+      ) {
+        reservation = held;
+      }
+    }
+    if (!reservation) {
+      reservation = await this.reservationService.reserve(clinic.id, lead.id, startsAt, endsAt);
+    }
 
     if (!reservation) {
       return { success: false, reason: "slot_taken" };

@@ -120,12 +120,17 @@ function internalGateway(over: Partial<{ isSlotFree: boolean }> = {}) {
   return { gateway, calls };
 }
 
-function reservationService(reservation: SlotReservation | null) {
-  const calls = { release: 0, confirm: 0, releaseBySlot: 0 };
+function reservationService(reservation: SlotReservation | null, held: SlotReservation | null = null) {
+  const calls = { release: 0, confirm: 0, releaseBySlot: 0, reserve: 0, findById: 0 };
   const svc = {
     async releaseExpired() {},
     async reserve() {
+      calls.reserve++;
       return reservation;
+    },
+    async findById() {
+      calls.findById++;
+      return held;
     },
     async confirm() {
       calls.confirm++;
@@ -244,6 +249,33 @@ describe("BookingService — modo interno", () => {
     expect(appts.saved[0].source).toBe("app");
     expect(leads.saved[0].status).toBe("appointment_scheduled");
     expect(leads.saved[0].nextActionAt).toBeNull();
+  });
+
+  it("A7 — heldReservationId pendente do mesmo lead/slot é reaproveitado (não chama reserve)", async () => {
+    const { gateway } = internalGateway({ isSlotFree: true });
+    // reserve() retornaria null (colidiria consigo mesmo), mas o hold é reaproveitado.
+    const { svc, calls } = reservationService(null, aReservation);
+    const appts = apptRepo([]);
+
+    const service = new BookingService(gateway, appts.repo, leads.repo, svc);
+    const result = await service.book({ clinic, lead, startsAt, endsAt, heldReservationId: "res-1" });
+
+    expect(result.success).toBe(true);
+    expect(calls.findById).toBe(1);
+    expect(calls.reserve).toBe(0); // reaproveitou o hold, não reservou de novo
+  });
+
+  it("A7 — heldReservationId inválido/expirado cai para reserve() normal", async () => {
+    const { gateway } = internalGateway({ isSlotFree: true });
+    const { svc, calls } = reservationService(aReservation, null); // findById não acha o hold
+    const appts = apptRepo([]);
+
+    const service = new BookingService(gateway, appts.repo, leads.repo, svc);
+    const result = await service.book({ clinic, lead, startsAt, endsAt, heldReservationId: "res-x" });
+
+    expect(result.success).toBe(true);
+    expect(calls.findById).toBe(1);
+    expect(calls.reserve).toBe(1); // fallback para reserva normal
   });
 
   it("cancela follow-ups pendentes do lead antes de agendar o retorno de rotina", async () => {

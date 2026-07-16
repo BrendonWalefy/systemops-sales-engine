@@ -29,6 +29,7 @@ export class SlotReservationService {
     leadId: string,
     startsAt: Date,
     endsAt: Date,
+    ttlMinutes: number = RESERVATION_TTL_MINUTES,
   ): Promise<SlotReservation | null> {
     // Limpa expirados antes de tentar reservar
     await this.releaseExpired();
@@ -54,7 +55,7 @@ export class SlotReservationService {
 
     if (existing.length > 0) return null;
 
-    const expiresAt = new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000);
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
 
     // Reuso de linha released: a exclusion constraint (clinic_id, tstzrange)
     // valida o overlap atomicamente no UPDATE — violação = slot tomado.
@@ -124,6 +125,42 @@ export class SlotReservationService {
       // tanto a unique (clinic_id, starts_at) quanto a exclusion de overlap.
       return null;
     }
+  }
+
+  // Busca uma reserva por id (usada pelo fluxo de sinal para reaproveitar o hold do
+  // lead ao confirmar via operador, em vez de tentar reservar de novo e colidir consigo).
+  async findById(reservationId: string): Promise<SlotReservation | null> {
+    const rows = await db
+      .select()
+      .from(slotReservations)
+      .where(eq(slotReservations.id, reservationId))
+      .limit(1);
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      clinicId: r.clinicId,
+      leadId: r.leadId,
+      startsAt: r.startsAt,
+      endsAt: r.endsAt,
+      status: r.status as SlotReservation["status"],
+      calendarEventId: r.calendarEventId,
+      expiresAt: r.expiresAt,
+    };
+  }
+
+  // Estende o TTL de uma reserva pendente (ex.: comprovante chegou, dar tempo ao
+  // operador validar sem o hold expirar). No-op se não estiver mais pendente.
+  async extend(reservationId: string, ttlMinutes: number): Promise<void> {
+    await db
+      .update(slotReservations)
+      .set({ expiresAt: new Date(Date.now() + ttlMinutes * 60_000) })
+      .where(
+        and(
+          eq(slotReservations.id, reservationId),
+          eq(slotReservations.status, "pending"),
+        ),
+      );
   }
 
   // Confirma a reserva após criar evento no Google Calendar com sucesso
