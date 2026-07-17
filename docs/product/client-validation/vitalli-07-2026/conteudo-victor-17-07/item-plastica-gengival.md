@@ -1,0 +1,1 @@
+A aplástica gengival serve para dar simetria ao caso, para todos os dentes ficarem do mesmo tamanho é feito uma correção na gengiva e o procedimento é totalmente indolor!

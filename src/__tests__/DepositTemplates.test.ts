@@ -25,6 +25,9 @@ describe("DepositTemplates", () => {
     const msg = buildDepositRequestMessage(VITALLI, "Seg 21/07 às 09h");
     expect(msg).toContain("Seg 21/07 às 09h");
     expect(msg).toContain("R$ 30");
+    // O sinal é apresentado como garantia da RESERVA do horário (pedido do
+    // cliente piloto em 17/07/2026), não como "confirmação do agendamento".
+    expect(msg).toMatch(/reserva do seu horário/i);
     expect(msg).toContain("Chave Pix (CNPJ): 54659849000109");
     expect(msg).toContain("Nome: Dr. Victor Cavalcante");
     expect(msg).toContain("O valor do sinal é abatido do procedimento.");
