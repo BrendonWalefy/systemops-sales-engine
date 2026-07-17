@@ -2039,7 +2039,7 @@ export class ConversationOrchestrator {
         const mediaLabel = inboundMediaType === "image" ? "foto" : inboundMediaType === "video" ? "vídeo" : "documento";
         const artigo = inboundMediaType === "image" ? "uma" : "um";
         const leadName = lead.name ?? outboundAddress;
-        const contextMsg = `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nResponda neste chat — sua resposta será encaminhada automaticamente ao lead.`;
+        const contextMsg = `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
         sendTextMessage(receptionistPhone, contextMsg, channelConfig)
           .catch(e => console.warn("[MediaForward] contexto falhou:", e));
         if (params.mediaUrl) {
