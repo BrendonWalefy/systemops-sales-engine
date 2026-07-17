@@ -136,16 +136,27 @@ ao doutor seguem pendentes (feature, itens 3c/4).
 **Pedido:** notificação no número principal do doutor quando a IA escala (item 3)
 e resumo diário dos agendamentos (item 8).
 
-**Hoje:** notificação de equipe é só **web push** (`NotifyClinicOperators` +
-`WebPushGateway`) e e-mail de alerta. Não existe campo de telefone de notificação
-no schema nem envio WhatsApp para staff.
+**Hoje (CORRIGIDO 17/07 — diagnóstico anterior estava errado):** o canal JÁ
+EXISTE: `organizations.receptionist_phone` ("Telefone da recepção", aba Agenda
+das configurações) recebe WhatsApp direto pela instância Z-API em 3 eventos:
+(1) lead enviou mídia para avaliação — encaminha contexto + a própria mídia e
+PAUSA a IA (`ConversationOrchestrator.ts:2037-2056`); (2) comprovante de sinal
+recebido — encaminha o comprovante (`:1933-1943`); (3) needs-attention — "⚠️
+{lead} precisa de você" (`notifyAttentionNeeded`, `:4546`). Número confirmado
+para o Victor: +55 11 98924-3111.
 
-**Fazer:** coluna tipo `staff_notification_phone` na organização + envio via
-outbox (categoria própria, isenta de opt-out/quiet hours como `reminder`) pela
-mesma instância Z-API. Cuidado Channel Safety: mensagens para o próprio doutor
-não consomem cap de lead, mas devem passar pela outbox unificada.
+**Fazer (o que sobra de verdade):**
+- ✅ Corrigir copy enganosa: a notificação de mídia prometia "sua resposta será encaminhada
+  automaticamente ao lead", mas NÃO existe relay — a resposta do doutor no chat
+  da notificação não chega ao lead (o filtro `InternalWhatsAppOperationalMessage`
+  só ignora o eco). O caminho real é o doutor responder pelo WhatsApp da clínica
+  no chat do lead (takeover via fromMe). Decisão em 17/07: corrigir somente a
+  copy e deixar relay para uma feature futura.
+- Digest diário 21h via WhatsApp (item 8) pode reusar `receptionist_phone`.
+- Esses envios são diretos (sendTextMessage), fora da outbox — avaliar migração
+  junto do Channel Safety Fase 0.
 
-**📎 Conteúdo do cliente:** _aguardando (número pessoal do doutor a usar)_
+**📎 Conteúdo do cliente:** telefone do Victor: +55 11 98924-3111.
 
 ---
 

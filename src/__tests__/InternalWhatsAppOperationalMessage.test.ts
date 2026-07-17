@@ -19,7 +19,7 @@ describe("Internal WhatsApp operational message filter", () => {
         senderPhone: "5511940617713",
         receptionistPhone: "5511940617713",
         messageText:
-          "📎 *Maria* enviou uma foto para avaliacao.\n\nResponda neste chat - sua resposta sera encaminhada automaticamente ao lead.",
+          "📎 *Maria* enviou uma foto para avaliacao.\n\nPara responder ao lead, abra o WhatsApp da clinica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.",
       }),
     ).toBe(true);
   });
