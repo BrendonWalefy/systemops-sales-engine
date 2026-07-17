@@ -61,6 +61,9 @@ export type Organization = {
   slotOfferTtlMinutes: number;
   maxSlotsToOffer: number;
   slotLookaheadDays: number;
+  // Opt-in por clínica: oferta horário real direto após cotar preço, em vez de
+  // só perguntar "posso ver os horários?". Ver ConversationOrchestrator.ts.
+  offerSlotsAfterPriceEnabled?: boolean;
   // Fluxo de sinal (depósito Pix). Opcionais: ausência = fluxo desabilitado. Ver
   // DepositTemplates e o branch de confirm_slot no Orchestrator.
   depositEnabled?: boolean;

@@ -1408,6 +1408,7 @@ function buildOrganization(row: ClinicRow): Organization {
     slotOfferTtlMinutes: row.slotOfferTtlMinutes,
     maxSlotsToOffer: row.maxSlotsToOffer,
     slotLookaheadDays: row.slotLookaheadDays,
+    offerSlotsAfterPriceEnabled: row.offerSlotsAfterPriceEnabled,
     depositEnabled: row.depositEnabled,
     depositAmountCents: row.depositAmountCents ?? null,
     depositPixKey: row.depositPixKey ?? null,
@@ -3662,7 +3663,12 @@ export class ConversationOrchestrator {
         // (ex.: a apresentação de lentes) ficam de fora — o pipeline já conduz
         // até a oferta de horário no seu próprio ritmo, e isFirstMessage fica de
         // fora para não duplicar a saudação que o 2º compose() prependaria.
+        // OPT-IN por clínica (offerSlotsAfterPriceEnabled): pedido explícito da
+        // Vitalli — outras clínicas concierge (ex.: Ximendes) têm padrões reais
+        // de price_inquiry com objeção/terceiro/especificação técnica onde essa
+        // antecipação de horário não foi validada. Não generalizar sem opt-in.
         if (
+          clinic.offerSlotsAfterPriceEnabled &&
           experience === "concierge" &&
           !isFirstMessage &&
           !pipelineState &&
