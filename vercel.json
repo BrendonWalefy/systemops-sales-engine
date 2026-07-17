@@ -55,11 +55,15 @@
     },
     {
       "path": "/api/cron/appointment-reminder-staff",
-      "schedule": "0 21 * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/media-cleanup",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/resume-expired-takeovers",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

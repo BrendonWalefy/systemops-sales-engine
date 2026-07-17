@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "staff_digest_whatsapp_enabled" boolean DEFAULT false NOT NULL;

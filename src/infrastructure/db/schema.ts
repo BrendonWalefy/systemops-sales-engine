@@ -298,6 +298,17 @@ export const organizations = pgTable("organizations", {
   offerSlotsAfterPriceEnabled: boolean("offer_slots_after_price_enabled")
     .notNull()
     .default(false),
+  // Espelha o resumo diário do staff (agenda de amanhã + pendentes de
+  // confirmação) no WhatsApp pessoal do responsável (receptionist_phone),
+  // além do push. Diferente dos avisos event-driven que já usam
+  // receptionist_phone (foto/comprovante/atenção), este é proativo e
+  // recorrente — por isso é opt-in por clínica: uma clínica que configurou
+  // receptionist_phone para receber encaminhamentos não necessariamente quer
+  // uma mensagem toda noite. Pedido da Vitalli em 17/07/2026. Ver
+  // appointment-reminder-staff/route.ts.
+  staffDigestWhatsAppEnabled: boolean("staff_digest_whatsapp_enabled")
+    .notNull()
+    .default(false),
   // ── Fluxo de sinal (depósito via Pix para garantir o horário) ──
   // Quando habilitado, ao escolher um slot a IA envia um pedido de sinal determinístico
   // (Pix), faz uma reserva provisória e aguarda o comprovante; o OPERADOR valida o
