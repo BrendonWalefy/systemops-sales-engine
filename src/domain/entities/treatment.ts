@@ -47,6 +47,15 @@ export type PipelineStep =
       // Quantas mensagens de Q&A antes de sinalizar ao lead que pode agendar.
       // ⚠️ OPEN: deve ser configurável por clínica ou só por step?
       maxTurns?: number; // default 10
+      // Mídia anexada DETERMINISTICAMENTE quando a mensagem do lead casa com
+      // alguma das palavras-chave (o sistema anexa, a LLM verbaliza). Ex.:
+      // pergunta de "cor/tom" durante a Q&A de lentes → anexa a tabela de
+      // cores. Sem isto o envio da imagem dependia da discrição do LLM (que
+      // nesse ponto do fluxo não tem como anexar mídia — ver Orchestrator),
+      // logo a imagem nunca ia junto. A mídia segue o isolamento por
+      // procedimento (GERAL = enviável em qualquer contexto). Primeira entrada
+      // que casa vence; ausente = comportamento atual (nenhum anexo).
+      mediaOnKeywords?: { keywords: string[]; mediaId: string }[];
     }
   | {
       type: "photo";

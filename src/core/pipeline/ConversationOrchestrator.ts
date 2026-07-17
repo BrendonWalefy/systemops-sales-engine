@@ -516,6 +516,20 @@ function hasAnyKeyword(normalized: string, keywords: string[]): boolean {
   return keywords.some((keyword) => normalized.includes(keyword));
 }
 
+// Anexo determinístico de mídia num step "qa": retorna o mediaId da primeira
+// entrada cujas palavras-chave casam com a mensagem (já normalizada) do lead.
+// Ver PipelineStep qa.mediaOnKeywords.
+export function matchMediaOnKeywords(
+  entries: { keywords: string[]; mediaId: string }[] | undefined,
+  normalizedMessage: string,
+): string | null {
+  if (!entries?.length) return null;
+  for (const entry of entries) {
+    if (hasAnyKeyword(normalizedMessage, entry.keywords)) return entry.mediaId;
+  }
+  return null;
+}
+
 function isSchedulingRequestText(normalized: string): boolean {
   return hasAnyKeyword(normalized, [
     "agendar",
@@ -3843,6 +3857,21 @@ export class ConversationOrchestrator {
               editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
             ].filter(Boolean).join("\n");
             replyText = await compose({ type: "general_question", clinicContext });
+            // Anexo determinístico: se a dúvida casa com palavras-chave do step
+            // (ex.: cor/tom → tabela de cores), o sistema anexa a mídia — a LLM
+            // já verbalizou a explicação acima. Espelha a montagem dos content
+            // steps (part de texto + part de mídia) para a entrega interleaved.
+            const keywordMediaId = matchMediaOnKeywords(
+              currentStep.mediaOnKeywords,
+              normalizeFreeText(messageText),
+            );
+            if (keywordMediaId) {
+              composedParts = [
+                { type: "text", content: replyText },
+                { type: "media", id: keywordMediaId },
+              ];
+              composedMediaIds = [keywordMediaId];
+            }
             break;
           }
 
