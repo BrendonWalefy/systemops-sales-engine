@@ -51,7 +51,7 @@ export function buildDepositRequestMessage(clinic: DepositClinic, slotLabel: str
   return [
     `Perfeito! Deixei o horário de ${slotLabel} reservado provisoriamente para você. 😊`,
     "",
-    `Para CONFIRMAR o agendamento, pedimos um sinal de ${amount} via Pix:`,
+    `Para garantir a reserva do seu horário, pedimos um sinal de ${amount} via Pix:`,
     "",
     keyLine,
     recipientLine,
