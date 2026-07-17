@@ -287,6 +287,17 @@ export const organizations = pgTable("organizations", {
   slotOfferTtlMinutes: integer("slot_offer_ttl_minutes").notNull().default(15),
   maxSlotsToOffer: integer("max_slots_to_offer").notNull().default(5),
   slotLookaheadDays: integer("slot_lookahead_days").notNull().default(14),
+  // Fecha o funil como o operador faz: depois de cotar preço de um único
+  // tratamento (sem ambiguidade/escalonamento/objeção em curso), oferta
+  // horários reais direto em vez de só perguntar "posso ver os horários?".
+  // Opt-in por clínica (não basta modo concierge) — pedido explícito da
+  // Vitalli em 17/07/2026; outras clínicas (ex.: Ximendes) têm padrões de
+  // conversa (objeção, compra para terceiro, especificação técnica) onde
+  // essa antecipação não foi validada. Ver ConversationOrchestrator.ts
+  // case "price_inquiry".
+  offerSlotsAfterPriceEnabled: boolean("offer_slots_after_price_enabled")
+    .notNull()
+    .default(false),
   // ── Fluxo de sinal (depósito via Pix para garantir o horário) ──
   // Quando habilitado, ao escolher um slot a IA envia um pedido de sinal determinístico
   // (Pix), faz uma reserva provisória e aguarda o comprovante; o OPERADOR valida o

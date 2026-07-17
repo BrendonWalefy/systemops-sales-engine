@@ -23,7 +23,7 @@ Religar só após fechar os P0 daqui + post-mortem com o Victor.
 
 | # | Item | Tipo | Esforço | Prioridade |
 |---|------|------|---------|-----------|
-| 1 | Mais objetivo, fechar agendamento como o operador | PRODUTO | M | **P0** |
+| 1 | Mais objetivo, fechar agendamento como o operador | ✅ CORRIGIDO | M | validar shadow |
 | 2 | R$30 explicado como reserva do horário | COPY | XS | **P0** |
 | 3 | Fluxo foto do sorriso → doutor avalia → IA reassume | FEATURE | G | **P0** |
 | 4 | Notificação WhatsApp para número pessoal do doutor | FEATURE | M | **P0** (base do 3, 8 e 13) |
@@ -43,6 +43,7 @@ Religar só após fechar os P0 daqui + post-mortem com o Victor.
 | 18 | Pular linhas / formatação das mensagens | COBERTO (auditar) | S | P2 |
 | OPS-1 | Cron staff roda 18h local (UTC), não 21h | OPS | XS | junto do 8 |
 | OPS-2 | `resume-expired-takeovers` sem agendamento | OPS | XS | junto do 3 |
+| PENDÊNCIA-1 | Janela da manutenção (herdada de 16/07) | RESOLVIDO | — | — |
 
 ---
 
@@ -66,7 +67,13 @@ depois da oferta.
 
 **📎 Conteúdo do cliente:** ✅ APLICADO 17/07 — bloco OBJETIVIDADE nas notes do
 playbook v4 ("responda em blocos curtos e conduza ativamente para o agendamento").
-A oferta direta de slot no orchestrator segue pendente (código).
+✅ CORRIGIDO 17/07 (código) — `ConversationOrchestrator.ts` case `price_inquiry`: depois de
+cotar um único tratamento sem ambiguidade/escalonamento/objeção pendente, oferta horários reais
+direto (evaluation_redirect ou slots_found), preservando mídia da resposta de preço. Fora do
+escopo: tratamentos com pipeline próprio (lentes) — o pipeline já conduz no seu ritmo.
+`npm run verify` verde (1363 testes). **Sem teste de integração dedicado** — validar com tráfego
+shadow real antes de confiar 100%. **ATENÇÃO: Ximendes (única clínica live) também é concierge —
+esta mudança afeta o comportamento dela em produção, não só a Vitalli em shadow.**
 
 ---
 
@@ -246,6 +253,17 @@ criado (0fee44ba, NÃO cotável, avaliação primeiro) com a explicação do Vic
 ("dar simetria... correção na gengiva... totalmente indolor") + 3 fotos
 (antes/depois com afastador + antes-e-depois sorriso) + menção na política.
 Preço segue não cotável até o Victor definir.
+
+---
+
+### PENDÊNCIA-1 [RESOLVIDO] Manutenção Preventiva não precisa da janela 9h/16h das lentes
+
+**Pedido/dúvida pendente desde 16/07:** "Manutenção Preventiva de lentes" ficou sem
+`bookingWindows`, ofertando a grade genérica (8h/12h/15h) em vez da janela 9h/16h
+das lentes — perguntamos se isso era um gap.
+
+**Resposta do Victor 17/07:** não precisa estar amarrada — a grade genérica está
+correta para a manutenção. **Sem ação de código ou config.**
 
 ---
 

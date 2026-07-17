@@ -1408,6 +1408,7 @@ function buildOrganization(row: ClinicRow): Organization {
     slotOfferTtlMinutes: row.slotOfferTtlMinutes,
     maxSlotsToOffer: row.maxSlotsToOffer,
     slotLookaheadDays: row.slotLookaheadDays,
+    offerSlotsAfterPriceEnabled: row.offerSlotsAfterPriceEnabled,
     depositEnabled: row.depositEnabled,
     depositAmountCents: row.depositAmountCents ?? null,
     depositPixKey: row.depositPixKey ?? null,
@@ -3595,12 +3596,13 @@ export class ConversationOrchestrator {
           ? null
           : classification.slotPreference.identifiedTreatment ?? null;
         // Gap: lead perguntou preço de tratamento não cadastrado
+        let matchedPriceTreatment: Treatment | undefined;
         if (priceIdentifiedTreatment) {
-          const matchedInCatalog = clinicTreatments.find(
+          matchedPriceTreatment = clinicTreatments.find(
             (t) => t.name.toLowerCase() === priceIdentifiedTreatment.toLowerCase() ||
               (t.aliases ?? []).some((a) => a.toLowerCase() === priceIdentifiedTreatment.toLowerCase()),
           );
-          if (!matchedInCatalog) {
+          if (!matchedPriceTreatment) {
             maybeLogTreatmentGap(
               clinicId,
               conversation.id,
@@ -3653,6 +3655,57 @@ export class ConversationOrchestrator {
           quantityNote,
           oldPriceObjection: oldPriceObjectionDetected,
         });
+
+        // ── Item 1 (reunião 17/07): fechar como o operador faz — depois de cotar
+        // um único tratamento (sem ambiguidade, sem escalonamento pendente, sem
+        // objeção de preço em curso), já oferta horários reais em vez de só
+        // perguntar "posso ver os horários?". Tratamentos com pipeline próprio
+        // (ex.: a apresentação de lentes) ficam de fora — o pipeline já conduz
+        // até a oferta de horário no seu próprio ritmo, e isFirstMessage fica de
+        // fora para não duplicar a saudação que o 2º compose() prependaria.
+        // OPT-IN por clínica (offerSlotsAfterPriceEnabled): pedido explícito da
+        // Vitalli — outras clínicas concierge (ex.: Ximendes) têm padrões reais
+        // de price_inquiry com objeção/terceiro/especificação técnica onde essa
+        // antecipação de horário não foi validada. Não generalizar sem opt-in.
+        if (
+          clinic.offerSlotsAfterPriceEnabled &&
+          experience === "concierge" &&
+          !isFirstMessage &&
+          !pipelineState &&
+          matchedPriceTreatment &&
+          !matchedPriceTreatment.pipelineSteps?.length &&
+          quantityPriceResolution?.kind !== "unknown" &&
+          !oldPriceObjectionDetected
+        ) {
+          const evalTreatment = matchedPriceTreatment.requiresEvaluationFirst
+            ? clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name))
+            : null;
+          const bookingTargetName = evalTreatment?.name ?? matchedPriceTreatment.name;
+          const bookingTargetDuration = evalTreatment?.durationMinutes ?? matchedPriceTreatment.durationMinutes;
+
+          const { slots: priceFollowSlots, preferredDayEmpty: priceFollowEmpty } = await this.fetchAndOfferSlots(
+            conversation.id, clinic, calendarGateway, timezone, businessHours,
+            undefined, undefined, undefined,
+            bookingTargetName, bookingTargetDuration, voiceEnabled,
+          );
+
+          if (priceFollowSlots.length > 0 && !priceFollowEmpty) {
+            // compose() sobrescreve composedParts/composedMediaIds a cada chamada —
+            // preserva o que a resposta de preço já anexou (ex.: vídeo do resultado)
+            // e concatena com o que a 2ª chamada (só texto) produzir.
+            const priceReplyParts = composedParts;
+            const priceMediaIds = composedMediaIds;
+            const slotsText = evalTreatment
+              ? await compose({ type: "evaluation_redirect", treatmentName: matchedPriceTreatment.name, evaluationSlots: priceFollowSlots })
+              : await compose({ type: "slots_found", slots: priceFollowSlots, askedForPreference: false });
+            if (slotsText) {
+              replyText = `${replyText}\n\n${slotsText}`;
+              composedParts = [...priceReplyParts, ...composedParts];
+              composedMediaIds = [...priceMediaIds, ...composedMediaIds];
+            }
+          }
+        }
+
         break;
       }
 
