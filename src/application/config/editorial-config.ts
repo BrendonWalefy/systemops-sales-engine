@@ -5,7 +5,7 @@ import { playbookVersions, treatments } from "@/infrastructure/db/schema";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "./price-campaigns";
-export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "./playbook-lint";
+export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues, lintPersonaCoherence } from "./playbook-lint";
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
