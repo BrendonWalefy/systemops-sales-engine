@@ -505,6 +505,13 @@
       "when": 1784317400981,
       "tag": "0071_greedy_black_tom",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1784329247258,
+      "tag": "0072_tricky_whirlwind",
+      "breakpoints": true
     }
   ]
 }
