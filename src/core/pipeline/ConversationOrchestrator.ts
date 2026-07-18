@@ -771,6 +771,29 @@ export function resolveDirectTreatmentMention(
   return matchTreatmentByNormalizedMessage(normalized, treatments, TREATMENT_MENTION_STOPWORDS);
 }
 
+export function resolvePipelineTreatmentMention(
+  message: string,
+  treatments: Treatment[],
+): Treatment | null {
+  const normalized = normalizeFreeText(message);
+  if (!normalized || /^\d+$/.test(normalized)) return null;
+  if (
+    isSchedulingRequestText(normalized) ||
+    isPriceRequestText(normalized) ||
+    isLocationRequestText(normalized) ||
+    isProcedureCatalogRequestText(normalized)
+  ) {
+    return null;
+  }
+
+  const matched = matchTreatmentByNormalizedMessage(
+    normalized,
+    treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+  return matched?.pipelineSteps?.length ? matched : null;
+}
+
 // Frases fortes de chegada física à clínica. Deliberadamente específicas
 // ("estou aqui" sozinho é genérico demais) — falso negativo aqui é tolerável,
 // falso positivo geraria alerta de presença indevido para a equipe.
@@ -1225,6 +1248,10 @@ export function resolveInformationalTreatmentTarget(params: {
     params.treatments,
     params.lastAgentMessage,
   );
+  const pipelineMentionTreatment = resolvePipelineTreatmentMention(
+    params.message,
+    params.treatments,
+  );
 
   const classifiedTreatment = findTreatmentByIdOrName(params.treatments, {
     treatmentName: params.identifiedTreatment ?? null,
@@ -1238,10 +1265,17 @@ export function resolveInformationalTreatmentTarget(params: {
     ) {
       return directMentionTreatment;
     }
+    if (
+      pipelineMentionTreatment &&
+      pipelineMentionTreatment.id !== classifiedTreatment.id &&
+      !classifiedTreatment.pipelineSteps?.length
+    ) {
+      return pipelineMentionTreatment;
+    }
     return classifiedTreatment;
   }
 
-  return directMentionTreatment;
+  return directMentionTreatment ?? pipelineMentionTreatment;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.
@@ -4253,7 +4287,7 @@ export class ConversationOrchestrator {
 
           if (greetingTreatment?.pipelineSteps?.length) {
             const firstActive = nextActivePipelineStep(greetingTreatment.pipelineSteps, 0, {
-              conversationHistory: allMessages,
+              conversationHistory: allMessagesForContext,
             });
             if (firstActive) {
               await this.stateMachine.startTreatmentPipeline(
@@ -4276,7 +4310,7 @@ export class ConversationOrchestrator {
                   .map((p) => p.id);
                 replyText = pipelineText ? `${greetingText}\n\n${pipelineText}` : greetingText;
                 const next = nextActivePipelineStep(greetingTreatment.pipelineSteps!, firstActive.index + 1, {
-                  conversationHistory: allMessages,
+                  conversationHistory: allMessagesForContext,
                 });
                 pendingPipelineAdvance = next
                   ? { action: "advance", nextStepIndex: next.index }
@@ -4342,13 +4376,13 @@ export class ConversationOrchestrator {
             const next = nextActivePipelineStep(
               pipelineTreatment.pipelineSteps!,
               pipelineState.stepIndex + 1,
-              { conversationHistory: allMessages },
+              { conversationHistory: allMessagesForContext },
             );
             pendingPipelineAdvance = next
               ? { action: "advance", nextStepIndex: next.index }
               : { action: "exit" };
 
-            if (!hasPipelineContentStepBeenSent(currentStep, allMessages)) {
+            if (!hasPipelineContentStepBeenSent(currentStep, allMessagesForContext)) {
               const contentAnswerContext = directSocialRequested
                 ? buildSocialProfileClinicContext(
                     extractSocialProfileInfo(editorial?.playbookText, editorial?.commercialPolicy),
@@ -4577,7 +4611,7 @@ export class ConversationOrchestrator {
               });
               if (keywordTreatment?.pipelineSteps?.length) {
                 const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0, {
-                  conversationHistory: allMessages,
+                  conversationHistory: allMessagesForContext,
                 });
                 if (firstActive) {
                   await this.stateMachine.startTreatmentPipeline(
@@ -4597,7 +4631,7 @@ export class ConversationOrchestrator {
                     replyText = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
                     clinicContext = "";
                     const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1, {
-                      conversationHistory: allMessages,
+                      conversationHistory: allMessagesForContext,
                     });
                     pendingPipelineAdvance = next
                       ? { action: "advance", nextStepIndex: next.index }

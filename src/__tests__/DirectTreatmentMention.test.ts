@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveDirectTreatmentMention,
   resolveInformationalTreatmentTarget,
+  resolvePipelineTreatmentMention,
   resolveSchedulingTreatmentTarget,
 } from "@/core/pipeline/ConversationOrchestrator";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
@@ -110,6 +111,27 @@ describe("resolveInformationalTreatmentTarget", () => {
     expect(result?.name).toBe("Lentes de resina composta");
   });
 
+  it("resolve pergunta informativa longa que menciona tratamento com pipeline", () => {
+    const result = resolveInformationalTreatmentTarget({
+      message: "Olá! Quero saber como posso transformar meu sorriso com as lentes de resina?",
+      treatments: [
+        treatment("Avaliação odontológica"),
+        treatment("Lentes de resina composta", {
+          aliases: ["lentes", "lentes de resina"],
+          pipelineSteps: [
+            {
+              type: "content",
+              label: "Apresentação das técnicas",
+              blocks: [{ kind: "text", content: "Apresentação objetiva das lentes." }],
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
   it("prioriza tratamento identificado pelo classificador quando disponível", () => {
     const result = resolveInformationalTreatmentTarget({
       message: "quero saber mais",
@@ -139,6 +161,48 @@ describe("resolveInformationalTreatmentTarget", () => {
     });
 
     expect(result?.name).toBe("Lentes de resina composta simplificada");
+  });
+});
+
+describe("resolvePipelineTreatmentMention", () => {
+  it("detecta pipeline em pergunta completa com contexto de lentes", () => {
+    const result = resolvePipelineTreatmentMention(
+      "Olá! Quero saber como posso transformar meu sorriso com as lentes de resina?",
+      [
+        treatment("Lentes de resina composta", {
+          aliases: ["lentes", "lentes de resina"],
+          pipelineSteps: [
+            {
+              type: "content",
+              label: "Apresentação das técnicas",
+              blocks: [{ kind: "text", content: "Apresentação objetiva das lentes." }],
+            },
+          ],
+        }),
+      ],
+    );
+
+    expect(result?.name).toBe("Lentes de resina composta");
+  });
+
+  it("não captura pedido de valores, que deve continuar no handler de preço", () => {
+    const result = resolvePipelineTreatmentMention(
+      "Ver valores",
+      [
+        treatment("Lentes de resina composta", {
+          aliases: ["lentes", "lentes de resina"],
+          pipelineSteps: [
+            {
+              type: "content",
+              label: "Apresentação das técnicas",
+              blocks: [{ kind: "text", content: "Apresentação objetiva das lentes." }],
+            },
+          ],
+        }),
+      ],
+    );
+
+    expect(result).toBeNull();
   });
 });
 
