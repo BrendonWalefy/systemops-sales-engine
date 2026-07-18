@@ -9,6 +9,7 @@ import {
   extractSocialProfileInfo,
   findExpressedSlotIndex,
   shouldBypassPendingPipelineContent,
+  hasExplicitPipelineTreatmentTrigger,
 } from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { toWhatsAppFormatting } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -115,6 +116,30 @@ describe("coerceBusinessIntent", () => {
       isClinicSegment: false,
     });
     expect(result).toBe("acknowledgment");
+  });
+});
+
+describe("hasExplicitPipelineTreatmentTrigger", () => {
+  it("não inicia pipeline quando o tratamento só veio da identificação contextual", () => {
+    const lenses = treatments[0];
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Vou fazer uns levantamentos e volto a chamar.",
+        treatments,
+        treatment: lenses,
+      }),
+    ).toBe(false);
+  });
+
+  it("permite pipeline quando o lead menciona o tratamento na mensagem atual", () => {
+    const lenses = treatments[0];
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Quero saber mais sobre lentes.",
+        treatments,
+        treatment: lenses,
+      }),
+    ).toBe(true);
   });
 });
 

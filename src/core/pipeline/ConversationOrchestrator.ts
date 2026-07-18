@@ -42,7 +42,8 @@ import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseCom
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
-import { detectAtypicalClinicalCase, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
+import { extractReferencedPrice } from "@/core/intelligence/price-reference";
+import { detectAtypicalClinicalCase, detectCommercialPauseText, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -231,6 +232,49 @@ export function findLeadMessageRepeat(params: {
   return withinWindow && gotReplyAfter ? prior : null;
 }
 
+// Click-to-WhatsApp pode entregar o criativo do anúncio em um webhook separado
+// da mensagem escrita pelo lead. Nesse caso a imagem chega como
+// "[imagem recebida]" e o texto comercial fica na mensagem anterior. Não é
+// possível tratá-la como foto clínica sem antes considerar essa proximidade.
+const AD_MEDIA_PLACEHOLDER_RE = /^\[(?:imagem|v[ií]deo) recebid[oa]\]$/i;
+const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
+const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
+
+export function resolveAdMediaContext(params: {
+  currentMessageId: string;
+  currentMessageText: string;
+  hasAnyAgentMessage: boolean;
+  totalConversationMessages: number;
+  history: Pick<Message, "id" | "author" | "body" | "sentAt">[];
+  now: number;
+}): { isAdMedia: boolean; contextText: string | null } {
+  if (params.hasAnyAgentMessage || params.totalConversationMessages > 3) {
+    return { isAdMedia: false, contextText: null };
+  }
+
+  const currentText = params.currentMessageText.trim();
+  const currentCaption = AD_MEDIA_PLACEHOLDER_RE.test(currentText) ? "" : currentText;
+  if (AD_CAPTION_RE.test(currentCaption)) {
+    return { isAdMedia: true, contextText: currentCaption };
+  }
+
+  const previousLeadMessage = [...params.history]
+    .reverse()
+    .find((message) => message.author === "lead" && message.id !== params.currentMessageId);
+  if (!previousLeadMessage) return { isAdMedia: false, contextText: null };
+
+  const elapsedMs = Math.abs(params.now - previousLeadMessage.sentAt.getTime());
+  const previousText = previousLeadMessage.body.trim();
+  const isSeparatedAdBurst =
+    AD_MEDIA_PLACEHOLDER_RE.test(currentText) &&
+    elapsedMs <= AD_MEDIA_BURST_WINDOW_MS &&
+    AD_CAPTION_RE.test(previousText);
+
+  return isSeparatedAdBurst
+    ? { isAdMedia: true, contextText: previousText }
+    : { isAdMedia: false, contextText: null };
+}
+
 // Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
 // com a saudação temporal que o Orchestrator prepende no primeiro contato.
 // Conservador: só remove openers de uma palavra — não toca frases compostas como
@@ -284,6 +328,19 @@ export function shouldShowInitialMenu(experience: ConversationExperience, intent
   if (experience === "concierge") return false;
 
   return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
+}
+
+/**
+ * Um reconhecimento do lead pode ser o fechamento natural do Q&A, não uma
+ * despedida. Só ofertamos agenda quando o pipeline já passou pela foto ou
+ * está explicitamente na etapa de disponibilidade.
+ */
+export function shouldOfferSlotsAfterPipelinePhoto(
+  currentStepType: PipelineStep["type"] | null,
+  photoReceived: boolean,
+): boolean {
+  return currentStepType === "ask_availability" ||
+    (currentStepType === "photo" && photoReceived);
 }
 
 function shouldSendConciergeStarter(experience: ConversationExperience, intent: IntentType): boolean {
@@ -1327,6 +1384,25 @@ export function resolveInformationalTreatmentTarget(params: {
   return directMentionTreatment ?? pipelineMentionTreatment;
 }
 
+// Um tratamento identificado apenas pelo contexto do histórico não é gatilho
+// suficiente para iniciar uma jornada comercial. O lead precisa mencioná-lo na
+// mensagem atual ou selecioná-lo explicitamente no menu.
+export function hasExplicitPipelineTreatmentTrigger(params: {
+  message: string;
+  treatments: Treatment[];
+  lastAgentMessage?: string | null;
+  procedureSelection?: ProcedureListItem | null;
+  treatment: Treatment;
+}): boolean {
+  if (params.procedureSelection) return true;
+  const directMention = resolveDirectTreatmentMention(
+    params.message,
+    params.treatments,
+    params.lastAgentMessage,
+  );
+  return directMention?.id === params.treatment.id;
+}
+
 // Infere o tratamento em discussão a partir da última mensagem do agente.
 // Usado para enriquecer o clinicContext do compose() quando a mensagem atual não
 // menciona explicitamente nenhum tratamento (ex: "pode ser os vídeos", "quanto fica?").
@@ -1811,7 +1887,6 @@ function formatBrl(cents: number): string {
     maximumFractionDigits: isRound ? 0 : 2,
   })}`;
 }
-
 export function mergeDeliveryMediaLibrary(
   editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
   directlyReferencedAssets: DeliveryMediaLibraryItem[],
@@ -2170,7 +2245,8 @@ export class ConversationOrchestrator {
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
   }): Promise<{ replied: boolean }> {
-    const { clinicId, phone, messageText, messageId, senderName, senderPhoto, timestamp } = params;
+    const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
+    let messageText = params.messageText;
     const replyEnabled = params.replyEnabled ?? true;
     const contactIdentifiers = buildContactIdentifiersFromWebhook({
       phone,
@@ -2410,6 +2486,7 @@ export class ConversationOrchestrator {
     // Áudio já foi rehostado em 3.1b e segue o pipeline normal de transcrição/resposta
     // da IA (não pausa e não é encaminhado ao doutor aqui).
     const inboundMediaType = params.mediaType;
+    let adMediaContextText: string | null = null;
     if (inboundMediaType === "image" || inboundMediaType === "video" || inboundMediaType === "document") {
       // ── A7: Intercept de comprovante do sinal ──
       // Qualquer imagem/PDF enviada enquanto aguardamos o comprovante É o comprovante
@@ -2510,8 +2587,8 @@ export class ConversationOrchestrator {
       // Critérios para identificar como mídia de anúncio (não foto clínica do paciente):
       //   1. É o primeiro contato da conversa (IA ainda não respondeu), E
       //   2. Há poucas mensagens do lead no histórico (burst de chegada de anúncio), E
-      //   3. A legenda (caption) coincide com frases típicas de preenchimento automático de anúncios.
-      const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
+      //   3. A legenda (caption), ou o texto lead imediatamente anterior no mesmo burst,
+      //      coincide com frases típicas de preenchimento automático de anúncios.
       const caption = params.messageText?.trim() ?? "";
       // Usa contagem de mensagens na conversa sem carregar todo o histórico (allMessages é carregado mais adiante)
       const [totalMsgRow] = await db
@@ -2524,18 +2601,29 @@ export class ConversationOrchestrator {
         .where(and(eq(messagesTable.conversationId, conversation.id), eq(messagesTable.author, "agent")));
       const earlyLeadMsgTotal = Number(totalMsgRow?.total ?? 0);
       const hasAnyAgentMsg = Number(agentMsgRow?.total ?? 0) > 0;
-      const isLikelyAdMedia =
-        !hasAnyAgentMsg &&
-        earlyLeadMsgTotal <= 3 &&
-        AD_CAPTION_RE.test(caption);
+      const adMediaHistory = await this.conversationRepo.listMessages(conversation.id);
+      const adMediaDecision = resolveAdMediaContext({
+        currentMessageId: incomingMessage.id,
+        currentMessageText: caption,
+        hasAnyAgentMessage: hasAnyAgentMsg,
+        totalConversationMessages: earlyLeadMsgTotal,
+        history: adMediaHistory,
+        now: timestamp.getTime(),
+      });
+      const isLikelyAdMedia = adMediaDecision.isAdMedia;
 
       if (isLikelyAdMedia) {
+        adMediaContextText = adMediaDecision.contextText;
+        // A mensagem textual anterior é a intenção real do lead. Reutilizá-la
+        // aqui permite que o classificador dispare o pipeline do tratamento,
+        // em vez de classificar apenas "[imagem recebida]".
+        if (adMediaContextText) messageText = adMediaContextText;
         console.log(
           `[Orchestrator] Mídia detectada como card de anúncio — não encaminhando ao doutor nem pausando IA` +
-          ` (conv=${conversation.id} lead=${lead.id} caption="${caption.slice(0, 80)}")`,
+          ` (conv=${conversation.id} lead=${lead.id} context="${adMediaContextText?.slice(0, 80) ?? caption.slice(0, 80)}")`,
         );
         // Deixa o fluxo continuar normalmente como se fosse uma mensagem de texto.
-        // O LLM responderá com base no texto que o lead enviou junto ao anúncio.
+        // O LLM responderá com base no texto do lead associado ao anúncio.
         // Não retorna aqui — o código abaixo não será atingido por causa do `if`.
       } else {
 
@@ -2587,7 +2675,7 @@ export class ConversationOrchestrator {
               stepIndex: activePipelineState.stepIndex,
               currentStepType: currentStep?.type ?? null,
             };
-            await this.stateMachine.markPipelinePhotoReceived(conversation.id);
+            await this.stateMachine.markPipelinePhotoReceived(conversation.id, review.expiresAt);
           }
         }
       }
@@ -2984,7 +3072,7 @@ export class ConversationOrchestrator {
     // primeiro (LLM) — o lead percebe como "a IA não presta atenção". Respondemos com um
     // aceno curto e determinístico. Com pipeline ativo NÃO entra aqui: a 2ª mensagem é o
     // gatilho que faz o conteúdo deferido (A3) disparar.
-    if (!pipelineState && replyEnabled) {
+    if (!adMediaContextText && !pipelineState && replyEnabled) {
       const priorIdentical = findLeadMessageRepeat({
         currentBody: messageText,
         history: allMessagesForContext,
@@ -3373,6 +3461,15 @@ export class ConversationOrchestrator {
     // esse padrão e redirecionamos para check_availability para buscar slots reais — sem
     // isso, o ResponseComposer alucinaria horários inventados.
     let effectiveIntent = coercedIntent;
+    const commercialPauseDetected = detectCommercialPauseText(messageText);
+    if (commercialPauseDetected) {
+      effectiveIntent = "farewell";
+      // Uma pausa comercial encerra qualquer jornada/oferta que ainda estivesse
+      // aberta. A próxima mensagem da lead poderá retomar normalmente.
+      if (pipelineState || hasPendingOffer) {
+        await this.stateMachine.invalidate(conversation.id);
+      }
+    }
     let clarificationTreatmentName: string | null = null;
     if (
       intent === "general_question" &&
@@ -3419,12 +3516,14 @@ export class ConversationOrchestrator {
     // pitch padrão de lentes. O sistema decide: não cotar; fazer a triagem que o doutor
     // precisa (radiografia/foto) e sinalizar atenção. Não interrompe pipeline em curso.
     let atypicalTriageContext: string | null = null;
+    let atypicalCaseLabel: string | null = null;
     if (
       (effectiveIntent === "general_question" || effectiveIntent === "price_inquiry") &&
       !pipelineState
     ) {
       const atypical = detectAtypicalClinicalCase(messageText);
       if (atypical) {
+        atypicalCaseLabel = atypical;
         atypicalTriageContext =
           `CASO CLÍNICO ATÍPICO detectado (${atypical}). NÃO cote o preço padrão de lentes nem empurre o pitch de lentes. ` +
           `Acolha o relato com empatia e explique que, nesses casos (${atypical}), o doutor precisa avaliar individualmente. ` +
@@ -3486,6 +3585,9 @@ export class ConversationOrchestrator {
     // valor exato do pacote OU escalonamento para a equipe. A LLM nunca extrapola.
     const quantityPriceResolution = isPriceShapedIntent
       ? resolveQuantityPriceQuery(messageText, clinicTreatments)
+      : null;
+    const referencedPrice = isPriceShapedIntent
+      ? extractReferencedPrice(messageText)
       : null;
 
     // ── 7. Executa ação e compõe resposta ──
@@ -3589,6 +3691,47 @@ export class ConversationOrchestrator {
       }
     };
 
+    const offerReadyPipelineSlots = async (): Promise<boolean> => {
+      if (!pipelineState) return false;
+
+      const pipelineTreatment = clinicTreatments.find((t) => t.id === pipelineState.treatmentId);
+      const currentStepType = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex]?.type ?? null;
+      if (!shouldOfferSlotsAfterPipelinePhoto(currentStepType, pipelineState.photoReceived)) {
+        return false;
+      }
+
+      const evaluationTreatment = pipelineTreatment?.requiresEvaluationFirst
+        ? clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name))
+        : null;
+      const bookingTreatment = evaluationTreatment ?? pipelineTreatment;
+      if (!bookingTreatment) return false;
+
+      const { slots } = await this.fetchAndOfferSlots(
+        conversation.id,
+        clinic,
+        calendarGateway,
+        timezone,
+        businessHours,
+        undefined,
+        undefined,
+        undefined,
+        bookingTreatment.name,
+        bookingTreatment.durationMinutes,
+        voiceEnabled,
+      );
+
+      replyText = slots.length > 0
+        ? evaluationTreatment
+          ? await compose({
+              type: "evaluation_redirect",
+              treatmentName: pipelineTreatment?.name ?? bookingTreatment.name,
+              evaluationSlots: slots,
+            })
+          : await compose({ type: "slots_found", slots, askedForPreference: false })
+        : await compose({ type: "no_slots_available" });
+      return true;
+    };
+
     // ── A7: Guards de texto do fluxo de sinal ──
     // Roda antes da decisão normal. Comprovante em si (imagem/PDF) já foi tratado na
     // seção de mídia; aqui cobrimos os caminhos de TEXTO enquanto há sinal pendente.
@@ -3657,6 +3800,10 @@ export class ConversationOrchestrator {
       hasPendingOffer,
       lastAgentMessage?.body ?? null,
     );
+    // Nenhuma regra posterior pode transformar uma pausa comercial em uma nova
+    // pergunta de negócio ou em uma confirmação de agenda.
+    if (commercialPauseDetected) effectiveIntent = "farewell";
+    const responseIntent: IntentType = commercialPauseDetected ? "farewell" : intent;
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
@@ -4308,36 +4455,46 @@ export class ConversationOrchestrator {
           }
         }
 
-        // A4 — Nota determinística de quantidade: valor exato do pacote ou escalonamento.
+        // A4 — Bloqueio determinístico: sem pacote exato, não há cotação.
+        // Antes, quantityNote era apenas uma instrução para a LLM; ela podia
+        // ignorá-la e repetir preços gerais da política para uma arcada/quantidade
+        // diferente. Agora a IA é pausada e a resposta segura não passa pela LLM.
+        if (quantityPriceResolution?.kind === "unknown") {
+          const attentionReason = `Lead pediu preço de ${quantityPriceResolution.quantity} unidades (fora dos pacotes fechados) — confirmar valor`;
+          await maybeLogTreatmentGap(
+            clinicId,
+            conversation.id,
+            lead.name,
+            `${quantityPriceResolution.quantity} lentes (quantidade/arcada não-padrão)`,
+            messageText,
+          ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: true,
+              takeoverExpiresAt: null,
+              needsAttention: true,
+              attentionReason,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, attentionReason);
+          replyText = await compose({
+            type: "quantity_price_confirmation_required",
+            quantity: quantityPriceResolution.quantity,
+            scope: quantityPriceResolution.scope,
+          });
+          break;
+        }
+
+        // A4 — Nota determinística de quantidade exata: a LLM só pode repetir
+        // os valores que o resolver já encontrou na tabela fechada.
         let quantityNote: string | null = null;
         if (quantityPriceResolution?.kind === "exact") {
           quantityNote =
             `O lead perguntou o valor de ${quantityPriceResolution.quantity} (ver mensagem). ` +
             `Os valores EXATOS do pacote são: ${quantityPriceResolution.lines.join("; ")}. ` +
             `Responda com estes valores exatos e não cite valores de outras quantidades.`;
-        } else if (quantityPriceResolution?.kind === "unknown") {
-          quantityNote =
-            `O lead perguntou por ${quantityPriceResolution.quantity} unidades, que NÃO é um pacote com valor fechado. ` +
-            `NUNCA invente nem calcule um valor proporcional para essa quantidade. Diga com naturalidade que os ` +
-            `pacotes fechados são de ${quantityPriceResolution.availableSummary} unidades e que, para ` +
-            `${quantityPriceResolution.quantity}, você confirma o valor exato com a equipe e já retorna. ` +
-            `Ofereça seguir com a avaliação enquanto isso.`;
-          // Escalonamento: registra o gap e sinaliza atenção para a equipe cotar.
-          maybeLogTreatmentGap(
-            clinicId,
-            conversation.id,
-            lead.name,
-            `${quantityPriceResolution.quantity} lentes (quantidade não-padrão)`,
-            messageText,
-          ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
-          await db
-            .update(conversationsTable)
-            .set({
-              needsAttention: true,
-              attentionReason: `Lead pediu preço de ${quantityPriceResolution.quantity} unidades (fora dos pacotes fechados) — confirmar valor`,
-              updatedAt: new Date(),
-            })
-            .where(eq(conversationsTable.id, conversation.id));
         }
 
         if (
@@ -4366,7 +4523,7 @@ export class ConversationOrchestrator {
         if (
           pipelinePriceTreatment &&
           pipelinePriceContent?.step.type === "content" &&
-          quantityPriceResolution?.kind !== "unknown" &&
+          (quantityPriceResolution == null || quantityPriceResolution.kind === "exact") &&
           !oldPriceObjectionDetected
         ) {
           const parts = buildPipelineContentParts(pipelinePriceContent.step.blocks);
@@ -4420,6 +4577,7 @@ export class ConversationOrchestrator {
             classification.slotPreference.ambiguousTreatmentMatches ??
             null,
           quantityNote,
+          referencedPriceCents: referencedPrice?.cents ?? null,
           oldPriceObjection: oldPriceObjectionDetected,
         });
 
@@ -4441,7 +4599,7 @@ export class ConversationOrchestrator {
           !pipelineState &&
           matchedPriceTreatment &&
           !matchedPriceTreatment.pipelineSteps?.length &&
-          quantityPriceResolution?.kind !== "unknown" &&
+          (quantityPriceResolution == null || quantityPriceResolution.kind === "exact") &&
           !oldPriceObjectionDetected
         ) {
           const evalTreatment = matchedPriceTreatment.requiresEvaluationFirst
@@ -4479,6 +4637,8 @@ export class ConversationOrchestrator {
       // ── Saudação ──
       // Lead reiniciou a conversa: respeita a experiência configurada.
       case "greeting": {
+        if (await offerReadyPipelineSlots()) break;
+
         if (experience === "menu_first") {
           const salutation = getDayGreeting(timezone);
           const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
@@ -4536,15 +4696,20 @@ export class ConversationOrchestrator {
 
       // ── Reconhecimento mid-conversa ──
       case "acknowledgment": {
-        // Apenas responde com mensagem calorosa; se o menu ainda estiver ativo (TTL),
-        // o lead pode selecionar por número normalmente — sem necessidade de reapresenter.
-        replyText = await compose({ type: "acknowledgment" });
+        // Quando o lead já passou pela foto/pré-avaliação, "não tenho dúvidas"
+        // fecha o Q&A e deve conduzir para a avaliação — não para uma resposta
+        // passiva de "sem pressa".
+        if (!(await offerReadyPipelineSlots())) {
+          // Se o menu ainda estiver ativo (TTL), o lead pode selecionar por número
+          // normalmente — sem necessidade de reapresentar.
+          replyText = await compose({ type: "acknowledgment" });
+        }
         break;
       }
 
       // ── Encerramento de conversa ──
       case "farewell": {
-        replyText = await compose({ type: "farewell" });
+        replyText = await compose({ type: commercialPauseDetected ? "commercial_pause" : "farewell" });
         break;
       }
 
@@ -4553,7 +4718,22 @@ export class ConversationOrchestrator {
         // A6 — Triagem de caso atípico tem precedência: responde com a condução clínica
         // (pedir radiografia/foto, doutor avalia) em vez do fluxo normal de pergunta.
         if (atypicalTriageContext) {
-          replyText = await compose({ type: "general_question", clinicContext: atypicalTriageContext });
+          const attentionReason = `Caso clínico atípico (${atypicalCaseLabel ?? "avaliação necessária"}) — avaliar antes de cotar`;
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: true,
+              takeoverExpiresAt: null,
+              needsAttention: true,
+              attentionReason,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, attentionReason);
+          replyText = await compose({
+            type: "clinical_evaluation_required",
+            reason: atypicalCaseLabel ?? "um caso clínico que precisa de avaliação",
+          });
           break;
         }
         let clinicContext: string;
@@ -4761,7 +4941,14 @@ export class ConversationOrchestrator {
           // ── Pipeline start ──
           // Tratamento com pipeline configurado: inicia o pipeline pelo step "content".
           // Se o primeiro step ativo não for content (ex: começa com qa), entrega diretamente.
-          if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
+          const explicitPipelineTrigger = hasExplicitPipelineTreatmentTrigger({
+            message: messageText,
+            treatments: clinicTreatments,
+            lastAgentMessage: lastAgentMessage?.body,
+            procedureSelection,
+            treatment: matchedTreatment,
+          });
+          if (matchedTreatment.pipelineSteps?.length && !pipelineState && explicitPipelineTrigger) {
             const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0, {
               conversationHistory: allMessagesForContext,
             });
@@ -5017,7 +5204,7 @@ export class ConversationOrchestrator {
     }
 
     // ── 8.5. Atualiza temperatura do lead (nunca rebaixa) ──
-    const inferredTemp = temperatureFromIntent(intent);
+    const inferredTemp = temperatureFromIntent(responseIntent);
     const currentTempRank = TEMP_RANK[lead.temperature ?? "cold"];
     if (TEMP_RANK[inferredTemp] > currentTempRank) {
       await this.leadRepo.save({ ...lead, temperature: inferredTemp, updatedAt: new Date() });
@@ -5061,7 +5248,7 @@ export class ConversationOrchestrator {
         conversationId: conversation.id,
         replyText,
         sentAt: agentSentAt,
-        intent: intent ?? null,
+        intent: responseIntent ?? null,
         hasInterleavedMedia,
         outboundParts,
       }),
@@ -5082,8 +5269,8 @@ export class ConversationOrchestrator {
       to: outboundAddress,
       agentMessageId,
       replyText,
-      intent: intent ?? null,
-      useVoice: forceTextOnlyReply ? false : resolveVoiceForReply(intent, replyText),
+      intent: responseIntent ?? null,
+      useVoice: forceTextOnlyReply ? false : resolveVoiceForReply(responseIntent, replyText),
       ttsConfig: ttsConf,
       interleavedParts: hasInterleavedMedia ? outboundParts : [],
       mediaParts,

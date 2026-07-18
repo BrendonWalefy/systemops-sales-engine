@@ -16,11 +16,13 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 function composerInput(
   actionResult:
     | { type: "general_question"; clinicContext: string }
+    | { type: "commercial_pause" }
     | {
         type: "slots_found";
         slots: Array<{ index: number; startsAt: string; endsAt: string; label: string }>;
         askedForPreference: boolean;
-      },
+      }
+    | { type: "quantity_price_confirmation_required"; quantity: number; scope: "total" | "superior" | "inferior" },
 ) {
   return {
     actionResult,
@@ -42,6 +44,35 @@ beforeEach(() => {
 });
 
 describe("ResponseComposer — guard contra vazamento de agenda", () => {
+  it("não chama a LLM nem reabre a venda quando o lead pede tempo para pesquisar", async () => {
+    const composer = new ResponseComposer();
+    const result = await composer.compose(
+      composerInput({ type: "commercial_pause" }),
+    );
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(result.text).toContain("Faça seus levantamentos com calma");
+    expect(result.text).not.toMatch(/R\$|\b\d+[.,]\d{2}\b/);
+    expect(result.text).not.toMatch(/agend|horári|agenda/i);
+    expect(result.model).toBe("deterministic-safety");
+  });
+
+  it("não chama a LLM nem expõe valores quando a quantidade/arcada não tem pacote", async () => {
+    const composer = new ResponseComposer();
+    const result = await composer.compose(
+      composerInput({
+        type: "quantity_price_confirmation_required",
+        quantity: 10,
+        scope: "superior",
+      }),
+    );
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(result.text).toContain("não vou te passar um valor aproximado");
+    expect(result.text).not.toMatch(/R\$|\b\d+[.,]\d{2}\b/);
+    expect(result.model).toBe("deterministic-safety");
+  });
+
   it("remove linhas com oferta de datas/horários em general_question e preserva o conteúdo informativo", async () => {
     createMock.mockResolvedValueOnce({
       choices: [
