@@ -24,6 +24,7 @@ import { createLogger } from "@/infrastructure/logging/logger";
 import {
   buildHumanReviewDecisionConfirmation,
   buildHumanReviewInvalidReplyMessage,
+  isMalformedHumanReviewReply,
   parseHumanReviewReply,
 } from "@/domain/entities/human-review";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
@@ -172,7 +173,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const shouldRejectMalformedDepositReply = isMalformedDepositProofReviewReply(operatorInput);
     const parsedReviewReply = parseHumanReviewReply(operatorInput);
     const shouldRejectBareDecision = /^[1-4]$/.test(operatorInput.trim());
-    const shouldRejectMalformedCaseReply = /^caso\b/i.test(operatorInput.trim());
+    const shouldRejectMalformedReviewReply = isMalformedHumanReviewReply(operatorInput);
     const channelConfig = resolveChannelConfig(clinicRow);
     const reviewRepo = new DrizzleHumanReviewRequestRepository();
 
@@ -237,7 +238,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!pendingReview) {
         await sendTextMessage(
           body.phone,
-          `Não encontrei um caso pendente com o número ${parsedReviewReply.reviewCode}. Confira a mensagem do caso e responda novamente.`,
+          `Não encontrei uma avaliação pendente com o código A${parsedReviewReply.reviewCode}. Confira a mensagem da avaliação e responda novamente.`,
           channelConfig,
         ).catch((err) => console.warn("[HumanReview] confirmação de erro falhou:", err));
         return new NextResponse("OK", { status: 200 });
@@ -253,7 +254,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!decidedReview) {
         await sendTextMessage(
           body.phone,
-          `O Caso ${parsedReviewReply.reviewCode} já foi decidido ou não está mais pendente.`,
+          `A avaliação A${parsedReviewReply.reviewCode} já foi decidida ou não está mais pendente.`,
           channelConfig,
         ).catch((err) => console.warn("[HumanReview] confirmação de caso decidido falhou:", err));
         return new NextResponse("OK", { status: 200 });
@@ -298,7 +299,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return new NextResponse("OK", { status: 200 });
     }
 
-    if (shouldRejectBareDecision || shouldRejectMalformedCaseReply) {
+    if (shouldRejectBareDecision || shouldRejectMalformedReviewReply) {
       await sendTextMessage(
         body.phone,
         buildHumanReviewInvalidReplyMessage(),
