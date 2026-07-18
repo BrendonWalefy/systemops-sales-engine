@@ -15,6 +15,7 @@ import type { MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
+import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -309,6 +310,11 @@ export const organizations = pgTable("organizations", {
   staffDigestWhatsAppEnabled: boolean("staff_digest_whatsapp_enabled")
     .notNull()
     .default(false),
+  // Régua de pós-atendimento: mensagens agendadas disparadas X horas após o fim
+  // da consulta (cuidados, pedido de feedback). Config por clínica — vazio/null =
+  // nada dispara. Percorrida pelo cron post-appointment-followup. Ver
+  // PostAppointmentRule.
+  postAppointmentRules: jsonb("post_appointment_rules").$type<PostAppointmentRule[]>(),
   // ── Fluxo de sinal (depósito via Pix para garantir o horário) ──
   // Quando habilitado, ao escolher um slot a IA envia um pedido de sinal determinístico
   // (Pix), faz uma reserva provisória e aguarda o comprovante; o OPERADOR valida o

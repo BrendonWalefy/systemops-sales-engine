@@ -22,6 +22,7 @@ import { ConversationStateMachine } from "@/core/conversation/ConversationStateM
 import { scheduleFollowUp } from "@/application/use-cases/leads/schedule-follow-up";
 import { sendVoiceOrText } from "@/lib/tts-send";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { sendMediaMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import {
   OutboundDeliveryService,
   type OutboundPart,
@@ -634,6 +635,50 @@ async function deliverAutomationOutbound(input: {
         eq(messages.conversationId, input.conversationId),
       ),
     );
+
+  // Anexos (régua de pós-atendimento): enviados após o texto, em ordem. Cada um
+  // vira uma mensagem própria no inbox. Falha de mídia não derruba o texto já
+  // entregue — apenas loga (comportamento do fluxo de conversa).
+  const mediaParts = input.payload.mediaParts ?? [];
+  if (mediaParts.length > 0) {
+    const conversationRepository = new DrizzleConversationRepository();
+    const mediaLog = createLogger({
+      scope: "SenderWorker",
+      correlationId: input.payload.agentMessageId,
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+    });
+    for (const part of mediaParts) {
+      if (part.type !== "media") continue;
+      try {
+        const mediaMsgId = await sendMediaMessage(
+          input.payload.to,
+          part.url,
+          part.mediaType,
+          config,
+          part.caption,
+        );
+        await conversationRepository.appendMessage({
+          id: randomUUID(),
+          conversationId: input.conversationId,
+          author: "agent",
+          body: part.title,
+          mediaUrl: part.url,
+          mediaType: part.mediaType,
+          sentAt: new Date(),
+          externalId: mediaMsgId,
+          intent: null,
+          deliveryFormat: "text",
+        });
+      } catch (err) {
+        mediaLog.error("falha ao enviar mídia da automação — segue", err, {
+          mediaId: part.mediaId,
+          title: part.title,
+        });
+      }
+    }
+  }
+
   return result.msgId;
 }
 

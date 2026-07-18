@@ -512,6 +512,13 @@
       "when": 1784329247258,
       "tag": "0072_tricky_whirlwind",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1784333907908,
+      "tag": "0073_famous_star_brand",
+      "breakpoints": true
     }
   ]
 }
