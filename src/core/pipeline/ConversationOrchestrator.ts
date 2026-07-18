@@ -42,6 +42,7 @@ import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseCom
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
+import { extractReferencedPrice } from "@/core/intelligence/price-reference";
 import { detectAtypicalClinicalCase, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
@@ -230,6 +231,49 @@ export function findLeadMessageRepeat(params: {
   return withinWindow && gotReplyAfter ? prior : null;
 }
 
+// Click-to-WhatsApp pode entregar o criativo do anúncio em um webhook separado
+// da mensagem escrita pelo lead. Nesse caso a imagem chega como
+// "[imagem recebida]" e o texto comercial fica na mensagem anterior. Não é
+// possível tratá-la como foto clínica sem antes considerar essa proximidade.
+const AD_MEDIA_PLACEHOLDER_RE = /^\[(?:imagem|v[ií]deo) recebid[oa]\]$/i;
+const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
+const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
+
+export function resolveAdMediaContext(params: {
+  currentMessageId: string;
+  currentMessageText: string;
+  hasAnyAgentMessage: boolean;
+  totalConversationMessages: number;
+  history: Pick<Message, "id" | "author" | "body" | "sentAt">[];
+  now: number;
+}): { isAdMedia: boolean; contextText: string | null } {
+  if (params.hasAnyAgentMessage || params.totalConversationMessages > 3) {
+    return { isAdMedia: false, contextText: null };
+  }
+
+  const currentText = params.currentMessageText.trim();
+  const currentCaption = AD_MEDIA_PLACEHOLDER_RE.test(currentText) ? "" : currentText;
+  if (AD_CAPTION_RE.test(currentCaption)) {
+    return { isAdMedia: true, contextText: currentCaption };
+  }
+
+  const previousLeadMessage = [...params.history]
+    .reverse()
+    .find((message) => message.author === "lead" && message.id !== params.currentMessageId);
+  if (!previousLeadMessage) return { isAdMedia: false, contextText: null };
+
+  const elapsedMs = Math.abs(params.now - previousLeadMessage.sentAt.getTime());
+  const previousText = previousLeadMessage.body.trim();
+  const isSeparatedAdBurst =
+    AD_MEDIA_PLACEHOLDER_RE.test(currentText) &&
+    elapsedMs <= AD_MEDIA_BURST_WINDOW_MS &&
+    AD_CAPTION_RE.test(previousText);
+
+  return isSeparatedAdBurst
+    ? { isAdMedia: true, contextText: previousText }
+    : { isAdMedia: false, contextText: null };
+}
+
 // Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
 // com a saudação temporal que o Orchestrator prepende no primeiro contato.
 // Conservador: só remove openers de uma palavra — não toca frases compostas como
@@ -283,6 +327,19 @@ export function shouldShowInitialMenu(experience: ConversationExperience, intent
   if (experience === "concierge") return false;
 
   return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
+}
+
+/**
+ * Um reconhecimento do lead pode ser o fechamento natural do Q&A, não uma
+ * despedida. Só ofertamos agenda quando o pipeline já passou pela foto ou
+ * está explicitamente na etapa de disponibilidade.
+ */
+export function shouldOfferSlotsAfterPipelinePhoto(
+  currentStepType: PipelineStep["type"] | null,
+  photoReceived: boolean,
+): boolean {
+  return currentStepType === "ask_availability" ||
+    (currentStepType === "photo" && photoReceived);
 }
 
 function shouldSendConciergeStarter(experience: ConversationExperience, intent: IntentType): boolean {
@@ -1709,6 +1766,17 @@ function collectMediaIds(parts: ResponsePart[]): string[] {
   return Array.from(new Set(parts.filter((p): p is Extract<ResponsePart, { type: "media" }> => p.type === "media").map((p) => p.id)));
 }
 
+const MEDIA_ASSET_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * media_assets.id is a Postgres UUID. Keep malformed LLM tokens out of the
+ * query boundary (for example the literal `[MEDIA:id]`).
+ */
+export function isValidMediaAssetId(id: string): boolean {
+  return MEDIA_ASSET_UUID_RE.test(id);
+}
+
 export function mergeDeliveryMediaLibrary(
   editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
   directlyReferencedAssets: DeliveryMediaLibraryItem[],
@@ -1737,7 +1805,13 @@ async function resolveDeliveryMediaLibrary(params: {
 
   const editorialIds = new Set(editorialMediaLibrary.map((m) => m.id));
   const missingIds = requestedMediaIds.filter((id) => !editorialIds.has(id));
-  if (missingIds.length === 0) return editorialMediaLibrary;
+  const invalidIds = missingIds.filter((id) => !isValidMediaAssetId(id));
+  for (const mediaId of invalidIds) {
+    params.log.error("mediaId inválido gerado pela IA — mídia será omitida", { mediaId });
+  }
+
+  const queryableMissingIds = missingIds.filter(isValidMediaAssetId);
+  if (queryableMissingIds.length === 0) return editorialMediaLibrary;
 
   const rows = await db
     .select({
@@ -1748,7 +1822,7 @@ async function resolveDeliveryMediaLibrary(params: {
       treatmentId: mediaAssets.treatmentId,
     })
     .from(mediaAssets)
-    .where(and(eq(mediaAssets.clinicId, params.clinicId), inArray(mediaAssets.id, missingIds)));
+    .where(and(eq(mediaAssets.clinicId, params.clinicId), inArray(mediaAssets.id, queryableMissingIds)));
 
   const deliverableAssets: DeliveryMediaLibraryItem[] = [];
   for (const row of rows) {
@@ -1956,7 +2030,8 @@ export class ConversationOrchestrator {
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
   }): Promise<{ replied: boolean }> {
-    const { clinicId, phone, messageText, messageId, senderName, senderPhoto, timestamp } = params;
+    const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
+    let messageText = params.messageText;
     const replyEnabled = params.replyEnabled ?? true;
     const contactIdentifiers = buildContactIdentifiersFromWebhook({
       phone,
@@ -2196,6 +2271,7 @@ export class ConversationOrchestrator {
     // Áudio já foi rehostado em 3.1b e segue o pipeline normal de transcrição/resposta
     // da IA (não pausa e não é encaminhado ao doutor aqui).
     const inboundMediaType = params.mediaType;
+    let adMediaContextText: string | null = null;
     if (inboundMediaType === "image" || inboundMediaType === "video" || inboundMediaType === "document") {
       // ── A7: Intercept de comprovante do sinal ──
       // Qualquer imagem/PDF enviada enquanto aguardamos o comprovante É o comprovante
@@ -2286,8 +2362,8 @@ export class ConversationOrchestrator {
       // Critérios para identificar como mídia de anúncio (não foto clínica do paciente):
       //   1. É o primeiro contato da conversa (IA ainda não respondeu), E
       //   2. Há poucas mensagens do lead no histórico (burst de chegada de anúncio), E
-      //   3. A legenda (caption) coincide com frases típicas de preenchimento automático de anúncios.
-      const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
+      //   3. A legenda (caption), ou o texto lead imediatamente anterior no mesmo burst,
+      //      coincide com frases típicas de preenchimento automático de anúncios.
       const caption = params.messageText?.trim() ?? "";
       // Usa contagem de mensagens na conversa sem carregar todo o histórico (allMessages é carregado mais adiante)
       const [totalMsgRow] = await db
@@ -2300,18 +2376,29 @@ export class ConversationOrchestrator {
         .where(and(eq(messagesTable.conversationId, conversation.id), eq(messagesTable.author, "agent")));
       const earlyLeadMsgTotal = Number(totalMsgRow?.total ?? 0);
       const hasAnyAgentMsg = Number(agentMsgRow?.total ?? 0) > 0;
-      const isLikelyAdMedia =
-        !hasAnyAgentMsg &&
-        earlyLeadMsgTotal <= 3 &&
-        AD_CAPTION_RE.test(caption);
+      const adMediaHistory = await this.conversationRepo.listMessages(conversation.id);
+      const adMediaDecision = resolveAdMediaContext({
+        currentMessageId: incomingMessage.id,
+        currentMessageText: caption,
+        hasAnyAgentMessage: hasAnyAgentMsg,
+        totalConversationMessages: earlyLeadMsgTotal,
+        history: adMediaHistory,
+        now: timestamp.getTime(),
+      });
+      const isLikelyAdMedia = adMediaDecision.isAdMedia;
 
       if (isLikelyAdMedia) {
+        adMediaContextText = adMediaDecision.contextText;
+        // A mensagem textual anterior é a intenção real do lead. Reutilizá-la
+        // aqui permite que o classificador dispare o pipeline do tratamento,
+        // em vez de classificar apenas "[imagem recebida]".
+        if (adMediaContextText) messageText = adMediaContextText;
         console.log(
           `[Orchestrator] Mídia detectada como card de anúncio — não encaminhando ao doutor nem pausando IA` +
-          ` (conv=${conversation.id} lead=${lead.id} caption="${caption.slice(0, 80)}")`,
+          ` (conv=${conversation.id} lead=${lead.id} context="${adMediaContextText?.slice(0, 80) ?? caption.slice(0, 80)}")`,
         );
         // Deixa o fluxo continuar normalmente como se fosse uma mensagem de texto.
-        // O LLM responderá com base no texto que o lead enviou junto ao anúncio.
+        // O LLM responderá com base no texto do lead associado ao anúncio.
         // Não retorna aqui — o código abaixo não será atingido por causa do `if`.
       } else {
 
@@ -2357,7 +2444,7 @@ export class ConversationOrchestrator {
               reviewCode: review.reviewCode,
               treatmentName: pipelineTreatment.name,
             };
-            await this.stateMachine.markPipelinePhotoReceived(conversation.id);
+            await this.stateMachine.markPipelinePhotoReceived(conversation.id, review.expiresAt);
           }
         }
       }
@@ -2733,7 +2820,7 @@ export class ConversationOrchestrator {
     // primeiro (LLM) — o lead percebe como "a IA não presta atenção". Respondemos com um
     // aceno curto e determinístico. Com pipeline ativo NÃO entra aqui: a 2ª mensagem é o
     // gatilho que faz o conteúdo deferido (A3) disparar.
-    if (!pipelineState && replyEnabled) {
+    if (!adMediaContextText && !pipelineState && replyEnabled) {
       const priorIdentical = findLeadMessageRepeat({
         currentBody: messageText,
         history: allMessages,
@@ -3248,6 +3335,9 @@ export class ConversationOrchestrator {
     const quantityPriceResolution = isPriceShapedIntent
       ? resolveQuantityPriceQuery(messageText, clinicTreatments)
       : null;
+    const referencedPrice = isPriceShapedIntent
+      ? extractReferencedPrice(messageText)
+      : null;
 
     // ── 7. Executa ação e compõe resposta ──
     let replyText = "";
@@ -3348,6 +3438,47 @@ export class ConversationOrchestrator {
         maintenanceHandoffReason = "IA indisponível (timeout/OpenAI) — operador intervém";
         return ""; // Sem resposta ao lead
       }
+    };
+
+    const offerReadyPipelineSlots = async (): Promise<boolean> => {
+      if (!pipelineState) return false;
+
+      const pipelineTreatment = clinicTreatments.find((t) => t.id === pipelineState.treatmentId);
+      const currentStepType = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex]?.type ?? null;
+      if (!shouldOfferSlotsAfterPipelinePhoto(currentStepType, pipelineState.photoReceived)) {
+        return false;
+      }
+
+      const evaluationTreatment = pipelineTreatment?.requiresEvaluationFirst
+        ? clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name))
+        : null;
+      const bookingTreatment = evaluationTreatment ?? pipelineTreatment;
+      if (!bookingTreatment) return false;
+
+      const { slots } = await this.fetchAndOfferSlots(
+        conversation.id,
+        clinic,
+        calendarGateway,
+        timezone,
+        businessHours,
+        undefined,
+        undefined,
+        undefined,
+        bookingTreatment.name,
+        bookingTreatment.durationMinutes,
+        voiceEnabled,
+      );
+
+      replyText = slots.length > 0
+        ? evaluationTreatment
+          ? await compose({
+              type: "evaluation_redirect",
+              treatmentName: pipelineTreatment?.name ?? bookingTreatment.name,
+              evaluationSlots: slots,
+            })
+          : await compose({ type: "slots_found", slots, askedForPreference: false })
+        : await compose({ type: "no_slots_available" });
+      return true;
     };
 
     // ── A7: Guards de texto do fluxo de sinal ──
@@ -4080,6 +4211,7 @@ export class ConversationOrchestrator {
             classification.slotPreference.ambiguousTreatmentMatches ??
             null,
           quantityNote,
+          referencedPriceCents: referencedPrice?.cents ?? null,
           oldPriceObjection: oldPriceObjectionDetected,
         });
 
@@ -4139,6 +4271,8 @@ export class ConversationOrchestrator {
       // ── Saudação ──
       // Lead reiniciou a conversa: respeita a experiência configurada.
       case "greeting": {
+        if (await offerReadyPipelineSlots()) break;
+
         if (experience === "menu_first") {
           const salutation = getDayGreeting(timezone);
           const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
@@ -4196,9 +4330,14 @@ export class ConversationOrchestrator {
 
       // ── Reconhecimento mid-conversa ──
       case "acknowledgment": {
-        // Apenas responde com mensagem calorosa; se o menu ainda estiver ativo (TTL),
-        // o lead pode selecionar por número normalmente — sem necessidade de reapresenter.
-        replyText = await compose({ type: "acknowledgment" });
+        // Quando o lead já passou pela foto/pré-avaliação, "não tenho dúvidas"
+        // fecha o Q&A e deve conduzir para a avaliação — não para uma resposta
+        // passiva de "sem pressa".
+        if (!(await offerReadyPipelineSlots())) {
+          // Se o menu ainda estiver ativo (TTL), o lead pode selecionar por número
+          // normalmente — sem necessidade de reapresentar.
+          replyText = await compose({ type: "acknowledgment" });
+        }
         break;
       }
 

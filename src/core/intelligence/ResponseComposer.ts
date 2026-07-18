@@ -9,6 +9,7 @@ import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { ConversationExperience } from "@/domain/entities/clinic";
 import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
+import { formatReferencedPrice } from "@/core/intelligence/price-reference";
 
 type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
@@ -122,7 +123,7 @@ export type ActionResult =
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
   | { type: "handoff_requested"; handoffReason?: string | null }
-  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; oldPriceObjection?: boolean }
+  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; referencedPriceCents?: number | null; oldPriceObjection?: boolean }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
   | { type: "acknowledgment" }
@@ -488,17 +489,17 @@ ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n<dados_da_clinica>\n${fenceCl
 ${clinic.mediaLibrary && clinic.mediaLibrary.length > 0 ? `
 BIBLIOTECA DE MÍDIA DISPONÍVEL PARA ENVIAR AO LEAD:
 ${clinic.mediaLibrary.map((m) => `• [MEDIA:${m.id}] (${m.type === "video" ? "vídeo" : "imagem"}) — ${m.title}`).join("\n")}
-REGRA OBRIGATÓRIA DE MÍDIA: Para enviar um arquivo ao lead, insira o token [MEDIA:id] exatamente como aparece na lista acima — NÃO escreva o título separadamente, NÃO diga "vou enviar" ou "será enviado em breve", NÃO invente IDs. O token [MEDIA:id] é o próprio arquivo; ao inseri-lo a plataforma envia o vídeo/imagem automaticamente. Posicione-o EXATAMENTE onde as ORIENTAÇÕES DA CLÍNICA indicarem. Se o playbook mostrar formato com [MEDIA:id] intercalado, reproduza com precisão.` : ""}
+REGRA OBRIGATÓRIA DE MÍDIA: Para enviar um arquivo ao lead, copie exatamente um token completo da lista acima, incluindo o identificador real — NÃO escreva o título separadamente, NÃO diga "vou enviar" ou "será enviado em breve", NÃO invente IDs e NUNCA use o placeholder literal [MEDIA:id]. O token completo é o próprio arquivo; ao inseri-lo a plataforma envia o vídeo/imagem automaticamente. Posicione-o EXATAMENTE onde as ORIENTAÇÕES DA CLÍNICA indicarem. Se o playbook mostrar um token de mídia intercalado, reproduza-o com precisão.` : ""}
 ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}
 ${voiceResponseEnabled ? `
 MODO ÁUDIO — REGRAS DE VOZ:
 Esta resposta será convertida em áudio e enviada pelo WhatsApp. Cuide apenas da estrutura e do tom:
-1. Máximo 60 palavras no texto falado — as tags [MEDIA:id] NÃO contam como palavras, adicione-as normalmente.
+1. Máximo 60 palavras no texto falado — as tags de mídia NÃO contam como palavras, adicione-as normalmente.
 2. Prosa corrida — sem listas numeradas, tabelas ou tópicos. Para horários, mencione em linguagem natural ("temos segunda às catorze horas ou terça às nove, qual fica melhor?"), nunca em lista.
 3. Português brasileiro natural e conversacional — fale como uma pessoa real, sem linguagem de call center.
-4. Quando houver vídeos relevantes na biblioteca, inclua o token [MEDIA:id] ao final (ex: "[MEDIA:abc123]") — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.
+4. Quando houver vídeos relevantes na biblioteca, copie o token completo correspondente ao final — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.
 (Não se preocupe com markdown, emojis, símbolos, abreviações, horários ou valores: são normalizados automaticamente antes da síntese de voz.)` : ""}`;
 }
 
@@ -649,8 +650,8 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
         ? `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO: use a TABELA DE PARCELAMENTO abaixo — os valores já incluem a taxa da operadora, apresente-os diretamente sem mencionar taxa adicional.\n${installmentTable}`
         : `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO (ex: "12x quanto fica?", "parcela em quantas vezes?"): calcule a parcela base (valor ÷ número de parcelas), apresente como "Nx de R$X — a taxa da maquininha fica com a operadora, não entra no valor da clínica 😊". NÃO invente uma porcentagem de taxa.`;
       const treatmentMediaInstruction = result.identifiedTreatment
-        ? `VÍDEOS PARA ESTE PROCEDIMENTO: se a Biblioteca de Mídia contiver vídeos relacionados a "${result.identifiedTreatment}", inclua TODOS os [MEDIA:id] correspondentes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido e aumenta a conversão. Coloque os [MEDIA:id] antes do próximo passo.`
-        : `SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os [MEDIA:id] relevantes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido do procedimento.`;
+        ? `VÍDEOS PARA ESTE PROCEDIMENTO: se a Biblioteca de Mídia contiver vídeos relacionados a "${result.identifiedTreatment}", inclua TODOS os tokens completos correspondentes logo após apresentar o investimento — copie cada token exatamente como aparece na biblioteca. Mostrar o resultado visual junto ao preço reforça o valor percebido e aumenta a conversão. Coloque os tokens antes do próximo passo.`
+        : `SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os tokens completos correspondentes logo após apresentar o investimento — copie cada token exatamente como aparece na biblioteca. Mostrar o resultado visual junto ao preço reforça o valor percebido do procedimento.`;
       const ambiguousMatches = result.ambiguousTreatmentMatches?.filter(Boolean) ?? [];
       const ambiguityInstruction = ambiguousMatches.length > 1
         ? `REGRA CRÍTICA — LEAD NÃO ESPECIFICOU A VARIAÇÃO: o termo usado corresponde a mais de uma opção do catálogo (${ambiguousMatches.map((n) => `"${n}"`).join(", ")}). Apresente o valor e as condições de TODAS essas opções na mesma resposta, deixando claro o que diferencia cada uma — NUNCA responda com apenas uma delas e omita as demais. Só aprofunde em uma única opção se o lead perguntar especificamente por ela depois.`
@@ -660,6 +661,9 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       const quantityInstruction = result.quantityNote
         ? `REGRA MÁXIMA (quantidade) — obedeça acima de qualquer outra: ${result.quantityNote}`
         : "";
+      const referencedPriceInstruction = result.referencedPriceCents
+        ? `REGRA MÁXIMA (valor citado na mensagem atual) — o lead mencionou explicitamente ${formatReferencedPrice(result.referencedPriceCents)} e está perguntando sobre ESSE valor. Responda ancorado nesse valor; NÃO substitua por outro preço de tratamento, pacote ou quantidade encontrado na política/histórico. NÃO apresente outros valores, salvo se o lead pedir comparação. Se a pergunta for apenas se esse valor pode ser parcelado, confirme as condições de parcelamento sem calcular uma parcela quando ele não informar o número de vezes.`
+        : "";
       // A5 — Objeção de preço antigo: o lead cita uma cotação anterior mais barata.
       const oldPriceInstruction = result.oldPriceObjection
         ? `O LEAD CITOU UM PREÇO NOSSO ANTERIOR (mais barato): reconheça com naturalidade que ele lembra de uma cotação anterior; explique gentilmente que aquele valor era de uma promoção com validade que já passou; apresente o valor VIGENTE (o dos dados da clínica) como o atual. NUNCA repita nem confirme o valor antigo que o lead citou — você não tem esse número; não o invente. Conduza para a avaliação.`
@@ -668,6 +672,7 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
 Apresente os valores e condições descritos na política comercial do sistema. NÃO entregue uma lista seca de preços: explique em linguagem natural o que o valor cobre ou por que o valor final depende da avaliação, usando apenas fatos disponíveis. Se houver avaliação, explique o que ela entrega na prática (ex: planejamento, análise, orçamento fechado, condições, próximos passos) em vez de apenas dizer "avaliação detalhada". REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados. Isso inclui manutenção/ajuste de trabalho já realizado (polimento, retoque, reparo, troca): nesses casos NUNCA responda com o preço do procedimento base do catálogo — o lead não está comprando o procedimento, está mantendo um que já fez.
 REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda especificamente sobre o procedimento perguntado agora. Se a conversa mencionou outro procedimento antes (inclusive se o lead rejeitou ou corrigiu esse procedimento anterior, ex: "não é isso", "não é X"), NÃO volte a falar dele nem misture os dois — a menos que o lead peça explicitamente uma comparação entre ambos.
 ${quantityInstruction}
+${referencedPriceInstruction}
 ${oldPriceInstruction}
 ${ambiguityInstruction}
 ${installmentInstruction}
