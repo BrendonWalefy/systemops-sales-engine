@@ -1,5 +1,5 @@
 import { sendWhatsAppTextMessage } from "./whatsapp-channel-adapter";
-import { sendZApiTextMessage, sendZApiMediaMessage } from "./zapi-channel-adapter";
+import { sendZApiTextMessage, sendZApiMediaMessage, sendZApiButtonListMessage, type ZApiButton } from "./zapi-channel-adapter";
 import type { ClinicChannelConfig } from "./channel-config";
 import type { MediaType } from "@/application/ports/channel-adapter";
 
@@ -43,4 +43,27 @@ export async function sendMediaMessage(
   if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
   const text = formattedCaption ? `${formattedCaption}\n${mediaUrl}` : mediaUrl;
   return sendWhatsAppTextMessage(to, text, config.meta);
+}
+
+export async function sendButtonListMessage(
+  to: string,
+  text: string,
+  buttons: ZApiButton[],
+  config: ClinicChannelConfig,
+): Promise<string | null> {
+  if (process.env.DISABLE_REAL_WHATSAPP_SEND === "true") return null;
+
+  const formatted = toWhatsAppFormatting(text);
+  if (config.provider === "z_api") {
+    if (!config.zapi) throw new Error("Z-API credentials are not configured for this clinic");
+    return sendZApiButtonListMessage(to, formatted, buttons, config.zapi);
+  }
+
+  const fallback = [
+    formatted,
+    "",
+    ...buttons.map((button) => `${button.id} — ${button.label}`),
+  ].join("\n");
+  if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
+  return sendWhatsAppTextMessage(to, fallback, config.meta);
 }

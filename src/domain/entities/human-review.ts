@@ -21,6 +21,25 @@ const OPTION_TO_DECISION: Record<1 | 2 | 3 | 4, HumanReviewDecision> = {
   4: "not_eligible",
 };
 
+export function buildHumanReviewButtonIds(reviewCode: number): Record<1 | 2 | 3 | 4, string> {
+  return {
+    1: `human-review:${reviewCode}:1`,
+    2: `human-review:${reviewCode}:2`,
+    3: `human-review:${reviewCode}:3`,
+    4: `human-review:${reviewCode}:4`,
+  };
+}
+
+export function buildHumanReviewButtons(reviewCode: number): { id: string; label: string }[] {
+  const ids = buildHumanReviewButtonIds(reviewCode);
+  return [
+    { id: ids[1], label: "Agendar direto" },
+    { id: ids[2], label: "Avaliação presencial" },
+    { id: ids[3], label: "Responder manual" },
+    { id: ids[4], label: "Não indicado" },
+  ];
+}
+
 export function parseHumanReviewReply(text: string): ParsedHumanReviewReply | null {
   const normalized = text
     .normalize("NFD")
@@ -29,7 +48,20 @@ export function parseHumanReviewReply(text: string): ParsedHumanReviewReply | nu
     .trim()
     .toLowerCase();
 
-  const match = normalized.match(/^(?:caso\s*)?(\d{1,3})\s*[-:.,]?\s*([1-4])$/);
+  const buttonMatch = normalized.match(/^human-review:(\d{1,3}):([1-4])$/);
+  if (buttonMatch) {
+    const reviewCode = Number(buttonMatch[1]);
+    const option = Number(buttonMatch[2]) as 1 | 2 | 3 | 4;
+    if (!Number.isInteger(reviewCode) || reviewCode < 1 || reviewCode > 999) return null;
+
+    return {
+      reviewCode,
+      option,
+      decision: OPTION_TO_DECISION[option],
+    };
+  }
+
+  const match = normalized.match(/^a\s*(\d{1,3})\s*[-:.,]?\s*([1-4])$/);
   if (!match) return null;
 
   const reviewCode = Number(match[1]);
@@ -43,6 +75,11 @@ export function parseHumanReviewReply(text: string): ParsedHumanReviewReply | nu
   };
 }
 
+export function isMalformedHumanReviewReply(text: string): boolean {
+  const trimmed = text.trim();
+  return /^a$/i.test(trimmed) || /^a\s*\d{1,3}\b/i.test(trimmed);
+}
+
 export function buildHumanReviewRequestMessage(params: {
   reviewCode: number;
   leadName: string;
@@ -52,20 +89,23 @@ export function buildHumanReviewRequestMessage(params: {
   const treatmentLine = params.treatmentName
     ? `Tratamento: ${params.treatmentName}`
     : "Tratamento: não identificado";
+  const code = `A${params.reviewCode}`;
 
   return [
     "📸 *Avaliação necessária*",
     "",
-    `Caso ${params.reviewCode}`,
+    `Código ${code}`,
     `Paciente: ${params.leadName}`,
     treatmentLine,
     `Mídia: ${params.mediaLabel} recebida`,
     "",
-    "Responda:",
-    `${params.reviewCode} 1 — Apto para agendar aplicação/procedimento`,
-    `${params.reviewCode} 2 — Precisa avaliação presencial`,
-    `${params.reviewCode} 3 — Responder manualmente`,
-    `${params.reviewCode} 4 — Não indicado`,
+    "Toque em um botão abaixo.",
+    "",
+    "Se os botões não aparecerem, responda:",
+    `${code} 1 — Apto para agendar aplicação/procedimento`,
+    `${code} 2 — Precisa avaliação presencial`,
+    `${code} 3 — Responder manualmente`,
+    `${code} 4 — Não indicado`,
   ].join("\n");
 }
 
@@ -81,9 +121,9 @@ export function buildHumanReviewDecisionConfirmation(params: {
     not_eligible: "marcado como não indicado. A IA continuará pausada.",
   };
 
-  return `Confirmado: Caso ${params.reviewCode}, ${params.leadName} — ${decisionText[params.decision]}`;
+  return `Confirmado: A${params.reviewCode}, ${params.leadName} — ${decisionText[params.decision]}`;
 }
 
 export function buildHumanReviewInvalidReplyMessage(): string {
-  return "Para evitar erro, responda com o número do caso e a opção. Ex: 27 1";
+  return "Para evitar erro, responda com o código da avaliação e a opção. Ex: A27 1";
 }

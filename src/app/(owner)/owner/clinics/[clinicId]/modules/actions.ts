@@ -9,6 +9,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import { applyClinicPlanPreset } from "@/application/modules/module-gate";
 import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
+import { preserveVoiceOutputEnabled } from "@/application/modules/module-configs";
 
 async function assertOwnerSession() {
   const store = await cookies();
@@ -42,9 +43,24 @@ export async function updateModuleConfig(
   config: Record<string, unknown>,
 ) {
   await assertOwnerSession();
+  const [row] = await db
+    .select({ config: clinicModules.config })
+    .from(clinicModules)
+    .where(
+      and(
+        eq(clinicModules.clinicId, clinicId),
+        eq(clinicModules.moduleKey, moduleKey),
+      ),
+    )
+    .limit(1);
+  const nextConfig =
+    moduleKey === "voice_tts" || moduleKey === "voice_elevenlabs"
+      ? preserveVoiceOutputEnabled(config, row?.config)
+      : config;
+
   await db
     .update(clinicModules)
-    .set({ config, updatedBy: "owner", updatedAt: new Date() })
+    .set({ config: nextConfig, updatedBy: "owner", updatedAt: new Date() })
     .where(
       and(
         eq(clinicModules.clinicId, clinicId),

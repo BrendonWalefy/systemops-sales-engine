@@ -497,15 +497,18 @@ function RecoveryCard({
   );
 }
 
-function cardBorderClass(row: ConvRow, lastAuthor: string): string {
+type LastInboxMessage = { body: string; author: string; sentAt?: Date | null; simulated?: boolean };
+
+function cardBorderClass(row: ConvRow, lastMsg: LastInboxMessage): string {
   if (row.needsAttention) return "card-border-attention";
   if (!isSalesConversationCategory(row.conversationCategory)) return "card-border-default";
-  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastAuthor });
+  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastMsg.author });
   if (appointmentState === "no_show") return "card-border-attention";
   if (appointmentState === "cancelled") return "card-border-paused";
   if (appointmentState === "scheduled" || appointmentState === "confirmed") return "card-border-scheduled";
   if (row.aiPaused) return "card-border-paused";
-  if (lastAuthor === "agent") return "card-border-ai-active";
+  if (lastMsg.author === "agent" && lastMsg.simulated) return "card-border-paused";
+  if (lastMsg.author === "agent") return "card-border-ai-active";
   return "card-border-default";
 }
 
@@ -524,12 +527,12 @@ function formatApptDate(date: Date): string {
 
 function convStatusBadge(
   row: ConvRow,
-  lastAuthor: string,
+  lastMsg: LastInboxMessage,
 ): { label: string; variant: "hot" | "warm" | "accent" | "muted" } {
   if (!isSalesConversationCategory(row.conversationCategory)) {
     return { label: conversationCategoryLabel(row.conversationCategory), variant: "muted" };
   }
-  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastAuthor });
+  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastMsg.author });
   if (row.needsAttention) return { label: "Requer humano", variant: "hot" };
   if (appointmentState === "confirmed") return { label: "Consulta confirmada", variant: "accent" };
   if (appointmentState === "scheduled") return { label: "Consulta marcada", variant: "accent" };
@@ -538,8 +541,9 @@ function convStatusBadge(
   if (appointmentState === "no_show") return { label: "Não compareceu", variant: "hot" };
   if (row.leadStatus === "follow_up_due") return { label: "Em recuperação", variant: "warm" };
   if (row.aiPaused) return { label: "Aguardando retorno", variant: "warm" };
-  if (lastAuthor === "agent") return { label: "IA respondendo", variant: "accent" };
-  if (lastAuthor === "lead") return { label: "Aguardando resposta", variant: "warm" };
+  if (lastMsg.author === "agent" && lastMsg.simulated) return { label: "IA simulando", variant: "warm" };
+  if (lastMsg.author === "agent") return { label: "IA respondendo", variant: "accent" };
+  if (lastMsg.author === "lead") return { label: "Aguardando resposta", variant: "warm" };
   return { label: "Em conversa", variant: "muted" };
 }
 
@@ -558,7 +562,7 @@ function InboxCard({
   onToggleSelected,
 }: {
   row: ConvRow;
-  lastMsg: { body: string; author: string; sentAt?: Date | null };
+  lastMsg: LastInboxMessage;
   selectionMode: boolean;
   selected: boolean;
   onToggleSelected: () => void;
@@ -574,8 +578,8 @@ function InboxCard({
     lastReadAt: row.lastReadAt,
   });
   const pipeStep = resolvePipelineIndex(row, { author: lastMsg.author });
-  const badge = convStatusBadge(row, lastMsg.author);
-  const borderClass = cardBorderClass(row, lastMsg.author);
+  const badge = convStatusBadge(row, lastMsg);
+  const borderClass = cardBorderClass(row, lastMsg);
   const treatment =
     row.leadTreatmentInterest && row.leadTreatmentInterest.length > 28
       ? row.leadTreatmentInterest.slice(0, 26) + "…"
@@ -751,7 +755,7 @@ function AttendedButton({ convId }: { convId: string }) {
   );
 }
 
-function segmentRows(rows: ConvRow[], lastMsgMap: Record<string, { body: string; author: string; sentAt?: Date | null }>) {
+function segmentRows(rows: ConvRow[], lastMsgMap: Record<string, LastInboxMessage>) {
   const handoff  = rows.filter((r) => r.needsAttention && r.leadStatus !== "lost" && r.leadStatus !== "won");
   const active   = rows.filter((r) => !r.aiPaused && !r.needsAttention && !isRecoveryCandidate(r, lastMsgMap[r.convId]) && r.leadStatus !== "lost" && r.leadStatus !== "won");
   const paused   = rows.filter((r) => r.aiPaused && !r.needsAttention && !isRecoveryCandidate(r, lastMsgMap[r.convId]) && r.leadStatus !== "lost" && r.leadStatus !== "won");
@@ -772,7 +776,7 @@ export function InboxClient({
   initialTab = "all",
 }: {
   rows: ConvRow[];
-  lastMsgMap: Record<string, { body: string; author: string; sentAt?: Date | null }>;
+  lastMsgMap: Record<string, LastInboxMessage>;
   autoReplyEnabled: boolean;
   initialScope?: InboxCategoryScope;
   initialTab?: LiveInboxTabFilter | "recovery";
@@ -1077,7 +1081,7 @@ export function InboxClient({
                 <RecoveryCard
                   key={row.convId}
                   row={row}
-                  lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null }}
+                  lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null, simulated: false }}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(row.convId)}
                   onToggleSelected={() => toggleSelected(row.convId)}
@@ -1101,7 +1105,7 @@ export function InboxClient({
               <InboxCard
                 key={row.convId}
                 row={row}
-                lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null }}
+                lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null, simulated: false }}
                 selectionMode={selectionMode}
                 selected={selectedIds.has(row.convId)}
                 onToggleSelected={() => toggleSelected(row.convId)}

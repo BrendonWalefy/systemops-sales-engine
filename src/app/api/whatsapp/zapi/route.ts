@@ -24,12 +24,22 @@ import { createLogger } from "@/infrastructure/logging/logger";
 import {
   buildHumanReviewDecisionConfirmation,
   buildHumanReviewInvalidReplyMessage,
+  isMalformedHumanReviewReply,
   parseHumanReviewReply,
 } from "@/domain/entities/human-review";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
+import {
+  buildDepositProofDecisionConfirmation,
+  buildDepositProofInvalidReplyMessage,
+  extractDepositProofReviewInput,
+  findPendingDepositProofByCode,
+  isMalformedDepositProofReviewReply,
+  parseDepositProofReviewReply,
+} from "@/application/conversations/deposit-proof-review";
+import { confirmDepositDecision } from "@/application/conversations/confirm-deposit-decision";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -156,14 +166,68 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (
-    areEquivalentWhatsAppPhones(body.phone, clinicRow.receptionistPhone) &&
-    body.text?.message
+    areEquivalentWhatsAppPhones(body.phone, clinicRow.receptionistPhone)
   ) {
-    const parsedReviewReply = parseHumanReviewReply(body.text.message);
-    const shouldRejectBareDecision = /^[1-4]$/.test(body.text.message.trim());
-    const shouldRejectMalformedCaseReply = /^caso\b/i.test(body.text.message.trim());
+    const operatorInput = extractDepositProofReviewInput(body) ?? body.text?.message ?? "";
+    const parsedDepositReply = parseDepositProofReviewReply(operatorInput);
+    const shouldRejectMalformedDepositReply = isMalformedDepositProofReviewReply(operatorInput);
+    const parsedReviewReply = parseHumanReviewReply(operatorInput);
+    const shouldRejectBareDecision = /^[1-4]$/.test(operatorInput.trim());
+    const shouldRejectMalformedReviewReply = isMalformedHumanReviewReply(operatorInput);
     const channelConfig = resolveChannelConfig(clinicRow);
     const reviewRepo = new DrizzleHumanReviewRequestRepository();
+
+    if (parsedDepositReply) {
+      const pendingDeposit = await findPendingDepositProofByCode({
+        clinicId,
+        reviewCode: parsedDepositReply.reviewCode,
+      });
+
+      if (!pendingDeposit) {
+        await sendTextMessage(
+          body.phone,
+          `Não encontrei um Pix pendente com o código P${parsedDepositReply.reviewCode}. Confira a mensagem do comprovante e responda novamente.`,
+          channelConfig,
+        ).catch((err) => console.warn("[DepositReview] confirmação de erro falhou:", err));
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      const result = await confirmDepositDecision({
+        conversationId: pendingDeposit.conversationId,
+        clinicId,
+        action: parsedDepositReply.action,
+      });
+
+      if (!result.ok) {
+        await sendTextMessage(
+          body.phone,
+          `Não consegui concluir o Pix P${parsedDepositReply.reviewCode}: ${result.error}. Abra o atendimento no painel para revisar.`,
+          channelConfig,
+        ).catch((err) => console.warn("[DepositReview] confirmação de falha falhou:", err));
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      await sendTextMessage(
+        body.phone,
+        buildDepositProofDecisionConfirmation({
+          reviewCode: parsedDepositReply.reviewCode,
+          leadName: pendingDeposit.leadName ?? "paciente",
+          action: parsedDepositReply.action,
+        }),
+        channelConfig,
+      ).catch((err) => console.warn("[DepositReview] confirmação falhou:", err));
+
+      return new NextResponse("OK", { status: 200 });
+    }
+
+    if (shouldRejectMalformedDepositReply) {
+      await sendTextMessage(
+        body.phone,
+        buildDepositProofInvalidReplyMessage(),
+        channelConfig,
+      ).catch((err) => console.warn("[DepositReview] resposta inválida falhou:", err));
+      return new NextResponse("OK", { status: 200 });
+    }
 
     if (parsedReviewReply) {
       const pendingReview = await reviewRepo.findPendingByCode({
@@ -174,7 +238,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!pendingReview) {
         await sendTextMessage(
           body.phone,
-          `Não encontrei um caso pendente com o número ${parsedReviewReply.reviewCode}. Confira a mensagem do caso e responda novamente.`,
+          `Não encontrei uma avaliação pendente com o código A${parsedReviewReply.reviewCode}. Confira a mensagem da avaliação e responda novamente.`,
           channelConfig,
         ).catch((err) => console.warn("[HumanReview] confirmação de erro falhou:", err));
         return new NextResponse("OK", { status: 200 });
@@ -190,7 +254,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!decidedReview) {
         await sendTextMessage(
           body.phone,
-          `O Caso ${parsedReviewReply.reviewCode} já foi decidido ou não está mais pendente.`,
+          `A avaliação A${parsedReviewReply.reviewCode} já foi decidida ou não está mais pendente.`,
           channelConfig,
         ).catch((err) => console.warn("[HumanReview] confirmação de caso decidido falhou:", err));
         return new NextResponse("OK", { status: 200 });
@@ -235,7 +299,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return new NextResponse("OK", { status: 200 });
     }
 
-    if (shouldRejectBareDecision || shouldRejectMalformedCaseReply) {
+    if (shouldRejectBareDecision || shouldRejectMalformedReviewReply) {
       await sendTextMessage(
         body.phone,
         buildHumanReviewInvalidReplyMessage(),

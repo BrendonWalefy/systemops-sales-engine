@@ -78,6 +78,7 @@ export function mergeBWaveConfig(
     similarityBoost: currentConfig?.similarityBoost ?? base.similarityBoost,
     speed: currentConfig?.speed ?? base.speed,
     mode: currentConfig?.mode ?? base.mode,
+    voiceOutputEnabled: currentConfig?.voiceOutputEnabled ?? base.voiceOutputEnabled,
   };
 }
 

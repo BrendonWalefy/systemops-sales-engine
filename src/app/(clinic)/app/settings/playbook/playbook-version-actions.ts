@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { MenuItem } from "@/domain/entities/clinic";
 import { publishablePlaybookSchema, blockingPlaybookNotesIssues, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "@/application/config/editorial-config";
-import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import { preserveVoiceOutputEnabled, type VoiceTtsConfig, type VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import type { VoiceMode } from "@/domain/entities/voice-mode";
 
 
@@ -243,9 +243,24 @@ export async function toggleVoiceOutput(
 
 export async function updateVoiceModuleConfig(config: VoiceTtsConfig) {
   const CLINIC_ID = await requireSessionClinicId();
+  const [row] = await db
+    .select({ config: clinicModules.config })
+    .from(clinicModules)
+    .where(
+      and(
+        eq(clinicModules.clinicId, CLINIC_ID),
+        eq(clinicModules.moduleKey, "voice_tts"),
+      ),
+    )
+    .limit(1);
+
   await db
     .update(clinicModules)
-    .set({ config, updatedAt: new Date(), updatedBy: "org_admin" })
+    .set({
+      config: preserveVoiceOutputEnabled(config, row?.config),
+      updatedAt: new Date(),
+      updatedBy: "org_admin",
+    })
     .where(
       and(
         eq(clinicModules.clinicId, CLINIC_ID),
@@ -293,17 +308,30 @@ export async function updateBWaveConfig(config: VoiceElevenLabsConfig) {
   const CLINIC_ID = await requireSessionClinicId();
   const mode: VoiceMode =
     config.mode === "mix" || config.mode === "full" ? config.mode : "impact";
+  const [row] = await db
+    .select({ config: clinicModules.config })
+    .from(clinicModules)
+    .where(
+      and(
+        eq(clinicModules.clinicId, CLINIC_ID),
+        eq(clinicModules.moduleKey, "voice_elevenlabs"),
+      ),
+    )
+    .limit(1);
 
   await db
     .update(clinicModules)
     .set({
-      config: {
-        voiceId: config.voiceId.trim(),
-        stability: Math.min(1, Math.max(0, config.stability)),
-        similarityBoost: Math.min(1, Math.max(0, config.similarityBoost)),
-        speed: Math.min(1.2, Math.max(0.7, config.speed)),
-        mode,
-      },
+      config: preserveVoiceOutputEnabled(
+        {
+          voiceId: config.voiceId.trim(),
+          stability: Math.min(1, Math.max(0, config.stability)),
+          similarityBoost: Math.min(1, Math.max(0, config.similarityBoost)),
+          speed: Math.min(1.2, Math.max(0.7, config.speed)),
+          mode,
+        },
+        row?.config,
+      ),
       updatedAt: new Date(),
       updatedBy: "org_admin",
     })
