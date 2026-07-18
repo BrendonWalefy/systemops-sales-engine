@@ -11,6 +11,7 @@ import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { deliverRecoveryMessage } from "@/application/conversations/recovery-delivery";
 import OpenAI from "openai";
 
 export async function composeRecoveryMessageAction(
@@ -106,37 +107,41 @@ export async function sendRecoveryMessageAction(
   const channelConfig = resolveChannelConfig(clinic);
   const now = new Date();
 
-  try {
-    const msgId = await sendTextMessage(channelAddress, message, channelConfig);
+  const result = await deliverRecoveryMessage({
+    send: () => sendTextMessage(channelAddress, message, channelConfig),
+    persistMessage: async (providerMessageId) => {
+      await db.insert(messages).values({
+        id: randomUUID(),
+        conversationId: convId,
+        author: "agent",
+        body: message,
+        sentAt: now,
+        externalId: providerMessageId,
+        intent: "reengagement" as const,
+        deliveryFormat: "text",
+      }).onConflictDoNothing();
+    },
+    resumeConversation: async () => {
+      if (!conv.aiPaused) return;
 
-    await db.insert(messages).values({
-      id: randomUUID(),
-      conversationId: convId,
-      author: "agent",
-      body: message,
-      sentAt: now,
-      externalId: msgId ?? null,
-      intent: "reengagement" as const,
-      deliveryFormat: "text",
-    }).onConflictDoNothing();
-
-    if (conv.aiPaused) {
       await db
         .update(conversations)
         .set({ aiPaused: false, takeoverExpiresAt: null, updatedAt: now })
         .where(eq(conversations.id, convId));
-    }
+    },
+    markRecoveryComplete: async () => {
+      // Idempotência: próxima execução do cron ignora esse lead por 24h
+      await db.execute(sql`
+        INSERT INTO follow_ups (id, clinic_id, lead_id, due_at, status, reason, completed_at, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${clinicId}, ${lead.id}, NOW(), 'done', 'recovery_campaign', NOW(), NOW(), NOW())
+        ON CONFLICT DO NOTHING
+      `);
+    },
+    onBookkeepingError: (stage, error) => {
+      console.error(`[Recovery] ${stage} failed after message delivery`, error);
+    },
+  });
 
-    // Idempotência: próxima execução do cron ignora esse lead por 24h
-    await db.execute(sql`
-      INSERT INTO follow_ups (id, clinic_id, lead_id, due_at, status, reason, completed_at, created_at, updated_at)
-      VALUES (gen_random_uuid(), ${clinicId}, ${lead.id}, NOW(), 'done', 'recovery_campaign', NOW(), NOW(), NOW())
-      ON CONFLICT DO NOTHING
-    `);
-
-    revalidatePath("/app/inbox");
-    return { ok: true };
-  } catch (err: unknown) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  if (result.ok) revalidatePath("/app/inbox");
+  return result;
 }

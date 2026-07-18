@@ -9,6 +9,7 @@ import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { ConversationExperience } from "@/domain/entities/clinic";
 import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
+import { formatReferencedPrice } from "@/core/intelligence/price-reference";
 
 type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
@@ -122,7 +123,10 @@ export type ActionResult =
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
   | { type: "handoff_requested"; handoffReason?: string | null }
-  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; oldPriceObjection?: boolean }
+  | { type: "commercial_pause" }
+  | { type: "quantity_price_confirmation_required"; quantity: number; scope: "total" | "superior" | "inferior" }
+  | { type: "clinical_evaluation_required"; reason: string }
+  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; referencedPriceCents?: number | null; oldPriceObjection?: boolean }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
   | { type: "acknowledgment" }
@@ -309,6 +313,42 @@ export type ComposedResponse = {
   inputTokens: number;
   outputTokens: number;
 };
+
+function buildDeterministicSafetyResponse(
+  actionResult: ActionResult,
+): ComposedResponse | null {
+  let text: string | null = null;
+
+  if (actionResult.type === "quantity_price_confirmation_required") {
+    const scopeLabel = actionResult.scope === "superior"
+      ? "dentes superiores"
+      : actionResult.scope === "inferior"
+        ? "dentes inferiores"
+        : "unidades";
+    text = `Entendi que você quer harmonizar ${actionResult.quantity} ${scopeLabel}. Como essa combinação não está cadastrada como pacote fechado, não vou te passar um valor aproximado. Já sinalizei a equipe para confirmar o valor exato e orientar a avaliação.`;
+  }
+
+  if (actionResult.type === "clinical_evaluation_required") {
+    text = `Entendi o que aconteceu com ${actionResult.reason}. Como esse caso precisa ser avaliado pelo Doutor, não vou confirmar técnica ou valor por mensagem. Já sinalizei a equipe para orientar o próximo passo e montar o orçamento correto.`;
+  }
+
+  if (actionResult.type === "commercial_pause") {
+    text = "Claro, sem problema. Faça seus levantamentos com calma; quando quiser retomar, é só nos chamar. 😊";
+  }
+
+  if (!text) return null;
+
+  const parts: ResponsePart[] = [{ type: "text", content: text }];
+  return {
+    parts,
+    text,
+    mediaIds: [],
+    model: "deterministic-safety",
+    promptVersion: "safety-v1",
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+}
 
 function normalizeScheduleGuardText(content: string): string {
   return content
@@ -596,6 +636,24 @@ Informe gentilmente e ofereça agendar uma avaliação.`;
       return `AÇÃO EXECUTADA: Detectada urgência clínica.
 Demonstre empatia, informe que irá acionar a equipe imediatamente e diga que alguém entrará em contato. Não minimize a situação.`;
 
+    case "quantity_price_confirmation_required": {
+      const scopeLabel = result.scope === "superior"
+        ? "dentes superiores"
+        : result.scope === "inferior"
+          ? "dentes inferiores"
+          : "unidades";
+      return `AÇÃO EXECUTADA: A quantidade/arcada pedida não tem preço fechado cadastrado.
+O lead pediu ${result.quantity} ${scopeLabel}. NÃO informe, repita ou estime qualquer valor. Diga que a equipe já foi avisada para confirmar o valor exato e conduza para a avaliação.`;
+    }
+
+    case "clinical_evaluation_required":
+      return `AÇÃO EXECUTADA: O lead relatou ${result.reason}.
+Não faça cotação nem diagnóstico por mensagem. Explique que o Doutor precisa avaliar o caso antes de confirmar técnica ou valor, diga que a equipe já foi avisada e conduza para a avaliação.`;
+
+    case "commercial_pause":
+      return `AÇÃO EXECUTADA: O lead está apenas pesquisando/comparando e disse que voltará depois.
+Responda com uma única mensagem breve, acolhedora e sem pressão. NÃO informe valores, NÃO envie mídia, NÃO ofereça agenda e NÃO faça perguntas. Valide que ele pode pesquisar com calma e deixe a porta aberta para quando ele retornar.`;
+
     case "handoff_requested": {
       // P0.2: Detectar fluxos de manutenção ou garantia
       const handoffType = detectHandoffType(result.handoffReason);
@@ -660,6 +718,9 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       const quantityInstruction = result.quantityNote
         ? `REGRA MÁXIMA (quantidade) — obedeça acima de qualquer outra: ${result.quantityNote}`
         : "";
+      const referencedPriceInstruction = result.referencedPriceCents
+        ? `REGRA MÁXIMA (valor citado na mensagem atual) — o lead mencionou explicitamente ${formatReferencedPrice(result.referencedPriceCents)} e está perguntando sobre ESSE valor. Responda ancorado nesse valor; NÃO substitua por outro preço de tratamento, pacote ou quantidade encontrado na política/histórico. NÃO apresente outros valores, salvo se o lead pedir comparação. Se a pergunta for apenas se esse valor pode ser parcelado, confirme as condições de parcelamento sem calcular uma parcela quando ele não informar o número de vezes.`
+        : "";
       // A5 — Objeção de preço antigo: o lead cita uma cotação anterior mais barata.
       const oldPriceInstruction = result.oldPriceObjection
         ? `O LEAD CITOU UM PREÇO NOSSO ANTERIOR (mais barato): reconheça com naturalidade que ele lembra de uma cotação anterior; explique gentilmente que aquele valor era de uma promoção com validade que já passou; apresente o valor VIGENTE (o dos dados da clínica) como o atual. NUNCA repita nem confirme o valor antigo que o lead citou — você não tem esse número; não o invente. Conduza para a avaliação.`
@@ -668,6 +729,7 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
 Apresente os valores e condições descritos na política comercial do sistema. NÃO entregue uma lista seca de preços: explique em linguagem natural o que o valor cobre ou por que o valor final depende da avaliação, usando apenas fatos disponíveis. Se houver avaliação, explique o que ela entrega na prática (ex: planejamento, análise, orçamento fechado, condições, próximos passos) em vez de apenas dizer "avaliação detalhada". REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados. Isso inclui manutenção/ajuste de trabalho já realizado (polimento, retoque, reparo, troca): nesses casos NUNCA responda com o preço do procedimento base do catálogo — o lead não está comprando o procedimento, está mantendo um que já fez.
 REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda especificamente sobre o procedimento perguntado agora. Se a conversa mencionou outro procedimento antes (inclusive se o lead rejeitou ou corrigiu esse procedimento anterior, ex: "não é isso", "não é X"), NÃO volte a falar dele nem misture os dois — a menos que o lead peça explicitamente uma comparação entre ambos.
 ${quantityInstruction}
+${referencedPriceInstruction}
 ${oldPriceInstruction}
 ${ambiguityInstruction}
 ${installmentInstruction}
@@ -838,6 +900,9 @@ export class ResponseComposer {
   }
 
   async compose(input: ComposerInput): Promise<ComposedResponse> {
+    const deterministicSafetyResponse = buildDeterministicSafetyResponse(input.actionResult);
+    if (deterministicSafetyResponse) return deterministicSafetyResponse;
+
     const model = resolveComposerModel(input.clinic.plan);
     const systemPrompt = buildSystemPrompt(input);
     const actionContext = buildActionContext(
