@@ -38,6 +38,18 @@ describe("plan presets", () => {
     expect(config.mode).toBe(REDE_RECOMMENDED_BWAVE_CONFIG.mode);
   });
 
+  it("preserves disabled B-WAVE output when applying plan presets", () => {
+    const config = mergeBWaveConfig(
+      {
+        voiceId: "abc123",
+        voiceOutputEnabled: false,
+      },
+      GROWTH_VALIDATION_BWAVE_CONFIG,
+    );
+
+    expect(config.voiceOutputEnabled).toBe(false);
+  });
+
   it("fills missing B-WAVE defaults (Growth validation) with mode impact", () => {
     const config = mergeBWaveConfig(
       { voiceId: "xyz789" },

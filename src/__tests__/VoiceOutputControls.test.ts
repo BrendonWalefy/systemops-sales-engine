@@ -3,6 +3,7 @@ import {
   resolveVoiceOutputFlags,
   shouldForceTextOnlyForActionResult,
 } from "@/core/pipeline/ConversationOrchestrator";
+import { preserveVoiceOutputEnabled } from "@/application/modules/module-configs";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 
 const slot: FormattedSlot = {
@@ -13,6 +14,36 @@ const slot: FormattedSlot = {
 };
 
 describe("voice output controls", () => {
+  it("preserves disabled voice output when saving partial voice config", () => {
+    const result = preserveVoiceOutputEnabled(
+      {
+        voiceId: "voice-id",
+        stability: 0.55,
+        similarityBoost: 0.85,
+        speed: 1,
+        mode: "impact",
+      },
+      { voiceOutputEnabled: false },
+    );
+
+    expect(result.voiceOutputEnabled).toBe(false);
+  });
+
+  it("does not trust malformed module config as a voice-output decision", () => {
+    const result = preserveVoiceOutputEnabled(
+      {
+        voiceId: "voice-id",
+        stability: 0.55,
+        similarityBoost: 0.85,
+        speed: 1,
+        mode: "impact",
+      },
+      [{ voiceOutputEnabled: false }],
+    );
+
+    expect(result).not.toHaveProperty("voiceOutputEnabled");
+  });
+
   it("respects voiceOutputEnabled=false for active B-WAVE modules", () => {
     const result = resolveVoiceOutputFlags({
       hasElevenLabsModule: true,

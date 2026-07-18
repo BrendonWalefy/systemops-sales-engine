@@ -27,3 +27,21 @@ export type ModuleConfigMap = {
   video_library: null;
   ai_co_writer: null;
 };
+
+export function preserveVoiceOutputEnabled<T extends object>(
+  nextConfig: T,
+  currentConfig: unknown,
+): T & { voiceOutputEnabled?: boolean } {
+  if (Object.prototype.hasOwnProperty.call(nextConfig, "voiceOutputEnabled")) {
+    return nextConfig;
+  }
+
+  if (!currentConfig || typeof currentConfig !== "object" || Array.isArray(currentConfig)) {
+    return nextConfig;
+  }
+
+  const currentVoiceOutputEnabled = (currentConfig as { voiceOutputEnabled?: unknown }).voiceOutputEnabled;
+  if (typeof currentVoiceOutputEnabled !== "boolean") return nextConfig;
+
+  return { ...nextConfig, voiceOutputEnabled: currentVoiceOutputEnabled };
+}
