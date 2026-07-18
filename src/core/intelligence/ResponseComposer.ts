@@ -540,7 +540,7 @@ export function buildActionContext(
       return `AÇÃO EXECUTADA: Encontramos horários disponíveis.
 ${historyHint}
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
-FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda APENAS com o número da opção. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
 HORÁRIOS DISPONÍVEIS:
 ${slotList}`;
     }
@@ -560,7 +560,7 @@ Informe o lead de forma calorosa. Mencione o horário confirmado e, se houver en
       const slotList = result.newSlots.map((s) => `${s.index}. ${s.label}`).join("\n");
       return `AÇÃO EXECUTADA: Agendamento anterior cancelado. Apresente os novos horários disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias. NÃO use horários do histórico da conversa.
-FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda APENAS com o número da opção. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
@@ -711,7 +711,7 @@ Responda com despedida calorosa em UMA frase. Deixe a porta aberta para contato 
       return `AÇÃO EXECUTADA: A reserva anterior de horários expirou (os horários ficam reservados por 15 minutos) e a lista foi ATUALIZADA.
 Informe gentilmente que a reserva expirou e apresente a lista atualizada. REGRA CRÍTICA: NÃO diga que um horário "não está mais disponível" — todos os horários abaixo ESTÃO disponíveis agora, inclusive se algum coincidir com o que o lead pediu antes.${preferredHint}
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
-FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda APENAS com o número da opção. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
 HORÁRIOS ATUALIZADOS:
 ${slotList}`;
     }
@@ -721,7 +721,7 @@ ${slotList}`;
       return `AÇÃO EXECUTADA: O horário escolhido ficou indisponível — outro paciente acabou de reservá-lo.
 NÃO confirme o agendamento. NÃO diga que o horário foi marcado. Informe com empatia que aquele horário foi ocupado agora e apresente estas novas opções disponíveis.
 REGRA CRÍTICA: Use EXATAMENTE os labels abaixo. NÃO altere datas, horas ou dias.
-FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda com o número.
+FORMATO OBRIGATÓRIO PARA HORÁRIOS: liste cada opção em linha separada, numerada (exceção permitida à regra geral). Uma frase curta de introdução, depois a lista, depois peça que o lead responda APENAS com o número da opção. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
 NOVOS HORÁRIOS:
 ${slotList}`;
     }
@@ -742,7 +742,7 @@ REGRAS OBRIGATÓRIAS:
       return `AÇÃO EXECUTADA: O procedimento solicitado (${result.treatmentName}) requer uma avaliação presencial antes do agendamento completo.
 REGRA CRÍTICA: Use EXATAMENTE os labels dos horários abaixo. NÃO altere datas, horas ou dias.
 PRIORIDADE DE PLAYBOOK: Se as ORIENTAÇÕES DA CLÍNICA contiverem regras prioritárias para "${result.treatmentName}" (ex: explicar técnicas ou fazer pergunta de qualificação antes dos horários), execute essas regras PRIMEIRO. Só apresente os horários se as orientações não proibirem ou após cumprir os passos obrigatórios.
-FORMATO PADRÃO (quando não houver instrução prioritária de playbook): uma frase curta explicando que a avaliação é o primeiro passo para ${result.treatmentName}, depois a lista numerada de horários, depois peça que o lead responda com o número.
+FORMATO PADRÃO (quando não houver instrução prioritária de playbook): uma frase curta explicando que a avaliação é o primeiro passo para ${result.treatmentName}, depois a lista numerada de horários, depois peça que o lead responda APENAS com o número da opção. Ao final, em uma linha separada, informe que esses horários ficam disponíveis por 15 minutos aguardando a resposta.
 HORÁRIOS PARA AVALIAÇÃO:
 ${slotList}`;
     }

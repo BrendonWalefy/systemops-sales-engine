@@ -28,6 +28,7 @@ import {
   clinicMetrics,
   mediaAssets,
   priceCampaigns,
+  humanReviewRequests,
 } from "@/infrastructure/db/schema";
 import { createLogger } from "@/infrastructure/logging/logger";
 
@@ -98,6 +99,7 @@ export async function POST(
   const conversationIds = conversationRows.map((c) => c.id);
 
   if (conversationIds.length > 0) {
+    await db.delete(humanReviewRequests).where(inArray(humanReviewRequests.conversationId, conversationIds));
     await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
     await db.delete(conversationStates).where(inArray(conversationStates.conversationId, conversationIds));
   }

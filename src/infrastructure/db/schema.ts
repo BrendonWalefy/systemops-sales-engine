@@ -16,6 +16,7 @@ import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
+import { sql } from "drizzle-orm";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -210,6 +211,25 @@ export const conversationReviewStatusEnum = pgEnum("conversation_review_status",
   "sent",      // Enviada para o cliente responder
   "answered",  // Cliente concluiu a revisão
   "expired",   // Prazo de resposta esgotado sem ação
+]);
+
+export const humanReviewStatusEnum = pgEnum("human_review_status", [
+  "pending",
+  "decided",
+  "expired",
+  "cancelled",
+]);
+
+export const humanReviewDecisionEnum = pgEnum("human_review_decision", [
+  "approved_direct_booking",
+  "needs_evaluation",
+  "manual_reply",
+  "not_eligible",
+]);
+
+export const humanReviewDecisionSourceEnum = pgEnum("human_review_decision_source", [
+  "whatsapp",
+  "panel",
 ]);
 
 export const organizations = pgTable("organizations", {
@@ -1149,6 +1169,59 @@ export const mediaAssets = pgTable(
   },
   (table) => ({
     clinicIdx: index("media_assets_org_idx").on(table.clinicId),
+  }),
+);
+
+// Revisão humana operacional em tempo real: quando um lead envia mídia que
+// exige avaliação do responsável, criamos um caso curto ("Caso 27"). A decisão
+// é auditável e pode retomar a automação com agenda direta, sem inferir texto
+// livre do doutor.
+export const humanReviewRequests = pgTable(
+  "human_review_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id),
+    sourceMessageId: uuid("source_message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
+    treatmentId: uuid("treatment_id").references(() => treatments.id),
+    targetTreatmentId: uuid("target_treatment_id").references(() => treatments.id),
+    reviewCode: integer("review_code").notNull(),
+    status: humanReviewStatusEnum("status").notNull().default("pending"),
+    decision: humanReviewDecisionEnum("decision"),
+    decisionSource: humanReviewDecisionSourceEnum("decision_source"),
+    reviewerPhone: text("reviewer_phone"),
+    reviewNotes: text("review_notes"),
+    sourceMediaType: text("source_media_type").$type<"image" | "video" | "document">(),
+    sourceMediaUrl: text("source_media_url"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicStatusIdx: index("human_review_requests_org_status_idx").on(
+      table.clinicId,
+      table.status,
+    ),
+    conversationIdx: index("human_review_requests_conversation_idx").on(
+      table.conversationId,
+    ),
+    pendingCodeUniqueIdx: uniqueIndex("human_review_requests_pending_code_idx")
+      .on(table.clinicId, table.reviewCode)
+      .where(sql`${table.status} = 'pending'`),
   }),
 );
 

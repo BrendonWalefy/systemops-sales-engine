@@ -519,6 +519,13 @@
       "when": 1784333907908,
       "tag": "0073_famous_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1784340976971,
+      "tag": "0074_aspiring_squirrel_girl",
+      "breakpoints": true
     }
   ]
 }

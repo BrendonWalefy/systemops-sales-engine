@@ -5,7 +5,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets } from "@/infrastructure/db/schema";
+import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests } from "@/infrastructure/db/schema";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
@@ -36,7 +36,7 @@ import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/verc
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import type { LocalDateParts, ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
-import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
+import { IntentClassifier, type IntentType, type SlotPreference } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
@@ -81,6 +81,11 @@ import type {
 } from "@/application/jobs/conversation-outbound-payload";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
+import {
+  buildHumanReviewRequestMessage,
+  type HumanReviewDecision,
+} from "@/domain/entities/human-review";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -738,6 +743,97 @@ export function detectPatientArrivalText(message: string): boolean {
   const normalized = normalizeFreeText(message);
   if (!normalized) return false;
   return PATIENT_ARRIVAL_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+export function extractExplicitPreferredDateFromText(message: string): string | null {
+  const punctuationPreserved = message
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+  const directDmy = punctuationPreserved.match(/\b(\d{1,2})[.\-\/](\d{1,2})(?:[.\-\/](\d{2,4}))?\b/);
+  if (directDmy) {
+    return directDmy[3]
+      ? `${directDmy[1]}/${directDmy[2]}/${directDmy[3]}`
+      : `${directDmy[1]}/${directDmy[2]}`;
+  }
+
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return null;
+
+  const dayWithMonth = normalized.match(
+    /\b(\d{1,2})\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/,
+  );
+  if (dayWithMonth) return dayWithMonth[0];
+
+  const dayOnly = normalized.match(/\bdia\s+(\d{1,2})\b/);
+  if (dayOnly) {
+    const day = Number(dayOnly[1]);
+    if (day >= 1 && day <= 31) return `dia ${day}`;
+  }
+
+  const relativeOrWeekday = normalized.match(
+    /\b(hoje|amanha|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado|domingo)\b/,
+  );
+  return relativeOrWeekday?.[0] ?? null;
+}
+
+function normalizePreferredDateText(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const punctuationPreserved = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+  const directDmy = punctuationPreserved.match(/^(\d{1,2})[.\-\/](\d{1,2})(?:[.\-\/](\d{2,4}))?$/);
+  if (directDmy) {
+    return directDmy[3]
+      ? `${directDmy[1]}/${directDmy[2]}/${directDmy[3]}`
+      : `${directDmy[1]}/${directDmy[2]}`;
+  }
+
+  const normalized = normalizeFreeText(raw);
+  if (!normalized) return null;
+
+  const dayOnly = normalized.match(/^(\d{1,2})$/);
+  if (dayOnly) {
+    const day = Number(dayOnly[1]);
+    if (day >= 1 && day <= 31) return `dia ${day}`;
+  }
+
+  const dmy = normalized.match(/^(\d{1,2})\s+(\d{1,2})(?:\s+(\d{2,4}))?$/);
+  if (dmy) {
+    return dmy[3] ? `${dmy[1]}/${dmy[2]}/${dmy[3]}` : `${dmy[1]}/${dmy[2]}`;
+  }
+
+  return raw;
+}
+
+export function withDeterministicSlotPreferenceFallback(
+  message: string,
+  slotPreference: SlotPreference,
+): SlotPreference {
+  const normalizedPreferredDate = normalizePreferredDateText(slotPreference.preferredDate);
+  const preferredDate = normalizedPreferredDate ?? extractExplicitPreferredDateFromText(message);
+  if (!preferredDate || preferredDate === slotPreference.preferredDate) return slotPreference;
+  return { ...slotPreference, preferredDate };
+}
+
+export function normalizeSchedulingIntentForMissingPendingOffer(
+  intent: IntentType,
+  slotPreference: SlotPreference,
+  message: string,
+  hasPendingOffer: boolean,
+): IntentType {
+  const messageHasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
+  if (
+    intent === "confirm_slot" &&
+    !hasPendingOffer &&
+    (messageHasExplicitDate || slotPreference.preferredDate || slotPreference.preferredPeriod || slotPreference.preferredTime)
+  ) {
+    return "check_availability";
+  }
+  return intent;
 }
 
 // ── Coerção determinística de intent para conteúdo de negócio ──
@@ -1676,6 +1772,7 @@ export class ConversationOrchestrator {
   private appointmentRepo = new DrizzleAppointmentRepository();
   private usageCostRepo = new DrizzleUsageCostRepository();
   private treatmentRepo = new DrizzleTreatmentRepository();
+  private humanReviewRepo = new DrizzleHumanReviewRequestRepository();
   private notifier = new NotifyClinicOperators(
     new DrizzlePushSubscriptionRepository(),
     new WebPushGateway(),
@@ -2048,13 +2145,61 @@ export class ConversationOrchestrator {
           .catch(() => { /* já logado dentro da função */ });
       }
 
+      let humanReviewContext: {
+        reviewCode: number;
+        treatmentName: string | null;
+      } | null = null;
+      if (inboundMediaType === "image" || inboundMediaType === "video") {
+        const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
+        if (activePipelineState) {
+          const pipelineTreatments = await this.treatmentRepo.listByClinic(clinicId);
+          const pipelineTreatment = pipelineTreatments.find(t => t.id === activePipelineState.treatmentId);
+          const currentStep = pipelineTreatment?.pipelineSteps?.[activePipelineState.stepIndex];
+          const hasPhotoStepAhead = pipelineTreatment?.pipelineSteps?.some(
+            (step, idx) => idx > activePipelineState.stepIndex && step.type === "photo",
+          ) ?? false;
+          const isPhotoContext = currentStep?.type === "photo" ||
+            (currentStep?.type === "qa" && hasPhotoStepAhead);
+
+          if (pipelineTreatment && isPhotoContext) {
+            const existingReview = await this.humanReviewRepo.findPendingByConversation({
+              clinicId,
+              conversationId: conversation.id,
+            });
+            const review = existingReview ?? await this.humanReviewRepo.createPending({
+              clinicId,
+              conversationId: conversation.id,
+              leadId: lead.id,
+              sourceMessageId: incomingMessage.id,
+              treatmentId: pipelineTreatment.id,
+              targetTreatmentId: pipelineTreatment.id,
+              sourceMediaType: inboundMediaType,
+              sourceMediaUrl: params.mediaUrl ?? null,
+              expiresAt: new Date(Date.now() + 24 * 3600_000),
+            });
+            humanReviewContext = {
+              reviewCode: review.reviewCode,
+              treatmentName: pipelineTreatment.name,
+            };
+            await this.stateMachine.markPipelinePhotoReceived(conversation.id);
+          }
+        }
+      }
+
       // Encaminha para o WhatsApp do doutor com contexto + mídia original
       const receptionistPhone = clinic.receptionistPhone;
       if (receptionistPhone) {
         const mediaLabel = inboundMediaType === "image" ? "foto" : inboundMediaType === "video" ? "vídeo" : "documento";
         const artigo = inboundMediaType === "image" ? "uma" : "um";
         const leadName = lead.name ?? outboundAddress;
-        const contextMsg = `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
+        const contextMsg = humanReviewContext
+          ? buildHumanReviewRequestMessage({
+              reviewCode: humanReviewContext.reviewCode,
+              leadName,
+              treatmentName: humanReviewContext.treatmentName,
+              mediaLabel,
+            })
+          : `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
         sendTextMessage(receptionistPhone, contextMsg, channelConfig)
           .catch(e => console.warn("[MediaForward] contexto falhou:", e));
         if (params.mediaUrl) {
@@ -2069,6 +2214,69 @@ export class ConversationOrchestrator {
         body: `Enviou ${inboundMediaType === "image" ? "uma foto" : "um " + inboundMediaType} para avaliação`,
         url: `/app/inbox/${conversation.id}`,
       }).catch(() => {});
+
+      if (humanReviewContext) {
+        const attentionReason = `Caso ${humanReviewContext.reviewCode}: aguardando avaliação humana`;
+        const now = new Date();
+        await db.update(conversationsTable).set({
+          aiPaused: true,
+          takeoverExpiresAt: null,
+          needsAttention: true,
+          attentionReason,
+          updatedAt: now,
+        }).where(eq(conversationsTable.id, conversation.id));
+
+        if (!replyEnabled || conversation.aiPaused) {
+          return { replied: false };
+        }
+
+        const photoHistory = await this.conversationRepo.listMessages(conversation.id);
+        const photoComposed = await this.responseComposer.compose({
+          actionResult: { type: "pipeline_photo_received" },
+          conversationHistory: photoHistory,
+          clinic: {
+            name: clinic.name,
+            plan: clinic.plan,
+            specialty: editorial?.specialty ?? clinic.specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: editorial?.commercialPolicy ?? null,
+            installmentTable: null,
+            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          },
+          leadName: extractFirstName(lead.name),
+          timezone,
+          isFirstMessage: false,
+          conversationExperience: clinicExperience,
+          resumedFromHumanTakeover: false,
+        });
+        const photoAgentId = randomUUID();
+        await this.conversationRepo.appendMessage({
+          id: photoAgentId,
+          conversationId: conversation.id,
+          author: "agent",
+          body: photoComposed.text,
+          sentAt: now,
+          externalId: null,
+          intent: "needs_human",
+          deliveryFormat: null,
+        });
+        await this.enqueueConversationReply(clinicId, conversation.id, {
+          version: 1,
+          kind: "conversation_reply",
+          to: outboundAddress,
+          agentMessageId: photoAgentId,
+          replyText: photoComposed.text,
+          intent: "needs_human",
+          useVoice: resolveVoiceForReply("needs_human", photoComposed.text),
+          ttsConfig: ttsConf,
+          interleavedParts: [],
+          mediaParts: [],
+          leadId: lead.id,
+          pipelineAdvance: null,
+        });
+        return { replied: true };
+      }
 
       // Se IA está pausada ou auto-reply desligado, o doutor já está no controle — sem resposta automática
       if (!replyEnabled || conversation.aiPaused) {
@@ -2615,7 +2823,10 @@ export class ConversationOrchestrator {
           promptContext,
         );
 
-    const { slotPreference } = classification;
+    const slotPreference = withDeterministicSlotPreferenceFallback(
+      messageText,
+      classification.slotPreference,
+    );
     // Isolamento de mídia entre procedimentos: o tratamento "ativo" desta virada
     // — pipeline em curso tem prioridade sobre o que o classificador identificou
     // na mensagem livre. Usado para (a) filtrar o que entra na BIBLIOTECA DE
@@ -3004,6 +3215,13 @@ export class ConversationOrchestrator {
         maintenanceHandoffReason = "Lead pagou o sinal e pediu alteração — operador decide";
       }
     }
+
+    effectiveIntent = normalizeSchedulingIntentForMissingPendingOffer(
+      effectiveIntent,
+      slotPreference,
+      messageText,
+      hasPendingOffer,
+    );
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
@@ -4291,6 +4509,150 @@ export class ConversationOrchestrator {
     } finally {
       await this.releaseConversationClaim(conversation.id);
     }
+  }
+
+  async resumeAfterHumanReviewDecision(params: {
+    clinicId: string;
+    reviewRequestId: string;
+    decision: HumanReviewDecision;
+  }): Promise<{ replied: boolean; reason?: string }> {
+    if (params.decision !== "approved_direct_booking" && params.decision !== "needs_evaluation") {
+      return { replied: false, reason: "decision_does_not_resume_automation" };
+    }
+
+    const [clinicRow] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, params.clinicId))
+      .limit(1);
+    if (!clinicRow) return { replied: false, reason: "clinic_not_found" };
+
+    const [review] = await db
+      .select()
+      .from(humanReviewRequests)
+      .where(eq(humanReviewRequests.id, params.reviewRequestId))
+      .limit(1);
+    if (!review || review.clinicId !== params.clinicId) {
+      return { replied: false, reason: "review_not_found" };
+    }
+
+    const [conversation] = await db
+      .select()
+      .from(conversationsTable)
+      .where(eq(conversationsTable.id, review.conversationId))
+      .limit(1);
+    const [lead] = await db
+      .select()
+      .from(leadsTable)
+      .where(eq(leadsTable.id, review.leadId))
+      .limit(1);
+    if (!conversation || !lead) return { replied: false, reason: "conversation_or_lead_not_found" };
+
+    const clinic = buildOrganization(clinicRow);
+    const timezone = new ClinicTimezone(clinic.timezone);
+    const businessHours = parseBusinessHours(clinic.businessHours);
+    const calendarGateway = resolveCalendarGateway({
+      clinicId: clinic.id,
+      calendarMode: clinic.calendarMode,
+      googleCalendarId: clinic.googleCalendarId,
+      timezone,
+      businessHours: clinic.businessHours,
+      postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
+    });
+
+    const treatments = await this.treatmentRepo.listByClinic(params.clinicId);
+    const treatment = params.decision === "approved_direct_booking"
+      ? treatments.find((t) => t.id === (review.targetTreatmentId ?? review.treatmentId))
+      : treatments.find((t) => /avalia[cç][aã]o/i.test(t.name));
+
+    if (!treatment) {
+      await db
+        .update(conversationsTable)
+        .set({
+          aiPaused: true,
+          needsAttention: true,
+          attentionReason: "Revisão humana decidida, mas tratamento alvo não foi encontrado",
+          updatedAt: new Date(),
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+      return { replied: false, reason: "target_treatment_not_found" };
+    }
+
+    const { slots } = await this.fetchAndOfferSlots(
+      conversation.id,
+      clinic,
+      calendarGateway,
+      timezone,
+      businessHours,
+      undefined,
+      undefined,
+      undefined,
+      treatment.name,
+      treatment.durationMinutes,
+      false,
+    );
+
+    const now = new Date();
+    const leadAddress = resolveWhatsAppChannelAddress({
+      phone: lead.phone,
+      whatsappLid: lead.whatsappLid,
+    }) ?? lead.phone;
+    if (!leadAddress) return { replied: false, reason: "lead_without_whatsapp_address" };
+
+    const intro = params.decision === "approved_direct_booking"
+      ? "O doutor avaliou suas fotos e sinalizou que podemos seguir para o agendamento do procedimento."
+      : "O doutor avaliou suas fotos e sinalizou que o melhor próximo passo é uma avaliação presencial.";
+    const replyText = slots.length > 0
+      ? [
+          intro,
+          "",
+          "Tenho estes horários disponíveis:",
+          ...slots.map((slot) => `${slot.index}. ${slot.label}`),
+          "",
+          "Responda apenas com o número da opção que prefere. Esses horários ficam disponíveis por 15 minutos aguardando sua resposta.",
+        ].join("\n")
+      : `${intro}\n\nNo momento não encontrei horários disponíveis. Vou deixar a equipe avisada para te ajudar pelo WhatsApp.`;
+
+    const agentMessageId = randomUUID();
+    await this.conversationRepo.appendMessage({
+      id: agentMessageId,
+      conversationId: conversation.id,
+      author: "agent",
+      body: replyText,
+      sentAt: now,
+      externalId: null,
+      intent: slots.length > 0 ? "check_availability" : "needs_human",
+      deliveryFormat: null,
+    });
+
+    await db
+      .update(conversationsTable)
+      .set({
+        aiPaused: slots.length === 0,
+        takeoverExpiresAt: null,
+        needsAttention: slots.length === 0,
+        attentionReason: slots.length === 0 ? "Sem horários após revisão humana" : null,
+        aiResumedAt: slots.length > 0 ? now : conversation.aiResumedAt,
+        updatedAt: now,
+      })
+      .where(eq(conversationsTable.id, conversation.id));
+
+    await this.enqueueConversationReply(params.clinicId, conversation.id, {
+      version: 1,
+      kind: "conversation_reply",
+      to: leadAddress,
+      agentMessageId,
+      replyText,
+      intent: slots.length > 0 ? "check_availability" : "needs_human",
+      useVoice: false,
+      ttsConfig: DEFAULT_TTS_CONFIG,
+      interleavedParts: [],
+      mediaParts: [],
+      leadId: lead.id,
+      pipelineAdvance: null,
+    });
+
+    return { replied: true };
   }
 
   private async enqueueConversationReply(
