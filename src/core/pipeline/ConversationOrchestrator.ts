@@ -1792,6 +1792,17 @@ function collectMediaIds(parts: ResponsePart[]): string[] {
   return Array.from(new Set(parts.filter((p): p is Extract<ResponsePart, { type: "media" }> => p.type === "media").map((p) => p.id)));
 }
 
+const MEDIA_ASSET_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * media_assets.id is a Postgres UUID. Keep malformed LLM tokens out of the
+ * query boundary (for example the literal `[MEDIA:id]`).
+ */
+export function isValidMediaAssetId(id: string): boolean {
+  return MEDIA_ASSET_UUID_RE.test(id);
+}
+
 function formatBrl(cents: number): string {
   const reais = cents / 100;
   const isRound = cents % 100 === 0;
@@ -1829,7 +1840,13 @@ async function resolveDeliveryMediaLibrary(params: {
 
   const editorialIds = new Set(editorialMediaLibrary.map((m) => m.id));
   const missingIds = requestedMediaIds.filter((id) => !editorialIds.has(id));
-  if (missingIds.length === 0) return editorialMediaLibrary;
+  const invalidIds = missingIds.filter((id) => !isValidMediaAssetId(id));
+  for (const mediaId of invalidIds) {
+    params.log.error("mediaId inválido gerado pela IA — mídia será omitida", { mediaId });
+  }
+
+  const queryableMissingIds = missingIds.filter(isValidMediaAssetId);
+  if (queryableMissingIds.length === 0) return editorialMediaLibrary;
 
   const rows = await db
     .select({
@@ -1840,7 +1857,7 @@ async function resolveDeliveryMediaLibrary(params: {
       treatmentId: mediaAssets.treatmentId,
     })
     .from(mediaAssets)
-    .where(and(eq(mediaAssets.clinicId, params.clinicId), inArray(mediaAssets.id, missingIds)));
+    .where(and(eq(mediaAssets.clinicId, params.clinicId), inArray(mediaAssets.id, queryableMissingIds)));
 
   const deliverableAssets: DeliveryMediaLibraryItem[] = [];
   for (const row of rows) {

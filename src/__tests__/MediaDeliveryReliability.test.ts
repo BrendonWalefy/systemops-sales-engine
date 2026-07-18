@@ -14,7 +14,10 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { parseIntoParts } from "@/core/intelligence/ResponseComposer";
-import { inferTreatmentContextFromHistory } from "@/core/pipeline/ConversationOrchestrator";
+import {
+  inferTreatmentContextFromHistory,
+  isValidMediaAssetId,
+} from "@/core/pipeline/ConversationOrchestrator";
 import type { Treatment } from "@/domain/entities/treatment";
 import {
   OutboundDeliveryService,
@@ -110,6 +113,12 @@ const zapiConfig = {
 const silentLog = createLogger({ scope: "test" });
 
 describe("Bug C — ID mismatch: mídia com URL válida é entregue; ID ausente é pulado", () => {
+  it("rejeita o placeholder literal [MEDIA:id] antes da consulta de media_assets", () => {
+    expect(isValidMediaAssetId("id")).toBe(false);
+    expect(isValidMediaAssetId("not-a-uuid")).toBe(false);
+    expect(isValidMediaAssetId("60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44")).toBe(true);
+  });
+
   it("entrega mídia quando o ID existe na biblioteca e tem URL", async () => {
     const sentMedia: string[] = [];
     const svc = new OutboundDeliveryService({
