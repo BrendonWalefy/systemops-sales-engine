@@ -1965,6 +1965,17 @@ export function hasPipelineContentStepBeenSent(
   );
 }
 
+export function isPipelinePhotoInstructionContentStep(
+  step: Extract<PipelineStep, { type: "content" }>,
+): boolean {
+  const text = [
+    step.label,
+    ...step.blocks.map((block) => block.kind === "text" ? block.content : block.caption ?? ""),
+  ].join(" ");
+  const normalized = normalizeFreeText(text);
+  return hasAnyKeyword(normalized, ["foto", "fotos", "video", "videos", "frontal", "perfil", "pre avaliacao"]);
+}
+
 export function buildAnswerFirstPipelineContent(params: {
   answerText: string;
   answerParts: ResponsePart[];
@@ -2516,6 +2527,9 @@ export class ConversationOrchestrator {
       let humanReviewContext: {
         reviewCode: number;
         treatmentName: string | null;
+        pipelineSteps: PipelineStep[];
+        stepIndex: number;
+        currentStepType: PipelineStep["type"] | null;
       } | null = null;
       if (inboundMediaType === "image" || inboundMediaType === "video") {
         const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
@@ -2548,6 +2562,9 @@ export class ConversationOrchestrator {
             humanReviewContext = {
               reviewCode: review.reviewCode,
               treatmentName: pipelineTreatment.name,
+              pipelineSteps: pipelineTreatment.pipelineSteps!,
+              stepIndex: activePipelineState.stepIndex,
+              currentStepType: currentStep?.type ?? null,
             };
             await this.stateMachine.markPipelinePhotoReceived(conversation.id);
           }
@@ -2599,8 +2616,8 @@ export class ConversationOrchestrator {
         const attentionReason = `Avaliação A${humanReviewContext.reviewCode}: aguardando decisão humana`;
         const now = new Date();
         await db.update(conversationsTable).set({
-          aiPaused: true,
-          takeoverExpiresAt: null,
+          aiPaused: conversation.aiPaused,
+          takeoverExpiresAt: conversation.aiPaused ? conversation.takeoverExpiresAt ?? null : null,
           needsAttention: true,
           attentionReason,
           updatedAt: now,
@@ -2630,6 +2647,11 @@ export class ConversationOrchestrator {
           conversationExperience: clinicExperience,
           resumedFromHumanTakeover: false,
         });
+        const next = nextActivePipelineStep(
+          humanReviewContext.pipelineSteps,
+          humanReviewContext.stepIndex + 1,
+          { skipOptionalPhoto: humanReviewContext.currentStepType === "qa" },
+        );
         const photoAgentId = randomUUID();
         await this.conversationRepo.appendMessage({
           id: photoAgentId,
@@ -2638,7 +2660,7 @@ export class ConversationOrchestrator {
           body: photoComposed.text,
           sentAt: now,
           externalId: null,
-          intent: "needs_human",
+          intent: "check_availability",
           deliveryFormat: null,
         });
         await this.enqueueConversationReply(clinicId, conversation.id, {
@@ -2647,13 +2669,15 @@ export class ConversationOrchestrator {
           to: outboundAddress,
           agentMessageId: photoAgentId,
           replyText: photoComposed.text,
-          intent: "needs_human",
-          useVoice: resolveVoiceForReply("needs_human", photoComposed.text),
+          intent: "check_availability",
+          useVoice: resolveVoiceForReply("check_availability", photoComposed.text),
           ttsConfig: ttsConf,
           interleavedParts: [],
           mediaParts: [],
           leadId: lead.id,
-          pipelineAdvance: null,
+          pipelineAdvance: next
+            ? { action: "advance", nextStepIndex: next.index }
+            : { action: "exit" },
         });
         return { replied: true };
       }
@@ -4579,9 +4603,20 @@ export class ConversationOrchestrator {
             !directMediaClarificationRequested
           ) {
             const maxTurns = currentStep.maxTurns ?? 10;
+            const nextContent = nextUnsentPipelineContentStep(
+              pipelineTreatment.pipelineSteps!,
+              pipelineState.stepIndex + 1,
+              allMessagesForContext,
+            );
+            const shouldAppendPhotoInstructionContent = nextContent
+              ? isPipelinePhotoInstructionContentStep(nextContent.step)
+              : false;
             const optionalPhotoStep = pipelineTreatment.pipelineSteps?.find(
               (step, index): step is Extract<PipelineStep, { type: "photo" }> =>
-                index > pipelineState.stepIndex && step.type === "photo" && !step.required,
+                !shouldAppendPhotoInstructionContent &&
+                index > pipelineState.stepIndex &&
+                step.type === "photo" &&
+                !step.required,
             );
             await this.stateMachine.incrementPipelineQaTurns(conversation.id);
             if (pipelineState.qaTurns + 1 >= maxTurns) {
@@ -4619,12 +4654,10 @@ export class ConversationOrchestrator {
               ];
               composedMediaIds = [keywordMediaId];
             }
-            const nextContent = nextUnsentPipelineContentStep(
-              pipelineTreatment.pipelineSteps!,
-              pipelineState.stepIndex + 1,
-              allMessagesForContext,
-            );
-            if (nextContent && (keywordMediaId || isShortAffirmativeReply(messageText))) {
+            if (
+              nextContent &&
+              (keywordMediaId || isShortAffirmativeReply(messageText) || shouldAppendPhotoInstructionContent)
+            ) {
               const followUpContent = buildPipelineContentReply(nextContent.step);
               const baseParts = composedParts.length > 0
                 ? composedParts

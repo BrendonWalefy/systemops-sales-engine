@@ -3,6 +3,7 @@ import {
   buildAnswerFirstPipelineContent,
   findPipelineTreatmentContextForPriceRequest,
   hasPipelineContentStepBeenSent,
+  isPipelinePhotoInstructionContentStep,
 } from "@/core/pipeline/ConversationOrchestrator";
 import type { PipelineStep, Treatment } from "@/domain/entities/treatment";
 import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
@@ -79,6 +80,28 @@ describe("Pipeline v2 Fase 1 — answer-first + once", () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  it("reconhece bloco de conteúdo que instrui envio de foto de avaliação", () => {
+    expect(
+      isPipelinePhotoInstructionContentStep({
+        type: "content",
+        label: "Pedido de foto do sorriso",
+        blocks: [
+          {
+            kind: "text",
+            content: "Você poderia me encaminhar uma foto ou um vídeo curto do seu sorriso?",
+          },
+          {
+            kind: "media",
+            mediaId: "foto-frente-perfil",
+            caption: "Tire uma foto frontal e uma de perfil, como no exemplo.",
+          },
+        ],
+      }),
+    ).toBe(true);
+
+    expect(isPipelinePhotoInstructionContentStep(contentStep)).toBe(false);
   });
 
   it("infere tratamento com pipeline para pedido de valores a partir do histórico recente", () => {
