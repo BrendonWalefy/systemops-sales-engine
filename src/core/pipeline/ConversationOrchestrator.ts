@@ -2042,12 +2042,16 @@ function nextActivePipelineStep(
   fromIndex: number,
   options?: {
     skipOptionalPhoto?: boolean;
+    skipPhotoInstructionContent?: boolean;
     conversationHistory?: Pick<Message, "author" | "body">[];
   },
 ): { step: PipelineStep; index: number } | null {
   for (let i = fromIndex; i < steps.length; i++) {
     const s = steps[i];
     if (s.type === "photo" && options?.skipOptionalPhoto && !s.required) {
+      continue;
+    }
+    if (s.type === "content" && options?.skipPhotoInstructionContent && isPipelinePhotoInstructionContentStep(s)) {
       continue;
     }
     if (
@@ -2650,7 +2654,10 @@ export class ConversationOrchestrator {
         const next = nextActivePipelineStep(
           humanReviewContext.pipelineSteps,
           humanReviewContext.stepIndex + 1,
-          { skipOptionalPhoto: humanReviewContext.currentStepType === "qa" },
+          {
+            skipOptionalPhoto: humanReviewContext.currentStepType === "qa",
+            skipPhotoInstructionContent: humanReviewContext.currentStepType === "qa",
+          },
         );
         const photoAgentId = randomUUID();
         await this.conversationRepo.appendMessage({
@@ -4609,10 +4616,11 @@ export class ConversationOrchestrator {
               allMessagesForContext,
             );
             const shouldAppendPhotoInstructionContent = nextContent
-              ? isPipelinePhotoInstructionContentStep(nextContent.step)
+              ? !pipelineState.photoReceived && isPipelinePhotoInstructionContentStep(nextContent.step)
               : false;
             const optionalPhotoStep = pipelineTreatment.pipelineSteps?.find(
               (step, index): step is Extract<PipelineStep, { type: "photo" }> =>
+                !pipelineState.photoReceived &&
                 !shouldAppendPhotoInstructionContent &&
                 index > pipelineState.stepIndex &&
                 step.type === "photo" &&
