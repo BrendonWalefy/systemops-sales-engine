@@ -898,10 +898,20 @@ export function normalizeSchedulingIntentForMissingPendingOffer(
   slotPreference: SlotPreference,
   message: string,
   hasPendingOffer: boolean,
+  lastAgentMessage?: string | null,
 ): IntentType {
   const messageHasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
   const normalized = normalizeFreeText(message);
   const isOnlyOrphanedNumber = /^\d+$/.test(normalized);
+  if (
+    intent === "confirm_slot" &&
+    !hasPendingOffer &&
+    !isOnlyOrphanedNumber &&
+    isShortAffirmativeReply(normalized) &&
+    didAgentAskToShowAvailability(lastAgentMessage)
+  ) {
+    return "check_availability";
+  }
   if (
     intent === "confirm_slot" &&
     !hasPendingOffer &&
@@ -917,6 +927,44 @@ export function normalizeSchedulingIntentForMissingPendingOffer(
     return "check_availability";
   }
   return intent;
+}
+
+export function isShortAffirmativeReply(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  return new Set([
+    "sim",
+    "sim pode",
+    "pode",
+    "pode sim",
+    "claro",
+    "quero",
+    "quero sim",
+    "vamos",
+    "ok",
+    "ta bom",
+    "tudo bem",
+    "beleza",
+  ]).has(normalized);
+}
+
+export function didAgentAskToShowAvailability(message?: string | null): boolean {
+  const normalized = normalizeFreeText(message ?? "");
+  if (!normalized) return false;
+  const mentionsAvailability =
+    normalized.includes("horario") ||
+    normalized.includes("horarios") ||
+    normalized.includes("agenda") ||
+    normalized.includes("agendar");
+  const asksPermission =
+    normalized.includes("posso ver") ||
+    normalized.includes("posso mostrar") ||
+    normalized.includes("posso te mostrar") ||
+    normalized.includes("posso te mandar") ||
+    normalized.includes("quer que eu veja") ||
+    normalized.includes("quer ver") ||
+    normalized.includes("podemos agendar");
+  return mentionsAvailability && asksPermission;
 }
 
 // ── Coerção determinística de intent para conteúdo de negócio ──
@@ -1743,6 +1791,15 @@ function collectMediaIds(parts: ResponsePart[]): string[] {
   return Array.from(new Set(parts.filter((p): p is Extract<ResponsePart, { type: "media" }> => p.type === "media").map((p) => p.id)));
 }
 
+function formatBrl(cents: number): string {
+  const reais = cents / 100;
+  const isRound = cents % 100 === 0;
+  return `R$ ${reais.toLocaleString("pt-BR", {
+    minimumFractionDigits: isRound ? 0 : 2,
+    maximumFractionDigits: isRound ? 0 : 2,
+  })}`;
+}
+
 export function mergeDeliveryMediaLibrary(
   editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
   directlyReferencedAssets: DeliveryMediaLibraryItem[],
@@ -1993,6 +2050,59 @@ function nextActivePipelineStep(
     }
   }
   return null;
+}
+
+function nextUnsentPipelineContentStep(
+  steps: PipelineStep[],
+  fromIndex: number,
+  conversationHistory: Pick<Message, "author" | "body">[],
+): { step: Extract<PipelineStep, { type: "content" }>; index: number } | null {
+  for (let i = fromIndex; i < steps.length; i++) {
+    const step = steps[i];
+    if (step.type === "ask_availability" || step.type === "offer_slots" || step.type === "book") {
+      return null;
+    }
+    if (step.type === "content" && !hasPipelineContentStepBeenSent(step, conversationHistory)) {
+      return { step, index: i };
+    }
+  }
+  return null;
+}
+
+function buildPipelineContentReply(step: Extract<PipelineStep, { type: "content" }>): {
+  replyText: string;
+  parts: ResponsePart[];
+  mediaIds: string[];
+} {
+  const parts = buildPipelineContentParts(step.blocks);
+  return {
+    replyText: parts
+      .filter((p): p is { type: "text"; content: string } => p.type === "text")
+      .map((p) => p.content)
+      .join("\n\n"),
+    parts,
+    mediaIds: collectMediaIds(parts),
+  };
+}
+
+export function isEvaluationPriceRequest(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized.includes("avaliacao")) return false;
+  return (
+    isPriceRequestText(normalized) ||
+    /\b(valor|preco|custo|custa|quanto|cobra|cobram)\b/.test(normalized)
+  );
+}
+
+export function buildEvaluationDepositClarification(depositAmountCents: number): string {
+  const amount = formatBrl(depositAmountCents);
+  return [
+    `Para reservar o horário da avaliação, a clínica pede um sinal de ${amount}.`,
+    "",
+    "Esse valor garante a reserva e é abatido do tratamento se você avançar.",
+    "",
+    "Posso te mostrar os horários disponíveis agora?",
+  ].join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3486,6 +3596,7 @@ export class ConversationOrchestrator {
       slotPreference,
       messageText,
       hasPendingOffer,
+      lastAgentMessage?.body ?? null,
     );
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
@@ -3524,6 +3635,34 @@ export class ConversationOrchestrator {
       switch (effectiveIntent) {
       // ── Confirmação de slot ──
       case "confirm_slot": {
+        if (!hasPendingOffer && pipelineState && !didAgentAskToShowAvailability(lastAgentMessage?.body ?? null)) {
+          const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
+          const nextContent = pipelineTreatment?.pipelineSteps
+            ? nextUnsentPipelineContentStep(
+                pipelineTreatment.pipelineSteps,
+                pipelineState.stepIndex + 1,
+                allMessagesForContext,
+              )
+            : null;
+          if (nextContent) {
+            const contentReply = buildPipelineContentReply(nextContent.step);
+            replyText = contentReply.replyText;
+            composedParts = contentReply.parts;
+            composedMediaIds = contentReply.mediaIds;
+            forceTextOnlyReply = true;
+
+            const next = nextActivePipelineStep(
+              pipelineTreatment!.pipelineSteps!,
+              nextContent.index + 1,
+              { conversationHistory: allMessagesForContext },
+            );
+            pendingPipelineAdvance = next
+              ? { action: "advance", nextStepIndex: next.index }
+              : { action: "exit" };
+            break;
+          }
+        }
+
         // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
         // que não bate com nenhum slot pendente, trata como nova solicitação para essa data.
         if (!slotPreference.slotChoice && slotPreference.preferredDate && pendingSlots) {
@@ -4142,6 +4281,16 @@ export class ConversationOrchestrator {
             .where(eq(conversationsTable.id, conversation.id));
         }
 
+        if (
+          isEvaluationPriceRequest(messageText) &&
+          clinic.depositEnabled &&
+          clinic.depositAmountCents
+        ) {
+          replyText = buildEvaluationDepositClarification(clinic.depositAmountCents);
+          forceTextOnlyReply = true;
+          break;
+        }
+
         const pipelinePriceTreatment = findPipelineTreatmentContextForPriceRequest({
           message: messageText,
           treatments: clinicTreatments,
@@ -4435,6 +4584,7 @@ export class ConversationOrchestrator {
             }
             clinicContext = [
               `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
+              "OBJETIVIDADE OBRIGATÓRIA: responda em no máximo 2 frases curtas. Não repita valores já mostrados nos cards, exceto se o lead pedir especificamente para confirmar preço.",
               currentStep.instruction ?? null,
               optionalPhotoStep
                 ? `CONVITE OPCIONAL: se fizer sentido dentro da dúvida atual ou se o lead demonstrar abertura, convide de forma leve e não obrigatória usando esta mensagem como base: "${optionalPhotoStep.message}". Faça esse convite no máximo uma vez e nunca como exigência para continuar.`
@@ -4458,6 +4608,31 @@ export class ConversationOrchestrator {
               ];
               composedMediaIds = [keywordMediaId];
             }
+            const nextContent = nextUnsentPipelineContentStep(
+              pipelineTreatment.pipelineSteps!,
+              pipelineState.stepIndex + 1,
+              allMessagesForContext,
+            );
+            if (nextContent && (keywordMediaId || isShortAffirmativeReply(messageText))) {
+              const followUpContent = buildPipelineContentReply(nextContent.step);
+              const baseParts = composedParts.length > 0
+                ? composedParts
+                : [{ type: "text" as const, content: replyText }];
+              composedParts = [...baseParts, ...followUpContent.parts];
+              composedMediaIds = collectMediaIds(composedParts);
+              replyText = composedParts
+                .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                .map((p) => p.content)
+                .join("\n\n");
+              const next = nextActivePipelineStep(
+                pipelineTreatment.pipelineSteps!,
+                nextContent.index + 1,
+                { conversationHistory: allMessagesForContext },
+              );
+              pendingPipelineAdvance = next
+                ? { action: "advance", nextStepIndex: next.index }
+                : { action: "exit" };
+            }
             break;
           }
 
@@ -4472,7 +4647,11 @@ export class ConversationOrchestrator {
               const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
               if (next) await this.stateMachine.advancePipelineStep(conversation.id, next.index);
               else await this.stateMachine.exitTreatmentPipeline(conversation.id);
-              // Deixa o fluxo normal de intent assumir a resposta para este turno
+              replyText = [
+                "Sem problema. A foto ajuda na pré-avaliação, mas podemos seguir pela avaliação presencial.",
+                "",
+                "Posso te mostrar os horários disponíveis?",
+              ].join("\n");
               break;
             }
             replyText = currentStep.message;

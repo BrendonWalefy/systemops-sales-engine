@@ -16,9 +16,13 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  buildEvaluationDepositClarification,
   coerceBusinessIntent,
+  didAgentAskToShowAvailability,
   extractExplicitPreferredDateFromText,
   findLeadMessageRepeat,
+  isEvaluationPriceRequest,
+  isShortAffirmativeReply,
   normalizeSchedulingIntentForMissingPendingOffer,
   shouldResumeManualTakeoverForScheduling,
   withDeterministicSlotPreferenceFallback,
@@ -199,6 +203,36 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
       ).toBe("check_availability");
     });
 
+    it("transforma 'sim' após pergunta de horários em busca de disponibilidade", () => {
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer(
+          "confirm_slot",
+          emptyPreference,
+          "Sim",
+          false,
+          "Posso te mostrar os horários disponíveis agora?",
+        ),
+      ).toBe("check_availability");
+    });
+
+    it("não transforma confirmação curta quando o agente não perguntou por horários", () => {
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer(
+          "confirm_slot",
+          emptyPreference,
+          "Bl2",
+          false,
+          "Qual das técnicas chamou mais a sua atenção?",
+        ),
+      ).toBe("confirm_slot");
+    });
+
+    it("detecta pergunta anterior de disponibilidade e resposta afirmativa curta", () => {
+      expect(didAgentAskToShowAvailability("Posso ver os horários disponíveis para sua avaliação?")).toBe(true);
+      expect(isShortAffirmativeReply("sim")).toBe(true);
+      expect(isShortAffirmativeReply("BL2")).toBe(false);
+    });
+
     it("mantém número órfão fora do fluxo de slots para o fallback de menu lidar", () => {
       expect(
         normalizeSchedulingIntentForMissingPendingOffer(
@@ -208,6 +242,20 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
           false,
         ),
       ).toBe("confirm_slot");
+    });
+  });
+
+  describe("Sinal de reserva não é preço de avaliação", () => {
+    it("detecta pergunta sobre valor da avaliação", () => {
+      expect(isEvaluationPriceRequest("Qual valor da avaliação?")).toBe(true);
+      expect(isEvaluationPriceRequest("Ver valores das lentes")).toBe(false);
+    });
+
+    it("responde R$30 como sinal de reserva, não como preço da consulta", () => {
+      const reply = buildEvaluationDepositClarification(3000);
+      expect(reply).toContain("sinal de R$ 30");
+      expect(reply).toContain("garante a reserva");
+      expect(reply).not.toContain("custa");
     });
   });
 
