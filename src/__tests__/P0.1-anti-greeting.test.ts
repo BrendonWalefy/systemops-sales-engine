@@ -19,6 +19,7 @@ import {
   coerceBusinessIntent,
   extractExplicitPreferredDateFromText,
   normalizeSchedulingIntentForMissingPendingOffer,
+  shouldResumeManualTakeoverForScheduling,
   withDeterministicSlotPreferenceFallback,
 } from "@/core/pipeline/ConversationOrchestrator";
 import type { SlotPreference } from "@/core/intelligence/IntentClassifier";
@@ -166,6 +167,47 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
       expect(
         normalizeSchedulingIntentForMissingPendingOffer("confirm_slot", preference, "Dia 29", true),
       ).toBe("confirm_slot");
+    });
+
+    it("não deixa confirm_slot sem oferta pendente virar pergunta circular quando há pedido de reserva", () => {
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer(
+          "confirm_slot",
+          emptyPreference,
+          "quero reservar um horario",
+          false,
+        ),
+      ).toBe("check_availability");
+    });
+
+    it("mantém número órfão fora do fluxo de slots para o fallback de menu lidar", () => {
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer(
+          "confirm_slot",
+          { ...emptyPreference, slotChoice: 1 },
+          "1",
+          false,
+        ),
+      ).toBe("confirm_slot");
+    });
+  });
+
+  describe("F4 — Pausa manual não engole pedido explícito de agenda", () => {
+    it("retoma pausa manual quando o lead pede reserva", () => {
+      expect(shouldResumeManualTakeoverForScheduling("quero reservar um horario", null)).toBe(true);
+    });
+
+    it("não retoma takeover com TTL ainda vigente", () => {
+      expect(
+        shouldResumeManualTakeoverForScheduling(
+          "quero reservar um horario",
+          new Date("2026-07-18T18:00:00.000Z"),
+        ),
+      ).toBe(false);
+    });
+
+    it("não retoma pausa manual por mensagem genérica", () => {
+      expect(shouldResumeManualTakeoverForScheduling("ok, obrigado", null)).toBe(false);
     });
   });
 

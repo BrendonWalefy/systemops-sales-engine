@@ -576,16 +576,26 @@ export function matchMediaOnKeywords(
   return null;
 }
 
-function isSchedulingRequestText(normalized: string): boolean {
+export function isSchedulingRequestText(normalized: string): boolean {
   return hasAnyKeyword(normalized, [
     "agendar",
     "agenda",
     "marcar",
     "horario",
+    "reservar",
+    "reserva",
     "consulta",
     "remarcar",
     "cancelar",
   ]);
+}
+
+export function shouldResumeManualTakeoverForScheduling(
+  message: string,
+  takeoverExpiresAt: Date | null | undefined,
+): boolean {
+  if (takeoverExpiresAt) return false;
+  return isSchedulingRequestText(normalizeFreeText(message));
 }
 
 function isPriceRequestText(normalized: string): boolean {
@@ -867,10 +877,19 @@ export function normalizeSchedulingIntentForMissingPendingOffer(
   hasPendingOffer: boolean,
 ): IntentType {
   const messageHasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
+  const normalized = normalizeFreeText(message);
+  const isOnlyOrphanedNumber = /^\d+$/.test(normalized);
   if (
     intent === "confirm_slot" &&
     !hasPendingOffer &&
-    (messageHasExplicitDate || slotPreference.preferredDate || slotPreference.preferredPeriod || slotPreference.preferredTime)
+    !isOnlyOrphanedNumber &&
+    (
+      messageHasExplicitDate ||
+      slotPreference.preferredDate ||
+      slotPreference.preferredPeriod ||
+      slotPreference.preferredTime ||
+      isSchedulingRequestText(normalized)
+    )
   ) {
     return "check_availability";
   }
@@ -1825,17 +1844,77 @@ function buildPipelineContentParts(blocks: ContentBlock[]): ResponsePart[] {
   );
 }
 
+function normalizeContentFingerprint(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+export function hasPipelineContentStepBeenSent(
+  step: Extract<PipelineStep, { type: "content" }>,
+  history: Pick<Message, "author" | "body">[],
+): boolean {
+  if (step.once === false) return false;
+
+  const fingerprints = step.blocks
+    .map((block) => {
+      if (block.kind === "text") return block.content;
+      return block.caption ?? "";
+    })
+    .map(normalizeContentFingerprint)
+    .filter(Boolean);
+
+  if (fingerprints.length === 0) return false;
+
+  const agentBodies = history
+    .filter((message) => message.author === "agent")
+    .map((message) => normalizeContentFingerprint(message.body));
+
+  return fingerprints.some((fingerprint) =>
+    agentBodies.some((body) => body.includes(fingerprint)),
+  );
+}
+
+export function buildAnswerFirstPipelineContent(params: {
+  answerText: string;
+  answerParts: ResponsePart[];
+  contentBlocks: ContentBlock[];
+}): { replyText: string; parts: ResponsePart[]; mediaIds: string[] } {
+  const contentParts = buildPipelineContentParts(params.contentBlocks);
+  const contentText = contentParts
+    .filter((part): part is Extract<ResponsePart, { type: "text" }> => part.type === "text")
+    .map((part) => part.content)
+    .join("\n\n")
+    .trim();
+  const replyText = [params.answerText.trim(), contentText].filter(Boolean).join("\n\n");
+  const parts = [...params.answerParts, ...contentParts];
+
+  return {
+    replyText,
+    parts,
+    mediaIds: collectMediaIds(parts),
+  };
+}
+
 // Retorna o próximo step do pipeline que requer condução ativa (content, qa, photo).
 // Steps ask_availability / offer_slots / book são documentação para o doutor;
 // o fluxo reativo existente os cobre quando o lead expressa intenção.
 function nextActivePipelineStep(
   steps: PipelineStep[],
   fromIndex: number,
-  options?: { skipOptionalPhoto?: boolean },
+  options?: {
+    skipOptionalPhoto?: boolean;
+    conversationHistory?: Pick<Message, "author" | "body">[];
+  },
 ): { step: PipelineStep; index: number } | null {
   for (let i = fromIndex; i < steps.length; i++) {
     const s = steps[i];
     if (s.type === "photo" && options?.skipOptionalPhoto && !s.required) {
+      continue;
+    }
+    if (
+      s.type === "content" &&
+      options?.conversationHistory &&
+      hasPipelineContentStepBeenSent(s, options.conversationHistory)
+    ) {
       continue;
     }
     if (s.type === "content" || s.type === "qa" || s.type === "photo") {
@@ -2584,6 +2663,13 @@ export class ConversationOrchestrator {
           .where(eq(conversationsTable.id, conversation.id));
         resumedFromHumanTakeover = true;
         console.log(`[Orchestrator] Takeover TTL expirado para ${conversation.id} — IA retomada`);
+      } else if (shouldResumeManualTakeoverForScheduling(messageText, conversation.takeoverExpiresAt)) {
+        await db
+          .update(conversationsTable)
+          .set({ aiPaused: false, takeoverExpiresAt: null, updatedAt: now })
+          .where(eq(conversationsTable.id, conversation.id));
+        resumedFromHumanTakeover = true;
+        console.log(`[Orchestrator] Pausa manual retomada por pedido explícito de agendamento para ${conversation.id}`);
       } else {
         console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
         // Notifica operador que lead respondeu enquanto atendimento estava em pausa manual
@@ -4068,13 +4154,16 @@ export class ConversationOrchestrator {
             : null;
 
           if (greetingTreatment?.pipelineSteps?.length) {
-            const firstActive = nextActivePipelineStep(greetingTreatment.pipelineSteps, 0);
+            const firstActive = nextActivePipelineStep(greetingTreatment.pipelineSteps, 0, {
+              conversationHistory: allMessages,
+            });
             if (firstActive) {
               await this.stateMachine.startTreatmentPipeline(
                 conversation.id,
                 greetingTreatment.id,
                 greetingTreatment.name,
                 clinic.staleConversationHours * 60,
+                firstActive.index,
               );
               if (firstActive.step.type === "content") {
                 const pipelineParts = buildPipelineContentParts(firstActive.step.blocks);
@@ -4088,7 +4177,9 @@ export class ConversationOrchestrator {
                   .filter((p): p is { type: "media"; id: string } => p.type === "media")
                   .map((p) => p.id);
                 replyText = pipelineText ? `${greetingText}\n\n${pipelineText}` : greetingText;
-                const next = nextActivePipelineStep(greetingTreatment.pipelineSteps!, firstActive.index + 1);
+                const next = nextActivePipelineStep(greetingTreatment.pipelineSteps!, firstActive.index + 1, {
+                  conversationHistory: allMessages,
+                });
                 pendingPipelineAdvance = next
                   ? { action: "advance", nextStepIndex: next.index }
                   : { action: "exit" };
@@ -4141,35 +4232,60 @@ export class ConversationOrchestrator {
         // o lead não menciona o nome do tratamento na mensagem.
         if (
           pipelineState &&
-          !procedureSelection &&
-          !directLocationRequested &&
-          !directSocialRequested &&
-          !directMediaClarificationRequested
+          !procedureSelection
         ) {
           const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
           const currentStep = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex];
 
           // A3 — Conteúdo deferido: pipeline foi posicionado no passo de conteúdo no 1º
-          // contato (só o opener foi enviado). Agora que o lead respondeu, emitimos a
-          // explicação + mídia e avançamos para o próximo passo.
+          // contato (só o opener foi enviado). Agora que o lead respondeu, answer-first:
+          // respondemos a dúvida atual e só depois anexamos explicação + mídia.
           if (currentStep?.type === "content" && pipelineTreatment) {
-            const parts = buildPipelineContentParts(currentStep.blocks);
-            composedParts = parts;
-            composedMediaIds = parts
-              .filter((p): p is { type: "media"; id: string } => p.type === "media")
-              .map((p) => p.id);
-            replyText = parts
-              .filter((p): p is { type: "text"; content: string } => p.type === "text")
-              .map((p) => p.content)
-              .join("\n\n");
-            const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
+            const next = nextActivePipelineStep(
+              pipelineTreatment.pipelineSteps!,
+              pipelineState.stepIndex + 1,
+              { conversationHistory: allMessages },
+            );
             pendingPipelineAdvance = next
               ? { action: "advance", nextStepIndex: next.index }
               : { action: "exit" };
-            break;
+
+            if (!hasPipelineContentStepBeenSent(currentStep, allMessages)) {
+              const contentAnswerContext = directSocialRequested
+                ? buildSocialProfileClinicContext(
+                    extractSocialProfileInfo(editorial?.playbookText, editorial?.commercialPolicy),
+                  )
+                : directMediaClarificationRequested
+                  ? buildMediaClarificationClinicContext()
+                  : directLocationRequested
+                    ? buildLocationClinicContext(clinic.address)
+                    : [
+                        `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
+                        "Responda primeiro a dúvida atual do lead de forma objetiva. Depois disso, o sistema enviará o próximo conteúdo do pipeline.",
+                        pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
+                        editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
+                      ].filter(Boolean).join("\n");
+              const answerText = await compose({ type: "general_question", clinicContext: contentAnswerContext });
+              const answerParts = composedParts;
+              const answerFirst = buildAnswerFirstPipelineContent({
+                answerText,
+                answerParts,
+                contentBlocks: currentStep.blocks,
+              });
+              replyText = answerFirst.replyText;
+              composedParts = answerFirst.parts;
+              composedMediaIds = answerFirst.mediaIds;
+              break;
+            }
           }
 
-          if (currentStep?.type === "qa" && pipelineTreatment) {
+          if (
+            currentStep?.type === "qa" &&
+            pipelineTreatment &&
+            !directLocationRequested &&
+            !directSocialRequested &&
+            !directMediaClarificationRequested
+          ) {
             const maxTurns = currentStep.maxTurns ?? 10;
             const optionalPhotoStep = pipelineTreatment.pipelineSteps?.find(
               (step, index): step is Extract<PipelineStep, { type: "photo" }> =>
@@ -4213,7 +4329,12 @@ export class ConversationOrchestrator {
             break;
           }
 
-          if (currentStep?.type === "photo") {
+          if (
+            currentStep?.type === "photo" &&
+            !directLocationRequested &&
+            !directSocialRequested &&
+            !directMediaClarificationRequested
+          ) {
             if (!currentStep.required && pipelineTreatment) {
               // Lead enviou texto em vez de foto (foto é opcional) → avança para disponibilidade
               const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
@@ -4261,7 +4382,9 @@ export class ConversationOrchestrator {
           // Tratamento com pipeline configurado: inicia o pipeline pelo step "content".
           // Se o primeiro step ativo não for content (ex: começa com qa), entrega diretamente.
           if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
-            const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0);
+            const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0, {
+              conversationHistory: allMessages,
+            });
             if (firstActive) {
               // A3 — 1º contato concierge com passo de conteúdo: envia só o opener de
               // qualificação e deixa o pipeline POSICIONADO no passo de conteúdo (sem
@@ -4285,6 +4408,7 @@ export class ConversationOrchestrator {
                 matchedTreatment.id,
                 matchedTreatment.name,
                 clinic.staleConversationHours * 60,
+                firstActive.index,
               );
               if (firstActive.step.type === "content") {
                 // Blocos crus: a saudação da primeira mensagem é aplicada UMA vez
@@ -4302,7 +4426,9 @@ export class ConversationOrchestrator {
                   .join("\n\n");
                 clinicContext = "";
                 // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
-                const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1);
+                const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1, {
+                  conversationHistory: allMessages,
+                });
                 pendingPipelineAdvance = next
                   ? { action: "advance", nextStepIndex: next.index }
                   : { action: "exit" };
@@ -4352,10 +4478,16 @@ export class ConversationOrchestrator {
                   (t.aliases ?? []).some((a) => normalizeFreeText(a).includes(keywordNorm));
               });
               if (keywordTreatment?.pipelineSteps?.length) {
-                const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0);
+                const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0, {
+                  conversationHistory: allMessages,
+                });
                 if (firstActive) {
                   await this.stateMachine.startTreatmentPipeline(
-                    conversation.id, keywordTreatment.id, keywordTreatment.name, clinic.staleConversationHours * 60,
+                    conversation.id,
+                    keywordTreatment.id,
+                    keywordTreatment.name,
+                    clinic.staleConversationHours * 60,
+                    firstActive.index,
                   );
                   if (firstActive.step.type === "content") {
                     // Blocos crus: saudação aplicada uma única vez pelo bloco
@@ -4366,7 +4498,9 @@ export class ConversationOrchestrator {
                     composedMediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
                     replyText = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
                     clinicContext = "";
-                    const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1);
+                    const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1, {
+                      conversationHistory: allMessages,
+                    });
                     pendingPipelineAdvance = next
                       ? { action: "advance", nextStepIndex: next.index }
                       : { action: "exit" };
@@ -4869,7 +5003,7 @@ export class ConversationOrchestrator {
   //   - outsideBusinessHours=true      → dia pedido é hoje mas o expediente já encerrou
   //   - preferredPeriodUnavailable=true→ lead pediu noite mas a clínica fecha às 18h ou antes
   //   - preferredDayEmpty=true         → dia está na janela mas sem horários; slots são alternativas
-  //                                      NÃO salvos na state machine (lead não escolheu nada ainda)
+  //                                      salvas na state machine se exibidas, para resposta por número funcionar
   //   - preferredDayEmpty=false        → slots confirmáveis, salvos na state machine
   private async fetchAndOfferSlots(
     conversationId: string,
@@ -4960,7 +5094,8 @@ export class ConversationOrchestrator {
           return { slots: [], preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: true, preferredPeriodUnavailable: false };
         } else {
           // Dia preferido sem disponibilidade — sinaliza e mantém pool completo como alternativas.
-          // Alternativas NÃO serão salvas na state machine: lead ainda não escolheu nenhum dia.
+          // Se exibirmos alternativas numeradas, elas precisam ficar confirmáveis: o lead
+          // naturalmente responde "1", "2" etc. no próximo turno.
           preferredDayEmpty = true;
         }
       }
@@ -5062,19 +5197,8 @@ export class ConversationOrchestrator {
 
     if (best.length === 0) return { slots: [], preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
 
-    if (preferredDayEmpty) {
-      // Formata para exibição sem salvar na state machine
-      const formatted: FormattedSlot[] = best.map((s, i) => ({
-        index: i + 1,
-        startsAt: s.startsAt.toISOString(),
-        endsAt: s.endsAt.toISOString(),
-        label: timezone.formatForHuman(s.startsAt),
-      }));
-      return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
-    }
-
     const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes, false);
-    return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
+    return { slots, preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 
   // Retorna o appointment ativo mais próximo de agora (futuro imediato ou passado recente ≤30min).
