@@ -6,11 +6,13 @@ import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google
 import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
+import { resolveDefaultProfessionalId } from "@/application/calendar/resolve-default-professional";
 
 export const dynamic = "force-dynamic";
 
 // Recebe push notifications do Google Calendar quando eventos são criados,
-// atualizados ou deletados. Sincroniza cancelamentos com a tabela de appointments.
+// atualizados ou deletados e espelha na tabela de appointments.
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const channelToken = request.headers.get("x-goog-channel-token");
   if (!channelToken || channelToken !== process.env.CRON_SECRET) {
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       clinic.businessHours,
     );
 
-    const { cancelledIds, nextSyncToken } = await gateway.syncCancelledEventIds(
+    const { cancelledIds, events, nextSyncToken } = await gateway.syncEvents(
       clinic.calendarSyncToken ?? null,
     );
 
@@ -76,6 +78,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           `[GCal webhook] Appointment ${appt.id} cancelled (event ${calendarEventId} deleted from Calendar)`,
         );
       }
+    }
+
+    if (events.length > 0) {
+      const defaultProfessionalId = await resolveDefaultProfessionalId(clinic.id);
+      const importResult = await importCalendarEvents(clinic.id, events, {
+        defaultProfessionalId: defaultProfessionalId ?? undefined,
+      });
+
+      if (importResult.errors.length > 0) {
+        throw new Error(
+          `Google Calendar import failed for ${importResult.errors.length} event(s): ${importResult.errors
+            .slice(0, 3)
+            .map((e) => `${e.event}: ${e.error}`)
+            .join("; ")}`,
+        );
+      }
+
+      console.info(
+        `[GCal webhook] Synced ${importResult.imported} imported, ${importResult.skipped} updated/skipped for clinic ${clinic.id}`,
+      );
     }
 
     await db

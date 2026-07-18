@@ -7,6 +7,9 @@ import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
+import { resolveDefaultProfessionalId } from "@/application/calendar/resolve-default-professional";
+import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +41,35 @@ async function renewForClinic(
     const webhookUrl = `${appUrl}/api/webhooks/google-calendar`;
 
     const { expiration } = await gateway.setupWatch({ channelId, webhookUrl, token: webhookSecret });
-    const { nextSyncToken } = await gateway.syncCancelledEventIds(clinic.calendarSyncToken ?? null);
+    const { cancelledIds, events, nextSyncToken } = await gateway.syncEvents(clinic.calendarSyncToken ?? null);
+
+    if (cancelledIds.length > 0) {
+      const apptRepo = new DrizzleAppointmentRepository();
+      for (const calendarEventId of cancelledIds) {
+        const appt = await apptRepo.findByCalendarEventId(clinicId, calendarEventId);
+        if (!appt || appt.status === "cancelled" || appt.status === "completed") continue;
+        await apptRepo.save({
+          ...appt,
+          status: "cancelled",
+          updatedAt: new Date(),
+        });
+      }
+    }
+
+    if (events.length > 0) {
+      const defaultProfessionalId = await resolveDefaultProfessionalId(clinicId);
+      const importResult = await importCalendarEvents(clinicId, events, {
+        defaultProfessionalId: defaultProfessionalId ?? undefined,
+      });
+      if (importResult.errors.length > 0) {
+        throw new Error(
+          `Google Calendar import failed for ${importResult.errors.length} event(s): ${importResult.errors
+            .slice(0, 3)
+            .map((e) => `${e.event}: ${e.error}`)
+            .join("; ")}`,
+        );
+      }
+    }
 
     await db
       .update(organizations)
