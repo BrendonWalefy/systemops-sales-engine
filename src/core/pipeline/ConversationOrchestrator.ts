@@ -576,16 +576,26 @@ export function matchMediaOnKeywords(
   return null;
 }
 
-function isSchedulingRequestText(normalized: string): boolean {
+export function isSchedulingRequestText(normalized: string): boolean {
   return hasAnyKeyword(normalized, [
     "agendar",
     "agenda",
     "marcar",
     "horario",
+    "reservar",
+    "reserva",
     "consulta",
     "remarcar",
     "cancelar",
   ]);
+}
+
+export function shouldResumeManualTakeoverForScheduling(
+  message: string,
+  takeoverExpiresAt: Date | null | undefined,
+): boolean {
+  if (takeoverExpiresAt) return false;
+  return isSchedulingRequestText(normalizeFreeText(message));
 }
 
 function isPriceRequestText(normalized: string): boolean {
@@ -867,10 +877,19 @@ export function normalizeSchedulingIntentForMissingPendingOffer(
   hasPendingOffer: boolean,
 ): IntentType {
   const messageHasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
+  const normalized = normalizeFreeText(message);
+  const isOnlyOrphanedNumber = /^\d+$/.test(normalized);
   if (
     intent === "confirm_slot" &&
     !hasPendingOffer &&
-    (messageHasExplicitDate || slotPreference.preferredDate || slotPreference.preferredPeriod || slotPreference.preferredTime)
+    !isOnlyOrphanedNumber &&
+    (
+      messageHasExplicitDate ||
+      slotPreference.preferredDate ||
+      slotPreference.preferredPeriod ||
+      slotPreference.preferredTime ||
+      isSchedulingRequestText(normalized)
+    )
   ) {
     return "check_availability";
   }
@@ -2584,6 +2603,13 @@ export class ConversationOrchestrator {
           .where(eq(conversationsTable.id, conversation.id));
         resumedFromHumanTakeover = true;
         console.log(`[Orchestrator] Takeover TTL expirado para ${conversation.id} — IA retomada`);
+      } else if (shouldResumeManualTakeoverForScheduling(messageText, conversation.takeoverExpiresAt)) {
+        await db
+          .update(conversationsTable)
+          .set({ aiPaused: false, takeoverExpiresAt: null, updatedAt: now })
+          .where(eq(conversationsTable.id, conversation.id));
+        resumedFromHumanTakeover = true;
+        console.log(`[Orchestrator] Pausa manual retomada por pedido explícito de agendamento para ${conversation.id}`);
       } else {
         console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
         // Notifica operador que lead respondeu enquanto atendimento estava em pausa manual
@@ -4869,7 +4895,7 @@ export class ConversationOrchestrator {
   //   - outsideBusinessHours=true      → dia pedido é hoje mas o expediente já encerrou
   //   - preferredPeriodUnavailable=true→ lead pediu noite mas a clínica fecha às 18h ou antes
   //   - preferredDayEmpty=true         → dia está na janela mas sem horários; slots são alternativas
-  //                                      NÃO salvos na state machine (lead não escolheu nada ainda)
+  //                                      salvas na state machine se exibidas, para resposta por número funcionar
   //   - preferredDayEmpty=false        → slots confirmáveis, salvos na state machine
   private async fetchAndOfferSlots(
     conversationId: string,
@@ -4960,7 +4986,8 @@ export class ConversationOrchestrator {
           return { slots: [], preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: true, preferredPeriodUnavailable: false };
         } else {
           // Dia preferido sem disponibilidade — sinaliza e mantém pool completo como alternativas.
-          // Alternativas NÃO serão salvas na state machine: lead ainda não escolheu nenhum dia.
+          // Se exibirmos alternativas numeradas, elas precisam ficar confirmáveis: o lead
+          // naturalmente responde "1", "2" etc. no próximo turno.
           preferredDayEmpty = true;
         }
       }
@@ -5062,19 +5089,8 @@ export class ConversationOrchestrator {
 
     if (best.length === 0) return { slots: [], preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
 
-    if (preferredDayEmpty) {
-      // Formata para exibição sem salvar na state machine
-      const formatted: FormattedSlot[] = best.map((s, i) => ({
-        index: i + 1,
-        startsAt: s.startsAt.toISOString(),
-        endsAt: s.endsAt.toISOString(),
-        label: timezone.formatForHuman(s.startsAt),
-      }));
-      return { slots: formatted, preferredDayEmpty: true, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
-    }
-
     const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes, false);
-    return { slots, preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
+    return { slots, preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 
   // Retorna o appointment ativo mais próximo de agora (futuro imediato ou passado recente ≤30min).
