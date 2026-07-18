@@ -2,6 +2,7 @@
 // organizações nem entre procedimentos. Ver docs/product/biblioteca-midia-plano.md.
 import { describe, expect, it, vi } from "vitest";
 import {
+  filterMediaLibraryForComposer,
   filterMediaLibraryForTreatment,
   mergeDeliveryMediaLibrary,
   resolveOutboundParts,
@@ -52,6 +53,60 @@ describe("filterMediaLibraryForTreatment — isolamento no prompt", () => {
     ];
     const result = filterMediaLibraryForTreatment(legacyBackfilled, "qualquer-treatment-ativo");
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("filterMediaLibraryForComposer — mídia adequada por intenção", () => {
+  const OLD_RESULT_VIDEO: LibItem = {
+    id: "old-result-estratificada",
+    title: "Resultado Lente em Resina Estratificada",
+    type: "video",
+    url: "https://blob/resultado-estratificada.mp4",
+    treatmentId: "treatment-lentes",
+  };
+  const NEW_PRICE_PREMIUM: LibItem = {
+    id: "new-price-premium",
+    title: "Valores Lente em Resina Premium",
+    type: "image",
+    url: "https://blob/valores-premium.jpg",
+    treatmentId: "treatment-lentes",
+  };
+  const NEW_PRICE_ESTRATIFICADA: LibItem = {
+    id: "new-price-estratificada",
+    title: "Valores Lente em Resina Estratificada",
+    type: "image",
+    url: "https://blob/valores-estratificada.jpg",
+    treatmentId: "treatment-lentes",
+  };
+
+  it("em pergunta de preço, oferece somente mídias de valores quando elas existem", () => {
+    const result = filterMediaLibraryForComposer(
+      [OLD_RESULT_VIDEO, NEW_PRICE_PREMIUM, NEW_PRICE_ESTRATIFICADA],
+      "treatment-lentes",
+      { type: "price_inquiry" },
+    );
+
+    expect(result.map((m) => m.id)).toEqual(["new-price-premium", "new-price-estratificada"]);
+  });
+
+  it("em pergunta de preço, preserva fallback quando não existe mídia de valores", () => {
+    const result = filterMediaLibraryForComposer(
+      [OLD_RESULT_VIDEO],
+      "treatment-lentes",
+      { type: "price_inquiry" },
+    );
+
+    expect(result.map((m) => m.id)).toEqual(["old-result-estratificada"]);
+  });
+
+  it("fora de preço, preserva as mídias do tratamento", () => {
+    const result = filterMediaLibraryForComposer(
+      [OLD_RESULT_VIDEO, NEW_PRICE_PREMIUM],
+      "treatment-lentes",
+      { type: "general_question", clinicContext: "Lead perguntou sobre lentes." },
+    );
+
+    expect(result.map((m) => m.id)).toEqual(["old-result-estratificada", "new-price-premium"]);
   });
 });
 

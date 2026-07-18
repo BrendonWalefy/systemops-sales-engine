@@ -502,6 +502,22 @@ function isLocationRequest(message: string): boolean {
   return n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica");
 }
 
+export function isSocialProfileRequest(message: string): boolean {
+  const n = normalizeFreeText(message);
+  return hasAnyKeyword(n, ["instagram", "instagran", "insta", "arroba", "rede social", "redes sociais"]);
+}
+
+export function isMediaClarificationRequest(message: string): boolean {
+  const n = normalizeFreeText(message);
+  const hasMediaReference = hasAnyKeyword(n, ["foto", "imagem", "card", "dessa", "desse", "essa", "esse"]);
+  const hasTechniqueReference = hasAnyKeyword(n, ["premium", "premio", "estratificada", "qual"]);
+  return hasMediaReference && hasTechniqueReference;
+}
+
+export function shouldBypassPendingPipelineContent(message: string): boolean {
+  return isLocationRequest(message) || isSocialProfileRequest(message) || isMediaClarificationRequest(message);
+}
+
 function isProcedureCatalogRequest(message: string): boolean {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   return n.includes("procedimento") || n.includes("tratamento") || n.includes("servico") || n.includes("opcoes");
@@ -1368,6 +1384,24 @@ export function buildLocationClinicContext(address: string | null): string {
   return `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
 }
 
+function buildSocialProfileClinicContext(): string {
+  return [
+    `Lead perguntou Instagram, arroba ou redes sociais da clínica.`,
+    `Não existe Instagram cadastrado como dado estruturado da clínica neste sistema.`,
+    `Responda sem inventar perfil: diga que você não tem o @ cadastrado aqui e que a equipe pode enviar o perfil correto por aqui.`,
+    `Não envie mídias, áudio explicativo de tratamento, menu ou convite de agendamento nessa resposta.`,
+  ].join("\n");
+}
+
+function buildMediaClarificationClinicContext(): string {
+  return [
+    `Lead está perguntando qual foto/card corresponde à técnica Premium ou Estratificada.`,
+    `Interprete "prêmio" como "Premium" quando aparecer nesse contexto.`,
+    `Responda diretamente sem reenviar mídias: Premium é a técnica com uma única resina de alta qualidade e é a opção mais acessível; Estratificada combina duas resinas com bordas translúcidas para máxima naturalidade e resultado mais sofisticado.`,
+    `Use no máximo 2 frases e não envie áudio promocional, novos cards, menu ou convite de agendamento nessa resposta.`,
+  ].join("\n");
+}
+
 // ─── Cálculo de parcelas (flat rate exato) ───────────────────────────────────
 
 export type InstallmentRate = { n: number; rate: number; active: boolean };
@@ -1590,6 +1624,23 @@ export function filterMediaLibraryForTreatment<T extends { treatmentId?: string 
 ): T[] {
   if (!activeTreatmentId) return items;
   return items.filter((m) => !m.treatmentId || m.treatmentId === activeTreatmentId);
+}
+
+function isPriceMediaTitle(title: string): boolean {
+  const n = normalizeFreeText(title);
+  return hasAnyKeyword(n, ["valor", "valores", "preco", "investimento", "pacote", "pacotes"]);
+}
+
+export function filterMediaLibraryForComposer<T extends { title: string; treatmentId?: string | null }>(
+  items: T[],
+  activeTreatmentId: string | null,
+  actionResult: ActionResult,
+): T[] {
+  const treatmentScoped = filterMediaLibraryForTreatment(items, activeTreatmentId);
+  if (actionResult.type !== "price_inquiry") return treatmentScoped;
+
+  const priceMedia = treatmentScoped.filter((item) => isPriceMediaTitle(item.title));
+  return priceMedia.length > 0 ? priceMedia : treatmentScoped;
 }
 
 type DeliveryMediaLibraryItem = {
@@ -3108,7 +3159,7 @@ export class ConversationOrchestrator {
             installmentTable: clinic.installmentRates && editorial?.commercialPolicy
               ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
               : null,
-            mediaLibrary: filterMediaLibraryForTreatment(editorial?.mediaLibrary ?? [], activeTreatmentId),
+            mediaLibrary: filterMediaLibraryForComposer(editorial?.mediaLibrary ?? [], activeTreatmentId, actionResult),
             receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
           context: promptContext,
@@ -4019,13 +4070,24 @@ export class ConversationOrchestrator {
         let clinicContext: string;
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
+        const directSocialRequested = !menuResolution && !procedureSelection && isSocialProfileRequest(messageText);
+        const directMediaClarificationRequested = !menuResolution && !procedureSelection && isMediaClarificationRequest(messageText);
         const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
 
         // ── Pipeline continuação ──
-        // Se há pipeline ativo, ele tem prioridade sobre a lógica normal de contexto.
+        // Se há pipeline ativo, ele tem prioridade sobre a lógica normal de contexto,
+        // exceto quando a mensagem atual é uma pergunta direta sobre a clínica ou
+        // sobre uma mídia já enviada. Nesses casos, responder a dúvida do lead vem
+        // antes de avançar o próximo bloco do pipeline.
         // Isso garante que durante Q&A a instrução do passo seja usada mesmo quando
         // o lead não menciona o nome do tratamento na mensagem.
-        if (pipelineState && !procedureSelection) {
+        if (
+          pipelineState &&
+          !procedureSelection &&
+          !directLocationRequested &&
+          !directSocialRequested &&
+          !directMediaClarificationRequested
+        ) {
           const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
           const currentStep = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex];
 
@@ -4212,7 +4274,13 @@ export class ConversationOrchestrator {
           }
         } else if (procedureSelection) {
           clinicContext = buildSelectedTreatmentContext(procedureSelection, editorial?.commercialPolicy ?? null, experience);
-        } else if (menuResolution?.intent === "general_question" || directProcedureCatalogRequested || directLocationRequested) {
+        } else if (
+          menuResolution?.intent === "general_question" ||
+          directProcedureCatalogRequested ||
+          directLocationRequested ||
+          directSocialRequested ||
+          directMediaClarificationRequested
+        ) {
           if (menuGeneralSubtype === "procedures") {
             // Menu item com treatmentKeyword → tenta disparar pipeline do tratamento
             const menuTreatmentKeyword = menuResolution?.intent === "general_question" && menuResolution.subtype === "procedures"
@@ -4258,6 +4326,10 @@ export class ConversationOrchestrator {
               ? clinicTreatments.map((t, i) => `${i + 1}. ${t.name}`).join("\n")
               : "";
             clinicContext = `Lead pediu para ver procedimentos/tratamentos.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número. Para voltar ao menu principal, é só digitar *menu*." Sem convite para agendar.\n${items}`;
+          } else if (directSocialRequested) {
+            clinicContext = buildSocialProfileClinicContext();
+          } else if (directMediaClarificationRequested) {
+            clinicContext = buildMediaClarificationClinicContext();
           } else {
             clinicContext = buildLocationClinicContext(clinic.address);
           }
