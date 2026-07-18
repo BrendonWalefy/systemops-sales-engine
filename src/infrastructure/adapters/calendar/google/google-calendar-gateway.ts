@@ -105,6 +105,20 @@ function getCalendarId(clinicCalendarId?: string | null): string {
   return clinicCalendarId;
 }
 
+export type GoogleCalendarSyncedEvent = {
+  uid: string;
+  summary: string;
+  description: string;
+  startTime: Date;
+  endTime: Date;
+};
+
+export type GoogleCalendarSyncResult = {
+  cancelledIds: string[];
+  events: GoogleCalendarSyncedEvent[];
+  nextSyncToken: string;
+};
+
 export class GoogleCalendarGateway implements CalendarGateway {
   constructor(
     private readonly clinicCalendarId?: string | null,
@@ -455,15 +469,12 @@ export class GoogleCalendarGateway implements CalendarGateway {
     return { resourceId: data.resourceId, expiration: new Date(Number(data.expiration)) };
   }
 
-  // Retorna IDs de eventos cancelados desde o último sync e o novo syncToken.
-  // Se syncToken for null, faz sync inicial (retorna todos os eventos deletados).
+  // Retorna eventos criados/atualizados, IDs cancelados e o novo syncToken.
+  // Se syncToken for null, faz sync inicial dos últimos 180 dias.
   // Um syncToken pode ser invalidado pelo Google (HTTP 410 Gone, ex.: mais de
   // ~1 semana sem sincronizar) — nesse caso o método se auto-recupera refazendo
   // o sync inicial, em vez de congelar a sincronização para sempre.
-  async syncCancelledEventIds(syncToken: string | null): Promise<{
-    cancelledIds: string[];
-    nextSyncToken: string;
-  }> {
+  async syncEvents(syncToken: string | null): Promise<GoogleCalendarSyncResult> {
     const calendarId = getCalendarId(this.clinicCalendarId);
     const token = await getAccessToken();
 
@@ -477,35 +488,83 @@ export class GoogleCalendarGateway implements CalendarGateway {
       params.set("timeMin", sixMonthsAgo.toISOString());
     }
 
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
+    type GCalEvent = {
+      id: string;
+      status?: string;
+      summary?: string;
+      description?: string;
+      start?: { dateTime?: string; date?: string };
+      end?: { dateTime?: string; date?: string };
+    };
 
-    if (res.status === 410 && syncToken) {
-      console.warn(JSON.stringify({
-        level: "warn",
-        scope: "GoogleCalendarGateway",
-        msg: "syncToken invalidado pelo Google (410 Gone) — refazendo sync inicial",
-        calendarId,
-      }));
-      return this.syncCancelledEventIds(null);
-    }
+    const cancelledIds: string[] = [];
+    const events: GoogleCalendarSyncedEvent[] = [];
+    let nextPageToken: string | undefined;
+    let nextSyncToken: string | undefined;
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Google Calendar syncCancelledEventIds failed: ${err}`);
-    }
+    do {
+      const pageParams = new URLSearchParams(params);
+      if (nextPageToken) pageParams.set("pageToken", nextPageToken);
 
-    type GCalEvent = { id: string; status: string };
-    const data = (await res.json()) as { items?: GCalEvent[]; nextSyncToken?: string };
-    const cancelledIds = (data.items ?? [])
-      .filter((e) => e.status === "cancelled")
-      .map((e) => e.id);
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${pageParams}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
 
-    if (!data.nextSyncToken) throw new Error("Google Calendar sync returned no nextSyncToken");
+      if (res.status === 410 && syncToken) {
+        console.warn(JSON.stringify({
+          level: "warn",
+          scope: "GoogleCalendarGateway",
+          msg: "syncToken invalidado pelo Google (410 Gone) — refazendo sync inicial",
+          calendarId,
+        }));
+        return this.syncEvents(null);
+      }
 
-    return { cancelledIds, nextSyncToken: data.nextSyncToken };
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Google Calendar syncEvents failed: ${err}`);
+      }
+
+      const data = (await res.json()) as {
+        items?: GCalEvent[];
+        nextPageToken?: string;
+        nextSyncToken?: string;
+      };
+
+      for (const event of data.items ?? []) {
+        if (event.status === "cancelled") {
+          cancelledIds.push(event.id);
+          continue;
+        }
+
+        if (!event.start?.dateTime || !event.end?.dateTime) continue;
+        if (event.summary?.startsWith(GoogleCalendarGateway.BLOCK_PREFIX)) continue;
+
+        events.push({
+          uid: event.id,
+          summary: event.summary ?? "Evento Google Calendar",
+          description: event.description ?? "",
+          startTime: new Date(event.start.dateTime),
+          endTime: new Date(event.end.dateTime),
+        });
+      }
+
+      nextPageToken = data.nextPageToken;
+      nextSyncToken = data.nextSyncToken ?? nextSyncToken;
+    } while (nextPageToken);
+
+    if (!nextSyncToken) throw new Error("Google Calendar sync returned no nextSyncToken");
+
+    return { cancelledIds, events, nextSyncToken };
+  }
+
+  async syncCancelledEventIds(syncToken: string | null): Promise<{
+    cancelledIds: string[];
+    nextSyncToken: string;
+  }> {
+    const { cancelledIds, nextSyncToken } = await this.syncEvents(syncToken);
+    return { cancelledIds, nextSyncToken };
   }
 
   // Verifica em tempo real se o slot está livre no Google Calendar.

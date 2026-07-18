@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, gte, inArray, isNull, lt, lte } from "drizzle-orm";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
+import { calendarEventIdCandidates } from "@/application/calendar/import-calendar-events";
 import { db } from "@/infrastructure/db/client";
 import { appointments } from "@/infrastructure/db/schema";
 
@@ -86,7 +87,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const row = await db.query.appointments.findFirst({
       where: and(
         eq(appointments.clinicId, clinicId),
-        eq(appointments.calendarEventId, calendarEventId),
+        inArray(appointments.calendarEventId, calendarEventIdCandidates(calendarEventId)),
       ),
     });
     return row ? mapRow(row) : null;
