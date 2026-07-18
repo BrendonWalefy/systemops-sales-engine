@@ -12,6 +12,7 @@ import {
 describe("DepositProofReview", () => {
   it("parses short Pix review replies without colliding with human review case replies", () => {
     expect(parseDepositProofReviewReply("P12 1")).toEqual({ reviewCode: 12, action: "confirm" });
+    expect(parseDepositProofReviewReply("p12 1")).toEqual({ reviewCode: 12, action: "confirm" });
     expect(parseDepositProofReviewReply("pix12 2")).toEqual({ reviewCode: 12, action: "reject" });
     expect(parseDepositProofReviewReply("pix 7:1")).toEqual({ reviewCode: 7, action: "confirm" });
     expect(parseDepositProofReviewReply("12 1")).toBeNull();

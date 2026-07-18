@@ -83,6 +83,7 @@ import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizz
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import {
+  buildHumanReviewButtons,
   buildHumanReviewRequestMessage,
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
@@ -2296,8 +2297,20 @@ export class ConversationOrchestrator {
               mediaLabel,
             })
           : `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
-        sendTextMessage(receptionistPhone, contextMsg, channelConfig)
-          .catch(e => console.warn("[MediaForward] contexto falhou:", e));
+        if (humanReviewContext) {
+          sendButtonListMessage(
+            receptionistPhone,
+            contextMsg,
+            buildHumanReviewButtons(humanReviewContext.reviewCode),
+            channelConfig,
+          ).catch((err) => {
+            console.warn("[HumanReview] botão falhou; enviando fallback texto:", err);
+            sendTextMessage(receptionistPhone, contextMsg, channelConfig).catch(() => {});
+          });
+        } else {
+          sendTextMessage(receptionistPhone, contextMsg, channelConfig)
+            .catch(e => console.warn("[MediaForward] contexto falhou:", e));
+        }
         if (params.mediaUrl) {
           sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig)
             .catch(e => console.warn("[MediaForward] mídia falhou:", e));
@@ -2312,7 +2325,7 @@ export class ConversationOrchestrator {
       }).catch(() => {});
 
       if (humanReviewContext) {
-        const attentionReason = `Caso ${humanReviewContext.reviewCode}: aguardando avaliação humana`;
+        const attentionReason = `Avaliação A${humanReviewContext.reviewCode}: aguardando decisão humana`;
         const now = new Date();
         await db.update(conversationsTable).set({
           aiPaused: true,
