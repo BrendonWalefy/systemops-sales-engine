@@ -69,6 +69,7 @@ export default async function InboxPage({
             body: messages.body,
             author: messages.author,
             sentAt: messages.sentAt,
+            simulated: messages.simulated,
           })
           .from(messages)
           .where(inArray(messages.conversationId, conversationIds))
@@ -111,13 +112,14 @@ export default async function InboxPage({
       : Promise.resolve([]),
   ]);
 
-  const lastMsgMap: Record<string, { body: string; author: string; sentAt: Date | null }> = {};
+  const lastMsgMap: Record<string, { body: string; author: string; sentAt: Date | null; simulated: boolean }> = {};
   for (const msg of lastMessageRows) {
     if (!lastMsgMap[msg.conversationId]) {
       lastMsgMap[msg.conversationId] = {
         body: msg.body ?? "",
         author: msg.author ?? "",
         sentAt: msg.sentAt ?? null,
+        simulated: msg.simulated ?? false,
       };
     }
   }
