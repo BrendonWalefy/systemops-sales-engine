@@ -518,6 +518,25 @@ export function shouldBypassPendingPipelineContent(message: string): boolean {
   return isLocationRequest(message) || isSocialProfileRequest(message) || isMediaClarificationRequest(message);
 }
 
+export function extractSocialProfileInfo(...sources: (string | null | undefined)[]): string | null {
+  const text = sources.filter(Boolean).join("\n");
+  if (!text.trim()) return null;
+
+  const instagramUrl = text.match(/https?:\/\/(?:www\.)?instagram\.com\/[a-z0-9._]+\/?/i)?.[0];
+  if (instagramUrl) return instagramUrl.replace(/[),.;:!?]+$/, "");
+
+  const normalized = normalizeFreeText(text);
+  if (!isSocialProfileRequest(normalized)) return null;
+
+  for (const line of text.split(/\r?\n/)) {
+    if (!isSocialProfileRequest(line)) continue;
+    const handle = line.match(/(^|[\s:])(@[a-z0-9._]+)/i)?.[2];
+    if (handle) return handle.replace(/[),.;:!?]+$/, "");
+  }
+
+  return null;
+}
+
 function isProcedureCatalogRequest(message: string): boolean {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   return n.includes("procedimento") || n.includes("tratamento") || n.includes("servico") || n.includes("opcoes");
@@ -1384,7 +1403,17 @@ export function buildLocationClinicContext(address: string | null): string {
   return `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
 }
 
-function buildSocialProfileClinicContext(): string {
+function buildSocialProfileClinicContext(socialProfile: string | null): string {
+  if (socialProfile) {
+    return [
+      `Lead perguntou Instagram, arroba ou redes sociais da clínica.`,
+      `Perfil/link cadastrado: ${socialProfile}`,
+      `Responda com esse perfil/link exatamente como está cadastrado.`,
+      `Se fizer sentido, acrescente uma ponte curta e calorosa: lá existem trabalhos e destaques para olhar, e você pode ajudar a escolher entre um sorriso mais natural, mais branco ou mais marcante.`,
+      `Não envie mídias, áudio explicativo de tratamento, menu ou convite insistente nessa resposta. Seja objetivo e conduza sem alongar.`,
+    ].join("\n");
+  }
+
   return [
     `Lead perguntou Instagram, arroba ou redes sociais da clínica.`,
     `Não existe Instagram cadastrado como dado estruturado da clínica neste sistema.`,
@@ -4327,7 +4356,9 @@ export class ConversationOrchestrator {
               : "";
             clinicContext = `Lead pediu para ver procedimentos/tratamentos.\nFORMATO OBRIGATÓRIO: apresente os procedimentos exatamente como a lista numerada abaixo, um por linha, sem adicionar descrições. Ao final, acrescente uma linha em branco seguida de: "Quer saber mais sobre algum? É só digitar o número. Para voltar ao menu principal, é só digitar *menu*." Sem convite para agendar.\n${items}`;
           } else if (directSocialRequested) {
-            clinicContext = buildSocialProfileClinicContext();
+            clinicContext = buildSocialProfileClinicContext(
+              extractSocialProfileInfo(editorial?.playbookText, editorial?.commercialPolicy),
+            );
           } else if (directMediaClarificationRequested) {
             clinicContext = buildMediaClarificationClinicContext();
           } else {

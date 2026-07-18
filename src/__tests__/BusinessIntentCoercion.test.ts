@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   coerceBusinessIntent,
   detectPatientArrivalText,
+  extractSocialProfileInfo,
   findExpressedSlotIndex,
   shouldBypassPendingPipelineContent,
 } from "@/core/pipeline/ConversationOrchestrator";
@@ -144,6 +145,19 @@ describe("shouldBypassPendingPipelineContent", () => {
 
   it("não bloqueia continuação normal do pipeline para mensagem comercial simples", () => {
     expect(shouldBypassPendingPipelineContent("Ver valores")).toBe(false);
+  });
+});
+
+describe("extractSocialProfileInfo", () => {
+  it("extrai o Instagram da resposta validada da Vitalli", () => {
+    const source =
+      "Claro 😊 Este é o Instagram da Clínica Vittali: https://www.instagram.com/clinic.vittali  Dá uma olhadinha nos nossos trabalhos com lentes em resina e nos destaques.";
+
+    expect(extractSocialProfileInfo(source)).toBe("https://www.instagram.com/clinic.vittali");
+  });
+
+  it("não inventa perfil quando o playbook não traz Instagram", () => {
+    expect(extractSocialProfileInfo("Clínica especialista em lentes de resina composta.")).toBeNull();
   });
 });
 
