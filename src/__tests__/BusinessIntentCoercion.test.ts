@@ -141,6 +141,51 @@ describe("hasExplicitPipelineTreatmentTrigger", () => {
       }),
     ).toBe(true);
   });
+
+  // Regressão 18/07: os openers reais dos anúncios da Vitalli têm mais de 8
+  // palavras e caíam no teto do resolveDirectTreatmentMention — todo lead de
+  // tráfego pago perdia a saudação concierge e o pipeline de lentes.
+  it("permite pipeline com o opener longo do anúncio (13 palavras)", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Apresentação", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Olá! Quero saber como posso transformar meu sorriso com as lentes  de resina?",
+        treatments: [lenses, ...treatments.slice(1)],
+        treatment: lenses,
+      }),
+    ).toBe(true);
+  });
+
+  it("permite pipeline com o opener curto do anúncio (9 palavras)", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Apresentação", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Olá, quero saber mais sobre as lentes em resina !",
+        treatments: [lenses, ...treatments.slice(1)],
+        treatment: lenses,
+      }),
+    ).toBe(true);
+  });
+
+  it("mensagem longa sem menção textual continua bloqueada", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Apresentação", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Vou conversar com minha esposa e qualquer coisa volto a falar com vocês, obrigado.",
+        treatments: [lenses, ...treatments.slice(1)],
+        treatment: lenses,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("detectPatientArrivalText", () => {

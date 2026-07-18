@@ -1400,7 +1400,15 @@ export function hasExplicitPipelineTreatmentTrigger(params: {
     params.treatments,
     params.lastAgentMessage,
   );
-  return directMention?.id === params.treatment.id;
+  if (directMention?.id === params.treatment.id) return true;
+  // resolveDirectTreatmentMention descarta mensagens com mais de 8 palavras — o
+  // opener de anúncio ("Olá! Quero saber como posso transformar meu sorriso com
+  // as lentes de resina?") menciona o tratamento explicitamente e ainda assim
+  // caía fora do gate, derrubando a saudação concierge e o pipeline inteiro
+  // para todo lead de tráfego pago. A menção textual na mensagem atual é o que
+  // este gate exige; o teto de palavras não se aplica aqui.
+  const pipelineMention = resolvePipelineTreatmentMention(params.message, params.treatments);
+  return pipelineMention?.id === params.treatment.id;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.
