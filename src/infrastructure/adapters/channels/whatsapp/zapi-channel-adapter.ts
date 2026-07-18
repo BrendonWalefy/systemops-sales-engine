@@ -26,6 +26,31 @@ export type ZApiInboundPayload = {
   document?: { documentUrl: string; fileName: string; mimeType: string };
   sticker?: { stickerUrl: string; mimeType: string };
   reaction?: { emoji?: string; reaction?: string; text?: string; message?: string };
+  buttonsResponseMessage?: {
+    buttonId?: string;
+    selectedButtonId?: string;
+    selectedDisplayText?: string;
+    message?: string;
+  };
+  buttonReply?: {
+    id?: string;
+    title?: string;
+    text?: string;
+  };
+  interactive?: {
+    button_reply?: {
+      id?: string;
+      title?: string;
+    };
+    list_reply?: {
+      id?: string;
+      title?: string;
+      description?: string;
+    };
+  };
+  buttonId?: string;
+  selectedButtonId?: string;
+  selectedDisplayText?: string;
   reactionText?: string;
   emoji?: string;
   isGroupMsg?: boolean;
@@ -109,6 +134,63 @@ export async function sendZApiTextMessage(
   try {
     const data = await response.json() as { messageId?: string; zaapId?: string };
     return data.messageId ?? data.zaapId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export type ZApiButton = {
+  id: string;
+  label: string;
+};
+
+export async function sendZApiButtonListMessage(
+  phone: string,
+  text: string,
+  buttons: ZApiButton[],
+  creds: { instanceId: string; token: string; clientToken?: string },
+): Promise<string | null> {
+  const instanceId = creds.instanceId;
+  const token = creds.token;
+  const rawClientToken = creds.clientToken;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http")
+    ? rawClientToken
+    : undefined;
+
+  if (!instanceId || !token) {
+    throw new Error("Z-API instance ID and token must be configured for this clinic");
+  }
+  if (!text.trim()) throw new Error("Z-API button message cannot be empty");
+  if (buttons.length === 0) throw new Error("Z-API button list requires at least one button");
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (clientToken) headers["Client-Token"] = clientToken;
+
+  const response = await fetch(
+    `https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-list`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        phone,
+        message: text,
+        buttonList: {
+          buttons: buttons.map((button) => ({ id: button.id, label: button.label })),
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Z-API send-button-list failed (${response.status}): ${error}`);
+  }
+
+  try {
+    const data = await response.json() as { messageId?: string; zaapId?: string; id?: string };
+    return data.messageId ?? data.id ?? data.zaapId ?? null;
   } catch {
     return null;
   }
@@ -526,4 +608,3 @@ export async function getZApiPhoneCode(
     };
   }
 }
-

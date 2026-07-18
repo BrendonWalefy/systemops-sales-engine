@@ -10,6 +10,21 @@ export type ParsedDepositProofReviewReply = {
   action: DepositProofDecision;
 };
 
+export function buildDepositProofButtonIds(reviewCode: number): { confirm: string; reject: string } {
+  return {
+    confirm: `deposit:${reviewCode}:confirm`,
+    reject: `deposit:${reviewCode}:reject`,
+  };
+}
+
+export function buildDepositProofButtons(reviewCode: number): { id: string; label: string }[] {
+  const ids = buildDepositProofButtonIds(reviewCode);
+  return [
+    { id: ids.confirm, label: "Confirmar Pix" },
+    { id: ids.reject, label: "Pix não localizado" },
+  ];
+}
+
 export function parseDepositProofReviewReply(text: string): ParsedDepositProofReviewReply | null {
   const normalized = text
     .normalize("NFD")
@@ -17,6 +32,16 @@ export function parseDepositProofReviewReply(text: string): ParsedDepositProofRe
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+
+  const buttonMatch = normalized.match(/^deposit:(\d{1,3}):(confirm|reject)$/);
+  if (buttonMatch) {
+    const reviewCode = Number(buttonMatch[1]);
+    if (!Number.isInteger(reviewCode) || reviewCode < 1 || reviewCode > 999) return null;
+    return {
+      reviewCode,
+      action: buttonMatch[2] === "confirm" ? "confirm" : "reject",
+    };
+  }
 
   const match = normalized.match(/^(?:p|pix)\s*(\d{1,3})\s*[-:.,]?\s*([12])$/);
   if (!match) return null;
@@ -57,10 +82,53 @@ export function buildDepositProofReviewRequestMessage(params: {
     "",
     "Valide se o Pix entrou na conta.",
     "",
-    "Responda:",
+    "Toque em um botão abaixo.",
+    "",
+    "Se os botões não aparecerem, responda:",
     `${code} 1 — Pix confirmado; confirmar agendamento`,
     `${code} 2 — Pix não localizado; atendimento manual`,
   ].join("\n");
+}
+
+export function extractDepositProofReviewInput(payload: {
+  text?: { message?: string };
+  buttonsResponseMessage?: {
+    buttonId?: string;
+    selectedButtonId?: string;
+    selectedDisplayText?: string;
+    message?: string;
+  };
+  buttonReply?: {
+    id?: string;
+    title?: string;
+    text?: string;
+  };
+  interactive?: {
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string };
+  };
+  buttonId?: string;
+  selectedButtonId?: string;
+  selectedDisplayText?: string;
+}): string | null {
+  return (
+    payload.buttonsResponseMessage?.buttonId ??
+    payload.buttonsResponseMessage?.selectedButtonId ??
+    payload.buttonReply?.id ??
+    payload.interactive?.button_reply?.id ??
+    payload.interactive?.list_reply?.id ??
+    payload.buttonId ??
+    payload.selectedButtonId ??
+    payload.text?.message ??
+    payload.buttonsResponseMessage?.selectedDisplayText ??
+    payload.buttonsResponseMessage?.message ??
+    payload.buttonReply?.title ??
+    payload.buttonReply?.text ??
+    payload.interactive?.button_reply?.title ??
+    payload.interactive?.list_reply?.title ??
+    payload.selectedDisplayText ??
+    null
+  );
 }
 
 export function buildDepositProofDecisionConfirmation(params: {

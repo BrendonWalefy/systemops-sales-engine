@@ -23,7 +23,7 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
-import { sendTextMessage, sendMediaMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { sendTextMessage, sendMediaMessage, sendButtonListMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import type { OutboundPart } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
@@ -87,6 +87,7 @@ import {
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
 import {
+  buildDepositProofButtons,
   buildDepositProofReviewRequestMessage,
   nextAvailableDepositProofReviewCode,
 } from "@/application/conversations/deposit-proof-review";
@@ -2130,16 +2131,21 @@ export class ConversationOrchestrator {
           const receptionistPhone = clinic.receptionistPhone;
           if (receptionistPhone) {
             const leadName = lead.name ?? outboundAddress;
-            sendTextMessage(
+            const proofReviewMessage = buildDepositProofReviewRequestMessage({
+              reviewCode: proofReviewCode,
+              leadName,
+              slotLabel: depositState.payload.slotLabel,
+              depositAmountCents: depositState.payload.depositAmountCents,
+            });
+            sendButtonListMessage(
               receptionistPhone,
-              buildDepositProofReviewRequestMessage({
-                reviewCode: proofReviewCode,
-                leadName,
-                slotLabel: depositState.payload.slotLabel,
-                depositAmountCents: depositState.payload.depositAmountCents,
-              }),
+              proofReviewMessage,
+              buildDepositProofButtons(proofReviewCode),
               channelConfig,
-            ).catch(() => {});
+            ).catch((err) => {
+              console.warn("[DepositReview] botão falhou; enviando fallback texto:", err);
+              sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig).catch(() => {});
+            });
             if (params.mediaUrl) {
               sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
             }
