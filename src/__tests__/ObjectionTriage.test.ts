@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  detectCommercialPauseText,
   detectOldPriceObjection,
   detectAtypicalClinicalCase,
 } from "@/core/intelligence/objection-triage";
@@ -22,11 +23,28 @@ describe("detectOldPriceObjection", () => {
   });
 });
 
+describe("detectCommercialPauseText", () => {
+  it("detecta pesquisa de valores com intenção explícita de voltar depois", () => {
+    expect(
+      detectCommercialPauseText(
+        "Certo. Vou fazer uns levantamentos, estou só levantando valores por enquanto e volto a chamar. Grata.",
+      ),
+    ).toBe(true);
+    expect(detectCommercialPauseText("Vou comparar os valores e retorno depois.")).toBe(true);
+  });
+
+  it("não bloqueia uma pergunta comercial objetiva", () => {
+    expect(detectCommercialPauseText("Qual o valor de 10 lentes superiores?")).toBe(false);
+    expect(detectCommercialPauseText("Estou pesquisando valores, quais são as opções?")).toBe(false);
+  });
+});
+
 // A6 — Triagem de caso atípico. Caso real: Gaab (15/07) — dois dentes fraturados,
 // só a raiz, indicação de ponte fixa.
 describe("detectAtypicalClinicalCase", () => {
-  it("detecta problema estrutural: dente fraturado / só raiz / ponte indicada / dente ausente", () => {
+  it("detecta problema estrutural: dente fraturado / lascado / só raiz / ponte indicada / dente ausente", () => {
     expect(detectAtypicalClinicalCase("esses dois dentes estão fraturados")).toBe("dente fraturado");
+    expect(detectAtypicalClinicalCase("estou com um dente lascado")).toBe("dente lascado");
     expect(detectAtypicalClinicalCase("tem somente a raiz por dentro")).toBe("só a raiz do dente");
     expect(detectAtypicalClinicalCase("meu dentista indicou uma ponte fixa")).toBe("ponte indicada");
     expect(detectAtypicalClinicalCase("esse dente eu já perdi, caiu o dente")).toBe("dente ausente");
