@@ -90,6 +90,17 @@ export function buildDepositProofReviewRequestMessage(params: {
   ].join("\n");
 }
 
+export function buildDepositProofButtonPromptMessage(reviewCode: number): string {
+  const code = `P${reviewCode}`;
+  return [
+    `${code}: escolha uma opção para validar o Pix.`,
+    "",
+    "Se os botões não aparecerem, responda:",
+    `${code} 1 — Pix confirmado; confirmar agendamento`,
+    `${code} 2 — Pix não localizado; atendimento manual`,
+  ].join("\n");
+}
+
 export function extractDepositProofReviewInput(payload: {
   text?: { message?: string };
   buttonsResponseMessage?: {

@@ -88,6 +88,7 @@ import {
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
 import {
+  buildDepositProofButtonPromptMessage,
   buildDepositProofButtons,
   buildDepositProofReviewRequestMessage,
   nextAvailableDepositProofReviewCode,
@@ -2398,18 +2399,28 @@ export class ConversationOrchestrator {
               slotLabel: depositState.payload.slotLabel,
               depositAmountCents: depositState.payload.depositAmountCents,
             });
-            sendButtonListMessage(
-              receptionistPhone,
-              proofReviewMessage,
-              buildDepositProofButtons(proofReviewCode),
-              channelConfig,
-            ).catch((err) => {
-              console.warn("[DepositReview] botão falhou; enviando fallback texto:", err);
-              sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig).catch(() => {});
-            });
-            if (params.mediaUrl) {
-              sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
-            }
+            void (async () => {
+              try {
+                await sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig);
+              } catch (err) {
+                console.warn("[DepositReview] texto de validação falhou:", err);
+              }
+
+              try {
+                await sendButtonListMessage(
+                  receptionistPhone,
+                  buildDepositProofButtonPromptMessage(proofReviewCode),
+                  buildDepositProofButtons(proofReviewCode),
+                  channelConfig,
+                );
+              } catch (err) {
+                console.warn("[DepositReview] botões de validação falharam:", err);
+              }
+
+              if (params.mediaUrl) {
+                await sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
+              }
+            })();
           }
           await this.notifier.execute(clinicId, {
             title: lead.name ?? phone,

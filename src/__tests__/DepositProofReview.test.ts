@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDepositProofButtonPromptMessage,
   buildDepositProofDecisionConfirmation,
   buildDepositProofInvalidReplyMessage,
   buildDepositProofButtons,
@@ -60,6 +61,15 @@ describe("DepositProofReview", () => {
     expect(message).toContain("P12 1");
     expect(message).toContain("P12 2");
     expect(message).not.toMatch(/painel/i);
+  });
+
+  it("builds a compact button prompt with manual fallback", () => {
+    const message = buildDepositProofButtonPromptMessage(12);
+
+    expect(message).toContain("P12");
+    expect(message).toContain("Se os botões não aparecerem");
+    expect(message).toContain("P12 1");
+    expect(message).toContain("P12 2");
   });
 
   it("confirms the doctor's Pix decision in plain language", () => {
