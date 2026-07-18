@@ -6,6 +6,7 @@ import {
   getZApiPhoneCode,
   createZApiInstance,
   applyZApiInstancePreset,
+  sendZApiButtonListMessage,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -71,6 +72,44 @@ describe("sendZApiTextMessage", () => {
     expect(init.headers).toEqual({
       "Content-Type": "application/json",
       "Client-Token": "client-token-1",
+    });
+  });
+});
+
+describe("sendZApiButtonListMessage", () => {
+  it("envia quick reply buttons no formato esperado pela Z-API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ messageId: "button-msg-1" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendZApiButtonListMessage(
+        "5511999999999",
+        "Valide o Pix",
+        [
+          { id: "deposit:12:confirm", label: "Confirmar Pix" },
+          { id: "deposit:12:reject", label: "Pix não localizado" },
+        ],
+        { instanceId: "instance-1", token: "token-1", clientToken: "client-token-1" },
+      ),
+    ).resolves.toBe("button-msg-1");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.z-api.io/instances/instance-1/token/token-1/send-button-list");
+    expect(init.headers).toEqual({
+      "Content-Type": "application/json",
+      "Client-Token": "client-token-1",
+    });
+    expect(JSON.parse(String(init.body))).toEqual({
+      phone: "5511999999999",
+      message: "Valide o Pix",
+      buttonList: {
+        buttons: [
+          { id: "deposit:12:confirm", label: "Confirmar Pix" },
+          { id: "deposit:12:reject", label: "Pix não localizado" },
+        ],
+      },
     });
   });
 });
@@ -349,4 +388,3 @@ describe("getZApiPhoneCode", () => {
     expect(result.status).toBe("error");
   });
 });
-

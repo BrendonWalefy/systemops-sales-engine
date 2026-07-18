@@ -33,6 +33,7 @@ import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrat
 import {
   buildDepositProofDecisionConfirmation,
   buildDepositProofInvalidReplyMessage,
+  extractDepositProofReviewInput,
   findPendingDepositProofByCode,
   isMalformedDepositProofReviewReply,
   parseDepositProofReviewReply,
@@ -164,14 +165,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (
-    areEquivalentWhatsAppPhones(body.phone, clinicRow.receptionistPhone) &&
-    body.text?.message
+    areEquivalentWhatsAppPhones(body.phone, clinicRow.receptionistPhone)
   ) {
-    const parsedDepositReply = parseDepositProofReviewReply(body.text.message);
-    const shouldRejectMalformedDepositReply = isMalformedDepositProofReviewReply(body.text.message);
-    const parsedReviewReply = parseHumanReviewReply(body.text.message);
-    const shouldRejectBareDecision = /^[1-4]$/.test(body.text.message.trim());
-    const shouldRejectMalformedCaseReply = /^caso\b/i.test(body.text.message.trim());
+    const operatorInput = extractDepositProofReviewInput(body) ?? body.text?.message ?? "";
+    const parsedDepositReply = parseDepositProofReviewReply(operatorInput);
+    const shouldRejectMalformedDepositReply = isMalformedDepositProofReviewReply(operatorInput);
+    const parsedReviewReply = parseHumanReviewReply(operatorInput);
+    const shouldRejectBareDecision = /^[1-4]$/.test(operatorInput.trim());
+    const shouldRejectMalformedCaseReply = /^caso\b/i.test(operatorInput.trim());
     const channelConfig = resolveChannelConfig(clinicRow);
     const reviewRepo = new DrizzleHumanReviewRequestRepository();
 
