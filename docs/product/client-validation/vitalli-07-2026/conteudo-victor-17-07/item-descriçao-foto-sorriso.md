@@ -1,0 +1,1 @@
+Você poderia nos encaminhar uma foto ou vídeo do seu sorriso para realizar uma pré avaliação por aqui por gentileza?

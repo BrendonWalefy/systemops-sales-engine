@@ -36,6 +36,7 @@ import {
   reorderExcerpt,
   updateExcerptContext,
   sendReviewForFeedback,
+  regenerateReviewLink,
 } from "../../conversation-review-actions";
 import type {
   ConversationExcerpt,
@@ -96,7 +97,7 @@ export function ReviewWorkbench({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {!isDraft && <StatusBanner review={review} />}
+      {!isDraft && <StatusBanner clinicId={clinicId} review={review} />}
 
       {/* Trechos curados */}
       <section style={{ border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", background: "var(--surface)" }}>
@@ -140,7 +141,7 @@ export function ReviewWorkbench({
   );
 }
 
-function StatusBanner({ review }: { review: ReviewViewModel }) {
+function StatusBanner({ clinicId, review }: { clinicId: string; review: ReviewViewModel }) {
   if (review.status === "answered") {
     return (
       <div style={{ display: "grid", gap: 10 }}>
@@ -163,10 +164,13 @@ function StatusBanner({ review }: { review: ReviewViewModel }) {
   }
   if (review.status === "sent") {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderRadius: 10, background: "rgba(245,158,11,0.08)", fontSize: 13, color: "var(--text)" }}>
-        <Clock size={15} style={{ color: "#f59e0b" }} />
-        Enviada{review.sentAt && ` em ${formatDate(review.sentAt)}`} — aguardando o cliente.
-        {review.expiresAt && ` O link expira em ${formatDate(review.expiresAt)}.`}
+      <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderRadius: 10, background: "rgba(245,158,11,0.08)", fontSize: 13, color: "var(--text)" }}>
+          <Clock size={15} style={{ color: "#f59e0b" }} />
+          Enviada{review.sentAt && ` em ${formatDate(review.sentAt)}`} — aguardando o cliente.
+          {review.expiresAt && ` O link expira em ${formatDate(review.expiresAt)}.`}
+        </div>
+        <RegenerateLinkControls clinicId={clinicId} reviewId={review.id} />
       </div>
     );
   }
@@ -174,6 +178,88 @@ function StatusBanner({ review }: { review: ReviewViewModel }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderRadius: 10, background: "var(--surface-soft)", fontSize: 13, color: "var(--muted)" }}>
       <Clock size={15} /> Rodada expirada — fica apenas como histórico.
     </div>
+  );
+}
+
+/**
+ * Botão para gerar um novo link de uma rodada já "sent". O token só é
+ * mostrado uma vez (mesmo padrão de `SendControls`) — existe para os casos
+ * em que o link original nunca chegou a ser copiado (o navegador travou, a
+ * página fechou antes de aparecer, etc.) e não haveria outra forma de
+ * recuperá-lo sem refazer a curadoria dos trechos do zero.
+ */
+function RegenerateLinkControls({ clinicId, reviewId }: { clinicId: string; reviewId: string }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [newLink, setNewLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleRegenerate = () => {
+    if (
+      !confirm(
+        "Gerar um novo link invalida qualquer link anterior desta rodada (se ele já tiver sido enviado ao cliente, pare de usá-lo). Continuar?",
+      )
+    )
+      return;
+    startTransition(async () => {
+      try {
+        const { url } = await regenerateReviewLink(clinicId, reviewId);
+        setNewLink(url);
+      } catch (err: unknown) {
+        alert((err as Error).message || "Erro ao gerar o link.");
+      }
+    });
+  };
+
+  const handleCopy = async () => {
+    if (!newLink) return;
+    try {
+      await navigator.clipboard.writeText(newLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard indisponível — o link já está visível para cópia manual */
+    }
+  };
+
+  if (newLink) {
+    return (
+      <div style={{ display: "grid", gap: 8 }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
+          Novo link criado. Copie e envie ao responsável pelo WhatsApp — <strong>este link só aparece agora</strong>.
+        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <code style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, padding: "8px 10px", background: "var(--surface-soft)", borderRadius: 6, border: "1px solid var(--line)" }}>
+            {newLink}
+          </code>
+          <button onClick={handleCopy} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 12px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface-soft)", color: "var(--text)", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            <Copy size={13} /> {copied ? "Copiado!" : "Copiar"}
+          </button>
+        </div>
+        <button onClick={() => router.refresh()} style={{ justifySelf: "start", background: "none", border: "none", color: "var(--muted)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+          Já copiei, atualizar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleRegenerate}
+      disabled={isPending}
+      title="Use se o link original nunca apareceu ou foi perdido"
+      style={{
+        justifySelf: "start",
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "8px 14px", borderRadius: 8,
+        border: "1px solid var(--line)", background: "transparent", color: "var(--text)",
+        fontSize: 12, fontWeight: 700,
+        cursor: isPending ? "not-allowed" : "pointer",
+        opacity: isPending ? 0.6 : 1,
+      }}
+    >
+      <Copy size={13} /> {isPending ? "Gerando..." : "Gerar novo link"}
+    </button>
   );
 }
 
@@ -498,6 +584,15 @@ function ConversationPicker({
   };
 
   const handleExpand = (convId: string) => {
+    // Trocar de conversa (ou recolher a atual) descarta a seleção em
+    // andamento — ela só é salva de fato ao clicar "Adicionar trecho".
+    // Confirma antes de perder uma seleção não trivial silenciosamente.
+    if (anchorId && expandedId && expandedId !== convId && selectableCount > 0) {
+      const ok = window.confirm(
+        `Você selecionou ${selectableCount} mensagem${selectableCount === 1 ? "" : "s"} nesta conversa e ainda não adicionou como trecho. Trocar de conversa agora descarta essa seleção. Continuar?`,
+      );
+      if (!ok) return;
+    }
     setExpandedId((prev) => (prev === convId ? null : convId));
     clearSelection();
   };
@@ -576,25 +671,29 @@ function ConversationPicker({
                           disabled={!selectable || isPending}
                           title={selectable ? "Clique para marcar o início/fim do intervalo" : "Mensagens de sistema não entram no trecho"}
                           style={{
-                            display: "flex", alignItems: "baseline", gap: 8,
+                            display: "flex", alignItems: "flex-start", gap: 8,
                             padding: "6px 10px", borderRadius: 8, textAlign: "left",
                             border: selected ? "1px solid var(--accent)" : "1px solid transparent",
                             background: selected ? "rgba(163,230,53,0.08)" : "transparent",
                             color: selectable ? "var(--text)" : "var(--muted)",
                             fontSize: 13, cursor: selectable ? "pointer" : "default",
                             opacity: selectable ? 1 : 0.55,
+                            width: "100%",
                           }}
                         >
-                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: msg.author === "agent" ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: msg.author === "agent" ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 2 }}>
                             {PICKER_AUTHOR_LABELS[msg.author]}
                             {msg.author === "agent" && msg.simulated && " · shadow"}
                           </span>
-                          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {/* Mensagem completa, quebrando em múltiplas linhas — antes truncava
+                              em nowrap sem que a elipse aparecesse (o contêiner vazava a
+                              largura da tela em vez de encolher), tornando o texto ilegível. */}
+                          <span style={{ flex: 1, minWidth: 0, whiteSpace: "normal", overflowWrap: "break-word", lineHeight: 1.45 }}>
                             {msg.mediaType ? `📎 [${msg.mediaType}] ` : ""}
                             {msg.deliveryFormat === "audio" ? "🎤 " : ""}
                             {msg.body}
                           </span>
-                          <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 2 }}>
                             {new Date(msg.sentAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         </button>

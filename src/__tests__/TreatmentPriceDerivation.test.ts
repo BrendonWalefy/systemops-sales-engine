@@ -57,6 +57,39 @@ describe("composePriceSection — derivação de preço", () => {
     expect(text).toContain("R$ 2.500 (20 elementos)");
   });
 
+  it("A4 — pacotes por quantidade listam cada preço fechado e proíbem extrapolação", () => {
+    const text = composePriceSection([
+      fact({
+        name: "Técnica Simplificada",
+        priceQuotableInChat: true,
+        priceUnit: "lentes",
+        quantityPrices: [
+          { quantity: 10, priceCents: 150000 },
+          { quantity: 20, priceCents: 180000 },
+        ],
+      }),
+    ]);
+    expect(text).toContain("Técnica Simplificada — pacotes fechados");
+    expect(text).toContain("10 lentes: R$ 1.500");
+    expect(text).toContain("20 lentes: R$ 1.800");
+    expect(text).toMatch(/NÃO calcule proporcional/i);
+  });
+
+  it("A4 — pacote por quantidade tem precedência sobre o piso 'a partir de'", () => {
+    const text = composePriceSection([
+      fact({
+        name: "Técnica Estratificada",
+        minPriceCents: 200000,
+        priceKind: "from",
+        priceQuotableInChat: true,
+        priceUnit: "lentes",
+        quantityPrices: [{ quantity: 20, priceCents: 200000 }],
+      }),
+    ]);
+    expect(text).toContain("20 lentes: R$ 2.000");
+    expect(text).not.toContain("a partir de");
+  });
+
   it("abatimento acrescenta a instrução de mencionar o desconto", () => {
     const text = composePriceSection([
       fact({ name: "Avaliação", priceCents: 10000, priceQuotableInChat: true, priceKind: "fixed", priceDeductible: true }),

@@ -47,6 +47,15 @@ export type PipelineStep =
       // Quantas mensagens de Q&A antes de sinalizar ao lead que pode agendar.
       // ⚠️ OPEN: deve ser configurável por clínica ou só por step?
       maxTurns?: number; // default 10
+      // Mídia anexada DETERMINISTICAMENTE quando a mensagem do lead casa com
+      // alguma das palavras-chave (o sistema anexa, a LLM verbaliza). Ex.:
+      // pergunta de "cor/tom" durante a Q&A de lentes → anexa a tabela de
+      // cores. Sem isto o envio da imagem dependia da discrição do LLM (que
+      // nesse ponto do fluxo não tem como anexar mídia — ver Orchestrator),
+      // logo a imagem nunca ia junto. A mídia segue o isolamento por
+      // procedimento (GERAL = enviável em qualquer contexto). Primeira entrada
+      // que casa vence; ausente = comportamento atual (nenhum anexo).
+      mediaOnKeywords?: { keywords: string[]; mediaId: string }[];
     }
   | {
       type: "photo";
@@ -62,6 +71,29 @@ export type PipelineStep =
   | { type: "book"; label: string };
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Preço por quantidade fechada (ex.: pacotes de lentes: 10 = R$1.500, 20 = R$1.800).
+// Existe porque clínicas vendem "pacotes" cujo preço NÃO é proporcional à quantidade
+// — a IA não pode extrapolar (10 não é metade de 20). `scope` distingue a arcada quando
+// o preço muda ("só as de cima"). Regra de ouro: só cotamos quantidades presentes nesta
+// tabela; qualquer outra vira escalonamento para a equipe (nunca chutar um valor).
+export type TreatmentQuantityPrice = {
+  quantity: number;
+  scope?: "total" | "superior" | "inferior";
+  priceCents: number;
+};
+
+// Janela de INÍCIO permitida para agendar este tratamento (ex.: lentes só começam
+// 09:00 e 16:00). Quando o tratamento tem janelas, os únicos horários ofertáveis são
+// exatamente estes — a grade horária de 60min do businessHours é ignorada para ele.
+// `weekdays` (0=Dom..6=Sáb) restringe os dias; ausente = todos os dias de operação da
+// clínica. O FIM do slot pode ultrapassar o fim do expediente: a janela é config mais
+// específica e vence (sem isso, lentes de 300min às 16:00 nunca seriam ofertáveis).
+export type TreatmentBookingWindow = {
+  startHour: number;   // 0-23
+  startMinute: number; // 0-59
+  weekdays?: number[];
+};
 
 export type Treatment = {
   id: string;
@@ -83,6 +115,12 @@ export type Treatment = {
   priceKind: "from" | "fixed";
   priceUnit: string | null;
   priceDeductible: boolean;
+  // Tabela de preço por quantidade fechada (pacotes). Ausente/null = sem pacotes por
+  // quantidade (comportamento atual: só priceCents/minPriceCents). Opcional para não
+  // exigir o campo em todo construtor de Treatment — o repositório sempre popula.
+  quantityPrices?: TreatmentQuantityPrice[] | null;
+  // Janelas de início permitidas. Ausente/null = grade horária padrão (businessHours).
+  bookingWindows?: TreatmentBookingWindow[] | null;
   createdAt: Date;
   updatedAt: Date;
 };

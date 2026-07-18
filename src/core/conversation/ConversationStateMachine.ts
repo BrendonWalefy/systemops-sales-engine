@@ -15,7 +15,11 @@ export type ConversationStateType =
   | "menu_offered"
   | "procedure_list_offered"
   | "treatment_pipeline_active"
-  | "awaiting_appointment_confirmation";
+  | "awaiting_appointment_confirmation"
+  // Fluxo de sinal: lead escolheu o slot, aguardando o comprovante do Pix.
+  | "awaiting_deposit_proof"
+  // Comprovante recebido; aguardando o operador validar e confirmar.
+  | "deposit_proof_received";
 
 export type FormattedSlot = {
   index: number;       // 1, 2, 3 — o número que o lead vê
@@ -57,7 +61,23 @@ export type AppointmentConfirmationPayload = {
   appointmentLabel: string;
 };
 
-type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | AppointmentConfirmationPayload | Record<string, unknown>;
+// Fluxo de sinal: dados necessários para cobrar o sinal, segurar o slot e, quando o
+// operador confirmar, criar o agendamento com os mesmos horário/valor.
+export type DepositFlowPayload = {
+  slotStartsAt: string; // ISO UTC
+  slotEndsAt: string;   // ISO UTC
+  slotLabel: string;    // "Seg 26/05 às 09h"
+  reservationId: string | null; // null quando shadow mode pulou a reserva
+  treatmentId: string | null;
+  treatmentName?: string;
+  valueCents: number | null;
+  depositAmountCents: number;
+  holdExpiresAt: string; // ISO UTC
+  proofMessageId?: string;
+  proofReceivedAt?: string;
+};
+
+type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | AppointmentConfirmationPayload | DepositFlowPayload | Record<string, unknown>;
 
 export type ConversationStateRow = {
   id: string;
@@ -272,16 +292,20 @@ export class ConversationStateMachine {
   // ─── Pipeline de tratamento ───────────────────────────────────────────────
 
   // Inicia o pipeline para um tratamento. TTL: 4 horas (mesmo que staleConversationHours default).
+  // startStepIndex permite posicionar o pipeline já em um passo específico sem emiti-lo —
+  // usado para "deferir" o passo de conteúdo no 1º contato concierge (envia só o opener de
+  // qualificação; o conteúdo/mídia dispara na continuação, na próxima mensagem do lead).
   async startTreatmentPipeline(
     conversationId: string,
     treatmentId: string,
     treatmentName: string,
     ttlMinutes = 240,
+    startStepIndex = 0,
   ): Promise<void> {
     const payload: TreatmentPipelinePayload = {
       treatmentId,
       treatmentName,
-      stepIndex: 0,
+      stepIndex: startStepIndex,
       qaTurns: 0,
       photoReceived: false,
     };
@@ -367,5 +391,51 @@ export class ConversationStateMachine {
     const state = await this.getCurrentState(conversationId);
     if (!state || state.state !== "awaiting_appointment_confirmation") return null;
     return state.payload as AppointmentConfirmationPayload;
+  }
+
+  // ─── Fluxo de sinal (depósito) ───────────────────────────────────────────────
+
+  // Registra que o lead escolheu o slot e recebeu o pedido de sinal. TTL = janela do
+  // hold (depositTtlHours). Após expirar, o cron libera a reserva e avisa o lead.
+  async startDepositWait(
+    conversationId: string,
+    payload: DepositFlowPayload,
+    ttlMinutes: number,
+  ): Promise<void> {
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "awaiting_deposit_proof",
+      payload,
+      expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+    });
+  }
+
+  // Marca que o comprovante chegou (qualquer imagem/PDF neste estado). TTL generoso
+  // (7 dias) para dar tempo ao operador validar sem o estado expirar.
+  async markDepositProofReceived(conversationId: string, proofMessageId: string): Promise<void> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "awaiting_deposit_proof") return;
+    const current = state.payload as DepositFlowPayload;
+    await db.insert(conversationStates).values({
+      conversationId,
+      state: "deposit_proof_received",
+      payload: {
+        ...current,
+        proofMessageId,
+        proofReceivedAt: new Date().toISOString(),
+      } satisfies DepositFlowPayload,
+      expiresAt: new Date(Date.now() + 7 * 24 * 3600_000),
+    });
+  }
+
+  // Retorna o estado + payload do fluxo de sinal (aguardando comprovante OU
+  // comprovante recebido), ou null se não está em fluxo de sinal.
+  async getDepositState(
+    conversationId: string,
+  ): Promise<{ state: "awaiting_deposit_proof" | "deposit_proof_received"; payload: DepositFlowPayload } | null> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state) return null;
+    if (state.state !== "awaiting_deposit_proof" && state.state !== "deposit_proof_received") return null;
+    return { state: state.state, payload: state.payload as DepositFlowPayload };
   }
 }

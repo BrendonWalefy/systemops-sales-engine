@@ -5,7 +5,7 @@ import { playbookVersions, treatments } from "@/infrastructure/db/schema";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "./price-campaigns";
-export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "./playbook-lint";
+export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues, lintPersonaCoherence } from "./playbook-lint";
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
@@ -49,6 +49,9 @@ export type TreatmentPriceFact = {
   priceKind: "from" | "fixed";
   priceUnit: string | null;
   priceDeductible: boolean;
+  quantityPrices?:
+    | import("@/domain/entities/treatment").TreatmentQuantityPrice[]
+    | null;
   originalPriceCents?: number | null;
   campaignName?: string | null;
   campaignEndsAt?: Date | null;
@@ -77,14 +80,42 @@ function formatDateBr(date: Date): string {
  * Retorna string vazia quando nenhum tratamento é cotável por mensagem — nesse
  * caso a `commercialPolicy` humana (só enquadramento) segue intacta.
  */
+// Renderiza a linha de preço por quantidade (pacotes). Ex.:
+// "Técnica Simplificada — pacotes fechados: 10 lentes R$ 1.500, 20 lentes R$ 1.800.
+//  Só cote estas quantidades; para outra quantidade, diga que confirma com a equipe."
+function renderQuantityPriceLine(fact: TreatmentPriceFact): string {
+  const qps = fact.quantityPrices ?? [];
+  const unitNoun = fact.priceUnit?.trim() || "unidades";
+  const parts = qps.map((qp) => {
+    const scope =
+      qp.scope === "superior"
+        ? " (arcada superior)"
+        : qp.scope === "inferior"
+          ? " (arcada inferior)"
+          : "";
+    return `${qp.quantity} ${unitNoun}${scope}: ${formatBrl(qp.priceCents)}`;
+  });
+  return (
+    `${fact.name} — pacotes fechados: ${parts.join(", ")}. ` +
+    `Cote SOMENTE estas quantidades exatas; para qualquer outra quantidade, ` +
+    `NÃO calcule proporcional nem invente — diga que confirma o valor exato com a equipe.`
+  );
+}
+
 export function composePriceSection(treatments: TreatmentPriceFact[]): string {
   const quotable = treatments.filter((t) => {
+    if (t.quantityPrices?.length) return t.priceQuotableInChat;
     const value = t.priceKind === "fixed" ? (t.priceCents ?? t.minPriceCents) : (t.minPriceCents ?? t.priceCents);
     return t.priceQuotableInChat && value != null;
   });
   if (quotable.length === 0) return "";
 
   const lines = quotable.map((t) => {
+    // Pacotes por quantidade têm precedência: preço fechado por quantidade não é
+    // proporcional, então listamos cada um explicitamente em vez de um piso genérico.
+    if (t.quantityPrices?.length) {
+      return renderQuantityPriceLine(t);
+    }
     const value = t.priceKind === "fixed" ? (t.priceCents ?? t.minPriceCents)! : (t.minPriceCents ?? t.priceCents)!;
     const unit = t.priceUnit?.trim() ? ` (${t.priceUnit.trim()})` : "";
     const hasCampaign = t.originalPriceCents != null && t.campaignName;
@@ -291,6 +322,7 @@ export async function resolveActiveEditorialConfig(
         priceKind: treatments.priceKind,
         priceUnit: treatments.priceUnit,
         priceDeductible: treatments.priceDeductible,
+        quantityPrices: treatments.quantityPrices,
       })
       .from(treatments)
       .where(eq(treatments.clinicId, clinicId)),
@@ -320,6 +352,7 @@ export async function resolveActiveEditorialConfig(
       priceKind: effective.priceKind,
       priceUnit: t.priceUnit,
       priceDeductible: t.priceDeductible,
+      quantityPrices: t.quantityPrices,
       originalPriceCents: effective.originalPriceCents,
       campaignName: effective.campaignName,
       campaignEndsAt: effective.campaignEndsAt,

@@ -2,7 +2,7 @@ import { areEquivalentWhatsAppPhones } from "./WhatsAppContactIdentity";
 
 const INTERNAL_OPERATIONAL_PATTERNS = [
   ["precisa de voce", "acesse o inbox para responder"],
-  ["responda neste chat", "sera encaminhada automaticamente ao lead"],
+  ["para responder ao lead", "responda diretamente no chat dele"],
 ];
 
 function normalizeOperationalText(text: string): string {

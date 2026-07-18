@@ -41,6 +41,10 @@ export type AutomationOutboundPayload = {
   agentMessageId: string;
   useVoice?: boolean;
   ttsConfig?: TtsConfig;
+  // Anexos pré-resolvidos (url/tipo já materializados no enqueue). Enviados
+  // após o texto, em ordem. Ausente/vazio = só texto (comportamento atual).
+  // Usado pela régua de pós-atendimento (cuidados = texto + imagens + vídeo).
+  mediaParts?: OutboundDeliveryPart[];
 };
 
 export type OutboundPayload = ConversationOutboundPayload | AutomationOutboundPayload;

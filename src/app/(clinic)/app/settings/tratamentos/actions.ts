@@ -43,6 +43,7 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     priceKind: "from",
     priceUnit: null,
     priceDeductible: false,
+    quantityPrices: null,
   });
   revalidatePath("/app/settings/playbook");
   revalidateTag(clinicTreatmentsTag(clinicId), "max");

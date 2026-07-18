@@ -3,11 +3,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, messages, leads } from "@/infrastructure/db/schema";
 import { and, eq, gte } from "drizzle-orm";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
-import { buildContactIdentifiersFromWebhook } from "@/core/whatsapp/WhatsAppContactIdentity";
+import {
+  areEquivalentWhatsAppPhones,
+  buildContactIdentifiersFromWebhook,
+} from "@/core/whatsapp/WhatsAppContactIdentity";
 import { isInternalOperationalWhatsAppMessage } from "@/core/whatsapp/InternalWhatsAppOperationalMessage";
 import { findConversationByWhatsAppContact } from "@/application/whatsapp/find-conversation-by-whatsapp-contact";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
@@ -18,6 +21,15 @@ import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { buildZApiInboundEvent } from "@/infrastructure/adapters/channels/whatsapp/zapi-inbound-event";
 import { createLogger } from "@/infrastructure/logging/logger";
+import {
+  buildHumanReviewDecisionConfirmation,
+  buildHumanReviewInvalidReplyMessage,
+  parseHumanReviewReply,
+} from "@/domain/entities/human-review";
+import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
+import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -133,10 +145,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const clinicLog = log.child({ clinicId });
 
   const [clinicRow] = await db
-    .select({
-      receptionistPhone: organizations.receptionistPhone,
-      takeoverTtlHours: organizations.takeoverTtlHours,
-    })
+    .select()
     .from(organizations)
     .where(eq(organizations.id, clinicId))
     .limit(1);
@@ -144,6 +153,96 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!clinicRow) {
     clinicLog.error("webhook.rejected", new Error("clinic_not_found"), { durationMs: Date.now() - startedAt });
     return new NextResponse("Server misconfigured", { status: 500 });
+  }
+
+  if (
+    areEquivalentWhatsAppPhones(body.phone, clinicRow.receptionistPhone) &&
+    body.text?.message
+  ) {
+    const parsedReviewReply = parseHumanReviewReply(body.text.message);
+    const shouldRejectBareDecision = /^[1-4]$/.test(body.text.message.trim());
+    const shouldRejectMalformedCaseReply = /^caso\b/i.test(body.text.message.trim());
+    const channelConfig = resolveChannelConfig(clinicRow);
+    const reviewRepo = new DrizzleHumanReviewRequestRepository();
+
+    if (parsedReviewReply) {
+      const pendingReview = await reviewRepo.findPendingByCode({
+        clinicId,
+        reviewCode: parsedReviewReply.reviewCode,
+      });
+
+      if (!pendingReview) {
+        await sendTextMessage(
+          body.phone,
+          `Não encontrei um caso pendente com o número ${parsedReviewReply.reviewCode}. Confira a mensagem do caso e responda novamente.`,
+          channelConfig,
+        ).catch((err) => console.warn("[HumanReview] confirmação de erro falhou:", err));
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      const decidedReview = await reviewRepo.applyDecision({
+        id: pendingReview.id,
+        decision: parsedReviewReply.decision,
+        source: "whatsapp",
+        reviewerPhone: body.phone,
+      });
+
+      if (!decidedReview) {
+        await sendTextMessage(
+          body.phone,
+          `O Caso ${parsedReviewReply.reviewCode} já foi decidido ou não está mais pendente.`,
+          channelConfig,
+        ).catch((err) => console.warn("[HumanReview] confirmação de caso decidido falhou:", err));
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      const [conversationRow] = await db
+        .select({ leadId: conversations.leadId })
+        .from(conversations)
+        .where(eq(conversations.id, pendingReview.conversationId))
+        .limit(1);
+      let leadName = "paciente";
+      if (conversationRow) {
+        const [lead] = await db
+          .select({ name: leads.name })
+          .from(leads)
+          .where(eq(leads.id, conversationRow.leadId))
+          .limit(1);
+        leadName = lead?.name ?? "paciente";
+      }
+
+      await sendTextMessage(
+        body.phone,
+        buildHumanReviewDecisionConfirmation({
+          reviewCode: decidedReview.reviewCode,
+          leadName,
+          decision: parsedReviewReply.decision,
+        }),
+        channelConfig,
+      ).catch((err) => console.warn("[HumanReview] confirmação falhou:", err));
+
+      if (
+        parsedReviewReply.decision === "approved_direct_booking" ||
+        parsedReviewReply.decision === "needs_evaluation"
+      ) {
+        await new ConversationOrchestrator().resumeAfterHumanReviewDecision({
+          clinicId,
+          reviewRequestId: decidedReview.id,
+          decision: parsedReviewReply.decision,
+        });
+      }
+
+      return new NextResponse("OK", { status: 200 });
+    }
+
+    if (shouldRejectBareDecision || shouldRejectMalformedCaseReply) {
+      await sendTextMessage(
+        body.phone,
+        buildHumanReviewInvalidReplyMessage(),
+        channelConfig,
+      ).catch((err) => console.warn("[HumanReview] resposta inválida falhou:", err));
+      return new NextResponse("OK", { status: 200 });
+    }
   }
 
   if (

@@ -12,6 +12,8 @@ import {
   getStaffReminderWindows,
   isPendingCompletionAppointment,
 } from "@/core/scheduling/appointment-reminder-staff";
+import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +26,18 @@ type ClinicResult = { tomorrowCount: number; pendingCount: number };
 
 async function processClinic(clinicId: string): Promise<ClinicResult> {
   const [clinic] = await db
-    .select({ timezone: organizations.timezone, name: organizations.name })
+    .select({
+      timezone: organizations.timezone,
+      name: organizations.name,
+      receptionistPhone: organizations.receptionistPhone,
+      staffDigestWhatsAppEnabled: organizations.staffDigestWhatsAppEnabled,
+      channelProvider: organizations.channelProvider,
+      zapiInstanceId: organizations.zapiInstanceId,
+      zapiToken: organizations.zapiToken,
+      zapiClientToken: organizations.zapiClientToken,
+      metaPhoneNumberId: organizations.metaPhoneNumberId,
+      metaAccessToken: organizations.metaAccessToken,
+    })
     .from(organizations)
     .where(eq(organizations.id, clinicId))
     .limit(1);
@@ -43,6 +56,11 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
     minute: "2-digit",
     hour12: false,
   });
+
+  // Espelha os mesmos alertas no WhatsApp pessoal do responsável (receptionist_phone),
+  // além do push — é o canal que o doutor realmente acompanha (pedido Vitalli 17/07).
+  // Consolidado numa única mensagem para não buzinar duas vezes.
+  const whatsappSections: string[] = [];
 
   // ── Alerta 1: Agenda de amanhã ──
   const tomorrowAppts = await db
@@ -74,6 +92,10 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
       body: `${tomorrowAppts.length} atendimento${tomorrowAppts.length !== 1 ? "s" : ""} agendado${tomorrowAppts.length !== 1 ? "s" : ""}:\n${lines}`,
       url: "/app/agenda",
     });
+
+    whatsappSections.push(
+      `📅 *Amanhã* — ${tomorrowAppts.length} atendimento${tomorrowAppts.length !== 1 ? "s" : ""}:\n${lines}`,
+    );
 
     console.log(`[AppointmentReminderStaff] clinic=${clinicId} amanhã=${tomorrowAppts.length}`);
   }
@@ -113,7 +135,27 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
       url: "/app/agenda",
     });
 
+    whatsappSections.push(
+      `⏳ *Pendente de confirmação* (hoje, sem conclusão registrada):\n${lines}`,
+    );
+
     console.log(`[AppointmentReminderStaff] clinic=${clinicId} pendentes=${pendingAppts.length}`);
+  }
+
+  // ── WhatsApp do responsável (opt-in por clínica) ──
+  if (whatsappSections.length > 0 && clinic.staffDigestWhatsAppEnabled && clinic.receptionistPhone) {
+    const channelConfig = resolveChannelConfig(clinic);
+    const hasChannel =
+      channelConfig.provider === "z_api" ? !!channelConfig.zapi : !!channelConfig.meta;
+    if (hasChannel) {
+      const body = `🌙 *Resumo do dia · ${clinic.name}*\n\n${whatsappSections.join("\n\n")}`;
+      try {
+        await sendTextMessage(clinic.receptionistPhone, body, channelConfig);
+        console.log(`[AppointmentReminderStaff] clinic=${clinicId} whatsapp=ok`);
+      } catch (err) {
+        console.error(`[AppointmentReminderStaff] WhatsApp falhou clinic=${clinicId}:`, err);
+      }
+    }
   }
 
   return { tomorrowCount: tomorrowAppts.length, pendingCount: pendingAppts.length };

@@ -21,7 +21,7 @@ import {
   Library,
 } from "lucide-react";
 import { updatePlaybookVersion } from "../playbook-version-actions";
-import { lintPlaybookNotes, lintCommercialPolicy } from "@/application/config/playbook-lint";
+import { lintPlaybookNotes, lintCommercialPolicy, lintPersonaCoherence } from "@/application/config/playbook-lint";
 import type { FieldTarget } from "@/core/intelligence/FieldComposer";
 import { useReliableAutosave } from "../use-reliable-autosave";
 
@@ -378,6 +378,15 @@ function NotesLintWarnings({ notes }: { notes: string }) {
 
 function CommercialPolicyLintWarnings({ policy }: { policy: string }) {
   return <LintWarningsBox warnings={lintCommercialPolicy(policy)} title="PREÇO TEM CASA NO CADASTRO" />;
+}
+
+function PersonaCoherenceLintWarnings({ greetingMessage, receptionistName }: { greetingMessage: string; receptionistName: string }) {
+  return (
+    <LintWarningsBox
+      warnings={lintPersonaCoherence(greetingMessage, receptionistName)}
+      title="PERSONA INCONSISTENTE"
+    />
+  );
 }
 
 const OBJECTION_EXAMPLES: Objection[] = [
@@ -904,6 +913,10 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
                       onChange={(e) => updateVersion({ receptionistName: e.target.value })}
                       placeholder="Ex: Marina"
                       style={inputStyle}
+                    />
+                    <PersonaCoherenceLintWarnings
+                      greetingMessage={greetingMessage}
+                      receptionistName={data.receptionistName}
                     />
                   </FieldGroup>
 

@@ -15,6 +15,8 @@ import type { MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
+import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
+import { sql } from "drizzle-orm";
 
 export const channelEnum = pgEnum("channel", [
   "whatsapp",
@@ -211,6 +213,25 @@ export const conversationReviewStatusEnum = pgEnum("conversation_review_status",
   "expired",   // Prazo de resposta esgotado sem ação
 ]);
 
+export const humanReviewStatusEnum = pgEnum("human_review_status", [
+  "pending",
+  "decided",
+  "expired",
+  "cancelled",
+]);
+
+export const humanReviewDecisionEnum = pgEnum("human_review_decision", [
+  "approved_direct_booking",
+  "needs_evaluation",
+  "manual_reply",
+  "not_eligible",
+]);
+
+export const humanReviewDecisionSourceEnum = pgEnum("human_review_decision_source", [
+  "whatsapp",
+  "panel",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -287,6 +308,47 @@ export const organizations = pgTable("organizations", {
   slotOfferTtlMinutes: integer("slot_offer_ttl_minutes").notNull().default(15),
   maxSlotsToOffer: integer("max_slots_to_offer").notNull().default(5),
   slotLookaheadDays: integer("slot_lookahead_days").notNull().default(14),
+  // Fecha o funil como o operador faz: depois de cotar preço de um único
+  // tratamento (sem ambiguidade/escalonamento/objeção em curso), oferta
+  // horários reais direto em vez de só perguntar "posso ver os horários?".
+  // Opt-in por clínica (não basta modo concierge) — pedido explícito da
+  // Vitalli em 17/07/2026; outras clínicas (ex.: Ximendes) têm padrões de
+  // conversa (objeção, compra para terceiro, especificação técnica) onde
+  // essa antecipação não foi validada. Ver ConversationOrchestrator.ts
+  // case "price_inquiry".
+  offerSlotsAfterPriceEnabled: boolean("offer_slots_after_price_enabled")
+    .notNull()
+    .default(false),
+  // Espelha o resumo diário do staff (agenda de amanhã + pendentes de
+  // confirmação) no WhatsApp pessoal do responsável (receptionist_phone),
+  // além do push. Diferente dos avisos event-driven que já usam
+  // receptionist_phone (foto/comprovante/atenção), este é proativo e
+  // recorrente — por isso é opt-in por clínica: uma clínica que configurou
+  // receptionist_phone para receber encaminhamentos não necessariamente quer
+  // uma mensagem toda noite. Pedido da Vitalli em 17/07/2026. Ver
+  // appointment-reminder-staff/route.ts.
+  staffDigestWhatsAppEnabled: boolean("staff_digest_whatsapp_enabled")
+    .notNull()
+    .default(false),
+  // Régua de pós-atendimento: mensagens agendadas disparadas X horas após o fim
+  // da consulta (cuidados, pedido de feedback). Config por clínica — vazio/null =
+  // nada dispara. Percorrida pelo cron post-appointment-followup. Ver
+  // PostAppointmentRule.
+  postAppointmentRules: jsonb("post_appointment_rules").$type<PostAppointmentRule[]>(),
+  // ── Fluxo de sinal (depósito via Pix para garantir o horário) ──
+  // Quando habilitado, ao escolher um slot a IA envia um pedido de sinal determinístico
+  // (Pix), faz uma reserva provisória e aguarda o comprovante; o OPERADOR valida o
+  // comprovante e confirma (a IA nunca valida comprovante). Ver DepositTemplates.
+  depositEnabled: boolean("deposit_enabled").notNull().default(false),
+  depositAmountCents: integer("deposit_amount_cents"),
+  depositPixKey: text("deposit_pix_key"),
+  depositPixKeyType: text("deposit_pix_key_type").$type<
+    "cnpj" | "cpf" | "email" | "phone" | "random"
+  >(),
+  depositRecipientName: text("deposit_recipient_name"),
+  depositTtlHours: integer("deposit_ttl_hours").notNull().default(24),
+  depositNotes: text("deposit_notes"),
+  depositConfirmationNotes: text("deposit_confirmation_notes"),
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
   messageDebounceMs: integer("message_debounce_ms"),
@@ -365,6 +427,18 @@ export const treatments = pgTable(
     priceUnit: text("price_unit"),
     // O valor é abatido do tratamento se o paciente avançar (típico da avaliação).
     priceDeductible: boolean("price_deductible").notNull().default(false),
+    // Preço por quantidade fechada (pacotes cujo valor não é proporcional à quantidade,
+    // ex.: lentes 10=R$1.500, 20=R$1.800). Null = sem pacotes. Ver composePriceSection.
+    quantityPrices:
+      jsonb("quantity_prices").$type<
+        import("@/domain/entities/treatment").TreatmentQuantityPrice[]
+      >(),
+    // Janelas de início permitidas para agendar (ex.: lentes só 09:00 e 16:00). Null =
+    // grade horária padrão do businessHours. Ver SlotEngine.computeAvailableSlots.
+    bookingWindows:
+      jsonb("booking_windows").$type<
+        import("@/domain/entities/treatment").TreatmentBookingWindow[]
+      >(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1095,6 +1169,59 @@ export const mediaAssets = pgTable(
   },
   (table) => ({
     clinicIdx: index("media_assets_org_idx").on(table.clinicId),
+  }),
+);
+
+// Revisão humana operacional em tempo real: quando um lead envia mídia que
+// exige avaliação do responsável, criamos um caso curto ("Caso 27"). A decisão
+// é auditável e pode retomar a automação com agenda direta, sem inferir texto
+// livre do doutor.
+export const humanReviewRequests = pgTable(
+  "human_review_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id),
+    sourceMessageId: uuid("source_message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
+    treatmentId: uuid("treatment_id").references(() => treatments.id),
+    targetTreatmentId: uuid("target_treatment_id").references(() => treatments.id),
+    reviewCode: integer("review_code").notNull(),
+    status: humanReviewStatusEnum("status").notNull().default("pending"),
+    decision: humanReviewDecisionEnum("decision"),
+    decisionSource: humanReviewDecisionSourceEnum("decision_source"),
+    reviewerPhone: text("reviewer_phone"),
+    reviewNotes: text("review_notes"),
+    sourceMediaType: text("source_media_type").$type<"image" | "video" | "document">(),
+    sourceMediaUrl: text("source_media_url"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicStatusIdx: index("human_review_requests_org_status_idx").on(
+      table.clinicId,
+      table.status,
+    ),
+    conversationIdx: index("human_review_requests_conversation_idx").on(
+      table.conversationId,
+    ),
+    pendingCodeUniqueIdx: uniqueIndex("human_review_requests_pending_code_idx")
+      .on(table.clinicId, table.reviewCode)
+      .where(sql`${table.status} = 'pending'`),
   }),
 );
 

@@ -18,6 +18,7 @@ import {
   resolvePublicDocState,
 } from "@/application/public-link/access-token";
 import type { ConversationExcerpt } from "@/domain/entities/conversation-review";
+import { toPublicExcerpt } from "@/domain/entities/conversation-review";
 import { ConversationReviewForm } from "./conversas-ui";
 import { StateScreen } from "../../state-screen";
 
@@ -74,8 +75,13 @@ export default async function ConversasPage({
   }
 
   const excerpts = (review.excerpts ?? []) as ConversationExcerpt[];
+  // `sourceConversationId` é rastreabilidade interna e nunca deve chegar ao
+  // payload público (Apêndice G do plano) — a props boundary React Server→
+  // Client serializa tudo que passa por aqui, então a sanitização é neste
+  // limite, não na UI.
+  const publicExcerpts = excerpts.map(toPublicExcerpt);
 
   return (
-    <ConversationReviewForm token={token} clinicName={clinicName} excerpts={excerpts} />
+    <ConversationReviewForm token={token} clinicName={clinicName} excerpts={publicExcerpts} />
   );
 }

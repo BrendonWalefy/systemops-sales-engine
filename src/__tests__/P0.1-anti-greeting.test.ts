@@ -15,11 +15,16 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { coerceBusinessIntent } from "@/core/pipeline/ConversationOrchestrator";
+import {
+  coerceBusinessIntent,
+  extractExplicitPreferredDateFromText,
+  normalizeSchedulingIntentForMissingPendingOffer,
+  withDeterministicSlotPreferenceFallback,
+} from "@/core/pipeline/ConversationOrchestrator";
+import type { SlotPreference } from "@/core/intelligence/IntentClassifier";
 import type { Treatment } from "@/domain/entities/treatment";
 
 describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mockTreatments: Treatment[] = [
     { id: "1", name: "Lentes de Resina", aliases: ["lentes", "facetas"], basePrice: 1500000 } as unknown as Treatment,
     { id: "2", name: "Manutenção", aliases: ["manutencao"], basePrice: 40000 } as unknown as Treatment,
@@ -110,6 +115,57 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
       });
       // Pode ser book_appointment (contém "horario")
       expect(["book_appointment", "price_inquiry"]).toContain(result);
+    });
+  });
+
+  describe("Preferência de data explícita", () => {
+    const emptyPreference: SlotPreference = {
+      preferredDate: null,
+      preferredPeriod: null,
+      preferredTime: null,
+      slotChoice: null,
+      identifiedTreatment: null,
+      ambiguousTreatmentMatches: null,
+    };
+
+    it("extrai 'dia 29' de forma determinística quando o LLM não preencher preferredDate", () => {
+      expect(extractExplicitPreferredDateFromText("Dia 29")).toBe("dia 29");
+      expect(extractExplicitPreferredDateFromText("Pode ser 29/07")).toBe("29/07");
+      expect(
+        withDeterministicSlotPreferenceFallback("Quero agendar dia 29", emptyPreference).preferredDate,
+      ).toBe("dia 29");
+    });
+
+    it("normaliza preferredDate numérico retornado pelo LLM", () => {
+      expect(
+        withDeterministicSlotPreferenceFallback("Quero agendar dia 29", {
+          ...emptyPreference,
+          preferredDate: "29",
+        }).preferredDate,
+      ).toBe("dia 29");
+    });
+
+    it("normaliza preferredDate com ponto retornado pelo LLM", () => {
+      expect(
+        withDeterministicSlotPreferenceFallback("Dia 29", {
+          ...emptyPreference,
+          preferredDate: "29.07",
+        }).preferredDate,
+      ).toBe("29/07");
+    });
+
+    it("não trata confirm_slot sem oferta pendente como confirmação quando a mensagem tem data", () => {
+      const preference = withDeterministicSlotPreferenceFallback("Dia 29", emptyPreference);
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer("confirm_slot", preference, "Dia 29", false),
+      ).toBe("check_availability");
+    });
+
+    it("mantém confirm_slot quando há oferta pendente ativa", () => {
+      const preference = withDeterministicSlotPreferenceFallback("Dia 29", emptyPreference);
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer("confirm_slot", preference, "Dia 29", true),
+      ).toBe("confirm_slot");
     });
   });
 

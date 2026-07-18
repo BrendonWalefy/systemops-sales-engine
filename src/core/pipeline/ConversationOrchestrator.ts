@@ -5,7 +5,7 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets } from "@/infrastructure/db/schema";
+import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests } from "@/infrastructure/db/schema";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
@@ -36,14 +36,22 @@ import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/verc
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import type { LocalDateParts, ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
-import { IntentClassifier, type IntentType } from "@/core/intelligence/IntentClassifier";
+import { IntentClassifier, type IntentType, type SlotPreference } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
+import { resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
+import { detectAtypicalClinicalCase, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
+import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
+import {
+  buildDepositRequestMessage,
+  buildDepositProofReceivedMessage,
+  buildDepositProofMissingMessage,
+} from "@/core/conversation/DepositTemplates";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
@@ -73,6 +81,11 @@ import type {
 } from "@/application/jobs/conversation-outbound-payload";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
+import {
+  buildHumanReviewRequestMessage,
+  type HumanReviewDecision,
+} from "@/domain/entities/human-review";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -145,7 +158,7 @@ function getMenuItemsForExperience(clinic: Organization, experience: Conversatio
 // ou apelidos de contato como "Tânia Mara/Sinal Verde" na conversa.
 // Guard: rejeita nomes de WhatsApp que não são nomes próprios de pessoa:
 // frases religiosas ("Deus Ele É Deus."), siglas, nomes de negócios, etc.
-function extractFirstName(fullName: string | null | undefined): string | null {
+export function extractFirstName(fullName: string | null | undefined): string | null {
   if (!fullName) return null;
   const first = fullName.split(/[\s\/]+/)[0] ?? null;
   if (!first) return null;
@@ -158,12 +171,57 @@ function extractFirstName(fullName: string | null | undefined): string | null {
   // Nomes de perfil com números não são tratados como nomes pessoais válidos (ex: "LOJA123")
   if (/\d/.test(cleanFirst)) return null;
 
+  // Token precisa ter ao menos uma letra "de nome" (não pode ser só emoji/pontuação/
+  // decoração), senão "🌻✨" ou "★" viraria saudação. Exige 2+ letras latinas.
+  const letters = cleanFirst.match(/[A-Za-zÀ-ÿ]/g);
+  if (!letters || letters.length < 2) return null;
+
   // Prefixos que indicam não ser nome de pessoa: religiosos, negócios, títulos
   const INVALID_FIRST_NAME_PREFIX_RE =
     /^(deus|senhor|sra?|nosso|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|atendimento|dr|dra)/i;
   if (INVALID_FIRST_NAME_PREFIX_RE.test(cleanFirst)) return null;
 
+  // Palavras comuns / status de WhatsApp que não são nome próprio. O nome de exibição
+  // do WhatsApp é livre — leads reais aparecem como "ocupado", "Seja Forte", "trabalho",
+  // "2D". Saudar "Boa tarde, ocupado" soa robótico; melhor saudar sem nome. Casos reais
+  // do histórico Vitalli: "ocupado", "Seja Forte E Corajoso", "2D".
+  const COMMON_WORD_NAMES = new Set([
+    "ocupado", "ocupada", "disponivel", "disponível", "trabalho", "trabalhando",
+    "vida", "paz", "amor", "fe", "fé", "deus", "casa", "sim", "nao", "não",
+    "seja", "eu", "voce", "você", "gente", "amigo", "amiga", "cliente",
+  ]);
+  if (COMMON_WORD_NAMES.has(cleanFirst.toLowerCase())) return null;
+
   return first;
+}
+
+// A9 — Detecta reenvio idêntico do lead: mesma mensagem (≥ minChars) já enviada antes,
+// dentro da janela, e que JÁ recebeu resposta do agente. Casos reais: duplo clique no
+// anúncio CTWA reenvia o mesmo texto-template horas depois. Retorna a mensagem anterior
+// casada (para logging/contexto) ou null. Pura para testabilidade — o Orchestrator a usa
+// apenas quando não há pipeline ativo (com pipeline, a 2ª msg dispara o conteúdo deferido).
+export function findLeadMessageRepeat(params: {
+  currentBody: string;
+  history: Pick<Message, "author" | "body" | "sentAt">[];
+  now: number;
+  minChars?: number;
+  windowMs?: number;
+}): Pick<Message, "author" | "body" | "sentAt"> | null {
+  const minChars = params.minChars ?? 20;
+  const windowMs = params.windowMs ?? 24 * 3600_000;
+  const body = params.currentBody.trim();
+  if (body.length < minChars) return null;
+
+  const leadMsgs = params.history.filter((m) => m.author === "lead");
+  // A última mensagem do lead no histórico é a atual — comparamos com as anteriores.
+  const prior = leadMsgs.slice(0, -1).find((m) => m.body.trim() === body);
+  if (!prior) return null;
+
+  const withinWindow = params.now - prior.sentAt.getTime() < windowMs;
+  const gotReplyAfter = params.history.some(
+    (m) => m.author === "agent" && m.sentAt > prior.sentAt,
+  );
+  return withinWindow && gotReplyAfter ? prior : null;
 }
 
 // Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
@@ -226,14 +284,33 @@ function shouldSendConciergeStarter(experience: ConversationExperience, intent: 
   return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
 }
 
-function buildConciergeStarter(clinic: Organization, timezone: ClinicTimezone, leadName?: string | null): string {
+export function buildConciergeStarter(
+  clinic: Organization,
+  timezone: ClinicTimezone,
+  leadName?: string | null,
+  receptionistName?: string | null,
+): string {
   const salutation = getDayGreeting(timezone);
   const firstName = extractFirstName(leadName);
   const nameGreeting = firstName ? `, ${firstName}` : "";
-  const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage);
-  const intro = receptionistName
-    ? `Sou a ${receptionistName}, assistente virtual da ${clinic.name}.`
-    : `Sou a assistente virtual da ${clinic.name}.`;
+
+  // greetingMessage é o opener curado da clínica — quando existe, ele é o corpo do
+  // starter (a clínica é dona do próprio tom, não um template genérico). A persona
+  // nunca se apresenta como "assistente virtual": o atendimento fala como a equipe.
+  const custom = clinic.greetingMessage?.trim();
+  if (custom) {
+    if (/^(bom\s*dia|boa\s*tarde|boa\s*noite)/i.test(custom)) {
+      // Já abre com saudação temporal própria — usa verbatim para não duplicar.
+      return custom;
+    }
+    return `${salutation}${nameGreeting}! ${stripGreetingPrefix(custom)}`;
+  }
+
+  const persona =
+    receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage);
+  const intro = persona
+    ? `Sou a ${persona}, da ${clinic.name}.`
+    : `Aqui é a equipe da ${clinic.name}.`;
 
   return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?`;
 }
@@ -316,8 +393,8 @@ export function prependPipelineIntroGreeting(
   const firstName = extractFirstName(leadName);
   const nameGreeting = firstName ? `, ${firstName}` : "";
   const intro = receptionistName
-    ? `Sou a ${receptionistName}, assistente virtual da ${clinicName}.`
-    : `Sou a assistente virtual da ${clinicName}.`;
+    ? `Sou a ${receptionistName}, da ${clinicName}.`
+    : `Aqui é a equipe da ${clinicName}.`;
   const greetingPrefix = `${salutation}${nameGreeting}. Tudo bem?\n${intro}\n\n`;
 
   const firstTextIdx = parts.findIndex((p) => p.type === "text");
@@ -442,6 +519,20 @@ function normalizeFreeText(message: string): string {
 
 function hasAnyKeyword(normalized: string, keywords: string[]): boolean {
   return keywords.some((keyword) => normalized.includes(keyword));
+}
+
+// Anexo determinístico de mídia num step "qa": retorna o mediaId da primeira
+// entrada cujas palavras-chave casam com a mensagem (já normalizada) do lead.
+// Ver PipelineStep qa.mediaOnKeywords.
+export function matchMediaOnKeywords(
+  entries: { keywords: string[]; mediaId: string }[] | undefined,
+  normalizedMessage: string,
+): string | null {
+  if (!entries?.length) return null;
+  for (const entry of entries) {
+    if (hasAnyKeyword(normalizedMessage, entry.keywords)) return entry.mediaId;
+  }
+  return null;
 }
 
 function isSchedulingRequestText(normalized: string): boolean {
@@ -652,6 +743,97 @@ export function detectPatientArrivalText(message: string): boolean {
   const normalized = normalizeFreeText(message);
   if (!normalized) return false;
   return PATIENT_ARRIVAL_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+export function extractExplicitPreferredDateFromText(message: string): string | null {
+  const punctuationPreserved = message
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+  const directDmy = punctuationPreserved.match(/\b(\d{1,2})[.\-\/](\d{1,2})(?:[.\-\/](\d{2,4}))?\b/);
+  if (directDmy) {
+    return directDmy[3]
+      ? `${directDmy[1]}/${directDmy[2]}/${directDmy[3]}`
+      : `${directDmy[1]}/${directDmy[2]}`;
+  }
+
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return null;
+
+  const dayWithMonth = normalized.match(
+    /\b(\d{1,2})\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/,
+  );
+  if (dayWithMonth) return dayWithMonth[0];
+
+  const dayOnly = normalized.match(/\bdia\s+(\d{1,2})\b/);
+  if (dayOnly) {
+    const day = Number(dayOnly[1]);
+    if (day >= 1 && day <= 31) return `dia ${day}`;
+  }
+
+  const relativeOrWeekday = normalized.match(
+    /\b(hoje|amanha|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado|domingo)\b/,
+  );
+  return relativeOrWeekday?.[0] ?? null;
+}
+
+function normalizePreferredDateText(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const punctuationPreserved = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+  const directDmy = punctuationPreserved.match(/^(\d{1,2})[.\-\/](\d{1,2})(?:[.\-\/](\d{2,4}))?$/);
+  if (directDmy) {
+    return directDmy[3]
+      ? `${directDmy[1]}/${directDmy[2]}/${directDmy[3]}`
+      : `${directDmy[1]}/${directDmy[2]}`;
+  }
+
+  const normalized = normalizeFreeText(raw);
+  if (!normalized) return null;
+
+  const dayOnly = normalized.match(/^(\d{1,2})$/);
+  if (dayOnly) {
+    const day = Number(dayOnly[1]);
+    if (day >= 1 && day <= 31) return `dia ${day}`;
+  }
+
+  const dmy = normalized.match(/^(\d{1,2})\s+(\d{1,2})(?:\s+(\d{2,4}))?$/);
+  if (dmy) {
+    return dmy[3] ? `${dmy[1]}/${dmy[2]}/${dmy[3]}` : `${dmy[1]}/${dmy[2]}`;
+  }
+
+  return raw;
+}
+
+export function withDeterministicSlotPreferenceFallback(
+  message: string,
+  slotPreference: SlotPreference,
+): SlotPreference {
+  const normalizedPreferredDate = normalizePreferredDateText(slotPreference.preferredDate);
+  const preferredDate = normalizedPreferredDate ?? extractExplicitPreferredDateFromText(message);
+  if (!preferredDate || preferredDate === slotPreference.preferredDate) return slotPreference;
+  return { ...slotPreference, preferredDate };
+}
+
+export function normalizeSchedulingIntentForMissingPendingOffer(
+  intent: IntentType,
+  slotPreference: SlotPreference,
+  message: string,
+  hasPendingOffer: boolean,
+): IntentType {
+  const messageHasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
+  if (
+    intent === "confirm_slot" &&
+    !hasPendingOffer &&
+    (messageHasExplicitDate || slotPreference.preferredDate || slotPreference.preferredPeriod || slotPreference.preferredTime)
+  ) {
+    return "check_availability";
+  }
+  return intent;
 }
 
 // ── Coerção determinística de intent para conteúdo de negócio ──
@@ -1336,6 +1518,15 @@ function buildOrganization(row: ClinicRow): Organization {
     slotOfferTtlMinutes: row.slotOfferTtlMinutes,
     maxSlotsToOffer: row.maxSlotsToOffer,
     slotLookaheadDays: row.slotLookaheadDays,
+    offerSlotsAfterPriceEnabled: row.offerSlotsAfterPriceEnabled,
+    depositEnabled: row.depositEnabled,
+    depositAmountCents: row.depositAmountCents ?? null,
+    depositPixKey: row.depositPixKey ?? null,
+    depositPixKeyType: row.depositPixKeyType ?? null,
+    depositRecipientName: row.depositRecipientName ?? null,
+    depositTtlHours: row.depositTtlHours,
+    depositNotes: row.depositNotes ?? null,
+    depositConfirmationNotes: row.depositConfirmationNotes ?? null,
     mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
     rapidThrottleMs: row.rapidThrottleMs,
     messageDebounceMs: row.messageDebounceMs ?? null,
@@ -1572,6 +1763,7 @@ function nextActivePipelineStep(
 
 export class ConversationOrchestrator {
   private stateMachine = new ConversationStateMachine();
+  private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
   private responseComposer = new ResponseComposer();
 
@@ -1580,6 +1772,7 @@ export class ConversationOrchestrator {
   private appointmentRepo = new DrizzleAppointmentRepository();
   private usageCostRepo = new DrizzleUsageCostRepository();
   private treatmentRepo = new DrizzleTreatmentRepository();
+  private humanReviewRepo = new DrizzleHumanReviewRequestRepository();
   private notifier = new NotifyClinicOperators(
     new DrizzlePushSubscriptionRepository(),
     new WebPushGateway(),
@@ -1839,6 +2032,78 @@ export class ConversationOrchestrator {
     // da IA (não pausa e não é encaminhado ao doutor aqui).
     const inboundMediaType = params.mediaType;
     if (inboundMediaType === "image" || inboundMediaType === "video" || inboundMediaType === "document") {
+      // ── A7: Intercept de comprovante do sinal ──
+      // Qualquer imagem/PDF enviada enquanto aguardamos o comprovante É o comprovante
+      // (decisão de produto: a IA NÃO valida comprovante). Estende o hold, sinaliza
+      // atenção para o operador validar e responde com confirmação de recebimento.
+      if (inboundMediaType === "image" || inboundMediaType === "document") {
+        const depositState = await this.stateMachine.getDepositState(conversation.id);
+        if (depositState?.state === "awaiting_deposit_proof") {
+          if (params.mediaUrl) {
+            rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType).catch(() => {});
+          }
+          const receptionistPhone = clinic.receptionistPhone;
+          if (receptionistPhone) {
+            const leadName = lead.name ?? outboundAddress;
+            sendTextMessage(
+              receptionistPhone,
+              `💸 *${leadName}* enviou o comprovante do sinal. Valide o Pix e confirme o agendamento no painel.`,
+              channelConfig,
+            ).catch(() => {});
+            if (params.mediaUrl) {
+              sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
+            }
+          }
+          await this.notifier.execute(clinicId, {
+            title: lead.name ?? phone,
+            body: "Enviou o comprovante do sinal — validar e confirmar",
+            url: `/app/inbox/${conversation.id}`,
+          }).catch(() => {});
+
+          if (depositState.payload.reservationId) {
+            await this.reservationService.extend(depositState.payload.reservationId, (clinic.depositTtlHours ?? 24) * 60);
+          }
+          await this.stateMachine.markDepositProofReceived(conversation.id, incomingMessage.id);
+          await db
+            .update(conversationsTable)
+            .set({
+              needsAttention: true,
+              attentionReason: "Comprovante de sinal recebido — validar Pix e confirmar agendamento",
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+
+          if (replyEnabled && !conversation.aiPaused) {
+            const proofAgentId = randomUUID();
+            const proofText = buildDepositProofReceivedMessage();
+            await this.conversationRepo.appendMessage({
+              id: proofAgentId,
+              conversationId: conversation.id,
+              author: "agent",
+              body: proofText,
+              sentAt: new Date(),
+              externalId: null,
+              intent: "acknowledgment",
+              deliveryFormat: null,
+            });
+            await this.enqueueConversationReply(clinicId, conversation.id, {
+              version: 1,
+              kind: "conversation_reply",
+              to: outboundAddress,
+              agentMessageId: proofAgentId,
+              replyText: proofText,
+              intent: "acknowledgment",
+              useVoice: false,
+              ttsConfig: ttsConf,
+              interleavedParts: [],
+              mediaParts: [],
+              leadId: lead.id,
+              pipelineAdvance: null,
+            });
+          }
+          return { replied: replyEnabled && !conversation.aiPaused };
+        }
+      }
       // ── Guard: mídia de anúncio (Click-to-WhatsApp) ──
       // Quando o lead clica em "Saiba mais" de um anúncio, o WhatsApp envia automaticamente
       // o card do anúncio (imagem/vídeo) junto com a mensagem de texto do lead.
@@ -1880,13 +2145,61 @@ export class ConversationOrchestrator {
           .catch(() => { /* já logado dentro da função */ });
       }
 
+      let humanReviewContext: {
+        reviewCode: number;
+        treatmentName: string | null;
+      } | null = null;
+      if (inboundMediaType === "image" || inboundMediaType === "video") {
+        const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
+        if (activePipelineState) {
+          const pipelineTreatments = await this.treatmentRepo.listByClinic(clinicId);
+          const pipelineTreatment = pipelineTreatments.find(t => t.id === activePipelineState.treatmentId);
+          const currentStep = pipelineTreatment?.pipelineSteps?.[activePipelineState.stepIndex];
+          const hasPhotoStepAhead = pipelineTreatment?.pipelineSteps?.some(
+            (step, idx) => idx > activePipelineState.stepIndex && step.type === "photo",
+          ) ?? false;
+          const isPhotoContext = currentStep?.type === "photo" ||
+            (currentStep?.type === "qa" && hasPhotoStepAhead);
+
+          if (pipelineTreatment && isPhotoContext) {
+            const existingReview = await this.humanReviewRepo.findPendingByConversation({
+              clinicId,
+              conversationId: conversation.id,
+            });
+            const review = existingReview ?? await this.humanReviewRepo.createPending({
+              clinicId,
+              conversationId: conversation.id,
+              leadId: lead.id,
+              sourceMessageId: incomingMessage.id,
+              treatmentId: pipelineTreatment.id,
+              targetTreatmentId: pipelineTreatment.id,
+              sourceMediaType: inboundMediaType,
+              sourceMediaUrl: params.mediaUrl ?? null,
+              expiresAt: new Date(Date.now() + 24 * 3600_000),
+            });
+            humanReviewContext = {
+              reviewCode: review.reviewCode,
+              treatmentName: pipelineTreatment.name,
+            };
+            await this.stateMachine.markPipelinePhotoReceived(conversation.id);
+          }
+        }
+      }
+
       // Encaminha para o WhatsApp do doutor com contexto + mídia original
       const receptionistPhone = clinic.receptionistPhone;
       if (receptionistPhone) {
         const mediaLabel = inboundMediaType === "image" ? "foto" : inboundMediaType === "video" ? "vídeo" : "documento";
         const artigo = inboundMediaType === "image" ? "uma" : "um";
         const leadName = lead.name ?? outboundAddress;
-        const contextMsg = `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nResponda neste chat — sua resposta será encaminhada automaticamente ao lead.`;
+        const contextMsg = humanReviewContext
+          ? buildHumanReviewRequestMessage({
+              reviewCode: humanReviewContext.reviewCode,
+              leadName,
+              treatmentName: humanReviewContext.treatmentName,
+              mediaLabel,
+            })
+          : `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
         sendTextMessage(receptionistPhone, contextMsg, channelConfig)
           .catch(e => console.warn("[MediaForward] contexto falhou:", e));
         if (params.mediaUrl) {
@@ -1901,6 +2214,69 @@ export class ConversationOrchestrator {
         body: `Enviou ${inboundMediaType === "image" ? "uma foto" : "um " + inboundMediaType} para avaliação`,
         url: `/app/inbox/${conversation.id}`,
       }).catch(() => {});
+
+      if (humanReviewContext) {
+        const attentionReason = `Caso ${humanReviewContext.reviewCode}: aguardando avaliação humana`;
+        const now = new Date();
+        await db.update(conversationsTable).set({
+          aiPaused: true,
+          takeoverExpiresAt: null,
+          needsAttention: true,
+          attentionReason,
+          updatedAt: now,
+        }).where(eq(conversationsTable.id, conversation.id));
+
+        if (!replyEnabled || conversation.aiPaused) {
+          return { replied: false };
+        }
+
+        const photoHistory = await this.conversationRepo.listMessages(conversation.id);
+        const photoComposed = await this.responseComposer.compose({
+          actionResult: { type: "pipeline_photo_received" },
+          conversationHistory: photoHistory,
+          clinic: {
+            name: clinic.name,
+            plan: clinic.plan,
+            specialty: editorial?.specialty ?? clinic.specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: editorial?.commercialPolicy ?? null,
+            installmentTable: null,
+            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          },
+          leadName: extractFirstName(lead.name),
+          timezone,
+          isFirstMessage: false,
+          conversationExperience: clinicExperience,
+          resumedFromHumanTakeover: false,
+        });
+        const photoAgentId = randomUUID();
+        await this.conversationRepo.appendMessage({
+          id: photoAgentId,
+          conversationId: conversation.id,
+          author: "agent",
+          body: photoComposed.text,
+          sentAt: now,
+          externalId: null,
+          intent: "needs_human",
+          deliveryFormat: null,
+        });
+        await this.enqueueConversationReply(clinicId, conversation.id, {
+          version: 1,
+          kind: "conversation_reply",
+          to: outboundAddress,
+          agentMessageId: photoAgentId,
+          replyText: photoComposed.text,
+          intent: "needs_human",
+          useVoice: resolveVoiceForReply("needs_human", photoComposed.text),
+          ttsConfig: ttsConf,
+          interleavedParts: [],
+          mediaParts: [],
+          leadId: lead.id,
+          pipelineAdvance: null,
+        });
+        return { replied: true };
+      }
 
       // Se IA está pausada ou auto-reply desligado, o doutor já está no controle — sem resposta automática
       if (!replyEnabled || conversation.aiPaused) {
@@ -2150,6 +2526,58 @@ export class ConversationOrchestrator {
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
     const experience = clinicExperience;
 
+    // A3 — Qualificar antes do pitch: no 1º contato em modo concierge, o opener curado
+    // da clínica já faz a pergunta de qualificação (padrão da operadora humana). Nesse
+    // caso não despejamos explicação + mídia do pipeline junto; posicionamos o pipeline
+    // no passo de conteúdo (deferido) e ele dispara na resposta seguinte do lead.
+    const deferFirstContactPitch = isFirstMessage && experience === "concierge";
+
+    // A9 — Reenvio idêntico do lead (duplo clique no anúncio CTWA dispara o mesmo texto
+    // 2x com horas de intervalo; a janela de dedup de 2min lá em cima não pega). Sem
+    // pipeline ativo, reprocessar geraria um SEGUNDO pitch, possivelmente diferente do
+    // primeiro (LLM) — o lead percebe como "a IA não presta atenção". Respondemos com um
+    // aceno curto e determinístico. Com pipeline ativo NÃO entra aqui: a 2ª mensagem é o
+    // gatilho que faz o conteúdo deferido (A3) disparar.
+    if (!pipelineState && replyEnabled) {
+      const priorIdentical = findLeadMessageRepeat({
+        currentBody: messageText,
+        history: allMessages,
+        now: Date.now(),
+      });
+      if (priorIdentical) {
+        const mentioned = resolveDirectTreatmentMention(messageText, clinicTreatments);
+        const nudge = mentioned
+          ? `Oi de novo! 😊 Ficou alguma dúvida sobre ${mentioned.name}? Me conta que eu te ajudo.`
+          : "Oi de novo! 😊 Ficou alguma dúvida? Me conta que eu te ajudo.";
+        const nudgeAgentId = randomUUID();
+        await this.conversationRepo.appendMessage({
+          id: nudgeAgentId,
+          conversationId: conversation.id,
+          author: "agent",
+          body: nudge,
+          sentAt: new Date(),
+          externalId: null,
+          intent: "acknowledgment",
+          deliveryFormat: null,
+        });
+        await this.enqueueConversationReply(clinicId, conversation.id, {
+          version: 1,
+          kind: "conversation_reply",
+          to: outboundAddress,
+          agentMessageId: nudgeAgentId,
+          replyText: nudge,
+          intent: "acknowledgment",
+          useVoice: false,
+          ttsConfig: ttsConf,
+          interleavedParts: [],
+          mediaParts: [],
+          leadId: lead.id,
+          pipelineAdvance: null,
+        });
+        return { replied: true };
+      }
+    }
+
     const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
 
     // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
@@ -2395,7 +2823,10 @@ export class ConversationOrchestrator {
           promptContext,
         );
 
-    const { slotPreference } = classification;
+    const slotPreference = withDeterministicSlotPreferenceFallback(
+      messageText,
+      classification.slotPreference,
+    );
     // Isolamento de mídia entre procedimentos: o tratamento "ativo" desta virada
     // — pipeline em curso tem prioridade sobre o que o classificador identificou
     // na mensagem livre. Usado para (a) filtrar o que entra na BIBLIOTECA DE
@@ -2549,6 +2980,39 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── A6: Triagem de caso clínico atípico ──
+    // Dente fraturado, só raiz, ponte, prótese, implante, extração: a IA empurrava o
+    // pitch padrão de lentes. O sistema decide: não cotar; fazer a triagem que o doutor
+    // precisa (radiografia/foto) e sinalizar atenção. Não interrompe pipeline em curso.
+    let atypicalTriageContext: string | null = null;
+    if (
+      (effectiveIntent === "general_question" || effectiveIntent === "price_inquiry") &&
+      !pipelineState
+    ) {
+      const atypical = detectAtypicalClinicalCase(messageText);
+      if (atypical) {
+        atypicalTriageContext =
+          `CASO CLÍNICO ATÍPICO detectado (${atypical}). NÃO cote o preço padrão de lentes nem empurre o pitch de lentes. ` +
+          `Acolha o relato com empatia e explique que, nesses casos (${atypical}), o doutor precisa avaliar individualmente. ` +
+          `Peça, se possível, uma radiografia recente e uma foto do sorriso atual, e explique que a partir disso a equipe ` +
+          `orienta o melhor caminho e o orçamento certo para o caso. Conduza gentilmente para agendar a avaliação. ` +
+          `Seja acolhedor e específico ao que o lead relatou.`;
+        effectiveIntent = "general_question";
+        await db
+          .update(conversationsTable)
+          .set({
+            needsAttention: true,
+            attentionReason: `Caso clínico atípico (${atypical}) — avaliar antes de cotar`,
+            updatedAt: new Date(),
+          })
+          .where(eq(conversationsTable.id, conversation.id));
+      }
+    }
+
+    // A5: Objeção de preço antigo ("vocês me passaram um valor menor antes").
+    const oldPriceObjectionDetected =
+      isPriceShapedIntent && !atypicalTriageContext && detectOldPriceObjection(messageText);
+
     // P0.2: Detectar pergunta de garantia (cobertura de procedimento recente)
     if (effectiveIntent === "needs_human" && !maintenanceHandoffReason) {
       const normalized = normalizeFreeText(messageText);
@@ -2582,6 +3046,13 @@ export class ConversationOrchestrator {
       effectiveIntent === "price_inquiry"
         ? detectAmbiguousTreatmentTerm(messageText, clinicTreatments)
         : null;
+
+    // ── A4: Guard determinístico de preço por quantidade (pacotes) ──
+    // Pergunta com quantidade de pacote (ex.: "16 lentes") é resolvida pelo sistema:
+    // valor exato do pacote OU escalonamento para a equipe. A LLM nunca extrapola.
+    const quantityPriceResolution = isPriceShapedIntent
+      ? resolveQuantityPriceQuery(messageText, clinicTreatments)
+      : null;
 
     // ── 7. Executa ação e compõe resposta ──
     let replyText = "";
@@ -2684,13 +3155,81 @@ export class ConversationOrchestrator {
       }
     };
 
+    // ── A7: Guards de texto do fluxo de sinal ──
+    // Roda antes da decisão normal. Comprovante em si (imagem/PDF) já foi tratado na
+    // seção de mídia; aqui cobrimos os caminhos de TEXTO enquanto há sinal pendente.
+    const depositTextState = await this.stateMachine.getDepositState(conversation.id);
+    if (depositTextState) {
+      const normalizedDep = normalizeFreeText(messageText);
+      const saysPaid = /\b(paguei|ja paguei|fiz o pix|fiz pix|transferi|enviei o pix|pix feito|comprovante|mandei o pix)\b/.test(normalizedDep);
+      const wantsChange =
+        effectiveIntent === "book_appointment" ||
+        effectiveIntent === "check_availability" ||
+        effectiveIntent === "reject_slots" ||
+        effectiveIntent === "reschedule_appointment" ||
+        effectiveIntent === "cancel_appointment";
+
+      if (depositTextState.state === "awaiting_deposit_proof") {
+        if (saysPaid) {
+          // Diz que pagou mas não anexou o comprovante → pede o anexo, mantém o hold.
+          const missingText = buildDepositProofMissingMessage();
+          const missingAgentId = randomUUID();
+          await this.conversationRepo.appendMessage({
+            id: missingAgentId,
+            conversationId: conversation.id,
+            author: "agent",
+            body: missingText,
+            sentAt: new Date(),
+            externalId: null,
+            intent: "acknowledgment",
+            deliveryFormat: null,
+          });
+          await this.enqueueConversationReply(clinicId, conversation.id, {
+            version: 1,
+            kind: "conversation_reply",
+            to: outboundAddress,
+            agentMessageId: missingAgentId,
+            replyText: missingText,
+            intent: "acknowledgment",
+            useVoice: false,
+            ttsConfig: ttsConf,
+            interleavedParts: [],
+            mediaParts: [],
+            leadId: lead.id,
+            pipelineAdvance: null,
+          });
+          return { replied: true };
+        }
+        if (wantsChange) {
+          // Quer outro horário/cancelar → libera o hold e deixa o fluxo normal reofertar.
+          if (depositTextState.payload.reservationId) {
+            await this.reservationService.release(depositTextState.payload.reservationId);
+          }
+          await this.stateMachine.invalidate(conversation.id);
+          // Cai para o fluxo normal abaixo (estado de sinal já limpo).
+        }
+        // Pergunta geral durante a espera → responde normalmente, mantém o estado.
+      } else if (depositTextState.state === "deposit_proof_received" && wantsChange) {
+        // Comprovante já enviado (dinheiro em jogo) e lead quer mudar → operador decide.
+        effectiveIntent = "needs_human";
+        maintenanceHandoffReason = "Lead pagou o sinal e pediu alteração — operador decide";
+      }
+    }
+
+    effectiveIntent = normalizeSchedulingIntentForMissingPendingOffer(
+      effectiveIntent,
+      slotPreference,
+      messageText,
+      hasPendingOffer,
+    );
+
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
       await this.stateMachine.offerMenu(conversation.id);
     } else if (isFirstMessage && shouldSendConciergeStarter(experience, effectiveIntent)) {
-      replyText = buildConciergeStarter(clinic, timezone, lead.name);
+      replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
     } else if (resetRequested) {
       // Zera estado e marca boundary para que a próxima mensagem receba histórico pós-reset
       await this.stateMachine.markResetBoundary(conversation.id);
@@ -2700,7 +3239,7 @@ export class ConversationOrchestrator {
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else {
-        replyText = buildConciergeStarter(clinic, timezone, lead.name);
+        replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
       }
     } else if (menuReRequested || (isStaleConversation && (effectiveIntent === "greeting" || effectiveIntent === "acknowledgment" || effectiveIntent === "unclear")) || isolatedGreeting || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
       if (menuReRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber) {
@@ -2712,7 +3251,7 @@ export class ConversationOrchestrator {
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "stale", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else if (isStaleConversation) {
-        replyText = buildConciergeStarter(clinic, timezone, lead.name);
+        replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
@@ -2821,6 +3360,68 @@ export class ConversationOrchestrator {
               (await getActivePriceCampaignsByTreatment(clinicId)).get(matchedTreatmentForBooking.id) ?? null,
             ).priceCents
           : null;
+
+        // ── A7: Fluxo de sinal ──
+        // Com sinal habilitado, NÃO agenda direto: faz uma reserva provisória, cobra o
+        // sinal (texto determinístico) e aguarda o comprovante. O operador valida e
+        // confirma (a IA nunca valida comprovante). Em shadow mode pulamos a reserva
+        // real para não travar a agenda de verdade.
+        if (clinic.depositEnabled && clinic.depositAmountCents && clinic.depositPixKey) {
+          const startsAt = new Date(chosenSlot.startsAt);
+          const endsAt = new Date(chosenSlot.endsAt);
+          const ttlHours = clinic.depositTtlHours ?? 24;
+          const shadow = clinicRows[0].shadowModeEnabled;
+
+          let reservationId: string | null = null;
+          if (!shadow) {
+            const held = await this.reservationService.reserve(
+              clinic.id, lead.id, startsAt, endsAt, ttlHours * 60,
+            );
+            if (!held) {
+              // Slot tomado entre a oferta e a escolha → reoferta.
+              const { slots: newSlots } = await this.fetchAndOfferSlots(
+                conversation.id, clinic, calendarGateway, timezone, businessHours,
+                undefined, undefined, undefined, undefined, undefined, voiceEnabled,
+              );
+              replyText = newSlots.length > 0
+                ? await compose({ type: "slot_taken_reoffered", newSlots })
+                : await compose({ type: "no_slots_available" });
+              forceTextOnlyReply = true;
+              break;
+            }
+            reservationId = held.id;
+          }
+
+          const holdExpiresAt = new Date(Date.now() + ttlHours * 3600_000).toISOString();
+          await this.stateMachine.startDepositWait(
+            conversation.id,
+            {
+              slotStartsAt: startsAt.toISOString(),
+              slotEndsAt: endsAt.toISOString(),
+              slotLabel: chosenSlot.label,
+              reservationId,
+              treatmentId: matchedTreatmentForBooking?.id ?? null,
+              treatmentName: offeredTreatment?.treatmentName,
+              valueCents: bookingValueCents,
+              depositAmountCents: clinic.depositAmountCents,
+              holdExpiresAt,
+            },
+            ttlHours * 60,
+          );
+          replyText = buildDepositRequestMessage(
+            {
+              depositAmountCents: clinic.depositAmountCents,
+              depositPixKey: clinic.depositPixKey,
+              depositPixKeyType: clinic.depositPixKeyType,
+              depositRecipientName: clinic.depositRecipientName,
+              depositTtlHours: ttlHours,
+              depositNotes: clinic.depositNotes,
+            },
+            chosenSlot.label,
+          );
+          forceTextOnlyReply = true;
+          break;
+        }
 
         const result = await bookingService.book({
           clinic,
@@ -3227,12 +3828,13 @@ export class ConversationOrchestrator {
           ? null
           : classification.slotPreference.identifiedTreatment ?? null;
         // Gap: lead perguntou preço de tratamento não cadastrado
+        let matchedPriceTreatment: Treatment | undefined;
         if (priceIdentifiedTreatment) {
-          const matchedInCatalog = clinicTreatments.find(
+          matchedPriceTreatment = clinicTreatments.find(
             (t) => t.name.toLowerCase() === priceIdentifiedTreatment.toLowerCase() ||
               (t.aliases ?? []).some((a) => a.toLowerCase() === priceIdentifiedTreatment.toLowerCase()),
           );
-          if (!matchedInCatalog) {
+          if (!matchedPriceTreatment) {
             maybeLogTreatmentGap(
               clinicId,
               conversation.id,
@@ -3242,6 +3844,39 @@ export class ConversationOrchestrator {
             ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
           }
         }
+
+        // A4 — Nota determinística de quantidade: valor exato do pacote ou escalonamento.
+        let quantityNote: string | null = null;
+        if (quantityPriceResolution?.kind === "exact") {
+          quantityNote =
+            `O lead perguntou o valor de ${quantityPriceResolution.quantity} (ver mensagem). ` +
+            `Os valores EXATOS do pacote são: ${quantityPriceResolution.lines.join("; ")}. ` +
+            `Responda com estes valores exatos e não cite valores de outras quantidades.`;
+        } else if (quantityPriceResolution?.kind === "unknown") {
+          quantityNote =
+            `O lead perguntou por ${quantityPriceResolution.quantity} unidades, que NÃO é um pacote com valor fechado. ` +
+            `NUNCA invente nem calcule um valor proporcional para essa quantidade. Diga com naturalidade que os ` +
+            `pacotes fechados são de ${quantityPriceResolution.availableSummary} unidades e que, para ` +
+            `${quantityPriceResolution.quantity}, você confirma o valor exato com a equipe e já retorna. ` +
+            `Ofereça seguir com a avaliação enquanto isso.`;
+          // Escalonamento: registra o gap e sinaliza atenção para a equipe cotar.
+          maybeLogTreatmentGap(
+            clinicId,
+            conversation.id,
+            lead.name,
+            `${quantityPriceResolution.quantity} lentes (quantidade não-padrão)`,
+            messageText,
+          ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+          await db
+            .update(conversationsTable)
+            .set({
+              needsAttention: true,
+              attentionReason: `Lead pediu preço de ${quantityPriceResolution.quantity} unidades (fora dos pacotes fechados) — confirmar valor`,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+        }
+
         replyText = await compose({
           type: "price_inquiry",
           identifiedTreatment: priceIdentifiedTreatment,
@@ -3249,7 +3884,60 @@ export class ConversationOrchestrator {
             ambiguousTreatmentOverride ??
             classification.slotPreference.ambiguousTreatmentMatches ??
             null,
+          quantityNote,
+          oldPriceObjection: oldPriceObjectionDetected,
         });
+
+        // ── Item 1 (reunião 17/07): fechar como o operador faz — depois de cotar
+        // um único tratamento (sem ambiguidade, sem escalonamento pendente, sem
+        // objeção de preço em curso), já oferta horários reais em vez de só
+        // perguntar "posso ver os horários?". Tratamentos com pipeline próprio
+        // (ex.: a apresentação de lentes) ficam de fora — o pipeline já conduz
+        // até a oferta de horário no seu próprio ritmo, e isFirstMessage fica de
+        // fora para não duplicar a saudação que o 2º compose() prependaria.
+        // OPT-IN por clínica (offerSlotsAfterPriceEnabled): pedido explícito da
+        // Vitalli — outras clínicas concierge (ex.: Ximendes) têm padrões reais
+        // de price_inquiry com objeção/terceiro/especificação técnica onde essa
+        // antecipação de horário não foi validada. Não generalizar sem opt-in.
+        if (
+          clinic.offerSlotsAfterPriceEnabled &&
+          experience === "concierge" &&
+          !isFirstMessage &&
+          !pipelineState &&
+          matchedPriceTreatment &&
+          !matchedPriceTreatment.pipelineSteps?.length &&
+          quantityPriceResolution?.kind !== "unknown" &&
+          !oldPriceObjectionDetected
+        ) {
+          const evalTreatment = matchedPriceTreatment.requiresEvaluationFirst
+            ? clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name))
+            : null;
+          const bookingTargetName = evalTreatment?.name ?? matchedPriceTreatment.name;
+          const bookingTargetDuration = evalTreatment?.durationMinutes ?? matchedPriceTreatment.durationMinutes;
+
+          const { slots: priceFollowSlots, preferredDayEmpty: priceFollowEmpty } = await this.fetchAndOfferSlots(
+            conversation.id, clinic, calendarGateway, timezone, businessHours,
+            undefined, undefined, undefined,
+            bookingTargetName, bookingTargetDuration, voiceEnabled,
+          );
+
+          if (priceFollowSlots.length > 0 && !priceFollowEmpty) {
+            // compose() sobrescreve composedParts/composedMediaIds a cada chamada —
+            // preserva o que a resposta de preço já anexou (ex.: vídeo do resultado)
+            // e concatena com o que a 2ª chamada (só texto) produzir.
+            const priceReplyParts = composedParts;
+            const priceMediaIds = composedMediaIds;
+            const slotsText = evalTreatment
+              ? await compose({ type: "evaluation_redirect", treatmentName: matchedPriceTreatment.name, evaluationSlots: priceFollowSlots })
+              : await compose({ type: "slots_found", slots: priceFollowSlots, askedForPreference: false });
+            if (slotsText) {
+              replyText = `${replyText}\n\n${slotsText}`;
+              composedParts = [...priceReplyParts, ...composedParts];
+              composedMediaIds = [...priceMediaIds, ...composedMediaIds];
+            }
+          }
+        }
+
         break;
       }
 
@@ -3322,6 +4010,12 @@ export class ConversationOrchestrator {
 
       // ── Pergunta geral (inclui seleções de menu: procedimentos e localização) ──
       case "general_question": {
+        // A6 — Triagem de caso atípico tem precedência: responde com a condução clínica
+        // (pedir radiografia/foto, doutor avalia) em vez do fluxo normal de pergunta.
+        if (atypicalTriageContext) {
+          replyText = await compose({ type: "general_question", clinicContext: atypicalTriageContext });
+          break;
+        }
         let clinicContext: string;
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
@@ -3334,6 +4028,26 @@ export class ConversationOrchestrator {
         if (pipelineState && !procedureSelection) {
           const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
           const currentStep = pipelineTreatment?.pipelineSteps?.[pipelineState.stepIndex];
+
+          // A3 — Conteúdo deferido: pipeline foi posicionado no passo de conteúdo no 1º
+          // contato (só o opener foi enviado). Agora que o lead respondeu, emitimos a
+          // explicação + mídia e avançamos para o próximo passo.
+          if (currentStep?.type === "content" && pipelineTreatment) {
+            const parts = buildPipelineContentParts(currentStep.blocks);
+            composedParts = parts;
+            composedMediaIds = parts
+              .filter((p): p is { type: "media"; id: string } => p.type === "media")
+              .map((p) => p.id);
+            replyText = parts
+              .filter((p): p is { type: "text"; content: string } => p.type === "text")
+              .map((p) => p.content)
+              .join("\n\n");
+            const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
+            pendingPipelineAdvance = next
+              ? { action: "advance", nextStepIndex: next.index }
+              : { action: "exit" };
+            break;
+          }
 
           if (currentStep?.type === "qa" && pipelineTreatment) {
             const maxTurns = currentStep.maxTurns ?? 10;
@@ -3361,6 +4075,21 @@ export class ConversationOrchestrator {
               editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
             ].filter(Boolean).join("\n");
             replyText = await compose({ type: "general_question", clinicContext });
+            // Anexo determinístico: se a dúvida casa com palavras-chave do step
+            // (ex.: cor/tom → tabela de cores), o sistema anexa a mídia — a LLM
+            // já verbalizou a explicação acima. Espelha a montagem dos content
+            // steps (part de texto + part de mídia) para a entrega interleaved.
+            const keywordMediaId = matchMediaOnKeywords(
+              currentStep.mediaOnKeywords,
+              normalizeFreeText(messageText),
+            );
+            if (keywordMediaId) {
+              composedParts = [
+                { type: "text", content: replyText },
+                { type: "media", id: keywordMediaId },
+              ];
+              composedMediaIds = [keywordMediaId];
+            }
             break;
           }
 
@@ -3414,6 +4143,23 @@ export class ConversationOrchestrator {
           if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
             const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0);
             if (firstActive) {
+              // A3 — 1º contato concierge com passo de conteúdo: envia só o opener de
+              // qualificação e deixa o pipeline POSICIONADO no passo de conteúdo (sem
+              // emiti-lo). A explicação + mídia dispara na continuação, quando o lead
+              // responde — espelhando o ritmo da operadora humana (qualifica, depois
+              // apresenta). Passos que começam com "qa" não têm mídia e seguem normais.
+              if (deferFirstContactPitch && firstActive.step.type === "content") {
+                await this.stateMachine.startTreatmentPipeline(
+                  conversation.id,
+                  matchedTreatment.id,
+                  matchedTreatment.name,
+                  clinic.staleConversationHours * 60,
+                  firstActive.index,
+                );
+                replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
+                clinicContext = "";
+                break;
+              }
               await this.stateMachine.startTreatmentPipeline(
                 conversation.id,
                 matchedTreatment.id,
@@ -3765,6 +4511,150 @@ export class ConversationOrchestrator {
     }
   }
 
+  async resumeAfterHumanReviewDecision(params: {
+    clinicId: string;
+    reviewRequestId: string;
+    decision: HumanReviewDecision;
+  }): Promise<{ replied: boolean; reason?: string }> {
+    if (params.decision !== "approved_direct_booking" && params.decision !== "needs_evaluation") {
+      return { replied: false, reason: "decision_does_not_resume_automation" };
+    }
+
+    const [clinicRow] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, params.clinicId))
+      .limit(1);
+    if (!clinicRow) return { replied: false, reason: "clinic_not_found" };
+
+    const [review] = await db
+      .select()
+      .from(humanReviewRequests)
+      .where(eq(humanReviewRequests.id, params.reviewRequestId))
+      .limit(1);
+    if (!review || review.clinicId !== params.clinicId) {
+      return { replied: false, reason: "review_not_found" };
+    }
+
+    const [conversation] = await db
+      .select()
+      .from(conversationsTable)
+      .where(eq(conversationsTable.id, review.conversationId))
+      .limit(1);
+    const [lead] = await db
+      .select()
+      .from(leadsTable)
+      .where(eq(leadsTable.id, review.leadId))
+      .limit(1);
+    if (!conversation || !lead) return { replied: false, reason: "conversation_or_lead_not_found" };
+
+    const clinic = buildOrganization(clinicRow);
+    const timezone = new ClinicTimezone(clinic.timezone);
+    const businessHours = parseBusinessHours(clinic.businessHours);
+    const calendarGateway = resolveCalendarGateway({
+      clinicId: clinic.id,
+      calendarMode: clinic.calendarMode,
+      googleCalendarId: clinic.googleCalendarId,
+      timezone,
+      businessHours: clinic.businessHours,
+      postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
+    });
+
+    const treatments = await this.treatmentRepo.listByClinic(params.clinicId);
+    const treatment = params.decision === "approved_direct_booking"
+      ? treatments.find((t) => t.id === (review.targetTreatmentId ?? review.treatmentId))
+      : treatments.find((t) => /avalia[cç][aã]o/i.test(t.name));
+
+    if (!treatment) {
+      await db
+        .update(conversationsTable)
+        .set({
+          aiPaused: true,
+          needsAttention: true,
+          attentionReason: "Revisão humana decidida, mas tratamento alvo não foi encontrado",
+          updatedAt: new Date(),
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+      return { replied: false, reason: "target_treatment_not_found" };
+    }
+
+    const { slots } = await this.fetchAndOfferSlots(
+      conversation.id,
+      clinic,
+      calendarGateway,
+      timezone,
+      businessHours,
+      undefined,
+      undefined,
+      undefined,
+      treatment.name,
+      treatment.durationMinutes,
+      false,
+    );
+
+    const now = new Date();
+    const leadAddress = resolveWhatsAppChannelAddress({
+      phone: lead.phone,
+      whatsappLid: lead.whatsappLid,
+    }) ?? lead.phone;
+    if (!leadAddress) return { replied: false, reason: "lead_without_whatsapp_address" };
+
+    const intro = params.decision === "approved_direct_booking"
+      ? "O doutor avaliou suas fotos e sinalizou que podemos seguir para o agendamento do procedimento."
+      : "O doutor avaliou suas fotos e sinalizou que o melhor próximo passo é uma avaliação presencial.";
+    const replyText = slots.length > 0
+      ? [
+          intro,
+          "",
+          "Tenho estes horários disponíveis:",
+          ...slots.map((slot) => `${slot.index}. ${slot.label}`),
+          "",
+          "Responda apenas com o número da opção que prefere. Esses horários ficam disponíveis por 15 minutos aguardando sua resposta.",
+        ].join("\n")
+      : `${intro}\n\nNo momento não encontrei horários disponíveis. Vou deixar a equipe avisada para te ajudar pelo WhatsApp.`;
+
+    const agentMessageId = randomUUID();
+    await this.conversationRepo.appendMessage({
+      id: agentMessageId,
+      conversationId: conversation.id,
+      author: "agent",
+      body: replyText,
+      sentAt: now,
+      externalId: null,
+      intent: slots.length > 0 ? "check_availability" : "needs_human",
+      deliveryFormat: null,
+    });
+
+    await db
+      .update(conversationsTable)
+      .set({
+        aiPaused: slots.length === 0,
+        takeoverExpiresAt: null,
+        needsAttention: slots.length === 0,
+        attentionReason: slots.length === 0 ? "Sem horários após revisão humana" : null,
+        aiResumedAt: slots.length > 0 ? now : conversation.aiResumedAt,
+        updatedAt: now,
+      })
+      .where(eq(conversationsTable.id, conversation.id));
+
+    await this.enqueueConversationReply(params.clinicId, conversation.id, {
+      version: 1,
+      kind: "conversation_reply",
+      to: leadAddress,
+      agentMessageId,
+      replyText,
+      intent: slots.length > 0 ? "check_availability" : "needs_human",
+      useVoice: false,
+      ttsConfig: DEFAULT_TTS_CONFIG,
+      interleavedParts: [],
+      mediaParts: [],
+      leadId: lead.id,
+      pipelineAdvance: null,
+    });
+
+    return { replied: true };
+  }
+
   private async enqueueConversationReply(
     clinicId: string,
     conversationId: string,
@@ -3867,11 +4757,22 @@ export class ConversationOrchestrator {
     const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
     const duration = slotDurationMinutes ?? clinic.defaultAppointmentDurationMinutes;
 
+    // A7 — Janelas de início por tratamento (ex.: lentes só 09:00/16:00). Resolvemos
+    // pelo nome do tratamento agendado; quando há janelas, a grade horária é ignorada
+    // e o injetor de horário exato é suprimido (senão "terça às 15h" ofertaria 15:00
+    // para lentes, fora da janela).
+    const windowTreatment = treatmentName
+      ? await this.treatmentRepo.findByName(clinic.id, treatmentName)
+      : null;
+    const allowedStartWindows = windowTreatment?.bookingWindows ?? null;
+    const hasBookingWindows = (allowedStartWindows?.length ?? 0) > 0;
+
     let allSlots = await calendarGateway.listAvailableSlots({
       clinicId: clinic.id,
       from,
       to,
       slotDurationMinutes: duration,
+      allowedStartWindows,
     });
 
     // Remove slots que conflitam com appointments locais (inclui blocos sintéticos de E2E
@@ -3939,7 +4840,7 @@ export class ConversationOrchestrator {
     // está ocupado: verificamos a disponibilidade real daquele instante antes de
     // dizer "não temos". Cobre o caso em que a duração do slot não divide 60min
     // e a grade pula horários redondos que na verdade estão livres.
-    if (preferredTime && targetDayParts) {
+    if (preferredTime && targetDayParts && !hasBookingWindows) {
       const exactSlot = await resolveExactRequestedSlot({
         calendarGateway,
         clinicId: clinic.id,

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock, UserRoundCog } from "lucide-react";
+import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock, UserRoundCog, ListChecks } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { DurationHoursInput } from "@/components/DurationHoursInput";
 
@@ -41,6 +41,19 @@ function deriveNextAction(params: {
 
 const DISCOUNT_PRESETS = [200, 300, 500] as const;
 
+type PipelineOption = {
+  treatmentId: string;
+  treatmentName: string;
+  summary: {
+    action: "send_intro_until_photo";
+    label: string;
+    textParts: number;
+    mediaParts: number;
+    preview: string | null;
+    willWaitForPhoto: boolean;
+  };
+};
+
 export function ConvComposer({
   conversationId,
   aiPaused,
@@ -62,6 +75,11 @@ export function ConvComposer({
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
+  const [pipelineOpen, setPipelineOpen] = useState(false);
+  const [pipelineOptions, setPipelineOptions] = useState<PipelineOption[] | null>(null);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [isLoadingPipeline, setIsLoadingPipeline] = useState(false);
+  const [sendingPipelineKey, setSendingPipelineKey] = useState<string | null>(null);
   const [discountCustom, setDiscountCustom] = useState("");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
@@ -149,6 +167,71 @@ export function ConvComposer({
     textareaRef.current?.focus();
   }
 
+  const loadPipelineActions = useCallback(async () => {
+    if (isLoadingPipeline) return;
+    setIsLoadingPipeline(true);
+    setPipelineError(null);
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/pipeline-actions`);
+      const data: { options?: PipelineOption[]; error?: string } = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPipelineError(data.error ?? "Não foi possível carregar ações.");
+        return;
+      }
+      setPipelineOptions(data.options ?? []);
+    } catch {
+      setPipelineError("Falha na conexão ao carregar ações.");
+    } finally {
+      setIsLoadingPipeline(false);
+    }
+  }, [conversationId, isLoadingPipeline]);
+
+  const handleOpenPipeline = useCallback(() => {
+    setPipelineOpen((open) => {
+      const next = !open;
+      if (next) {
+        setScheduleOpen(false);
+        setDiscountOpen(false);
+        void loadPipelineActions();
+      }
+      return next;
+    });
+  }, [loadPipelineActions]);
+
+  const handleSendPipelineAction = useCallback(async (option: PipelineOption) => {
+    const key = `${option.treatmentId}:${option.summary.action}`;
+    if (sendingPipelineKey) return;
+    setSendingPipelineKey(key);
+    setPipelineError(null);
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/pipeline-actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          treatmentId: option.treatmentId,
+          action: option.summary.action,
+        }),
+      });
+      const data: { error?: string; skippedMedia?: { mediaId: string; reason: string }[] } = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPipelineError(data.error ?? "Não foi possível enviar a ação.");
+        return;
+      }
+      setPipelineOpen(false);
+      setText("");
+      if (data.skippedMedia?.length) {
+        setError("Ação enviada, mas uma mídia não pôde ser entregue. Revise a biblioteca do tratamento.");
+      } else {
+        setError(null);
+      }
+      router.refresh();
+    } catch {
+      setPipelineError("Falha na conexão ao enviar ação.");
+    } finally {
+      setSendingPipelineKey(null);
+    }
+  }, [conversationId, router, sendingPipelineKey]);
+
   const handleLoadSlots = async () => {
     if (isLoadingSlots) return;
     setIsLoadingSlots(true);
@@ -175,6 +258,8 @@ export function ConvComposer({
       setSchedDate(datePart);
       setSchedTime(timePart.slice(0, 5));
     }
+    setPipelineOpen(false);
+    setDiscountOpen(false);
     setScheduleOpen((v) => !v);
   }
 
@@ -267,6 +352,17 @@ export function ConvComposer({
 
           <button
             className="conv-chip"
+            onClick={handleOpenPipeline}
+            disabled={isLoadingPipeline}
+            title="Envia uma régua determinística do tratamento e retoma a IA no próximo passo"
+            style={pipelineOpen ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" } : undefined}
+          >
+            <ListChecks size={12} />
+            {isLoadingPipeline ? "Carregando…" : "Pipeline"}
+          </button>
+
+          <button
+            className="conv-chip"
             onClick={handleLoadSlots}
             disabled={isLoadingSlots}
             title="Busca os próximos horários disponíveis e pré-preenche o campo"
@@ -294,7 +390,7 @@ export function ConvComposer({
 
           <button
             className="conv-chip"
-            onClick={() => { setDiscountOpen((v) => !v); setScheduleOpen(false); }}
+            onClick={() => { setDiscountOpen((v) => !v); setScheduleOpen(false); setPipelineOpen(false); }}
             title="Enviar oferta com desconto"
             style={discountOpen ? { borderColor: "color-mix(in srgb, var(--accent) 35%, transparent)", color: "var(--accent-strong)" } : undefined}
           >
@@ -348,6 +444,61 @@ export function ConvComposer({
                 Cancelar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isSalesConversation && pipelineOpen && (
+        <div className="conv-schedule-panel">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0 4px" }}>
+            {pipelineError && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--danger)" }}>
+                <AlertCircle size={13} />
+                {pipelineError}
+              </div>
+            )}
+            {isLoadingPipeline && (
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>Carregando ações disponíveis…</span>
+            )}
+            {!isLoadingPipeline && pipelineOptions?.length === 0 && (
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                Nenhum tratamento com pipeline configurado nesta clínica.
+              </span>
+            )}
+            {pipelineOptions?.map((option) => {
+              const key = `${option.treatmentId}:${option.summary.action}`;
+              return (
+                <button
+                  key={key}
+                  className="secondary-button"
+                  style={{
+                    alignItems: "flex-start",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    padding: "8px 10px",
+                    textAlign: "left",
+                    width: "100%",
+                  }}
+                  disabled={Boolean(sendingPipelineKey)}
+                  onClick={() => void handleSendPipelineAction(option)}
+                  title="Enviar conteúdo do tratamento e preparar a IA para continuar"
+                >
+                  <span style={{ color: "var(--text)", fontSize: 13, fontWeight: 700 }}>
+                    {sendingPipelineKey === key ? "Enviando…" : option.treatmentName}
+                  </span>
+                  <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 600 }}>
+                    {option.summary.textParts} texto(s) · {option.summary.mediaParts} mídia(s)
+                    {option.summary.willWaitForPhoto ? " · aguarda foto" : ""}
+                  </span>
+                  {option.summary.preview && (
+                    <span style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.35 }}>
+                      {option.summary.preview}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

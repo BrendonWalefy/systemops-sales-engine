@@ -130,7 +130,9 @@ describe("P0.7 (pipeline) — saudação ÚNICA quando pipeline de conteúdo dis
 
     expect((fullText.match(/boa (?:dia|tarde|noite)/gi) || []).length).toBe(1);
     expect(fullText).toContain("Tudo bem?");
-    expect(fullText).toContain("assistente virtual da Clínica Vitalli");
+    // Persona humana: nunca "assistente virtual" (A2).
+    expect(fullText).toContain("Sou a Gleice, da Clínica Vitalli");
+    expect(fullText).not.toMatch(/assistente virtual/i);
     expect(fullText).toContain("Nós somos especialistas em lentes de resina composta");
   });
 
@@ -175,6 +177,6 @@ describe("P0.7 (pipeline) — saudação ÚNICA quando pipeline de conteúdo dis
     const parts = prependPipelineIntroGreeting(lentesBlocks, SAO_PAULO, "Clínica Vitalli", null, "Gleice");
     const first = (parts[0] as Extract<ResponsePart, { type: "text" }>).content;
     expect(first).toMatch(/^Boa (?:dia|tarde|noite)\. Tudo bem\?/);
-    expect(first).toContain("Sou a Gleice, assistente virtual da Clínica Vitalli.");
+    expect(first).toContain("Sou a Gleice, da Clínica Vitalli.");
   });
 });

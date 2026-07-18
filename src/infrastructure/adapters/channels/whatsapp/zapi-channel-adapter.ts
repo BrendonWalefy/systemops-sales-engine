@@ -400,7 +400,11 @@ export async function createZApiInstance(
     body: JSON.stringify({
       name,
       receivedCallbackUrl: webhookUrl,
-      autoReadMessage: true,
+      // false: com true, o Z-API marca a mensagem como lida via API assim que
+      // chega e o multi-device sincroniza esse status pro celular do dono da
+      // clínica quase na hora — em muitos aparelhos isso suprime o banner/som
+      // de notificação, dando a impressão de que "parou de notificar".
+      autoReadMessage: false,
       callRejectAuto: false,
       autoReadStatus: false,
       disableEnqueueWhenDisconnected: false,
