@@ -2,7 +2,16 @@ import { eq, and, notInArray, lt, sql } from "drizzle-orm";
 import type { Lead } from "@/domain/entities/lead";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import { db } from "@/infrastructure/db/client";
-import { leads, conversations, messages } from "@/infrastructure/db/schema";
+import {
+  agentRecommendations,
+  appointments,
+  followUps,
+  humanReviewRequests,
+  leads,
+  conversations,
+  messages,
+  slotReservations,
+} from "@/infrastructure/db/schema";
 
 export class DrizzleLeadRepository implements LeadRepository {
   async findById(id: string): Promise<Lead | null> {
@@ -80,6 +89,24 @@ export class DrizzleLeadRepository implements LeadRepository {
       lostReason: lead.lostReason,
       updatedAt: lead.updatedAt,
     };
+
+    if (lead.phone && lead.whatsappLid) {
+      const byPhone = await this.findByPhone(lead.clinicId, lead.phone);
+      const byLid = await this.findByWhatsAppLid(lead.clinicId, lead.whatsappLid);
+
+      if (byPhone && byLid && byPhone.id !== byLid.id) {
+        await this.mergeDuplicateLeads({
+          canonicalLeadId: byPhone.id,
+          duplicateLeadId: byLid.id,
+        });
+      } else if (!byPhone && byLid && byLid.id !== lead.id) {
+        await db
+          .update(leads)
+          .set(set)
+          .where(eq(leads.id, byLid.id));
+        return;
+      }
+    }
 
     if (lead.phone) {
       await db.insert(leads).values(values).onConflictDoUpdate({
@@ -172,6 +199,40 @@ export class DrizzleLeadRepository implements LeadRepository {
         .set({ leadId: params.canonicalLeadId, updatedAt: now })
         .where(eq(conversations.id, duplicateConv.id));
     }
+
+    await db
+      .update(appointments)
+      .set({ leadId: params.canonicalLeadId, updatedAt: now })
+      .where(eq(appointments.leadId, params.duplicateLeadId));
+
+    await db
+      .update(followUps)
+      .set({ leadId: params.canonicalLeadId, updatedAt: now })
+      .where(eq(followUps.leadId, params.duplicateLeadId));
+
+    await db
+      .update(agentRecommendations)
+      .set({ leadId: params.canonicalLeadId })
+      .where(eq(agentRecommendations.leadId, params.duplicateLeadId));
+
+    await db
+      .update(slotReservations)
+      .set({ leadId: params.canonicalLeadId })
+      .where(eq(slotReservations.leadId, params.duplicateLeadId));
+
+    await db
+      .update(humanReviewRequests)
+      .set({ leadId: params.canonicalLeadId, updatedAt: now })
+      .where(eq(humanReviewRequests.leadId, params.duplicateLeadId));
+
+    await db
+      .update(leads)
+      .set({
+        phone: null,
+        whatsappLid: null,
+        updatedAt: now,
+      })
+      .where(eq(leads.id, params.duplicateLeadId));
 
     await db
       .update(leads)
