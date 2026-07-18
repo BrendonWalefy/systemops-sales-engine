@@ -3,7 +3,12 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, leads, appointments, professionals } from "@/infrastructure/db/schema";
 import { eq, and } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
-import { importCalendarEvents, extractPatientName } from "@/application/calendar/import-calendar-events";
+import {
+  calendarEventIdCandidates,
+  importCalendarEvents,
+  extractPatientName,
+  normalizeCalendarEventId,
+} from "@/application/calendar/import-calendar-events";
 import fs from "fs";
 import path from "path";
 
@@ -123,6 +128,15 @@ END:VCALENDAR`;
     // com os componentes locais corretos (hora 11, não deslocada).
     expect(result.events[0].startTime.getHours()).toBe(11);
     expect(result.events[0].startTime.getDate()).toBe(10);
+  });
+});
+
+describe("Google Calendar event id normalization", () => {
+  it("trata ids da API e UIDs do ICS como o mesmo evento", () => {
+    expect(normalizeCalendarEventId("abc123@google.com")).toBe("abc123");
+    expect(normalizeCalendarEventId("abc123")).toBe("abc123");
+    expect(calendarEventIdCandidates("abc123")).toEqual(["abc123", "abc123@google.com"]);
+    expect(calendarEventIdCandidates("abc123@google.com")).toEqual(["abc123", "abc123@google.com"]);
   });
 });
 
@@ -308,12 +322,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
     );
     console.log("Import result (2nd attempt):", importResult);
 
-    // Nota: Hoje não temos validação de duplicata por UID
-    // A implementação atual cria duplicatas. Isso é documentado como comportamento esperado.
-    // Num futuro, poderia usar calendarEventId como unique constraint.
-    console.log(
-      `⚠️  Comportamento esperado: duplicatas são criadas (não há validação por UID ainda)`,
-    );
+    expect(importResult.imported).toBe(0);
+    expect(importResult.skipped).toBe(parseResult.events.length);
+    expect(countAfter).toBe(countBefore);
   });
 
   it("deve extrair o nome do paciente de cada evento do fixture", async () => {

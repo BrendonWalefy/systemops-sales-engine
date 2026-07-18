@@ -22,6 +22,15 @@ export interface ImportOptions {
   defaultProfessionalId?: string;
 }
 
+export function normalizeCalendarEventId(calendarEventId: string): string {
+  return calendarEventId.replace(/@google\.com$/, "");
+}
+
+export function calendarEventIdCandidates(calendarEventId: string): string[] {
+  const normalized = normalizeCalendarEventId(calendarEventId);
+  return [normalized, `${normalized}@google.com`];
+}
+
 export async function importCalendarEvents(
   clinicId: string,
   events: CalendarEvent[],
@@ -106,15 +115,28 @@ export async function importCalendarEvents(
 
       // Deduplication: check if an appointment with this calendarEventId already exists
       const existingAppointment = await db.query.appointments.findFirst({
-        where: (appts, { eq, and }) => 
-          and(eq(appts.clinicId, clinicId), eq(appts.calendarEventId, event.uid)),
-        columns: { id: true }
+        where: (appts, { eq, and, inArray }) =>
+          and(
+            eq(appts.clinicId, clinicId),
+            inArray(appts.calendarEventId, calendarEventIdCandidates(event.uid)),
+          ),
+        columns: { id: true, professionalId: true, treatmentId: true, status: true }
       });
 
       if (existingAppointment) {
-        // Update the description just in case it was imported before the description column existed
+        const updatedStatus =
+          existingAppointment.status === "confirmed" ? "confirmed" : "scheduled";
+        // Reimportação também corrige eventos que foram movidos/editados no Google.
         await db.update(appointments)
-          .set({ description: event.summary ?? null })
+          .set({
+            startsAt: event.startTime,
+            endsAt: event.endTime,
+            status: updatedStatus,
+            professionalId: matchedProfessional?.id ?? existingAppointment.professionalId ?? options.defaultProfessionalId ?? null,
+            treatmentId: matchedTreatment?.id ?? existingAppointment.treatmentId ?? null,
+            description: event.summary ?? null,
+            updatedAt: new Date(),
+          })
           .where(eq(appointments.id, existingAppointment.id));
         result.skipped++;
         continue;
