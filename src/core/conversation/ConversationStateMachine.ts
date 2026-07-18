@@ -351,7 +351,7 @@ export class ConversationStateMachine {
   }
 
   // Marca que a foto foi recebida (v2: intercept de mídia inbound).
-  async markPipelinePhotoReceived(conversationId: string): Promise<void> {
+  async markPipelinePhotoReceived(conversationId: string, reviewExpiresAt?: Date | null): Promise<void> {
     const state = await this.getCurrentState(conversationId);
     if (!state || state.state !== "treatment_pipeline_active") return;
     const current = state.payload as TreatmentPipelinePayload;
@@ -359,7 +359,9 @@ export class ConversationStateMachine {
       conversationId,
       state: "treatment_pipeline_active",
       payload: { ...current, photoReceived: true } satisfies TreatmentPipelinePayload,
-      expiresAt: state.expiresAt,
+      // Durante revisão humana, o estado acompanha o TTL do caso para que a
+      // retomada no dia seguinte ainda saiba que a foto foi recebida.
+      expiresAt: reviewExpiresAt ?? state.expiresAt,
     });
   }
 
