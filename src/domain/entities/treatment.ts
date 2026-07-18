@@ -37,6 +37,9 @@ export type PipelineStep =
       label: string;
       // Blocos entregues em mensagens separadas: texto, vídeo, texto, vídeo...
       blocks: ContentBlock[];
+      // Pipeline v2: por padrão, conteúdo já enviado nesta conversa não repete.
+      // Configure false apenas quando a repetição for intencional.
+      once?: boolean;
     }
   | {
       type: "qa";
