@@ -123,6 +123,9 @@ export type ActionResult =
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
   | { type: "handoff_requested"; handoffReason?: string | null }
+  | { type: "commercial_pause" }
+  | { type: "quantity_price_confirmation_required"; quantity: number; scope: "total" | "superior" | "inferior" }
+  | { type: "clinical_evaluation_required"; reason: string }
   | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; referencedPriceCents?: number | null; oldPriceObjection?: boolean }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
@@ -310,6 +313,42 @@ export type ComposedResponse = {
   inputTokens: number;
   outputTokens: number;
 };
+
+function buildDeterministicSafetyResponse(
+  actionResult: ActionResult,
+): ComposedResponse | null {
+  let text: string | null = null;
+
+  if (actionResult.type === "quantity_price_confirmation_required") {
+    const scopeLabel = actionResult.scope === "superior"
+      ? "dentes superiores"
+      : actionResult.scope === "inferior"
+        ? "dentes inferiores"
+        : "unidades";
+    text = `Entendi que você quer harmonizar ${actionResult.quantity} ${scopeLabel}. Como essa combinação não está cadastrada como pacote fechado, não vou te passar um valor aproximado. Já sinalizei a equipe para confirmar o valor exato e orientar a avaliação.`;
+  }
+
+  if (actionResult.type === "clinical_evaluation_required") {
+    text = `Entendi o que aconteceu com ${actionResult.reason}. Como esse caso precisa ser avaliado pelo Doutor, não vou confirmar técnica ou valor por mensagem. Já sinalizei a equipe para orientar o próximo passo e montar o orçamento correto.`;
+  }
+
+  if (actionResult.type === "commercial_pause") {
+    text = "Claro, sem problema. Faça seus levantamentos com calma; quando quiser retomar, é só nos chamar. 😊";
+  }
+
+  if (!text) return null;
+
+  const parts: ResponsePart[] = [{ type: "text", content: text }];
+  return {
+    parts,
+    text,
+    mediaIds: [],
+    model: "deterministic-safety",
+    promptVersion: "safety-v1",
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+}
 
 function normalizeScheduleGuardText(content: string): string {
   return content
@@ -597,6 +636,24 @@ Informe gentilmente e ofereça agendar uma avaliação.`;
       return `AÇÃO EXECUTADA: Detectada urgência clínica.
 Demonstre empatia, informe que irá acionar a equipe imediatamente e diga que alguém entrará em contato. Não minimize a situação.`;
 
+    case "quantity_price_confirmation_required": {
+      const scopeLabel = result.scope === "superior"
+        ? "dentes superiores"
+        : result.scope === "inferior"
+          ? "dentes inferiores"
+          : "unidades";
+      return `AÇÃO EXECUTADA: A quantidade/arcada pedida não tem preço fechado cadastrado.
+O lead pediu ${result.quantity} ${scopeLabel}. NÃO informe, repita ou estime qualquer valor. Diga que a equipe já foi avisada para confirmar o valor exato e conduza para a avaliação.`;
+    }
+
+    case "clinical_evaluation_required":
+      return `AÇÃO EXECUTADA: O lead relatou ${result.reason}.
+Não faça cotação nem diagnóstico por mensagem. Explique que o Doutor precisa avaliar o caso antes de confirmar técnica ou valor, diga que a equipe já foi avisada e conduza para a avaliação.`;
+
+    case "commercial_pause":
+      return `AÇÃO EXECUTADA: O lead está apenas pesquisando/comparando e disse que voltará depois.
+Responda com uma única mensagem breve, acolhedora e sem pressão. NÃO informe valores, NÃO envie mídia, NÃO ofereça agenda e NÃO faça perguntas. Valide que ele pode pesquisar com calma e deixe a porta aberta para quando ele retornar.`;
+
     case "handoff_requested": {
       // P0.2: Detectar fluxos de manutenção ou garantia
       const handoffType = detectHandoffType(result.handoffReason);
@@ -843,6 +900,9 @@ export class ResponseComposer {
   }
 
   async compose(input: ComposerInput): Promise<ComposedResponse> {
+    const deterministicSafetyResponse = buildDeterministicSafetyResponse(input.actionResult);
+    if (deterministicSafetyResponse) return deterministicSafetyResponse;
+
     const model = resolveComposerModel(input.clinic.plan);
     const systemPrompt = buildSystemPrompt(input);
     const actionContext = buildActionContext(

@@ -32,6 +32,19 @@ export function detectOldPriceObjection(message: string): boolean {
   return OLD_PRICE_RE.test(normalize(message));
 }
 
+// Pausa comercial explícita: o lead está pesquisando/comparando e sinaliza que
+// voltará depois. Isso não é opt-out, mas também não é autorização para reiniciar
+// o pitch, disparar mídia ou continuar um pipeline no mesmo turno.
+const COMMERCIAL_PAUSE_RE = [
+  /\b(levantamento|levantamentos|levantar|levantando|pesquisando|pesquisar|analisando|analisar|pensando|pensar|avaliando|avaliar|comparando|comparar|valores?|precos?|orcamentos?|cotacoes?)\b[^.?!]{0,120}\b(por enquanto|depois|mais tarde|volto|retorno|te chamo|vou chamar|entro em contato|quando decidir)\b/,
+  /\b(por enquanto|depois|mais tarde|volto|retorno|te chamo|vou chamar|entro em contato|quando decidir)\b[^.?!]{0,120}\b(levantamento|levantamentos|levantar|levantando|pesquisando|pesquisar|analisando|analisar|pensando|pensar|avaliando|avaliar|comparando|comparar|valores?|precos?|orcamentos?|cotacoes?)\b/,
+];
+
+export function detectCommercialPauseText(message: string): boolean {
+  const normalized = normalize(message);
+  return COMMERCIAL_PAUSE_RE.some((pattern) => pattern.test(normalized));
+}
+
 // Caso clínico atípico: sinais de PROBLEMA ESTRUTURAL que impede o plano padrão de
 // lentes e exige avaliação clínica prévia (radiografia/foto) antes de qualquer cotação.
 // IMPORTANTE (multi-tenant): NÃO listamos nomes de tratamentos que a clínica pode vender
@@ -40,6 +53,7 @@ export function detectOldPriceObjection(message: string): boolean {
 // só a raiz, dentista indicou ponte fixa) querendo lentes.
 const ATYPICAL_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bfratur/, label: "dente fraturado" },
+  { re: /\blascad/, label: "dente lascado" },
   { re: /\b(dente quebrado|quebrou o dente|quebrei o dente|quebrado por dentro)\b/, label: "dente quebrado" },
   { re: /\b(so a raiz|somente a raiz|so tem a raiz|so sobrou a raiz|apenas a raiz|so a raizinha|so tenho a raiz)\b/, label: "só a raiz do dente" },
   { re: /\b(ponte fixa|ponte movel|ponte moveu)\b/, label: "ponte indicada" },

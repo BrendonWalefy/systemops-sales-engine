@@ -43,7 +43,7 @@ import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
 import { extractReferencedPrice } from "@/core/intelligence/price-reference";
-import { detectAtypicalClinicalCase, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
+import { detectAtypicalClinicalCase, detectCommercialPauseText, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -1299,6 +1299,25 @@ export function resolveInformationalTreatmentTarget(params: {
   }
 
   return directMentionTreatment;
+}
+
+// Um tratamento identificado apenas pelo contexto do histórico não é gatilho
+// suficiente para iniciar uma jornada comercial. O lead precisa mencioná-lo na
+// mensagem atual ou selecioná-lo explicitamente no menu.
+export function hasExplicitPipelineTreatmentTrigger(params: {
+  message: string;
+  treatments: Treatment[];
+  lastAgentMessage?: string | null;
+  procedureSelection?: ProcedureListItem | null;
+  treatment: Treatment;
+}): boolean {
+  if (params.procedureSelection) return true;
+  const directMention = resolveDirectTreatmentMention(
+    params.message,
+    params.treatments,
+    params.lastAgentMessage,
+  );
+  return directMention?.id === params.treatment.id;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.
@@ -3221,6 +3240,15 @@ export class ConversationOrchestrator {
     // esse padrão e redirecionamos para check_availability para buscar slots reais — sem
     // isso, o ResponseComposer alucinaria horários inventados.
     let effectiveIntent = coercedIntent;
+    const commercialPauseDetected = detectCommercialPauseText(messageText);
+    if (commercialPauseDetected) {
+      effectiveIntent = "farewell";
+      // Uma pausa comercial encerra qualquer jornada/oferta que ainda estivesse
+      // aberta. A próxima mensagem da lead poderá retomar normalmente.
+      if (pipelineState || hasPendingOffer) {
+        await this.stateMachine.invalidate(conversation.id);
+      }
+    }
     let clarificationTreatmentName: string | null = null;
     if (
       intent === "general_question" &&
@@ -3267,12 +3295,14 @@ export class ConversationOrchestrator {
     // pitch padrão de lentes. O sistema decide: não cotar; fazer a triagem que o doutor
     // precisa (radiografia/foto) e sinalizar atenção. Não interrompe pipeline em curso.
     let atypicalTriageContext: string | null = null;
+    let atypicalCaseLabel: string | null = null;
     if (
       (effectiveIntent === "general_question" || effectiveIntent === "price_inquiry") &&
       !pipelineState
     ) {
       const atypical = detectAtypicalClinicalCase(messageText);
       if (atypical) {
+        atypicalCaseLabel = atypical;
         atypicalTriageContext =
           `CASO CLÍNICO ATÍPICO detectado (${atypical}). NÃO cote o preço padrão de lentes nem empurre o pitch de lentes. ` +
           `Acolha o relato com empatia e explique que, nesses casos (${atypical}), o doutor precisa avaliar individualmente. ` +
@@ -3548,6 +3578,10 @@ export class ConversationOrchestrator {
       messageText,
       hasPendingOffer,
     );
+    // Nenhuma regra posterior pode transformar uma pausa comercial em uma nova
+    // pergunta de negócio ou em uma confirmação de agenda.
+    if (commercialPauseDetected) effectiveIntent = "farewell";
+    const responseIntent: IntentType = commercialPauseDetected ? "farewell" : intent;
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
@@ -4171,36 +4205,46 @@ export class ConversationOrchestrator {
           }
         }
 
-        // A4 — Nota determinística de quantidade: valor exato do pacote ou escalonamento.
+        // A4 — Bloqueio determinístico: sem pacote exato, não há cotação.
+        // Antes, quantityNote era apenas uma instrução para a LLM; ela podia
+        // ignorá-la e repetir preços gerais da política para uma arcada/quantidade
+        // diferente. Agora a IA é pausada e a resposta segura não passa pela LLM.
+        if (quantityPriceResolution?.kind === "unknown") {
+          const attentionReason = `Lead pediu preço de ${quantityPriceResolution.quantity} unidades (fora dos pacotes fechados) — confirmar valor`;
+          await maybeLogTreatmentGap(
+            clinicId,
+            conversation.id,
+            lead.name,
+            `${quantityPriceResolution.quantity} lentes (quantidade/arcada não-padrão)`,
+            messageText,
+          ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: true,
+              takeoverExpiresAt: null,
+              needsAttention: true,
+              attentionReason,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, attentionReason);
+          replyText = await compose({
+            type: "quantity_price_confirmation_required",
+            quantity: quantityPriceResolution.quantity,
+            scope: quantityPriceResolution.scope,
+          });
+          break;
+        }
+
+        // A4 — Nota determinística de quantidade exata: a LLM só pode repetir
+        // os valores que o resolver já encontrou na tabela fechada.
         let quantityNote: string | null = null;
         if (quantityPriceResolution?.kind === "exact") {
           quantityNote =
             `O lead perguntou o valor de ${quantityPriceResolution.quantity} (ver mensagem). ` +
             `Os valores EXATOS do pacote são: ${quantityPriceResolution.lines.join("; ")}. ` +
             `Responda com estes valores exatos e não cite valores de outras quantidades.`;
-        } else if (quantityPriceResolution?.kind === "unknown") {
-          quantityNote =
-            `O lead perguntou por ${quantityPriceResolution.quantity} unidades, que NÃO é um pacote com valor fechado. ` +
-            `NUNCA invente nem calcule um valor proporcional para essa quantidade. Diga com naturalidade que os ` +
-            `pacotes fechados são de ${quantityPriceResolution.availableSummary} unidades e que, para ` +
-            `${quantityPriceResolution.quantity}, você confirma o valor exato com a equipe e já retorna. ` +
-            `Ofereça seguir com a avaliação enquanto isso.`;
-          // Escalonamento: registra o gap e sinaliza atenção para a equipe cotar.
-          maybeLogTreatmentGap(
-            clinicId,
-            conversation.id,
-            lead.name,
-            `${quantityPriceResolution.quantity} lentes (quantidade não-padrão)`,
-            messageText,
-          ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
-          await db
-            .update(conversationsTable)
-            .set({
-              needsAttention: true,
-              attentionReason: `Lead pediu preço de ${quantityPriceResolution.quantity} unidades (fora dos pacotes fechados) — confirmar valor`,
-              updatedAt: new Date(),
-            })
-            .where(eq(conversationsTable.id, conversation.id));
         }
 
         replyText = await compose({
@@ -4233,7 +4277,7 @@ export class ConversationOrchestrator {
           !pipelineState &&
           matchedPriceTreatment &&
           !matchedPriceTreatment.pipelineSteps?.length &&
-          quantityPriceResolution?.kind !== "unknown" &&
+          (quantityPriceResolution == null || quantityPriceResolution.kind === "exact") &&
           !oldPriceObjectionDetected
         ) {
           const evalTreatment = matchedPriceTreatment.requiresEvaluationFirst
@@ -4343,7 +4387,7 @@ export class ConversationOrchestrator {
 
       // ── Encerramento de conversa ──
       case "farewell": {
-        replyText = await compose({ type: "farewell" });
+        replyText = await compose({ type: commercialPauseDetected ? "commercial_pause" : "farewell" });
         break;
       }
 
@@ -4352,7 +4396,22 @@ export class ConversationOrchestrator {
         // A6 — Triagem de caso atípico tem precedência: responde com a condução clínica
         // (pedir radiografia/foto, doutor avalia) em vez do fluxo normal de pergunta.
         if (atypicalTriageContext) {
-          replyText = await compose({ type: "general_question", clinicContext: atypicalTriageContext });
+          const attentionReason = `Caso clínico atípico (${atypicalCaseLabel ?? "avaliação necessária"}) — avaliar antes de cotar`;
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: true,
+              takeoverExpiresAt: null,
+              needsAttention: true,
+              attentionReason,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, attentionReason);
+          replyText = await compose({
+            type: "clinical_evaluation_required",
+            reason: atypicalCaseLabel ?? "um caso clínico que precisa de avaliação",
+          });
           break;
         }
         let clinicContext: string;
@@ -4520,7 +4579,14 @@ export class ConversationOrchestrator {
           // ── Pipeline start ──
           // Tratamento com pipeline configurado: inicia o pipeline pelo step "content".
           // Se o primeiro step ativo não for content (ex: começa com qa), entrega diretamente.
-          if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
+          const explicitPipelineTrigger = hasExplicitPipelineTreatmentTrigger({
+            message: messageText,
+            treatments: clinicTreatments,
+            lastAgentMessage: lastAgentMessage?.body,
+            procedureSelection,
+            treatment: matchedTreatment,
+          });
+          if (matchedTreatment.pipelineSteps?.length && !pipelineState && explicitPipelineTrigger) {
             const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0, {
               conversationHistory: allMessages,
             });
@@ -4776,7 +4842,7 @@ export class ConversationOrchestrator {
     }
 
     // ── 8.5. Atualiza temperatura do lead (nunca rebaixa) ──
-    const inferredTemp = temperatureFromIntent(intent);
+    const inferredTemp = temperatureFromIntent(responseIntent);
     const currentTempRank = TEMP_RANK[lead.temperature ?? "cold"];
     if (TEMP_RANK[inferredTemp] > currentTempRank) {
       await this.leadRepo.save({ ...lead, temperature: inferredTemp, updatedAt: new Date() });
@@ -4820,7 +4886,7 @@ export class ConversationOrchestrator {
         conversationId: conversation.id,
         replyText,
         sentAt: agentSentAt,
-        intent: intent ?? null,
+        intent: responseIntent ?? null,
         hasInterleavedMedia,
         outboundParts,
       }),
@@ -4841,8 +4907,8 @@ export class ConversationOrchestrator {
       to: outboundAddress,
       agentMessageId,
       replyText,
-      intent: intent ?? null,
-      useVoice: forceTextOnlyReply ? false : resolveVoiceForReply(intent, replyText),
+      intent: responseIntent ?? null,
+      useVoice: forceTextOnlyReply ? false : resolveVoiceForReply(responseIntent, replyText),
       ttsConfig: ttsConf,
       interleavedParts: hasInterleavedMedia ? outboundParts : [],
       mediaParts,
