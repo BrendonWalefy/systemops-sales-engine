@@ -2746,16 +2746,16 @@ export class ConversationOrchestrator {
 
     const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
     const lastAgentMessage = [...allMessages].reverse().find((m) => m.author === "agent");
-    const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
+    const [currentConversationState, lastResetBoundary] = await Promise.all([
+      this.stateMachine.getCurrentState(conversation.id),
+      this.stateMachine.getLastResetBoundary(conversation.id),
+    ]);
 
     // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
     // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
     // isFirstMessage e demais checagens determinísticas continuam usando allMessages.
-    const lastResetAt = currentConversationState?.state === "idle"
-      ? (currentConversationState.payload as { lastResetAt?: string } | null)?.lastResetAt
-      : undefined;
-    const allMessagesForContext = lastResetAt
-      ? allMessages.filter((m) => m.sentAt >= new Date(lastResetAt))
+    const allMessagesForContext = lastResetBoundary
+      ? allMessages.filter((m) => m.sentAt >= lastResetBoundary)
       : allMessages;
 
     // ── 8. Verifica oferta de slots pendente ──
@@ -4481,7 +4481,7 @@ export class ConversationOrchestrator {
           // Se o primeiro step ativo não for content (ex: começa com qa), entrega diretamente.
           if (matchedTreatment.pipelineSteps?.length && !pipelineState) {
             const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0, {
-              conversationHistory: allMessages,
+              conversationHistory: allMessagesForContext,
             });
             if (firstActive) {
               // A3 — 1º contato concierge com passo de conteúdo: envia só o opener de
@@ -4525,7 +4525,7 @@ export class ConversationOrchestrator {
                 clinicContext = "";
                 // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
                 const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1, {
-                  conversationHistory: allMessages,
+                  conversationHistory: allMessagesForContext,
                 });
                 pendingPipelineAdvance = next
                   ? { action: "advance", nextStepIndex: next.index }
