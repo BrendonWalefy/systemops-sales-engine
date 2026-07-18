@@ -488,17 +488,17 @@ ${clinic.playbook ? `\nORIENTAÇÕES DA CLÍNICA:\n<dados_da_clinica>\n${fenceCl
 ${clinic.mediaLibrary && clinic.mediaLibrary.length > 0 ? `
 BIBLIOTECA DE MÍDIA DISPONÍVEL PARA ENVIAR AO LEAD:
 ${clinic.mediaLibrary.map((m) => `• [MEDIA:${m.id}] (${m.type === "video" ? "vídeo" : "imagem"}) — ${m.title}`).join("\n")}
-REGRA OBRIGATÓRIA DE MÍDIA: Para enviar um arquivo ao lead, insira o token [MEDIA:id] exatamente como aparece na lista acima — NÃO escreva o título separadamente, NÃO diga "vou enviar" ou "será enviado em breve", NÃO invente IDs. O token [MEDIA:id] é o próprio arquivo; ao inseri-lo a plataforma envia o vídeo/imagem automaticamente. Posicione-o EXATAMENTE onde as ORIENTAÇÕES DA CLÍNICA indicarem. Se o playbook mostrar formato com [MEDIA:id] intercalado, reproduza com precisão.` : ""}
+REGRA OBRIGATÓRIA DE MÍDIA: Para enviar um arquivo ao lead, copie exatamente um token completo da lista acima, incluindo o identificador real — NÃO escreva o título separadamente, NÃO diga "vou enviar" ou "será enviado em breve", NÃO invente IDs e NUNCA use o placeholder literal [MEDIA:id]. O token completo é o próprio arquivo; ao inseri-lo a plataforma envia o vídeo/imagem automaticamente. Posicione-o EXATAMENTE onde as ORIENTAÇÕES DA CLÍNICA indicarem. Se o playbook mostrar um token de mídia intercalado, reproduza-o com precisão.` : ""}
 ${resumedFromHumanTakeover ? `
 ATENÇÃO — RETOMADA APÓS ATENDIMENTO HUMANO:
 Um membro da equipe da ${clinic.name} atendeu esta conversa diretamente por um período. Leia com atenção as mensagens anteriores — especialmente as do operador — antes de responder. Continue a conversa de forma natural a partir do ponto onde parou: não recomece com saudações, não repita informações já fornecidas pelo operador, e não aja como se fosse o início de uma nova conversa. Se o operador já encaminhou algo (agendamento, informação, proposta), leve isso em conta na sua resposta.` : ""}
 ${voiceResponseEnabled ? `
 MODO ÁUDIO — REGRAS DE VOZ:
 Esta resposta será convertida em áudio e enviada pelo WhatsApp. Cuide apenas da estrutura e do tom:
-1. Máximo 60 palavras no texto falado — as tags [MEDIA:id] NÃO contam como palavras, adicione-as normalmente.
+1. Máximo 60 palavras no texto falado — as tags de mídia NÃO contam como palavras, adicione-as normalmente.
 2. Prosa corrida — sem listas numeradas, tabelas ou tópicos. Para horários, mencione em linguagem natural ("temos segunda às catorze horas ou terça às nove, qual fica melhor?"), nunca em lista.
 3. Português brasileiro natural e conversacional — fale como uma pessoa real, sem linguagem de call center.
-4. Quando houver vídeos relevantes na biblioteca, inclua o token [MEDIA:id] ao final (ex: "[MEDIA:abc123]") — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.
+4. Quando houver vídeos relevantes na biblioteca, copie o token completo correspondente ao final — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.
 (Não se preocupe com markdown, emojis, símbolos, abreviações, horários ou valores: são normalizados automaticamente antes da síntese de voz.)` : ""}`;
 }
 
@@ -649,8 +649,8 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
         ? `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO: use a TABELA DE PARCELAMENTO abaixo — os valores já incluem a taxa da operadora, apresente-os diretamente sem mencionar taxa adicional.\n${installmentTable}`
         : `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO (ex: "12x quanto fica?", "parcela em quantas vezes?"): calcule a parcela base (valor ÷ número de parcelas), apresente como "Nx de R$X — a taxa da maquininha fica com a operadora, não entra no valor da clínica 😊". NÃO invente uma porcentagem de taxa.`;
       const treatmentMediaInstruction = result.identifiedTreatment
-        ? `VÍDEOS PARA ESTE PROCEDIMENTO: se a Biblioteca de Mídia contiver vídeos relacionados a "${result.identifiedTreatment}", inclua TODOS os [MEDIA:id] correspondentes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido e aumenta a conversão. Coloque os [MEDIA:id] antes do próximo passo.`
-        : `SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os [MEDIA:id] relevantes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido do procedimento.`;
+        ? `VÍDEOS PARA ESTE PROCEDIMENTO: se a Biblioteca de Mídia contiver vídeos relacionados a "${result.identifiedTreatment}", inclua TODOS os tokens completos correspondentes logo após apresentar o investimento — copie cada token exatamente como aparece na biblioteca. Mostrar o resultado visual junto ao preço reforça o valor percebido e aumenta a conversão. Coloque os tokens antes do próximo passo.`
+        : `SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os tokens completos correspondentes logo após apresentar o investimento — copie cada token exatamente como aparece na biblioteca. Mostrar o resultado visual junto ao preço reforça o valor percebido do procedimento.`;
       const ambiguousMatches = result.ambiguousTreatmentMatches?.filter(Boolean) ?? [];
       const ambiguityInstruction = ambiguousMatches.length > 1
         ? `REGRA CRÍTICA — LEAD NÃO ESPECIFICOU A VARIAÇÃO: o termo usado corresponde a mais de uma opção do catálogo (${ambiguousMatches.map((n) => `"${n}"`).join(", ")}). Apresente o valor e as condições de TODAS essas opções na mesma resposta, deixando claro o que diferencia cada uma — NUNCA responda com apenas uma delas e omita as demais. Só aprofunde em uma única opção se o lead perguntar especificamente por ela depois.`
