@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAnswerFirstPipelineContent,
+  findPipelineTreatmentContextForPriceRequest,
   hasPipelineContentStepBeenSent,
 } from "@/core/pipeline/ConversationOrchestrator";
-import type { PipelineStep } from "@/domain/entities/treatment";
+import type { PipelineStep, Treatment } from "@/domain/entities/treatment";
 import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
 
 describe("Pipeline v2 Fase 1 — answer-first + once", () => {
@@ -78,5 +79,61 @@ describe("Pipeline v2 Fase 1 — answer-first + once", () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  it("infere tratamento com pipeline para pedido de valores a partir do histórico recente", () => {
+    const treatments: Treatment[] = [
+      {
+        id: "lentes",
+        name: "Lentes em Resina Composta",
+        aliases: ["lentes", "lentes de resina"],
+        pipelineSteps: [contentStep],
+        keywordMatchEnabled: true,
+      } as Treatment,
+      {
+        id: "avaliacao",
+        name: "Avaliação Clínica Inicial",
+        aliases: ["avaliação"],
+        pipelineSteps: null,
+        keywordMatchEnabled: true,
+      } as Treatment,
+    ];
+
+    expect(
+      findPipelineTreatmentContextForPriceRequest({
+        message: "Ver valores",
+        treatments,
+        history: [
+          {
+            author: "lead",
+            body: "Olá! Quero saber como posso transformar meu sorriso com as lentes de resina?",
+          },
+          {
+            author: "agent",
+            body: "Oi de novo! Ficou alguma dúvida?",
+          },
+        ],
+      })?.id,
+    ).toBe("lentes");
+  });
+
+  it("não inventa contexto de pipeline quando o pedido de valores é genérico", () => {
+    const treatments: Treatment[] = [
+      {
+        id: "lentes",
+        name: "Lentes em Resina Composta",
+        aliases: ["lentes", "lentes de resina"],
+        pipelineSteps: [contentStep],
+        keywordMatchEnabled: true,
+      } as Treatment,
+    ];
+
+    expect(
+      findPipelineTreatmentContextForPriceRequest({
+        message: "Ver valores",
+        treatments,
+        history: [],
+      }),
+    ).toBeNull();
   });
 });

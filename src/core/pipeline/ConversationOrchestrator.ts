@@ -1894,6 +1894,43 @@ export function buildAnswerFirstPipelineContent(params: {
   };
 }
 
+export function findPipelineTreatmentContextForPriceRequest(params: {
+  message: string;
+  treatments: Treatment[];
+  identifiedTreatment?: string | null;
+  activePipelineTreatmentId?: string | null;
+  history?: Pick<Message, "author" | "body">[];
+}): Treatment | null {
+  const byActivePipeline = findTreatmentByIdOrName(params.treatments, {
+    treatmentId: params.activePipelineTreatmentId ?? null,
+  });
+  if (byActivePipeline?.pipelineSteps?.length) return byActivePipeline;
+
+  const byClassification = findTreatmentByIdOrName(params.treatments, {
+    treatmentName: params.identifiedTreatment ?? null,
+  });
+  if (byClassification?.pipelineSteps?.length) return byClassification;
+
+  const currentMention = matchTreatmentByNormalizedMessage(
+    normalizeFreeText(params.message),
+    params.treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+  if (currentMention?.pipelineSteps?.length) return currentMention;
+
+  const recent = [...(params.history ?? [])].reverse().slice(0, 8);
+  for (const item of recent) {
+    const contextualMention = matchTreatmentByNormalizedMessage(
+      normalizeFreeText(item.body),
+      params.treatments,
+      TREATMENT_MENTION_STOPWORDS,
+    );
+    if (contextualMention?.pipelineSteps?.length) return contextualMention;
+  }
+
+  return null;
+}
+
 // Retorna o próximo step do pipeline que requer condução ativa (content, qa, photo).
 // Steps ask_availability / offer_slots / book são documentação para o doutor;
 // o fluxo reativo existente os cobre quando o lead expressa intenção.
@@ -2709,6 +2746,17 @@ export class ConversationOrchestrator {
 
     const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
     const lastAgentMessage = [...allMessages].reverse().find((m) => m.author === "agent");
+    const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
+
+    // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
+    // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
+    // isFirstMessage e demais checagens determinísticas continuam usando allMessages.
+    const lastResetAt = currentConversationState?.state === "idle"
+      ? (currentConversationState.payload as { lastResetAt?: string } | null)?.lastResetAt
+      : undefined;
+    const allMessagesForContext = lastResetAt
+      ? allMessages.filter((m) => m.sentAt >= new Date(lastResetAt))
+      : allMessages;
 
     // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
@@ -2736,7 +2784,7 @@ export class ConversationOrchestrator {
     if (!pipelineState && replyEnabled) {
       const priorIdentical = findLeadMessageRepeat({
         currentBody: messageText,
-        history: allMessages,
+        history: allMessagesForContext,
         now: Date.now(),
       });
       if (priorIdentical) {
@@ -2772,18 +2820,6 @@ export class ConversationOrchestrator {
         return { replied: true };
       }
     }
-
-    const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
-
-    // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
-    // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
-    // isFirstMessage e demais checagens determinísticas continuam usando allMessages.
-    const lastResetAt = currentConversationState?.state === "idle"
-      ? (currentConversationState.payload as { lastResetAt?: string } | null)?.lastResetAt
-      : undefined;
-    const allMessagesForContext = lastResetAt
-      ? allMessages.filter((m) => m.sentAt >= new Date(lastResetAt))
-      : allMessages;
 
     // ── 8.6. Resposta do lead ao pedido de confirmação de presença (lembrete D-1) ──
     // Quando o lead pede para remarcar, sinalizamos aqui e deixamos o fluxo seguir para o
@@ -4070,6 +4106,68 @@ export class ConversationOrchestrator {
               updatedAt: new Date(),
             })
             .where(eq(conversationsTable.id, conversation.id));
+        }
+
+        const pipelinePriceTreatment = findPipelineTreatmentContextForPriceRequest({
+          message: messageText,
+          treatments: clinicTreatments,
+          identifiedTreatment: priceIdentifiedTreatment,
+          activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
+          history: allMessagesForContext,
+        });
+        const pipelinePriceContent = pipelinePriceTreatment?.pipelineSteps
+          ? nextActivePipelineStep(pipelinePriceTreatment.pipelineSteps, 0, {
+              conversationHistory: allMessagesForContext,
+            })
+          : null;
+
+        if (
+          pipelinePriceTreatment &&
+          pipelinePriceContent?.step.type === "content" &&
+          quantityPriceResolution?.kind !== "unknown" &&
+          !oldPriceObjectionDetected
+        ) {
+          const parts = buildPipelineContentParts(pipelinePriceContent.step.blocks);
+          triggerPartsOverride = parts;
+          composedParts = parts;
+          composedMediaIds = collectMediaIds(parts);
+          replyText = parts
+            .filter((p): p is { type: "text"; content: string } => p.type === "text")
+            .map((p) => p.content)
+            .join("\n\n");
+          forceTextOnlyReply = true;
+
+          if (!pipelineState) {
+            await this.stateMachine.startTreatmentPipeline(
+              conversation.id,
+              pipelinePriceTreatment.id,
+              pipelinePriceTreatment.name,
+              clinic.staleConversationHours * 60,
+              pipelinePriceContent.index,
+            );
+          }
+          const next = nextActivePipelineStep(
+            pipelinePriceTreatment.pipelineSteps!,
+            pipelinePriceContent.index + 1,
+            { conversationHistory: allMessagesForContext },
+          );
+          pendingPipelineAdvance = next
+            ? { action: "advance", nextStepIndex: next.index }
+            : { action: "exit" };
+          break;
+        }
+
+        if (
+          !priceIdentifiedTreatment &&
+          !ambiguousTreatmentOverride?.length &&
+          !classification.slotPreference.ambiguousTreatmentMatches?.length &&
+          !pipelinePriceTreatment
+        ) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: "Claro. Sobre qual procedimento você quer ver os valores?",
+          });
+          break;
         }
 
         replyText = await compose({

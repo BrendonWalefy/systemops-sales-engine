@@ -18,6 +18,7 @@ import { describe, it, expect } from "vitest";
 import {
   coerceBusinessIntent,
   extractExplicitPreferredDateFromText,
+  findLeadMessageRepeat,
   normalizeSchedulingIntentForMissingPendingOffer,
   shouldResumeManualTakeoverForScheduling,
   withDeterministicSlotPreferenceFallback,
@@ -31,6 +32,24 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
     { id: "2", name: "Manutenção", aliases: ["manutencao"], basePrice: 40000 } as unknown as Treatment,
     { id: "3", name: "Agendamento", aliases: [], basePrice: 0 } as unknown as Treatment,
   ];
+
+  describe("A9 — reset limpa memória de repetição", () => {
+    it("não trata mensagem como repetida quando o histórico pós-reset só contém a mensagem atual", () => {
+      const current = {
+        author: "lead" as const,
+        body: "Olá! Quero saber como posso transformar meu sorriso com as lentes de resina?",
+        sentAt: new Date("2026-07-18T08:38:05.000Z"),
+      };
+
+      expect(
+        findLeadMessageRepeat({
+          currentBody: current.body,
+          history: [current],
+          now: new Date("2026-07-18T08:38:10.000Z").getTime(),
+        }),
+      ).toBeNull();
+    });
+  });
 
   describe("F1 — Pergunta de preço com greeting", () => {
     it("deve converter 'Olá! Posso ter mais informações sobre custo?' de greeting → price_inquiry", () => {
