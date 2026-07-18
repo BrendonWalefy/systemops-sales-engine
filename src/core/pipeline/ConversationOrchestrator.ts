@@ -86,6 +86,10 @@ import {
   buildHumanReviewRequestMessage,
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
+import {
+  buildDepositProofReviewRequestMessage,
+  nextAvailableDepositProofReviewCode,
+} from "@/application/conversations/deposit-proof-review";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -2122,12 +2126,18 @@ export class ConversationOrchestrator {
           if (params.mediaUrl) {
             rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType).catch(() => {});
           }
+          const proofReviewCode = await nextAvailableDepositProofReviewCode(clinicId);
           const receptionistPhone = clinic.receptionistPhone;
           if (receptionistPhone) {
             const leadName = lead.name ?? outboundAddress;
             sendTextMessage(
               receptionistPhone,
-              `💸 *${leadName}* enviou o comprovante do sinal. Valide o Pix e confirme o agendamento no painel.`,
+              buildDepositProofReviewRequestMessage({
+                reviewCode: proofReviewCode,
+                leadName,
+                slotLabel: depositState.payload.slotLabel,
+                depositAmountCents: depositState.payload.depositAmountCents,
+              }),
               channelConfig,
             ).catch(() => {});
             if (params.mediaUrl) {
@@ -2143,12 +2153,12 @@ export class ConversationOrchestrator {
           if (depositState.payload.reservationId) {
             await this.reservationService.extend(depositState.payload.reservationId, (clinic.depositTtlHours ?? 24) * 60);
           }
-          await this.stateMachine.markDepositProofReceived(conversation.id, incomingMessage.id);
+          await this.stateMachine.markDepositProofReceived(conversation.id, incomingMessage.id, proofReviewCode);
           await db
             .update(conversationsTable)
             .set({
               needsAttention: true,
-              attentionReason: "Comprovante de sinal recebido — validar Pix e confirmar agendamento",
+              attentionReason: `Comprovante de sinal recebido — validar Pix P${proofReviewCode}`,
               updatedAt: new Date(),
             })
             .where(eq(conversationsTable.id, conversation.id));

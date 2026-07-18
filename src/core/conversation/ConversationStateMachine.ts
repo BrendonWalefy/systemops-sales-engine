@@ -75,6 +75,7 @@ export type DepositFlowPayload = {
   holdExpiresAt: string; // ISO UTC
   proofMessageId?: string;
   proofReceivedAt?: string;
+  proofReviewCode?: number;
 };
 
 type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | AppointmentConfirmationPayload | DepositFlowPayload | Record<string, unknown>;
@@ -412,7 +413,7 @@ export class ConversationStateMachine {
 
   // Marca que o comprovante chegou (qualquer imagem/PDF neste estado). TTL generoso
   // (7 dias) para dar tempo ao operador validar sem o estado expirar.
-  async markDepositProofReceived(conversationId: string, proofMessageId: string): Promise<void> {
+  async markDepositProofReceived(conversationId: string, proofMessageId: string, proofReviewCode?: number): Promise<void> {
     const state = await this.getCurrentState(conversationId);
     if (!state || state.state !== "awaiting_deposit_proof") return;
     const current = state.payload as DepositFlowPayload;
@@ -423,6 +424,7 @@ export class ConversationStateMachine {
         ...current,
         proofMessageId,
         proofReceivedAt: new Date().toISOString(),
+        ...(proofReviewCode ? { proofReviewCode } : {}),
       } satisfies DepositFlowPayload,
       expiresAt: new Date(Date.now() + 7 * 24 * 3600_000),
     });
