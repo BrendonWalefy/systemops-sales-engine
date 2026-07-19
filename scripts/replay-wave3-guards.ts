@@ -3,6 +3,7 @@
 //   H — W3.3 Henrique: "dúvidas sobre o procedimento" não despeja catálogo
 //   I — W3.2 Irys: pedido de endereço → resposta determinística completa
 //   F — W3.4 Felipe: "Ambas" → direto ao conteúdo curado
+//   R — pré-avaliação remota: valores → pedido de foto + imagem de instrução
 import { db } from "../src/infrastructure/db/client";
 import { conversations, messages, leads } from "../src/infrastructure/db/schema";
 import { eq, and, asc } from "drizzle-orm";
@@ -53,6 +54,15 @@ const SCENARIOS: Scenario[] = [
     steps: [
       { body: AD_OPENER, wait: true },
       { body: "Ambas", wait: true },
+    ],
+  },
+  {
+    name: "R — pré-avaliação por aqui: valores + instruções de foto",
+    phone: "5500000950005",
+    sender: "Pre Avaliacao Remota",
+    steps: [
+      { body: AD_OPENER, wait: true },
+      { body: "Quero saber valores e formas de pagamento e fazer uma avaliação por aqui", wait: true },
     ],
   },
 ];
