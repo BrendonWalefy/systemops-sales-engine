@@ -3,12 +3,13 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
-import { organizations, conversations, leads, messages, appointments } from "@/infrastructure/db/schema";
-import { and, eq, desc, inArray, gte } from "drizzle-orm";
+import { organizations, conversations, leads, messages, appointments, conversationStates, humanReviewRequests } from "@/infrastructure/db/schema";
+import { and, eq, desc, inArray, gte, isNull, or } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { InboxClient, type ConvRow } from "./InboxClient";
 import { getInboxVersion } from "./get-inbox-version";
 import { TreatmentGapBanner } from "./TreatmentGapBanner";
+import { resolveInboxPendingAction } from "./inbox-pending";
 
 export default async function InboxPage({
   searchParams,
@@ -61,7 +62,7 @@ export default async function InboxPage({
     .map((row) => row.leadId);
 
   const conversationIds = rows.map((row) => row.convId);
-  const [lastMessageRows, upcomingAppointmentRows, latestOutcomeRows] = await Promise.all([
+  const [lastMessageRows, upcomingAppointmentRows, latestOutcomeRows, latestStateRows, pendingHumanReviewRows] = await Promise.all([
     conversationIds.length > 0
       ? db
           .selectDistinctOn([messages.conversationId], {
@@ -110,6 +111,33 @@ export default async function InboxPage({
           )
           .orderBy(appointments.leadId, desc(appointments.updatedAt), desc(appointments.startsAt))
       : Promise.resolve([]),
+    conversationIds.length > 0
+      ? db
+          .selectDistinctOn([conversationStates.conversationId], {
+            conversationId: conversationStates.conversationId,
+            state: conversationStates.state,
+            expiresAt: conversationStates.expiresAt,
+          })
+          .from(conversationStates)
+          .where(inArray(conversationStates.conversationId, conversationIds))
+          .orderBy(conversationStates.conversationId, desc(conversationStates.createdAt))
+      : Promise.resolve([]),
+    conversationIds.length > 0
+      ? db
+          .select({ conversationId: humanReviewRequests.conversationId })
+          .from(humanReviewRequests)
+          .where(
+            and(
+              eq(humanReviewRequests.clinicId, clinicId),
+              eq(humanReviewRequests.status, "pending"),
+              inArray(humanReviewRequests.conversationId, conversationIds),
+              or(
+                isNull(humanReviewRequests.expiresAt),
+                gte(humanReviewRequests.expiresAt, now),
+              ),
+            ),
+          )
+      : Promise.resolve([]),
   ]);
 
   const lastMsgMap: Record<string, { body: string; author: string; sentAt: Date | null; simulated: boolean }> = {};
@@ -127,6 +155,12 @@ export default async function InboxPage({
   const appointmentMap: Record<string, Date> = {};
   const latestAppointmentStatusMap: Record<string, ConvRow["latestAppointmentStatus"]> = {};
   const latestAppointmentUpdatedAtMap: Record<string, Date> = {};
+  const latestStateMap = new Map(
+    latestStateRows.map((state) => [state.conversationId, state]),
+  );
+  const pendingHumanReviewConversationIds = new Set(
+    pendingHumanReviewRows.map((review) => review.conversationId),
+  );
 
   for (const appt of upcomingAppointmentRows) {
     if (appt.leadId && !appointmentMap[appt.leadId]) {
@@ -143,16 +177,26 @@ export default async function InboxPage({
     }
   }
 
-  const allRows: ConvRow[] = rows.map((r) => ({
-    ...r,
-    appointmentStartsAt: appointmentMap[r.leadId] ?? null,
-    latestAppointmentStatus: latestAppointmentStatusMap[r.leadId] ?? null,
-    latestAppointmentUpdatedAt: latestAppointmentUpdatedAtMap[r.leadId] ?? null,
-    latestMessageAt: lastMsgMap[r.convId]?.sentAt ?? r.lastMessageAt,
-    hoursWaiting: r.lastMessageAt
-      ? (now.getTime() - new Date(r.lastMessageAt).getTime()) / 3_600_000
-      : 0,
-  }));
+  const allRows: ConvRow[] = rows.map((r) => {
+    const latestState = latestStateMap.get(r.convId);
+    return {
+      ...r,
+      appointmentStartsAt: appointmentMap[r.leadId] ?? null,
+      latestAppointmentStatus: latestAppointmentStatusMap[r.leadId] ?? null,
+      latestAppointmentUpdatedAt: latestAppointmentUpdatedAtMap[r.leadId] ?? null,
+      latestMessageAt: lastMsgMap[r.convId]?.sentAt ?? r.lastMessageAt,
+      hoursWaiting: r.lastMessageAt
+        ? (now.getTime() - new Date(r.lastMessageAt).getTime()) / 3_600_000
+        : 0,
+      pendingAction: resolveInboxPendingAction({
+        latestConversationState: latestState?.state ?? null,
+        latestStateExpiresAt: latestState?.expiresAt ?? null,
+        hasPendingHumanReview: pendingHumanReviewConversationIds.has(r.convId),
+        attentionReason: r.attentionReason,
+        now,
+      }),
+    };
+  });
 
   const initialVersion = await getInboxVersion(clinicId);
 
@@ -167,6 +211,7 @@ export default async function InboxPage({
       : "sales";
   const initialTab =
     filter === "attention" ||
+    filter === "pending" ||
     filter === "hot" ||
     filter === "paused" ||
     filter === "cold" ||

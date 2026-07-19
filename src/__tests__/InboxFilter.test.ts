@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import { filterBySearch, filterLiveRowsByTab, resolveEmConversa, sortInboxRowsByRecency } from "@/app/(clinic)/app/inbox/inbox-filter";
+import { resolveInboxPendingAction } from "@/app/(clinic)/app/inbox/inbox-pending";
 import type { ConvRow } from "@/app/(clinic)/app/inbox/InboxClient";
 
 function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
@@ -20,6 +21,7 @@ function row(overrides: Partial<ConvRow> & { convId: string }): ConvRow {
     leadTemperature: "warm",
     leadTreatmentInterest: null,
     leadProfilePicUrl: null,
+    pendingAction: null,
     ...overrides,
   };
 }
@@ -142,5 +144,67 @@ describe("filterLiveRowsByTab", () => {
     const result = filterLiveRowsByTab([paused, attention, activeRow], "paused");
 
     expect(result.map((item) => item.convId)).toEqual(["paused"]);
+  });
+
+  it("reúne as pendências de doutor, comprovante e validação sem incluir conversas comuns", () => {
+    const doctor = row({ convId: "doctor", pendingAction: "doctor_review" });
+    const proof = row({ convId: "proof", pendingAction: "deposit_proof" });
+    const validation = row({ convId: "validation", pendingAction: "deposit_validation" });
+
+    const result = filterLiveRowsByTab([doctor, proof, validation, active], "pending");
+
+    expect(result.map((item) => item.convId)).toEqual(["doctor", "proof", "validation"]);
+  });
+});
+
+describe("resolveInboxPendingAction", () => {
+  const now = new Date("2026-07-19T12:00:00.000Z");
+
+  it("classifica o lead que ainda não enviou o comprovante", () => {
+    expect(resolveInboxPendingAction({
+      latestConversationState: "awaiting_deposit_proof",
+      latestStateExpiresAt: new Date("2026-07-19T13:00:00.000Z"),
+      hasPendingHumanReview: false,
+      attentionReason: null,
+      now,
+    })).toBe("deposit_proof");
+  });
+
+  it("não ressuscita uma espera de comprovante cujo hold expirou", () => {
+    expect(resolveInboxPendingAction({
+      latestConversationState: "awaiting_deposit_proof",
+      latestStateExpiresAt: new Date("2026-07-19T11:00:00.000Z"),
+      hasPendingHumanReview: false,
+      attentionReason: null,
+      now,
+    })).toBeNull();
+  });
+
+  it("classifica comprovante recebido e revisão pendente do doutor", () => {
+    expect(resolveInboxPendingAction({
+      latestConversationState: "deposit_proof_received",
+      latestStateExpiresAt: null,
+      hasPendingHumanReview: false,
+      attentionReason: null,
+      now,
+    })).toBe("deposit_validation");
+
+    expect(resolveInboxPendingAction({
+      latestConversationState: "idle",
+      latestStateExpiresAt: null,
+      hasPendingHumanReview: true,
+      attentionReason: null,
+      now,
+    })).toBe("doctor_review");
+  });
+
+  it("mantém avaliações legadas sinalizadas deterministicamente pelo Orchestrator", () => {
+    expect(resolveInboxPendingAction({
+      latestConversationState: null,
+      latestStateExpiresAt: null,
+      hasPendingHumanReview: false,
+      attentionReason: "Lead enviou foto para avaliação",
+      now,
+    })).toBe("doctor_review");
   });
 });

@@ -39,6 +39,7 @@ import { tempKey, tempLabel, avatarColor, relativeTime, conversationCategoryLabe
 import { LeadAvatar } from "./[conversationId]/LeadAvatar";
 import { EnableNotificationsButton } from "@/components/enable-notifications-button";
 import { avatarInitial } from "./avatar-initial";
+import { pendingActionLabel, type InboxPendingAction } from "./inbox-pending";
 
 export type ConvRow = {
   convId: string;
@@ -61,6 +62,7 @@ export type ConvRow = {
   latestAppointmentStatus?: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show" | null;
   latestAppointmentUpdatedAt?: Date | null;
   hoursWaiting?: number;
+  pendingAction: InboxPendingAction | null;
 };
 
 const PIPELINE_STEPS = ["Novo", "Qualific.", "Proposta", "Agendar", "Fechado"] as const;
@@ -532,6 +534,12 @@ function convStatusBadge(
   if (!isSalesConversationCategory(row.conversationCategory)) {
     return { label: conversationCategoryLabel(row.conversationCategory), variant: "muted" };
   }
+  if (row.pendingAction) {
+    return {
+      label: pendingActionLabel(row.pendingAction),
+      variant: row.pendingAction === "deposit_proof" ? "warm" : "hot",
+    };
+  }
   const appointmentState = resolveAppointmentLifecycleState(row, { author: lastMsg.author });
   if (row.needsAttention) return { label: "Requer humano", variant: "hot" };
   if (appointmentState === "confirmed") return { label: "Consulta confirmada", variant: "accent" };
@@ -617,7 +625,11 @@ function InboxCard({
           </button>
         )}
         <div className="inbox-card-v2-top">
-          {row.needsAttention ? (
+          {row.pendingAction ? (
+            <span className="temp-badge-v2 temp-badge-v2-attention">
+              {pendingActionLabel(row.pendingAction)}
+            </span>
+          ) : row.needsAttention ? (
             <span className="temp-badge-v2 temp-badge-v2-attention">Atenção</span>
           ) : (
             <span className={`temp-badge-v2 temp-badge-v2-${tk}`}>{tLabel}</span>
@@ -720,7 +732,7 @@ function InboxCard({
             {lastMsg.body ? lastMsg.body.slice(0, 52) : "Sem mensagens"}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {row.needsAttention && <AttendedButton convId={row.convId} />}
+            {row.needsAttention && !row.pendingAction && <AttendedButton convId={row.convId} />}
             <span className={`status-badge-v2 status-badge-v2-${badge.variant}`}>
               {badge.label}
             </span>
@@ -820,6 +832,9 @@ export function InboxClient({
   const { handoff, active, paused, recovery } = segmentRows(salesRows, lastMsgMap);
   const allLive = [...handoff, ...active, ...paused];
   const attentionRows = salesRows.filter((r) => r.needsAttention);
+  const pendingRows = salesRows.filter(
+    (r) => r.pendingAction !== null && r.leadStatus !== "lost" && r.leadStatus !== "won",
+  );
   const totalActive = handoff.length + active.length;
   const totalAll = rows.length;
 
@@ -844,6 +859,7 @@ export function InboxClient({
     { key: "all",       label: "Todas",       count: allLive.length },
     { key: "hot",       label: "Quentes",     count: allLive.filter((r) => r.leadTemperature === "hot").length },
     { key: "attention", label: "Atenção",     count: attentionRows.length },
+    { key: "pending",   label: "Pendências",  count: pendingRows.length },
     { key: "paused",    label: "Pausados",    count: paused.length },
     { key: "cold",      label: "Resfriadas",  count: allLive.filter((r) => r.leadTemperature === "cold").length },
     { key: "recovery",  label: "Recuperação", count: recovery.length },
@@ -857,6 +873,8 @@ export function InboxClient({
     ? []
     : tab === "attention" && isSalesScope
     ? attentionRows
+    : tab === "pending" && isSalesScope
+    ? pendingRows
     : (isSalesScope ? filterLiveRowsByTab(scopedRows, tab as LiveInboxTabFilter) : scopedRows);
   const sortedRows = isRecoveryTab ? [] : sortInboxRowsByRecency(filterBySearch(baseRows, search));
   const sortedRecovery = sortInboxRowsByRecency(filterBySearch(recovery, search));
