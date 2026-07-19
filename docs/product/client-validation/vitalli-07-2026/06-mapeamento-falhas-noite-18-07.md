@@ -210,6 +210,57 @@ pouco do trabalho de vocês" 21:36 → markdown quebrado + CTAs sem contexto.
    casos de sucesso).
 4. **J1 (recovery com persona):** depois do merge do PR #197, reusar o replay.
 
+→ **WAVE 2 IMPLEMENTADA em 19/07** na branch `feat/conversation-quality-wave2`
+(todos os itens acima):
+- J2: `isAffirmativeReplyToOpenOffer` — afirmativa curta após oferta aberta
+  coage para general_question (entrega a oferta) e, quando a oferta menciona o
+  tratamento, abre o pipeline (`hasExplicitPipelineTreatmentTrigger`).
+- J3: localização + preço na mesma mensagem → endereço determinístico + cards
+  do pipeline no mesmo turno (fallback: contexto combinado obrigatório).
+- J4: `collectCurrentLeadBurstBodies` + `resolveQuantityPriceQuery` no burst —
+  valor exato do pacote abre a resposta deterministicamente.
+- T1: `mediaReplySuperseded` — mídia respeita a janela de debounce nos 3 pontos
+  de resposta (humanReview, intercept de pipeline, mídia genérica); efeitos de
+  estado (pausa/atenção/notificações) preservados.
+- T2: `resolveAdMediaContext` agora bloqueia por "equipe pediu foto"
+  (`hasAgentRequestedPhoto`) e conversa madura (>5 msgs), não por "IA já
+  respondeu" — criativo pós-saudação volta a ser reconhecido.
+- J6: `isShowcaseRequestText` + `pickShowcaseMedia` — pedido de casos anexa
+  mídias de resultado deterministicamente (máx. 2, escopo do tratamento).
+- J1: rota `/api/conversations/[id]/recover` — retomada pelo motor via replay
+  (persona única); modal do Inbox ganhou "Retomar com a IA agora" com o
+  rascunho manual como fallback.
+- Testes: `ConversationWave2Guards.test.ts` (13 casos) +
+  `AdMediaDetection.test.ts` reescrito para a nova semântica (8 casos).
+
+### Replay real (19/07, branch Neon `replay-wave2-19-07`, driver `scripts/replay-wave2-guards.ts`)
+
+Caminho idêntico ao de produção (webhook → worker → Orchestrator → outbox),
+`DISABLE_REAL_WHATSAPP_SEND=true`. Resultados:
+
+| Cenário | Resultado |
+| --- | --- |
+| A — N1 Nathan (interesse genérico) | ✅ saudação → conteúdo curado, zero prosa duplicada |
+| B — J2 "Boa noite pode sim" | ✅ (após fix do confirm_slot incluir o passo atual) entrega a apresentação, sem re-saudação |
+| C — J3 valores + endereço | ✅ endereço determinístico + cards no mesmo turno |
+| D — J4×J6 burst "20 lentes" + vitrine | ✅ linha determinística "Sobre o pacote de 20: R$ 2.500/2.000" + prosa LLM limpa de números (scrub com remoção de anúncio órfão) |
+| E — T1+T2 criativo pós-saudação | ✅ um turno único, sem "Recebi sua foto", sem encavalamento |
+| F — J8 cores → prontidão | ✅ cores só com a tabela; pedido de foto apenas após "sim pode" |
+
+Descobertas do replay que viraram ajuste extra:
+- `confirm_slot` sem oferta pendente pulava o passo de conteúdo ATUAL não
+  enviado (ia direto ao pedido de foto) — corrigido para incluir o passo atual.
+- Instrução "não cite valores" não segura o gpt-4o-mini —
+  `stripPriceProseWhenSystemQuoted` remove parágrafos com R$ e anúncios órfãos
+  da prosa quando o sistema já cotou.
+
+**Gap de CONFIG (não é código):** a biblioteca da Vitalli não tem nenhum asset
+de "Resultado/antes e depois" para lentes (só Cores, Cuidados, Exemplo Foto,
+Valores; o único antes/depois é da Plástica Gengival). A rota J6 está pronta —
+quando os assets de resultado forem cadastrados, a vitrine passa a ser entregue
+automaticamente. **TODO para o Victor/Brendon: subir 2-3 imagens de resultado
+de lentes na biblioteca.**
+
 ## Próximo caso (aguardando envio do Brendon)
 
 _Reservado — outro erro em andamento com lead real será adicionado aqui._
