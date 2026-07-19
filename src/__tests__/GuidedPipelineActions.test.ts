@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildGuidedPipelineContentDraft,
   buildGuidedPipelinePackage,
+  buildGuidedPipelineStepDraft,
   GUIDED_PIPELINE_ACTION_START_RAILS,
+  listGuidedPipelineSections,
   summarizeGuidedPipelinePackage,
 } from "@/application/conversations/guided-pipeline-actions";
 import { nextActivePipelineStep } from "@/core/pipeline/ConversationOrchestrator";
@@ -60,6 +62,44 @@ describe("GuidedPipelineActions", () => {
         { type: "media", mediaId: "estratificada-card", caption: undefined },
       ],
     });
+  });
+
+  it("builds a directly sendable draft for a selected photo step", () => {
+    expect(
+      buildGuidedPipelineStepDraft({
+        type: "photo",
+        label: "Aguardar foto",
+        message: "Pode enviar a foto por aqui.",
+        required: false,
+      }),
+    ).toEqual({
+      text: "Pode enviar a foto por aqui.",
+      mediaIds: [],
+      parts: [{ type: "text", content: "Pode enviar a foto por aqui." }],
+    });
+  });
+
+  it("lists every pipeline section and marks what the operator can do", () => {
+    const sections = listGuidedPipelineSections([
+      {
+        type: "content",
+        label: "Pedido de foto + exemplo",
+        blocks: [
+          { kind: "text", content: "Envie uma foto do sorriso." },
+          { kind: "media", mediaId: "example" },
+        ],
+      },
+      { type: "qa", label: "Dúvidas", instruction: "Responda dúvidas." },
+      { type: "photo", label: "Aguardar foto", message: "Pode mandar aqui.", required: false },
+      { type: "offer_slots", label: "Mostrar horários" },
+    ]);
+
+    expect(sections).toEqual([
+      expect.objectContaining({ stepIndex: 0, stepNumber: 1, mode: "send", textParts: 1, mediaParts: 1 }),
+      expect.objectContaining({ stepIndex: 1, stepNumber: 2, mode: "arm", preview: "Responda dúvidas." }),
+      expect.objectContaining({ stepIndex: 2, stepNumber: 3, mode: "send", actionLabel: "Enviar pedido e aguardar foto" }),
+      expect.objectContaining({ stepIndex: 3, stepNumber: 4, mode: "automatic", actionLabel: "Etapa automática" }),
+    ]);
   });
 
   it("does not include scheduling steps in the preview", () => {
