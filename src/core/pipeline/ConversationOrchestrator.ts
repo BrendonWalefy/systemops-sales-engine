@@ -66,7 +66,8 @@ import { resolveStopContactDecision } from "@/application/channel-safety/stop-co
 
 import type { Organization, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import type { ConversationExperience } from "@/domain/entities/clinic";
-import type { Message } from "@/domain/entities/conversation";
+import type { Conversation, Message } from "@/domain/entities/conversation";
+import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { CalendarSlot } from "@/domain/entities/calendar-slot";
 import {
@@ -2056,12 +2057,14 @@ export function hasPipelineContentStepBeenSent(
 
   if (fingerprints.length === 0) return false;
 
-  const agentBodies = history
-    .filter((message) => message.author === "agent")
+  // clinic_user conta: conteúdo que a operação já enviou manualmente não deve
+  // ser repetido pelo motor quando o pipeline assume a conversa depois.
+  const outboundBodies = history
+    .filter((message) => message.author === "agent" || message.author === "clinic_user")
     .map((message) => normalizeContentFingerprint(message.body));
 
   return fingerprints.some((fingerprint) =>
-    agentBodies.some((body) => body.includes(fingerprint)),
+    outboundBodies.some((body) => body.includes(fingerprint)),
   );
 }
 
@@ -2095,6 +2098,123 @@ export function buildAnswerFirstPipelineContent(params: {
     parts,
     mediaIds: collectMediaIds(parts),
   };
+}
+
+// N1 (mapeamento 18/07, caso Nathan): quando a mensagem do lead é interesse
+// genérico no tratamento do pipeline ("quero entender como funciona e valores"),
+// o conteúdo curado É a resposta — compor explicação por LLM antes duplica a
+// informação e vaza valores em prosa. Detector conservador: qualquer token fora
+// do vocabulário de interesse (além de saudação e menção ao tratamento) mantém
+// o answer-first, que segue sendo o caminho certo para perguntas específicas.
+const GENERIC_INTEREST_VOCABULARY = new Set([
+  "ola", "oi", "eae", "hey", "bom", "boa", "dia", "tarde", "noite", "tudo", "bem",
+  "quero", "queria", "gostaria", "quer", "adoraria", "sim", "pode", "claro", "por", "favor", "pfv",
+  "saber", "entender", "enteder", "conhecer", "ver", "escutar", "ouvir",
+  "mais", "um", "uma", "uns", "umas", "pouco", "pouquinho", "melhor",
+  "sobre", "como", "funciona", "seria", "e", "de", "do", "da", "dos", "das", "o", "a", "os", "as", "no", "na",
+  "posso", "consigo", "transformar", "mudar", "melhorar", "arrumar", "meu", "minha", "sorriso", "dente", "dentes",
+  "com", "para", "pra", "tambem", "tbm", "ne",
+  "valor", "valores", "preco", "precos", "custo", "custos", "investimento",
+  "informacao", "informacoes", "detalhe", "detalhes", "duvida", "duvidas",
+  "me", "conta", "conte", "explica", "explicar", "fala", "falar", "mostra", "mostrar",
+  "tenho", "interesse", "interessado", "interessada", "interessei",
+  "esse", "essa", "isso", "este", "esta", "isto", "aqui",
+  "voces", "vcs", "procedimento", "tratamento", "gente",
+]);
+
+export function isGenericTreatmentInterestMessage(message: string, treatment: Treatment): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const treatmentTokens = new Set(
+    [treatment.name, ...(treatment.aliases ?? [])]
+      .flatMap((name) => normalizeFreeText(name).split(/\s+/))
+      .filter(Boolean),
+  );
+  return normalized
+    .split(/\s+/)
+    .every((token) => GENERIC_INTEREST_VOCABULARY.has(token) || treatmentTokens.has(token));
+}
+
+// J7 (mapeamento 18/07, caso João Vitor): convite de avaliação/agenda/foto em
+// turnos consecutivos sem reação do lead derruba conversão — "faz o cliente
+// fugir" (validação real). O sistema decide se o turno pode fechar com CTA; a
+// LLM só verbaliza.
+const AGENT_CTA_PHRASES = [
+  "que tal agendar",
+  "que tal agendarmos",
+  "vamos agendar",
+  "podemos agendar",
+  "posso agendar",
+  "quer agendar",
+  "gostaria de agendar",
+  "que tal marcar",
+  "posso ver os horarios",
+  "posso mostrar os horarios",
+  "posso te mostrar os horarios",
+  "ver os horarios disponiveis",
+  "agendar uma avaliacao",
+  "agendarmos uma avaliacao",
+  "marcar uma avaliacao",
+  "marcarmos uma avaliacao",
+  "que tal uma avaliacao",
+  "agendar sua avaliacao",
+  "enviar uma foto",
+  "envie uma foto",
+  "enviar a foto",
+  "me encaminhar uma foto",
+  "encaminhar uma foto",
+  "manda uma foto",
+  "mandar uma foto",
+  "foto do seu sorriso",
+];
+
+function agentMessageEndsWithCta(body: string): boolean {
+  const normalized = normalizeFreeText(body);
+  if (!normalized) return false;
+  return AGENT_CTA_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+function leadEngagesWithCta(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const words = new Set(normalized.split(/\s+/));
+  const wordSignals = [
+    "agendar", "agendarmos", "marcar", "marcarmos", "horario", "horarios", "agenda",
+    "sim", "pode", "podemos", "claro", "bora", "vamos", "quando", "foto", "fotos",
+  ];
+  if (wordSignals.some((word) => words.has(word))) return true;
+  const phraseSignals = ["pode ser", "quero sim", "como faco", "como agendo", "to dentro", "tou dentro"];
+  return phraseSignals.some((phrase) => normalized.includes(phrase));
+}
+
+// Turno anterior do agente: percorre o histórico do fim para o início, pula o
+// burst atual do lead e coleta as mensagens de agente/operador até encontrar a
+// mensagem anterior do lead. Operador conta: CTA humano ignorado também não
+// deve ser repetido pela IA.
+export function collectPreviousAgentTurnBodies(
+  history: Pick<Message, "author" | "body">[],
+): string[] {
+  const bodies: string[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const message = history[i];
+    if (message.author === "lead") {
+      if (bodies.length > 0) break;
+      continue;
+    }
+    if (message.author === "agent" || message.author === "clinic_user") {
+      bodies.push(message.body);
+    }
+  }
+  return bodies;
+}
+
+export function shouldSuppressNextStepCta(params: {
+  previousAgentMessages: string[];
+  currentLeadMessage: string;
+}): boolean {
+  const previousHadCta = params.previousAgentMessages.some(agentMessageEndsWithCta);
+  if (!previousHadCta) return false;
+  return !leadEngagesWithCta(params.currentLeadMessage);
 }
 
 export function findPipelineTreatmentContextForPriceRequest(params: {
@@ -2137,7 +2257,8 @@ export function findPipelineTreatmentContextForPriceRequest(params: {
 // Retorna o próximo step do pipeline que requer condução ativa (content, qa, photo).
 // Steps ask_availability / offer_slots / book são documentação para o doutor;
 // o fluxo reativo existente os cobre quando o lead expressa intenção.
-function nextActivePipelineStep(
+// Exportado: a ação guiada do Inbox usa para posicionar o pipeline no passo certo.
+export function nextActivePipelineStep(
   steps: PipelineStep[],
   fromIndex: number,
   options?: {
@@ -2240,6 +2361,69 @@ export class ConversationOrchestrator {
     new WebPushGateway(),
   );
 
+  // Carrega mensagem/conversa/lead existentes para o modo replay do handle()
+  // (ação guiada do operador). Retorna null se a mensagem não pertencer à
+  // clínica ou não for de lead — replay nunca deve responder a mensagem do agente.
+  private async loadReplayContext(
+    clinicId: string,
+    messageDbId: string,
+  ): Promise<{ lead: Lead; conversation: Conversation; incomingMessage: Message } | null> {
+    const [messageRow] = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.id, messageDbId))
+      .limit(1);
+    if (!messageRow || messageRow.author !== "lead") return null;
+
+    const [conversationRow] = await db
+      .select()
+      .from(conversationsTable)
+      .where(
+        and(
+          eq(conversationsTable.id, messageRow.conversationId),
+          eq(conversationsTable.clinicId, clinicId),
+        ),
+      )
+      .limit(1);
+    if (!conversationRow) return null;
+
+    const lead = await this.leadRepo.findById(conversationRow.leadId);
+    if (!lead) return null;
+
+    return {
+      lead,
+      conversation: {
+        id: conversationRow.id,
+        clinicId: conversationRow.clinicId,
+        leadId: conversationRow.leadId,
+        channel: conversationRow.channel,
+        category: conversationRow.category,
+        externalThreadId: conversationRow.externalThreadId,
+        summary: conversationRow.summary,
+        aiPaused: conversationRow.aiPaused,
+        takeoverExpiresAt: conversationRow.takeoverExpiresAt,
+        needsAttention: conversationRow.needsAttention,
+        attentionReason: conversationRow.attentionReason,
+        consecutiveUnclearCount: conversationRow.consecutiveUnclearCount,
+        lastMessageAt: conversationRow.lastMessageAt,
+        createdAt: conversationRow.createdAt,
+        updatedAt: conversationRow.updatedAt,
+      },
+      incomingMessage: {
+        id: messageRow.id,
+        conversationId: messageRow.conversationId,
+        author: messageRow.author,
+        body: messageRow.body,
+        mediaUrl: messageRow.mediaUrl ?? null,
+        mediaType: (messageRow.mediaType as Message["mediaType"]) ?? null,
+        sentAt: messageRow.sentAt,
+        externalId: messageRow.externalId,
+        intent: messageRow.intent ?? null,
+        deliveryFormat: (messageRow.deliveryFormat as Message["deliveryFormat"]) ?? null,
+      },
+    };
+  }
+
   async handle(params: {
     clinicId: string;
     phone: string;
@@ -2252,8 +2436,13 @@ export class ConversationOrchestrator {
     replyEnabled?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
+    // Reprocessa uma mensagem de lead JÁ REGISTRADA como se tivesse acabado de
+    // chegar (ação guiada do operador: "entrar no trilho do pipeline"). Pula
+    // dedup, registro e debounce — a mensagem não é nova; só a resposta é.
+    replayOfMessageDbId?: string;
   }): Promise<{ replied: boolean }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
+    const isReplay = !!params.replayOfMessageDbId;
     let messageText = params.messageText;
     const replyEnabled = params.replyEnabled ?? true;
     const contactIdentifiers = buildContactIdentifiersFromWebhook({
@@ -2263,55 +2452,58 @@ export class ConversationOrchestrator {
     const channelAddress = resolveWhatsAppChannelAddress(contactIdentifiers) ?? phone;
 
     // ── 1. Deduplicação por ID: retorna se já processamos esta mensagem ──
-    const alreadyProcessed = await db
-      .select({ id: messagesTable.id })
-      .from(messagesTable)
-      .where(eq(messagesTable.externalId, messageId))
-      .limit(1);
+    // (replay reprocessa deliberadamente uma mensagem existente — dedup não se aplica)
+    if (!isReplay) {
+      const alreadyProcessed = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .where(eq(messagesTable.externalId, messageId))
+        .limit(1);
 
-    if (alreadyProcessed.length > 0) {
-      return { replied: false };
-    }
+      if (alreadyProcessed.length > 0) {
+        return { replied: false };
+      }
 
-    // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
-    // Janela de 2min baseada no wall-clock (não no timestamp da mensagem): retries tardios do
-    // Z-API chegam com timestamp novo, o que fazia a janela de 5s original expirar. 2min cobre
-    // o intervalo de retry sem bloquear mensagens legítimas repetidas além desse prazo.
-    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-    const identityMatch = contactIdentifiers.phone
-      ? contactIdentifiers.whatsappLid
-        ? or(
-            eq(leadsTable.phone, contactIdentifiers.phone),
-            eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
-            eq(leadsTable.phone, contactIdentifiers.whatsappLid),
-          )
-        : eq(leadsTable.phone, contactIdentifiers.phone)
-      : contactIdentifiers.whatsappLid
-        ? or(
-            eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
-            eq(leadsTable.phone, contactIdentifiers.whatsappLid),
-          )
-        : eq(leadsTable.phone, phone);
+      // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
+      // Janela de 2min baseada no wall-clock (não no timestamp da mensagem): retries tardios do
+      // Z-API chegam com timestamp novo, o que fazia a janela de 5s original expirar. 2min cobre
+      // o intervalo de retry sem bloquear mensagens legítimas repetidas além desse prazo.
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      const identityMatch = contactIdentifiers.phone
+        ? contactIdentifiers.whatsappLid
+          ? or(
+              eq(leadsTable.phone, contactIdentifiers.phone),
+              eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
+              eq(leadsTable.phone, contactIdentifiers.whatsappLid),
+            )
+          : eq(leadsTable.phone, contactIdentifiers.phone)
+        : contactIdentifiers.whatsappLid
+          ? or(
+              eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
+              eq(leadsTable.phone, contactIdentifiers.whatsappLid),
+            )
+          : eq(leadsTable.phone, phone);
 
-    const [contentDupe] = await db
-      .select({ id: messagesTable.id })
-      .from(messagesTable)
-      .innerJoin(conversationsTable, eq(conversationsTable.id, messagesTable.conversationId))
-      .innerJoin(leadsTable, eq(leadsTable.id, conversationsTable.leadId))
-      .where(
-        and(
-          eq(leadsTable.clinicId, clinicId),
-          identityMatch,
-          eq(messagesTable.author, "lead"),
-          eq(messagesTable.body, messageText),
-          gte(messagesTable.sentAt, twoMinutesAgo),
-        ),
-      )
-      .limit(1);
+      const [contentDupe] = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .innerJoin(conversationsTable, eq(conversationsTable.id, messagesTable.conversationId))
+        .innerJoin(leadsTable, eq(leadsTable.id, conversationsTable.leadId))
+        .where(
+          and(
+            eq(leadsTable.clinicId, clinicId),
+            identityMatch,
+            eq(messagesTable.author, "lead"),
+            eq(messagesTable.body, messageText),
+            gte(messagesTable.sentAt, twoMinutesAgo),
+          ),
+        )
+        .limit(1);
 
-    if (contentDupe) {
-      console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
-      return { replied: false };
+      if (contentDupe) {
+        console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
+        return { replied: false };
+      }
     }
 
     // ── 2. Busca clínica ──
@@ -2393,34 +2585,51 @@ export class ConversationOrchestrator {
       now: () => new Date(),
     });
 
-    const registerUseCase = new RegisterIncomingMessage({
-      leadRepository: this.leadRepo,
-      conversationRepository: this.conversationRepo,
-      usageCostTracker,
-      followUpRepository: new DrizzleFollowUpRepository(),
-      idGenerator: randomUUID,
-      now: () => new Date(),
-    });
+    let lead: Lead;
+    let conversation: Conversation;
+    let incomingMessage: Message;
+    if (isReplay) {
+      // Replay: a mensagem já está registrada — carrega o trio existente sem
+      // tocar em status de lead, follow-ups ou lastMessageAt (nada novo chegou).
+      const replayContext = await this.loadReplayContext(clinicId, params.replayOfMessageDbId!);
+      if (!replayContext) {
+        console.warn(
+          `[Orchestrator] Replay abortado — mensagem ${params.replayOfMessageDbId} não encontrada/não é de lead (clinic=${clinicId})`,
+        );
+        return { replied: false };
+      }
+      ({ lead, conversation, incomingMessage } = replayContext);
+      messageText = incomingMessage.body;
+    } else {
+      const registerUseCase = new RegisterIncomingMessage({
+        leadRepository: this.leadRepo,
+        conversationRepository: this.conversationRepo,
+        usageCostTracker,
+        followUpRepository: new DrizzleFollowUpRepository(),
+        idGenerator: randomUUID,
+        now: () => new Date(),
+      });
 
-    const { lead, conversation, message: incomingMessage } = await registerUseCase.execute({
-      clinicId,
-      message: {
-        externalMessageId: messageId,
-        externalContactId: channelAddress,
-        phone,
-        whatsappLid: params.whatsappLid ?? null,
-        name: senderName ?? null,
-        senderPhoto: senderPhoto ?? null,
-        email: null,
-        campaignId: null,
-        channel: "whatsapp",
-        externalThreadId: channelAddress,
-        body: messageText,
-        mediaUrl: params.mediaUrl ?? null,
-        mediaType: params.mediaType ?? null,
-        receivedAt: timestamp,
-      },
-    });
+      ({ lead, conversation, message: incomingMessage } = await registerUseCase.execute({
+        clinicId,
+        message: {
+          externalMessageId: messageId,
+          externalContactId: channelAddress,
+          phone,
+          whatsappLid: params.whatsappLid ?? null,
+          name: senderName ?? null,
+          senderPhoto: senderPhoto ?? null,
+          email: null,
+          campaignId: null,
+          channel: "whatsapp",
+          externalThreadId: channelAddress,
+          body: messageText,
+          mediaUrl: params.mediaUrl ?? null,
+          mediaType: params.mediaType ?? null,
+          receivedAt: timestamp,
+        },
+      }));
+    }
 
     const outboundAddress =
       resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
@@ -2461,7 +2670,9 @@ export class ConversationOrchestrator {
     // se uma mensagem MAIS RECENTE do lead já foi inserida no banco (por ex, 
     // um webhook concorrente no mesmo run do worker), nós abortamos este processamento.
     // O job da mensagem mais recente vai assumir a resposta com todo o contexto unificado.
-    const latestAfterClaim = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+    // (replay reprocessa uma mensagem antiga deliberadamente — mensagens mais
+    // recentes do lead, ex. a mídia de um burst, não devem abortar a resposta)
+    const latestAfterClaim = isReplay ? null : await this.conversationRepo.findLatestLeadMessage(conversation.id);
     if (latestAfterClaim && latestAfterClaim.id !== incomingMessage.id) {
       if (latestAfterClaim.sentAt.getTime() >= incomingMessage.sentAt.getTime()) {
         console.log(
@@ -2965,7 +3176,7 @@ export class ConversationOrchestrator {
     // Após registrar, espera N ms e verifica se chegou mensagem mais recente.
     // Se sim, esta mensagem não gera resposta — a última do burst responde
     // com o histórico completo (que já inclui todas as anteriores).
-    const debounceMs = clinic.messageDebounceMs ?? 5000;
+    const debounceMs = isReplay ? 0 : clinic.messageDebounceMs ?? 5000;
     if (debounceMs > 0) {
       await new Promise((r) => setTimeout(r, debounceMs));
       const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
@@ -3632,6 +3843,13 @@ export class ConversationOrchestrator {
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
     let pendingPipelineAdvance: PipelineAdvance | null = null;
+    // J7 — Gate de ritmo de CTA: se o turno anterior do agente/operador já fez
+    // convite de avaliação/agenda/foto e o lead não reagiu a ele, este turno
+    // responde sem repetir o convite (o sistema decide, a LLM verbaliza).
+    const ctaSuppressed = shouldSuppressNextStepCta({
+      previousAgentMessages: collectPreviousAgentTurnBodies(allMessagesForContext),
+      currentLeadMessage: messageText,
+    });
     // P0.6: Fallback para IA indisponível (timeout, OpenAI errors)
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
@@ -3641,6 +3859,7 @@ export class ConversationOrchestrator {
         if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
         const composed = await this.responseComposer.compose({
           actionResult,
+          suppressNextStepCta: ctaSuppressed,
           conversationHistory: allMessagesForContext,
           clinic: {
             name: clinic.name,
@@ -4779,6 +4998,21 @@ export class ConversationOrchestrator {
               : { action: "exit" };
 
             if (!hasPipelineContentStepBeenSent(currentStep, allMessagesForContext)) {
+              // N1 — Interesse genérico no tratamento: o conteúdo curado É a
+              // resposta. Compor explicação por LLM antes duplicava a informação
+              // e vazava valores em prosa (caso Nathan, 18/07).
+              const genericInterest =
+                !directSocialRequested &&
+                !directMediaClarificationRequested &&
+                !directLocationRequested &&
+                isGenericTreatmentInterestMessage(messageText, pipelineTreatment);
+              if (genericInterest) {
+                const contentReply = buildPipelineContentReply(currentStep);
+                replyText = contentReply.replyText;
+                composedParts = contentReply.parts;
+                composedMediaIds = contentReply.mediaIds;
+                break;
+              }
               const contentAnswerContext = directSocialRequested
                 ? buildSocialProfileClinicContext(
                     extractSocialProfileInfo(editorial?.playbookText, editorial?.commercialPolicy),
@@ -4789,7 +5023,7 @@ export class ConversationOrchestrator {
                     ? buildLocationClinicContext(clinic.address)
                     : [
                         `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
-                        "Responda primeiro a dúvida atual do lead de forma objetiva. Depois disso, o sistema enviará o próximo conteúdo do pipeline.",
+                        "Responda APENAS a dúvida atual do lead, em no máximo 2 frases. O sistema enviará AUTOMATICAMENTE a apresentação curada do tratamento (técnicas e valores) logo após a sua resposta: NÃO descreva o tratamento, NÃO cite valores e NÃO convide para avaliação/agendamento nem peça foto — a apresentação e o fluxo cuidam disso.",
                         pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
                         editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
                       ].filter(Boolean).join("\n");

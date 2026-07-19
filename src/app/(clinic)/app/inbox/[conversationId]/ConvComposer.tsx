@@ -41,11 +41,14 @@ function deriveNextAction(params: {
 
 const DISCOUNT_PRESETS = [200, 300, 500] as const;
 
+// A ação coloca a conversa no trilho do pipeline: a IA responde a última
+// mensagem do lead e conduz os próximos passos conforme as respostas dele
+// (nada é despejado de uma vez — o resumo abaixo é prévia do trilho completo).
 type PipelineOption = {
   treatmentId: string;
   treatmentName: string;
   summary: {
-    action: "send_intro_until_photo";
+    action: "start_pipeline_rails";
     label: string;
     textParts: number;
     mediaParts: number;
@@ -212,15 +215,17 @@ export function ConvComposer({
           action: option.summary.action,
         }),
       });
-      const data: { error?: string; skippedMedia?: { mediaId: string; reason: string }[] } = await res.json().catch(() => ({}));
+      const data: { error?: string; mode?: "rails_replay" | "armed_only"; replied?: boolean } = await res
+        .json()
+        .catch(() => ({}));
       if (!res.ok) {
-        setPipelineError(data.error ?? "Não foi possível enviar a ação.");
+        setPipelineError(data.error ?? "Não foi possível ativar o fluxo.");
         return;
       }
       setPipelineOpen(false);
       setText("");
-      if (data.skippedMedia?.length) {
-        setError("Ação enviada, mas uma mídia não pôde ser entregue. Revise a biblioteca do tratamento.");
+      if (data.mode === "armed_only" || data.replied === false) {
+        setError("Fluxo ativado — a IA conduz a partir da próxima mensagem do lead.");
       } else {
         setError(null);
       }
@@ -482,14 +487,14 @@ export function ConvComposer({
                   }}
                   disabled={Boolean(sendingPipelineKey)}
                   onClick={() => void handleSendPipelineAction(option)}
-                  title="Enviar conteúdo do tratamento e preparar a IA para continuar"
+                  title="Ativar o fluxo do tratamento — a IA responde o lead e conduz passo a passo"
                 >
                   <span style={{ color: "var(--text)", fontSize: 13, fontWeight: 700 }}>
-                    {sendingPipelineKey === key ? "Enviando…" : option.treatmentName}
+                    {sendingPipelineKey === key ? "Ativando…" : option.treatmentName}
                   </span>
                   <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 600 }}>
-                    {option.summary.textParts} texto(s) · {option.summary.mediaParts} mídia(s)
-                    {option.summary.willWaitForPhoto ? " · aguarda foto" : ""}
+                    IA conduz · trilho: {option.summary.textParts} texto(s) · {option.summary.mediaParts} mídia(s)
+                    {option.summary.willWaitForPhoto ? " · pede foto" : ""}
                   </span>
                   {option.summary.preview && (
                     <span style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.35 }}>
