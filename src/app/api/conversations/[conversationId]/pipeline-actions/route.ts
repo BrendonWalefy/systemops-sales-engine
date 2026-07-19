@@ -1,65 +1,31 @@
-import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray, or, isNull } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { conversations, leads, mediaAssets, messages, organizations, treatments } from "@/infrastructure/db/schema";
+import { conversations, leads, messages, organizations, treatments } from "@/infrastructure/db/schema";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { sendMediaMessage, sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
+import { ConversationOrchestrator, nextActivePipelineStep } from "@/core/pipeline/ConversationOrchestrator";
 import {
   buildGuidedPipelinePackage,
-  GUIDED_PIPELINE_ACTION_SEND_INTRO_UNTIL_PHOTO,
+  GUIDED_PIPELINE_ACTION_START_RAILS,
   summarizeGuidedPipelinePackage,
   type GuidedPipelineAction,
-  type GuidedPipelinePart,
 } from "@/application/conversations/guided-pipeline-actions";
 import type { PipelineStep } from "@/domain/entities/treatment";
 
 export const dynamic = "force-dynamic";
+// Replay inclui classificação + composição LLM inline (a entrega em si sai pelo
+// outbox/sender-worker). 60s cobre a latência da composição.
+export const maxDuration = 60;
 
 type PipelineActionRequest = {
   treatmentId?: string;
   action?: GuidedPipelineAction;
 };
 
-type ResolvedMedia = {
-  id: string;
-  treatmentId: string | null;
-  title: string;
-  url: string;
-  type: "image" | "video" | "document";
-};
-
 function normalizeAction(action: unknown): GuidedPipelineAction | null {
-  return action === GUIDED_PIPELINE_ACTION_SEND_INTRO_UNTIL_PHOTO
-    ? GUIDED_PIPELINE_ACTION_SEND_INTRO_UNTIL_PHOTO
-    : null;
-}
-
-function extractMediaIds(parts: GuidedPipelinePart[]): string[] {
-  return Array.from(new Set(parts.filter((part) => part.type === "media").map((part) => part.mediaId)));
-}
-
-async function insertOutboundMessage(params: {
-  conversationId: string;
-  body: string;
-  mediaUrl?: string | null;
-  mediaType?: "image" | "video" | null;
-}): Promise<string> {
-  const id = randomUUID();
-  await db.insert(messages).values({
-    id,
-    conversationId: params.conversationId,
-    author: "clinic_user",
-    body: params.body,
-    mediaUrl: params.mediaUrl ?? null,
-    mediaType: params.mediaType ?? null,
-    sentAt: new Date(),
-    externalId: null,
-  });
-  return id;
+  return action === GUIDED_PIPELINE_ACTION_START_RAILS ? GUIDED_PIPELINE_ACTION_START_RAILS : null;
 }
 
 export async function GET(
@@ -90,7 +56,7 @@ export async function GET(
     .map((treatment) => {
       const pkg = buildGuidedPipelinePackage(
         treatment.pipelineSteps as PipelineStep[] | null,
-        GUIDED_PIPELINE_ACTION_SEND_INTRO_UNTIL_PHOTO,
+        GUIDED_PIPELINE_ACTION_START_RAILS,
       );
       if (pkg.parts.length === 0) return null;
       return {
@@ -104,6 +70,11 @@ export async function GET(
   return NextResponse.json({ options });
 }
 
+// Coloca a conversa no trilho do pipeline do tratamento escolhido e reprocessa a
+// última mensagem de texto do lead pelo Orchestrator, como se tivesse acabado de
+// chegar. A IA responde answer-first (dúvida atual + próximo conteúdo) e os passos
+// seguintes avançam conforme as respostas do lead — idêntico ao fluxo orgânico.
+// Nada é despejado de uma vez: pacing, dedupe de conteúdo e ordem são os do motor.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
@@ -135,7 +106,11 @@ export async function POST(
     .limit(1);
   if (!conv) return NextResponse.json({ error: "Conversa nao encontrada" }, { status: 404 });
 
-  const [clinic] = await db.select().from(organizations).where(eq(organizations.id, conv.clinicId)).limit(1);
+  const [clinic] = await db
+    .select({ staleConversationHours: organizations.staleConversationHours })
+    .from(organizations)
+    .where(eq(organizations.id, conv.clinicId))
+    .limit(1);
   if (!clinic) return NextResponse.json({ error: "Clinica nao encontrada" }, { status: 404 });
 
   const [lead] = await db
@@ -162,87 +137,43 @@ export async function POST(
     .limit(1);
   if (!treatment) return NextResponse.json({ error: "Tratamento nao encontrado" }, { status: 404 });
 
-  const pkg = buildGuidedPipelinePackage(treatment.pipelineSteps as PipelineStep[] | null, action);
-  if (pkg.parts.length === 0) {
-    return NextResponse.json({ error: "Tratamento sem conteudo de pipeline para enviar" }, { status: 409 });
+  const pipelineSteps = (treatment.pipelineSteps as PipelineStep[] | null) ?? [];
+  if (pipelineSteps.length === 0) {
+    return NextResponse.json({ error: "Tratamento sem pipeline configurado" }, { status: 409 });
   }
 
-  const mediaIds = extractMediaIds(pkg.parts);
-  const mediaRows = mediaIds.length
-    ? await db
-        .select({
-          id: mediaAssets.id,
-          treatmentId: mediaAssets.treatmentId,
-          title: mediaAssets.title,
-          url: mediaAssets.url,
-          type: mediaAssets.type,
-        })
-        .from(mediaAssets)
-        .where(
-          and(
-            eq(mediaAssets.clinicId, conv.clinicId),
-            inArray(mediaAssets.id, mediaIds),
-            or(eq(mediaAssets.treatmentId, treatment.id), isNull(mediaAssets.treatmentId)),
-          ),
-        )
-    : [];
-  const mediaById = new Map(mediaRows.map((media) => [media.id, media as ResolvedMedia]));
+  const history = await db
+    .select({
+      id: messages.id,
+      author: messages.author,
+      body: messages.body,
+      mediaType: messages.mediaType,
+      sentAt: messages.sentAt,
+      externalId: messages.externalId,
+    })
+    .from(messages)
+    .where(eq(messages.conversationId, conversationId))
+    .orderBy(asc(messages.sentAt));
 
-  const channelConfig = resolveChannelConfig(clinic);
-  const skippedMedia: { mediaId: string; reason: string }[] = [];
-  let sentParts = 0;
-
-  try {
-    for (const part of pkg.parts) {
-      if (part.type === "text") {
-        const messageId = await insertOutboundMessage({ conversationId, body: part.content });
-        const externalId = await sendTextMessage(channelAddress, part.content, channelConfig);
-        if (externalId) await db.update(messages).set({ externalId }).where(eq(messages.id, messageId));
-        sentParts += 1;
-        continue;
-      }
-
-      const media = mediaById.get(part.mediaId);
-      if (!media) {
-        skippedMedia.push({ mediaId: part.mediaId, reason: "midia_nao_encontrada_ou_de_outro_tratamento" });
-        continue;
-      }
-      if (media.type === "document") {
-        skippedMedia.push({ mediaId: part.mediaId, reason: "documento_nao_suportado_no_envio_guiado" });
-        continue;
-      }
-
-      const bodyText = part.caption?.trim() || media.title;
-      const messageId = await insertOutboundMessage({
-        conversationId,
-        body: bodyText,
-        mediaUrl: media.url,
-        mediaType: media.type,
-      });
-      const externalId = await sendMediaMessage(channelAddress, media.url, media.type, channelConfig, part.caption);
-      if (externalId) await db.update(messages).set({ externalId }).where(eq(messages.id, messageId));
-      sentParts += 1;
-    }
-  } catch (err) {
-    console.error("[PipelineActions] WhatsApp send failed:", err);
-    return NextResponse.json(
-      { error: "Falha ao enviar pipeline pelo WhatsApp", sentParts, skippedMedia },
-      { status: 502 },
-    );
+  // Posiciona no primeiro passo ativo respeitando o histórico: conteúdo que a
+  // operação já enviou manualmente não será repetido pelo trilho.
+  const firstActive = nextActivePipelineStep(pipelineSteps, 0, {
+    conversationHistory: history.map((m) => ({ author: m.author, body: m.body })),
+  });
+  if (!firstActive) {
+    return NextResponse.json({ error: "Pipeline sem passos ativos restantes para esta conversa" }, { status: 409 });
   }
+
+  const stateMachine = new ConversationStateMachine();
+  await stateMachine.startTreatmentPipeline(
+    conversationId,
+    treatment.id,
+    treatment.name,
+    (clinic.staleConversationHours ?? 4) * 60,
+    firstActive.index,
+  );
 
   const now = new Date();
-  const stateMachine = new ConversationStateMachine();
-  if (pkg.resumeStepIndex !== null) {
-    await stateMachine.startTreatmentPipeline(
-      conversationId,
-      treatment.id,
-      treatment.name,
-      240,
-      pkg.resumeStepIndex,
-    );
-  }
-
   await db
     .update(conversations)
     .set({
@@ -252,10 +183,41 @@ export async function POST(
       attentionReason: null,
       consecutiveUnclearCount: 0,
       aiResumedAt: now,
-      lastMessageAt: now,
       updatedAt: now,
     })
     .where(eq(conversations.id, conversationId));
 
-  return NextResponse.json({ ok: true, sentParts, skippedMedia });
+  // Gatilho do trilho: a última mensagem de TEXTO do lead é reprocessada pelo
+  // motor. Mídia não serve de gatilho ("[imagem recebida]" não carrega intenção)
+  // — sem texto do lead, o trilho fica armado e dispara na próxima mensagem.
+  const lastLeadText = [...history]
+    .reverse()
+    .find((m) => m.author === "lead" && !m.mediaType && m.body.trim().length > 0);
+
+  if (!lastLeadText) {
+    return NextResponse.json({ ok: true, mode: "armed_only", replied: false, stepIndex: firstActive.index });
+  }
+
+  try {
+    const orchestrator = new ConversationOrchestrator();
+    const result = await orchestrator.handle({
+      clinicId: conv.clinicId,
+      phone: lead?.phone ?? channelAddress,
+      whatsappLid: lead?.whatsappLid ?? null,
+      messageText: lastLeadText.body,
+      messageId: lastLeadText.externalId ?? lastLeadText.id,
+      timestamp: lastLeadText.sentAt,
+      replyEnabled: true,
+      replayOfMessageDbId: lastLeadText.id,
+    });
+    return NextResponse.json({
+      ok: true,
+      mode: "rails_replay",
+      replied: result.replied,
+      stepIndex: firstActive.index,
+    });
+  } catch (err) {
+    console.error("[PipelineActions] Replay falhou — trilho segue armado:", err);
+    return NextResponse.json({ ok: true, mode: "armed_only", replied: false, stepIndex: firstActive.index });
+  }
 }
