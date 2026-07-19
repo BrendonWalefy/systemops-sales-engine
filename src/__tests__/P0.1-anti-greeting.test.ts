@@ -252,8 +252,10 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
 
     it("responde R$30 como sinal de reserva, não como preço da consulta", () => {
       const reply = buildEvaluationDepositClarification(3000);
+      expect(reply).toContain("A avaliação não tem custo");
       expect(reply).toContain("sinal de R$ 30");
       expect(reply).toContain("garante a reserva");
+      expect(reply).toContain("não é uma cobrança pela avaliação");
       expect(reply).not.toContain("custa");
     });
   });

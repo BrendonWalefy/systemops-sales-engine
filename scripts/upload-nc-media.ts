@@ -7,7 +7,7 @@
  *   3. id adicionado ao `media_asset_ids` do playbook ATIVO (curadoria que
  *      autoriza a IA a enviar — sem isso a mídia não entra no prompt).
  *
- * Respeita o cap de 10 mídias por clínica (mesma régua da rota).
+ * Respeita o cap de 15 mídias por clínica (mesma régua da rota).
  *
  * Uso:
  *   npx dotenv -e .env.local -- npx tsx scripts/upload-nc-media.ts \
@@ -33,7 +33,7 @@ import {
 } from "../src/infrastructure/db/schema";
 
 const CLINIC_ID = "2b0028b1-6bf3-42d7-852e-62a8b5ca1035";
-const MAX_ASSETS_PER_CLINIC = 10;
+const MAX_ASSETS_PER_CLINIC = 15;
 
 const CONTENT_TYPES: Record<string, { contentType: string; type: "video" | "image" }> = {
   ".mp4": { contentType: "video/mp4", type: "video" },

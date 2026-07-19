@@ -44,6 +44,9 @@ function ttlLabel(hours: number): string {
 export function buildDepositRequestMessage(clinic: DepositClinic, slotLabel: string): string {
   const amount = clinic.depositAmountCents ? formatBrl(clinic.depositAmountCents) : "o sinal";
   const keyLine = clinic.depositPixKey ? `${pixKeyLabel(clinic.depositPixKeyType)}: ${clinic.depositPixKey}` : "";
+  const copyablePixKey = clinic.depositPixKey
+    ? `Chave Pix para copiar:\n${clinic.depositPixKey}`
+    : "";
   const recipientLine = clinic.depositRecipientName ? `Nome: ${clinic.depositRecipientName}` : "";
   const notes = clinic.depositNotes?.trim() ? `\n${clinic.depositNotes.trim()}` : "";
   const ttl = ttlLabel(clinic.depositTtlHours ?? 24);
@@ -58,6 +61,7 @@ export function buildDepositRequestMessage(clinic: DepositClinic, slotLabel: str
     notes,
     "",
     `Assim que fizer o Pix, envie o comprovante (foto ou PDF) aqui nesta conversa. O horário fica reservado por ${ttl} — o agendamento só é confirmado após a comprovação do envio do sinal.`,
+    copyablePixKey,
   ]
     .filter((l) => l !== "" || true) // mantém linhas em branco intencionais
     .join("\n")

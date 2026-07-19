@@ -3,7 +3,7 @@
 
 import { db } from "@/infrastructure/db/client";
 import { conversationStates } from "@/infrastructure/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, lte } from "drizzle-orm";
 import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { Treatment } from "@/domain/entities/treatment";
 
@@ -94,11 +94,18 @@ const SLOT_OFFER_TTL_MINUTES = 15;
 
 export class ConversationStateMachine {
   // Estado atual não-expirado da conversa
-  async getCurrentState(conversationId: string): Promise<ConversationStateRow | null> {
+  async getCurrentState(conversationId: string, createdAtOrBefore?: Date): Promise<ConversationStateRow | null> {
     const rows = await db
       .select()
       .from(conversationStates)
-      .where(eq(conversationStates.conversationId, conversationId))
+      .where(
+        createdAtOrBefore
+          ? and(
+              eq(conversationStates.conversationId, conversationId),
+              lte(conversationStates.createdAt, createdAtOrBefore),
+            )
+          : eq(conversationStates.conversationId, conversationId),
+      )
       .orderBy(desc(conversationStates.createdAt))
       .limit(1);
 
@@ -182,8 +189,8 @@ export class ConversationStateMachine {
   }
 
   // Retorna slots da oferta vigente, ou null se não há oferta ativa
-  async getPendingSlotOffer(conversationId: string): Promise<FormattedSlot[] | null> {
-    const state = await this.getCurrentState(conversationId);
+  async getPendingSlotOffer(conversationId: string, createdAtOrBefore?: Date): Promise<FormattedSlot[] | null> {
+    const state = await this.getCurrentState(conversationId, createdAtOrBefore);
     if (!state || state.state !== "slots_offered") return null;
 
     const payload = state.payload as SlotsOfferedPayload | null;
@@ -267,8 +274,9 @@ export class ConversationStateMachine {
   async getOfferedProcedureByIndex(
     conversationId: string,
     rawSelection: string,
+    createdAtOrBefore?: Date,
   ): Promise<ProcedureListItem | null> {
-    const state = await this.getCurrentState(conversationId);
+    const state = await this.getCurrentState(conversationId, createdAtOrBefore);
     if (!state || state.state !== "procedure_list_offered") return null;
 
     const normalized = rawSelection.trim();
@@ -307,6 +315,44 @@ export class ConversationStateMachine {
     };
   }
 
+  // Recupera apenas a intenção numérica de uma oferta que acabou de expirar.
+  // Não devolve o slot antigo para confirmação: o Orchestrator deve atualizar a
+  // agenda e responder com `slots_expired`. Considera somente o estado mais
+  // recente, evitando que um número de menu seja ligado a uma oferta antiga.
+  async getRecentlyExpiredSlotSelection(
+    conversationId: string,
+    rawSelection: string,
+    createdAtOrBefore?: Date,
+    maxAgeHours = 24,
+  ): Promise<number | null> {
+    const normalized = rawSelection.trim();
+    if (!/^\d+$/.test(normalized)) return null;
+
+    const [row] = await db
+      .select()
+      .from(conversationStates)
+      .where(
+        createdAtOrBefore
+          ? and(
+              eq(conversationStates.conversationId, conversationId),
+              lte(conversationStates.createdAt, createdAtOrBefore),
+            )
+          : eq(conversationStates.conversationId, conversationId),
+      )
+      .orderBy(desc(conversationStates.createdAt))
+      .limit(1);
+    if (!row || row.state !== "slots_offered") return null;
+
+    const now = new Date();
+    const effectiveExpiry = row.expiresAt ?? new Date(row.createdAt.getTime() + SLOT_OFFER_TTL_MINUTES * 60_000);
+    if (effectiveExpiry >= now) return null;
+    if (now.getTime() - effectiveExpiry.getTime() > maxAgeHours * 60 * 60_000) return null;
+
+    const index = Number(normalized);
+    const payload = row.payload as SlotsOfferedPayload | null;
+    return payload?.slots?.some((slot) => slot.index === index) ? index : null;
+  }
+
   // ─── Pipeline de tratamento ───────────────────────────────────────────────
 
   // Inicia o pipeline para um tratamento. TTL: 4 horas (mesmo que staleConversationHours default).
@@ -336,8 +382,8 @@ export class ConversationStateMachine {
   }
 
   // Retorna o estado atual do pipeline, ou null se não houver pipeline ativo.
-  async getTreatmentPipelineState(conversationId: string): Promise<TreatmentPipelinePayload | null> {
-    const state = await this.getCurrentState(conversationId);
+  async getTreatmentPipelineState(conversationId: string, createdAtOrBefore?: Date): Promise<TreatmentPipelinePayload | null> {
+    const state = await this.getCurrentState(conversationId, createdAtOrBefore);
     if (!state || state.state !== "treatment_pipeline_active") return null;
     return state.payload as TreatmentPipelinePayload;
   }
@@ -453,8 +499,9 @@ export class ConversationStateMachine {
   // comprovante recebido), ou null se não está em fluxo de sinal.
   async getDepositState(
     conversationId: string,
+    createdAtOrBefore?: Date,
   ): Promise<{ state: "awaiting_deposit_proof" | "deposit_proof_received"; payload: DepositFlowPayload } | null> {
-    const state = await this.getCurrentState(conversationId);
+    const state = await this.getCurrentState(conversationId, createdAtOrBefore);
     if (!state) return null;
     if (state.state !== "awaiting_deposit_proof" && state.state !== "deposit_proof_received") return null;
     return { state: state.state, payload: state.payload as DepositFlowPayload };

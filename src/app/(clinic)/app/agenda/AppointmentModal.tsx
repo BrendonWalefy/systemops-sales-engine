@@ -98,7 +98,7 @@ export function AppointmentModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientName: name,
-          phone: phone.trim() || undefined,
+          phone: phone.trim(),
           date,
           time,
           durationMinutes,
@@ -149,9 +149,9 @@ export function AppointmentModal({
             />
           </div>
 
-          {/* Telefone — opcional */}
+          {/* Telefone — necessário para criar a conversa e enviar o lembrete D-1 */}
           <div className="field-group">
-            <label className="field-label">Telefone (opcional)</label>
+            <label className="field-label">WhatsApp para confirmação e lembrete</label>
             <input
               className="field-input"
               type="tel"
@@ -159,6 +159,7 @@ export function AppointmentModal({
               placeholder="(00) 00000-0000"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              required
             />
           </div>
 
@@ -300,8 +301,8 @@ const durationInputStyle: React.CSSProperties = {
   borderRadius: 7,
   color: "var(--agenda-text)",
   fontSize: 16,
-  padding: "8px 10px",
-  width: 64,
+  padding: "8px 6px",
+  width: 80,
   minWidth: 0,
   boxSizing: "border-box",
   fontFamily: "inherit",

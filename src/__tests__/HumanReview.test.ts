@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildHumanReviewButtons,
+  buildHumanReviewButtonPromptMessage,
+  buildHumanReviewContextUpdateMessage,
   buildHumanReviewDecisionConfirmation,
   buildHumanReviewInvalidReplyMessage,
   buildHumanReviewManualAttentionReason,
+  buildHumanReviewPendingLeadMessage,
   buildHumanReviewRequestMessage,
   isMalformedHumanReviewReply,
   parseHumanReviewReply,
@@ -80,6 +83,19 @@ describe("human review WhatsApp decisions", () => {
     expect(message).toContain("Se os botões não aparecerem");
     expect(message).toContain("A27 1");
     expect(message).toContain("A27 4");
+    expect(buildHumanReviewButtonPromptMessage(27)).toContain("A27: escolha a decisão");
+  });
+
+  it("identifica atualizações do paciente e mantém resposta clínica pausada", () => {
+    expect(
+      buildHumanReviewContextUpdateMessage({
+        reviewCode: 2,
+        leadName: "Nataly",
+        leadMessage: "Pouca resina + clareamento",
+      }),
+    ).toContain("Informação nova — Avaliação A2");
+    expect(buildHumanReviewPendingLeadMessage("Nataly Silva")).toContain("Recebi sua foto, Nataly");
+    expect(buildHumanReviewPendingLeadMessage("Nataly Silva")).toContain("automação fica pausada");
   });
 
   it("confirma a decisão com nome do paciente e instrui resposta inválida", () => {

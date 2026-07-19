@@ -109,6 +109,7 @@ export type Treatment = {
   aliases: string[];
   isAesthetic: boolean;
   pipelineSteps: PipelineStep[] | null;
+  pipelineSourceTreatmentId?: string | null;
   priceCents: number | null;
   minPriceCents: number | null;
   maxPriceCents: number | null;

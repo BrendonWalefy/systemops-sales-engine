@@ -1,0 +1,1 @@
+ALTER TABLE "treatments" ADD COLUMN "pipeline_source_treatment_id" uuid;

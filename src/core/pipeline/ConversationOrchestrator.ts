@@ -85,7 +85,10 @@ import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizz
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import {
+  buildHumanReviewButtonPromptMessage,
   buildHumanReviewButtons,
+  buildHumanReviewContextUpdateMessage,
+  buildHumanReviewPendingLeadMessage,
   buildHumanReviewRequestMessage,
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
@@ -709,10 +712,32 @@ export function isSimplePaymentPolicyQuestion(message: string): boolean {
 export function isBusinessHoursQuestion(message: string): boolean {
   const normalized = normalizeFreeText(message);
   if (!normalized) return false;
+  const hasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
+  const explicitlyAsksOperatingHours = hasAnyKeyword(normalized, [
+    "funciona",
+    "funcionamento",
+    "abrem",
+    "abre",
+    "expediente",
+  ]);
+  // Uma data concreta acompanhada de "horário" é uma consulta de
+  // disponibilidade, não uma pergunta institucional. Caso Tatiana (19/07):
+  // "Me agenda ... dia 8/8 se tiver horário" não pode cair no texto de
+  // funcionamento da clínica.
+  if (hasExplicitDate && !explicitlyAsksOperatingHours) return false;
   const asksAttendance =
     hasAnyKeyword(normalized, ["atende", "atendem", "atendimento", "funciona", "abrem", "abre", "horario", "expediente"]) &&
     hasAnyKeyword(normalized, ["sabado", "domingo", "semana", "dia", "dias", "manha", "tarde", "noite", "horario", "expediente"]);
-  return asksAttendance && !hasAnyKeyword(normalized, ["agendar", "marcar", "reservar", "consulta", "vaga"]);
+  return asksAttendance && !hasAnyKeyword(normalized, [
+    "agenda",
+    "agende",
+    "agendamento",
+    "agendar",
+    "marcar",
+    "reservar",
+    "consulta",
+    "vaga",
+  ]);
 }
 
 export function buildBusinessHoursAnswer(businessHoursRaw: string | null, message: string): string {
@@ -1521,6 +1546,20 @@ export function hasExplicitPipelineTreatmentTrigger(params: {
     if (offeredTreatment?.id === params.treatment.id) return true;
   }
   return false;
+}
+
+export function resolvePipelineSourceTreatment(
+  treatment: Treatment,
+  treatments: Treatment[],
+): Treatment {
+  if (!treatment.pipelineSourceTreatmentId) return treatment;
+  const source = treatments.find(
+    (candidate) =>
+      candidate.id === treatment.pipelineSourceTreatmentId &&
+      candidate.clinicId === treatment.clinicId &&
+      (candidate.pipelineSteps?.length ?? 0) > 0,
+  );
+  return source ?? treatment;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.
@@ -2606,15 +2645,57 @@ export function isEvaluationPriceRequest(message: string): boolean {
   );
 }
 
+export function isClinicalTreatmentPlanJudgmentRequest(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const asksCaseSpecificScope = hasAnyKeyword(normalized, [
+    "fechar os espacos",
+    "fechar os espacinhos",
+    "fechar espacos",
+    "fechar espacinhos",
+    "pouca resina",
+    "menos resina",
+    "so resina",
+    "quanto de resina",
+    "quantidade de resina",
+  ]);
+  const combinesProcedures =
+    (normalized.includes("resina") || normalized.includes("lente")) &&
+    normalized.includes("clareamento") &&
+    (message.includes("+") || hasAnyKeyword(normalized, ["junto", "combinar", "combinado", "e clareamento"]));
+  return asksCaseSpecificScope || combinesProcedures;
+}
+
 export function buildEvaluationDepositClarification(depositAmountCents: number): string {
   const amount = formatBrl(depositAmountCents);
   return [
+    "A avaliação não tem custo.",
+    "",
     `Para reservar o horário da avaliação, a clínica pede um sinal de ${amount}.`,
     "",
-    "Esse valor garante a reserva e é abatido do tratamento se você avançar.",
+    "Esse valor não é uma cobrança pela avaliação: ele garante a reserva e é abatido do tratamento se você avançar.",
     "",
     "Posso te mostrar os horários disponíveis agora?",
   ].join("\n");
+}
+
+export function contextualizeReplyWhileAwaitingDeposit(
+  replyText: string,
+  slotLabel: string,
+): string {
+  const paragraphs = replyText.trim().split(/\n\s*\n/);
+  while (
+    paragraphs.length > 0 &&
+    /(?:posso|quer|vamos|que tal).*(?:ver|mostrar|buscar|agendar).*(?:horarios?|agenda|avaliacao)/i.test(
+      normalizeFreeText(paragraphs[paragraphs.length - 1]),
+    )
+  ) {
+    paragraphs.pop();
+  }
+  return [
+    paragraphs.join("\n\n").trim(),
+    `Seu horário de ${slotLabel} continua reservado provisoriamente. Para confirmá-lo, envie o comprovante do sinal nesta conversa.`,
+  ].filter(Boolean).join("\n\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3146,9 +3227,6 @@ export class ConversationOrchestrator {
       let humanReviewContext: {
         reviewCode: number;
         treatmentName: string | null;
-        pipelineSteps: PipelineStep[];
-        stepIndex: number;
-        currentStepType: PipelineStep["type"] | null;
       } | null = null;
       if (inboundMediaType === "image" || inboundMediaType === "video") {
         const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
@@ -3181,9 +3259,6 @@ export class ConversationOrchestrator {
             humanReviewContext = {
               reviewCode: review.reviewCode,
               treatmentName: pipelineTreatment.name,
-              pipelineSteps: pipelineTreatment.pipelineSteps!,
-              stepIndex: activePipelineState.stepIndex,
-              currentStepType: currentStep?.type ?? null,
             };
             await this.stateMachine.markPipelinePhotoReceived(conversation.id, review.expiresAt);
           }
@@ -3207,21 +3282,26 @@ export class ConversationOrchestrator {
           : `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
         if (humanReviewContext) {
           try {
+            // O contexto com código/nome é uma mensagem de texto independente.
+            // Assim ele continua visível mesmo quando o WhatsApp aceita o request
+            // mas não renderiza os botões interativos na conta do responsável.
+            await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+          } catch (err) {
+            console.warn("[HumanReview] contexto textual falhou:", err);
+            operatorNotificationIssue = "Falha ao enviar o contexto da avaliação ao doutor";
+          }
+          try {
             await sendButtonListMessage(
               receptionistPhone,
-              contextMsg,
+              buildHumanReviewButtonPromptMessage(humanReviewContext.reviewCode),
               buildHumanReviewButtons(humanReviewContext.reviewCode),
               channelConfig,
             );
           } catch (err) {
-            console.warn("[HumanReview] botão falhou; enviando fallback texto:", err);
-            try {
-              await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
-              operatorNotificationIssue = "Botões de avaliação falharam; fallback texto enviado ao doutor";
-            } catch (fallbackErr) {
-              console.warn("[HumanReview] fallback texto também falhou:", fallbackErr);
-              operatorNotificationIssue = "Falha ao enviar avaliação com botões para o doutor";
-            }
+            // O texto anterior já contém Axx + opções 1..4, portanto a decisão
+            // segue possível mesmo se a camada interativa estiver instável.
+            console.warn("[HumanReview] botões falharam; instrução textual preservada:", err);
+            operatorNotificationIssue ??= "Botões de avaliação falharam; decisão textual Axx continua disponível";
           }
         } else {
           try {
@@ -3257,8 +3337,8 @@ export class ConversationOrchestrator {
         ].filter(Boolean).join(" — ");
         const now = new Date();
         await db.update(conversationsTable).set({
-          aiPaused: conversation.aiPaused,
-          takeoverExpiresAt: conversation.aiPaused ? conversation.takeoverExpiresAt ?? null : null,
+          aiPaused: true,
+          takeoverExpiresAt: null,
           needsAttention: true,
           attentionReason,
           updatedAt: now,
@@ -3272,43 +3352,16 @@ export class ConversationOrchestrator {
           return { replied: false };
         }
 
-        const photoHistory = await this.conversationRepo.listMessages(conversation.id);
-        const photoComposed = await this.responseComposer.compose({
-          actionResult: { type: "pipeline_photo_received" },
-          conversationHistory: photoHistory,
-          clinic: {
-            name: clinic.name,
-            plan: clinic.plan,
-            specialty: editorial?.specialty ?? clinic.specialty,
-            toneOfVoice: editorial?.toneOfVoice ?? null,
-            playbook: editorial?.playbookText ?? null,
-            commercialPolicy: editorial?.commercialPolicy ?? null,
-            installmentTable: null,
-            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-          },
-          leadName: extractFirstName(lead.name),
-          timezone,
-          isFirstMessage: false,
-          conversationExperience: clinicExperience,
-          resumedFromHumanTakeover: false,
-        });
-        const next = nextActivePipelineStep(
-          humanReviewContext.pipelineSteps,
-          humanReviewContext.stepIndex + 1,
-          {
-            skipOptionalPhoto: humanReviewContext.currentStepType === "qa",
-            skipPhotoInstructionContent: humanReviewContext.currentStepType === "qa",
-          },
-        );
+        const pendingReviewText = buildHumanReviewPendingLeadMessage(lead.name);
         const photoAgentId = randomUUID();
         await this.conversationRepo.appendMessage({
           id: photoAgentId,
           conversationId: conversation.id,
           author: "agent",
-          body: photoComposed.text,
+          body: pendingReviewText,
           sentAt: now,
           externalId: null,
-          intent: "check_availability",
+          intent: "needs_human",
           deliveryFormat: null,
         });
         await this.enqueueConversationReply(clinicId, conversation.id, {
@@ -3316,16 +3369,14 @@ export class ConversationOrchestrator {
           kind: "conversation_reply",
           to: outboundAddress,
           agentMessageId: photoAgentId,
-          replyText: photoComposed.text,
-          intent: "check_availability",
-          useVoice: resolveVoiceForReply("check_availability", photoComposed.text),
+          replyText: pendingReviewText,
+          intent: "needs_human",
+          useVoice: resolveVoiceForReply("needs_human", pendingReviewText),
           ttsConfig: ttsConf,
           interleavedParts: [],
           mediaParts: [],
           leadId: lead.id,
-          pipelineAdvance: next
-            ? { action: "advance", nextStepIndex: next.index }
-            : { action: "exit" },
+          pipelineAdvance: null,
         });
         return { replied: true };
       }
@@ -3518,6 +3569,82 @@ export class ConversationOrchestrator {
       console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} é a mais recente — prosseguindo (conv=${conversation.id})`);
     }
 
+    // Uma foto clínica com revisão Axx pendente é uma trava, não apenas um
+    // badge de atenção. Mensagens posteriores complementam o caso do doutor e
+    // recebem somente um reconhecimento seguro; não passam pelo classificador
+    // nem podem reabrir agenda/pipeline antes da decisão humana (caso Nataly).
+    const pendingHumanReview = await this.humanReviewRepo.findPendingByConversation({
+      clinicId,
+      conversationId: conversation.id,
+    });
+    if (pendingHumanReview) {
+      const leadContext = messageText.trim();
+      if (leadContext) {
+        await this.humanReviewRepo.appendReviewContext({
+          id: pendingHumanReview.id,
+          context: leadContext,
+        });
+      }
+
+      const reviewAttentionReason = `Avaliação A${pendingHumanReview.reviewCode}: aguardando decisão humana`;
+      await db
+        .update(conversationsTable)
+        .set({
+          aiPaused: true,
+          takeoverExpiresAt: null,
+          needsAttention: true,
+          attentionReason: reviewAttentionReason,
+          updatedAt: new Date(),
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+
+      if (clinic.receptionistPhone && leadContext) {
+        await sendTextMessage(
+          clinic.receptionistPhone,
+          buildHumanReviewContextUpdateMessage({
+            reviewCode: pendingHumanReview.reviewCode,
+            leadName: lead.name ?? outboundAddress,
+            leadMessage: leadContext,
+          }),
+          channelConfig,
+        ).catch((err) => console.warn("[HumanReview] atualização de contexto falhou:", err));
+      }
+
+      await this.notifier.execute(clinicId, {
+        title: lead.name ?? phone,
+        body: `Nova informação para a avaliação A${pendingHumanReview.reviewCode}`,
+        url: `/app/inbox/${conversation.id}`,
+      }).catch(() => {});
+
+      const pendingText = buildHumanReviewPendingLeadMessage(lead.name);
+      const pendingAgentId = randomUUID();
+      await this.conversationRepo.appendMessage({
+        id: pendingAgentId,
+        conversationId: conversation.id,
+        author: "agent",
+        body: pendingText,
+        sentAt: new Date(),
+        externalId: null,
+        intent: "needs_human",
+        deliveryFormat: null,
+      });
+      await this.enqueueConversationReply(clinicId, conversation.id, {
+        version: 1,
+        kind: "conversation_reply",
+        to: outboundAddress,
+        agentMessageId: pendingAgentId,
+        replyText: pendingText,
+        intent: "needs_human",
+        useVoice: false,
+        ttsConfig: ttsConf,
+        interleavedParts: [],
+        mediaParts: [],
+        leadId: lead.id,
+        pipelineAdvance: null,
+      });
+      return { replied: true };
+    }
+
     // ── 4–11. Processamento principal — erros aqui enviam fallback ao lead ──
     // O try começa aqui (após registrar lead+conversa) para proteger aiPaused,
     // rate limit e toda a lógica de IA com o mesmo fallback gracioso.
@@ -3582,8 +3709,9 @@ export class ConversationOrchestrator {
 
     const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
     const lastAgentMessage = [...allMessages].reverse().find((m) => m.author === "agent");
+    const stateAsOf = isReplay ? undefined : incomingMessage.sentAt;
     const [currentConversationState, lastResetBoundary] = await Promise.all([
-      this.stateMachine.getCurrentState(conversation.id),
+      this.stateMachine.getCurrentState(conversation.id, stateAsOf),
       this.stateMachine.getLastResetBoundary(conversation.id),
     ]);
 
@@ -3595,11 +3723,11 @@ export class ConversationOrchestrator {
       : allMessages;
 
     // ── 8. Verifica oferta de slots pendente ──
-    const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
+    const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id, stateAsOf);
     const hasPendingOffer = pendingSlots !== null;
 
     // ── 8.5. Verifica pipeline de tratamento ativo ──
-    const pipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
+    const pipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id, stateAsOf);
 
     // ── 9. Resolve intenção: menu pré-classificado ou LLM estágio 1 ──
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
@@ -3758,10 +3886,21 @@ export class ConversationOrchestrator {
       await this.stateMachine.invalidate(conversation.id);
     }
 
-    const procedureSelection = await this.stateMachine.getOfferedProcedureByIndex(conversation.id, messageText);
+    const procedureSelection = await this.stateMachine.getOfferedProcedureByIndex(
+      conversation.id,
+      messageText,
+      stateAsOf,
+    );
     if (procedureSelection) {
       await this.stateMachine.invalidate(conversation.id);
     }
+    const expiredSlotSelection = !hasPendingOffer
+      ? await this.stateMachine.getRecentlyExpiredSlotSelection(
+          conversation.id,
+          messageText,
+          stateAsOf,
+        )
+      : null;
 
     if (
       procedureSelection === null &&
@@ -3828,6 +3967,7 @@ export class ConversationOrchestrator {
     const numberMatchesPendingSlot = pendingSlots?.some(s => String(s.index) === nMsg) ?? false;
     const isOrphanedMenuNumber =
       !isMenuActive &&
+      expiredSlotSelection === null &&
       (!hasPendingOffer || !numberMatchesPendingSlot) &&
       !isProcedureListActive &&
       !resetRequested &&
@@ -3838,13 +3978,22 @@ export class ConversationOrchestrator {
 
     // isStaleConversation não está aqui: o LLM sempre classifica para capturar intents
     // explícitas (ex: "quero saber sobre custo") mesmo após longo silêncio.
-    const skipLlm = procedureSelection !== null || menuReRequested || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
+    const skipLlm = expiredSlotSelection !== null || procedureSelection !== null || menuReRequested || isolatedGreeting || resetRequested || isDisabledItemSelection || isInvalidMenuNumber || isOrphanedMenuNumber;
 
     const nullSlotPref = { preferredDate: null as null, preferredPeriod: null as null, preferredTime: null as null, slotChoice: null as null, identifiedTreatment: null as null, ambiguousTreatmentMatches: null as null };
 
     const promptContext = buildPromptContext(clinic);
 
-    const classification = rescheduleAfterReminder
+    const classification = expiredSlotSelection !== null
+      ? {
+          intent: "confirm_slot" as IntentType,
+          slotPreference: { ...nullSlotPref, slotChoice: expiredSlotSelection },
+          confidence: 1,
+          shouldAskClarification: false,
+          clarificationQuestion: null as null,
+          handoffReason: null as null,
+        }
+      : rescheduleAfterReminder
       ? {
           // Lead respondeu ao lembrete D-1 pedindo para remarcar: roteia direto para o
           // rebooking automatizado, sem depender do LLM (resposta curta e determinística).
@@ -4062,6 +4211,14 @@ export class ConversationOrchestrator {
           messageText,
         ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
       }
+    }
+
+    if (
+      (effectiveIntent === "general_question" || effectiveIntent === "price_inquiry") &&
+      isClinicalTreatmentPlanJudgmentRequest(messageText)
+    ) {
+      effectiveIntent = "needs_human";
+      maintenanceHandoffReason = "Definição clínica de quantidade/combinação de procedimentos — avaliação do doutor necessária";
     }
 
     // ── A6: Triagem de caso clínico atípico ──
@@ -4296,7 +4453,8 @@ export class ConversationOrchestrator {
     // ── A7: Guards de texto do fluxo de sinal ──
     // Roda antes da decisão normal. Comprovante em si (imagem/PDF) já foi tratado na
     // seção de mídia; aqui cobrimos os caminhos de TEXTO enquanto há sinal pendente.
-    const depositTextState = await this.stateMachine.getDepositState(conversation.id);
+    const depositTextState = await this.stateMachine.getDepositState(conversation.id, stateAsOf);
+    let releasedDepositHoldForChange = false;
     if (depositTextState) {
       const normalizedDep = normalizeFreeText(messageText);
       const saysPaid = /\b(paguei|ja paguei|fiz o pix|fiz pix|transferi|enviei o pix|pix feito|comprovante|mandei o pix)\b/.test(normalizedDep);
@@ -4344,6 +4502,7 @@ export class ConversationOrchestrator {
             await this.reservationService.release(depositTextState.payload.reservationId);
           }
           await this.stateMachine.invalidate(conversation.id);
+          releasedDepositHoldForChange = true;
           // Cai para o fluxo normal abaixo (estado de sinal já limpo).
         }
         // Pergunta geral durante a espera → responde normalmente, mantém o estado.
@@ -5745,6 +5904,10 @@ export class ConversationOrchestrator {
 
         if (informationalTreatment) {
           const matchedTreatment = informationalTreatment;
+          const pipelineTreatment = resolvePipelineSourceTreatment(
+            matchedTreatment,
+            clinicTreatments,
+          );
           const selectedTreatment = procedureSelection
             ? findTreatmentByIdOrName(clinicTreatments, {
                 treatmentId: procedureSelection.treatmentId,
@@ -5762,8 +5925,8 @@ export class ConversationOrchestrator {
             procedureSelection,
             treatment: matchedTreatment,
           });
-          if (matchedTreatment.pipelineSteps?.length && !pipelineState && explicitPipelineTrigger) {
-            const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0, {
+          if (pipelineTreatment.pipelineSteps?.length && !pipelineState && explicitPipelineTrigger) {
+            const firstActive = nextActivePipelineStep(pipelineTreatment.pipelineSteps, 0, {
               conversationHistory: allMessagesForContext,
             });
             if (firstActive) {
@@ -5775,8 +5938,8 @@ export class ConversationOrchestrator {
               if (deferFirstContactPitch && firstActive.step.type === "content") {
                 await this.stateMachine.startTreatmentPipeline(
                   conversation.id,
-                  matchedTreatment.id,
-                  matchedTreatment.name,
+                  pipelineTreatment.id,
+                  pipelineTreatment.name,
                   clinic.staleConversationHours * 60,
                   firstActive.index,
                 );
@@ -5786,8 +5949,8 @@ export class ConversationOrchestrator {
               }
               await this.stateMachine.startTreatmentPipeline(
                 conversation.id,
-                matchedTreatment.id,
-                matchedTreatment.name,
+                pipelineTreatment.id,
+                pipelineTreatment.name,
                 clinic.staleConversationHours * 60,
                 firstActive.index,
               );
@@ -5807,7 +5970,7 @@ export class ConversationOrchestrator {
                   .join("\n\n");
                 clinicContext = "";
                 // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
-                const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1, {
+                const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, firstActive.index + 1, {
                   conversationHistory: allMessagesForContext,
                 });
                 pendingPipelineAdvance = next
@@ -5816,7 +5979,7 @@ export class ConversationOrchestrator {
 
                 const remotePreEvaluationContent = isRemotePreEvaluationRequest(messageText)
                   ? nextUnsentPipelineContentStep(
-                      matchedTreatment.pipelineSteps!,
+                      pipelineTreatment.pipelineSteps!,
                       firstActive.index + 1,
                       allMessagesForContext,
                     )
@@ -5834,7 +5997,7 @@ export class ConversationOrchestrator {
                   composedParts = withPhotoInstructions.parts;
                   composedMediaIds = withPhotoInstructions.mediaIds;
                   const afterPhotoInstruction = nextActivePipelineStep(
-                    matchedTreatment.pipelineSteps!,
+                    pipelineTreatment.pipelineSteps!,
                     remotePreEvaluationContent.index + 1,
                     { conversationHistory: allMessagesForContext },
                   );
@@ -6037,6 +6200,20 @@ export class ConversationOrchestrator {
         .filter((p): p is { type: "text"; content: string } => p.type === "text")
         .map((p) => p.content)
         .join("\n\n");
+    }
+
+    if (
+      depositTextState?.state === "awaiting_deposit_proof" &&
+      !releasedDepositHoldForChange &&
+      replyText
+    ) {
+      replyText = contextualizeReplyWhileAwaitingDeposit(
+        replyText,
+        depositTextState.payload.slotLabel,
+      );
+      // A resposta final foi alterada deterministicamente; descarta partes de
+      // texto compostas antes para não enviar o CTA antigo junto pela outbox.
+      composedParts = composedParts.filter((part) => part.type !== "text");
     }
 
     // ── 8. Atualiza contador de unclear e flag needsAttention ──

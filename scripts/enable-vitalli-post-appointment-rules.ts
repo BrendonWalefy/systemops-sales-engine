@@ -11,7 +11,7 @@
  * nada dispara. Na Vitalli em shadow mode nada é enviado de verdade até ir live.
  *
  * ⚠️ Cap de mídia: o guia completo de cuidados (2ª imagem) e o vídeo 10MB ainda
- * NÃO estão na biblioteca (Vitalli no cap de 10). Quando entrarem, é só somar os
+ * NÃO estão na biblioteca (Vitalli no cap de 15). Quando entrarem, é só somar os
  * ids em cuidados.mediaIds e rodar de novo.
  *
  * ⚠️ GATED: dry-run por padrão. Só grava com --apply.

@@ -15,7 +15,7 @@ type Asset = {
 };
 type Treatment = { id: string; name: string };
 
-const MAX_ASSETS = 10;
+const MAX_ASSETS = 15;
 const ACCEPT = "video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp";
 
 export function BibliotecaClient({ assets: initialAssets, treatments }: { assets: Asset[]; treatments: Treatment[] }) {

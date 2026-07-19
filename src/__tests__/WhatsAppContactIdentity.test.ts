@@ -3,6 +3,7 @@ import {
   buildContactIdentifiersFromWebhook,
   isWhatsAppLid,
   mergeContactIdentifiers,
+  normalizeManualWhatsAppPhone,
   parseWhatsAppContactField,
   resolveWhatsAppChannelAddress,
 } from "@/core/whatsapp/WhatsAppContactIdentity";
@@ -16,6 +17,13 @@ describe("WhatsAppContactIdentity", () => {
   it("parseia telefone E.164", () => {
     expect(parseWhatsAppContactField("5511979663668")).toEqual({ phone: "5511979663668" });
     expect(parseWhatsAppContactField("+55 (11) 97966-3668")).toEqual({ phone: "5511979663668" });
+  });
+
+  it("normaliza WhatsApp digitado manualmente na agenda com DDI", () => {
+    expect(normalizeManualWhatsAppPhone("(11) 99016-1996")).toBe("5511990161996");
+    expect(normalizeManualWhatsAppPhone("5511990161996")).toBe("5511990161996");
+    expect(normalizeManualWhatsAppPhone("+1 415 555 2671")).toBe("14155552671");
+    expect(normalizeManualWhatsAppPhone("1234")).toBeNull();
   });
 
   it("parseia @lid sem colocar em phone", () => {

@@ -21,7 +21,7 @@ const ALLOWED_TYPES: Record<string, MediaAssetType> = {
 };
 
 const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
-const MAX_ASSETS_PER_CLINIC = 10;
+const MAX_ASSETS_PER_CLINIC = 15;
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
 const treatmentRepo = new DrizzleTreatmentRepository();
