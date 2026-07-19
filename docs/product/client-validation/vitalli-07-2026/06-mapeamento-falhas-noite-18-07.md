@@ -151,6 +151,22 @@ pouco do trabalho de vocês" 21:36 → markdown quebrado + CTAs sem contexto.
 
 ---
 
+## Caso teste SystemOps 22:18 — J8
+
+- **J8 — Pedido de foto acoplado a resposta de descoberta no passo de Q&A.**
+  - Evidência: lead pediu "me mostra as cores"; resposta veio correta (explicação
+    + tabela de cores por keyword), mas o pedido de foto + exemplo de ângulos
+    veio grudado no mesmo turno — pergunta de descoberta tratada como prontidão.
+  - Causa raiz: no passo `qa`, o anexo do próximo conteúdo disparava com
+    `keywordMediaId || afirmativa || conteúdo-de-foto pendente` — na prática, a
+    instrução de foto se acoplava à primeira resposta de Q&A, qualquer que fosse.
+  - Correção: `canAppendQaFollowUpContent` — instrução de foto só anexa com
+    afirmativa curta do lead (prontidão); sem sinal, o Q&A permanece aberto e o
+    passo de foto pede na vez dele (fim dos qaTurns). Conteúdo comum mantém os
+    momentos de ritmo (keyword/afirmativa). A pausa de Q&A que se cogitou criar
+    JÁ EXISTE (passo `qa` + `maxTurns`) — não foi preciso adicionar fricção.
+  - Status: **IMPLEMENTADO 18/07 ~22:25** (branch `fix/qa-photo-append-readiness`).
+
 ## Transversais já mapeados (conversa de teste SystemOps 20:52)
 
 - **T1 — Mídia fura o debounce de burst.** Caminho de mídia responde imediato e

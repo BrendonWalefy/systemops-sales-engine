@@ -2217,6 +2217,23 @@ export function shouldSuppressNextStepCta(params: {
   return !leadEngagesWithCta(params.currentLeadMessage);
 }
 
+// J8 (teste real 18/07 22:18): no passo de Q&A, o pedido de foto NÃO se acopla
+// a respostas de descoberta ("me mostra as cores") — pergunta é sinal de
+// exploração, não de prontidão. Conteúdo comum segue anexável nos momentos de
+// ritmo (mídia por keyword ou afirmativa curta); a instrução de foto só entra
+// quando o lead sinaliza prontidão com afirmativa curta. Sem prontidão, o Q&A
+// permanece aberto e o passo de foto pede na vez dele (fim dos qaTurns).
+export function canAppendQaFollowUpContent(params: {
+  nextContentIsPhotoInstruction: boolean;
+  keywordMediaMatched: boolean;
+  leadMessage: string;
+}): boolean {
+  if (params.nextContentIsPhotoInstruction) {
+    return isShortAffirmativeReply(params.leadMessage);
+  }
+  return params.keywordMediaMatched || isShortAffirmativeReply(params.leadMessage);
+}
+
 export function findPipelineTreatmentContextForPriceRequest(params: {
   message: string;
   treatments: Treatment[];
@@ -5103,7 +5120,11 @@ export class ConversationOrchestrator {
             }
             if (
               nextContent &&
-              (keywordMediaId || isShortAffirmativeReply(messageText) || shouldAppendPhotoInstructionContent)
+              canAppendQaFollowUpContent({
+                nextContentIsPhotoInstruction: shouldAppendPhotoInstructionContent,
+                keywordMediaMatched: !!keywordMediaId,
+                leadMessage: messageText,
+              })
             ) {
               const followUpContent = buildPipelineContentReply(nextContent.step);
               const baseParts = composedParts.length > 0

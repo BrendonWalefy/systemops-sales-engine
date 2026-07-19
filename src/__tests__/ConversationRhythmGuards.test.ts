@@ -4,6 +4,7 @@
 // J5 — markdown de mídia inventado pelo LLM nunca chega cru ao lead
 import { describe, expect, it } from "vitest";
 import {
+  canAppendQaFollowUpContent,
   collectPreviousAgentTurnBodies,
   isGenericTreatmentInterestMessage,
   shouldSuppressNextStepCta,
@@ -154,6 +155,48 @@ describe("J7 — gate de ritmo de CTA", () => {
       false,
     );
     expect(normal).toContain("conduza ativamente");
+  });
+});
+
+describe("J8 — pedido de foto no Q&A só com sinal de prontidão", () => {
+  it("pergunta de descoberta com mídia por keyword NÃO puxa o pedido de foto", () => {
+    expect(
+      canAppendQaFollowUpContent({
+        nextContentIsPhotoInstruction: true,
+        keywordMediaMatched: true,
+        leadMessage: "me mostra as cores",
+      }),
+    ).toBe(false);
+  });
+
+  it("afirmativa curta libera o pedido de foto", () => {
+    expect(
+      canAppendQaFollowUpContent({
+        nextContentIsPhotoInstruction: true,
+        keywordMediaMatched: false,
+        leadMessage: "Sim, pode",
+      }),
+    ).toBe(true);
+  });
+
+  it("conteúdo comum continua anexável no momento de keyword", () => {
+    expect(
+      canAppendQaFollowUpContent({
+        nextContentIsPhotoInstruction: false,
+        keywordMediaMatched: true,
+        leadMessage: "me mostra as cores",
+      }),
+    ).toBe(true);
+  });
+
+  it("conteúdo comum sem keyword nem afirmativa fica para o próximo momento", () => {
+    expect(
+      canAppendQaFollowUpContent({
+        nextContentIsPhotoInstruction: false,
+        keywordMediaMatched: false,
+        leadMessage: "e a manutenção, como funciona?",
+      }),
+    ).toBe(false);
   });
 });
 
