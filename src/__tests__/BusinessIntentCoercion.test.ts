@@ -4,12 +4,15 @@
 // com o mesmo horário na lista (Aylane), markdown ** cru no WhatsApp.
 import { describe, expect, it } from "vitest";
 import {
+  buildBusinessHoursAnswer,
   coerceBusinessIntent,
   detectPatientArrivalText,
   extractSocialProfileInfo,
   findExpressedSlotIndex,
   shouldBypassPendingPipelineContent,
   hasExplicitPipelineTreatmentTrigger,
+  isBusinessHoursQuestion,
+  isSimplePaymentPolicyQuestion,
 } from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { toWhatsAppFormatting } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -117,6 +120,45 @@ describe("coerceBusinessIntent", () => {
     });
     expect(result).toBe("acknowledgment");
   });
+
+  it("pergunta de horário de atendimento vira general_question, não agendamento", () => {
+    const result = coerceBusinessIntent({
+      message: "Vocês atendem aos sábados?",
+      intent: "acknowledgment",
+      treatments,
+      isClinicSegment: true,
+    });
+    expect(result).toBe("general_question");
+  });
+});
+
+describe("perguntas simples de política comercial", () => {
+  it("parcelamento simples não é exceção humana", () => {
+    expect(isSimplePaymentPolicyQuestion("esse valor pode ser parcelado?")).toBe(true);
+    expect(isSimplePaymentPolicyQuestion("Esses 2,000.00 vocês parcelam?")).toBe(true);
+  });
+
+  it("condição especial continua fora da automação", () => {
+    expect(isSimplePaymentPolicyQuestion("tem como parcelar diferente?")).toBe(false);
+    expect(isSimplePaymentPolicyQuestion("consegue um desconto especial?")).toBe(false);
+  });
+});
+
+describe("horário de atendimento determinístico", () => {
+  it("detecta pergunta de atendimento aos sábados", () => {
+    expect(isBusinessHoursQuestion("Vocês atendem aos sábados?")).toBe(true);
+    expect(isBusinessHoursQuestion("Quero agendar sábado")).toBe(false);
+  });
+
+  it("responde sábado a partir do businessHours cadastrado", () => {
+    expect(
+      buildBusinessHoursAnswer("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.", "Vocês atendem aos sábados?"),
+    ).toContain("Sim, atendemos aos sábados");
+
+    expect(
+      buildBusinessHoursAnswer("Seg-Sex 09:00-18:00", "Vocês atendem aos sábados?"),
+    ).toContain("Não consta atendimento aos sábados");
+  });
 });
 
 describe("hasExplicitPipelineTreatmentTrigger", () => {
@@ -140,6 +182,51 @@ describe("hasExplicitPipelineTreatmentTrigger", () => {
         treatment: lenses,
       }),
     ).toBe(true);
+  });
+
+  // Regressão 18/07: os openers reais dos anúncios da Vitalli têm mais de 8
+  // palavras e caíam no teto do resolveDirectTreatmentMention — todo lead de
+  // tráfego pago perdia a saudação concierge e o pipeline de lentes.
+  it("permite pipeline com o opener longo do anúncio (13 palavras)", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Apresentação", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Olá! Quero saber como posso transformar meu sorriso com as lentes  de resina?",
+        treatments: [lenses, ...treatments.slice(1)],
+        treatment: lenses,
+      }),
+    ).toBe(true);
+  });
+
+  it("permite pipeline com o opener curto do anúncio (9 palavras)", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Apresentação", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Olá, quero saber mais sobre as lentes em resina !",
+        treatments: [lenses, ...treatments.slice(1)],
+        treatment: lenses,
+      }),
+    ).toBe(true);
+  });
+
+  it("mensagem longa sem menção textual continua bloqueada", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Apresentação", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Vou conversar com minha esposa e qualquer coisa volto a falar com vocês, obrigado.",
+        treatments: [lenses, ...treatments.slice(1)],
+        treatment: lenses,
+      }),
+    ).toBe(false);
   });
 });
 

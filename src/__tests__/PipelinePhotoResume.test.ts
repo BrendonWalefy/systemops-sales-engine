@@ -1,6 +1,6 @@
 // Pipeline photo intercept: when a lead sends a photo or video while the pipeline
-// is waiting on a "photo" step, the system must create a human review case.
-// The AI only resumes after a deterministic human decision.
+// is waiting on a "photo" step, or still in Q&A with a photo step ahead, the
+// system creates a human review case without forcing a manual takeover.
 
 import { describe, it, expect } from "vitest";
 import type { PipelineStep } from "@/domain/entities/treatment";
@@ -27,7 +27,14 @@ function shouldCreateHumanReview(
   if (!pipelineState) return false;
   const treatment = treatments.find(t => t.id === pipelineState.treatmentId);
   const currentStep = treatment?.pipelineSteps?.[pipelineState.stepIndex];
-  return currentStep?.type === "photo";
+  const hasPhotoStepAhead = treatment?.pipelineSteps?.some(
+    (step, idx) => idx > pipelineState.stepIndex && step.type === "photo",
+  ) ?? false;
+  return currentStep?.type === "photo" || (currentStep?.type === "qa" && hasPhotoStepAhead);
+}
+
+function shouldPauseAiForPipelinePhotoReview(conversationAlreadyPaused: boolean): boolean {
+  return conversationAlreadyPaused;
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -65,9 +72,9 @@ describe("Pipeline photo intercept — revisão humana determinística", () => {
     expect(shouldCreateHumanReview("image", null, [TREATMENT])).toBe(false);
   });
 
-  it("NÃO cria revisão se step atual não é 'photo' (está em Q&A)", () => {
+  it("cria revisão se está em Q&A com step de foto adiante", () => {
     const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 1, photoReceived: false };
-    expect(shouldCreateHumanReview("image", state, [TREATMENT])).toBe(false);
+    expect(shouldCreateHumanReview("image", state, [TREATMENT])).toBe(true);
   });
 
   it("NÃO cria revisão se treatment não encontrado", () => {
@@ -79,5 +86,10 @@ describe("Pipeline photo intercept — revisão humana determinística", () => {
     const treatment: Treatment = { id: "treatment-lentes", pipelineSteps: null };
     const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 2, photoReceived: false };
     expect(shouldCreateHumanReview("image", state, [treatment])).toBe(false);
+  });
+
+  it("não pausa IA por padrão quando a foto pertence ao pipeline ativo", () => {
+    expect(shouldPauseAiForPipelinePhotoReview(false)).toBe(false);
+    expect(shouldPauseAiForPipelinePhotoReview(true)).toBe(true);
   });
 });

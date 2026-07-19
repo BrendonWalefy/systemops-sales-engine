@@ -66,7 +66,8 @@ import { resolveStopContactDecision } from "@/application/channel-safety/stop-co
 
 import type { Organization, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import type { ConversationExperience } from "@/domain/entities/clinic";
-import type { Message } from "@/domain/entities/conversation";
+import type { Conversation, Message } from "@/domain/entities/conversation";
+import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { CalendarSlot } from "@/domain/entities/calendar-slot";
 import {
@@ -89,6 +90,7 @@ import {
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
 import {
+  buildDepositProofButtonPromptMessage,
   buildDepositProofButtons,
   buildDepositProofReviewRequestMessage,
   nextAvailableDepositProofReviewCode,
@@ -242,12 +244,16 @@ const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
 export function resolveAdMediaContext(params: {
   currentMessageId: string;
   currentMessageText: string;
-  hasAnyAgentMessage: boolean;
+  // T2 (caso Barbara): a proteção contra tratar criativo como foto clínica não
+  // é "o agente já respondeu" (o lead encaminha o criativo DEPOIS da saudação o
+  // tempo todo) — é "o agente já pediu foto". Antes do pedido, mídia colada num
+  // opener de anúncio em conversa jovem ainda é criativo.
+  agentRequestedPhoto: boolean;
   totalConversationMessages: number;
   history: Pick<Message, "id" | "author" | "body" | "sentAt">[];
   now: number;
 }): { isAdMedia: boolean; contextText: string | null } {
-  if (params.hasAnyAgentMessage || params.totalConversationMessages > 3) {
+  if (params.agentRequestedPhoto || params.totalConversationMessages > 5) {
     return { isAdMedia: false, contextText: null };
   }
 
@@ -600,9 +606,19 @@ export function extractSocialProfileInfo(...sources: (string | null | undefined)
   return null;
 }
 
-function isProcedureCatalogRequest(message: string): boolean {
-  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
-  return n.includes("procedimento") || n.includes("tratamento") || n.includes("servico") || n.includes("opcoes");
+// W3.3 (caso Henrique 19/07): "Tenho dúvidas sobre o procedimento" despejava o
+// catálogo de 26 itens numa conversa que era sobre lentes. Referência definida
+// no singular fala do assunto em discussão; catálogo só com intenção de navegar.
+export function isProcedureCatalogRequest(message: string): boolean {
+  const n = normalizeFreeText(message);
+  if (!/\b(?:procedimentos?|tratamentos?|servicos?|opcoes)\b/.test(n)) return false;
+  const wantsCatalog =
+    /\b(?:quais|lista|listar|todos|todas|outros|outras|opcoes|menu|catalogo)\b/.test(n) ||
+    /\b(?:procedimentos|tratamentos|servicos)\b/.test(n) ||
+    /\b(?:um|algum|alguma)\s+(?:procedimento|tratamento|servico)\b/.test(n);
+  const definiteSingular =
+    /\b(?:o|do|no|desse|deste|esse|este)\s+(?:procedimento|tratamento|servico)\b/.test(n);
+  return wantsCatalog && !definiteSingular;
 }
 
 function normalizeFreeText(message: string): string {
@@ -657,6 +673,70 @@ export function shouldResumeManualTakeoverForScheduling(
 
 function isPriceRequestText(normalized: string): boolean {
   return hasAnyKeyword(normalized, ["valor", "preco", "quanto", "custa", "custo", "pagamento", "parcela"]);
+}
+
+export function isSimplePaymentPolicyQuestion(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const asksPaymentPolicy = hasAnyKeyword(normalized, [
+    "parcela",
+    "parcelado",
+    "parcelamento",
+    "cartao",
+    "credito",
+    "debito",
+    "pix",
+    "pagamento",
+  ]);
+  if (!asksPaymentPolicy) return false;
+
+  return !hasAnyKeyword(normalized, [
+    "diferente",
+    "especial",
+    "desconto",
+    "negociar",
+    "negocia",
+    "condicao especial",
+    "fora",
+    "excecao",
+    "combinado",
+    "promocao",
+    "permuta",
+    "troca",
+  ]);
+}
+
+export function isBusinessHoursQuestion(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const asksAttendance =
+    hasAnyKeyword(normalized, ["atende", "atendem", "atendimento", "funciona", "abrem", "abre", "horario", "expediente"]) &&
+    hasAnyKeyword(normalized, ["sabado", "domingo", "semana", "dia", "dias", "manha", "tarde", "noite", "horario", "expediente"]);
+  return asksAttendance && !hasAnyKeyword(normalized, ["agendar", "marcar", "reservar", "consulta", "vaga"]);
+}
+
+export function buildBusinessHoursAnswer(businessHoursRaw: string | null, message: string): string {
+  const normalized = normalizeFreeText(message);
+  const businessHours = parseBusinessHours(businessHoursRaw);
+  const hoursText = businessHoursRaw?.trim() || "Segunda a sexta, das 8h às 18h";
+  const asksSaturday = normalized.includes("sabado");
+  const asksSunday = normalized.includes("domingo");
+
+  if (asksSaturday) {
+    if (businessHours.days.includes(6)) {
+      return `Sim, atendemos aos sábados. Horário cadastrado: ${hoursText}.`;
+    }
+    return `Pelo horário cadastrado, atendemos ${hoursText}. Não consta atendimento aos sábados.`;
+  }
+
+  if (asksSunday) {
+    if (businessHours.days.includes(0)) {
+      return `Sim, atendemos aos domingos. Horário cadastrado: ${hoursText}.`;
+    }
+    return `Pelo horário cadastrado, atendemos ${hoursText}. Não consta atendimento aos domingos.`;
+  }
+
+  return `Nosso horário de atendimento é: ${hoursText}.`;
 }
 
 function isLocationRequestText(normalized: string): boolean {
@@ -828,6 +908,29 @@ export function resolveDirectTreatmentMention(
   return matchTreatmentByNormalizedMessage(normalized, treatments, TREATMENT_MENTION_STOPWORDS);
 }
 
+export function resolvePipelineTreatmentMention(
+  message: string,
+  treatments: Treatment[],
+): Treatment | null {
+  const normalized = normalizeFreeText(message);
+  if (!normalized || /^\d+$/.test(normalized)) return null;
+  if (
+    isSchedulingRequestText(normalized) ||
+    isPriceRequestText(normalized) ||
+    isLocationRequestText(normalized) ||
+    isProcedureCatalogRequestText(normalized)
+  ) {
+    return null;
+  }
+
+  const matched = matchTreatmentByNormalizedMessage(
+    normalized,
+    treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+  return matched?.pipelineSteps?.length ? matched : null;
+}
+
 // Frases fortes de chegada física à clínica. Deliberadamente específicas
 // ("estou aqui" sozinho é genérico demais) — falso negativo aqui é tolerável,
 // falso positivo geraria alerta de presença indevido para a equipe.
@@ -932,10 +1035,20 @@ export function normalizeSchedulingIntentForMissingPendingOffer(
   slotPreference: SlotPreference,
   message: string,
   hasPendingOffer: boolean,
+  lastAgentMessage?: string | null,
 ): IntentType {
   const messageHasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
   const normalized = normalizeFreeText(message);
   const isOnlyOrphanedNumber = /^\d+$/.test(normalized);
+  if (
+    intent === "confirm_slot" &&
+    !hasPendingOffer &&
+    !isOnlyOrphanedNumber &&
+    isShortAffirmativeReply(normalized) &&
+    didAgentAskToShowAvailability(lastAgentMessage)
+  ) {
+    return "check_availability";
+  }
   if (
     intent === "confirm_slot" &&
     !hasPendingOffer &&
@@ -951,6 +1064,61 @@ export function normalizeSchedulingIntentForMissingPendingOffer(
     return "check_availability";
   }
   return intent;
+}
+
+export function isShortAffirmativeReply(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  return new Set([
+    "sim",
+    "sim pode",
+    "pode",
+    "pode sim",
+    "claro",
+    "quero",
+    "quero sim",
+    "vamos",
+    "ok",
+    "ta bom",
+    "tudo bem",
+    "beleza",
+  ]).has(normalized);
+}
+
+// Pedido explícito de pré-avaliação REMOTA: libera o bloco declarativo de foto
+// do pipeline (texto + mídia de instrução). "Quero fazer uma avaliação" sozinho
+// continua ambíguo — normalmente significa avaliação presencial/agendamento — e
+// não pode disparar foto sem um sinal claro de WhatsApp, envio de mídia ou
+// atendimento "por aqui".
+export function isRemotePreEvaluationRequest(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+
+  const mentionsReview = /\b(?:pre\s*avaliacao|preavaliacao|analise|analisar|avaliar|avaliacao)\b/.test(normalized);
+  if (!mentionsReview) return false;
+
+  const mentionsRemoteChannel = /\b(?:por aqui|aqui mesmo|pelo whatsapp|no whatsapp|via whatsapp|por mensagem|online)\b/.test(normalized);
+  const mentionsRemoteMedia = /\b(?:pela|pelas|por|com|mandar|enviar|encaminhar)\s+(?:uma\s+|as\s+)?(?:foto|fotos|imagem|imagens|video|videos)\b/.test(normalized);
+  return mentionsRemoteChannel || mentionsRemoteMedia;
+}
+
+export function didAgentAskToShowAvailability(message?: string | null): boolean {
+  const normalized = normalizeFreeText(message ?? "");
+  if (!normalized) return false;
+  const mentionsAvailability =
+    normalized.includes("horario") ||
+    normalized.includes("horarios") ||
+    normalized.includes("agenda") ||
+    normalized.includes("agendar");
+  const asksPermission =
+    normalized.includes("posso ver") ||
+    normalized.includes("posso mostrar") ||
+    normalized.includes("posso te mostrar") ||
+    normalized.includes("posso te mandar") ||
+    normalized.includes("quer que eu veja") ||
+    normalized.includes("quer ver") ||
+    normalized.includes("podemos agendar");
+  return mentionsAvailability && asksPermission;
 }
 
 // ── Coerção determinística de intent para conteúdo de negócio ──
@@ -987,6 +1155,7 @@ export function coerceBusinessIntent(params: {
   // P0.2: Prioridade — Garantia antes de Manutenção (ambos redirectam para needs_human, mas contexto diferente)
   if (isWarrantyQuestion(normalized)) return "needs_human";
   if (isMaintenanceInquiryText(normalized)) return "needs_human";
+  if (isBusinessHoursQuestion(message)) return "general_question";
   if (isPriceRequestText(normalized)) return "price_inquiry";
   if (isSchedulingRequestText(normalized)) return "book_appointment";  // ← P0.1: Novo
   if (resolveDirectTreatmentMention(message, treatments)) return "general_question";
@@ -1282,6 +1451,10 @@ export function resolveInformationalTreatmentTarget(params: {
     params.treatments,
     params.lastAgentMessage,
   );
+  const pipelineMentionTreatment = resolvePipelineTreatmentMention(
+    params.message,
+    params.treatments,
+  );
 
   const classifiedTreatment = findTreatmentByIdOrName(params.treatments, {
     treatmentName: params.identifiedTreatment ?? null,
@@ -1295,10 +1468,17 @@ export function resolveInformationalTreatmentTarget(params: {
     ) {
       return directMentionTreatment;
     }
+    if (
+      pipelineMentionTreatment &&
+      pipelineMentionTreatment.id !== classifiedTreatment.id &&
+      !classifiedTreatment.pipelineSteps?.length
+    ) {
+      return pipelineMentionTreatment;
+    }
     return classifiedTreatment;
   }
 
-  return directMentionTreatment;
+  return directMentionTreatment ?? pipelineMentionTreatment;
 }
 
 // Um tratamento identificado apenas pelo contexto do histórico não é gatilho
@@ -1317,7 +1497,30 @@ export function hasExplicitPipelineTreatmentTrigger(params: {
     params.treatments,
     params.lastAgentMessage,
   );
-  return directMention?.id === params.treatment.id;
+  if (directMention?.id === params.treatment.id) return true;
+  // resolveDirectTreatmentMention descarta mensagens com mais de 8 palavras — o
+  // opener de anúncio ("Olá! Quero saber como posso transformar meu sorriso com
+  // as lentes de resina?") menciona o tratamento explicitamente e ainda assim
+  // caía fora do gate, derrubando a saudação concierge e o pipeline inteiro
+  // para todo lead de tráfego pago. A menção textual na mensagem atual é o que
+  // este gate exige; o teto de palavras não se aplica aqui.
+  const pipelineMention = resolvePipelineTreatmentMention(params.message, params.treatments);
+  if (pipelineMention?.id === params.treatment.id) return true;
+  // J2: afirmativa curta aceitando uma oferta aberta que MENCIONA o tratamento
+  // é gatilho explícito — o lead disse "sim" para esta oferta específica.
+  // Identificação puramente contextual (sem oferta + aceite) continua bloqueada.
+  if (
+    params.lastAgentMessage &&
+    isAffirmativeReplyToOpenOffer({ lastAgentMessage: params.lastAgentMessage, message: params.message })
+  ) {
+    const offeredTreatment = matchTreatmentByNormalizedMessage(
+      normalizeFreeText(params.lastAgentMessage),
+      params.treatments,
+      TREATMENT_MENTION_STOPWORDS,
+    );
+    if (offeredTreatment?.id === params.treatment.id) return true;
+  }
+  return false;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.
@@ -1796,6 +1999,14 @@ export function isValidMediaAssetId(id: string): boolean {
   return MEDIA_ASSET_UUID_RE.test(id);
 }
 
+function formatBrl(cents: number): string {
+  const reais = cents / 100;
+  const isRound = cents % 100 === 0;
+  return `R$ ${reais.toLocaleString("pt-BR", {
+    minimumFractionDigits: isRound ? 0 : 2,
+    maximumFractionDigits: isRound ? 0 : 2,
+  })}`;
+}
 export function mergeDeliveryMediaLibrary(
   editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
   directlyReferencedAssets: DeliveryMediaLibraryItem[],
@@ -1957,13 +2168,26 @@ export function hasPipelineContentStepBeenSent(
 
   if (fingerprints.length === 0) return false;
 
-  const agentBodies = history
-    .filter((message) => message.author === "agent")
+  // clinic_user conta: conteúdo que a operação já enviou manualmente não deve
+  // ser repetido pelo motor quando o pipeline assume a conversa depois.
+  const outboundBodies = history
+    .filter((message) => message.author === "agent" || message.author === "clinic_user")
     .map((message) => normalizeContentFingerprint(message.body));
 
   return fingerprints.some((fingerprint) =>
-    agentBodies.some((body) => body.includes(fingerprint)),
+    outboundBodies.some((body) => body.includes(fingerprint)),
   );
+}
+
+export function isPipelinePhotoInstructionContentStep(
+  step: Extract<PipelineStep, { type: "content" }>,
+): boolean {
+  const text = [
+    step.label,
+    ...step.blocks.map((block) => block.kind === "text" ? block.content : block.caption ?? ""),
+  ].join(" ");
+  const normalized = normalizeFreeText(text);
+  return hasAnyKeyword(normalized, ["foto", "fotos", "video", "videos", "frontal", "perfil", "pre avaliacao"]);
 }
 
 export function buildAnswerFirstPipelineContent(params: {
@@ -1987,20 +2211,338 @@ export function buildAnswerFirstPipelineContent(params: {
   };
 }
 
+// N1 (mapeamento 18/07, caso Nathan): quando a mensagem do lead é interesse
+// genérico no tratamento do pipeline ("quero entender como funciona e valores"),
+// o conteúdo curado É a resposta — compor explicação por LLM antes duplica a
+// informação e vaza valores em prosa. Detector conservador: qualquer token fora
+// do vocabulário de interesse (além de saudação e menção ao tratamento) mantém
+// o answer-first, que segue sendo o caminho certo para perguntas específicas.
+const GENERIC_INTEREST_VOCABULARY = new Set([
+  "ola", "oi", "eae", "hey", "bom", "boa", "dia", "tarde", "noite", "tudo", "bem",
+  "quero", "queria", "gostaria", "quer", "adoraria", "sim", "pode", "claro", "por", "favor", "pfv",
+  "saber", "entender", "enteder", "conhecer", "ver", "escutar", "ouvir",
+  "mais", "um", "uma", "uns", "umas", "pouco", "pouquinho", "melhor",
+  "sobre", "como", "funciona", "seria", "e", "de", "do", "da", "dos", "das", "o", "a", "os", "as", "no", "na",
+  "posso", "consigo", "transformar", "mudar", "melhorar", "arrumar", "meu", "minha", "sorriso", "dente", "dentes",
+  "com", "para", "pra", "tambem", "tbm", "ne",
+  "valor", "valores", "preco", "precos", "custo", "custos", "investimento",
+  "informacao", "informacoes", "detalhe", "detalhes", "duvida", "duvidas",
+  "me", "conta", "conte", "explica", "explicar", "fala", "falar", "mostra", "mostrar",
+  "tenho", "interesse", "interessado", "interessada", "interessei",
+  "esse", "essa", "isso", "este", "esta", "isto", "aqui",
+  "voces", "vcs", "procedimento", "tratamento", "gente",
+  // W3.4 (caso Felipe 19/07): "Ambas" respondendo "quer entender como funciona
+  // ou ver valores?" é interesse genérico nas duas técnicas — direto ao conteúdo.
+  "ambas", "ambos", "duas", "dois", "tecnica", "tecnicas", "opcoes", "opcao",
+]);
+
+export function isGenericTreatmentInterestMessage(message: string, treatment: Treatment): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const treatmentTokens = new Set(
+    [treatment.name, ...(treatment.aliases ?? [])]
+      .flatMap((name) => normalizeFreeText(name).split(/\s+/))
+      .filter(Boolean),
+  );
+  return normalized
+    .split(/\s+/)
+    .every((token) => GENERIC_INTEREST_VOCABULARY.has(token) || treatmentTokens.has(token));
+}
+
+// J7 (mapeamento 18/07, caso João Vitor): convite de avaliação/agenda/foto em
+// turnos consecutivos sem reação do lead derruba conversão — "faz o cliente
+// fugir" (validação real). O sistema decide se o turno pode fechar com CTA; a
+// LLM só verbaliza.
+const AGENT_CTA_PHRASES = [
+  "que tal agendar",
+  "que tal agendarmos",
+  "vamos agendar",
+  "podemos agendar",
+  "posso agendar",
+  "quer agendar",
+  "gostaria de agendar",
+  "que tal marcar",
+  "posso ver os horarios",
+  "posso mostrar os horarios",
+  "posso te mostrar os horarios",
+  "ver os horarios disponiveis",
+  "agendar uma avaliacao",
+  "agendarmos uma avaliacao",
+  "marcar uma avaliacao",
+  "marcarmos uma avaliacao",
+  "que tal uma avaliacao",
+  "agendar sua avaliacao",
+  "enviar uma foto",
+  "envie uma foto",
+  "enviar a foto",
+  "me encaminhar uma foto",
+  "encaminhar uma foto",
+  "manda uma foto",
+  "mandar uma foto",
+  "foto do seu sorriso",
+];
+
+function agentMessageEndsWithCta(body: string): boolean {
+  const normalized = normalizeFreeText(body);
+  if (!normalized) return false;
+  return AGENT_CTA_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+function leadEngagesWithCta(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const words = new Set(normalized.split(/\s+/));
+  const wordSignals = [
+    "agendar", "agendarmos", "marcar", "marcarmos", "horario", "horarios", "agenda",
+    "sim", "pode", "podemos", "claro", "bora", "vamos", "quando", "foto", "fotos",
+  ];
+  if (wordSignals.some((word) => words.has(word))) return true;
+  const phraseSignals = ["pode ser", "quero sim", "como faco", "como agendo", "to dentro", "tou dentro"];
+  return phraseSignals.some((phrase) => normalized.includes(phrase));
+}
+
+// Turno anterior do agente: percorre o histórico do fim para o início, pula o
+// burst atual do lead e coleta as mensagens de agente/operador até encontrar a
+// mensagem anterior do lead. Operador conta: CTA humano ignorado também não
+// deve ser repetido pela IA.
+export function collectPreviousAgentTurnBodies(
+  history: Pick<Message, "author" | "body">[],
+): string[] {
+  const bodies: string[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const message = history[i];
+    if (message.author === "lead") {
+      if (bodies.length > 0) break;
+      continue;
+    }
+    if (message.author === "agent" || message.author === "clinic_user") {
+      bodies.push(message.body);
+    }
+  }
+  return bodies;
+}
+
+export function shouldSuppressNextStepCta(params: {
+  previousAgentMessages: string[];
+  currentLeadMessage: string;
+}): boolean {
+  const previousHadCta = params.previousAgentMessages.some(agentMessageEndsWithCta);
+  if (!previousHadCta) return false;
+  return !leadEngagesWithCta(params.currentLeadMessage);
+}
+
+// J8 (teste real 18/07 22:18): no passo de Q&A, o pedido de foto NÃO se acopla
+// a respostas de descoberta ("me mostra as cores") — pergunta é sinal de
+// exploração, não de prontidão. Conteúdo comum segue anexável nos momentos de
+// ritmo (mídia por keyword ou afirmativa curta); a instrução de foto só entra
+// quando o lead sinaliza prontidão com afirmativa curta. Sem prontidão, o Q&A
+// permanece aberto e o passo de foto pede na vez dele (fim dos qaTurns).
+export function canAppendQaFollowUpContent(params: {
+  nextContentIsPhotoInstruction: boolean;
+  keywordMediaMatched: boolean;
+  leadMessage: string;
+}): boolean {
+  if (params.nextContentIsPhotoInstruction) {
+    return isShortAffirmativeReply(params.leadMessage) ||
+      isRemotePreEvaluationRequest(params.leadMessage);
+  }
+  return params.keywordMediaMatched || isShortAffirmativeReply(params.leadMessage);
+}
+
+// J2 (mapeamento 18/07, caso João Vitor): afirmativa curta respondendo a uma
+// oferta aberta do agente é ACEITE da oferta — não saudação nem ack. Sem este
+// guard, o gap de horas marcava a conversa como stale e o "Boa noite pode sim"
+// recebia o starter da Gleice de novo, engolindo o aceite do lead.
+const OPEN_OFFER_PHRASES = [
+  "posso te ajudar",
+  "posso ajudar",
+  "posso te mostrar",
+  "posso te passar",
+  "posso te explicar",
+  "posso te enviar",
+  "quer que eu",
+  "quer entender",
+  "quer saber",
+  "quer ver",
+  "me conta",
+  "gostaria de saber",
+  "gostaria de ver",
+  "gostaria de entender",
+];
+
+const LEAD_GREETING_PREFIX_RE = /^(?:ola|oi|opa|eae|bom dia|boa tarde|boa noite)\b\s*/;
+
+export function isAffirmativeReplyToOpenOffer(params: {
+  lastAgentMessage: string | null | undefined;
+  message: string;
+}): boolean {
+  if (!params.lastAgentMessage) return false;
+  const strippedLeadMessage = normalizeFreeText(params.message).replace(LEAD_GREETING_PREFIX_RE, "").trim();
+  if (!isShortAffirmativeReply(strippedLeadMessage)) return false;
+  if (params.lastAgentMessage.trim().endsWith("?")) return true;
+  const normalizedOffer = normalizeFreeText(params.lastAgentMessage);
+  return OPEN_OFFER_PHRASES.some((phrase) => normalizedOffer.includes(phrase));
+}
+
+// J4 (caso João Vitor): num burst, "20 lentes" seguido de outra pergunta era
+// respondido só pela última mensagem — o valor exato do pacote sumia. Recolhe
+// o burst atual do lead (mensagens após a última resposta do agente/operador),
+// em ordem cronológica, incluindo a mensagem atual.
+export function collectCurrentLeadBurstBodies(
+  history: Pick<Message, "author" | "body">[],
+): string[] {
+  const bodies: string[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const message = history[i];
+    if (message.author === "lead") {
+      bodies.unshift(message.body);
+      continue;
+    }
+    if (message.author === "agent" || message.author === "clinic_user") break;
+  }
+  return bodies;
+}
+
+// J4: quando o sistema já abriu a resposta com os valores exatos do pacote, a
+// prosa da LLM não pode repetir números — instrução sozinha não segura o modelo
+// (validado em replay 19/07). Remove parágrafos com R$ e os anúncios que os
+// introduziam ("Para 20 lentes, os valores são:") para não sobrar frase órfã.
+export function stripPriceProseWhenSystemQuoted(text: string): string {
+  const kept: string[] = [];
+  for (const paragraph of text.split("\n\n")) {
+    if (/r\$\s?\d/i.test(paragraph)) {
+      if (kept.length > 0 && /:\s*$/.test(kept[kept.length - 1].trim())) kept.pop();
+      continue;
+    }
+    kept.push(paragraph);
+  }
+  while (
+    kept.length > 0 &&
+    /(valor|valores|investimento|pre[çc]o|pre[çc]os|pacote)[^\n]*:\s*$/i.test(kept[kept.length - 1].trim())
+  ) {
+    kept.pop();
+  }
+  return kept.join("\n\n").trim();
+}
+
+// T2 (caso Barbara): criativo de anúncio encaminhado APÓS a saudação virava
+// "foto clínica" e pulava o funil. A proteção certa não é "o agente já falou",
+// e sim "o agente já pediu foto" — antes do pedido, mídia colada num opener de
+// anúncio ainda é criativo.
+const AGENT_PHOTO_REQUEST_RE =
+  /foto\s+(?:do|de)\s+(?:seu\s+)?sorriso|encaminhar\s+uma\s+foto|enviar\s+uma\s+foto|envie\s+uma\s+foto|nos\s+encaminhar\s+uma\s+foto|mandar?\s+uma\s+foto|foto\s+ou\s+(?:um\s+)?video|foto\s+clara\s+ou\s+um\s+video/;
+
+export function hasAgentRequestedPhoto(
+  history: Pick<Message, "author" | "body">[],
+): boolean {
+  return history.some(
+    (message) =>
+      (message.author === "agent" || message.author === "clinic_user") &&
+      AGENT_PHOTO_REQUEST_RE.test(normalizeFreeText(message.body)),
+  );
+}
+
+// J6 (caso João Vitor): "queria ver um pouco do trabalho de vocês" prometia
+// casos e não entregava nada — a seleção de vitrine é do sistema, não da LLM.
+const SHOWCASE_REQUEST_PHRASES = [
+  "ver o trabalho",
+  "ver os trabalhos",
+  "ver trabalhos",
+  "trabalho de voces",
+  "trabalhos de voces",
+  "ver casos",
+  "casos de sucesso",
+  "ver resultados",
+  "ver resultado",
+  "ver algum resultado",
+  "antes e depois",
+  "fotos de resultado",
+  "fotos de resultados",
+  "fotos de casos",
+  "exemplos de resultado",
+  "ver exemplos",
+  "trabalhos anteriores",
+  "trabalhos realizados",
+  "trabalhos ja feitos",
+  "portfolio",
+];
+
+export function isShowcaseRequestText(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  return SHOWCASE_REQUEST_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+const SHOWCASE_MEDIA_TITLE_RE = /resultado|caso|antes e depois/i;
+
+export function pickShowcaseMedia<T extends { id: string; title: string; treatmentId?: string | null }>(
+  library: T[],
+  treatmentId: string | null,
+  limit = 2,
+): T[] {
+  const candidates = library.filter((item) => SHOWCASE_MEDIA_TITLE_RE.test(item.title));
+  const scoped = treatmentId
+    ? candidates.filter((item) => !item.treatmentId || item.treatmentId === treatmentId)
+    : candidates;
+  return scoped.slice(0, limit);
+}
+
+export function findPipelineTreatmentContextForPriceRequest(params: {
+  message: string;
+  treatments: Treatment[];
+  identifiedTreatment?: string | null;
+  activePipelineTreatmentId?: string | null;
+  history?: Pick<Message, "author" | "body">[];
+}): Treatment | null {
+  const byActivePipeline = findTreatmentByIdOrName(params.treatments, {
+    treatmentId: params.activePipelineTreatmentId ?? null,
+  });
+  if (byActivePipeline?.pipelineSteps?.length) return byActivePipeline;
+
+  const byClassification = findTreatmentByIdOrName(params.treatments, {
+    treatmentName: params.identifiedTreatment ?? null,
+  });
+  if (byClassification?.pipelineSteps?.length) return byClassification;
+
+  const currentMention = matchTreatmentByNormalizedMessage(
+    normalizeFreeText(params.message),
+    params.treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+  if (currentMention?.pipelineSteps?.length) return currentMention;
+
+  const recent = [...(params.history ?? [])].reverse().slice(0, 8);
+  for (const item of recent) {
+    const contextualMention = matchTreatmentByNormalizedMessage(
+      normalizeFreeText(item.body),
+      params.treatments,
+      TREATMENT_MENTION_STOPWORDS,
+    );
+    if (contextualMention?.pipelineSteps?.length) return contextualMention;
+  }
+
+  return null;
+}
+
 // Retorna o próximo step do pipeline que requer condução ativa (content, qa, photo).
 // Steps ask_availability / offer_slots / book são documentação para o doutor;
 // o fluxo reativo existente os cobre quando o lead expressa intenção.
-function nextActivePipelineStep(
+// Exportado: a ação guiada do Inbox usa para posicionar o pipeline no passo certo.
+export function nextActivePipelineStep(
   steps: PipelineStep[],
   fromIndex: number,
   options?: {
     skipOptionalPhoto?: boolean;
+    skipPhotoInstructionContent?: boolean;
     conversationHistory?: Pick<Message, "author" | "body">[];
   },
 ): { step: PipelineStep; index: number } | null {
   for (let i = fromIndex; i < steps.length; i++) {
     const s = steps[i];
     if (s.type === "photo" && options?.skipOptionalPhoto && !s.required) {
+      continue;
+    }
+    if (s.type === "content" && options?.skipPhotoInstructionContent && isPipelinePhotoInstructionContentStep(s)) {
       continue;
     }
     if (
@@ -2015,6 +2557,64 @@ function nextActivePipelineStep(
     }
   }
   return null;
+}
+
+function nextUnsentPipelineContentStep(
+  steps: PipelineStep[],
+  fromIndex: number,
+  conversationHistory: Pick<Message, "author" | "body">[],
+): { step: Extract<PipelineStep, { type: "content" }>; index: number } | null {
+  for (let i = fromIndex; i < steps.length; i++) {
+    const step = steps[i];
+    if (step.type === "ask_availability" || step.type === "offer_slots" || step.type === "book") {
+      return null;
+    }
+    if (step.type === "content" && !hasPipelineContentStepBeenSent(step, conversationHistory)) {
+      return { step, index: i };
+    }
+  }
+  return null;
+}
+
+function buildPipelineContentReply(step: Extract<PipelineStep, { type: "content" }>): {
+  replyText: string;
+  parts: ResponsePart[];
+  mediaIds: string[];
+} {
+  const parts = buildPipelineContentParts(step.blocks);
+  return {
+    replyText: parts
+      .filter((p): p is { type: "text"; content: string } => p.type === "text")
+      .map((p) => p.content)
+      .join("\n\n"),
+    parts,
+    mediaIds: collectMediaIds(parts),
+  };
+}
+
+export function isEvaluationPriceRequest(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized.includes("avaliacao")) return false;
+  // W3.1 (caso Lineeh 19/07): o preço perguntado precisa ser DA AVALIAÇÃO.
+  // "Quero valores, formas de pagamento e fazer uma avaliação" é pedido de
+  // preço do TRATAMENTO + intenção de agendar — responder só o sinal de R$ 30
+  // engolia os valores e gerava fricção ("não dá para avaliar por aqui?").
+  return (
+    /\b(?:valor|valores|preco|precos|custo)\s+(?:d[ae]s?\s+|para\s+|pra\s+)?(?:uma\s+|a\s+)?avaliacao\b/.test(normalized) ||
+    /\bquanto\s+(?:custa|cobra|cobram|fica|sai|e)\s+(?:uma\s+|a\s+)?avaliacao\b/.test(normalized) ||
+    /\bavaliacao\s+(?:e\s+)?(?:cobrada?|paga|gratuita|gratis|de\s+graca|custa|tem\s+custo)\b/.test(normalized)
+  );
+}
+
+export function buildEvaluationDepositClarification(depositAmountCents: number): string {
+  const amount = formatBrl(depositAmountCents);
+  return [
+    `Para reservar o horário da avaliação, a clínica pede um sinal de ${amount}.`,
+    "",
+    "Esse valor garante a reserva e é abatido do tratamento se você avançar.",
+    "",
+    "Posso te mostrar os horários disponíveis agora?",
+  ].join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2036,6 +2636,89 @@ export class ConversationOrchestrator {
     new WebPushGateway(),
   );
 
+  // Carrega mensagem/conversa/lead existentes para o modo replay do handle()
+  // (ação guiada do operador). Retorna null se a mensagem não pertencer à
+  // clínica ou não for de lead — replay nunca deve responder a mensagem do agente.
+  private async loadReplayContext(
+    clinicId: string,
+    messageDbId: string,
+  ): Promise<{ lead: Lead; conversation: Conversation; incomingMessage: Message } | null> {
+    const [messageRow] = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.id, messageDbId))
+      .limit(1);
+    if (!messageRow || messageRow.author !== "lead") return null;
+
+    const [conversationRow] = await db
+      .select()
+      .from(conversationsTable)
+      .where(
+        and(
+          eq(conversationsTable.id, messageRow.conversationId),
+          eq(conversationsTable.clinicId, clinicId),
+        ),
+      )
+      .limit(1);
+    if (!conversationRow) return null;
+
+    const lead = await this.leadRepo.findById(conversationRow.leadId);
+    if (!lead) return null;
+
+    return {
+      lead,
+      conversation: {
+        id: conversationRow.id,
+        clinicId: conversationRow.clinicId,
+        leadId: conversationRow.leadId,
+        channel: conversationRow.channel,
+        category: conversationRow.category,
+        externalThreadId: conversationRow.externalThreadId,
+        summary: conversationRow.summary,
+        aiPaused: conversationRow.aiPaused,
+        takeoverExpiresAt: conversationRow.takeoverExpiresAt,
+        needsAttention: conversationRow.needsAttention,
+        attentionReason: conversationRow.attentionReason,
+        consecutiveUnclearCount: conversationRow.consecutiveUnclearCount,
+        lastMessageAt: conversationRow.lastMessageAt,
+        createdAt: conversationRow.createdAt,
+        updatedAt: conversationRow.updatedAt,
+      },
+      incomingMessage: {
+        id: messageRow.id,
+        conversationId: messageRow.conversationId,
+        author: messageRow.author,
+        body: messageRow.body,
+        mediaUrl: messageRow.mediaUrl ?? null,
+        mediaType: (messageRow.mediaType as Message["mediaType"]) ?? null,
+        sentAt: messageRow.sentAt,
+        externalId: messageRow.externalId,
+        intent: messageRow.intent ?? null,
+        deliveryFormat: (messageRow.deliveryFormat as Message["deliveryFormat"]) ?? null,
+      },
+    };
+  }
+
+  // T1 — mídia respeita o mesmo debounce de burst do texto: aguarda a janela e,
+  // se o lead mandou mensagem mais recente, quem responde é o turno dela (os
+  // efeitos de estado do turno de mídia já foram aplicados antes desta espera).
+  private async mediaReplySuperseded(
+    conversationId: string,
+    incomingMessageId: string,
+    debounceMs: number,
+  ): Promise<boolean> {
+    if (debounceMs <= 0) return false;
+    await new Promise((resolve) => setTimeout(resolve, debounceMs));
+    const latest = await this.conversationRepo.findLatestLeadMessage(conversationId);
+    if (latest && latest.id !== incomingMessageId) {
+      console.log(
+        `[Orchestrator] Debounce(mídia): msg ${incomingMessageId} superada por ${latest.id} — o turno mais recente responde (conv=${conversationId})`,
+      );
+      return true;
+    }
+    return false;
+  }
+
   async handle(params: {
     clinicId: string;
     phone: string;
@@ -2048,8 +2731,13 @@ export class ConversationOrchestrator {
     replyEnabled?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
+    // Reprocessa uma mensagem de lead JÁ REGISTRADA como se tivesse acabado de
+    // chegar (ação guiada do operador: "entrar no trilho do pipeline"). Pula
+    // dedup, registro e debounce — a mensagem não é nova; só a resposta é.
+    replayOfMessageDbId?: string;
   }): Promise<{ replied: boolean }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
+    const isReplay = !!params.replayOfMessageDbId;
     let messageText = params.messageText;
     const replyEnabled = params.replyEnabled ?? true;
     const contactIdentifiers = buildContactIdentifiersFromWebhook({
@@ -2059,55 +2747,58 @@ export class ConversationOrchestrator {
     const channelAddress = resolveWhatsAppChannelAddress(contactIdentifiers) ?? phone;
 
     // ── 1. Deduplicação por ID: retorna se já processamos esta mensagem ──
-    const alreadyProcessed = await db
-      .select({ id: messagesTable.id })
-      .from(messagesTable)
-      .where(eq(messagesTable.externalId, messageId))
-      .limit(1);
+    // (replay reprocessa deliberadamente uma mensagem existente — dedup não se aplica)
+    if (!isReplay) {
+      const alreadyProcessed = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .where(eq(messagesTable.externalId, messageId))
+        .limit(1);
 
-    if (alreadyProcessed.length > 0) {
-      return { replied: false };
-    }
+      if (alreadyProcessed.length > 0) {
+        return { replied: false };
+      }
 
-    // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
-    // Janela de 2min baseada no wall-clock (não no timestamp da mensagem): retries tardios do
-    // Z-API chegam com timestamp novo, o que fazia a janela de 5s original expirar. 2min cobre
-    // o intervalo de retry sem bloquear mensagens legítimas repetidas além desse prazo.
-    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-    const identityMatch = contactIdentifiers.phone
-      ? contactIdentifiers.whatsappLid
-        ? or(
-            eq(leadsTable.phone, contactIdentifiers.phone),
-            eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
-            eq(leadsTable.phone, contactIdentifiers.whatsappLid),
-          )
-        : eq(leadsTable.phone, contactIdentifiers.phone)
-      : contactIdentifiers.whatsappLid
-        ? or(
-            eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
-            eq(leadsTable.phone, contactIdentifiers.whatsappLid),
-          )
-        : eq(leadsTable.phone, phone);
+      // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
+      // Janela de 2min baseada no wall-clock (não no timestamp da mensagem): retries tardios do
+      // Z-API chegam com timestamp novo, o que fazia a janela de 5s original expirar. 2min cobre
+      // o intervalo de retry sem bloquear mensagens legítimas repetidas além desse prazo.
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      const identityMatch = contactIdentifiers.phone
+        ? contactIdentifiers.whatsappLid
+          ? or(
+              eq(leadsTable.phone, contactIdentifiers.phone),
+              eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
+              eq(leadsTable.phone, contactIdentifiers.whatsappLid),
+            )
+          : eq(leadsTable.phone, contactIdentifiers.phone)
+        : contactIdentifiers.whatsappLid
+          ? or(
+              eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
+              eq(leadsTable.phone, contactIdentifiers.whatsappLid),
+            )
+          : eq(leadsTable.phone, phone);
 
-    const [contentDupe] = await db
-      .select({ id: messagesTable.id })
-      .from(messagesTable)
-      .innerJoin(conversationsTable, eq(conversationsTable.id, messagesTable.conversationId))
-      .innerJoin(leadsTable, eq(leadsTable.id, conversationsTable.leadId))
-      .where(
-        and(
-          eq(leadsTable.clinicId, clinicId),
-          identityMatch,
-          eq(messagesTable.author, "lead"),
-          eq(messagesTable.body, messageText),
-          gte(messagesTable.sentAt, twoMinutesAgo),
-        ),
-      )
-      .limit(1);
+      const [contentDupe] = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .innerJoin(conversationsTable, eq(conversationsTable.id, messagesTable.conversationId))
+        .innerJoin(leadsTable, eq(leadsTable.id, conversationsTable.leadId))
+        .where(
+          and(
+            eq(leadsTable.clinicId, clinicId),
+            identityMatch,
+            eq(messagesTable.author, "lead"),
+            eq(messagesTable.body, messageText),
+            gte(messagesTable.sentAt, twoMinutesAgo),
+          ),
+        )
+        .limit(1);
 
-    if (contentDupe) {
-      console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
-      return { replied: false };
+      if (contentDupe) {
+        console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
+        return { replied: false };
+      }
     }
 
     // ── 2. Busca clínica ──
@@ -2189,34 +2880,51 @@ export class ConversationOrchestrator {
       now: () => new Date(),
     });
 
-    const registerUseCase = new RegisterIncomingMessage({
-      leadRepository: this.leadRepo,
-      conversationRepository: this.conversationRepo,
-      usageCostTracker,
-      followUpRepository: new DrizzleFollowUpRepository(),
-      idGenerator: randomUUID,
-      now: () => new Date(),
-    });
+    let lead: Lead;
+    let conversation: Conversation;
+    let incomingMessage: Message;
+    if (isReplay) {
+      // Replay: a mensagem já está registrada — carrega o trio existente sem
+      // tocar em status de lead, follow-ups ou lastMessageAt (nada novo chegou).
+      const replayContext = await this.loadReplayContext(clinicId, params.replayOfMessageDbId!);
+      if (!replayContext) {
+        console.warn(
+          `[Orchestrator] Replay abortado — mensagem ${params.replayOfMessageDbId} não encontrada/não é de lead (clinic=${clinicId})`,
+        );
+        return { replied: false };
+      }
+      ({ lead, conversation, incomingMessage } = replayContext);
+      messageText = incomingMessage.body;
+    } else {
+      const registerUseCase = new RegisterIncomingMessage({
+        leadRepository: this.leadRepo,
+        conversationRepository: this.conversationRepo,
+        usageCostTracker,
+        followUpRepository: new DrizzleFollowUpRepository(),
+        idGenerator: randomUUID,
+        now: () => new Date(),
+      });
 
-    const { lead, conversation, message: incomingMessage } = await registerUseCase.execute({
-      clinicId,
-      message: {
-        externalMessageId: messageId,
-        externalContactId: channelAddress,
-        phone,
-        whatsappLid: params.whatsappLid ?? null,
-        name: senderName ?? null,
-        senderPhoto: senderPhoto ?? null,
-        email: null,
-        campaignId: null,
-        channel: "whatsapp",
-        externalThreadId: channelAddress,
-        body: messageText,
-        mediaUrl: params.mediaUrl ?? null,
-        mediaType: params.mediaType ?? null,
-        receivedAt: timestamp,
-      },
-    });
+      ({ lead, conversation, message: incomingMessage } = await registerUseCase.execute({
+        clinicId,
+        message: {
+          externalMessageId: messageId,
+          externalContactId: channelAddress,
+          phone,
+          whatsappLid: params.whatsappLid ?? null,
+          name: senderName ?? null,
+          senderPhoto: senderPhoto ?? null,
+          email: null,
+          campaignId: null,
+          channel: "whatsapp",
+          externalThreadId: channelAddress,
+          body: messageText,
+          mediaUrl: params.mediaUrl ?? null,
+          mediaType: params.mediaType ?? null,
+          receivedAt: timestamp,
+        },
+      }));
+    }
 
     const outboundAddress =
       resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
@@ -2257,7 +2965,9 @@ export class ConversationOrchestrator {
     // se uma mensagem MAIS RECENTE do lead já foi inserida no banco (por ex, 
     // um webhook concorrente no mesmo run do worker), nós abortamos este processamento.
     // O job da mensagem mais recente vai assumir a resposta com todo o contexto unificado.
-    const latestAfterClaim = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+    // (replay reprocessa uma mensagem antiga deliberadamente — mensagens mais
+    // recentes do lead, ex. a mídia de um burst, não devem abortar a resposta)
+    const latestAfterClaim = isReplay ? null : await this.conversationRepo.findLatestLeadMessage(conversation.id);
     if (latestAfterClaim && latestAfterClaim.id !== incomingMessage.id) {
       if (latestAfterClaim.sentAt.getTime() >= incomingMessage.sentAt.getTime()) {
         console.log(
@@ -2312,18 +3022,28 @@ export class ConversationOrchestrator {
               slotLabel: depositState.payload.slotLabel,
               depositAmountCents: depositState.payload.depositAmountCents,
             });
-            sendButtonListMessage(
-              receptionistPhone,
-              proofReviewMessage,
-              buildDepositProofButtons(proofReviewCode),
-              channelConfig,
-            ).catch((err) => {
-              console.warn("[DepositReview] botão falhou; enviando fallback texto:", err);
-              sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig).catch(() => {});
-            });
-            if (params.mediaUrl) {
-              sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
-            }
+            void (async () => {
+              try {
+                await sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig);
+              } catch (err) {
+                console.warn("[DepositReview] texto de validação falhou:", err);
+              }
+
+              try {
+                await sendButtonListMessage(
+                  receptionistPhone,
+                  buildDepositProofButtonPromptMessage(proofReviewCode),
+                  buildDepositProofButtons(proofReviewCode),
+                  channelConfig,
+                );
+              } catch (err) {
+                console.warn("[DepositReview] botões de validação falharam:", err);
+              }
+
+              if (params.mediaUrl) {
+                await sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
+              }
+            })();
           }
           await this.notifier.execute(clinicId, {
             title: lead.name ?? phone,
@@ -2379,8 +3099,9 @@ export class ConversationOrchestrator {
       // Quando o lead clica em "Saiba mais" de um anúncio, o WhatsApp envia automaticamente
       // o card do anúncio (imagem/vídeo) junto com a mensagem de texto do lead.
       // Critérios para identificar como mídia de anúncio (não foto clínica do paciente):
-      //   1. É o primeiro contato da conversa (IA ainda não respondeu), E
-      //   2. Há poucas mensagens do lead no histórico (burst de chegada de anúncio), E
+      //   1. A equipe ainda NÃO pediu foto ao lead (T2: antes do pedido, mídia colada
+      //      num opener de anúncio é criativo — mesmo que a saudação já tenha saído), E
+      //   2. A conversa é jovem (poucas mensagens — burst de chegada de anúncio), E
       //   3. A legenda (caption), ou o texto lead imediatamente anterior no mesmo burst,
       //      coincide com frases típicas de preenchimento automático de anúncios.
       const caption = params.messageText?.trim() ?? "";
@@ -2389,17 +3110,12 @@ export class ConversationOrchestrator {
         .select({ total: count() })
         .from(messagesTable)
         .where(eq(messagesTable.conversationId, conversation.id));
-      const [agentMsgRow] = await db
-        .select({ total: count() })
-        .from(messagesTable)
-        .where(and(eq(messagesTable.conversationId, conversation.id), eq(messagesTable.author, "agent")));
       const earlyLeadMsgTotal = Number(totalMsgRow?.total ?? 0);
-      const hasAnyAgentMsg = Number(agentMsgRow?.total ?? 0) > 0;
       const adMediaHistory = await this.conversationRepo.listMessages(conversation.id);
       const adMediaDecision = resolveAdMediaContext({
         currentMessageId: incomingMessage.id,
         currentMessageText: caption,
-        hasAnyAgentMessage: hasAnyAgentMsg,
+        agentRequestedPhoto: hasAgentRequestedPhoto(adMediaHistory),
         totalConversationMessages: earlyLeadMsgTotal,
         history: adMediaHistory,
         now: timestamp.getTime(),
@@ -2430,6 +3146,9 @@ export class ConversationOrchestrator {
       let humanReviewContext: {
         reviewCode: number;
         treatmentName: string | null;
+        pipelineSteps: PipelineStep[];
+        stepIndex: number;
+        currentStepType: PipelineStep["type"] | null;
       } | null = null;
       if (inboundMediaType === "image" || inboundMediaType === "video") {
         const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
@@ -2462,6 +3181,9 @@ export class ConversationOrchestrator {
             humanReviewContext = {
               reviewCode: review.reviewCode,
               treatmentName: pipelineTreatment.name,
+              pipelineSteps: pipelineTreatment.pipelineSteps!,
+              stepIndex: activePipelineState.stepIndex,
+              currentStepType: currentStep?.type ?? null,
             };
             await this.stateMachine.markPipelinePhotoReceived(conversation.id, review.expiresAt);
           }
@@ -2470,6 +3192,7 @@ export class ConversationOrchestrator {
 
       // Encaminha para o WhatsApp do doutor com contexto + mídia original
       const receptionistPhone = clinic.receptionistPhone;
+      let operatorNotificationIssue: string | null = null;
       if (receptionistPhone) {
         const mediaLabel = inboundMediaType === "image" ? "foto" : inboundMediaType === "video" ? "vídeo" : "documento";
         const artigo = inboundMediaType === "image" ? "uma" : "um";
@@ -2483,23 +3206,41 @@ export class ConversationOrchestrator {
             })
           : `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
         if (humanReviewContext) {
-          sendButtonListMessage(
-            receptionistPhone,
-            contextMsg,
-            buildHumanReviewButtons(humanReviewContext.reviewCode),
-            channelConfig,
-          ).catch((err) => {
+          try {
+            await sendButtonListMessage(
+              receptionistPhone,
+              contextMsg,
+              buildHumanReviewButtons(humanReviewContext.reviewCode),
+              channelConfig,
+            );
+          } catch (err) {
             console.warn("[HumanReview] botão falhou; enviando fallback texto:", err);
-            sendTextMessage(receptionistPhone, contextMsg, channelConfig).catch(() => {});
-          });
+            try {
+              await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+              operatorNotificationIssue = "Botões de avaliação falharam; fallback texto enviado ao doutor";
+            } catch (fallbackErr) {
+              console.warn("[HumanReview] fallback texto também falhou:", fallbackErr);
+              operatorNotificationIssue = "Falha ao enviar avaliação com botões para o doutor";
+            }
+          }
         } else {
-          sendTextMessage(receptionistPhone, contextMsg, channelConfig)
-            .catch(e => console.warn("[MediaForward] contexto falhou:", e));
+          try {
+            await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+          } catch (err) {
+            console.warn("[MediaForward] contexto falhou:", err);
+            operatorNotificationIssue = "Falha ao avisar o doutor sobre mídia recebida";
+          }
         }
         if (params.mediaUrl) {
-          sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig)
-            .catch(e => console.warn("[MediaForward] mídia falhou:", e));
+          try {
+            await sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig);
+          } catch (err) {
+            console.warn("[MediaForward] mídia falhou:", err);
+            operatorNotificationIssue ??= "Aviso enviado, mas a mídia não foi encaminhada ao doutor";
+          }
         }
+      } else if (humanReviewContext) {
+        operatorNotificationIssue = "Telefone do doutor/responsável não configurado para receber avaliação";
       }
 
       // Notifica operadores via push
@@ -2510,17 +3251,24 @@ export class ConversationOrchestrator {
       }).catch(() => {});
 
       if (humanReviewContext) {
-        const attentionReason = `Avaliação A${humanReviewContext.reviewCode}: aguardando decisão humana`;
+        const attentionReason = [
+          `Avaliação A${humanReviewContext.reviewCode}: aguardando decisão humana`,
+          operatorNotificationIssue,
+        ].filter(Boolean).join(" — ");
         const now = new Date();
         await db.update(conversationsTable).set({
-          aiPaused: true,
-          takeoverExpiresAt: null,
+          aiPaused: conversation.aiPaused,
+          takeoverExpiresAt: conversation.aiPaused ? conversation.takeoverExpiresAt ?? null : null,
           needsAttention: true,
           attentionReason,
           updatedAt: now,
         }).where(eq(conversationsTable.id, conversation.id));
 
         if (!replyEnabled || conversation.aiPaused) {
+          return { replied: false };
+        }
+
+        if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? 5000)) {
           return { replied: false };
         }
 
@@ -2544,6 +3292,14 @@ export class ConversationOrchestrator {
           conversationExperience: clinicExperience,
           resumedFromHumanTakeover: false,
         });
+        const next = nextActivePipelineStep(
+          humanReviewContext.pipelineSteps,
+          humanReviewContext.stepIndex + 1,
+          {
+            skipOptionalPhoto: humanReviewContext.currentStepType === "qa",
+            skipPhotoInstructionContent: humanReviewContext.currentStepType === "qa",
+          },
+        );
         const photoAgentId = randomUUID();
         await this.conversationRepo.appendMessage({
           id: photoAgentId,
@@ -2552,7 +3308,7 @@ export class ConversationOrchestrator {
           body: photoComposed.text,
           sentAt: now,
           externalId: null,
-          intent: "needs_human",
+          intent: "check_availability",
           deliveryFormat: null,
         });
         await this.enqueueConversationReply(clinicId, conversation.id, {
@@ -2561,13 +3317,15 @@ export class ConversationOrchestrator {
           to: outboundAddress,
           agentMessageId: photoAgentId,
           replyText: photoComposed.text,
-          intent: "needs_human",
-          useVoice: resolveVoiceForReply("needs_human", photoComposed.text),
+          intent: "check_availability",
+          useVoice: resolveVoiceForReply("check_availability", photoComposed.text),
           ttsConfig: ttsConf,
           interleavedParts: [],
           mediaParts: [],
           leadId: lead.id,
-          pipelineAdvance: null,
+          pipelineAdvance: next
+            ? { action: "advance", nextStepIndex: next.index }
+            : { action: "exit" },
         });
         return { replied: true };
       }
@@ -2599,6 +3357,9 @@ export class ConversationOrchestrator {
               activePipelineState.stepIndex + 1,
               { skipOptionalPhoto: currentStep?.type === "qa" },
             );
+            if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? 5000)) {
+              return { replied: false };
+            }
             const photoHistory = await this.conversationRepo.listMessages(conversation.id);
             const photoComposed = await this.responseComposer.compose({
               actionResult: { type: "pipeline_photo_received" },
@@ -2689,6 +3450,12 @@ export class ConversationOrchestrator {
         updatedAt: now,
       }).where(eq(conversationsTable.id, conversation.id));
 
+      // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
+      // suprimida quando outra mensagem do lead chegou na janela de burst.
+      if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? 5000)) {
+        return { replied: false };
+      }
+
       const mediaAgentId = randomUUID();
       await this.conversationRepo.appendMessage({
         id: mediaAgentId,
@@ -2735,7 +3502,7 @@ export class ConversationOrchestrator {
     // Após registrar, espera N ms e verifica se chegou mensagem mais recente.
     // Se sim, esta mensagem não gera resposta — a última do burst responde
     // com o histórico completo (que já inclui todas as anteriores).
-    const debounceMs = clinic.messageDebounceMs ?? 5000;
+    const debounceMs = isReplay ? 0 : clinic.messageDebounceMs ?? 5000;
     if (debounceMs > 0) {
       await new Promise((r) => setTimeout(r, debounceMs));
       const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
@@ -2815,6 +3582,17 @@ export class ConversationOrchestrator {
 
     const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
     const lastAgentMessage = [...allMessages].reverse().find((m) => m.author === "agent");
+    const [currentConversationState, lastResetBoundary] = await Promise.all([
+      this.stateMachine.getCurrentState(conversation.id),
+      this.stateMachine.getLastResetBoundary(conversation.id),
+    ]);
+
+    // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
+    // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
+    // isFirstMessage e demais checagens determinísticas continuam usando allMessages.
+    const allMessagesForContext = lastResetBoundary
+      ? allMessages.filter((m) => m.sentAt >= lastResetBoundary)
+      : allMessages;
 
     // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id);
@@ -2842,7 +3620,7 @@ export class ConversationOrchestrator {
     if (!adMediaContextText && !pipelineState && replyEnabled) {
       const priorIdentical = findLeadMessageRepeat({
         currentBody: messageText,
-        history: allMessages,
+        history: allMessagesForContext,
         now: Date.now(),
       });
       if (priorIdentical) {
@@ -2878,18 +3656,6 @@ export class ConversationOrchestrator {
         return { replied: true };
       }
     }
-
-    const currentConversationState = await this.stateMachine.getCurrentState(conversation.id);
-
-    // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
-    // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
-    // isFirstMessage e demais checagens determinísticas continuam usando allMessages.
-    const lastResetAt = currentConversationState?.state === "idle"
-      ? (currentConversationState.payload as { lastResetAt?: string } | null)?.lastResetAt
-      : undefined;
-    const allMessagesForContext = lastResetAt
-      ? allMessages.filter((m) => m.sentAt >= new Date(lastResetAt))
-      : allMessages;
 
     // ── 8.6. Resposta do lead ao pedido de confirmação de presença (lembrete D-1) ──
     // Quando o lead pede para remarcar, sinalizamos aqui e deixamos o fluxo seguir para o
@@ -3249,6 +4015,14 @@ export class ConversationOrchestrator {
         await this.stateMachine.invalidate(conversation.id);
       }
     }
+    const simplePaymentPolicyQuestion = isSimplePaymentPolicyQuestion(messageText);
+    const businessHoursQuestion = isBusinessHoursQuestion(messageText);
+    if (!commercialPauseDetected && simplePaymentPolicyQuestion && effectiveIntent === "needs_human") {
+      effectiveIntent = "price_inquiry";
+    }
+    if (!commercialPauseDetected && businessHoursQuestion) {
+      effectiveIntent = "general_question";
+    }
     let clarificationTreatmentName: string | null = null;
     if (
       intent === "general_question" &&
@@ -3403,6 +4177,13 @@ export class ConversationOrchestrator {
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
     let pendingPipelineAdvance: PipelineAdvance | null = null;
+    // J7 — Gate de ritmo de CTA: se o turno anterior do agente/operador já fez
+    // convite de avaliação/agenda/foto e o lead não reagiu a ele, este turno
+    // responde sem repetir o convite (o sistema decide, a LLM verbaliza).
+    const ctaSuppressed = shouldSuppressNextStepCta({
+      previousAgentMessages: collectPreviousAgentTurnBodies(allMessagesForContext),
+      currentLeadMessage: messageText,
+    });
     // P0.6: Fallback para IA indisponível (timeout, OpenAI errors)
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
@@ -3412,6 +4193,7 @@ export class ConversationOrchestrator {
         if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
         const composed = await this.responseComposer.compose({
           actionResult,
+          suppressNextStepCta: ctaSuppressed,
           conversationHistory: allMessagesForContext,
           clinic: {
             name: clinic.name,
@@ -3577,11 +4359,25 @@ export class ConversationOrchestrator {
       slotPreference,
       messageText,
       hasPendingOffer,
+      lastAgentMessage?.body ?? null,
     );
     // Nenhuma regra posterior pode transformar uma pausa comercial em uma nova
     // pergunta de negócio ou em uma confirmação de agenda.
     if (commercialPauseDetected) effectiveIntent = "farewell";
-    const responseIntent: IntentType = commercialPauseDetected ? "farewell" : intent;
+    // J2 — Aceite de oferta aberta: "Boa noite pode sim" respondendo a "posso te
+    // ajudar com informações?" é aceite, não saudação/ack. Coage para
+    // general_question para o fluxo ENTREGAR a oferta — em vez de cair na
+    // re-saudação stale (que reapresentava a Gleice) ou num aceno genérico.
+    // Com oferta de horários pendente, a confirmação de slot tem prioridade.
+    if (
+      !commercialPauseDetected &&
+      !hasPendingOffer &&
+      (effectiveIntent === "greeting" || effectiveIntent === "acknowledgment" || effectiveIntent === "unclear") &&
+      isAffirmativeReplyToOpenOffer({ lastAgentMessage: lastAgentMessage?.body, message: messageText })
+    ) {
+      effectiveIntent = "general_question";
+    }
+    const responseIntent: IntentType = commercialPauseDetected ? "farewell" : effectiveIntent;
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
@@ -3615,10 +4411,44 @@ export class ConversationOrchestrator {
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
+    } else if (businessHoursQuestion) {
+      replyText = buildBusinessHoursAnswer(clinic.businessHours, messageText);
+      forceTextOnlyReply = true;
     } else {
       switch (effectiveIntent) {
       // ── Confirmação de slot ──
       case "confirm_slot": {
+        if (!hasPendingOffer && pipelineState && !didAgentAskToShowAvailability(lastAgentMessage?.body ?? null)) {
+          const pipelineTreatment = clinicTreatments.find(t => t.id === pipelineState.treatmentId) ?? null;
+          // J2 (replay B, 19/07): inclui o passo ATUAL na busca — com o pipeline
+          // posicionado na apresentação deferida (A3), o "pode sim" classificado
+          // como confirm_slot pulava a apresentação e ia direto ao pedido de foto.
+          const nextContent = pipelineTreatment?.pipelineSteps
+            ? nextUnsentPipelineContentStep(
+                pipelineTreatment.pipelineSteps,
+                pipelineState.stepIndex,
+                allMessagesForContext,
+              )
+            : null;
+          if (nextContent) {
+            const contentReply = buildPipelineContentReply(nextContent.step);
+            replyText = contentReply.replyText;
+            composedParts = contentReply.parts;
+            composedMediaIds = contentReply.mediaIds;
+            forceTextOnlyReply = true;
+
+            const next = nextActivePipelineStep(
+              pipelineTreatment!.pipelineSteps!,
+              nextContent.index + 1,
+              { conversationHistory: allMessagesForContext },
+            );
+            pendingPipelineAdvance = next
+              ? { action: "advance", nextStepIndex: next.index }
+              : { action: "exit" };
+            break;
+          }
+        }
+
         // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
         // que não bate com nenhum slot pendente, trata como nova solicitação para essa data.
         if (!slotPreference.slotChoice && slotPreference.preferredDate && pendingSlots) {
@@ -4247,6 +5077,112 @@ export class ConversationOrchestrator {
             `Responda com estes valores exatos e não cite valores de outras quantidades.`;
         }
 
+        if (
+          isEvaluationPriceRequest(messageText) &&
+          clinic.depositEnabled &&
+          clinic.depositAmountCents
+        ) {
+          replyText = buildEvaluationDepositClarification(clinic.depositAmountCents);
+          forceTextOnlyReply = true;
+          break;
+        }
+
+        const pipelinePriceTreatment = findPipelineTreatmentContextForPriceRequest({
+          message: messageText,
+          treatments: clinicTreatments,
+          identifiedTreatment: priceIdentifiedTreatment,
+          activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
+          history: allMessagesForContext,
+        });
+        const pipelinePriceContent = pipelinePriceTreatment?.pipelineSteps
+          ? nextActivePipelineStep(pipelinePriceTreatment.pipelineSteps, 0, {
+              conversationHistory: allMessagesForContext,
+            })
+          : null;
+
+        if (
+          pipelinePriceTreatment &&
+          pipelinePriceContent?.step.type === "content" &&
+          (quantityPriceResolution == null || quantityPriceResolution.kind === "exact") &&
+          !oldPriceObjectionDetected
+        ) {
+          const parts = buildPipelineContentParts(pipelinePriceContent.step.blocks);
+          triggerPartsOverride = parts;
+          composedParts = parts;
+          composedMediaIds = collectMediaIds(parts);
+          replyText = parts
+            .filter((p): p is { type: "text"; content: string } => p.type === "text")
+            .map((p) => p.content)
+            .join("\n\n");
+          forceTextOnlyReply = true;
+
+          if (!pipelineState) {
+            await this.stateMachine.startTreatmentPipeline(
+              conversation.id,
+              pipelinePriceTreatment.id,
+              pipelinePriceTreatment.name,
+              clinic.staleConversationHours * 60,
+              pipelinePriceContent.index,
+            );
+          }
+          const next = nextActivePipelineStep(
+            pipelinePriceTreatment.pipelineSteps!,
+            pipelinePriceContent.index + 1,
+            { conversationHistory: allMessagesForContext },
+          );
+          pendingPipelineAdvance = next
+            ? { action: "advance", nextStepIndex: next.index }
+            : { action: "exit" };
+
+          // Pedido composto real (ex.: valores + "pré-avaliação por aqui"):
+          // entrega primeiro os cards de preço e, como o lead já sinalizou
+          // prontidão explícita, emenda o bloco declarativo de instruções da foto.
+          // O asset/copy continuam pertencendo ao pipeline do tratamento.
+          const remotePreEvaluationContent = isRemotePreEvaluationRequest(messageText)
+            ? nextUnsentPipelineContentStep(
+                pipelinePriceTreatment.pipelineSteps!,
+                pipelinePriceContent.index + 1,
+                allMessagesForContext,
+              )
+            : null;
+          if (
+            remotePreEvaluationContent &&
+            isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+          ) {
+            const withPhotoInstructions = buildAnswerFirstPipelineContent({
+              answerText: replyText,
+              answerParts: composedParts,
+              contentBlocks: remotePreEvaluationContent.step.blocks,
+            });
+            replyText = withPhotoInstructions.replyText;
+            composedParts = withPhotoInstructions.parts;
+            composedMediaIds = withPhotoInstructions.mediaIds;
+            const afterPhotoInstruction = nextActivePipelineStep(
+              pipelinePriceTreatment.pipelineSteps!,
+              remotePreEvaluationContent.index + 1,
+              { conversationHistory: allMessagesForContext },
+            );
+            pendingPipelineAdvance = afterPhotoInstruction
+              ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+              : { action: "exit" };
+          }
+          break;
+        }
+
+        if (
+          !priceIdentifiedTreatment &&
+          !ambiguousTreatmentOverride?.length &&
+          !classification.slotPreference.ambiguousTreatmentMatches?.length &&
+          !pipelinePriceTreatment &&
+          !simplePaymentPolicyQuestion
+        ) {
+          replyText = await compose({
+            type: "clarification_needed",
+            question: "Claro. Sobre qual procedimento você quer ver os valores?",
+          });
+          break;
+        }
+
         replyText = await compose({
           type: "price_inquiry",
           identifiedTreatment: priceIdentifiedTreatment,
@@ -4258,6 +5194,43 @@ export class ConversationOrchestrator {
           referencedPriceCents: referencedPrice?.cents ?? null,
           oldPriceObjection: oldPriceObjectionDetected,
         });
+
+        // O pipeline pode já estar no Q&A quando chega um pedido composto de
+        // preço + pré-avaliação remota. Nesse caso a apresentação já foi enviada,
+        // então respondemos o preço normalmente e anexamos o próximo bloco de
+        // foto ainda não enviado, posicionando o estado para aguardar a mídia.
+        if (
+          pipelineState &&
+          pipelinePriceTreatment?.id === pipelineState.treatmentId &&
+          isRemotePreEvaluationRequest(messageText)
+        ) {
+          const remotePreEvaluationContent = nextUnsentPipelineContentStep(
+            pipelinePriceTreatment.pipelineSteps!,
+            pipelineState.stepIndex + 1,
+            allMessagesForContext,
+          );
+          if (
+            remotePreEvaluationContent &&
+            isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+          ) {
+            const withPhotoInstructions = buildAnswerFirstPipelineContent({
+              answerText: replyText,
+              answerParts: composedParts,
+              contentBlocks: remotePreEvaluationContent.step.blocks,
+            });
+            replyText = withPhotoInstructions.replyText;
+            composedParts = withPhotoInstructions.parts;
+            composedMediaIds = withPhotoInstructions.mediaIds;
+            const afterPhotoInstruction = nextActivePipelineStep(
+              pipelinePriceTreatment.pipelineSteps!,
+              remotePreEvaluationContent.index + 1,
+              { conversationHistory: allMessagesForContext },
+            );
+            pendingPipelineAdvance = afterPhotoInstruction
+              ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+              : { action: "exit" };
+          }
+        }
 
         // ── Item 1 (reunião 17/07): fechar como o operador faz — depois de cotar
         // um único tratamento (sem ambiguidade, sem escalonamento pendente, sem
@@ -4333,7 +5306,7 @@ export class ConversationOrchestrator {
 
           if (greetingTreatment?.pipelineSteps?.length) {
             const firstActive = nextActivePipelineStep(greetingTreatment.pipelineSteps, 0, {
-              conversationHistory: allMessages,
+              conversationHistory: allMessagesForContext,
             });
             if (firstActive) {
               await this.stateMachine.startTreatmentPipeline(
@@ -4356,7 +5329,7 @@ export class ConversationOrchestrator {
                   .map((p) => p.id);
                 replyText = pipelineText ? `${greetingText}\n\n${pipelineText}` : greetingText;
                 const next = nextActivePipelineStep(greetingTreatment.pipelineSteps!, firstActive.index + 1, {
-                  conversationHistory: allMessages,
+                  conversationHistory: allMessagesForContext,
                 });
                 pendingPipelineAdvance = next
                   ? { action: "advance", nextStepIndex: next.index }
@@ -4421,6 +5394,111 @@ export class ConversationOrchestrator {
         const directMediaClarificationRequested = !menuResolution && !procedureSelection && isMediaClarificationRequest(messageText);
         const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
 
+        // J4 — Quantidade pedida no burst atual ("20 lentes" + outra pergunta em
+        // seguida): o valor exato do pacote entra deterministicamente na resposta,
+        // antes do assunto da mensagem final. Fora do caminho de preço, que já resolve.
+        const burstQuantityResolution = isPriceShapedIntent
+          ? null
+          : (() => {
+              const burst = collectCurrentLeadBurstBodies(allMessagesForContext);
+              for (let i = burst.length - 1; i >= 0; i--) {
+                const resolution = resolveQuantityPriceQuery(burst[i], clinicTreatments);
+                if (resolution?.kind === "exact") return resolution;
+              }
+              return null;
+            })();
+
+        // J3 — Pergunta composta "valores e onde fica": o guard de localização não
+        // pode engolir a metade comercial. Endereço é dado determinístico; os
+        // valores saem pelo conteúdo curado do pipeline no mesmo turno.
+        if (directLocationRequested && isPriceRequestText(normalizeFreeText(messageText))) {
+          const combinedPriceTreatment = findPipelineTreatmentContextForPriceRequest({
+            message: messageText,
+            treatments: clinicTreatments,
+            identifiedTreatment: classification.slotPreference.identifiedTreatment ?? null,
+            activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
+            history: allMessagesForContext,
+          });
+          const combinedPriceContent = combinedPriceTreatment?.pipelineSteps
+            ? nextActivePipelineStep(combinedPriceTreatment.pipelineSteps, 0, {
+                conversationHistory: allMessagesForContext,
+              })
+            : null;
+          if (combinedPriceTreatment && combinedPriceContent?.step.type === "content") {
+            const addressPart = clinic.address
+              ? { type: "text" as const, content: `📍 Estamos na ${clinic.address}.` }
+              : null;
+            const contentReply = buildPipelineContentReply(combinedPriceContent.step);
+            composedParts = addressPart ? [addressPart, ...contentReply.parts] : contentReply.parts;
+            composedMediaIds = contentReply.mediaIds;
+            replyText = composedParts
+              .filter((p): p is { type: "text"; content: string } => p.type === "text")
+              .map((p) => p.content)
+              .join("\n\n");
+            forceTextOnlyReply = true;
+            if (!pipelineState) {
+              await this.stateMachine.startTreatmentPipeline(
+                conversation.id,
+                combinedPriceTreatment.id,
+                combinedPriceTreatment.name,
+                clinic.staleConversationHours * 60,
+                combinedPriceContent.index,
+              );
+            }
+            const next = nextActivePipelineStep(
+              combinedPriceTreatment.pipelineSteps!,
+              combinedPriceContent.index + 1,
+              { conversationHistory: allMessagesForContext },
+            );
+            pendingPipelineAdvance = next
+              ? { action: "advance", nextStepIndex: next.index }
+              : { action: "exit" };
+            break;
+          }
+          // Sem conteúdo curado disponível: contexto combinado obrigatório.
+          clinicContext = [
+            buildLocationClinicContext(clinic.address),
+            "ATENÇÃO: o lead pediu VALORES na MESMA mensagem. Responda as duas partes — endereço E os valores/condições disponíveis na política comercial. NÃO responda apenas o endereço.",
+          ].join("\n");
+          replyText = await compose({ type: "general_question", clinicContext });
+          break;
+        }
+
+        // J6 — Pedido de vitrine ("quero ver o trabalho de vocês"): entrega
+        // determinística das mídias de resultado — a LLM não promete, o sistema anexa.
+        if (
+          !directLocationRequested &&
+          !directSocialRequested &&
+          !directMediaClarificationRequested &&
+          isShowcaseRequestText(messageText)
+        ) {
+          const showcaseTreatmentId =
+            pipelineState?.treatmentId ??
+            inferTreatmentContextFromHistory({
+              message: messageText,
+              treatments: clinicTreatments,
+              lastAgentMessage: lastAgentMessage?.body ?? null,
+            })?.id ??
+            null;
+          const showcaseMedia = pickShowcaseMedia(editorial?.mediaLibrary ?? [], showcaseTreatmentId);
+          if (showcaseMedia.length > 0) {
+            // J4×J6: se o burst também pediu quantidade ("20 lentes" + "quero ver
+            // o trabalho"), o valor exato abre a resposta antes da vitrine.
+            const quantityPrefix = burstQuantityResolution
+              ? `Sobre o pacote de ${burstQuantityResolution.quantity}: ${burstQuantityResolution.lines.join(" · ")}.\n\n`
+              : "";
+            const showcaseIntro = `${quantityPrefix}Claro! Olha alguns resultados reais dos nossos pacientes 👇`;
+            composedParts = [
+              { type: "text", content: showcaseIntro },
+              ...showcaseMedia.map((media) => ({ type: "media" as const, id: media.id })),
+            ];
+            composedMediaIds = showcaseMedia.map((media) => media.id);
+            replyText = showcaseIntro;
+            forceTextOnlyReply = true;
+            break;
+          }
+        }
+
         // ── Pipeline continuação ──
         // Se há pipeline ativo, ele tem prioridade sobre a lógica normal de contexto,
         // exceto quando a mensagem atual é uma pergunta direta sobre a clínica ou
@@ -4442,13 +5520,28 @@ export class ConversationOrchestrator {
             const next = nextActivePipelineStep(
               pipelineTreatment.pipelineSteps!,
               pipelineState.stepIndex + 1,
-              { conversationHistory: allMessages },
+              { conversationHistory: allMessagesForContext },
             );
             pendingPipelineAdvance = next
               ? { action: "advance", nextStepIndex: next.index }
               : { action: "exit" };
 
-            if (!hasPipelineContentStepBeenSent(currentStep, allMessages)) {
+            if (!hasPipelineContentStepBeenSent(currentStep, allMessagesForContext)) {
+              // N1 — Interesse genérico no tratamento: o conteúdo curado É a
+              // resposta. Compor explicação por LLM antes duplicava a informação
+              // e vazava valores em prosa (caso Nathan, 18/07).
+              const genericInterest =
+                !directSocialRequested &&
+                !directMediaClarificationRequested &&
+                !directLocationRequested &&
+                isGenericTreatmentInterestMessage(messageText, pipelineTreatment);
+              if (genericInterest) {
+                const contentReply = buildPipelineContentReply(currentStep);
+                replyText = contentReply.replyText;
+                composedParts = contentReply.parts;
+                composedMediaIds = contentReply.mediaIds;
+                break;
+              }
               const contentAnswerContext = directSocialRequested
                 ? buildSocialProfileClinicContext(
                     extractSocialProfileInfo(editorial?.playbookText, editorial?.commercialPolicy),
@@ -4459,7 +5552,7 @@ export class ConversationOrchestrator {
                     ? buildLocationClinicContext(clinic.address)
                     : [
                         `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
-                        "Responda primeiro a dúvida atual do lead de forma objetiva. Depois disso, o sistema enviará o próximo conteúdo do pipeline.",
+                        "Responda APENAS a dúvida atual do lead, em no máximo 2 frases. O sistema enviará AUTOMATICAMENTE a apresentação curada do tratamento (técnicas e valores) logo após a sua resposta: NÃO descreva o tratamento, NÃO cite valores e NÃO convide para avaliação/agendamento nem peça foto — a apresentação e o fluxo cuidam disso.",
                         pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
                         editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
                       ].filter(Boolean).join("\n");
@@ -4470,9 +5563,38 @@ export class ConversationOrchestrator {
                 answerParts,
                 contentBlocks: currentStep.blocks,
               });
-              replyText = answerFirst.replyText;
-              composedParts = answerFirst.parts;
-              composedMediaIds = answerFirst.mediaIds;
+              const remotePreEvaluationContent = isRemotePreEvaluationRequest(messageText)
+                ? nextUnsentPipelineContentStep(
+                    pipelineTreatment.pipelineSteps!,
+                    pipelineState.stepIndex + 1,
+                    allMessagesForContext,
+                  )
+                : null;
+              if (
+                remotePreEvaluationContent &&
+                isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+              ) {
+                const withPhotoInstructions = buildAnswerFirstPipelineContent({
+                  answerText: answerFirst.replyText,
+                  answerParts: answerFirst.parts,
+                  contentBlocks: remotePreEvaluationContent.step.blocks,
+                });
+                replyText = withPhotoInstructions.replyText;
+                composedParts = withPhotoInstructions.parts;
+                composedMediaIds = withPhotoInstructions.mediaIds;
+                const afterPhotoInstruction = nextActivePipelineStep(
+                  pipelineTreatment.pipelineSteps!,
+                  remotePreEvaluationContent.index + 1,
+                  { conversationHistory: allMessagesForContext },
+                );
+                pendingPipelineAdvance = afterPhotoInstruction
+                  ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+                  : { action: "exit" };
+              } else {
+                replyText = answerFirst.replyText;
+                composedParts = answerFirst.parts;
+                composedMediaIds = answerFirst.mediaIds;
+              }
               break;
             }
           }
@@ -4485,9 +5607,21 @@ export class ConversationOrchestrator {
             !directMediaClarificationRequested
           ) {
             const maxTurns = currentStep.maxTurns ?? 10;
+            const nextContent = nextUnsentPipelineContentStep(
+              pipelineTreatment.pipelineSteps!,
+              pipelineState.stepIndex + 1,
+              allMessagesForContext,
+            );
+            const shouldAppendPhotoInstructionContent = nextContent
+              ? !pipelineState.photoReceived && isPipelinePhotoInstructionContentStep(nextContent.step)
+              : false;
             const optionalPhotoStep = pipelineTreatment.pipelineSteps?.find(
               (step, index): step is Extract<PipelineStep, { type: "photo" }> =>
-                index > pipelineState.stepIndex && step.type === "photo" && !step.required,
+                !pipelineState.photoReceived &&
+                !shouldAppendPhotoInstructionContent &&
+                index > pipelineState.stepIndex &&
+                step.type === "photo" &&
+                !step.required,
             );
             await this.stateMachine.incrementPipelineQaTurns(conversation.id);
             if (pipelineState.qaTurns + 1 >= maxTurns) {
@@ -4501,6 +5635,12 @@ export class ConversationOrchestrator {
             }
             clinicContext = [
               `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
+              "OBJETIVIDADE OBRIGATÓRIA: responda em no máximo 2 frases curtas. Não repita valores já mostrados nos cards, exceto se o lead pedir especificamente para confirmar preço.",
+              // J4: valores de pacote por quantidade são do SISTEMA — a linha
+              // determinística abre a resposta; a LLM não repete números.
+              burstQuantityResolution
+                ? "O lead pediu um pacote por quantidade no burst atual. O sistema abrirá a resposta com os valores EXATOS — NÃO cite valores você mesmo; responda apenas o restante da mensagem."
+                : null,
               currentStep.instruction ?? null,
               optionalPhotoStep
                 ? `CONVITE OPCIONAL: se fizer sentido dentro da dúvida atual ou se o lead demonstrar abertura, convide de forma leve e não obrigatória usando esta mensagem como base: "${optionalPhotoStep.message}". Faça esse convite no máximo uma vez e nunca como exigência para continuar.`
@@ -4509,6 +5649,11 @@ export class ConversationOrchestrator {
               editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
             ].filter(Boolean).join("\n");
             replyText = await compose({ type: "general_question", clinicContext });
+            if (burstQuantityResolution) {
+              const quantityLine = `Sobre o pacote de ${burstQuantityResolution.quantity}: ${burstQuantityResolution.lines.join(" · ")}.`;
+              const scrubbed = stripPriceProseWhenSystemQuoted(replyText);
+              replyText = scrubbed ? `${quantityLine}\n\n${scrubbed}` : quantityLine;
+            }
             // Anexo determinístico: se a dúvida casa com palavras-chave do step
             // (ex.: cor/tom → tabela de cores), o sistema anexa a mídia — a LLM
             // já verbalizou a explicação acima. Espelha a montagem dos content
@@ -4524,6 +5669,33 @@ export class ConversationOrchestrator {
               ];
               composedMediaIds = [keywordMediaId];
             }
+            if (
+              nextContent &&
+              canAppendQaFollowUpContent({
+                nextContentIsPhotoInstruction: shouldAppendPhotoInstructionContent,
+                keywordMediaMatched: !!keywordMediaId,
+                leadMessage: messageText,
+              })
+            ) {
+              const followUpContent = buildPipelineContentReply(nextContent.step);
+              const baseParts = composedParts.length > 0
+                ? composedParts
+                : [{ type: "text" as const, content: replyText }];
+              composedParts = [...baseParts, ...followUpContent.parts];
+              composedMediaIds = collectMediaIds(composedParts);
+              replyText = composedParts
+                .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                .map((p) => p.content)
+                .join("\n\n");
+              const next = nextActivePipelineStep(
+                pipelineTreatment.pipelineSteps!,
+                nextContent.index + 1,
+                { conversationHistory: allMessagesForContext },
+              );
+              pendingPipelineAdvance = next
+                ? { action: "advance", nextStepIndex: next.index }
+                : { action: "exit" };
+            }
             break;
           }
 
@@ -4538,7 +5710,11 @@ export class ConversationOrchestrator {
               const next = nextActivePipelineStep(pipelineTreatment.pipelineSteps!, pipelineState.stepIndex + 1);
               if (next) await this.stateMachine.advancePipelineStep(conversation.id, next.index);
               else await this.stateMachine.exitTreatmentPipeline(conversation.id);
-              // Deixa o fluxo normal de intent assumir a resposta para este turno
+              replyText = [
+                "Sem problema. A foto ajuda na pré-avaliação, mas podemos seguir pela avaliação presencial.",
+                "",
+                "Posso te mostrar os horários disponíveis?",
+              ].join("\n");
               break;
             }
             replyText = currentStep.message;
@@ -4588,7 +5764,7 @@ export class ConversationOrchestrator {
           });
           if (matchedTreatment.pipelineSteps?.length && !pipelineState && explicitPipelineTrigger) {
             const firstActive = nextActivePipelineStep(matchedTreatment.pipelineSteps, 0, {
-              conversationHistory: allMessages,
+              conversationHistory: allMessagesForContext,
             });
             if (firstActive) {
               // A3 — 1º contato concierge com passo de conteúdo: envia só o opener de
@@ -4632,11 +5808,40 @@ export class ConversationOrchestrator {
                 clinicContext = "";
                 // Adia o avanço para depois do envio — ver declaração de pendingPipelineAdvance
                 const next = nextActivePipelineStep(matchedTreatment.pipelineSteps!, firstActive.index + 1, {
-                  conversationHistory: allMessages,
+                  conversationHistory: allMessagesForContext,
                 });
                 pendingPipelineAdvance = next
                   ? { action: "advance", nextStepIndex: next.index }
                   : { action: "exit" };
+
+                const remotePreEvaluationContent = isRemotePreEvaluationRequest(messageText)
+                  ? nextUnsentPipelineContentStep(
+                      matchedTreatment.pipelineSteps!,
+                      firstActive.index + 1,
+                      allMessagesForContext,
+                    )
+                  : null;
+                if (
+                  remotePreEvaluationContent &&
+                  isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+                ) {
+                  const withPhotoInstructions = buildAnswerFirstPipelineContent({
+                    answerText: replyText,
+                    answerParts: composedParts,
+                    contentBlocks: remotePreEvaluationContent.step.blocks,
+                  });
+                  replyText = withPhotoInstructions.replyText;
+                  composedParts = withPhotoInstructions.parts;
+                  composedMediaIds = withPhotoInstructions.mediaIds;
+                  const afterPhotoInstruction = nextActivePipelineStep(
+                    matchedTreatment.pipelineSteps!,
+                    remotePreEvaluationContent.index + 1,
+                    { conversationHistory: allMessagesForContext },
+                  );
+                  pendingPipelineAdvance = afterPhotoInstruction
+                    ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+                    : { action: "exit" };
+                }
                 break;
               } else if (firstActive.step.type === "qa") {
                 clinicContext = [
@@ -4684,7 +5889,7 @@ export class ConversationOrchestrator {
               });
               if (keywordTreatment?.pipelineSteps?.length) {
                 const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0, {
-                  conversationHistory: allMessages,
+                  conversationHistory: allMessagesForContext,
                 });
                 if (firstActive) {
                   await this.stateMachine.startTreatmentPipeline(
@@ -4704,7 +5909,7 @@ export class ConversationOrchestrator {
                     replyText = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
                     clinicContext = "";
                     const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1, {
-                      conversationHistory: allMessages,
+                      conversationHistory: allMessagesForContext,
                     });
                     pendingPipelineAdvance = next
                       ? { action: "advance", nextStepIndex: next.index }
@@ -4730,6 +5935,14 @@ export class ConversationOrchestrator {
           } else if (directMediaClarificationRequested) {
             clinicContext = buildMediaClarificationClinicContext();
           } else {
+            // W3.2 (caso Irys 19/07): endereço é dado exato — a LLM parafraseava
+            // ("Avenida Adolfo Pinheiro, em Santo Amaro", sem número nem sala) e
+            // inventava contexto ("nova localização"). Resposta determinística;
+            // só cai na LLM quando há contexto de nome/endereço antigo (P0.5).
+            if (clinic.address && !previousClinicNameContext) {
+              replyText = `📍 Estamos na ${clinic.address}.\n\nPosso te ajudar com mais alguma coisa? 😊`;
+              break;
+            }
             clinicContext = buildLocationClinicContext(clinic.address);
           }
         } else {
@@ -4755,6 +5968,20 @@ export class ConversationOrchestrator {
           : clinicContext;
         if (!triggerPartsOverride) {
           replyText = await compose({ type: "general_question", clinicContext: finalClinicContext });
+          // J4 — o valor exato do pacote pedido no burst abre a resposta,
+          // deterministicamente — e a prosa LLM é limpa de números (o sistema
+          // é a única fonte de valores).
+          if (burstQuantityResolution) {
+            const quantityLine = `Sobre o pacote de ${burstQuantityResolution.quantity}: ${burstQuantityResolution.lines.join(" · ")}.`;
+            const scrubbed = stripPriceProseWhenSystemQuoted(replyText);
+            replyText = scrubbed ? `${quantityLine}\n\n${scrubbed}` : quantityLine;
+            composedParts = [
+              { type: "text", content: quantityLine },
+              ...composedParts
+                .map((part) => part.type === "text" ? { ...part, content: stripPriceProseWhenSystemQuoted(part.content) } : part)
+                .filter((part) => part.type !== "text" || part.content.length > 0),
+            ];
+          }
         }
         if ((menuGeneralSubtype === "procedures" || directProcedureCatalogRequested) && clinicTreatments.length > 0) {
           await this.stateMachine.offerProcedureList(conversation.id, clinicTreatments);

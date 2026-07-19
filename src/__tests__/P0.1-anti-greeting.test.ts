@@ -16,8 +16,13 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  buildEvaluationDepositClarification,
   coerceBusinessIntent,
+  didAgentAskToShowAvailability,
   extractExplicitPreferredDateFromText,
+  findLeadMessageRepeat,
+  isEvaluationPriceRequest,
+  isShortAffirmativeReply,
   normalizeSchedulingIntentForMissingPendingOffer,
   shouldResumeManualTakeoverForScheduling,
   withDeterministicSlotPreferenceFallback,
@@ -31,6 +36,24 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
     { id: "2", name: "Manutenção", aliases: ["manutencao"], basePrice: 40000 } as unknown as Treatment,
     { id: "3", name: "Agendamento", aliases: [], basePrice: 0 } as unknown as Treatment,
   ];
+
+  describe("A9 — reset limpa memória de repetição", () => {
+    it("não trata mensagem como repetida quando o histórico pós-reset só contém a mensagem atual", () => {
+      const current = {
+        author: "lead" as const,
+        body: "Olá! Quero saber como posso transformar meu sorriso com as lentes de resina?",
+        sentAt: new Date("2026-07-18T08:38:05.000Z"),
+      };
+
+      expect(
+        findLeadMessageRepeat({
+          currentBody: current.body,
+          history: [current],
+          now: new Date("2026-07-18T08:38:10.000Z").getTime(),
+        }),
+      ).toBeNull();
+    });
+  });
 
   describe("F1 — Pergunta de preço com greeting", () => {
     it("deve converter 'Olá! Posso ter mais informações sobre custo?' de greeting → price_inquiry", () => {
@@ -107,15 +130,14 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
       expect(result).toBe("book_appointment");
     });
 
-    it("deve converter 'Qual seu horário de atendimento?' de greeting → price_inquiry ou book_appointment", () => {
+    it("deve converter 'Qual seu horário de atendimento?' de greeting → general_question", () => {
       const result = coerceBusinessIntent({
         message: "Qual seu horário de atendimento?",
         intent: "greeting",
         treatments: mockTreatments,
         isClinicSegment: false,
       });
-      // Pode ser book_appointment (contém "horario")
-      expect(["book_appointment", "price_inquiry"]).toContain(result);
+      expect(result).toBe("general_question");
     });
   });
 
@@ -180,6 +202,36 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
       ).toBe("check_availability");
     });
 
+    it("transforma 'sim' após pergunta de horários em busca de disponibilidade", () => {
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer(
+          "confirm_slot",
+          emptyPreference,
+          "Sim",
+          false,
+          "Posso te mostrar os horários disponíveis agora?",
+        ),
+      ).toBe("check_availability");
+    });
+
+    it("não transforma confirmação curta quando o agente não perguntou por horários", () => {
+      expect(
+        normalizeSchedulingIntentForMissingPendingOffer(
+          "confirm_slot",
+          emptyPreference,
+          "Bl2",
+          false,
+          "Qual das técnicas chamou mais a sua atenção?",
+        ),
+      ).toBe("confirm_slot");
+    });
+
+    it("detecta pergunta anterior de disponibilidade e resposta afirmativa curta", () => {
+      expect(didAgentAskToShowAvailability("Posso ver os horários disponíveis para sua avaliação?")).toBe(true);
+      expect(isShortAffirmativeReply("sim")).toBe(true);
+      expect(isShortAffirmativeReply("BL2")).toBe(false);
+    });
+
     it("mantém número órfão fora do fluxo de slots para o fallback de menu lidar", () => {
       expect(
         normalizeSchedulingIntentForMissingPendingOffer(
@@ -189,6 +241,20 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
           false,
         ),
       ).toBe("confirm_slot");
+    });
+  });
+
+  describe("Sinal de reserva não é preço de avaliação", () => {
+    it("detecta pergunta sobre valor da avaliação", () => {
+      expect(isEvaluationPriceRequest("Qual valor da avaliação?")).toBe(true);
+      expect(isEvaluationPriceRequest("Ver valores das lentes")).toBe(false);
+    });
+
+    it("responde R$30 como sinal de reserva, não como preço da consulta", () => {
+      const reply = buildEvaluationDepositClarification(3000);
+      expect(reply).toContain("sinal de R$ 30");
+      expect(reply).toContain("garante a reserva");
+      expect(reply).not.toContain("custa");
     });
   });
 

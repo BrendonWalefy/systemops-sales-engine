@@ -164,6 +164,23 @@ export class ConversationStateMachine {
     });
   }
 
+  async getLastResetBoundary(conversationId: string): Promise<Date | null> {
+    const rows = await db
+      .select({ payload: conversationStates.payload, expiresAt: conversationStates.expiresAt })
+      .from(conversationStates)
+      .where(eq(conversationStates.conversationId, conversationId))
+      .orderBy(desc(conversationStates.createdAt))
+      .limit(20);
+
+    for (const row of rows) {
+      if (row.expiresAt && row.expiresAt < new Date()) continue;
+      const payload = row.payload as { lastResetAt?: string } | null;
+      if (!payload?.lastResetAt) continue;
+      return new Date(payload.lastResetAt);
+    }
+    return null;
+  }
+
   // Retorna slots da oferta vigente, ou null se não há oferta ativa
   async getPendingSlotOffer(conversationId: string): Promise<FormattedSlot[] | null> {
     const state = await this.getCurrentState(conversationId);

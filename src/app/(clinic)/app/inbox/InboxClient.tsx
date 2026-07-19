@@ -173,11 +173,34 @@ function RecoveryModal({
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [engineRecovering, setEngineRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [, startTransition] = useTransition();
 
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
+
+  // J1: retomada pelo próprio motor — a IA reprocessa a última mensagem do lead
+  // com persona, pipeline e ritmo do fluxo orgânico (uma persona só).
+  async function handleEngineRecover() {
+    if (engineRecovering) return;
+    setEngineRecovering(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/conversations/${row.convId}/recover`, { method: "POST" });
+      const data: { ok?: boolean; error?: string } = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setError(data.error ?? "Não foi possível retomar pelo motor.");
+        return;
+      }
+      setSent(true);
+      setTimeout(onClose, 1200);
+    } catch {
+      setError("Falha na conexão ao retomar pelo motor.");
+    } finally {
+      setEngineRecovering(false);
+    }
+  }
 
   function handleGenerate() {
     setLoading(true);
@@ -254,24 +277,45 @@ function RecoveryModal({
         </div>
 
         {!message && !loading && (
-          <button
-            onClick={handleGenerate}
-            style={{
-              background: "var(--surface-raised)",
-              border: "1px solid var(--line)",
-              borderRadius: 8,
-              padding: "10px 16px",
-              cursor: "pointer",
-              fontSize: 13,
-              color: "var(--text)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <RefreshCw size={14} />
-            Gerar mensagem com IA
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              onClick={() => void handleEngineRecover()}
+              disabled={engineRecovering}
+              className="primary-button"
+              style={{
+                borderRadius: 8,
+                padding: "10px 16px",
+                cursor: engineRecovering ? "wait" : "pointer",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+              title="A IA responde a última mensagem do lead com a persona e o fluxo completos"
+            >
+              <RefreshCw size={14} />
+              {engineRecovering ? "Retomando…" : "Retomar com a IA agora"}
+            </button>
+            <button
+              onClick={handleGenerate}
+              style={{
+                background: "var(--surface-raised)",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                padding: "10px 16px",
+                cursor: "pointer",
+                fontSize: 13,
+                color: "var(--text)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              ou escrever mensagem manual com IA
+            </button>
+          </div>
         )}
 
         {loading && (
