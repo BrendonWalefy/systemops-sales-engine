@@ -55,6 +55,19 @@ type PipelineOption = {
     preview: string | null;
     willWaitForPhoto: boolean;
   };
+  sections: PipelineSection[];
+};
+
+type PipelineSection = {
+  stepIndex: number;
+  stepNumber: number;
+  type: "content" | "qa" | "photo" | "ask_availability" | "offer_slots" | "book";
+  label: string;
+  mode: "send" | "arm" | "automatic";
+  actionLabel: string;
+  textParts: number;
+  mediaParts: number;
+  preview: string | null;
 };
 
 export function ConvComposer({
@@ -83,6 +96,7 @@ export function ConvComposer({
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [isLoadingPipeline, setIsLoadingPipeline] = useState(false);
   const [sendingPipelineKey, setSendingPipelineKey] = useState<string | null>(null);
+  const [expandedPipelineTreatmentId, setExpandedPipelineTreatmentId] = useState<string | null>(null);
   const [discountCustom, setDiscountCustom] = useState("");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
@@ -201,8 +215,8 @@ export function ConvComposer({
     });
   }, [loadPipelineActions]);
 
-  const handleSendPipelineAction = useCallback(async (option: PipelineOption) => {
-    const key = `${option.treatmentId}:${option.summary.action}`;
+  const handleSendPipelineAction = useCallback(async (option: PipelineOption, section?: PipelineSection) => {
+    const key = `${option.treatmentId}:${section?.stepIndex ?? "start"}`;
     if (sendingPipelineKey) return;
     setSendingPipelineKey(key);
     setPipelineError(null);
@@ -213,9 +227,14 @@ export function ConvComposer({
         body: JSON.stringify({
           treatmentId: option.treatmentId,
           action: option.summary.action,
+          ...(section ? { stepIndex: section.stepIndex } : {}),
         }),
       });
-      const data: { error?: string; mode?: "rails_replay" | "armed_only"; replied?: boolean } = await res
+      const data: {
+        error?: string;
+        mode?: "rails_replay" | "armed_only" | "armed_selected_step" | "sent_first_content" | "sent_selected_step";
+        replied?: boolean;
+      } = await res
         .json()
         .catch(() => ({}));
       if (!res.ok) {
@@ -224,7 +243,9 @@ export function ConvComposer({
       }
       setPipelineOpen(false);
       setText("");
-      if (data.mode === "armed_only" || data.replied === false) {
+      if (data.mode === "armed_selected_step") {
+        setError(`Pipeline posicionado em “${section?.label ?? "etapa escolhida"}” — a IA continua dali na próxima mensagem do lead.`);
+      } else if (data.mode === "armed_only" || data.replied === false) {
         setError("Fluxo ativado — a IA conduz a partir da próxima mensagem do lead.");
       } else {
         setError(null);
@@ -471,37 +492,95 @@ export function ConvComposer({
               </span>
             )}
             {pipelineOptions?.map((option) => {
-              const key = `${option.treatmentId}:${option.summary.action}`;
+              const isExpanded = expandedPipelineTreatmentId === option.treatmentId;
+              const startKey = `${option.treatmentId}:start`;
               return (
-                <button
-                  key={key}
-                  className="secondary-button"
+                <div
+                  key={option.treatmentId}
                   style={{
-                    alignItems: "flex-start",
+                    border: "1px solid var(--border)",
+                    borderRadius: 9,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 4,
-                    padding: "8px 10px",
-                    textAlign: "left",
+                    overflow: "hidden",
                     width: "100%",
                   }}
-                  disabled={Boolean(sendingPipelineKey)}
-                  onClick={() => void handleSendPipelineAction(option)}
-                  title="Ativar o fluxo do tratamento — a IA responde o lead e conduz passo a passo"
                 >
-                  <span style={{ color: "var(--text)", fontSize: 13, fontWeight: 700 }}>
-                    {sendingPipelineKey === key ? "Ativando…" : option.treatmentName}
-                  </span>
-                  <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 600 }}>
-                    IA conduz · trilho: {option.summary.textParts} texto(s) · {option.summary.mediaParts} mídia(s)
-                    {option.summary.willWaitForPhoto ? " · pede foto" : ""}
-                  </span>
-                  {option.summary.preview && (
-                    <span style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.35 }}>
-                      {option.summary.preview}
+                  <button
+                    className="secondary-button"
+                    style={{
+                      alignItems: "flex-start",
+                      border: 0,
+                      borderRadius: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      padding: "9px 10px",
+                      textAlign: "left",
+                      width: "100%",
+                    }}
+                    onClick={() => setExpandedPipelineTreatmentId(isExpanded ? null : option.treatmentId)}
+                    aria-expanded={isExpanded}
+                  >
+                    <span style={{ alignItems: "center", color: "var(--text)", display: "flex", fontSize: 13, fontWeight: 700, justifyContent: "space-between", width: "100%" }}>
+                      {option.treatmentName}
+                      <span aria-hidden>{isExpanded ? "▴" : "▾"}</span>
                     </span>
+                    <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 600 }}>
+                      {option.sections.length} etapas · escolha onde entrar
+                    </span>
+                  </button>
+
+                  {isExpanded && (
+                    <div style={{ borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6, padding: 8 }}>
+                      <button
+                        className="secondary-button"
+                        disabled={Boolean(sendingPipelineKey)}
+                        onClick={() => void handleSendPipelineAction(option)}
+                        style={{ fontSize: 11, justifyContent: "center", width: "100%" }}
+                      >
+                        {sendingPipelineKey === startKey ? "Ativando…" : "Começar do início"}
+                      </button>
+
+                      {option.sections.map((section) => {
+                        const sectionKey = `${option.treatmentId}:${section.stepIndex}`;
+                        const isAutomatic = section.mode === "automatic";
+                        return (
+                          <button
+                            key={sectionKey}
+                            className="secondary-button"
+                            disabled={Boolean(sendingPipelineKey) || isAutomatic}
+                            onClick={() => void handleSendPipelineAction(option, section)}
+                            style={{
+                              alignItems: "flex-start",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 3,
+                              opacity: isAutomatic ? 0.55 : 1,
+                              padding: "8px 10px",
+                              textAlign: "left",
+                              width: "100%",
+                            }}
+                            title={isAutomatic ? "Esta etapa é executada pelo motor do pipeline" : section.actionLabel}
+                          >
+                            <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 700 }}>
+                              {section.stepNumber}. {section.label}
+                            </span>
+                            <span style={{ color: "var(--accent-strong)", fontSize: 10, fontWeight: 700 }}>
+                              {sendingPipelineKey === sectionKey ? "Enviando…" : section.actionLabel}
+                              {section.mediaParts > 0 ? ` · ${section.mediaParts} mídia(s)` : ""}
+                            </span>
+                            {section.preview && (
+                              <span style={{ color: "var(--muted)", fontSize: 10, lineHeight: 1.35 }}>
+                                {section.preview}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>

@@ -34,6 +34,18 @@ export type GuidedPipelineContentDraft = {
   mediaIds: string[];
 };
 
+export type GuidedPipelineSection = {
+  stepIndex: number;
+  stepNumber: number;
+  type: PipelineStep["type"];
+  label: string;
+  mode: "send" | "arm" | "automatic";
+  actionLabel: string;
+  textParts: number;
+  mediaParts: number;
+  preview: string | null;
+};
+
 function contentBlockToPart(block: ContentBlock): GuidedPipelinePart | null {
   if (block.kind === "text") {
     const content = block.content.trim();
@@ -62,6 +74,55 @@ export function buildGuidedPipelineContentDraft(
       new Set(parts.filter((part): part is Extract<GuidedPipelinePart, { type: "media" }> => part.type === "media").map((part) => part.mediaId)),
     ),
   };
+}
+
+export function buildGuidedPipelineStepDraft(
+  step: PipelineStep,
+): GuidedPipelineContentDraft | null {
+  const contentDraft = buildGuidedPipelineContentDraft(step);
+  if (contentDraft) return contentDraft;
+  if (step.type !== "photo") return null;
+
+  const message = step.message.trim();
+  return {
+    parts: message ? [{ type: "text", content: message }] : [],
+    text: message,
+    mediaIds: [],
+  };
+}
+
+export function listGuidedPipelineSections(
+  pipelineSteps: PipelineStep[] | null | undefined,
+): GuidedPipelineSection[] {
+  return (pipelineSteps ?? []).map((step, stepIndex) => {
+    const draft = buildGuidedPipelineStepDraft(step);
+    const textParts = draft?.parts.filter((part) => part.type === "text").length ?? 0;
+    const mediaParts = draft?.parts.filter((part) => part.type === "media").length ?? 0;
+    const preview = draft?.parts.find((part) => part.type === "text")?.content.slice(0, 120) ??
+      (step.type === "qa" ? step.instruction?.trim().slice(0, 120) ?? null : null);
+    const mode = step.type === "content" || step.type === "photo"
+      ? "send"
+      : step.type === "qa"
+        ? "arm"
+        : "automatic";
+    const actionLabel = mode === "send"
+      ? step.type === "photo" ? "Enviar pedido e aguardar foto" : "Enviar esta etapa"
+      : mode === "arm"
+        ? "Ativar a IA nesta etapa"
+        : "Etapa automática";
+
+    return {
+      stepIndex,
+      stepNumber: stepIndex + 1,
+      type: step.type,
+      label: step.label,
+      mode,
+      actionLabel,
+      textParts,
+      mediaParts,
+      preview,
+    };
+  });
 }
 
 // O pacote hoje serve como PRÉVIA para o operador (o que o lead vai receber ao
