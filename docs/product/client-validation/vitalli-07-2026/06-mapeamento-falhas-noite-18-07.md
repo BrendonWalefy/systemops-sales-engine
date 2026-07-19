@@ -264,3 +264,29 @@ de lentes na biblioteca.**
 ## Próximo caso (aguardando envio do Brendon)
 
 _Reservado — outro erro em andamento com lead real será adicionado aqui._
+
+## Wave 3 — defeitos das conversas reais de 19/07 manhã (últimas 5h)
+
+Análise de 17 conversas reais (`vitalli-last-5h.json`). Evidências confirmaram
+os fixes da wave 2 em leads reais (Gabii=J2, ADRIANA=J3, Felipe=N1) e revelaram
+4 defeitos novos — **implementados e validados por replay em 19/07 ~13:30**
+(commit na branch `feat/conversation-quality-wave2`, PR #200):
+
+- **W3.1 (Lineeh, P0 conversão):** "Quero valores, formas de pagamento e fazer
+  uma avaliação" respondia SÓ o sinal de R$ 30 → agora cards de valores.
+- **W3.2 (Irys):** endereço parafraseado sem número/sala + "nova localização"
+  inventada → endereço determinístico completo.
+- **W3.3 (Henrique):** "dúvidas sobre o procedimento" despejava catálogo de 26
+  itens → conteúdo do tratamento em contexto.
+- **W3.4 (Felipe):** "Ambas" → direto ao conteúdo curado, sem prosa antes.
+
+Observação candidata a wave 4: preço em prosa no caminho general (caso ST 💜 —
+"é esse valor de 2k mesmo?" respondido com todos os valores em texto; cards
+seriam melhores).
+
+## Travas de funil OPERACIONAIS detectadas em 19/07 (ação humana, não código)
+
+- **Amanda (5511983875558):** pediu "Simular 21x" em 18/07 08:33 — sem resposta
+  há 28h+, conversa pausada ("Operador acionou atendimento especializado").
+- **Giuliana (5511961908480):** enviou foto de pré-avaliação 19/07 04:49 —
+  equipe ainda não retornou.
