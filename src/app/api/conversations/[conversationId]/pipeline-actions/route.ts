@@ -10,7 +10,9 @@ import { ConversationOrchestrator, nextActivePipelineStep } from "@/core/pipelin
 import {
   buildGuidedPipelineContentDraft,
   buildGuidedPipelinePackage,
+  buildGuidedPipelineStepDraft,
   GUIDED_PIPELINE_ACTION_START_RAILS,
+  listGuidedPipelineSections,
   summarizeGuidedPipelinePackage,
   type GuidedPipelineAction,
 } from "@/application/conversations/guided-pipeline-actions";
@@ -29,6 +31,7 @@ export const maxDuration = 60;
 type PipelineActionRequest = {
   treatmentId?: string;
   action?: GuidedPipelineAction;
+  stepIndex?: number;
 };
 
 type ResolvedPipelineMedia = {
@@ -135,6 +138,7 @@ export async function GET(
         treatmentId: treatment.id,
         treatmentName: treatment.name,
         summary: summarizeGuidedPipelinePackage(pkg),
+        sections: listGuidedPipelineSections(treatment.pipelineSteps as PipelineStep[] | null),
       };
     })
     .filter((option): option is NonNullable<typeof option> => option !== null);
@@ -214,6 +218,14 @@ export async function POST(
     return NextResponse.json({ error: "Tratamento sem pipeline configurado" }, { status: 409 });
   }
 
+  const selectedStepIndex = body.stepIndex;
+  if (
+    selectedStepIndex !== undefined &&
+    (!Number.isInteger(selectedStepIndex) || selectedStepIndex < 0 || selectedStepIndex >= pipelineSteps.length)
+  ) {
+    return NextResponse.json({ error: "Etapa de pipeline invalida" }, { status: 400 });
+  }
+
   const history = await db
     .select({
       id: messages.id,
@@ -227,13 +239,57 @@ export async function POST(
     .where(eq(messages.conversationId, conversationId))
     .orderBy(asc(messages.sentAt));
 
-  // Posiciona no primeiro passo ativo respeitando o histórico: conteúdo que a
-  // operação já enviou manualmente não será repetido pelo trilho.
-  const firstActive = nextActivePipelineStep(pipelineSteps, 0, {
-    conversationHistory: history.map((m) => ({ author: m.author, body: m.body })),
-  });
+  // Sem seleção explícita, preserva a ação original: primeiro passo ainda não
+  // enviado. Com stepIndex, o operador escolhe exatamente onde entrar — mesmo
+  // que aquela etapa já tenha aparecido antes na conversa.
+  const firstActive = selectedStepIndex === undefined
+    ? nextActivePipelineStep(pipelineSteps, 0, {
+        conversationHistory: history.map((m) => ({ author: m.author, body: m.body })),
+      })
+    : { step: pipelineSteps[selectedStepIndex], index: selectedStepIndex };
   if (!firstActive) {
     return NextResponse.json({ error: "Pipeline sem passos ativos restantes para esta conversa" }, { status: 409 });
+  }
+  if (
+    selectedStepIndex !== undefined &&
+    firstActive.step.type !== "content" &&
+    firstActive.step.type !== "photo" &&
+    firstActive.step.type !== "qa"
+  ) {
+    return NextResponse.json(
+      { error: "Esta etapa e automatica e nao pode ser acionada diretamente" },
+      { status: 409 },
+    );
+  }
+
+  // Resolve toda a entrega antes de mexer no estado. Assim um asset ausente
+  // falha sem despausar a IA nem posicionar a conversa numa etapa que o lead
+  // nunca recebeu.
+  let preparedDelivery: {
+    draft: NonNullable<ReturnType<typeof buildGuidedPipelineStepDraft>>;
+    parts: OutboundDeliveryPart[];
+    skippedMedia: { mediaId: string; reason: string }[];
+  } | null = null;
+  if (firstActive.step.type === "content" || (selectedStepIndex !== undefined && firstActive.step.type === "photo")) {
+    const draft = selectedStepIndex === undefined
+      ? buildGuidedPipelineContentDraft(firstActive.step)
+      : buildGuidedPipelineStepDraft(firstActive.step);
+    if (!draft || draft.parts.length === 0) {
+      return NextResponse.json({ error: "Passo de conteúdo sem mensagens para enviar" }, { status: 409 });
+    }
+
+    const resolved = await resolvePipelineDraftParts({
+      clinicId: conv.clinicId,
+      treatmentId: treatment.id,
+      draft,
+    });
+    if (resolved.parts.length === 0) {
+      return NextResponse.json(
+        { error: "Nenhuma parte entregável encontrada no conteúdo do pipeline", skippedMedia: resolved.skippedMedia },
+        { status: 409 },
+      );
+    }
+    preparedDelivery = { draft, ...resolved };
   }
 
   const stateMachine = new ConversationStateMachine();
@@ -259,27 +315,20 @@ export async function POST(
     })
     .where(eq(conversations.id, conversationId));
 
-  if (firstActive.step.type === "content") {
-    const draft = buildGuidedPipelineContentDraft(firstActive.step);
-    if (!draft || draft.parts.length === 0) {
-      return NextResponse.json({ error: "Passo de conteúdo sem mensagens para enviar" }, { status: 409 });
+  if (firstActive.step.type === "content" || (selectedStepIndex !== undefined && firstActive.step.type === "photo")) {
+    if (!preparedDelivery) {
+      return NextResponse.json({ error: "Conteúdo do pipeline não preparado" }, { status: 500 });
     }
+    const { draft, parts, skippedMedia } = preparedDelivery;
 
-    const { parts, skippedMedia } = await resolvePipelineDraftParts({
-      clinicId: conv.clinicId,
-      treatmentId: treatment.id,
-      draft,
-    });
-    if (parts.length === 0) {
-      return NextResponse.json(
-        { error: "Nenhuma parte entregável encontrada no conteúdo do pipeline", skippedMedia },
-        { status: 409 },
-      );
-    }
-
-    const next = nextActivePipelineStep(pipelineSteps, firstActive.index + 1, {
-      conversationHistory: history.map((m) => ({ author: m.author, body: m.body })),
-    });
+    // O pedido de foto precisa permanecer no próprio step "photo" para que o
+    // intercept de mídia reconheça o próximo inbound. Conteúdo comum avança
+    // normalmente para o próximo passo ativo.
+    const next = firstActive.step.type === "photo"
+      ? null
+      : nextActivePipelineStep(pipelineSteps, firstActive.index + 1, {
+          conversationHistory: history.map((m) => ({ author: m.author, body: m.body })),
+        });
     const agentMessageId = randomUUID();
     await db.insert(messages).values({
       id: agentMessageId,
@@ -313,9 +362,11 @@ export async function POST(
           interleavedParts: parts,
           mediaParts: [],
           leadId: conv.leadId,
-          pipelineAdvance: next
-            ? { action: "advance", nextStepIndex: next.index }
-            : { action: "exit" },
+          pipelineAdvance: firstActive.step.type === "photo"
+            ? null
+            : next
+              ? { action: "advance", nextStepIndex: next.index }
+              : { action: "exit" },
         },
       },
       {
@@ -326,10 +377,19 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      mode: "sent_first_content",
+      mode: selectedStepIndex === undefined ? "sent_first_content" : "sent_selected_step",
       replied: true,
       stepIndex: firstActive.index,
       skippedMedia,
+    });
+  }
+
+  if (selectedStepIndex !== undefined && firstActive.step.type === "qa") {
+    return NextResponse.json({
+      ok: true,
+      mode: "armed_selected_step",
+      replied: false,
+      stepIndex: firstActive.index,
     });
   }
 
