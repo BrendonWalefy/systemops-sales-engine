@@ -31,13 +31,14 @@ export async function sendMediaMessage(
   mediaType: MediaType,
   config: ClinicChannelConfig,
   caption?: string,
+  fileName?: string,
 ): Promise<string | null> {
   if (process.env.DISABLE_REAL_WHATSAPP_SEND === "true") return null;
 
   const formattedCaption = caption ? toWhatsAppFormatting(caption) : caption;
   if (config.provider === "z_api") {
     if (!config.zapi) throw new Error("Z-API credentials are not configured for this clinic");
-    return sendZApiMediaMessage(to, mediaUrl, mediaType, config.zapi, formattedCaption);
+    return sendZApiMediaMessage(to, mediaUrl, mediaType, config.zapi, formattedCaption, fileName);
   }
   // Meta Cloud API — upload via media_id not yet implemented; fall back to caption link
   if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
