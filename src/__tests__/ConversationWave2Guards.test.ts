@@ -7,6 +7,9 @@ import {
   collectCurrentLeadBurstBodies,
   hasExplicitPipelineTreatmentTrigger,
   isAffirmativeReplyToOpenOffer,
+  isEvaluationPriceRequest,
+  isGenericTreatmentInterestMessage,
+  isProcedureCatalogRequest,
   isShowcaseRequestText,
   pickShowcaseMedia,
   stripPriceProseWhenSystemQuoted,
@@ -187,5 +190,46 @@ describe("J6 — rota determinística de vitrine", () => {
     ];
     expect(pickShowcaseMedia(library, "lentes").map((m) => m.id)).toEqual(["a", "d"]);
     expect(pickShowcaseMedia(library, null).map((m) => m.id)).toEqual(["a", "c"]);
+  });
+});
+
+// Wave 3 — defeitos das últimas 5h de conversas reais (19/07 manhã):
+describe("W3.1 — guard do sinal só para preço DA avaliação (caso Lineeh)", () => {
+  it("pedido composto de valores + intenção de avaliar NÃO vira resposta de sinal", () => {
+    expect(isEvaluationPriceRequest("Quero sabe valores e formas de pagamento e fazer uma avaliação")).toBe(false);
+  });
+
+  it("preço da avaliação em si continua detectado", () => {
+    expect(isEvaluationPriceRequest("Qual valor da avaliação?")).toBe(true);
+    expect(isEvaluationPriceRequest("A avaliação é cobrada?")).toBe(true);
+    expect(isEvaluationPriceRequest("quanto custa a avaliação?")).toBe(true);
+    expect(isEvaluationPriceRequest("a avaliação é gratuita?")).toBe(true);
+  });
+
+  it("valores de tratamento sem menção à avaliação seguem fora", () => {
+    expect(isEvaluationPriceRequest("Ver valores das lentes")).toBe(false);
+  });
+});
+
+describe("W3.3 — catálogo só com intenção de navegar (caso Henrique)", () => {
+  it("referência definida no singular não despeja o catálogo", () => {
+    expect(isProcedureCatalogRequest("Tenho dúvidas sobre o procedimento")).toBe(false);
+    expect(isProcedureCatalogRequest("vocês fazem esse procedimento?")).toBe(false);
+  });
+
+  it("intenção de navegar continua abrindo o catálogo", () => {
+    expect(isProcedureCatalogRequest("quais procedimentos vocês fazem?")).toBe(true);
+    expect(isProcedureCatalogRequest("quero ver os tratamentos")).toBe(true);
+    expect(isProcedureCatalogRequest("opções de tratamento")).toBe(true);
+    expect(isProcedureCatalogRequest("vocês fazem algum tratamento de canal?")).toBe(true);
+  });
+});
+
+describe("W3.4 — 'Ambas' é interesse genérico (caso Felipe)", () => {
+  const lenses = treatment("Lentes de resina composta", { aliases: ["lentes", "resina"] });
+  it("resposta 'Ambas' à pergunta da saudação vai direto ao conteúdo", () => {
+    expect(isGenericTreatmentInterestMessage("Ambas", lenses)).toBe(true);
+    expect(isGenericTreatmentInterestMessage("as duas", lenses)).toBe(true);
+    expect(isGenericTreatmentInterestMessage("quero saber das duas técnicas", lenses)).toBe(true);
   });
 });

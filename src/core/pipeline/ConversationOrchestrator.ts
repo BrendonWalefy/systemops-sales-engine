@@ -606,9 +606,19 @@ export function extractSocialProfileInfo(...sources: (string | null | undefined)
   return null;
 }
 
-function isProcedureCatalogRequest(message: string): boolean {
-  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
-  return n.includes("procedimento") || n.includes("tratamento") || n.includes("servico") || n.includes("opcoes");
+// W3.3 (caso Henrique 19/07): "Tenho dúvidas sobre o procedimento" despejava o
+// catálogo de 26 itens numa conversa que era sobre lentes. Referência definida
+// no singular fala do assunto em discussão; catálogo só com intenção de navegar.
+export function isProcedureCatalogRequest(message: string): boolean {
+  const n = normalizeFreeText(message);
+  if (!/\b(?:procedimentos?|tratamentos?|servicos?|opcoes)\b/.test(n)) return false;
+  const wantsCatalog =
+    /\b(?:quais|lista|listar|todos|todas|outros|outras|opcoes|menu|catalogo)\b/.test(n) ||
+    /\b(?:procedimentos|tratamentos|servicos)\b/.test(n) ||
+    /\b(?:um|algum|alguma)\s+(?:procedimento|tratamento|servico)\b/.test(n);
+  const definiteSingular =
+    /\b(?:o|do|no|desse|deste|esse|este)\s+(?:procedimento|tratamento|servico)\b/.test(n);
+  return wantsCatalog && !definiteSingular;
 }
 
 function normalizeFreeText(message: string): string {
@@ -2204,6 +2214,9 @@ const GENERIC_INTEREST_VOCABULARY = new Set([
   "tenho", "interesse", "interessado", "interessada", "interessei",
   "esse", "essa", "isso", "este", "esta", "isto", "aqui",
   "voces", "vcs", "procedimento", "tratamento", "gente",
+  // W3.4 (caso Felipe 19/07): "Ambas" respondendo "quer entender como funciona
+  // ou ver valores?" é interesse genérico nas duas técnicas — direto ao conteúdo.
+  "ambas", "ambos", "duas", "dois", "tecnica", "tecnicas", "opcoes", "opcao",
 ]);
 
 export function isGenericTreatmentInterestMessage(message: string, treatment: Treatment): boolean {
@@ -2564,9 +2577,14 @@ function buildPipelineContentReply(step: Extract<PipelineStep, { type: "content"
 export function isEvaluationPriceRequest(message: string): boolean {
   const normalized = normalizeFreeText(message);
   if (!normalized.includes("avaliacao")) return false;
+  // W3.1 (caso Lineeh 19/07): o preço perguntado precisa ser DA AVALIAÇÃO.
+  // "Quero valores, formas de pagamento e fazer uma avaliação" é pedido de
+  // preço do TRATAMENTO + intenção de agendar — responder só o sinal de R$ 30
+  // engolia os valores e gerava fricção ("não dá para avaliar por aqui?").
   return (
-    isPriceRequestText(normalized) ||
-    /\b(valor|preco|custo|custa|quanto|cobra|cobram)\b/.test(normalized)
+    /\b(?:valor|valores|preco|precos|custo)\s+(?:d[ae]s?\s+|para\s+|pra\s+)?(?:uma\s+|a\s+)?avaliacao\b/.test(normalized) ||
+    /\bquanto\s+(?:custa|cobra|cobram|fica|sai|e)\s+(?:uma\s+|a\s+)?avaliacao\b/.test(normalized) ||
+    /\bavaliacao\s+(?:e\s+)?(?:cobrada?|paga|gratuita|gratis|de\s+graca|custa|tem\s+custo)\b/.test(normalized)
   );
 }
 
@@ -5771,6 +5789,14 @@ export class ConversationOrchestrator {
           } else if (directMediaClarificationRequested) {
             clinicContext = buildMediaClarificationClinicContext();
           } else {
+            // W3.2 (caso Irys 19/07): endereço é dado exato — a LLM parafraseava
+            // ("Avenida Adolfo Pinheiro, em Santo Amaro", sem número nem sala) e
+            // inventava contexto ("nova localização"). Resposta determinística;
+            // só cai na LLM quando há contexto de nome/endereço antigo (P0.5).
+            if (clinic.address && !previousClinicNameContext) {
+              replyText = `📍 Estamos na ${clinic.address}.\n\nPosso te ajudar com mais alguma coisa? 😊`;
+              break;
+            }
             clinicContext = buildLocationClinicContext(clinic.address);
           }
         } else {
