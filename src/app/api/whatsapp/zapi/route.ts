@@ -22,10 +22,12 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { buildZApiInboundEvent } from "@/infrastructure/adapters/channels/whatsapp/zapi-inbound-event";
 import { createLogger } from "@/infrastructure/logging/logger";
 import {
+  buildHumanReviewManualAttentionReason,
   buildHumanReviewDecisionConfirmation,
   buildHumanReviewInvalidReplyMessage,
   isMalformedHumanReviewReply,
   parseHumanReviewReply,
+  shouldPauseAutomationAfterHumanReviewDecision,
 } from "@/domain/entities/human-review";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -284,6 +286,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }),
         channelConfig,
       ).catch((err) => console.warn("[HumanReview] confirmação falhou:", err));
+
+      if (shouldPauseAutomationAfterHumanReviewDecision(parsedReviewReply.decision)) {
+        await db
+          .update(conversations)
+          .set({
+            aiPaused: true,
+            takeoverExpiresAt: null,
+            needsAttention: true,
+            attentionReason: buildHumanReviewManualAttentionReason({
+              reviewCode: decidedReview.reviewCode,
+              decision: parsedReviewReply.decision,
+            }),
+            updatedAt: new Date(),
+          })
+          .where(eq(conversations.id, pendingReview.conversationId));
+      }
 
       if (
         parsedReviewReply.decision === "approved_direct_booking" ||
