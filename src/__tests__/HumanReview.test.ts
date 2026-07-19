@@ -3,9 +3,11 @@ import {
   buildHumanReviewButtons,
   buildHumanReviewDecisionConfirmation,
   buildHumanReviewInvalidReplyMessage,
+  buildHumanReviewManualAttentionReason,
   buildHumanReviewRequestMessage,
   isMalformedHumanReviewReply,
   parseHumanReviewReply,
+  shouldPauseAutomationAfterHumanReviewDecision,
 } from "@/domain/entities/human-review";
 
 describe("human review WhatsApp decisions", () => {
@@ -90,5 +92,26 @@ describe("human review WhatsApp decisions", () => {
     ).toContain("A IA vai oferecer horários disponíveis agora");
 
     expect(buildHumanReviewInvalidReplyMessage()).toContain("Ex: A27 1");
+  });
+
+  it("pausa a IA apenas nas decisões que exigem humano", () => {
+    expect(shouldPauseAutomationAfterHumanReviewDecision("approved_direct_booking")).toBe(false);
+    expect(shouldPauseAutomationAfterHumanReviewDecision("needs_evaluation")).toBe(false);
+    expect(shouldPauseAutomationAfterHumanReviewDecision("manual_reply")).toBe(true);
+    expect(shouldPauseAutomationAfterHumanReviewDecision("not_eligible")).toBe(true);
+
+    expect(
+      buildHumanReviewManualAttentionReason({
+        reviewCode: 27,
+        decision: "manual_reply",
+      }),
+    ).toBe("Avaliação A27: resposta manual solicitada pelo doutor");
+
+    expect(
+      buildHumanReviewManualAttentionReason({
+        reviewCode: 28,
+        decision: "not_eligible",
+      }),
+    ).toBe("Avaliação A28: não indicado pelo doutor");
   });
 });

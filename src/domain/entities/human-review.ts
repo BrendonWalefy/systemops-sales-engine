@@ -124,6 +124,22 @@ export function buildHumanReviewDecisionConfirmation(params: {
   return `Confirmado: A${params.reviewCode}, ${params.leadName} — ${decisionText[params.decision]}`;
 }
 
+export function shouldPauseAutomationAfterHumanReviewDecision(
+  decision: HumanReviewDecision,
+): decision is Extract<HumanReviewDecision, "manual_reply" | "not_eligible"> {
+  return decision === "manual_reply" || decision === "not_eligible";
+}
+
+export function buildHumanReviewManualAttentionReason(params: {
+  reviewCode: number;
+  decision: Extract<HumanReviewDecision, "manual_reply" | "not_eligible">;
+}): string {
+  const label = params.decision === "manual_reply"
+    ? "resposta manual solicitada pelo doutor"
+    : "não indicado pelo doutor";
+  return `Avaliação A${params.reviewCode}: ${label}`;
+}
+
 export function buildHumanReviewInvalidReplyMessage(): string {
   return "Para evitar erro, responda com o código da avaliação e a opção. Ex: A27 1";
 }
