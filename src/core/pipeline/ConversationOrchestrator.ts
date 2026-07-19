@@ -1085,6 +1085,23 @@ export function isShortAffirmativeReply(message: string): boolean {
   ]).has(normalized);
 }
 
+// Pedido explícito de pré-avaliação REMOTA: libera o bloco declarativo de foto
+// do pipeline (texto + mídia de instrução). "Quero fazer uma avaliação" sozinho
+// continua ambíguo — normalmente significa avaliação presencial/agendamento — e
+// não pode disparar foto sem um sinal claro de WhatsApp, envio de mídia ou
+// atendimento "por aqui".
+export function isRemotePreEvaluationRequest(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+
+  const mentionsReview = /\b(?:pre\s*avaliacao|preavaliacao|analise|analisar|avaliar|avaliacao)\b/.test(normalized);
+  if (!mentionsReview) return false;
+
+  const mentionsRemoteChannel = /\b(?:por aqui|aqui mesmo|pelo whatsapp|no whatsapp|via whatsapp|por mensagem|online)\b/.test(normalized);
+  const mentionsRemoteMedia = /\b(?:pela|pelas|por|com|mandar|enviar|encaminhar)\s+(?:uma\s+|as\s+)?(?:foto|fotos|imagem|imagens|video|videos)\b/.test(normalized);
+  return mentionsRemoteChannel || mentionsRemoteMedia;
+}
+
 export function didAgentAskToShowAvailability(message?: string | null): boolean {
   const normalized = normalizeFreeText(message ?? "");
   if (!normalized) return false;
@@ -2326,7 +2343,8 @@ export function canAppendQaFollowUpContent(params: {
   leadMessage: string;
 }): boolean {
   if (params.nextContentIsPhotoInstruction) {
-    return isShortAffirmativeReply(params.leadMessage);
+    return isShortAffirmativeReply(params.leadMessage) ||
+      isRemotePreEvaluationRequest(params.leadMessage);
   }
   return params.keywordMediaMatched || isShortAffirmativeReply(params.leadMessage);
 }
@@ -5115,6 +5133,39 @@ export class ConversationOrchestrator {
           pendingPipelineAdvance = next
             ? { action: "advance", nextStepIndex: next.index }
             : { action: "exit" };
+
+          // Pedido composto real (ex.: valores + "pré-avaliação por aqui"):
+          // entrega primeiro os cards de preço e, como o lead já sinalizou
+          // prontidão explícita, emenda o bloco declarativo de instruções da foto.
+          // O asset/copy continuam pertencendo ao pipeline do tratamento.
+          const remotePreEvaluationContent = isRemotePreEvaluationRequest(messageText)
+            ? nextUnsentPipelineContentStep(
+                pipelinePriceTreatment.pipelineSteps!,
+                pipelinePriceContent.index + 1,
+                allMessagesForContext,
+              )
+            : null;
+          if (
+            remotePreEvaluationContent &&
+            isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+          ) {
+            const withPhotoInstructions = buildAnswerFirstPipelineContent({
+              answerText: replyText,
+              answerParts: composedParts,
+              contentBlocks: remotePreEvaluationContent.step.blocks,
+            });
+            replyText = withPhotoInstructions.replyText;
+            composedParts = withPhotoInstructions.parts;
+            composedMediaIds = withPhotoInstructions.mediaIds;
+            const afterPhotoInstruction = nextActivePipelineStep(
+              pipelinePriceTreatment.pipelineSteps!,
+              remotePreEvaluationContent.index + 1,
+              { conversationHistory: allMessagesForContext },
+            );
+            pendingPipelineAdvance = afterPhotoInstruction
+              ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+              : { action: "exit" };
+          }
           break;
         }
 
@@ -5143,6 +5194,43 @@ export class ConversationOrchestrator {
           referencedPriceCents: referencedPrice?.cents ?? null,
           oldPriceObjection: oldPriceObjectionDetected,
         });
+
+        // O pipeline pode já estar no Q&A quando chega um pedido composto de
+        // preço + pré-avaliação remota. Nesse caso a apresentação já foi enviada,
+        // então respondemos o preço normalmente e anexamos o próximo bloco de
+        // foto ainda não enviado, posicionando o estado para aguardar a mídia.
+        if (
+          pipelineState &&
+          pipelinePriceTreatment?.id === pipelineState.treatmentId &&
+          isRemotePreEvaluationRequest(messageText)
+        ) {
+          const remotePreEvaluationContent = nextUnsentPipelineContentStep(
+            pipelinePriceTreatment.pipelineSteps!,
+            pipelineState.stepIndex + 1,
+            allMessagesForContext,
+          );
+          if (
+            remotePreEvaluationContent &&
+            isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+          ) {
+            const withPhotoInstructions = buildAnswerFirstPipelineContent({
+              answerText: replyText,
+              answerParts: composedParts,
+              contentBlocks: remotePreEvaluationContent.step.blocks,
+            });
+            replyText = withPhotoInstructions.replyText;
+            composedParts = withPhotoInstructions.parts;
+            composedMediaIds = withPhotoInstructions.mediaIds;
+            const afterPhotoInstruction = nextActivePipelineStep(
+              pipelinePriceTreatment.pipelineSteps!,
+              remotePreEvaluationContent.index + 1,
+              { conversationHistory: allMessagesForContext },
+            );
+            pendingPipelineAdvance = afterPhotoInstruction
+              ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+              : { action: "exit" };
+          }
+        }
 
         // ── Item 1 (reunião 17/07): fechar como o operador faz — depois de cotar
         // um único tratamento (sem ambiguidade, sem escalonamento pendente, sem
@@ -5475,9 +5563,38 @@ export class ConversationOrchestrator {
                 answerParts,
                 contentBlocks: currentStep.blocks,
               });
-              replyText = answerFirst.replyText;
-              composedParts = answerFirst.parts;
-              composedMediaIds = answerFirst.mediaIds;
+              const remotePreEvaluationContent = isRemotePreEvaluationRequest(messageText)
+                ? nextUnsentPipelineContentStep(
+                    pipelineTreatment.pipelineSteps!,
+                    pipelineState.stepIndex + 1,
+                    allMessagesForContext,
+                  )
+                : null;
+              if (
+                remotePreEvaluationContent &&
+                isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+              ) {
+                const withPhotoInstructions = buildAnswerFirstPipelineContent({
+                  answerText: answerFirst.replyText,
+                  answerParts: answerFirst.parts,
+                  contentBlocks: remotePreEvaluationContent.step.blocks,
+                });
+                replyText = withPhotoInstructions.replyText;
+                composedParts = withPhotoInstructions.parts;
+                composedMediaIds = withPhotoInstructions.mediaIds;
+                const afterPhotoInstruction = nextActivePipelineStep(
+                  pipelineTreatment.pipelineSteps!,
+                  remotePreEvaluationContent.index + 1,
+                  { conversationHistory: allMessagesForContext },
+                );
+                pendingPipelineAdvance = afterPhotoInstruction
+                  ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+                  : { action: "exit" };
+              } else {
+                replyText = answerFirst.replyText;
+                composedParts = answerFirst.parts;
+                composedMediaIds = answerFirst.mediaIds;
+              }
               break;
             }
           }
@@ -5696,6 +5813,35 @@ export class ConversationOrchestrator {
                 pendingPipelineAdvance = next
                   ? { action: "advance", nextStepIndex: next.index }
                   : { action: "exit" };
+
+                const remotePreEvaluationContent = isRemotePreEvaluationRequest(messageText)
+                  ? nextUnsentPipelineContentStep(
+                      matchedTreatment.pipelineSteps!,
+                      firstActive.index + 1,
+                      allMessagesForContext,
+                    )
+                  : null;
+                if (
+                  remotePreEvaluationContent &&
+                  isPipelinePhotoInstructionContentStep(remotePreEvaluationContent.step)
+                ) {
+                  const withPhotoInstructions = buildAnswerFirstPipelineContent({
+                    answerText: replyText,
+                    answerParts: composedParts,
+                    contentBlocks: remotePreEvaluationContent.step.blocks,
+                  });
+                  replyText = withPhotoInstructions.replyText;
+                  composedParts = withPhotoInstructions.parts;
+                  composedMediaIds = withPhotoInstructions.mediaIds;
+                  const afterPhotoInstruction = nextActivePipelineStep(
+                    matchedTreatment.pipelineSteps!,
+                    remotePreEvaluationContent.index + 1,
+                    { conversationHistory: allMessagesForContext },
+                  );
+                  pendingPipelineAdvance = afterPhotoInstruction
+                    ? { action: "advance", nextStepIndex: afterPhotoInstruction.index }
+                    : { action: "exit" };
+                }
                 break;
               } else if (firstActive.step.type === "qa") {
                 clinicContext = [
