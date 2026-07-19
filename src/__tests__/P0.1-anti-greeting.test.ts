@@ -130,15 +130,14 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
       expect(result).toBe("book_appointment");
     });
 
-    it("deve converter 'Qual seu horário de atendimento?' de greeting → price_inquiry ou book_appointment", () => {
+    it("deve converter 'Qual seu horário de atendimento?' de greeting → general_question", () => {
       const result = coerceBusinessIntent({
         message: "Qual seu horário de atendimento?",
         intent: "greeting",
         treatments: mockTreatments,
         isClinicSegment: false,
       });
-      // Pode ser book_appointment (contém "horario")
-      expect(["book_appointment", "price_inquiry"]).toContain(result);
+      expect(result).toBe("general_question");
     });
   });
 

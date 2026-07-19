@@ -1,18 +1,25 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { conversations, leads, messages, organizations, treatments } from "@/infrastructure/db/schema";
+import { conversations, leads, mediaAssets, messages, organizations, treatments } from "@/infrastructure/db/schema";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { ConversationOrchestrator, nextActivePipelineStep } from "@/core/pipeline/ConversationOrchestrator";
 import {
+  buildGuidedPipelineContentDraft,
   buildGuidedPipelinePackage,
   GUIDED_PIPELINE_ACTION_START_RAILS,
   summarizeGuidedPipelinePackage,
   type GuidedPipelineAction,
 } from "@/application/conversations/guided-pipeline-actions";
 import type { PipelineStep } from "@/domain/entities/treatment";
+import { DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
+import type { OutboundDeliveryPart } from "@/application/jobs/conversation-outbound-payload";
+import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 
 export const dynamic = "force-dynamic";
 // Replay inclui classificação + composição LLM inline (a entrega em si sai pelo
@@ -24,8 +31,73 @@ type PipelineActionRequest = {
   action?: GuidedPipelineAction;
 };
 
+type ResolvedPipelineMedia = {
+  id: string;
+  title: string;
+  url: string;
+  type: "image" | "video";
+};
+
 function normalizeAction(action: unknown): GuidedPipelineAction | null {
   return action === GUIDED_PIPELINE_ACTION_START_RAILS ? GUIDED_PIPELINE_ACTION_START_RAILS : null;
+}
+
+async function resolvePipelineDraftParts(params: {
+  clinicId: string;
+  treatmentId: string;
+  draft: NonNullable<ReturnType<typeof buildGuidedPipelineContentDraft>>;
+}): Promise<{ parts: OutboundDeliveryPart[]; skippedMedia: { mediaId: string; reason: string }[] }> {
+  const skippedMedia: { mediaId: string; reason: string }[] = [];
+  const mediaRows = params.draft.mediaIds.length
+    ? await db
+        .select({
+          id: mediaAssets.id,
+          title: mediaAssets.title,
+          url: mediaAssets.url,
+          type: mediaAssets.type,
+        })
+        .from(mediaAssets)
+        .where(
+          and(
+            eq(mediaAssets.clinicId, params.clinicId),
+            inArray(mediaAssets.id, params.draft.mediaIds),
+            or(eq(mediaAssets.treatmentId, params.treatmentId), isNull(mediaAssets.treatmentId)),
+          ),
+        )
+    : [];
+
+  const mediaById = new Map<string, ResolvedPipelineMedia>();
+  for (const media of mediaRows) {
+    if (media.type !== "image" && media.type !== "video") {
+      skippedMedia.push({ mediaId: media.id, reason: "tipo_de_midia_nao_entregavel" });
+      continue;
+    }
+    mediaById.set(media.id, media as ResolvedPipelineMedia);
+  }
+
+  const parts: OutboundDeliveryPart[] = [];
+  for (const part of params.draft.parts) {
+    if (part.type === "text") {
+      parts.push({ type: "text", content: part.content });
+      continue;
+    }
+
+    const media = mediaById.get(part.mediaId);
+    if (!media) {
+      skippedMedia.push({ mediaId: part.mediaId, reason: "midia_nao_encontrada_ou_de_outro_tratamento" });
+      continue;
+    }
+    parts.push({
+      type: "media",
+      mediaId: media.id,
+      url: media.url,
+      mediaType: media.type,
+      title: media.title,
+      caption: part.caption,
+    });
+  }
+
+  return { parts, skippedMedia };
 }
 
 export async function GET(
@@ -186,6 +258,80 @@ export async function POST(
       updatedAt: now,
     })
     .where(eq(conversations.id, conversationId));
+
+  if (firstActive.step.type === "content") {
+    const draft = buildGuidedPipelineContentDraft(firstActive.step);
+    if (!draft || draft.parts.length === 0) {
+      return NextResponse.json({ error: "Passo de conteúdo sem mensagens para enviar" }, { status: 409 });
+    }
+
+    const { parts, skippedMedia } = await resolvePipelineDraftParts({
+      clinicId: conv.clinicId,
+      treatmentId: treatment.id,
+      draft,
+    });
+    if (parts.length === 0) {
+      return NextResponse.json(
+        { error: "Nenhuma parte entregável encontrada no conteúdo do pipeline", skippedMedia },
+        { status: 409 },
+      );
+    }
+
+    const next = nextActivePipelineStep(pipelineSteps, firstActive.index + 1, {
+      conversationHistory: history.map((m) => ({ author: m.author, body: m.body })),
+    });
+    const agentMessageId = randomUUID();
+    await db.insert(messages).values({
+      id: agentMessageId,
+      conversationId,
+      author: "agent",
+      body: draft.text || parts.find((part) => part.type === "media")?.title || "Conteúdo do pipeline",
+      mediaUrl: null,
+      mediaType: null,
+      sentAt: now,
+      externalId: null,
+      intent: "general_question",
+      deliveryFormat: null,
+    });
+
+    await enqueueOutboundMessage(
+      {
+        clinicId: conv.clinicId,
+        conversationId,
+        channel: "whatsapp",
+        deliveryKind: "text",
+        category: "reply",
+        payload: {
+          version: 1,
+          kind: "conversation_reply",
+          to: channelAddress,
+          agentMessageId,
+          replyText: draft.text,
+          intent: "general_question",
+          useVoice: false,
+          ttsConfig: DEFAULT_TTS_CONFIG,
+          interleavedParts: parts,
+          mediaParts: [],
+          leadId: conv.leadId,
+          pipelineAdvance: next
+            ? { action: "advance", nextStepIndex: next.index }
+            : { action: "exit" },
+        },
+      },
+      {
+        outboundMessageStore: new DrizzleOutboundMessageStore(),
+        jobQueue: new DrizzleJobQueue(),
+      },
+    );
+
+    return NextResponse.json({
+      ok: true,
+      mode: "sent_first_content",
+      replied: true,
+      stepIndex: firstActive.index,
+      skippedMedia,
+    });
+  }
 
   // Gatilho do trilho: a última mensagem de TEXTO do lead é reprocessada pelo
   // motor. Mídia não serve de gatilho ("[imagem recebida]" não carrega intenção)

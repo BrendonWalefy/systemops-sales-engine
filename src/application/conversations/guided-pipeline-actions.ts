@@ -28,12 +28,40 @@ export type GuidedPipelineSummary = {
   willWaitForPhoto: boolean;
 };
 
+export type GuidedPipelineContentDraft = {
+  parts: GuidedPipelinePart[];
+  text: string;
+  mediaIds: string[];
+};
+
 function contentBlockToPart(block: ContentBlock): GuidedPipelinePart | null {
   if (block.kind === "text") {
     const content = block.content.trim();
     return content ? { type: "text", content } : null;
   }
   return { type: "media", mediaId: block.mediaId, caption: block.caption };
+}
+
+export function buildGuidedPipelineContentDraft(
+  step: PipelineStep,
+): GuidedPipelineContentDraft | null {
+  if (step.type !== "content") return null;
+
+  const parts = step.blocks
+    .map(contentBlockToPart)
+    .filter((part): part is GuidedPipelinePart => part !== null);
+  if (parts.length === 0) return { parts: [], text: "", mediaIds: [] };
+
+  return {
+    parts,
+    text: parts
+      .filter((part): part is Extract<GuidedPipelinePart, { type: "text" }> => part.type === "text")
+      .map((part) => part.content)
+      .join("\n\n"),
+    mediaIds: Array.from(
+      new Set(parts.filter((part): part is Extract<GuidedPipelinePart, { type: "media" }> => part.type === "media").map((part) => part.mediaId)),
+    ),
+  };
 }
 
 // O pacote hoje serve como PRÉVIA para o operador (o que o lead vai receber ao

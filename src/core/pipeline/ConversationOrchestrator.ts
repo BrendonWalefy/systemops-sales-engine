@@ -661,6 +661,70 @@ function isPriceRequestText(normalized: string): boolean {
   return hasAnyKeyword(normalized, ["valor", "preco", "quanto", "custa", "custo", "pagamento", "parcela"]);
 }
 
+export function isSimplePaymentPolicyQuestion(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const asksPaymentPolicy = hasAnyKeyword(normalized, [
+    "parcela",
+    "parcelado",
+    "parcelamento",
+    "cartao",
+    "credito",
+    "debito",
+    "pix",
+    "pagamento",
+  ]);
+  if (!asksPaymentPolicy) return false;
+
+  return !hasAnyKeyword(normalized, [
+    "diferente",
+    "especial",
+    "desconto",
+    "negociar",
+    "negocia",
+    "condicao especial",
+    "fora",
+    "excecao",
+    "combinado",
+    "promocao",
+    "permuta",
+    "troca",
+  ]);
+}
+
+export function isBusinessHoursQuestion(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const asksAttendance =
+    hasAnyKeyword(normalized, ["atende", "atendem", "atendimento", "funciona", "abrem", "abre", "horario", "expediente"]) &&
+    hasAnyKeyword(normalized, ["sabado", "domingo", "semana", "dia", "dias", "manha", "tarde", "noite", "horario", "expediente"]);
+  return asksAttendance && !hasAnyKeyword(normalized, ["agendar", "marcar", "reservar", "consulta", "vaga"]);
+}
+
+export function buildBusinessHoursAnswer(businessHoursRaw: string | null, message: string): string {
+  const normalized = normalizeFreeText(message);
+  const businessHours = parseBusinessHours(businessHoursRaw);
+  const hoursText = businessHoursRaw?.trim() || "Segunda a sexta, das 8h às 18h";
+  const asksSaturday = normalized.includes("sabado");
+  const asksSunday = normalized.includes("domingo");
+
+  if (asksSaturday) {
+    if (businessHours.days.includes(6)) {
+      return `Sim, atendemos aos sábados. Horário cadastrado: ${hoursText}.`;
+    }
+    return `Pelo horário cadastrado, atendemos ${hoursText}. Não consta atendimento aos sábados.`;
+  }
+
+  if (asksSunday) {
+    if (businessHours.days.includes(0)) {
+      return `Sim, atendemos aos domingos. Horário cadastrado: ${hoursText}.`;
+    }
+    return `Pelo horário cadastrado, atendemos ${hoursText}. Não consta atendimento aos domingos.`;
+  }
+
+  return `Nosso horário de atendimento é: ${hoursText}.`;
+}
+
 function isLocationRequestText(normalized: string): boolean {
   return hasAnyKeyword(normalized, ["localizacao", "endereco", "onde", "fica"]);
 }
@@ -1060,6 +1124,7 @@ export function coerceBusinessIntent(params: {
   // P0.2: Prioridade — Garantia antes de Manutenção (ambos redirectam para needs_human, mas contexto diferente)
   if (isWarrantyQuestion(normalized)) return "needs_human";
   if (isMaintenanceInquiryText(normalized)) return "needs_human";
+  if (isBusinessHoursQuestion(message)) return "general_question";
   if (isPriceRequestText(normalized)) return "price_inquiry";
   if (isSchedulingRequestText(normalized)) return "book_appointment";  // ← P0.1: Novo
   if (resolveDirectTreatmentMention(message, treatments)) return "general_question";
@@ -2918,6 +2983,7 @@ export class ConversationOrchestrator {
 
       // Encaminha para o WhatsApp do doutor com contexto + mídia original
       const receptionistPhone = clinic.receptionistPhone;
+      let operatorNotificationIssue: string | null = null;
       if (receptionistPhone) {
         const mediaLabel = inboundMediaType === "image" ? "foto" : inboundMediaType === "video" ? "vídeo" : "documento";
         const artigo = inboundMediaType === "image" ? "uma" : "um";
@@ -2931,23 +2997,41 @@ export class ConversationOrchestrator {
             })
           : `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
         if (humanReviewContext) {
-          sendButtonListMessage(
-            receptionistPhone,
-            contextMsg,
-            buildHumanReviewButtons(humanReviewContext.reviewCode),
-            channelConfig,
-          ).catch((err) => {
+          try {
+            await sendButtonListMessage(
+              receptionistPhone,
+              contextMsg,
+              buildHumanReviewButtons(humanReviewContext.reviewCode),
+              channelConfig,
+            );
+          } catch (err) {
             console.warn("[HumanReview] botão falhou; enviando fallback texto:", err);
-            sendTextMessage(receptionistPhone, contextMsg, channelConfig).catch(() => {});
-          });
+            try {
+              await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+              operatorNotificationIssue = "Botões de avaliação falharam; fallback texto enviado ao doutor";
+            } catch (fallbackErr) {
+              console.warn("[HumanReview] fallback texto também falhou:", fallbackErr);
+              operatorNotificationIssue = "Falha ao enviar avaliação com botões para o doutor";
+            }
+          }
         } else {
-          sendTextMessage(receptionistPhone, contextMsg, channelConfig)
-            .catch(e => console.warn("[MediaForward] contexto falhou:", e));
+          try {
+            await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+          } catch (err) {
+            console.warn("[MediaForward] contexto falhou:", err);
+            operatorNotificationIssue = "Falha ao avisar o doutor sobre mídia recebida";
+          }
         }
         if (params.mediaUrl) {
-          sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig)
-            .catch(e => console.warn("[MediaForward] mídia falhou:", e));
+          try {
+            await sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig);
+          } catch (err) {
+            console.warn("[MediaForward] mídia falhou:", err);
+            operatorNotificationIssue ??= "Aviso enviado, mas a mídia não foi encaminhada ao doutor";
+          }
         }
+      } else if (humanReviewContext) {
+        operatorNotificationIssue = "Telefone do doutor/responsável não configurado para receber avaliação";
       }
 
       // Notifica operadores via push
@@ -2958,7 +3042,10 @@ export class ConversationOrchestrator {
       }).catch(() => {});
 
       if (humanReviewContext) {
-        const attentionReason = `Avaliação A${humanReviewContext.reviewCode}: aguardando decisão humana`;
+        const attentionReason = [
+          `Avaliação A${humanReviewContext.reviewCode}: aguardando decisão humana`,
+          operatorNotificationIssue,
+        ].filter(Boolean).join(" — ");
         const now = new Date();
         await db.update(conversationsTable).set({
           aiPaused: conversation.aiPaused,
@@ -3706,6 +3793,14 @@ export class ConversationOrchestrator {
         await this.stateMachine.invalidate(conversation.id);
       }
     }
+    const simplePaymentPolicyQuestion = isSimplePaymentPolicyQuestion(messageText);
+    const businessHoursQuestion = isBusinessHoursQuestion(messageText);
+    if (!commercialPauseDetected && simplePaymentPolicyQuestion && effectiveIntent === "needs_human") {
+      effectiveIntent = "price_inquiry";
+    }
+    if (!commercialPauseDetected && businessHoursQuestion) {
+      effectiveIntent = "general_question";
+    }
     let clarificationTreatmentName: string | null = null;
     if (
       intent === "general_question" &&
@@ -4047,7 +4142,7 @@ export class ConversationOrchestrator {
     // Nenhuma regra posterior pode transformar uma pausa comercial em uma nova
     // pergunta de negócio ou em uma confirmação de agenda.
     if (commercialPauseDetected) effectiveIntent = "farewell";
-    const responseIntent: IntentType = commercialPauseDetected ? "farewell" : intent;
+    const responseIntent: IntentType = commercialPauseDetected ? "farewell" : effectiveIntent;
 
     if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
@@ -4081,6 +4176,9 @@ export class ConversationOrchestrator {
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
+    } else if (businessHoursQuestion) {
+      replyText = buildBusinessHoursAnswer(clinic.businessHours, messageText);
+      forceTextOnlyReply = true;
     } else {
       switch (effectiveIntent) {
       // ── Confirmação de slot ──
@@ -4804,7 +4902,8 @@ export class ConversationOrchestrator {
           !priceIdentifiedTreatment &&
           !ambiguousTreatmentOverride?.length &&
           !classification.slotPreference.ambiguousTreatmentMatches?.length &&
-          !pipelinePriceTreatment
+          !pipelinePriceTreatment &&
+          !simplePaymentPolicyQuestion
         ) {
           replyText = await compose({
             type: "clarification_needed",
