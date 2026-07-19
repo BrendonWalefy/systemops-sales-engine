@@ -3,13 +3,15 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { head } from "@vercel/blob";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { sendMediaMessage, sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { inspectOperatorAttachment, type OperatorAttachmentInspection } from "@/application/conversations/operator-attachment";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +28,21 @@ export async function POST(
   const { conversationId } = await params;
 
   // ── 2. Valida payload ──
-  let body: { message?: string };
+  let messageText = "";
+  let attachmentInput: { url?: string; fileName?: string } | null = null;
   try {
-    body = await request.json();
+    const body = await request.json() as {
+      message?: string;
+      attachment?: { url?: string; fileName?: string };
+    };
+    messageText = body.message?.trim() ?? "";
+    attachmentInput = body.attachment ?? null;
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const messageText = body.message?.trim();
-  if (!messageText) {
-    return NextResponse.json({ error: "Message is required" }, { status: 400 });
+  if (!messageText && !attachmentInput) {
+    return NextResponse.json({ error: "Message or attachment is required" }, { status: 400 });
   }
 
   // ── 3. Busca conversa — escopada pela clínica da sessão. Sem este filtro,
@@ -99,20 +106,58 @@ export async function POST(
 
   const now = new Date();
   const msgId = randomUUID();
+  let mediaUrl: string | null = null;
+  let attachment: OperatorAttachmentInspection | null = null;
 
+  if (attachmentInput) {
+    if (!attachmentInput.url || !attachmentInput.fileName) {
+      return NextResponse.json({ error: "Attachment metadata is required" }, { status: 400 });
+    }
+    try {
+      const blob = await head(attachmentInput.url);
+      const expectedPrefix = `media/inbox/${conversationId}/`;
+      if (!blob.pathname.startsWith(expectedPrefix)) {
+        return NextResponse.json({ error: "Attachment does not belong to this conversation" }, { status: 403 });
+      }
+      const inspection = inspectOperatorAttachment({
+        name: attachmentInput.fileName,
+        type: blob.contentType,
+        size: blob.size,
+      });
+      if ("error" in inspection) {
+        return NextResponse.json({ error: inspection.error }, { status: 422 });
+      }
+      attachment = inspection.value;
+      mediaUrl = blob.url;
+    } catch (err) {
+      console.error("[Operator Send] Attachment validation failed:", err);
+      return NextResponse.json({ error: "Anexo inválido ou não encontrado." }, { status: 422 });
+    }
+  }
   // ── 6. Persiste mensagem do operador antes do envio (auditabilidade) ──
   await db.insert(messages).values({
     id: msgId,
     conversationId,
     author: "clinic_user",
-    body: messageText,
+    body: messageText || attachment?.safeFileName || "Anexo",
+    mediaUrl,
+    mediaType: attachment?.mediaType ?? null,
     sentAt: now,
     externalId: null,
   });
 
   // ── 7. Envia via WhatsApp e captura messageId para deduplicar echo fromMe ──
   try {
-    const zapiMessageId = await sendTextMessage(channelAddress, messageText, channelConfig);
+    const zapiMessageId = mediaUrl && attachment
+      ? await sendMediaMessage(
+          channelAddress,
+          mediaUrl,
+          attachment.mediaType,
+          channelConfig,
+          messageText || undefined,
+          attachment.safeFileName,
+        )
+      : await sendTextMessage(channelAddress, messageText, channelConfig);
     // Salva o messageId retornado pelo Z-API para que o webhook fromMe identifique
     // este envio como nosso e não crie uma mensagem duplicada na conversa.
     if (zapiMessageId) {
@@ -132,5 +177,5 @@ export async function POST(
     .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
     .where(eq(conversations.id, conversationId));
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, mediaType: attachment?.mediaType ?? null });
 }

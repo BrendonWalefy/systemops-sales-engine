@@ -2,9 +2,11 @@
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock, UserRoundCog, ListChecks } from "lucide-react";
+import { Sparkles, Calendar, Send, AlertCircle, CalendarPlus, Tag, Clock, UserRoundCog, ListChecks, Paperclip, X, FileText, Film, Image as ImageIcon, Loader2 } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { DurationHoursInput } from "@/components/DurationHoursInput";
+import { formatAttachmentSize, inspectOperatorAttachment, OPERATOR_ATTACHMENT_ACCEPT } from "@/application/conversations/operator-attachment";
+import { upload } from "@vercel/blob/client";
 
 interface Props {
   conversationId: string;
@@ -84,6 +86,8 @@ export function ConvComposer({
   timezone,
 }: Props) {
   const [text, setText] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
   const [isHandingOff, startHandoff] = useTransition();
@@ -104,6 +108,7 @@ export function ConvComposer({
   const [schedError, setSchedError] = useState<string | null>(null);
   const [isScheduling, startSchedule] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const isSalesConversation = isSalesConversationCategory(conversationCategory);
 
@@ -117,6 +122,30 @@ export function ConvComposer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [text]);
+
+  useEffect(() => () => {
+    if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+  }, [attachmentPreviewUrl]);
+
+  const clearAttachment = useCallback(() => {
+    setAttachment(null);
+    setAttachmentPreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const handleAttachmentSelected = useCallback((file: File) => {
+    const inspection = inspectOperatorAttachment(file);
+    if ("error" in inspection) {
+      setError(inspection.error);
+      clearAttachment();
+      return;
+    }
+    setError(null);
+    setAttachment(file);
+    setAttachmentPreviewUrl(
+      inspection.value.mediaType === "image" ? URL.createObjectURL(file) : null,
+    );
+  }, [clearAttachment]);
 
   const handleHandoff = useCallback(() => {
     if (isHandingOff) return;
@@ -132,14 +161,41 @@ export function ConvComposer({
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed || isSending) return;
+    if ((!trimmed && !attachment) || isSending) return;
     setError(null);
     startSend(async () => {
       try {
+        let uploadedAttachment: { url: string; fileName: string } | undefined;
+        if (attachment) {
+          const inspection = inspectOperatorAttachment(attachment);
+          if ("error" in inspection) {
+            setError(inspection.error);
+            return;
+          }
+          const blob = await upload(
+            `media/inbox/${conversationId}/${Date.now()}-${inspection.value.safeFileName}`,
+            attachment,
+            {
+              access: "public",
+              handleUploadUrl: `/api/conversations/${conversationId}/attachment-upload`,
+              clientPayload: JSON.stringify({
+                fileName: attachment.name,
+                contentType: attachment.type,
+                size: attachment.size,
+              }),
+              contentType: attachment.type || "application/octet-stream",
+              multipart: attachment.size > 5 * 1024 * 1024,
+            },
+          );
+          uploadedAttachment = {
+            url: blob.url,
+            fileName: inspection.value.safeFileName,
+          };
+        }
         const res = await fetch(`/api/conversations/${conversationId}/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed }),
+          body: JSON.stringify({ message: trimmed, attachment: uploadedAttachment }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -147,12 +203,13 @@ export function ConvComposer({
           return;
         }
         setText("");
+        clearAttachment();
         router.refresh();
       } catch {
         setError("Falha na conexão. Tente novamente.");
       }
     });
-  }, [text, isSending, conversationId, router]);
+  }, [text, attachment, isSending, conversationId, clearAttachment, router]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -633,13 +690,57 @@ export function ConvComposer({
         </div>
       )}
 
+      {attachment && (
+        <div className="conv-attachment-preview">
+          <div className="conv-attachment-thumb">
+            {attachmentPreviewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={attachmentPreviewUrl} alt="Prévia do anexo" />
+            ) : attachment.type.startsWith("video/") ? (
+              <Film size={20} />
+            ) : attachment.type.startsWith("image/") ? (
+              <ImageIcon size={20} />
+            ) : (
+              <FileText size={20} />
+            )}
+          </div>
+          <div className="conv-attachment-info">
+            <strong>{attachment.name}</strong>
+            <span>{formatAttachmentSize(attachment.size)}</span>
+          </div>
+          <button type="button" onClick={clearAttachment} disabled={isSending} aria-label="Remover anexo">
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       <div className="conv-input-row">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={OPERATOR_ATTACHMENT_ACCEPT}
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) handleAttachmentSelected(file);
+          }}
+        />
+        <button
+          type="button"
+          className="conv-attachment-btn"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isSending}
+          title="Anexar foto, vídeo ou documento"
+          aria-label="Anexar arquivo"
+        >
+          <Paperclip size={17} />
+        </button>
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Responder como operador…"
+          placeholder={attachment ? "Adicionar uma legenda…" : "Responder como operador…"}
           rows={1}
           disabled={isSending}
           autoComplete="off"
@@ -651,10 +752,10 @@ export function ConvComposer({
         <button
           className="conv-send-btn"
           onClick={handleSend}
-          disabled={!text.trim() || isSending}
+          disabled={(!text.trim() && !attachment) || isSending}
           title="Enviar"
         >
-          <Send size={15} />
+          {isSending ? <Loader2 size={15} className="spin" /> : <Send size={15} />}
         </button>
       </div>
     </div>

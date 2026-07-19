@@ -222,6 +222,7 @@ export async function sendZApiMediaMessage(
   mediaType: MediaType,
   creds: { instanceId: string; token: string; clientToken?: string },
   caption?: string,
+  fileName?: string,
 ): Promise<string | null> {
   const { instanceId, token } = creds;
   const rawClientToken = creds.clientToken;
@@ -231,7 +232,13 @@ export async function sendZApiMediaMessage(
     throw new Error("Z-API instance ID and token must be configured for this clinic");
   }
 
-  const endpoint = ZAPI_MEDIA_ENDPOINT[mediaType];
+  const documentName = fileName ?? caption;
+  const documentExtension = mediaType === "document"
+    ? resolveDocumentExtension(mediaUrl, documentName)
+    : null;
+  const endpoint = mediaType === "document"
+    ? `${ZAPI_MEDIA_ENDPOINT[mediaType]}/${documentExtension}`
+    : ZAPI_MEDIA_ENDPOINT[mediaType];
   const bodyKey = ZAPI_MEDIA_BODY_KEY[mediaType];
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -239,7 +246,7 @@ export async function sendZApiMediaMessage(
 
   const payload: Record<string, unknown> = { phone, [bodyKey]: mediaUrl };
   if (caption) payload.caption = caption;
-  if (mediaType === "document" && caption) payload.fileName = caption;
+  if (mediaType === "document" && documentName) payload.fileName = documentName;
 
   const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/${endpoint}`;
   const requestBody = JSON.stringify(payload);
@@ -276,6 +283,17 @@ export async function sendZApiMediaMessage(
   }
 
   throw lastError ?? new Error(`Z-API send-${mediaType} falhou após 2 tentativas`);
+}
+
+function resolveDocumentExtension(mediaUrl: string, fileName?: string): string {
+  const candidates = [fileName, mediaUrl];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const withoutQuery = candidate.split(/[?#]/)[0];
+    const match = withoutQuery.match(/\.([a-zA-Z0-9]{1,10})$/);
+    if (match) return match[1].toLowerCase();
+  }
+  return "pdf";
 }
 
 // Status de entrega de uma mensagem já aceita pela Z-API.
