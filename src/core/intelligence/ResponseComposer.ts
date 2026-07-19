@@ -146,6 +146,9 @@ export type ActionResult =
 
 export type ComposerInput = {
   actionResult: ActionResult;
+  // J7: o turno anterior do agente já fez convite de avaliação/agenda/foto e o
+  // lead não reagiu — este turno responde sem repetir o convite.
+  suppressNextStepCta?: boolean;
   conversationHistory: Message[];
   clinic: {
     name: string;
@@ -204,6 +207,35 @@ export function parseIntoParts(raw: string): ResponsePart[] {
 // Defesa de profundidade: o formato do system prompt já usa [MEDIA:id] diretamente,
 // mas este cleanup garante que nenhum texto malformado chegue ao lead.
 const MEDIA_LABEL_ARTIFACT_RE = /\[(?:VÍDEO|VIDEO|FOTO|IMAGEM|IMAGE)\][^\[\]\n]*/gi;
+
+// J5 (mapeamento 18/07, caso João Vitor): o LLM às vezes inventa sintaxe
+// markdown com pseudo-URL contendo o id do asset —
+// "![Cores](https://media.5d383eb4-...)" — em vez do token [MEDIA:id]. O
+// WhatsApp não renderiza markdown: o lead recebia o texto cru e nenhuma imagem.
+// Resgate: uuid presente na biblioteca → vira [MEDIA:uuid] (a mídia é entregue
+// de verdade). Caso contrário a sintaxe inteira sai, junto com frases-promessa
+// órfãs ("Aqui está a imagem:").
+const MARKDOWN_MEDIA_WITH_UUID_RE =
+  /!?\[[^\]\n]*\]\(\s*[^()\s]*?([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})[^()\s]*\s*\)/g;
+const MARKDOWN_IMAGE_ANY_RE = /!\[[^\]\n]*\]\([^)\n]*\)/g;
+const MEDIA_PROMISE_LINE_RE =
+  /^[ \t]*(?:aqui\s+est[áa]\s+|segue\s+)(?:a\s+|o\s+)?(?:imagem|foto|v[ií]deo)\s*[:.!]?\s*$/gim;
+
+export function rescueMarkdownMediaSyntax(raw: string, validMediaIds: Set<string>): string {
+  let stripped = false;
+  let result = raw.replace(MARKDOWN_MEDIA_WITH_UUID_RE, (_full, uuid: string) => {
+    const id = uuid.toLowerCase();
+    if (validMediaIds.has(id)) return `[MEDIA:${id}]`;
+    stripped = true;
+    return "";
+  });
+  result = result.replace(MARKDOWN_IMAGE_ANY_RE, () => {
+    stripped = true;
+    return "";
+  });
+  if (!stripped) return result;
+  return result.replace(MEDIA_PROMISE_LINE_RE, "");
+}
 
 function normalizeTextReplyContent(content: string): string {
   return content
@@ -564,10 +596,16 @@ function detectHandoffType(handoffReason?: string | null): "maintenance" | "warr
   return "default";
 }
 
+// Instrução de fechamento sem CTA — usada quando o gate de ritmo (J7) detectou
+// convite ignorado no turno anterior. Repetir convite faz o lead fugir.
+const SUPPRESSED_CTA_GUIDANCE =
+  "REGRA DE RITMO — CTA JÁ FEITO: o convite para avaliação/agendamento (ou pedido de foto) já foi feito no turno anterior e o lead ainda não respondeu a ele. NÃO repita o convite, NÃO peça foto e NÃO mencione agenda neste turno. Responda a dúvida atual de forma completa e encerre acolhedor, sem pergunta de próximo passo.";
+
 export function buildActionContext(
   result: ActionResult,
   conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE,
   installmentTable?: string | null,
+  suppressNextStepCta?: boolean,
 ): string {
   const isConcierge = conversationExperience === "concierge";
 
@@ -736,7 +774,7 @@ ${installmentInstruction}
 ${treatmentMediaInstruction}
 SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes. Em seguida, traga de volta para o degrau seguro: avaliação para ver o que o caso realmente precisa e quais condições fazem sentido.
 SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o serviço como se o destinatário fosse o cliente; sugira uma visita presencial para que a equipe avalie o caso da pessoa real.
-${isConcierge ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Prefira um fechamento confiante e humano: 'posso ver os horários para sua avaliação?' Evite encerramentos passivos como 'caso tenha interesse'." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
+${suppressNextStepCta ? SUPPRESSED_CTA_GUIDANCE : isConcierge ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Prefira um fechamento confiante e humano: 'posso ver os horários para sua avaliação?' Evite encerramentos passivos como 'caso tenha interesse'." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
     }
 
 case "general_question":
@@ -747,7 +785,7 @@ PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CL�
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
 PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
 SE O LEAD EXPRESSAR MEDO DE RESULTADO ARTIFICIAL: acolha o receio e fale de naturalidade/harmonia sem inventar processos específicos. Só diga que escolhe cor/transparência, mostra casos anteriores ou faz simulação se isso estiver nas ORIENTAÇÕES DA CLÍNICA.
-Responda de forma informativa e acolhedora. ${isConcierge ? "Após responder a dúvida, conduza ativamente para o próximo passo: se o assunto for um procedimento estético ou de alto valor e o lead demonstrou interesse genuíno, ofereça gentilmente uma avaliação presencial como próximo passo natural — sem pressionar, sem mencionar horários específicos. Só pule esta etapa se as ORIENTAÇÕES DA CLÍNICA definirem uma sequência diferente para este momento." : "Não reapresente menu quando a pergunta do lead for clara."}`;
+Responda de forma informativa e acolhedora. ${suppressNextStepCta ? SUPPRESSED_CTA_GUIDANCE : isConcierge ? "Após responder a dúvida, conduza ativamente para o próximo passo: se o assunto for um procedimento estético ou de alto valor e o lead demonstrou interesse genuíno, ofereça gentilmente uma avaliação presencial como próximo passo natural — sem pressionar, sem mencionar horários específicos. Só pule esta etapa se as ORIENTAÇÕES DA CLÍNICA definirem uma sequência diferente para este momento." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
     case "greeting":
@@ -909,6 +947,7 @@ export class ResponseComposer {
       input.actionResult,
       input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
       input.clinic.installmentTable,
+      input.suppressNextStepCta,
     );
 
     // Histórico recente — filtra mensagens de sistema (marcadores internos como __appointment_confirmed__)
@@ -958,10 +997,11 @@ export class ResponseComposer {
       input.clinic.commercialPolicy,
       ...(input.clinic.mediaLibrary ?? []).map((media) => media.title),
     ].filter(Boolean).join("\n");
+    const validMediaIds = new Set((input.clinic.mediaLibrary ?? []).map((media) => media.id.toLowerCase()));
     const parts = normalizeResponseParts(
       removeUnsupportedProofClaims(
         guardAgainstSchedulingLeak(
-          parseIntoParts(raw),
+          parseIntoParts(rescueMarkdownMediaSyntax(raw, validMediaIds)),
           input.actionResult,
         ),
         clinicProofContent,

@@ -2100,6 +2100,123 @@ export function buildAnswerFirstPipelineContent(params: {
   };
 }
 
+// N1 (mapeamento 18/07, caso Nathan): quando a mensagem do lead é interesse
+// genérico no tratamento do pipeline ("quero entender como funciona e valores"),
+// o conteúdo curado É a resposta — compor explicação por LLM antes duplica a
+// informação e vaza valores em prosa. Detector conservador: qualquer token fora
+// do vocabulário de interesse (além de saudação e menção ao tratamento) mantém
+// o answer-first, que segue sendo o caminho certo para perguntas específicas.
+const GENERIC_INTEREST_VOCABULARY = new Set([
+  "ola", "oi", "eae", "hey", "bom", "boa", "dia", "tarde", "noite", "tudo", "bem",
+  "quero", "queria", "gostaria", "quer", "adoraria", "sim", "pode", "claro", "por", "favor", "pfv",
+  "saber", "entender", "enteder", "conhecer", "ver", "escutar", "ouvir",
+  "mais", "um", "uma", "uns", "umas", "pouco", "pouquinho", "melhor",
+  "sobre", "como", "funciona", "seria", "e", "de", "do", "da", "dos", "das", "o", "a", "os", "as", "no", "na",
+  "posso", "consigo", "transformar", "mudar", "melhorar", "arrumar", "meu", "minha", "sorriso", "dente", "dentes",
+  "com", "para", "pra", "tambem", "tbm", "ne",
+  "valor", "valores", "preco", "precos", "custo", "custos", "investimento",
+  "informacao", "informacoes", "detalhe", "detalhes", "duvida", "duvidas",
+  "me", "conta", "conte", "explica", "explicar", "fala", "falar", "mostra", "mostrar",
+  "tenho", "interesse", "interessado", "interessada", "interessei",
+  "esse", "essa", "isso", "este", "esta", "isto", "aqui",
+  "voces", "vcs", "procedimento", "tratamento", "gente",
+]);
+
+export function isGenericTreatmentInterestMessage(message: string, treatment: Treatment): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const treatmentTokens = new Set(
+    [treatment.name, ...(treatment.aliases ?? [])]
+      .flatMap((name) => normalizeFreeText(name).split(/\s+/))
+      .filter(Boolean),
+  );
+  return normalized
+    .split(/\s+/)
+    .every((token) => GENERIC_INTEREST_VOCABULARY.has(token) || treatmentTokens.has(token));
+}
+
+// J7 (mapeamento 18/07, caso João Vitor): convite de avaliação/agenda/foto em
+// turnos consecutivos sem reação do lead derruba conversão — "faz o cliente
+// fugir" (validação real). O sistema decide se o turno pode fechar com CTA; a
+// LLM só verbaliza.
+const AGENT_CTA_PHRASES = [
+  "que tal agendar",
+  "que tal agendarmos",
+  "vamos agendar",
+  "podemos agendar",
+  "posso agendar",
+  "quer agendar",
+  "gostaria de agendar",
+  "que tal marcar",
+  "posso ver os horarios",
+  "posso mostrar os horarios",
+  "posso te mostrar os horarios",
+  "ver os horarios disponiveis",
+  "agendar uma avaliacao",
+  "agendarmos uma avaliacao",
+  "marcar uma avaliacao",
+  "marcarmos uma avaliacao",
+  "que tal uma avaliacao",
+  "agendar sua avaliacao",
+  "enviar uma foto",
+  "envie uma foto",
+  "enviar a foto",
+  "me encaminhar uma foto",
+  "encaminhar uma foto",
+  "manda uma foto",
+  "mandar uma foto",
+  "foto do seu sorriso",
+];
+
+function agentMessageEndsWithCta(body: string): boolean {
+  const normalized = normalizeFreeText(body);
+  if (!normalized) return false;
+  return AGENT_CTA_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+function leadEngagesWithCta(message: string): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  const words = new Set(normalized.split(/\s+/));
+  const wordSignals = [
+    "agendar", "agendarmos", "marcar", "marcarmos", "horario", "horarios", "agenda",
+    "sim", "pode", "podemos", "claro", "bora", "vamos", "quando", "foto", "fotos",
+  ];
+  if (wordSignals.some((word) => words.has(word))) return true;
+  const phraseSignals = ["pode ser", "quero sim", "como faco", "como agendo", "to dentro", "tou dentro"];
+  return phraseSignals.some((phrase) => normalized.includes(phrase));
+}
+
+// Turno anterior do agente: percorre o histórico do fim para o início, pula o
+// burst atual do lead e coleta as mensagens de agente/operador até encontrar a
+// mensagem anterior do lead. Operador conta: CTA humano ignorado também não
+// deve ser repetido pela IA.
+export function collectPreviousAgentTurnBodies(
+  history: Pick<Message, "author" | "body">[],
+): string[] {
+  const bodies: string[] = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const message = history[i];
+    if (message.author === "lead") {
+      if (bodies.length > 0) break;
+      continue;
+    }
+    if (message.author === "agent" || message.author === "clinic_user") {
+      bodies.push(message.body);
+    }
+  }
+  return bodies;
+}
+
+export function shouldSuppressNextStepCta(params: {
+  previousAgentMessages: string[];
+  currentLeadMessage: string;
+}): boolean {
+  const previousHadCta = params.previousAgentMessages.some(agentMessageEndsWithCta);
+  if (!previousHadCta) return false;
+  return !leadEngagesWithCta(params.currentLeadMessage);
+}
+
 export function findPipelineTreatmentContextForPriceRequest(params: {
   message: string;
   treatments: Treatment[];
@@ -3726,6 +3843,13 @@ export class ConversationOrchestrator {
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
     let pendingPipelineAdvance: PipelineAdvance | null = null;
+    // J7 — Gate de ritmo de CTA: se o turno anterior do agente/operador já fez
+    // convite de avaliação/agenda/foto e o lead não reagiu a ele, este turno
+    // responde sem repetir o convite (o sistema decide, a LLM verbaliza).
+    const ctaSuppressed = shouldSuppressNextStepCta({
+      previousAgentMessages: collectPreviousAgentTurnBodies(allMessagesForContext),
+      currentLeadMessage: messageText,
+    });
     // P0.6: Fallback para IA indisponível (timeout, OpenAI errors)
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
@@ -3735,6 +3859,7 @@ export class ConversationOrchestrator {
         if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
         const composed = await this.responseComposer.compose({
           actionResult,
+          suppressNextStepCta: ctaSuppressed,
           conversationHistory: allMessagesForContext,
           clinic: {
             name: clinic.name,
@@ -4873,6 +4998,21 @@ export class ConversationOrchestrator {
               : { action: "exit" };
 
             if (!hasPipelineContentStepBeenSent(currentStep, allMessagesForContext)) {
+              // N1 — Interesse genérico no tratamento: o conteúdo curado É a
+              // resposta. Compor explicação por LLM antes duplicava a informação
+              // e vazava valores em prosa (caso Nathan, 18/07).
+              const genericInterest =
+                !directSocialRequested &&
+                !directMediaClarificationRequested &&
+                !directLocationRequested &&
+                isGenericTreatmentInterestMessage(messageText, pipelineTreatment);
+              if (genericInterest) {
+                const contentReply = buildPipelineContentReply(currentStep);
+                replyText = contentReply.replyText;
+                composedParts = contentReply.parts;
+                composedMediaIds = contentReply.mediaIds;
+                break;
+              }
               const contentAnswerContext = directSocialRequested
                 ? buildSocialProfileClinicContext(
                     extractSocialProfileInfo(editorial?.playbookText, editorial?.commercialPolicy),
@@ -4883,7 +5023,7 @@ export class ConversationOrchestrator {
                     ? buildLocationClinicContext(clinic.address)
                     : [
                         `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
-                        "Responda primeiro a dúvida atual do lead de forma objetiva. Depois disso, o sistema enviará o próximo conteúdo do pipeline.",
+                        "Responda APENAS a dúvida atual do lead, em no máximo 2 frases. O sistema enviará AUTOMATICAMENTE a apresentação curada do tratamento (técnicas e valores) logo após a sua resposta: NÃO descreva o tratamento, NÃO cite valores e NÃO convide para avaliação/agendamento nem peça foto — a apresentação e o fluxo cuidam disso.",
                         pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
                         editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
                       ].filter(Boolean).join("\n");
