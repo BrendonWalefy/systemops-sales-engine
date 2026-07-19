@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
@@ -16,7 +16,10 @@ import { ConversationStateMachine } from "@/core/conversation/ConversationStateM
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
-import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import {
+  normalizeManualWhatsAppPhone,
+  resolveWhatsAppChannelAddress,
+} from "@/core/whatsapp/WhatsAppContactIdentity";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
@@ -112,18 +115,35 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
       const lead = await leadRepository.findById(appointment.leadId);
       if (!lead) continue;
       const channelAddress = resolveWhatsAppChannelAddress({
-        phone: lead.phone,
+        phone: lead.phone ? normalizeManualWhatsAppPhone(lead.phone) : null,
         whatsappLid: lead.whatsappLid,
       });
       if (!channelAddress) continue;
 
-      // A outbox é indexada por conversa: sem conversa não há como rotear o
-      // lembrete pelo gate. Lead com consulta agendada sempre tem conversa;
-      // ausência é edge case e é pulada (antes seria enviada sem persistir).
-      const conversation = await conversationRepository.findByLeadId(lead.id);
+      // A outbox é indexada por conversa. Agendamentos manuais históricos podem
+      // ter lead+telefone sem conversa; cria uma thread técnica idempotente para
+      // que também recebam o lembrete, em vez de serem pulados silenciosamente.
+      let conversation = await conversationRepository.findByLeadId(lead.id);
       if (!conversation) {
-        console.warn(`[AppointmentReminder] sem conversa para lead=${lead.id} — pulando`);
-        continue;
+        const createdAt = new Date();
+        conversation = {
+          id: randomUUID(),
+          clinicId,
+          leadId: lead.id,
+          channel: "whatsapp",
+          category: "sales",
+          externalThreadId: channelAddress,
+          summary: "Conversa criada automaticamente para lembrete de agendamento manual.",
+          aiPaused: false,
+          takeoverExpiresAt: null,
+          needsAttention: false,
+          attentionReason: null,
+          consecutiveUnclearCount: 0,
+          lastMessageAt: null,
+          createdAt,
+          updatedAt: createdAt,
+        };
+        await conversationRepository.saveConversation(conversation);
       }
 
       const appointmentLabel = new Intl.DateTimeFormat("pt-BR", {

@@ -23,7 +23,7 @@ Religar só após fechar os P0 daqui + post-mortem com o Victor.
 
 | # | Item | Tipo | Esforço | Prioridade |
 |---|------|------|---------|-----------|
-| 1 | Mais objetivo, fechar agendamento como o operador | ✅ CORRIGIDO | M | validar shadow |
+| 1 | Mais objetivo, fechar agendamento como o operador | ✅ CORRIGIDO (opt-in) | M | validar shadow, depois habilitar flag |
 | 2 | R$30 explicado como reserva do horário | COPY | XS | **P0** |
 | 3 | Fluxo foto do sorriso → doutor avalia → IA reassume | FEATURE | G | **P0** |
 | 4 | Notificação WhatsApp para número pessoal do doutor | FEATURE | M | **P0** (base do 3, 8 e 13) |
@@ -71,9 +71,20 @@ playbook v4 ("responda em blocos curtos e conduza ativamente para o agendamento"
 cotar um único tratamento sem ambiguidade/escalonamento/objeção pendente, oferta horários reais
 direto (evaluation_redirect ou slots_found), preservando mídia da resposta de preço. Fora do
 escopo: tratamentos com pipeline próprio (lentes) — o pipeline já conduz no seu ritmo.
-`npm run verify` verde (1363 testes). **Sem teste de integração dedicado** — validar com tráfego
-shadow real antes de confiar 100%. **ATENÇÃO: Ximendes (única clínica live) também é concierge —
-esta mudança afeta o comportamento dela em produção, não só a Vitalli em shadow.**
+
+**Revisão 17/07 (à tarde) — "faz sentido para todas as clínicas?"** Investigação real mostrou que
+NÃO dava para gatear só por `experience === "concierge"`: a Ximendes (única clínica live, também
+concierge) tem 10 tratamentos com `requiresEvaluationFirst` cotáveis e sem pipeline (Clareamento
+caseiro, Gengivoplastia, Implante dentário, Restauração em resina) que disparariam a oferta de
+horário imediatamente — e os padrões reais documentados em `XimendesConversationPatterns.test.ts`
+(compra para terceiro, comparação com concorrente, especificação técnica não cadastrada) nunca
+validaram esse fechamento mais agressivo. **Virou opt-in por clínica**:
+`organizations.offerSlotsAfterPriceEnabled` (migration 0071, default false, mesmo padrão do
+`depositEnabled`). Script gated `scripts/enable-vitalli-offer-slots-after-price.ts` liga só para a
+Vitalli — Ximendes, NC Beauty e demais mantêm o comportamento atual até validação própria.
+`npm run verify` verde (1363 testes) nas duas rodadas. **Sem teste de integração dedicado** —
+validar com tráfego shadow real da Vitalli antes de confiar 100%. **Rodar o script de enable SÓ
+depois que a migration 0071 subir em prod (merge → deploy Vercel).**
 
 ---
 

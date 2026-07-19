@@ -29,6 +29,7 @@ describe("DepositTemplates", () => {
     // cliente piloto em 17/07/2026), não como "confirmação do agendamento".
     expect(msg).toMatch(/reserva do seu horário/i);
     expect(msg).toContain("Chave Pix (CNPJ): 54659849000109");
+    expect(msg.split("\n").slice(-2)).toEqual(["Chave Pix para copiar:", "54659849000109"]);
     expect(msg).toContain("Nome: Dr. Victor Cavalcante");
     expect(msg).toContain("O valor do sinal é abatido do procedimento.");
     expect(msg).toContain("24 horas");

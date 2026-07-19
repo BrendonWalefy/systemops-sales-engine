@@ -5,8 +5,10 @@
 import { describe, expect, it } from "vitest";
 import {
   collectCurrentLeadBurstBodies,
+  contextualizeReplyWhileAwaitingDeposit,
   hasExplicitPipelineTreatmentTrigger,
   isAffirmativeReplyToOpenOffer,
+  isClinicalTreatmentPlanJudgmentRequest,
   isEvaluationPriceRequest,
   isGenericTreatmentInterestMessage,
   isProcedureCatalogRequest,
@@ -231,5 +233,29 @@ describe("W3.4 — 'Ambas' é interesse genérico (caso Felipe)", () => {
     expect(isGenericTreatmentInterestMessage("Ambas", lenses)).toBe(true);
     expect(isGenericTreatmentInterestMessage("as duas", lenses)).toBe(true);
     expect(isGenericTreatmentInterestMessage("quero saber das duas técnicas", lenses)).toBe(true);
+  });
+});
+
+describe("Nataly — julgamento clínico de combinação/quantidade", () => {
+  it("escala fechamento de espaços e pouca resina", () => {
+    expect(isClinicalTreatmentPlanJudgmentRequest("Então se for só pra fechar os espacinhos")).toBe(true);
+    expect(isClinicalTreatmentPlanJudgmentRequest("Pouca resina + clareamento")).toBe(true);
+  });
+
+  it("não escala pergunta editorial genérica sobre procedimentos", () => {
+    expect(isClinicalTreatmentPlanJudgmentRequest("Vocês fazem clareamento?")).toBe(false);
+    expect(isClinicalTreatmentPlanJudgmentRequest("Qual a diferença entre as lentes?")).toBe(false);
+  });
+});
+
+describe("Henrique — resposta comercial durante sinal pendente", () => {
+  it("remove CTA de nova agenda e preserva a reserva atual", () => {
+    const reply = contextualizeReplyWhileAwaitingDeposit(
+      "As formas de pagamento são Pix e cartão.\n\nPosso ver os horários disponíveis para sua avaliação?",
+      "Seg 27/07 às 9h",
+    );
+    expect(reply).toContain("Pix e cartão");
+    expect(reply).not.toContain("Posso ver os horários");
+    expect(reply).toContain("Seg 27/07 às 9h continua reservado provisoriamente");
   });
 });

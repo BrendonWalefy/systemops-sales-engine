@@ -21,6 +21,25 @@ export function normalizeWhatsAppPhone(raw: string): string | null {
   return digits.length >= 10 ? digits : null;
 }
 
+/**
+ * Normalização para contatos digitados manualmente na agenda.
+ * O painel brasileiro recebe com frequência DDD+número; o provedor exige DDI.
+ * Números que já trazem DDI são preservados para não impedir clínicas de outros
+ * países. O default fica explícito no call-site/configuração, nunca em env.
+ */
+export function normalizeManualWhatsAppPhone(
+  raw: string,
+  defaultCountryCode = "55",
+): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return null;
+  if (raw.trim().startsWith("+") || raw.trim().startsWith("00")) return digits;
+  if (digits.length === 10 || digits.length === 11) {
+    return `${defaultCountryCode}${digits}`;
+  }
+  return digits;
+}
+
 export function areEquivalentWhatsAppPhones(
   leftRaw: string | null | undefined,
   rightRaw: string | null | undefined,

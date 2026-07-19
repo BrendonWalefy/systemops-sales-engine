@@ -412,6 +412,10 @@ export const treatments = pgTable(
       jsonb("pipeline_steps").$type<
         import("@/domain/entities/treatment").PipelineStep[]
       >(),
+    // Permite que uma variante comercial (ex.: "Lente Estratificada") use a
+    // jornada canônica de outro tratamento sem duplicar pipelineSteps. A
+    // resolução valida mesma clínica e faz fallback seguro se o id ficar órfão.
+    pipelineSourceTreatmentId: uuid("pipeline_source_treatment_id"),
     priceCents: integer("price_cents"),
     minPriceCents: integer("min_price_cents"),
     maxPriceCents: integer("max_price_cents"),

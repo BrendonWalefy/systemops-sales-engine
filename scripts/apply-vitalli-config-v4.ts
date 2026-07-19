@@ -18,7 +18,7 @@
  *     - "Endodontia" → split estilo Siso: renomeia p/ "Tratamento de Canal
  *       (dentes anteriores)" R$600 + cria pré-molares R$700, molares R$850 e
  *       retratamentos R$650/750/950 — todos fixos, cotáveis, "por dente".
- *  2. MÍDIA (cap 10/clinic) — substituição:
+ *  2. MÍDIA (cap 15/clinic) — substituição:
  *     - Deleta 7 rows antigas (blobs preservados: mensagens já enviadas
  *       continuam renderizando): fotos de resultado avulsas, card promo,
  *       cuidados R$350 (incorreto), exemplo de foto antigo.
@@ -35,7 +35,7 @@
  *  4. PLAYBOOK v4 — clona ativa e ativa nova versão: política sem "promocionais",
  *     nomes novos das técnicas, formas de pagamento do Victor (Pix 5% desc.,
  *     até 21x, sem boleto), menção a plástica gengival/clareamento/canal, notes
- *     com guia de cores BL + objetividade. Autoriza as 10 mídias finais.
+ *     com guia de cores BL + objetividade. Autoriza as 15 mídias finais.
  *
  *   Dry-run:  npx dotenv -e .env.local -- npx tsx scripts/apply-vitalli-config-v4.ts
  *   Aplicar:  npx dotenv -e .env.local -- npx tsx scripts/apply-vitalli-config-v4.ts --apply
@@ -127,7 +127,7 @@ Caso você já possua lentes antigas e precise fazer a troca, também realizamos
 
 Também realizamos plástica gengival, que dá simetria ao sorriso corrigindo a gengiva para que todos os dentes fiquem do mesmo tamanho (procedimento totalmente indolor), clareamento dental com protocolo caseiro, de consultório ou os dois combinados, e tratamento de canal.
 
-Para reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal para confirmar a avaliação. Esse sinal é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ 54.659.849/0001-09 em nome de Dr. Victor Cavalcante.`;
+Para reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal não é uma cobrança pela avaliação: ele é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ 54.659.849/0001-09 em nome de Dr. Victor Cavalcante.`;
 
 const V4_NOTES = `ESPECIALIDADE DA CLÍNICA:
 A Clínica Vitalli é especialista em lentes de resina composta (Lente em Resina Premium e Lente em Resina Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.
@@ -140,7 +140,7 @@ Se o lead perguntar sobre cor ou tom das lentes, envie a imagem "Cores BL1, BL2 
 
 CONDUTA ESPECÍFICA DA CLÍNICA:
 Nunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.
-Para confirmar e agendar a avaliação presencial, informe que a agenda do Doutor é muito concorrida e que a clínica exige o pagamento do sinal da avaliação via Pix (valor informado no cadastro do procedimento), abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a Lente Premium e a Estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: "⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência."`;
+Para confirmar e agendar a avaliação presencial, informe que a avaliação não tem custo e que, para reservar o horário na agenda concorrida do Doutor, a clínica exige um sinal via Pix configurado separadamente no cadastro da clínica. Nunca apresente esse sinal como preço, taxa ou valor da avaliação. O sinal é abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a Lente Premium e a Estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: "⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência."`;
 
 const CONTENT_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -336,9 +336,9 @@ async function main() {
     .select({ id: mediaAssets.id, title: mediaAssets.title })
     .from(mediaAssets)
     .where(eq(mediaAssets.clinicId, VITALLI_ID));
-  console.log(`Mídias hoje: ${existingMedia.length} | deletar: ${DELETE_MEDIA_IDS.length} | subir: ${UPLOADS.length} → final: ${existingMedia.length - DELETE_MEDIA_IDS.length + UPLOADS.length} (cap 10)`);
-  if (existingMedia.length - DELETE_MEDIA_IDS.length + UPLOADS.length > 10) {
-    throw new Error("Plano estoura o cap de 10 mídias por clínica.");
+  console.log(`Mídias hoje: ${existingMedia.length} | deletar: ${DELETE_MEDIA_IDS.length} | subir: ${UPLOADS.length} → final: ${existingMedia.length - DELETE_MEDIA_IDS.length + UPLOADS.length} (cap 15)`);
+  if (existingMedia.length - DELETE_MEDIA_IDS.length + UPLOADS.length > 15) {
+    throw new Error("Plano estoura o cap de 15 mídias por clínica.");
   }
 
   // ── Gates de validação (mesmos da ativação pelo painel) ──
@@ -540,7 +540,7 @@ async function main() {
     console.log(`  ✅ Pipeline de "${t.name}": exemplo de foto inserido antes do photo step`);
   }
 
-  // ── 7. Playbook v4 (clona ativa, autoriza as 10 mídias, ativa) ──
+  // ── 7. Playbook v4 (clona ativa, autoriza as 15 mídias, ativa) ──
   const finalMediaIds = [KEEP_VIDEO_ESTRATIFICADA, KEEP_FOTO_PREMIUM, ...Object.values(newIds)];
   const [createdVersion] = await db
     .insert(playbookVersions)

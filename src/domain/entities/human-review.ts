@@ -109,6 +109,46 @@ export function buildHumanReviewRequestMessage(params: {
   ].join("\n");
 }
 
+export function buildHumanReviewButtonPromptMessage(reviewCode: number): string {
+  const code = `A${reviewCode}`;
+  return [
+    `${code}: escolha a decisão para este paciente.`,
+    "",
+    "Se os botões não aparecerem, responda:",
+    `${code} 1 — Apto para agendar aplicação/procedimento`,
+    `${code} 2 — Precisa avaliação presencial`,
+    `${code} 3 — Responder manualmente`,
+    `${code} 4 — Não indicado`,
+  ].join("\n");
+}
+
+export function buildHumanReviewPendingLeadMessage(leadName?: string | null): string {
+  const firstName = leadName?.trim().split(/\s+/)[0];
+  const greeting = firstName ? `, ${firstName}` : "";
+  return [
+    `Recebi sua foto${greeting} e encaminhei ao Doutor para uma pré-avaliação.`,
+    "",
+    "A automação fica pausada enquanto ele analisa, para não te orientar sobre indicação ou combinação de procedimentos sem essa avaliação.",
+    "",
+    "Assim que ele responder, continuamos por aqui.",
+  ].join("\n");
+}
+
+export function buildHumanReviewContextUpdateMessage(params: {
+  reviewCode: number;
+  leadName: string;
+  leadMessage: string;
+}): string {
+  return [
+    `📝 *Informação nova — Avaliação A${params.reviewCode}*`,
+    `Paciente: ${params.leadName}`,
+    "",
+    `Mensagem do paciente: “${params.leadMessage.trim()}”`,
+    "",
+    `Considere esta informação na decisão da A${params.reviewCode}.`,
+  ].join("\n");
+}
+
 export function buildHumanReviewDecisionConfirmation(params: {
   reviewCode: number;
   leadName: string;

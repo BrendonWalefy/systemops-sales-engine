@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { humanReviewRequests } from "@/infrastructure/db/schema";
 import type {
@@ -102,6 +102,33 @@ export class DrizzleHumanReviewRequestRepository {
         reviewerPhone: params.reviewerPhone,
         reviewNotes: params.reviewNotes ?? null,
         decidedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(humanReviewRequests.id, params.id),
+          eq(humanReviewRequests.status, "pending"),
+        ),
+      )
+      .returning();
+    return updated ?? null;
+  }
+
+  async appendReviewContext(params: {
+    id: string;
+    context: string;
+    now?: Date;
+  }): Promise<HumanReviewRequestRecord | null> {
+    const now = params.now ?? new Date();
+    const line = `[${now.toISOString()}] ${params.context.trim()}`;
+    const [updated] = await db
+      .update(humanReviewRequests)
+      .set({
+        reviewNotes: sql<string>`CASE
+          WHEN ${humanReviewRequests.reviewNotes} IS NULL OR ${humanReviewRequests.reviewNotes} = ''
+            THEN ${line}
+          ELSE ${humanReviewRequests.reviewNotes} || E'\n' || ${line}
+        END`,
         updatedAt: now,
       })
       .where(

@@ -14,6 +14,12 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { getActivePriceCampaignsByTreatment, effectiveBookableValueCents, combineAppointmentValueCents } from "@/application/config/price-campaigns";
 import type { Lead } from "@/domain/entities/lead";
+import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
+import {
+  normalizeManualWhatsAppPhone,
+  normalizeWhatsAppPhone,
+  resolveWhatsAppChannelAddress,
+} from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -150,9 +156,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!patientName) {
         return NextResponse.json({ error: "Informe o nome do paciente" }, { status: 400 });
       }
-      const phone = body.phone?.trim() || null;
+      const rawPhone = body.phone?.trim() ?? "";
+      const phone = rawPhone
+        ? normalizeManualWhatsAppPhone(rawPhone)
+        : null;
+      if (!phone) {
+        return NextResponse.json(
+          { error: "Informe um WhatsApp válido para enviar confirmação e lembrete" },
+          { status: 400 },
+        );
+      }
       if (phone) {
         lead = await leadRepo.findByPhone(clinicId, phone);
+        // Compatibilidade com pacientes antigos cadastrados só com DDD+número.
+        // Evita criar um segundo lead ao passar a salvar novos contatos com DDI.
+        const legacyPhone = normalizeWhatsAppPhone(rawPhone);
+        if (!lead && legacyPhone && legacyPhone !== phone) {
+          lead = await leadRepo.findByPhone(clinicId, legacyPhone);
+        }
       }
       if (!lead) {
         const nowLead = new Date();
@@ -177,6 +198,46 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         };
         await leadRepo.save(lead);
       }
+    }
+
+    const reminderAddress = resolveWhatsAppChannelAddress({
+      phone: lead.phone ? normalizeManualWhatsAppPhone(lead.phone) : null,
+      whatsappLid: lead.whatsappLid,
+    });
+    if (!reminderAddress) {
+      return NextResponse.json(
+        { error: "Este paciente não possui um WhatsApp válido para confirmação e lembrete" },
+        { status: 400 },
+      );
+    }
+
+    // O lembrete D-1 usa a outbox, que é ordenada por conversa. Agendamentos
+    // criados manualmente antes não criavam conversa e o cron os pulava mesmo
+    // quando o telefone estava preenchido (caso Ximendes/Carla). A origem do
+    // lead continua "manual"; a conversa é WhatsApp porque será o canal usado.
+    // Criamos a conversa antes do booking para que uma falha de persistência não
+    // retorne erro depois de uma consulta já ter sido criada no calendário.
+    const conversationRepo = new DrizzleConversationRepository();
+    const existingConversation = await conversationRepo.findByLeadId(lead.id);
+    if (!existingConversation) {
+      const nowConversation = new Date();
+      await conversationRepo.saveConversation({
+        id: crypto.randomUUID(),
+        clinicId,
+        leadId: lead.id,
+        channel: "whatsapp",
+        category: "sales",
+        externalThreadId: reminderAddress,
+        summary: "Conversa criada pelo agendamento manual para confirmação e lembrete.",
+        aiPaused: false,
+        takeoverExpiresAt: null,
+        needsAttention: false,
+        attentionReason: null,
+        consecutiveUnclearCount: 0,
+        lastMessageAt: null,
+        createdAt: nowConversation,
+        updatedAt: nowConversation,
+      });
     }
 
     // Procedimentos combinados: resolve nome (junção), valor (soma do preço efetivo,

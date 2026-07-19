@@ -37,7 +37,7 @@ Trabalhamos com opções bem flexíveis de pagamento, podendo parcelar em até 2
 
 Caso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.
 
-Para reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal para confirmar a avaliação. Esse sinal é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ 54.659.849/0001-09 em nome de Dr. Victor Cavalcante.`;
+Para reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal não é uma cobrança pela avaliação: ele é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ 54.659.849/0001-09 em nome de Dr. Victor Cavalcante.`;
 
 const OLD_PRICE_OBJECTION = {
   objection: "Vocês me passaram um valor menor antes / era mais barato antes",

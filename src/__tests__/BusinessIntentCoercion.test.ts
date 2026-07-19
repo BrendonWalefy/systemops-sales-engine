@@ -13,6 +13,7 @@ import {
   hasExplicitPipelineTreatmentTrigger,
   isBusinessHoursQuestion,
   isSimplePaymentPolicyQuestion,
+  resolvePipelineSourceTreatment,
 } from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { toWhatsAppFormatting } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -150,6 +151,12 @@ describe("horário de atendimento determinístico", () => {
     expect(isBusinessHoursQuestion("Quero agendar sábado")).toBe(false);
   });
 
+  it("não confunde data concreta de agendamento com horário institucional (caso Tatiana)", () => {
+    expect(isBusinessHoursQuestion("Me agenda por gentileza dia 8/8 se tiver horário")).toBe(false);
+    expect(isBusinessHoursQuestion("Tem horário dia 08/08?")).toBe(false);
+    expect(isBusinessHoursQuestion("Qual o horário de funcionamento no dia 08/08?")).toBe(true);
+  });
+
   it("responde sábado a partir do businessHours cadastrado", () => {
     expect(
       buildBusinessHoursAnswer("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.", "Vocês atendem aos sábados?"),
@@ -227,6 +234,27 @@ describe("hasExplicitPipelineTreatmentTrigger", () => {
         treatment: lenses,
       }),
     ).toBe(false);
+  });
+});
+
+describe("pipeline canônico compartilhado por variantes", () => {
+  it("faz Premium/Estratificada reutilizarem o pipeline pai sem duplicar steps", () => {
+    const parent = treatment("Lentes em Resina Composta", {
+      id: "lenses-parent",
+      pipelineSteps: [{ type: "content", label: "Cards e fotos", blocks: [] }],
+    });
+    const child = treatment("Lente em Resina Estratificada", {
+      id: "layered-child",
+      pipelineSourceTreatmentId: parent.id,
+    });
+    expect(resolvePipelineSourceTreatment(child, [child, parent])).toBe(parent);
+  });
+
+  it("faz fallback seguro se o vínculo estiver órfão ou for de outra clínica", () => {
+    const child = treatment("Lente em Resina Estratificada", {
+      pipelineSourceTreatmentId: "missing",
+    });
+    expect(resolvePipelineSourceTreatment(child, [child])).toBe(child);
   });
 });
 
