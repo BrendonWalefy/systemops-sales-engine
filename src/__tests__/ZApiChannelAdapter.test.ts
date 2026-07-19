@@ -7,6 +7,7 @@ import {
   createZApiInstance,
   applyZApiInstancePreset,
   sendZApiButtonListMessage,
+  sendZApiMediaMessage,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -110,6 +111,33 @@ describe("sendZApiButtonListMessage", () => {
           { id: "deposit:12:reject", label: "Pix não localizado" },
         ],
       },
+    });
+  });
+});
+
+describe("sendZApiMediaMessage", () => {
+  it("inclui a extensão e o nome ao enviar documento", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ messageId: "document-msg-1" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sendZApiMediaMessage(
+      "5511999999999",
+      "https://blob.example/arquivo-sem-extensao",
+      "document",
+      { instanceId: "instance-1", token: "token-1" },
+      "Segue a proposta",
+      "Proposta Comercial.pdf",
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.z-api.io/instances/instance-1/token/token-1/send-document/pdf");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      phone: "5511999999999",
+      document: "https://blob.example/arquivo-sem-extensao",
+      caption: "Segue a proposta",
+      fileName: "Proposta Comercial.pdf",
     });
   });
 });
