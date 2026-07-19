@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildGuidedPipelineContentDraft,
   buildGuidedPipelinePackage,
   GUIDED_PIPELINE_ACTION_START_RAILS,
   summarizeGuidedPipelinePackage,
@@ -37,6 +38,28 @@ describe("GuidedPipelineActions", () => {
       { type: "media", mediaId: "estratificada-card", caption: undefined },
       { type: "text", content: "Pode me enviar uma foto do seu sorriso para o doutor avaliar?" },
     ]);
+  });
+
+  it("builds a first content draft with text and media ids for deterministic sending", () => {
+    const step: Extract<PipelineStep, { type: "content" }> = {
+      type: "content",
+      label: "Valores",
+      blocks: [
+        { kind: "text", content: "Temos duas tecnicas de lentes." },
+        { kind: "media", mediaId: "premium-card", caption: "Valores Premium" },
+        { kind: "media", mediaId: "estratificada-card" },
+      ],
+    };
+
+    expect(buildGuidedPipelineContentDraft(step)).toEqual({
+      text: "Temos duas tecnicas de lentes.",
+      mediaIds: ["premium-card", "estratificada-card"],
+      parts: [
+        { type: "text", content: "Temos duas tecnicas de lentes." },
+        { type: "media", mediaId: "premium-card", caption: "Valores Premium" },
+        { type: "media", mediaId: "estratificada-card", caption: undefined },
+      ],
+    });
   });
 
   it("does not include scheduling steps in the preview", () => {
