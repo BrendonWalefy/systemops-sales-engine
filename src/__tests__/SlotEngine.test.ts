@@ -89,7 +89,10 @@ describe("SlotEngine", () => {
       postEventBufferMinutes: 60,
     });
 
-    expect(starts).toEqual(["12:00"]);
+    // Evento 9h30-10h30 + 60min de buffer ocupa até 11h30: a primeira marca limpa
+    // livre é exatamente 11h30 (a grade antiga, presa ao cursor de hora em hora a
+    // partir das 9h, só enxergava 12h).
+    expect(starts).toEqual(["11:30", "12:30"]);
   });
 
   it("returns no slot when revalidating a candidate inside the post-event buffer", () => {
@@ -145,10 +148,11 @@ describe("SlotEngine", () => {
     expect(starts).toEqual(["13:00", "14:00", "15:00", "16:00", "17:00"]);
   });
 
-  it("20 Lentes (4h) + 60min buffer: segundo 20 Lentes não cabe no mesmo dia", () => {
-    // Após um 20 Lentes às 8h-12h + 60min buffer (ocupa até 13h),
-    // o próximo slot de 4h começaria às 12h (overlap com buffer) ou 16h (16+4=20h, fora do expediente)
-    // → nenhum slot de 4h disponível no mesmo dia
+  it("20 Lentes (4h) + 60min buffer: segundo 20 Lentes cabe às 13h", () => {
+    // Após um 20 Lentes às 8h-12h + 60min buffer (ocupa até 13h), o dia ainda
+    // comporta um segundo procedimento de 4h das 13h às 17h — dentro do expediente
+    // e respeitando o buffer. A grade antiga (cursor rígido de 4h em 4h a partir
+    // das 8h) só testava 12h e 16h e perdia esse encaixe.
     const starts = slotStarts({
       timezone: tz,
       businessHours,
@@ -162,7 +166,7 @@ describe("SlotEngine", () => {
       postEventBufferMinutes: 60,
     });
 
-    expect(starts).toEqual([]);
+    expect(starts).toEqual(["13:00"]);
   });
 
   it("20 Lentes (4h) sem eventos: slots disponíveis às 8h e 12h dentro do expediente", () => {
@@ -180,6 +184,49 @@ describe("SlotEngine", () => {
     });
 
     expect(starts).toEqual(["08:00", "12:00"]);
+  });
+
+  // ── Regressão: horários quebrados (Ximendes — Avaliação de 40min) ──
+  // A grade antiga somava a duração num cursor contínuo a partir de `from`,
+  // atravessando noites: com 40min os slots caíam em 8h20/12h20/14h20. Todo
+  // início ofertado precisa estar em marca de :00 ou :30, em todos os dias.
+
+  it("duração de 40min só gera inícios em :00/:30, em todos os dias da janela", () => {
+    const slots = computeAvailableSlots({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: localDate(8),
+      to: tz.fromLocalParts(2026, 0, 8, 0, 0),
+      slotDurationMinutes: 40,
+      clinicId: "clinic-test",
+    });
+
+    expect(slots.length).toBeGreaterThan(10);
+    for (const slot of slots) {
+      const parts = tz.toLocalParts(slot.startsAt);
+      expect([0, 30]).toContain(parts.minute);
+    }
+    // Slots de 40min não se sobrepõem: 8h00-8h40 aceita, próxima marca livre é 9h00.
+    const firstDay = slots
+      .filter((s) => tz.toLocalParts(s.startsAt).day === 5)
+      .map((s) => localTimeLabel(s.startsAt));
+    expect(firstDay.slice(0, 3)).toEqual(["08:00", "09:00", "10:00"]);
+  });
+
+  it("duração de 45min também se mantém nas marcas de :00/:30", () => {
+    const starts = slotStarts({
+      timezone: tz,
+      businessHours,
+      existingEvents: [],
+      from: localDate(8),
+      to: localDate(12),
+      slotDurationMinutes: 45,
+      clinicId: "clinic-test",
+    });
+
+    // 8h00-8h45 → próxima marca livre 9h00; nada em :45 ou :15.
+    expect(starts).toEqual(["08:00", "09:00", "10:00", "11:00"]);
   });
 
   it("does not add post-event buffer to events marked as operational blocks", () => {
