@@ -1127,6 +1127,39 @@ export function isRemotePreEvaluationRequest(message: string): boolean {
   return mentionsRemoteChannel || mentionsRemoteMedia;
 }
 
+// W4.3 (caso Paula, 19/07): o operador (clinic_user) assume o agendamento
+// manualmente — faz a pré-avaliação, avança o lead além da avaliação e oferta um
+// horário concreto PARA O PROCEDIMENTO. A IA é cega às mensagens do operador
+// (lastAgentMessage só lê author==="agent") e, quando o lead confirma esse
+// horário, reverte ao script "avaliação é o primeiro passo", re-ofertando o
+// mesmo horário como se fosse avaliação — contradizendo o operador num lead
+// quase fechando. Detecta se a ÚLTIMA oferta concreta de horário no histórico
+// foi feita pelo operador; nesse caso o booking é gerido por ele e a IA não pode
+// sobrepor com sua própria lógica de avaliação.
+const CONCRETE_SLOT_TIME_RE = /\b\d{1,2}(?:[:h]\d{2}|\s*h(?:oras?)?)\b/i;
+const SLOT_OFFER_CONTEXT_RE =
+  /\b(?:horario|horarios|vagou|vaga|disponivel|disponiveis|marcar|agendar|agendamento|reserv|sabado|sab|domingo|segunda|terca|quarta|quinta|sexta|dia)\b/;
+
+function messageOffersConcreteSlot(body: string): boolean {
+  if (!CONCRETE_SLOT_TIME_RE.test(body)) return false;
+  return SLOT_OFFER_CONTEXT_RE.test(normalizeFreeText(body));
+}
+
+// Retorna true se a oferta de horário concreta MAIS RECENTE do histórico partiu
+// do operador (clinic_user), não da IA. Se a IA fez a última oferta, o fluxo
+// normal (pendingSlots) cuida da confirmação.
+export function lastSlotOfferWasByOperator(
+  history: Pick<Message, "author" | "body">[],
+): boolean {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.author !== "clinic_user" && m.author !== "agent") continue;
+    if (!messageOffersConcreteSlot(m.body)) continue;
+    return m.author === "clinic_user";
+  }
+  return false;
+}
+
 export function didAgentAskToShowAvailability(message?: string | null): boolean {
   const normalized = normalizeFreeText(message ?? "");
   if (!normalized) return false;
@@ -4221,6 +4254,22 @@ export class ConversationOrchestrator {
       maintenanceHandoffReason = "Definição clínica de quantidade/combinação de procedimentos — avaliação do doutor necessária";
     }
 
+    // W4.3 (caso Paula): o operador ofertou um horário concreto manualmente e o
+    // lead está respondendo a ELE. Sem oferta do sistema pendente, a IA não pode
+    // re-derivar slots de avaliação (contradiz o operador) — devolve o controle a
+    // ele com um aceno caloroso e determinístico. Só para intenções de agenda ou
+    // quando o lead cita uma data.
+    const leadIsRespondingToBooking =
+      effectiveIntent === "book_appointment" ||
+      effectiveIntent === "check_availability" ||
+      effectiveIntent === "confirm_slot" ||
+      effectiveIntent === "reject_slots" ||
+      extractExplicitPreferredDateFromText(messageText) !== null;
+    const operatorManagedBooking =
+      !hasPendingOffer &&
+      leadIsRespondingToBooking &&
+      lastSlotOfferWasByOperator(allMessages);
+
     // ── A6: Triagem de caso clínico atípico ──
     // Dente fraturado, só raiz, ponte, prótese, implante, extração: a IA empurrava o
     // pitch padrão de lentes. O sistema decide: não cotar; fazer a triagem que o doutor
@@ -4571,8 +4620,37 @@ export class ConversationOrchestrator {
         replyText = await compose({ type: "acknowledgment" });
       }
     } else if (businessHoursQuestion) {
-      replyText = buildBusinessHoursAnswer(clinic.businessHours, messageText);
+      const businessHoursAnswer = buildBusinessHoursAnswer(clinic.businessHours, messageText);
+      // W4.3b (caso Paula): duas perguntas de horário no mesmo burst geravam a
+      // MESMA resposta determinística duas vezes (o debounce nem sempre funde o
+      // burst). Não reenvia se a última resposta do agente foi idêntica há < 2min.
+      if (
+        lastAgentMessage &&
+        lastAgentMessage.body.trim() === businessHoursAnswer.trim() &&
+        Date.now() - lastAgentMessage.sentAt.getTime() < 2 * 60 * 1000
+      ) {
+        // Claim liberado pelo finally do processamento principal.
+        return { replied: false };
+      }
+      replyText = businessHoursAnswer;
       forceTextOnlyReply = true;
+    } else if (operatorManagedBooking) {
+      // W4.3: o operador está conduzindo o agendamento — a IA acena e devolve o
+      // controle, sem re-derivar avaliação nem contradizer a oferta manual.
+      replyText = "Perfeito! Vou confirmar esse horário com a nossa equipe e já te retorno para fecharmos tudo. 😊";
+      forceTextOnlyReply = true;
+      const bookingReason = "Operador ofertou horário manualmente — lead respondeu; confirmar agendamento no painel";
+      await db
+        .update(conversationsTable)
+        .set({
+          aiPaused: true,
+          takeoverExpiresAt: null,
+          needsAttention: true,
+          attentionReason: bookingReason,
+          updatedAt: new Date(),
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+      await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, bookingReason);
     } else {
       switch (effectiveIntent) {
       // ── Confirmação de slot ──
@@ -6144,6 +6222,40 @@ export class ConversationOrchestrator {
                 .map((part) => part.type === "text" ? { ...part, content: stripPriceProseWhenSystemQuoted(part.content) } : part)
                 .filter((part) => part.type !== "text" || part.content.length > 0),
             ];
+          } else if (isPriceShapedIntent) {
+            // W4.2 (caso ST): pergunta de preço que o classificador rotulou
+            // general_question ("é esse valor de 2k mesmo?") deve receber os cards
+            // curados de valores, não a prosa com números. Emenda os cards (uma
+            // vez) após limpar os valores da prosa — sem descartar as demais
+            // partes de uma pergunta composta (avaliação, agendamento, endereço).
+            const priceCardTreatment = findPipelineTreatmentContextForPriceRequest({
+              message: messageText,
+              treatments: clinicTreatments,
+              identifiedTreatment: classification.slotPreference.identifiedTreatment ?? null,
+              activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
+              history: allMessagesForContext,
+            });
+            const priceCardContent = priceCardTreatment?.pipelineSteps
+              ? nextActivePipelineStep(priceCardTreatment.pipelineSteps, 0, {
+                  conversationHistory: allMessagesForContext,
+                })
+              : null;
+            if (
+              priceCardTreatment &&
+              priceCardContent?.step.type === "content" &&
+              !hasPipelineContentStepBeenSent(priceCardContent.step, allMessagesForContext)
+            ) {
+              const cards = buildPipelineContentReply(priceCardContent.step);
+              const scrubbedParts = composedParts
+                .map((part) => part.type === "text" ? { ...part, content: stripPriceProseWhenSystemQuoted(part.content) } : part)
+                .filter((part) => part.type !== "text" || part.content.length > 0);
+              composedParts = [...scrubbedParts, ...cards.parts];
+              composedMediaIds = collectMediaIds(composedParts);
+              replyText = composedParts
+                .filter((p): p is { type: "text"; content: string } => p.type === "text")
+                .map((p) => p.content)
+                .join("\n\n");
+            }
           }
         }
         if ((menuGeneralSubtype === "procedures" || directProcedureCatalogRequested) && clinicTreatments.length > 0) {

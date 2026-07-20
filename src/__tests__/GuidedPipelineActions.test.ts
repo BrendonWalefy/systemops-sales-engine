@@ -102,6 +102,38 @@ describe("GuidedPipelineActions", () => {
     ]);
   });
 
+  // A etapa de fechamento é config-driven: vira acionável só quando a clínica
+  // cobra sinal. Sem isso, segue automática como qualquer outra etapa de agenda.
+  it("marca a etapa book como acionável quando a clínica cobra sinal", () => {
+    const steps: PipelineStep[] = [
+      { type: "content", label: "Apresentação", blocks: [{ kind: "text", content: "Oi" }] },
+      { type: "offer_slots", label: "Mostrar horários" },
+      { type: "book", label: "Confirmar agendamento" },
+    ];
+
+    const withDeposit = listGuidedPipelineSections(steps, { depositEnabled: true });
+    expect(withDeposit[2]).toEqual(
+      expect.objectContaining({
+        stepIndex: 2,
+        type: "book",
+        mode: "schedule",
+        actionLabel: "Reservar horário e pedir sinal",
+      }),
+    );
+    // offer_slots continua automática mesmo com sinal habilitado
+    expect(withDeposit[1]).toEqual(expect.objectContaining({ mode: "automatic" }));
+
+    const withoutDeposit = listGuidedPipelineSections(steps, { depositEnabled: false });
+    expect(withoutDeposit[2]).toEqual(
+      expect.objectContaining({ mode: "automatic", actionLabel: "Etapa automática" }),
+    );
+
+    // Sem capabilities informadas, comportamento antigo preservado
+    expect(listGuidedPipelineSections(steps)[2]).toEqual(
+      expect.objectContaining({ mode: "automatic" }),
+    );
+  });
+
   it("does not include scheduling steps in the preview", () => {
     const steps: PipelineStep[] = [
       { type: "content", label: "Intro", blocks: [{ kind: "text", content: "Intro" }] },

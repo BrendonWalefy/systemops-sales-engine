@@ -290,3 +290,47 @@ seriam melhores).
   há 28h+, conversa pausada ("Operador acionou atendimento especializado").
 - **Giuliana (5511961908480):** enviou foto de pré-avaliação 19/07 04:49 —
   equipe ainda não retornou.
+
+## Wave 4 — contexto do operador + preço em prosa (19/07 noite, código de prod b2063c3)
+
+Verificada contra o código REAL de produção e validada por replay (branch Neon fresco). Commit na branch `feat/conversation-quality-wave4`.
+
+- **W4.1 (Lineeh — "avaliar por aqui" → foto): JÁ ESTAVA EM PRODUÇÃO.** `isRemotePreEvaluationRequest` detecta "avaliar/análise + por aqui/whatsapp/mandar foto" e emenda o bloco de instrução de foto. Nada a fazer.
+- **W4.2 (ST — preço vira prosa no caminho geral):** pergunta de preço que o classificador rotula `general_question` ("é esse valor de 2k mesmo?") agora recebe os CARDS curados de valores (emenda, sem descartar as partes compostas de avaliação/agendamento; prosa de R$ é limpa). `isPriceShapedIntent` já existia; faltava rotear no caminho geral.
+- **W4.3 (Paula — IA cega ao operador, CRÍTICO):** `lastAgentMessage` só lia `author==="agent"`, ignorando o operador. Quando o operador ofertava um horário para o PROCEDIMENTO e o lead confirmava, a IA revertia a "avaliação presencial é o primeiro passo", contradizendo o operador. Novo `lastSlotOfferWasByOperator` + guard `operatorManagedBooking`: se a última oferta concreta de horário foi do operador e não há oferta do sistema pendente, o lead confirmando roteia para pausa+alerta (aceno caloroso determinístico), devolvendo o controle ao operador.
+- **W4.3b (Paula — horário duplicado):** resposta determinística de horário de atendimento não reenvia se idêntica à última do agente há < 2min (burst que furava o debounce).
+
+Replay 19/07 (branch `replay-wave4-19b`, driver `scripts/replay-wave4-guards.ts`):
+- Paula ✅ → "Perfeito! Vou confirmar esse horário com a nossa equipe..." + aiPaused + alerta; sem "avaliação presencial".
+- ST ✅ → resposta curta de avaliação/agendamento + cards Premium/Estratificada (sem valores em prosa).
+
+## Etapa de fechamento acionável (20/07) — sinal no atendimento manual
+
+**Problema (caso Paula):** quando o operador assume o agendamento no braço, ele
+perde todo o maquinário de sinal. O caminho manual (`register-appointment` +
+copiar/colar a mensagem do Pix) **não engata a máquina de estado do depósito**,
+então o comprovante do lead não é reconhecido: não dispara os botões de validação
+do responsável, não abre o `DepositBanner` e não gera a confirmação/liberação
+automática. Na Paula isso ainda causou erro de data no copiar/colar.
+
+**Solução (config-driven, sem nada específico de clínica):** a etapa `book` do
+pipeline — que já existia na config e era inerte ("Etapa automática") — virou
+**acionável** no mesmo painel de pipeline que já lista as etapas da empresa.
+
+- `listGuidedPipelineSections(steps, { depositEnabled })` → a etapa `book` ganha
+  `mode: "schedule"` e rótulo "Reservar horário e pedir sinal" **apenas quando a
+  clínica cobra sinal**; sem isso segue automática, como antes.
+- `POST /pipeline-actions` com `stepIndex` da etapa `book` + `date`/`time`:
+  reserva o horário **PROVISORIAMENTE** (`SlotReservationService`, TTL do sinal),
+  grava `startDepositWait` com o payload completo e envia o
+  `buildDepositRequestMessage` da própria clínica. Nunca cria agendamento efetivo
+  — a efetivação continua sendo só após a validação do Pix. Falha depois da
+  reserva libera o slot para não travar a agenda.
+- Valores (Pix, valor, TTL, observações) vêm da config da organização; qualquer
+  clínica com `deposit_enabled` ganha, sem código novo.
+
+**Replay end-to-end (branch Neon isolado):** operador aciona a etapa → rota
+retorna `deposit_requested` (Sáb 25/07 às 16h), reserva fica `pending`, estado
+`awaiting_deposit_proof`, lead recebe o pedido de sinal → lead envia comprovante
+→ estado `deposit_proof_received` + atenção "validar Pix P3" (botões do
+responsável disparados) + "Recebemos seu comprovante!" ao lead. ✅
