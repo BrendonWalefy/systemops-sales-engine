@@ -89,6 +89,7 @@ import {
   buildHumanReviewButtons,
   buildHumanReviewContextUpdateMessage,
   buildHumanReviewPendingLeadMessage,
+  buildHumanReviewFollowUpAckMessage,
   buildHumanReviewRequestMessage,
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
@@ -918,6 +919,18 @@ function matchTreatmentByNormalizedMessage(
     treatments.find((t) => matches(t)) ??
     null
   );
+}
+
+// Enquanto uma revisão clínica está pendente, toda mensagem do lead volta pelo
+// mesmo caminho. O aviso completo ("encaminhei ao Doutor, a automação fica
+// pausada") é de primeiro contato: se a última fala do agente já foi esse aviso,
+// o lead já leu a explicação e o que cabe é um ack curto.
+export function shouldSendShortReviewAck(messages: Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.author === "agent") return message.intent === "needs_human";
+  }
+  return false;
 }
 
 // Descarta candidatos que se sobrepõem a uma reserva ativa. Mesma detecção de
@@ -3526,7 +3539,11 @@ export class ConversationOrchestrator {
           return { replied: false };
         }
 
-        const pendingReviewText = buildHumanReviewPendingLeadMessage(lead.name);
+        const pendingReviewText = shouldSendShortReviewAck(
+          await this.conversationRepo.listMessages(conversation.id),
+        )
+          ? buildHumanReviewFollowUpAckMessage(lead.name)
+          : buildHumanReviewPendingLeadMessage(lead.name);
         const photoAgentId = randomUUID();
         await this.conversationRepo.appendMessage({
           id: photoAgentId,
@@ -3790,7 +3807,11 @@ export class ConversationOrchestrator {
         url: `/app/inbox/${conversation.id}`,
       }).catch(() => {});
 
-      const pendingText = buildHumanReviewPendingLeadMessage(lead.name);
+      const pendingText = shouldSendShortReviewAck(
+        await this.conversationRepo.listMessages(conversation.id),
+      )
+        ? buildHumanReviewFollowUpAckMessage(lead.name)
+        : buildHumanReviewPendingLeadMessage(lead.name);
       const pendingAgentId = randomUUID();
       await this.conversationRepo.appendMessage({
         id: pendingAgentId,

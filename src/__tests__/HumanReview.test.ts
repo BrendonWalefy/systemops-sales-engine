@@ -4,6 +4,7 @@ import {
   buildHumanReviewButtonPromptMessage,
   buildHumanReviewContextUpdateMessage,
   buildHumanReviewDecisionConfirmation,
+  buildHumanReviewFollowUpAckMessage,
   buildHumanReviewInvalidReplyMessage,
   buildHumanReviewManualAttentionReason,
   buildHumanReviewPendingLeadMessage,
@@ -96,6 +97,23 @@ describe("human review WhatsApp decisions", () => {
     ).toContain("Informação nova — Avaliação A2");
     expect(buildHumanReviewPendingLeadMessage("Nataly Silva")).toContain("Recebi sua foto, Nataly");
     expect(buildHumanReviewPendingLeadMessage("Nataly Silva")).toContain("automação fica pausada");
+  });
+
+  // Replay 20/07 (Simone): o aviso completo saiu 4 vezes na mesma conversa, um
+  // por mensagem enviada enquanto a revisão seguia pendente. O ack de follow-up
+  // reconhece sem reexplicar a pausa que o lead já leu.
+  it("usa ack curto no follow-up, sem repetir a explicação da pausa", () => {
+    const ack = buildHumanReviewFollowUpAckMessage("Simone De Paula");
+    expect(ack).toContain("Simone");
+    expect(ack).not.toContain("automação fica pausada");
+    expect(ack).not.toContain("Recebi sua foto");
+    // Uma linha só — o texto longo é o de primeiro contato.
+    expect(ack.split("\n")).toHaveLength(1);
+  });
+
+  it("ack de follow-up funciona sem nome do lead, sem vírgula de saudação órfã", () => {
+    const ack = buildHumanReviewFollowUpAckMessage(null);
+    expect(ack.startsWith("Anotei aqui e")).toBe(true);
   });
 
   it("confirma a decisão com nome do paciente e instrui resposta inválida", () => {
