@@ -939,6 +939,86 @@ export function rejectSlotsOverlappingReservations<T extends { startsAt: Date; e
   );
 }
 
+// Resolve a resposta do lead à lista de horários quando ela vem como dia
+// ("segunda"), período ("de manhã") ou hora ("às 9h") em vez do número da opção.
+// Sem isso o confirm_slot assumia a opção 1 — "segunda" com a lista
+// [1. Seg 9h, 2. Qua 16h] podia confirmar silenciosamente a quarta — e, quando a
+// reserva da opção 1 falhava, o lead ouvia o falso "seu horário ficou
+// indisponível" mesmo tendo pedido um dia presente na lista.
+//
+// Retorna "passthrough" sempre que não tiver base para decidir: o chamador
+// mantém o comportamento anterior (guarda de data + fallback existentes).
+export function resolvePendingSlotChoice(params: {
+  slotPreference: SlotPreference;
+  // Estrutural de propósito: só precisa do que usa, então FormattedSlot serve sem
+  // obrigar os testes a montar campos irrelevantes para a decisão.
+  pendingSlots: Array<{ index: number; startsAt: string; label: string }> | null | undefined;
+  timezone: ClinicTimezone;
+  businessHours: ParsedBusinessHours;
+}):
+  | { kind: "passthrough" }
+  | { kind: "resolved"; index: number }
+  | { kind: "ambiguous"; matches: Array<{ index: number; label: string }> }
+  | { kind: "no_match" } {
+  const { slotPreference, pendingSlots, timezone, businessHours } = params;
+  // slotChoice explícito (o lead digitou o número) segue o caminho normal.
+  if (slotPreference.slotChoice != null || !pendingSlots?.length) return { kind: "passthrough" };
+
+  const hasDate = Boolean(slotPreference.preferredDate);
+  const hasPeriod = Boolean(slotPreference.preferredPeriod);
+  const hasTime = Boolean(slotPreference.preferredTime);
+  if (!hasDate && !hasPeriod && !hasTime) return { kind: "passthrough" };
+
+  const targetDay = hasDate
+    ? timezone.resolvePreferredDate(slotPreference.preferredDate!, new Date(), businessHours)
+    : null;
+  const targetDayParts = targetDay ? timezone.toLocalParts(targetDay) : null;
+
+  let preferredHour: number | null = null;
+  if (hasTime) {
+    const hourMatch = slotPreference.preferredTime!.match(/(\d{1,2})/);
+    preferredHour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+    if (preferredHour !== null) {
+      // Normaliza hora ambígua para horário comercial: "às 3" com clínica 8-18 → 15h.
+      const pmCandidate = preferredHour + 12;
+      if (
+        preferredHour < businessHours.startHour &&
+        pmCandidate >= businessHours.startHour &&
+        pmCandidate < businessHours.endHour
+      ) {
+        preferredHour = pmCandidate;
+      }
+    }
+  }
+
+  // Nenhum filtro utilizável (ex.: data que não parseia e nada mais) — não decide.
+  if (!targetDayParts && !hasPeriod && preferredHour === null) return { kind: "passthrough" };
+
+  const matches = pendingSlots.filter((slot) => {
+    const parts = timezone.toLocalParts(new Date(slot.startsAt));
+    if (
+      targetDayParts &&
+      (parts.year !== targetDayParts.year || parts.month !== targetDayParts.month || parts.day !== targetDayParts.day)
+    ) {
+      return false;
+    }
+    if (hasPeriod) {
+      const period = slotPreference.preferredPeriod;
+      if (period === "morning" && parts.hour >= 12) return false;
+      if (period === "afternoon" && (parts.hour < 12 || parts.hour >= 18)) return false;
+      if (period === "evening" && parts.hour < 18) return false;
+    }
+    if (preferredHour !== null && parts.hour !== preferredHour) return false;
+    return true;
+  });
+
+  if (matches.length === 1) return { kind: "resolved", index: matches[0].index };
+  if (matches.length > 1) {
+    return { kind: "ambiguous", matches: matches.map((m) => ({ index: m.index, label: m.label })) };
+  }
+  return { kind: "no_match" };
+}
+
 export function resolveDirectTreatmentMention(
   message: string,
   treatments: Treatment[],
@@ -4705,6 +4785,51 @@ export class ConversationOrchestrator {
           }
         }
 
+        // Lead respondeu com dia/período/hora em vez do número: resolve contra os
+        // slots pendentes antes de assumir qualquer opção. Roda ANTES da guarda de
+        // data abaixo, que continua sendo a dona do caso "data não bate" (ramo
+        // validado por replay nas waves 3/4).
+        const pendingChoice = resolvePendingSlotChoice({ slotPreference, pendingSlots, timezone, businessHours });
+
+        if (pendingChoice.kind === "ambiguous") {
+          // Mais de uma opção pendente atende ao que o lead pediu — pergunta qual,
+          // preservando os números originais da lista. A oferta continua válida.
+          const optionLines = pendingChoice.matches.map((m) => `${m.index}. ${m.label}`).join("\n");
+          replyText = [
+            "Perfeito! Tenho estas opções que encaixam no que você pediu:",
+            "",
+            optionLines,
+            "",
+            "Me responde só com o número da opção que preferir. 😊",
+          ].join("\n");
+          forceTextOnlyReply = true;
+          break;
+        }
+
+        // Período/hora pedidos não batem com nenhum slot pendente e não há data no
+        // pedido — caso que a guarda abaixo não cobre (ela exige preferredDate) e
+        // que, sem isto, cairia no fallback da opção 1. Busca horários novos já com
+        // a preferência do lead.
+        if (pendingChoice.kind === "no_match" && !slotPreference.preferredDate) {
+          await this.stateMachine.invalidate(conversation.id);
+          const { slots: prefSlots, preferredDayEmpty: prefEmpty } = await this.fetchAndOfferSlots(
+            conversation.id, clinic, calendarGateway, timezone, businessHours,
+            undefined,
+            slotPreference.preferredPeriod ?? undefined,
+            slotPreference.preferredTime ?? undefined,
+            undefined, undefined, voiceEnabled,
+          );
+          if (prefSlots.length > 0 && !prefEmpty) {
+            replyText = await compose({ type: "slots_found", slots: prefSlots, askedForPreference: false });
+            forceTextOnlyReply = true;
+          } else if (prefSlots.length > 0) {
+            replyText = await compose({ type: "no_slots_available", alternativeSlots: prefSlots });
+          } else {
+            replyText = await compose({ type: "no_slots_available" });
+          }
+          break;
+        }
+
         // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
         // que não bate com nenhum slot pendente, trata como nova solicitação para essa data.
         if (!slotPreference.slotChoice && slotPreference.preferredDate && pendingSlots) {
@@ -4744,7 +4869,9 @@ export class ConversationOrchestrator {
           }
         }
 
-        const choiceIndex = slotPreference.slotChoice ?? 1;
+        const choiceIndex = pendingChoice.kind === "resolved"
+          ? pendingChoice.index
+          : (slotPreference.slotChoice ?? 1);
         const chosenSlot = pendingSlots
           ? pendingSlots.find((s) => s.index === choiceIndex) ?? pendingSlots[0]
           : null;
