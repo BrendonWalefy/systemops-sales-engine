@@ -39,11 +39,19 @@ export type GuidedPipelineSection = {
   stepNumber: number;
   type: PipelineStep["type"];
   label: string;
-  mode: "send" | "arm" | "automatic";
+  // "schedule": etapa de fechamento que exige um horário escolhido pelo operador.
+  mode: "send" | "arm" | "automatic" | "schedule";
   actionLabel: string;
   textParts: number;
   mediaParts: number;
   preview: string | null;
+};
+
+// Capacidades da clínica que tornam etapas de fechamento acionáveis. Vem da
+// config da própria organização (deposit_enabled/valor) — nenhuma clínica é
+// tratada de forma especial no código.
+export type GuidedPipelineClinicCapabilities = {
+  depositEnabled?: boolean;
 };
 
 function contentBlockToPart(block: ContentBlock): GuidedPipelinePart | null {
@@ -93,6 +101,7 @@ export function buildGuidedPipelineStepDraft(
 
 export function listGuidedPipelineSections(
   pipelineSteps: PipelineStep[] | null | undefined,
+  capabilities: GuidedPipelineClinicCapabilities = {},
 ): GuidedPipelineSection[] {
   return (pipelineSteps ?? []).map((step, stepIndex) => {
     const draft = buildGuidedPipelineStepDraft(step);
@@ -100,16 +109,25 @@ export function listGuidedPipelineSections(
     const mediaParts = draft?.parts.filter((part) => part.type === "media").length ?? 0;
     const preview = draft?.parts.find((part) => part.type === "text")?.content.slice(0, 120) ??
       (step.type === "qa" ? step.instruction?.trim().slice(0, 120) ?? null : null);
+    // A etapa de fechamento ("book") só vira acionável quando a clínica cobra
+    // sinal: aí o operador reserva o horário provisoriamente e o pedido de sinal
+    // engata a máquina de estado (comprovante → validação → confirmação).
+    // Sem sinal configurado ela segue automática, como antes.
+    const bookIsActionable = step.type === "book" && capabilities.depositEnabled === true;
     const mode = step.type === "content" || step.type === "photo"
       ? "send"
       : step.type === "qa"
         ? "arm"
-        : "automatic";
+        : bookIsActionable
+          ? "schedule"
+          : "automatic";
     const actionLabel = mode === "send"
       ? step.type === "photo" ? "Enviar pedido e aguardar foto" : "Enviar esta etapa"
       : mode === "arm"
         ? "Ativar a IA nesta etapa"
-        : "Etapa automática";
+        : mode === "schedule"
+          ? "Reservar horário e pedir sinal"
+          : "Etapa automática";
 
     return {
       stepIndex,

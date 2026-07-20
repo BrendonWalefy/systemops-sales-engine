@@ -53,10 +53,18 @@ async function waitReply(phone: string, before: number, timeoutMs = 120_000) {
     if (grownAt && Date.now() - grownAt > 8000) return;
   }
 }
-async function insertMsg(convId: string, author: string, body: string, offsetMin: number, mediaType: string | null = null) {
+type MessageInsert = typeof messages.$inferInsert;
+
+async function insertMsg(
+  convId: string,
+  author: MessageInsert["author"],
+  body: string,
+  offsetMin: number,
+  mediaType: MessageInsert["mediaType"] = null,
+) {
   await db.insert(messages).values({
-    id: randomUUID(), conversationId: convId, author: author as any, body,
-    mediaType: mediaType as any, sentAt: new Date(Date.now() - offsetMin * 60_000), externalId: null,
+    id: randomUUID(), conversationId: convId, author, body,
+    mediaType, sentAt: new Date(Date.now() - offsetMin * 60_000), externalId: null,
   });
 }
 async function dump(phone: string, name: string) {

@@ -6,6 +6,9 @@ import { conversations, leads, mediaAssets, messages, organizations, treatments 
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
+import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
+import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import { buildDepositRequestMessage } from "@/core/conversation/DepositTemplates";
 import { ConversationOrchestrator, nextActivePipelineStep } from "@/core/pipeline/ConversationOrchestrator";
 import {
   buildGuidedPipelineContentDraft,
@@ -32,6 +35,11 @@ type PipelineActionRequest = {
   treatmentId?: string;
   action?: GuidedPipelineAction;
   stepIndex?: number;
+  // Etapa de fechamento ("book"): horário escolhido pelo operador, no fuso da
+  // clínica (date "YYYY-MM-DD", time "HH:MM") — mesma convenção do agendamento manual.
+  date?: string;
+  time?: string;
+  durationMinutes?: number;
 };
 
 type ResolvedPipelineMedia = {
@@ -127,6 +135,14 @@ export async function GET(
     .from(treatments)
     .where(eq(treatments.clinicId, sessionClinicId));
 
+  // Capacidade lida da config da própria clínica — decide se a etapa de
+  // fechamento do pipeline é acionável pelo operador.
+  const [capabilityRow] = await db
+    .select({ depositEnabled: organizations.depositEnabled })
+    .from(organizations)
+    .where(eq(organizations.id, sessionClinicId))
+    .limit(1);
+
   const options = treatmentRows
     .map((treatment) => {
       const pkg = buildGuidedPipelinePackage(
@@ -138,7 +154,9 @@ export async function GET(
         treatmentId: treatment.id,
         treatmentName: treatment.name,
         summary: summarizeGuidedPipelinePackage(pkg),
-        sections: listGuidedPipelineSections(treatment.pipelineSteps as PipelineStep[] | null),
+        sections: listGuidedPipelineSections(treatment.pipelineSteps as PipelineStep[] | null, {
+          depositEnabled: capabilityRow?.depositEnabled ?? false,
+        }),
       };
     })
     .filter((option): option is NonNullable<typeof option> => option !== null);
@@ -224,6 +242,160 @@ export async function POST(
     (!Number.isInteger(selectedStepIndex) || selectedStepIndex < 0 || selectedStepIndex >= pipelineSteps.length)
   ) {
     return NextResponse.json({ error: "Etapa de pipeline invalida" }, { status: 400 });
+  }
+
+  // ── Etapa de fechamento ("book") ──
+  // Config-driven: só é acionável quando a clínica cobra sinal. Reserva o horário
+  // PROVISORIAMENTE (nunca agendamento efetivo) e engata a máquina de estado do
+  // depósito — a partir daí o comprovante do lead dispara os botões de validação
+  // do responsável, o banner no inbox, a confirmação e a liberação automática no
+  // fim do TTL, exatamente como no fluxo conduzido pela IA.
+  if (selectedStepIndex !== undefined && pipelineSteps[selectedStepIndex]?.type === "book") {
+    const [depositClinic] = await db
+      .select({
+        depositEnabled: organizations.depositEnabled,
+        depositAmountCents: organizations.depositAmountCents,
+        depositPixKey: organizations.depositPixKey,
+        depositPixKeyType: organizations.depositPixKeyType,
+        depositRecipientName: organizations.depositRecipientName,
+        depositTtlHours: organizations.depositTtlHours,
+        depositNotes: organizations.depositNotes,
+        timezone: organizations.timezone,
+        defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, conv.clinicId))
+      .limit(1);
+
+    if (!depositClinic?.depositEnabled || !depositClinic.depositAmountCents) {
+      return NextResponse.json(
+        { error: "Esta clínica não tem sinal configurado — use Registrar agendamento" },
+        { status: 409 },
+      );
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "") || !/^\d{2}:\d{2}$/.test(body.time ?? "")) {
+      return NextResponse.json({ error: "Informe a data e o horário da reserva" }, { status: 400 });
+    }
+    const timezone = new ClinicTimezone(depositClinic.timezone);
+    const [year, month, day] = body.date!.split("-").map(Number);
+    const [hour, minute] = body.time!.split(":").map(Number);
+    const startsAt = timezone.fromLocalParts(year, month - 1, day, hour, minute);
+    const durationMinutes = body.durationMinutes && body.durationMinutes > 0
+      ? body.durationMinutes
+      : depositClinic.defaultAppointmentDurationMinutes;
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
+    if (Number.isNaN(startsAt.getTime())) {
+      return NextResponse.json({ error: "Horário inválido para a reserva" }, { status: 400 });
+    }
+
+    const ttlHours = depositClinic.depositTtlHours ?? 24;
+    const reservationService = new SlotReservationService();
+    const reservation = await reservationService.reserve(
+      conv.clinicId,
+      conv.leadId,
+      startsAt,
+      endsAt,
+      ttlHours * 60,
+    );
+    if (!reservation) {
+      return NextResponse.json({ error: "Esse horário já está reservado ou ocupado" }, { status: 409 });
+    }
+
+    const slotLabel = timezone.formatForHuman(startsAt);
+
+    try {
+      const stateMachine = new ConversationStateMachine();
+      await stateMachine.startDepositWait(
+        conversationId,
+        {
+          slotStartsAt: startsAt.toISOString(),
+          slotEndsAt: endsAt.toISOString(),
+          slotLabel,
+          reservationId: reservation.id,
+          treatmentId: treatment.id,
+          treatmentName: treatment.name,
+          valueCents: null,
+          depositAmountCents: depositClinic.depositAmountCents,
+          holdExpiresAt: new Date(Date.now() + ttlHours * 3600_000).toISOString(),
+        },
+        ttlHours * 60,
+      );
+
+      const depositText = buildDepositRequestMessage(
+        {
+          depositAmountCents: depositClinic.depositAmountCents,
+          depositPixKey: depositClinic.depositPixKey,
+          depositPixKeyType: depositClinic.depositPixKeyType,
+          depositRecipientName: depositClinic.depositRecipientName,
+          depositTtlHours: ttlHours,
+          depositNotes: depositClinic.depositNotes,
+        },
+        slotLabel,
+      );
+
+      const now = new Date();
+      const agentMessageId = randomUUID();
+      await db.insert(messages).values({
+        id: agentMessageId,
+        conversationId,
+        author: "agent",
+        body: depositText,
+        sentAt: now,
+        externalId: null,
+        intent: "confirm_slot",
+        deliveryFormat: "text",
+      });
+
+      // O lead vai responder com o comprovante: a IA precisa estar ativa para o
+      // intercept de mídia reconhecer o estado de sinal e acionar a validação.
+      await db
+        .update(conversations)
+        .set({
+          aiPaused: false,
+          takeoverExpiresAt: null,
+          needsAttention: false,
+          attentionReason: null,
+          aiResumedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(conversations.id, conversationId));
+
+      await enqueueOutboundMessage(
+        {
+          clinicId: conv.clinicId,
+          conversationId,
+          channel: "whatsapp",
+          deliveryKind: "text",
+          category: "reply",
+          payload: {
+            version: 1,
+            kind: "conversation_reply",
+            to: channelAddress,
+            agentMessageId,
+            replyText: depositText,
+            intent: "confirm_slot",
+            useVoice: false,
+            ttsConfig: DEFAULT_TTS_CONFIG,
+            interleavedParts: [],
+            mediaParts: [],
+            leadId: conv.leadId,
+            pipelineAdvance: null,
+          },
+        },
+        {
+          outboundMessageStore: new DrizzleOutboundMessageStore(),
+          jobQueue: new DrizzleJobQueue(),
+        },
+      );
+
+      return NextResponse.json({ ok: true, mode: "deposit_requested", slotLabel });
+    } catch (err) {
+      // Falhou depois de segurar o slot: libera para não travar a agenda.
+      await reservationService.release(reservation.id).catch(() => {});
+      console.error("[PipelineActions] Falha ao pedir sinal:", err);
+      return NextResponse.json({ error: "Falha ao registrar a reserva e pedir o sinal" }, { status: 500 });
+    }
   }
 
   const history = await db

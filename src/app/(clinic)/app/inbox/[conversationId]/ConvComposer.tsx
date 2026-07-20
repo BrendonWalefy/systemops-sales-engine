@@ -65,7 +65,7 @@ type PipelineSection = {
   stepNumber: number;
   type: "content" | "qa" | "photo" | "ask_availability" | "offer_slots" | "book";
   label: string;
-  mode: "send" | "arm" | "automatic";
+  mode: "send" | "arm" | "automatic" | "schedule";
   actionLabel: string;
   textParts: number;
   mediaParts: number;
@@ -101,6 +101,11 @@ export function ConvComposer({
   const [isLoadingPipeline, setIsLoadingPipeline] = useState(false);
   const [sendingPipelineKey, setSendingPipelineKey] = useState<string | null>(null);
   const [expandedPipelineTreatmentId, setExpandedPipelineTreatmentId] = useState<string | null>(null);
+  // Etapa de fechamento do pipeline: exige o horário que será reservado
+  // provisoriamente antes de pedir o sinal.
+  const [depositSlotKey, setDepositSlotKey] = useState<string | null>(null);
+  const [depositDate, setDepositDate] = useState("");
+  const [depositTime, setDepositTime] = useState("");
   const [discountCustom, setDiscountCustom] = useState("");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
@@ -285,12 +290,16 @@ export function ConvComposer({
           treatmentId: option.treatmentId,
           action: option.summary.action,
           ...(section ? { stepIndex: section.stepIndex } : {}),
+          ...(section?.mode === "schedule"
+            ? { date: depositDate, time: depositTime, durationMinutes: defaultDurationMinutes }
+            : {}),
         }),
       });
       const data: {
         error?: string;
-        mode?: "rails_replay" | "armed_only" | "armed_selected_step" | "sent_first_content" | "sent_selected_step";
+        mode?: "rails_replay" | "armed_only" | "armed_selected_step" | "sent_first_content" | "sent_selected_step" | "deposit_requested";
         replied?: boolean;
+        slotLabel?: string;
       } = await res
         .json()
         .catch(() => ({}));
@@ -299,8 +308,13 @@ export function ConvComposer({
         return;
       }
       setPipelineOpen(false);
+      setDepositSlotKey(null);
+      setDepositDate("");
+      setDepositTime("");
       setText("");
-      if (data.mode === "armed_selected_step") {
+      if (data.mode === "deposit_requested") {
+        setError(`Horário ${data.slotLabel ?? ""} reservado provisoriamente e sinal solicitado. Quando o comprovante chegar, valide por aqui para confirmar.`);
+      } else if (data.mode === "armed_selected_step") {
         setError(`Pipeline posicionado em “${section?.label ?? "etapa escolhida"}” — a IA continua dali na próxima mensagem do lead.`);
       } else if (data.mode === "armed_only" || data.replied === false) {
         setError("Fluxo ativado — a IA conduz a partir da próxima mensagem do lead.");
@@ -313,7 +327,7 @@ export function ConvComposer({
     } finally {
       setSendingPipelineKey(null);
     }
-  }, [conversationId, router, sendingPipelineKey]);
+  }, [conversationId, router, sendingPipelineKey, depositDate, depositTime, defaultDurationMinutes]);
 
   const handleLoadSlots = async () => {
     if (isLoadingSlots) return;
@@ -602,37 +616,84 @@ export function ConvComposer({
                       {option.sections.map((section) => {
                         const sectionKey = `${option.treatmentId}:${section.stepIndex}`;
                         const isAutomatic = section.mode === "automatic";
+                        const isSchedule = section.mode === "schedule";
+                        const isPickingSlot = isSchedule && depositSlotKey === sectionKey;
                         return (
-                          <button
-                            key={sectionKey}
-                            className="secondary-button"
-                            disabled={Boolean(sendingPipelineKey) || isAutomatic}
-                            onClick={() => void handleSendPipelineAction(option, section)}
-                            style={{
-                              alignItems: "flex-start",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 3,
-                              opacity: isAutomatic ? 0.55 : 1,
-                              padding: "8px 10px",
-                              textAlign: "left",
-                              width: "100%",
-                            }}
-                            title={isAutomatic ? "Esta etapa é executada pelo motor do pipeline" : section.actionLabel}
-                          >
-                            <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 700 }}>
-                              {section.stepNumber}. {section.label}
-                            </span>
-                            <span style={{ color: "var(--accent-strong)", fontSize: 10, fontWeight: 700 }}>
-                              {sendingPipelineKey === sectionKey ? "Enviando…" : section.actionLabel}
-                              {section.mediaParts > 0 ? ` · ${section.mediaParts} mídia(s)` : ""}
-                            </span>
-                            {section.preview && (
-                              <span style={{ color: "var(--muted)", fontSize: 10, lineHeight: 1.35 }}>
-                                {section.preview}
+                          <div key={sectionKey} style={{ width: "100%" }}>
+                            <button
+                              className="secondary-button"
+                              disabled={Boolean(sendingPipelineKey) || isAutomatic}
+                              onClick={() => {
+                                if (isSchedule) {
+                                  setDepositSlotKey(isPickingSlot ? null : sectionKey);
+                                  return;
+                                }
+                                void handleSendPipelineAction(option, section);
+                              }}
+                              style={{
+                                alignItems: "flex-start",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 3,
+                                opacity: isAutomatic ? 0.55 : 1,
+                                padding: "8px 10px",
+                                textAlign: "left",
+                                width: "100%",
+                              }}
+                              title={isAutomatic ? "Esta etapa é executada pelo motor do pipeline" : section.actionLabel}
+                            >
+                              <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 700 }}>
+                                {section.stepNumber}. {section.label}
                               </span>
+                              <span style={{ color: "var(--accent-strong)", fontSize: 10, fontWeight: 700 }}>
+                                {sendingPipelineKey === sectionKey ? "Enviando…" : section.actionLabel}
+                                {section.mediaParts > 0 ? ` · ${section.mediaParts} mídia(s)` : ""}
+                              </span>
+                              {section.preview && (
+                                <span style={{ color: "var(--muted)", fontSize: 10, lineHeight: 1.35 }}>
+                                  {section.preview}
+                                </span>
+                              )}
+                            </button>
+
+                            {isPickingSlot && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 6,
+                                  padding: "8px 10px",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <span style={{ color: "var(--muted)", fontSize: 10, width: "100%" }}>
+                                  O horário fica reservado provisoriamente e o sinal é pedido ao lead. A
+                                  confirmação só acontece após o comprovante ser validado.
+                                </span>
+                                <input
+                                  type="date"
+                                  value={depositDate}
+                                  onChange={(e) => setDepositDate(e.target.value)}
+                                  style={{ fontSize: 12, padding: "5px 7px" }}
+                                />
+                                <input
+                                  type="time"
+                                  value={depositTime}
+                                  onChange={(e) => setDepositTime(e.target.value)}
+                                  step={900}
+                                  style={{ fontSize: 12, padding: "5px 7px" }}
+                                />
+                                <button
+                                  className="primary-button"
+                                  disabled={!depositDate || !depositTime || Boolean(sendingPipelineKey)}
+                                  onClick={() => void handleSendPipelineAction(option, section)}
+                                  style={{ fontSize: 12, padding: "6px 12px" }}
+                                >
+                                  {sendingPipelineKey === sectionKey ? "Reservando…" : "Reservar e pedir sinal"}
+                                </button>
+                              </div>
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
