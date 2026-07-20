@@ -5,9 +5,9 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests } from "@/infrastructure/db/schema";
+import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests, slotReservations } from "@/infrastructure/db/schema";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
-import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, count, gt, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
   resolveWhatsAppChannelAddress,
@@ -917,6 +917,25 @@ function matchTreatmentByNormalizedMessage(
     treatments.find((t) => matches(t) && t.pipelineSteps !== null) ??
     treatments.find((t) => matches(t)) ??
     null
+  );
+}
+
+// Descarta candidatos que se sobrepõem a uma reserva ativa. Mesma detecção de
+// overlap usada por SlotReservationService.reserve() — ofertar um slot que o
+// reserve() vai recusar produz o falso "seu horário ficou indisponível" logo
+// depois do lead escolher.
+export function rejectSlotsOverlappingReservations<T extends { startsAt: Date; endsAt: Date }>(
+  slots: T[],
+  reservations: { startsAt: Date; endsAt: Date }[],
+): T[] {
+  if (reservations.length === 0) return slots;
+  return slots.filter(
+    (slot) =>
+      !reservations.some(
+        (r) =>
+          r.startsAt.getTime() < slot.endsAt.getTime() &&
+          r.endsAt.getTime() > slot.startsAt.getTime(),
+      ),
   );
 }
 
@@ -6788,6 +6807,27 @@ export class ConversationOrchestrator {
           ),
       );
     }
+
+    // Reservas ativas (hold de oferta/sinal de outro lead) também bloqueiam a
+    // oferta: um slot que o reserve() vai recusar nunca deve ser exibido — o lead
+    // escolheria e receberia o falso "seu horário ficou indisponível" logo depois.
+    // Espelha a regra de SlotReservationService.reserve(): qualquer reserva
+    // sobreposta pending (não expirada) ou confirmed derruba o candidato.
+    const activeReservations = await db
+      .select({ startsAt: slotReservations.startsAt, endsAt: slotReservations.endsAt })
+      .from(slotReservations)
+      .where(
+        and(
+          eq(slotReservations.clinicId, clinic.id),
+          lt(slotReservations.startsAt, to),
+          gt(slotReservations.endsAt, from),
+          or(
+            and(eq(slotReservations.status, "pending"), gt(slotReservations.expiresAt, new Date())),
+            eq(slotReservations.status, "confirmed"),
+          ),
+        ),
+      );
+    allSlots = rejectSlotsOverlappingReservations(allSlots, activeReservations);
 
     let filteredToDay = false;
     let preferredDayEmpty = false;
