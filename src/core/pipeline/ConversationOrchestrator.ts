@@ -5,9 +5,9 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests } from "@/infrastructure/db/schema";
+import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests, slotReservations } from "@/infrastructure/db/schema";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
-import { eq, and, or, count, gte, lt, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, count, gt, gte, lt, isNull, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
   resolveWhatsAppChannelAddress,
@@ -89,6 +89,7 @@ import {
   buildHumanReviewButtons,
   buildHumanReviewContextUpdateMessage,
   buildHumanReviewPendingLeadMessage,
+  buildHumanReviewFollowUpAckMessage,
   buildHumanReviewRequestMessage,
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
@@ -918,6 +919,117 @@ function matchTreatmentByNormalizedMessage(
     treatments.find((t) => matches(t)) ??
     null
   );
+}
+
+// Enquanto uma revisão clínica está pendente, toda mensagem do lead volta pelo
+// mesmo caminho. O aviso completo ("encaminhei ao Doutor, a automação fica
+// pausada") é de primeiro contato: se a última fala do agente já foi esse aviso,
+// o lead já leu a explicação e o que cabe é um ack curto.
+export function shouldSendShortReviewAck(messages: Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.author === "agent") return message.intent === "needs_human";
+  }
+  return false;
+}
+
+// Descarta candidatos que se sobrepõem a uma reserva ativa. Mesma detecção de
+// overlap usada por SlotReservationService.reserve() — ofertar um slot que o
+// reserve() vai recusar produz o falso "seu horário ficou indisponível" logo
+// depois do lead escolher.
+export function rejectSlotsOverlappingReservations<T extends { startsAt: Date; endsAt: Date }>(
+  slots: T[],
+  reservations: { startsAt: Date; endsAt: Date }[],
+): T[] {
+  if (reservations.length === 0) return slots;
+  return slots.filter(
+    (slot) =>
+      !reservations.some(
+        (r) =>
+          r.startsAt.getTime() < slot.endsAt.getTime() &&
+          r.endsAt.getTime() > slot.startsAt.getTime(),
+      ),
+  );
+}
+
+// Resolve a resposta do lead à lista de horários quando ela vem como dia
+// ("segunda"), período ("de manhã") ou hora ("às 9h") em vez do número da opção.
+// Sem isso o confirm_slot assumia a opção 1 — "segunda" com a lista
+// [1. Seg 9h, 2. Qua 16h] podia confirmar silenciosamente a quarta — e, quando a
+// reserva da opção 1 falhava, o lead ouvia o falso "seu horário ficou
+// indisponível" mesmo tendo pedido um dia presente na lista.
+//
+// Retorna "passthrough" sempre que não tiver base para decidir: o chamador
+// mantém o comportamento anterior (guarda de data + fallback existentes).
+export function resolvePendingSlotChoice(params: {
+  slotPreference: SlotPreference;
+  // Estrutural de propósito: só precisa do que usa, então FormattedSlot serve sem
+  // obrigar os testes a montar campos irrelevantes para a decisão.
+  pendingSlots: Array<{ index: number; startsAt: string; label: string }> | null | undefined;
+  timezone: ClinicTimezone;
+  businessHours: ParsedBusinessHours;
+}):
+  | { kind: "passthrough" }
+  | { kind: "resolved"; index: number }
+  | { kind: "ambiguous"; matches: Array<{ index: number; label: string }> }
+  | { kind: "no_match" } {
+  const { slotPreference, pendingSlots, timezone, businessHours } = params;
+  // slotChoice explícito (o lead digitou o número) segue o caminho normal.
+  if (slotPreference.slotChoice != null || !pendingSlots?.length) return { kind: "passthrough" };
+
+  const hasDate = Boolean(slotPreference.preferredDate);
+  const hasPeriod = Boolean(slotPreference.preferredPeriod);
+  const hasTime = Boolean(slotPreference.preferredTime);
+  if (!hasDate && !hasPeriod && !hasTime) return { kind: "passthrough" };
+
+  const targetDay = hasDate
+    ? timezone.resolvePreferredDate(slotPreference.preferredDate!, new Date(), businessHours)
+    : null;
+  const targetDayParts = targetDay ? timezone.toLocalParts(targetDay) : null;
+
+  let preferredHour: number | null = null;
+  if (hasTime) {
+    const hourMatch = slotPreference.preferredTime!.match(/(\d{1,2})/);
+    preferredHour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+    if (preferredHour !== null) {
+      // Normaliza hora ambígua para horário comercial: "às 3" com clínica 8-18 → 15h.
+      const pmCandidate = preferredHour + 12;
+      if (
+        preferredHour < businessHours.startHour &&
+        pmCandidate >= businessHours.startHour &&
+        pmCandidate < businessHours.endHour
+      ) {
+        preferredHour = pmCandidate;
+      }
+    }
+  }
+
+  // Nenhum filtro utilizável (ex.: data que não parseia e nada mais) — não decide.
+  if (!targetDayParts && !hasPeriod && preferredHour === null) return { kind: "passthrough" };
+
+  const matches = pendingSlots.filter((slot) => {
+    const parts = timezone.toLocalParts(new Date(slot.startsAt));
+    if (
+      targetDayParts &&
+      (parts.year !== targetDayParts.year || parts.month !== targetDayParts.month || parts.day !== targetDayParts.day)
+    ) {
+      return false;
+    }
+    if (hasPeriod) {
+      const period = slotPreference.preferredPeriod;
+      if (period === "morning" && parts.hour >= 12) return false;
+      if (period === "afternoon" && (parts.hour < 12 || parts.hour >= 18)) return false;
+      if (period === "evening" && parts.hour < 18) return false;
+    }
+    if (preferredHour !== null && parts.hour !== preferredHour) return false;
+    return true;
+  });
+
+  if (matches.length === 1) return { kind: "resolved", index: matches[0].index };
+  if (matches.length > 1) {
+    return { kind: "ambiguous", matches: matches.map((m) => ({ index: m.index, label: m.label })) };
+  }
+  return { kind: "no_match" };
 }
 
 export function resolveDirectTreatmentMention(
@@ -2262,6 +2374,43 @@ export function isPipelinePhotoInstructionContentStep(
   return hasAnyKeyword(normalized, ["foto", "fotos", "video", "videos", "frontal", "perfil", "pre avaliacao"]);
 }
 
+// Contexto do answer-first quando o conteúdo do pipeline sai na MESMA resposta:
+// o composer precisa VER o que o conteúdo já cobre para não respondê-lo de novo.
+// A instrução genérica ("não descreva o tratamento") não bastava — sem enxergar
+// o texto que vem a seguir, o LLM explicava tudo e os cards repetiam logo abaixo
+// (replay Vitalli 18/07).
+export function buildDeferredPipelineAnswerContext(params: {
+  treatmentName: string;
+  contentBlocks: ContentBlock[];
+  treatmentDescription?: string | null;
+  commercialPolicy?: string | null;
+}): string {
+  const contentPreview = params.contentBlocks
+    .map((block) => (block.kind === "text" ? block.content : `[mídia anexada${block.caption ? `: ${block.caption}` : ""}]`))
+    .join("\n");
+  return [
+    `Lead está em conversa consultiva sobre "${params.treatmentName}".`,
+    "LOGO APÓS a sua resposta, o sistema envia automaticamente este conteúdo pronto na mesma mensagem:",
+    "─── CONTEÚDO QUE SERÁ ENVIADO ───",
+    contentPreview,
+    "─── FIM DO CONTEÚDO ───",
+    "Sua resposta deve ter NO MÁXIMO 2 frases curtas: responda só o que o conteúdo acima NÃO cobre (cortesia, pergunta pessoal do lead) e faça uma ponte curta para ele.",
+    "NÃO repita nem resuma o conteúdo acima. NÃO explique técnicas, diferenças ou valores que ele já apresenta. NÃO convide para avaliação/agendamento, NÃO peça foto e NÃO termine com pergunta — o conteúdo seguinte conduz.",
+    params.treatmentDescription ? `Descrição do tratamento (apenas contexto, não recite): ${params.treatmentDescription}` : null,
+    params.commercialPolicy ? `Política comercial (apenas contexto, não recite): ${params.commercialPolicy}` : null,
+  ].filter(Boolean).join("\n");
+}
+
+// Contrato do answer-first: a resposta do composer é só a ponte curta — o
+// conteúdo canônico vem dos blocos do pipeline logo em seguida. A instrução de
+// prompt pede no máximo 2 frases, mas o LLM nem sempre obedece; quando ele se
+// alonga, o sistema corta no primeiro parágrafo (o playbook decide o conteúdo,
+// não a improvisação do modelo).
+export function trimAnswerToBridge(answerText: string): string {
+  const paragraphs = answerText.trim().split(/\n{2,}/);
+  return (paragraphs[0] ?? "").trim();
+}
+
 export function buildAnswerFirstPipelineContent(params: {
   answerText: string;
   answerParts: ResponsePart[];
@@ -2273,8 +2422,13 @@ export function buildAnswerFirstPipelineContent(params: {
     .map((part) => part.content)
     .join("\n\n")
     .trim();
-  const replyText = [params.answerText.trim(), contentText].filter(Boolean).join("\n\n");
-  const parts = [...params.answerParts, ...contentParts];
+  const bridgeText = trimAnswerToBridge(params.answerText);
+  // A ponte vira um único bloco de texto; partes não-textuais da resposta
+  // (ex.: mídia anexada pelo composer) são preservadas antes do conteúdo.
+  const nonTextAnswerParts = params.answerParts.filter((part) => part.type !== "text");
+  const bridgeParts: ResponsePart[] = bridgeText ? [{ type: "text", content: bridgeText }] : [];
+  const replyText = [bridgeText, contentText].filter(Boolean).join("\n\n");
+  const parts = [...bridgeParts, ...nonTextAnswerParts, ...contentParts];
 
   return {
     replyText,
@@ -3385,7 +3539,11 @@ export class ConversationOrchestrator {
           return { replied: false };
         }
 
-        const pendingReviewText = buildHumanReviewPendingLeadMessage(lead.name);
+        const pendingReviewText = shouldSendShortReviewAck(
+          await this.conversationRepo.listMessages(conversation.id),
+        )
+          ? buildHumanReviewFollowUpAckMessage(lead.name)
+          : buildHumanReviewPendingLeadMessage(lead.name);
         const photoAgentId = randomUUID();
         await this.conversationRepo.appendMessage({
           id: photoAgentId,
@@ -3649,7 +3807,11 @@ export class ConversationOrchestrator {
         url: `/app/inbox/${conversation.id}`,
       }).catch(() => {});
 
-      const pendingText = buildHumanReviewPendingLeadMessage(lead.name);
+      const pendingText = shouldSendShortReviewAck(
+        await this.conversationRepo.listMessages(conversation.id),
+      )
+        ? buildHumanReviewFollowUpAckMessage(lead.name)
+        : buildHumanReviewPendingLeadMessage(lead.name);
       const pendingAgentId = randomUUID();
       await this.conversationRepo.appendMessage({
         id: pendingAgentId,
@@ -4394,13 +4556,19 @@ export class ConversationOrchestrator {
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
+      // Segunda chamada na mesma vez (ex.: oferta de horários após a resposta de
+      // preço): a resposta já composta entra no histórico como fala do agente —
+      // sem isso o LLM re-responde a última pergunta do lead antes de agir.
+      options?: { extraHistory?: Message[] },
     ) => {
       try {
         if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
         const composed = await this.responseComposer.compose({
           actionResult,
           suppressNextStepCta: ctaSuppressed,
-          conversationHistory: allMessagesForContext,
+          conversationHistory: options?.extraHistory
+            ? [...allMessagesForContext, ...options.extraHistory]
+            : allMessagesForContext,
           clinic: {
             name: clinic.name,
             plan: clinic.plan,
@@ -4686,6 +4854,51 @@ export class ConversationOrchestrator {
           }
         }
 
+        // Lead respondeu com dia/período/hora em vez do número: resolve contra os
+        // slots pendentes antes de assumir qualquer opção. Roda ANTES da guarda de
+        // data abaixo, que continua sendo a dona do caso "data não bate" (ramo
+        // validado por replay nas waves 3/4).
+        const pendingChoice = resolvePendingSlotChoice({ slotPreference, pendingSlots, timezone, businessHours });
+
+        if (pendingChoice.kind === "ambiguous") {
+          // Mais de uma opção pendente atende ao que o lead pediu — pergunta qual,
+          // preservando os números originais da lista. A oferta continua válida.
+          const optionLines = pendingChoice.matches.map((m) => `${m.index}. ${m.label}`).join("\n");
+          replyText = [
+            "Perfeito! Tenho estas opções que encaixam no que você pediu:",
+            "",
+            optionLines,
+            "",
+            "Me responde só com o número da opção que preferir. 😊",
+          ].join("\n");
+          forceTextOnlyReply = true;
+          break;
+        }
+
+        // Período/hora pedidos não batem com nenhum slot pendente e não há data no
+        // pedido — caso que a guarda abaixo não cobre (ela exige preferredDate) e
+        // que, sem isto, cairia no fallback da opção 1. Busca horários novos já com
+        // a preferência do lead.
+        if (pendingChoice.kind === "no_match" && !slotPreference.preferredDate) {
+          await this.stateMachine.invalidate(conversation.id);
+          const { slots: prefSlots, preferredDayEmpty: prefEmpty } = await this.fetchAndOfferSlots(
+            conversation.id, clinic, calendarGateway, timezone, businessHours,
+            undefined,
+            slotPreference.preferredPeriod ?? undefined,
+            slotPreference.preferredTime ?? undefined,
+            undefined, undefined, voiceEnabled,
+          );
+          if (prefSlots.length > 0 && !prefEmpty) {
+            replyText = await compose({ type: "slots_found", slots: prefSlots, askedForPreference: false });
+            forceTextOnlyReply = true;
+          } else if (prefSlots.length > 0) {
+            replyText = await compose({ type: "no_slots_available", alternativeSlots: prefSlots });
+          } else {
+            replyText = await compose({ type: "no_slots_available" });
+          }
+          break;
+        }
+
         // Guarda de segurança: se o lead não escolheu pelo número mas mencionou uma data
         // que não bate com nenhum slot pendente, trata como nova solicitação para essa data.
         if (!slotPreference.slotChoice && slotPreference.preferredDate && pendingSlots) {
@@ -4725,7 +4938,9 @@ export class ConversationOrchestrator {
           }
         }
 
-        const choiceIndex = slotPreference.slotChoice ?? 1;
+        const choiceIndex = pendingChoice.kind === "resolved"
+          ? pendingChoice.index
+          : (slotPreference.slotChoice ?? 1);
         const chosenSlot = pendingSlots
           ? pendingSlots.find((s) => s.index === choiceIndex) ?? pendingSlots[0]
           : null;
@@ -5508,9 +5723,26 @@ export class ConversationOrchestrator {
             // e concatena com o que a 2ª chamada (só texto) produzir.
             const priceReplyParts = composedParts;
             const priceMediaIds = composedMediaIds;
+            // A resposta de preço já composta entra no histórico da 2ª chamada:
+            // sem isso o composer respondia a pergunta do lead DE NOVO antes de
+            // listar os horários ("Sim, a avaliação é cobrada..." duas vezes).
+            const priceAnswerAsHistory: Message[] = [{
+              id: `synthetic-price-answer-${conversation.id}`,
+              conversationId: conversation.id,
+              author: "agent",
+              body: replyText,
+              sentAt: new Date(),
+              externalId: null,
+            }];
             const slotsText = evalTreatment
-              ? await compose({ type: "evaluation_redirect", treatmentName: matchedPriceTreatment.name, evaluationSlots: priceFollowSlots })
-              : await compose({ type: "slots_found", slots: priceFollowSlots, askedForPreference: false });
+              ? await compose(
+                  { type: "evaluation_redirect", treatmentName: matchedPriceTreatment.name, evaluationSlots: priceFollowSlots },
+                  { extraHistory: priceAnswerAsHistory },
+                )
+              : await compose(
+                  { type: "slots_found", slots: priceFollowSlots, askedForPreference: false },
+                  { extraHistory: priceAnswerAsHistory },
+                );
             if (slotsText) {
               replyText = `${replyText}\n\n${slotsText}`;
               composedParts = [...priceReplyParts, ...composedParts];
@@ -5787,12 +6019,12 @@ export class ConversationOrchestrator {
                   ? buildMediaClarificationClinicContext()
                   : directLocationRequested
                     ? buildLocationClinicContext(clinic.address)
-                    : [
-                        `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
-                        "Responda APENAS a dúvida atual do lead, em no máximo 2 frases. O sistema enviará AUTOMATICAMENTE a apresentação curada do tratamento (técnicas e valores) logo após a sua resposta: NÃO descreva o tratamento, NÃO cite valores e NÃO convide para avaliação/agendamento nem peça foto — a apresentação e o fluxo cuidam disso.",
-                        pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
-                        editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
-                      ].filter(Boolean).join("\n");
+                    : buildDeferredPipelineAnswerContext({
+                        treatmentName: pipelineTreatment.name,
+                        contentBlocks: currentStep.blocks,
+                        treatmentDescription: pipelineTreatment.description,
+                        commercialPolicy: editorial?.commercialPolicy,
+                      });
               const answerText = await compose({ type: "general_question", clinicContext: contentAnswerContext });
               const answerParts = composedParts;
               const answerFirst = buildAnswerFirstPipelineContent({
@@ -6788,6 +7020,27 @@ export class ConversationOrchestrator {
           ),
       );
     }
+
+    // Reservas ativas (hold de oferta/sinal de outro lead) também bloqueiam a
+    // oferta: um slot que o reserve() vai recusar nunca deve ser exibido — o lead
+    // escolheria e receberia o falso "seu horário ficou indisponível" logo depois.
+    // Espelha a regra de SlotReservationService.reserve(): qualquer reserva
+    // sobreposta pending (não expirada) ou confirmed derruba o candidato.
+    const activeReservations = await db
+      .select({ startsAt: slotReservations.startsAt, endsAt: slotReservations.endsAt })
+      .from(slotReservations)
+      .where(
+        and(
+          eq(slotReservations.clinicId, clinic.id),
+          lt(slotReservations.startsAt, to),
+          gt(slotReservations.endsAt, from),
+          or(
+            and(eq(slotReservations.status, "pending"), gt(slotReservations.expiresAt, new Date())),
+            eq(slotReservations.status, "confirmed"),
+          ),
+        ),
+      );
+    allSlots = rejectSlotsOverlappingReservations(allSlots, activeReservations);
 
     let filteredToDay = false;
     let preferredDayEmpty = false;

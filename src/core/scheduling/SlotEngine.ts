@@ -125,6 +125,11 @@ function computeWindowedSlots(
   return slots;
 }
 
+// Marcas de início candidatas: sempre em :00 ou :30 locais. Horários "quebrados"
+// (14h20, 8h50) confundem o lead e a recepção; a grade só sai dessas marcas quando
+// a config do tratamento pede explicitamente (allowedStartWindows).
+const GRID_STEP_MINUTES = 30;
+
 export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] {
   // Janelas de início explícitas do tratamento têm precedência sobre a grade horária.
   if (params.allowedStartWindows?.length) {
@@ -154,13 +159,30 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
     end: e.endsAt.getTime() + (e.appliesPostEventBuffer === false ? 0 : bufferMs),
   }));
 
-  let cursor = new Date(from.getTime());
+  // Fim do último slot aceito: candidatos seguintes não podem sobrepor um slot
+  // que já vai ser ofertado (dois leads confirmando ofertas sobrepostas colidiriam
+  // só na reserva, com a mensagem de "horário indisponível").
+  let lastAcceptedEnd = 0;
 
-  while (cursor < to && slots.length < maxSlots) {
-    const slotStart = cursor.getTime();
-    const slotEnd = slotStart + slotMs;
+  // Itera dia a dia no fuso da clínica, com candidatos APENAS nas marcas de
+  // :00/:30 locais de cada dia. A grade antiga marchava um cursor contínuo de
+  // slotDurationMinutes a partir de `from`, atravessando noites e fins de semana —
+  // qualquer duração não múltipla de 30 (ex.: avaliação de 40min) espalhava o
+  // resto por todos os dias seguintes (slots às 8h20, 12h20, 14h20).
+  const startParts = timezone.toLocalParts(from);
+  let dayCursor = timezone.fromLocalParts(startParts.year, startParts.month, startParts.day, 0, 0);
 
-    if (timezone.isBusinessHour(cursor, businessHours)) {
+  while (dayCursor < to && slots.length < maxSlots) {
+    const dp = timezone.toLocalParts(dayCursor);
+
+    for (let minutes = 0; minutes < 24 * 60 && slots.length < maxSlots; minutes += GRID_STEP_MINUTES) {
+      const startDate = timezone.fromLocalParts(dp.year, dp.month, dp.day, Math.floor(minutes / 60), minutes % 60);
+      const slotStart = startDate.getTime();
+      if (startDate < from || startDate >= to) continue;
+      if (slotStart < lastAcceptedEnd) continue;
+      if (!timezone.isBusinessHour(startDate, businessHours)) continue;
+
+      const slotEnd = slotStart + slotMs;
       // Verifica se o FIM do slot também está dentro do horário comercial
       const slotEndDate = new Date(slotEnd);
       const endParts = timezone.toLocalParts(slotEndDate);
@@ -172,24 +194,28 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
       const endStillInBusiness =
         businessHours.days.includes(endParts.weekday) &&
         endTimeMin <= endBusinessMin;
+      if (!endStillInBusiness) continue;
 
-      if (endStillInBusiness && fitsProfessionalSchedule(professionalSchedule, timezone, cursor, slotEndDate)) {
-        const isBusy = busyRanges.some((r) => r.start < slotEnd && r.end > slotStart);
+      if (!fitsProfessionalSchedule(professionalSchedule, timezone, startDate, slotEndDate)) continue;
 
-        if (!isBusy) {
-          slots.push({
-            id: `${clinicId}:${slotStart}`,
-            clinicId,
-            professionalId: null,
-            startsAt: new Date(slotStart),
-            endsAt: new Date(slotEnd),
-            source: "google_calendar",
-          });
-        }
-      }
+      const isBusy = busyRanges.some((r) => r.start < slotEnd && r.end > slotStart);
+      if (isBusy) continue;
+
+      slots.push({
+        id: `${clinicId}:${slotStart}`,
+        clinicId,
+        professionalId: null,
+        startsAt: new Date(slotStart),
+        endsAt: new Date(slotEnd),
+        source: "google_calendar",
+      });
+      lastAcceptedEnd = slotEnd;
     }
 
-    cursor = new Date(slotStart + slotMs);
+    // Avança para o próximo dia (meia-noite local do dia seguinte).
+    const next = new Date(dayCursor.getTime() + 26 * 3600_000);
+    const np = timezone.toLocalParts(next);
+    dayCursor = timezone.fromLocalParts(np.year, np.month, np.day, 0, 0);
   }
 
   return slots;

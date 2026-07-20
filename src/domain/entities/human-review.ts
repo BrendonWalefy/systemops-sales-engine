@@ -134,6 +134,16 @@ export function buildHumanReviewPendingLeadMessage(leadName?: string | null): st
   ].join("\n");
 }
 
+// Mensagem para as mensagens SEGUINTES do lead enquanto a revisão segue pendente.
+// A de cima é de primeiro contato — reenviá-la a cada mensagem vira spam (replay
+// 20/07: o mesmo parágrafo 4 vezes na conversa da Simone). Aqui o lead é
+// reconhecido de forma curta, sem reexplicar a pausa que ele já leu.
+export function buildHumanReviewFollowUpAckMessage(leadName?: string | null): string {
+  const firstName = leadName?.trim().split(/\s+/)[0];
+  const greeting = firstName ? `, ${firstName}` : "";
+  return `Anotei aqui${greeting} e já encaminhei ao Doutor junto com sua foto. Assim que ele responder, te aviso por aqui. 😊`;
+}
+
 export function buildHumanReviewContextUpdateMessage(params: {
   reviewCode: number;
   leadName: string;
