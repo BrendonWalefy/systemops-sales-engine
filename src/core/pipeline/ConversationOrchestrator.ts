@@ -2361,6 +2361,43 @@ export function isPipelinePhotoInstructionContentStep(
   return hasAnyKeyword(normalized, ["foto", "fotos", "video", "videos", "frontal", "perfil", "pre avaliacao"]);
 }
 
+// Contexto do answer-first quando o conteúdo do pipeline sai na MESMA resposta:
+// o composer precisa VER o que o conteúdo já cobre para não respondê-lo de novo.
+// A instrução genérica ("não descreva o tratamento") não bastava — sem enxergar
+// o texto que vem a seguir, o LLM explicava tudo e os cards repetiam logo abaixo
+// (replay Vitalli 18/07).
+export function buildDeferredPipelineAnswerContext(params: {
+  treatmentName: string;
+  contentBlocks: ContentBlock[];
+  treatmentDescription?: string | null;
+  commercialPolicy?: string | null;
+}): string {
+  const contentPreview = params.contentBlocks
+    .map((block) => (block.kind === "text" ? block.content : `[mídia anexada${block.caption ? `: ${block.caption}` : ""}]`))
+    .join("\n");
+  return [
+    `Lead está em conversa consultiva sobre "${params.treatmentName}".`,
+    "LOGO APÓS a sua resposta, o sistema envia automaticamente este conteúdo pronto na mesma mensagem:",
+    "─── CONTEÚDO QUE SERÁ ENVIADO ───",
+    contentPreview,
+    "─── FIM DO CONTEÚDO ───",
+    "Sua resposta deve ter NO MÁXIMO 2 frases curtas: responda só o que o conteúdo acima NÃO cobre (cortesia, pergunta pessoal do lead) e faça uma ponte curta para ele.",
+    "NÃO repita nem resuma o conteúdo acima. NÃO explique técnicas, diferenças ou valores que ele já apresenta. NÃO convide para avaliação/agendamento, NÃO peça foto e NÃO termine com pergunta — o conteúdo seguinte conduz.",
+    params.treatmentDescription ? `Descrição do tratamento (apenas contexto, não recite): ${params.treatmentDescription}` : null,
+    params.commercialPolicy ? `Política comercial (apenas contexto, não recite): ${params.commercialPolicy}` : null,
+  ].filter(Boolean).join("\n");
+}
+
+// Contrato do answer-first: a resposta do composer é só a ponte curta — o
+// conteúdo canônico vem dos blocos do pipeline logo em seguida. A instrução de
+// prompt pede no máximo 2 frases, mas o LLM nem sempre obedece; quando ele se
+// alonga, o sistema corta no primeiro parágrafo (o playbook decide o conteúdo,
+// não a improvisação do modelo).
+export function trimAnswerToBridge(answerText: string): string {
+  const paragraphs = answerText.trim().split(/\n{2,}/);
+  return (paragraphs[0] ?? "").trim();
+}
+
 export function buildAnswerFirstPipelineContent(params: {
   answerText: string;
   answerParts: ResponsePart[];
@@ -2372,8 +2409,13 @@ export function buildAnswerFirstPipelineContent(params: {
     .map((part) => part.content)
     .join("\n\n")
     .trim();
-  const replyText = [params.answerText.trim(), contentText].filter(Boolean).join("\n\n");
-  const parts = [...params.answerParts, ...contentParts];
+  const bridgeText = trimAnswerToBridge(params.answerText);
+  // A ponte vira um único bloco de texto; partes não-textuais da resposta
+  // (ex.: mídia anexada pelo composer) são preservadas antes do conteúdo.
+  const nonTextAnswerParts = params.answerParts.filter((part) => part.type !== "text");
+  const bridgeParts: ResponsePart[] = bridgeText ? [{ type: "text", content: bridgeText }] : [];
+  const replyText = [bridgeText, contentText].filter(Boolean).join("\n\n");
+  const parts = [...bridgeParts, ...nonTextAnswerParts, ...contentParts];
 
   return {
     replyText,
@@ -4493,13 +4535,19 @@ export class ConversationOrchestrator {
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
       actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
+      // Segunda chamada na mesma vez (ex.: oferta de horários após a resposta de
+      // preço): a resposta já composta entra no histórico como fala do agente —
+      // sem isso o LLM re-responde a última pergunta do lead antes de agir.
+      options?: { extraHistory?: Message[] },
     ) => {
       try {
         if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
         const composed = await this.responseComposer.compose({
           actionResult,
           suppressNextStepCta: ctaSuppressed,
-          conversationHistory: allMessagesForContext,
+          conversationHistory: options?.extraHistory
+            ? [...allMessagesForContext, ...options.extraHistory]
+            : allMessagesForContext,
           clinic: {
             name: clinic.name,
             plan: clinic.plan,
@@ -5654,9 +5702,26 @@ export class ConversationOrchestrator {
             // e concatena com o que a 2ª chamada (só texto) produzir.
             const priceReplyParts = composedParts;
             const priceMediaIds = composedMediaIds;
+            // A resposta de preço já composta entra no histórico da 2ª chamada:
+            // sem isso o composer respondia a pergunta do lead DE NOVO antes de
+            // listar os horários ("Sim, a avaliação é cobrada..." duas vezes).
+            const priceAnswerAsHistory: Message[] = [{
+              id: `synthetic-price-answer-${conversation.id}`,
+              conversationId: conversation.id,
+              author: "agent",
+              body: replyText,
+              sentAt: new Date(),
+              externalId: null,
+            }];
             const slotsText = evalTreatment
-              ? await compose({ type: "evaluation_redirect", treatmentName: matchedPriceTreatment.name, evaluationSlots: priceFollowSlots })
-              : await compose({ type: "slots_found", slots: priceFollowSlots, askedForPreference: false });
+              ? await compose(
+                  { type: "evaluation_redirect", treatmentName: matchedPriceTreatment.name, evaluationSlots: priceFollowSlots },
+                  { extraHistory: priceAnswerAsHistory },
+                )
+              : await compose(
+                  { type: "slots_found", slots: priceFollowSlots, askedForPreference: false },
+                  { extraHistory: priceAnswerAsHistory },
+                );
             if (slotsText) {
               replyText = `${replyText}\n\n${slotsText}`;
               composedParts = [...priceReplyParts, ...composedParts];
@@ -5933,12 +5998,12 @@ export class ConversationOrchestrator {
                   ? buildMediaClarificationClinicContext()
                   : directLocationRequested
                     ? buildLocationClinicContext(clinic.address)
-                    : [
-                        `Lead está em conversa consultiva sobre "${pipelineTreatment.name}".`,
-                        "Responda APENAS a dúvida atual do lead, em no máximo 2 frases. O sistema enviará AUTOMATICAMENTE a apresentação curada do tratamento (técnicas e valores) logo após a sua resposta: NÃO descreva o tratamento, NÃO cite valores e NÃO convide para avaliação/agendamento nem peça foto — a apresentação e o fluxo cuidam disso.",
-                        pipelineTreatment.description ? `Descrição do tratamento: ${pipelineTreatment.description}` : null,
-                        editorial?.commercialPolicy ? `Política comercial: ${editorial.commercialPolicy}` : null,
-                      ].filter(Boolean).join("\n");
+                    : buildDeferredPipelineAnswerContext({
+                        treatmentName: pipelineTreatment.name,
+                        contentBlocks: currentStep.blocks,
+                        treatmentDescription: pipelineTreatment.description,
+                        commercialPolicy: editorial?.commercialPolicy,
+                      });
               const answerText = await compose({ type: "general_question", clinicContext: contentAnswerContext });
               const answerParts = composedParts;
               const answerFirst = buildAnswerFirstPipelineContent({
