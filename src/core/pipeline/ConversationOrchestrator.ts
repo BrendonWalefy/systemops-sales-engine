@@ -41,7 +41,7 @@ import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
-import { resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
+import { resolveQuantityPriceQuery, extractQuantity } from "@/core/intelligence/quantity-price";
 import { extractReferencedPrice } from "@/core/intelligence/price-reference";
 import { detectAtypicalClinicalCase, detectCommercialPauseText, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
@@ -844,6 +844,31 @@ export function isRequestedTimeOutsideBusinessHours(
  * Existe para o orquestrador sinalizar `needsAttention` no mesmo caso em que o
  * texto promete retorno — promessa sem escalação é pior do que uma recusa clara.
  */
+/**
+ * A mensagem é uma QUANTIDADE que continua a pergunta de preço anterior?
+ *
+ * Rajada comum: o lead manda "qual o valor pra tirar?" e, logo depois, "tenho 13
+ * lentes". Isolada, a segunda parece um comentário genérico — o classificador a
+ * lê como `acknowledgment` ou `general_question` e a cotação se perde.
+ *
+ * Medido em produção: **3 de 6** continuações de quantidade após pergunta de preço
+ * caíam fora de `price_inquiry` ("Tem 13 lentes" → acknowledgment; "Das 20 lente" →
+ * general_question). O sistema mantém o assunto sem depender de a LLM reconstruir
+ * essa relação — regra determinística, como manda o AGENTS.md.
+ */
+export function isQuantityFollowupToPriceQuestion(params: {
+  message: string;
+  incomingMessageId: string;
+  history: { id: string; author: string; body: string }[];
+}): boolean {
+  if (extractQuantity(params.message) === null) return false;
+  const previousLeadMessage = [...params.history]
+    .reverse()
+    .find((m) => m.author === "lead" && m.id !== params.incomingMessageId);
+  if (!previousLeadMessage) return false;
+  return isPriceRequestText(normalizeFreeText(previousLeadMessage.body));
+}
+
 export function requiresTeamCheckForHours(message: string, businessHoursRaw: string | null): boolean {
   const boundary = extractRequestedTimeBoundary(message);
   if (!boundary) return false;
@@ -4620,6 +4645,21 @@ export class ConversationOrchestrator {
     }
     if (!commercialPauseDetected && businessHoursQuestion) {
       effectiveIntent = "general_question";
+    }
+    // Quantidade que continua a pergunta de preço anterior ("qual o valor?" →
+    // "tenho 13 lentes"). Isolada, a segunda mensagem parece comentário genérico e
+    // a cotação se perde. Só coage intents "vazios" — nunca sobrepõe uma intenção
+    // de agenda que o lead tenha manifestado depois.
+    if (
+      !commercialPauseDetected &&
+      (effectiveIntent === "acknowledgment" || effectiveIntent === "general_question" || effectiveIntent === "unclear") &&
+      isQuantityFollowupToPriceQuestion({
+        message: messageText,
+        incomingMessageId: incomingMessage.id,
+        history: allMessagesForContext,
+      })
+    ) {
+      effectiveIntent = "price_inquiry";
     }
     let clarificationTreatmentName: string | null = null;
     if (
