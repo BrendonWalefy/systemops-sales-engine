@@ -245,6 +245,28 @@ const AD_MEDIA_PLACEHOLDER_RE = /^\[(?:imagem|v[ií]deo) recebid[oa]\]$/i;
 const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
 const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
 
+/**
+ * Janela de agrupamento de mensagens do lead, quando a clínica não define a sua.
+ *
+ * Rajada (2+ mensagens do lead em sequência) é comportamento do canal, não política
+ * de clínica: o gap MEDIANO dentro de uma rajada é de 10s tanto na Vitalli quanto na
+ * Ximendes, com distribuições quase idênticas (n=1.174). Por isso o default é da
+ * plataforma; a coluna por clínica fica como exceção, não como regra.
+ *
+ * O valor 15s vem da cobertura medida em produção:
+ *   7s  → agrupa ~40% dos pares da rajada
+ *   15s → agrupa ~67%
+ *   30s → agrupa ~85%
+ *
+ * Não sobe além disso porque o debounce atrasa o início do processamento. Na prática
+ * o custo é pequeno: a mensagem já espera o tick do message-worker (até 60s), então a
+ * janela costuma ser absorvida por essa espera.
+ *
+ * Antes este número era `?? 5000` repetido em 4 pontos do arquivo — default global de
+ * fato, mas duplicado e sem origem documentada.
+ */
+export const DEFAULT_MESSAGE_DEBOUNCE_MS = 15_000;
+
 // Fallback quando a clínica não tem conversationRestartHours definido.
 // 24h cobre o padrão real do WhatsApp: o gap p90 entre mensagens consecutivas do
 // mesmo lead é de 17h (n=3.183, produção). Ver plano-correcao-conversacional.md.
@@ -3677,7 +3699,7 @@ export class ConversationOrchestrator {
           return { replied: false };
         }
 
-        if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? 5000)) {
+        if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
           return { replied: false };
         }
 
@@ -3741,7 +3763,7 @@ export class ConversationOrchestrator {
               activePipelineState.stepIndex + 1,
               { skipOptionalPhoto: currentStep?.type === "qa" },
             );
-            if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? 5000)) {
+            if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
               return { replied: false };
             }
             const photoHistory = await this.conversationRepo.listMessages(conversation.id);
@@ -3836,7 +3858,7 @@ export class ConversationOrchestrator {
 
       // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
       // suprimida quando outra mensagem do lead chegou na janela de burst.
-      if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? 5000)) {
+      if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
         return { replied: false };
       }
 
@@ -3886,7 +3908,7 @@ export class ConversationOrchestrator {
     // Após registrar, espera N ms e verifica se chegou mensagem mais recente.
     // Se sim, esta mensagem não gera resposta — a última do burst responde
     // com o histórico completo (que já inclui todas as anteriores).
-    const debounceMs = isReplay ? 0 : clinic.messageDebounceMs ?? 5000;
+    const debounceMs = isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS;
     if (debounceMs > 0) {
       await new Promise((r) => setTimeout(r, debounceMs));
       const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
