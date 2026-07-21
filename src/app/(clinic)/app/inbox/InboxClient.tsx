@@ -545,7 +545,7 @@ function RecoveryCard({
 
 type LastInboxMessage = { body: string; author: string; sentAt?: Date | null; simulated?: boolean };
 
-function cardBorderClass(row: ConvRow, lastMsg: LastInboxMessage): string {
+function cardBorderClass(row: ConvRow, lastMsg: LastInboxMessage, autoReplyEnabled: boolean): string {
   if (row.needsAttention) return "card-border-attention";
   if (!isSalesConversationCategory(row.conversationCategory)) return "card-border-default";
   const appointmentState = resolveAppointmentLifecycleState(row, { author: lastMsg.author });
@@ -553,8 +553,12 @@ function cardBorderClass(row: ConvRow, lastMsg: LastInboxMessage): string {
   if (appointmentState === "cancelled") return "card-border-paused";
   if (appointmentState === "scheduled" || appointmentState === "confirmed") return "card-border-scheduled";
   if (row.aiPaused) return "card-border-paused";
-  if (lastMsg.author === "agent" && lastMsg.simulated) return "card-border-paused";
-  if (lastMsg.author === "agent") return "card-border-ai-active";
+  if (lastMsg.author === "agent") {
+    // IA desligada para a clínica inteira: a última resposta veio do operador
+    // (ou é histórica), então não pinte o card como "IA ativa".
+    if (!autoReplyEnabled || lastMsg.simulated) return "card-border-paused";
+    return "card-border-ai-active";
+  }
   return "card-border-default";
 }
 
@@ -574,6 +578,7 @@ function formatApptDate(date: Date): string {
 function convStatusBadge(
   row: ConvRow,
   lastMsg: LastInboxMessage,
+  autoReplyEnabled: boolean,
 ): { label: string; variant: "hot" | "warm" | "accent" | "muted" } {
   if (!isSalesConversationCategory(row.conversationCategory)) {
     return { label: conversationCategoryLabel(row.conversationCategory), variant: "muted" };
@@ -593,8 +598,12 @@ function convStatusBadge(
   if (appointmentState === "no_show") return { label: "Não compareceu", variant: "hot" };
   if (row.leadStatus === "follow_up_due") return { label: "Em recuperação", variant: "warm" };
   if (row.aiPaused) return { label: "Aguardando retorno", variant: "warm" };
-  if (lastMsg.author === "agent" && lastMsg.simulated) return { label: "IA simulando", variant: "warm" };
-  if (lastMsg.author === "agent") return { label: "IA respondendo", variant: "accent" };
+  if (lastMsg.author === "agent") {
+    // Com a IA desligada para a clínica, o card não pode anunciar "IA respondendo".
+    if (!autoReplyEnabled) return { label: "IA pausada", variant: "muted" };
+    if (lastMsg.simulated) return { label: "IA simulando", variant: "warm" };
+    return { label: "IA respondendo", variant: "accent" };
+  }
   if (lastMsg.author === "lead") return { label: "Aguardando resposta", variant: "warm" };
   return { label: "Em conversa", variant: "muted" };
 }
@@ -609,12 +618,14 @@ function markConversationRead(conversationId: string): void {
 function InboxCard({
   row,
   lastMsg,
+  autoReplyEnabled,
   selectionMode,
   selected,
   onToggleSelected,
 }: {
   row: ConvRow;
   lastMsg: LastInboxMessage;
+  autoReplyEnabled: boolean;
   selectionMode: boolean;
   selected: boolean;
   onToggleSelected: () => void;
@@ -630,8 +641,8 @@ function InboxCard({
     lastReadAt: row.lastReadAt,
   });
   const pipeStep = resolvePipelineIndex(row, { author: lastMsg.author });
-  const badge = convStatusBadge(row, lastMsg);
-  const borderClass = cardBorderClass(row, lastMsg);
+  const badge = convStatusBadge(row, lastMsg, autoReplyEnabled);
+  const borderClass = cardBorderClass(row, lastMsg, autoReplyEnabled);
   const treatment =
     row.leadTreatmentInterest && row.leadTreatmentInterest.length > 28
       ? row.leadTreatmentInterest.slice(0, 26) + "…"
@@ -1168,6 +1179,7 @@ export function InboxClient({
                 key={row.convId}
                 row={row}
                 lastMsg={lastMsgMap[row.convId] ?? { body: "", author: "", sentAt: null, simulated: false }}
+                autoReplyEnabled={autoReplyEnabled}
                 selectionMode={selectionMode}
                 selected={selectedIds.has(row.convId)}
                 onToggleSelected={() => toggleSelected(row.convId)}
