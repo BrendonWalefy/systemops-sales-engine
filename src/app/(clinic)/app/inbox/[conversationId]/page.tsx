@@ -72,10 +72,14 @@ export default async function ConversationPage({
     .select({
       timezone: organizations.timezone,
       defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
+      autoReplyEnabled: organizations.autoReplyEnabled,
     })
     .from(organizations)
     .where(eq(organizations.id, conv.clinicId))
     .limit(1);
+
+  // IA globalmente ligada para a clínica? (kill-switch em Configurações › IA)
+  const clinicAutoReplyEnabled = clinic?.autoReplyEnabled ?? true;
 
   // Fluxo de sinal: se o comprovante foi recebido, mostra o banner de validação.
   const depositState = await new ConversationStateMachine().getDepositState(conversationId);
@@ -129,6 +133,7 @@ export default async function ConversationPage({
                 conversationId={conversationId}
                 leadId={lead.id}
                 aiPaused={conv.aiPaused}
+                clinicAutoReplyEnabled={clinicAutoReplyEnabled}
                 compact
               />
             </div>
@@ -300,6 +305,7 @@ export default async function ConversationPage({
                 conversationId={conversationId}
                 leadId={lead.id}
                 aiPaused={conv.aiPaused}
+                clinicAutoReplyEnabled={clinicAutoReplyEnabled}
               />
             </>
           )}
