@@ -39,7 +39,7 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P1** | 7 | Quantidade que continua pergunta de preço perde o assunto | **3 de 6** casos: *"Tem 13 lentes"* → `acknowledgment`; *"Das 20 lente"* → `general_question` | ✅ **Feito:** guard `isQuantityFollowupToPriceQuestion` portado do W4.2 e ligado à coerção de intent. **Premissa original revisada:** os "6 que viraram needs_human" eram mídia para avaliação — comportamento correto, não falha. Das 256 continuações curtas, 18% já herdam `price_inquiry` e 11% `confirm_slot`. | baixo | 🟢 |
 | **P2** | 8 | Duas personas na mesma conversa | *"recepcionista virtual"* + *"Marina, assistente virtual"* | Unificar: o texto do opener deve derivar de `receptionistName`, nunca ter nome embutido. Ver `persona-config-drift`. | baixo | 🟢 |
 | **P2** | 9 | Paciente em tratamento tratado como lead novo | áudio: *"como eu comecei a usar…"* → opener | Resolvido em grande parte por #1 e #2. Complemento: lead com agendamento ativo/histórico nunca recebe opener de primeiro contato. | baixo | 🟢 |
-| **P2** | 10 | Preço + parcelamento na mesma frase não vira `price_inquiry` | 9 de 34 (26%) | Ampliar detecção para perguntas compostas ("valores **e** formas de pagamento"). | baixo | 🟢 |
+| **P2** | 10 | Preço + parcelamento na mesma frase não vira `price_inquiry` | Reauditado 21/07: **0 de 9** falham hoje (ver abaixo) | ✅ **Já resolvido** por guards que entraram depois da medição original. Reauditado contra o código atual: as 9 frases reais chegam a `price_inquiry`. Só foi adicionado teste de regressão. | — | 🟢 |
 | **P2** | 11 | Texto idêntico repetido na mesma conversa | 34 casos (máx. 2x) | Dedupe determinística: não reenviar bloco de conteúdo já enviado na mesma conversa. | médio | 🟡 |
 | **P3** | 12 | 7% das respostas saem sem intent classificado | 64 de 867 | Instrumentar: registrar e alertar. Sem intent não há guard nem métrica. | baixo | 🟢 |
 | **P3** | 13 | Sistema nunca registra "não entendi" | `consecutiveUnclearCount = 0` em 100% | Fazer o classificador emitir baixa confiança e acionar `needs_human` antes de responder errado com segurança. | médio | 🟡 |
@@ -116,6 +116,51 @@ mistura comando com pergunta (*"Dia 16/07 as 9:00 tá disponível?"*, *"Dia 31 �
 confundir os dois agenda alguém que só estava perguntando. Precisa de um guard de intenção
 separado, com evidência própria.
 
+## Preço + pagamento (#10): reauditado e já resolvido
+
+A medição original ("9 de 34, 26%") lia o campo `intent` **gravado** nas mensagens — que reflete o
+código do dia em que a mensagem foi processada, não o de hoje. Reauditando as frases reais contra o
+código atual, **as 9 chegam a `price_inquiry`**:
+
+| Frase real | `intent` gravado em produção | Hoje |
+|---|---|---|
+| *"Gostaria de saber valores e formas de pagamento"* | `price_inquiry` | ✅ |
+| *"Esse valor pode ser parcelado ?"* | `needs_human` | ✅ via guard de pagamento |
+| *"…lentes estratificadas na cor BL2. Gostaria de saber o valor aproximado"* | `acknowledgment` | ✅ via coerção de intent |
+| *"sim, gostaria de saber o valor para colocar as lentes, se passar cartão"* | `price_inquiry` | ✅ |
+| *"E quanto fica o valor parcelado?"* | `price_inquiry` | ✅ |
+
+Nenhum código foi escrito. Foi adicionado teste de regressão em `BusinessIntentCoercion.test.ts`,
+porque o caminho é uma **composição** de dois guards — coerção de intent e guard de pagamento no
+orquestrador — e nenhum dos dois sozinho cobre todas as frases.
+
+### Parcelamento escala para humano? Não — responde pela configuração
+
+Fluxo atual de *"esse valor pode ser parcelado?"*:
+
+1. O classificador pode devolver `needs_human` — e devolveu, no caso real de 19/07.
+2. O orquestrador **sobrescreve de forma determinística**: pergunta simples de pagamento +
+   `needs_human` → `price_inquiry`. Não é a LLM que decide isso.
+3. A resposta sai da configuração da clínica — `commercialPolicy` + `installmentRates`, montados em
+   `buildInstallmentTable`. Foi de lá que veio *"parcelado em até 21 vezes no cartão"*.
+
+O que **continua** indo para o humano é negociação, pela lista de exclusão de
+`isSimplePaymentPolicyQuestion`: *diferente, especial, desconto, negociar, condição especial, fora,
+exceção, combinado, promoção, permuta, troca*. Ou seja:
+
+| Mensagem | Quem responde |
+|---|---|
+| *"esse valor pode ser parcelado?"* | IA, pela config |
+| *"em quantas vezes dá pra parcelar?"* | IA, pela config |
+| *"tem como parcelar diferente?"* | humano |
+| *"consegue um desconto especial?"* | humano |
+
+O caso de 19/07 falhou porque o guard (`a772f57`) só chegou à `main` às **17:56 do mesmo dia** —
+cerca de 16 h **depois** daquela mensagem. Não é bug vivo; é a evidência de que o guard é necessário.
+
+**Nota de método:** este é o terceiro item do plano (depois de #4 e #7) cuja premissa não sobrevive à
+verificação. `intent` gravado é histórico, não diagnóstico. Reauditar antes de codar.
+
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
 
 Relato do cliente confirmado em dados. Rajada = 2+ mensagens do lead em até 2 minutos:
@@ -131,6 +176,28 @@ Exemplos reais das que falharam:
 - *"Tenho dois implantes e uma coroa eles contam"* + *"Como pode ser feito neste caso?"* → 2 respostas
 - *"Qual a diferença da técnica"* + *"Eu não entendi nada"* → 2 respostas
 - *"Olá bom dia"* + *"Tenho interesse em lentes de resina estratificada…"* → 2 respostas
+
+### O caso de 13 segundos (Vitalli, 19/07 01:34) — a pergunta que sumiu
+
+Encontrado ao reauditar #10. É a variante mais cara da rajada: a segunda pergunta **não recebe
+resposta nenhuma**.
+
+| Hora | Quem | Mensagem |
+|---|---|---|
+| 01:34:55 | lead | *"Esse valor pode ser parcelado ?"* |
+| 01:35:08 | lead | *"Vocês atendem aos sábados ?"* ← **13 s depois** |
+| 01:35:16 | agente | *"Sim, o investimento pode ser parcelado em até 21 vezes no cartão. Já avisei a equipe…"* |
+| 01:39:11 | **operador** | *"SIm, atendemos aos sabados mediante disponibilidade, quer verificar as datas disponiveis inclusive semana?"* |
+
+A IA respondeu só a primeira. A segunda foi respondida **pelo Victor, à mão, 4 minutos depois** —
+de madrugada. Do ponto de vista da lead, a IA ignorou uma pergunta direta.
+
+**O gap de 13 s cai exatamente na faixa que o #214 passou a cobrir.** O default de plataforma subiu
+para 15 s, mas a Vitalli mantém um override explícito de **7000 ms** na coluna — é a única clínica
+que ainda não herda o default. Com 15 s, as duas mensagens teriam sido fundidas e respondidas juntas.
+
+**Ação pendente:** limpar `message_debounce_ms` da Vitalli para `null`. É só dado, reversível, e
+fecha o item #15.
 
 **É o mesmo fenômeno dos 8 openers indevidos** (E1 do mapa): a rajada dispara pela primeira
 mensagem e a resposta sai depois da segunda já ter chegado. Num caso o sintoma é "respondeu duas
