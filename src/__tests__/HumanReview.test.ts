@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildHumanReviewButtons,
-  buildHumanReviewButtonPromptMessage,
   buildHumanReviewContextUpdateMessage,
   buildHumanReviewDecisionConfirmation,
   buildHumanReviewFollowUpAckMessage,
@@ -39,9 +38,9 @@ describe("human review WhatsApp decisions", () => {
 
   it("parseia ids determinísticos dos botões", () => {
     expect(buildHumanReviewButtons(27)).toEqual([
-      { id: "human-review:27:1", label: "Agendar direto" },
+      { id: "human-review:27:1", label: "Agendar" },
       { id: "human-review:27:2", label: "Avaliação presencial" },
-      { id: "human-review:27:3", label: "Responder manual" },
+      { id: "human-review:27:3", label: "Eu respondo" },
       { id: "human-review:27:4", label: "Não indicado" },
     ]);
     expect(parseHumanReviewReply("human-review:27:1")).toEqual({
@@ -70,7 +69,10 @@ describe("human review WhatsApp decisions", () => {
     expect(parseHumanReviewReply("A8 4")?.decision).toBe("not_eligible");
   });
 
-  it("gera instrução curta e segura para o responsável", () => {
+  it("cabe em uma mensagem só e diz que basta o código", () => {
+    // Antes eram duas mensagens repetindo o mesmo bloco, e o fallback
+    // ("A27 1 — Apto para agendar aplicação/procedimento") parecia exigir a
+    // linha inteira. Feedback do cliente em 21/07.
     const message = buildHumanReviewRequestMessage({
       reviewCode: 27,
       leadName: "João Silva",
@@ -78,13 +80,23 @@ describe("human review WhatsApp decisions", () => {
       mediaLabel: "foto",
     });
 
-    expect(message).toContain("Código A27");
-    expect(message).toContain("Paciente: João Silva");
-    expect(message).toContain("Toque em um botão");
-    expect(message).toContain("Se os botões não aparecerem");
-    expect(message).toContain("A27 1");
-    expect(message).toContain("A27 4");
-    expect(buildHumanReviewButtonPromptMessage(27)).toContain("A27: escolha a decisão");
+    expect(message).toContain("João Silva");
+    expect(message).toContain("Lentes em Resina Composta");
+    expect(message).toContain("Responda só o código");
+    expect(message).toContain("*A27 1*");
+    expect(message).toContain("\n4 não indicado");
+    // Enxuta o bastante para não virar parede de texto no WhatsApp.
+    expect(message.split("\n").length).toBeLessThanOrEqual(9);
+  });
+
+  it("sem tratamento identificado, não deixa a linha de contexto vazia", () => {
+    const message = buildHumanReviewRequestMessage({
+      reviewCode: 3,
+      leadName: "Nataly",
+      treatmentName: null,
+      mediaLabel: "foto",
+    });
+    expect(message).toContain("não identificado");
   });
 
   it("identifica atualizações do paciente e mantém resposta clínica pausada", () => {

@@ -32,10 +32,17 @@ export function buildHumanReviewButtonIds(reviewCode: number): Record<1 | 2 | 3 
 
 export function buildHumanReviewButtons(reviewCode: number): { id: string; label: string }[] {
   const ids = buildHumanReviewButtonIds(reviewCode);
+  // Rótulo curto e no infinitivo: o doutor precisa entender O QUE VAI ACONTECER
+  // sem ler a mensagem de novo. "Agendar direto" competia com "Avaliação
+  // presencial" e as duas viravam texto; "Agendar" e "Avaliação" se distinguem
+  // no relance. Pedido do cliente em 21/07.
   return [
-    { id: ids[1], label: "Agendar direto" },
+    { id: ids[1], label: "Agendar" },
+    // "Avaliação" sozinho não dizia que é presencial — e a diferença entre
+    // agendar o procedimento e chamar para avaliar no consultório é justamente
+    // essa. Aqui o rótulo longo ganha da brevidade.
     { id: ids[2], label: "Avaliação presencial" },
-    { id: ids[3], label: "Responder manual" },
+    { id: ids[3], label: "Eu respondo" },
     { id: ids[4], label: "Não indicado" },
   ];
 }
@@ -80,45 +87,34 @@ export function isMalformedHumanReviewReply(text: string): boolean {
   return /^a$/i.test(trimmed) || /^a\s*\d{1,3}\b/i.test(trimmed);
 }
 
+/**
+ * Pedido de avaliação — mensagem ÚNICA, enviada junto com os botões.
+ *
+ * Antes eram duas: um texto com o contexto e outra com os botões, repetindo o
+ * mesmo bloco de instruções. Chegava poluído no WhatsApp do doutor, e o
+ * fallback ("A27 1 — Apto para agendar aplicação/procedimento") parecia exigir
+ * que ele digitasse a linha inteira — quem não entende que basta o código não
+ * responde. Feedback do cliente em 21/07.
+ */
 export function buildHumanReviewRequestMessage(params: {
   reviewCode: number;
   leadName: string;
   treatmentName: string | null;
   mediaLabel: string;
 }): string {
-  const treatmentLine = params.treatmentName
-    ? `Tratamento: ${params.treatmentName}`
-    : "Tratamento: não identificado";
   const code = `A${params.reviewCode}`;
-
+  const contexto = [params.treatmentName ?? "tratamento não identificado", `${params.mediaLabel} recebida`].join(" · ");
   return [
-    "📸 *Avaliação necessária*",
+    `📸 *Avaliação · ${params.leadName}*`,
+    contexto,
     "",
-    `Código ${code}`,
-    `Paciente: ${params.leadName}`,
-    treatmentLine,
-    `Mídia: ${params.mediaLabel} recebida`,
-    "",
-    "Toque em um botão abaixo.",
-    "",
-    "Se os botões não aparecerem, responda:",
-    `${code} 1 — Apto para agendar aplicação/procedimento`,
-    `${code} 2 — Precisa avaliação presencial`,
-    `${code} 3 — Responder manualmente`,
-    `${code} 4 — Não indicado`,
-  ].join("\n");
-}
-
-export function buildHumanReviewButtonPromptMessage(reviewCode: number): string {
-  const code = `A${reviewCode}`;
-  return [
-    `${code}: escolha a decisão para este paciente.`,
-    "",
-    "Se os botões não aparecerem, responda:",
-    `${code} 1 — Apto para agendar aplicação/procedimento`,
-    `${code} 2 — Precisa avaliação presencial`,
-    `${code} 3 — Responder manualmente`,
-    `${code} 4 — Não indicado`,
+    // Uma opção por linha: em coluna o doutor varre a lista; em linha corrida
+    // ("1 agendar · 2 avaliação · …") vira parágrafo e ninguém lê.
+    `Sem botões? Responda só o código, ex: *${code} 1*`,
+    "1 agendar",
+    "2 avaliação presencial",
+    "3 eu respondo",
+    "4 não indicado",
   ].join("\n");
 }
 
