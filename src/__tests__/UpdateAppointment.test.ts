@@ -21,6 +21,7 @@ function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
     endsAt: new Date("2026-06-10T15:00:00Z"),
     status: "scheduled",
     source: "app",
+    origin: null,
     reminderSentAt: null,
     treatmentId: null,
     valueCents: null,

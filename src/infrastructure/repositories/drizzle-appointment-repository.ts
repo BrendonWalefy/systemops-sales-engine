@@ -21,6 +21,9 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         endsAt: appointment.endsAt,
         status: appointment.status,
         source: appointment.source,
+        // Fora do onConflictDoUpdate de propósito: a origem é imutável — quem
+        // criou o agendamento não muda quando o status é atualizado depois.
+        origin: appointment.origin,
         treatmentId: appointment.treatmentId,
         valueCents: appointment.valueCents,
         description: appointment.description,
@@ -136,6 +139,7 @@ function mapRow(row: typeof appointments.$inferSelect): Appointment {
     endsAt: row.endsAt,
     status: row.status,
     source: row.source,
+    origin: row.origin ?? null,
     reminderSentAt: row.reminderSentAt ?? null,
     treatmentId: row.treatmentId ?? null,
     valueCents: row.valueCents ?? null,

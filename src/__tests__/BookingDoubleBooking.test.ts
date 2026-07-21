@@ -91,6 +91,7 @@ function appointment(): Appointment {
     endsAt,
     status: "scheduled",
     source: "app",
+    origin: null,
     reminderSentAt: null,
     treatmentId: null,
     valueCents: null,
@@ -257,7 +258,7 @@ function setup() {
 }
 
 async function bookWith(service: BookingService, treatmentName?: string) {
-  return service.book({ clinic, lead, startsAt, endsAt, treatmentName });
+  return service.book({ clinic, lead, startsAt, endsAt, treatmentName , origin: "ai_conversation" });
 }
 
 describe("BookingService — título do evento no Calendar", () => {
@@ -276,7 +277,7 @@ describe("BookingService — título do evento no Calendar", () => {
   it("usa 'Paciente' quando o lead não tem nome cadastrado", async () => {
     const { calendar, service } = setup();
     const leadSemNome = { ...lead, name: null };
-    await service.book({ clinic, lead: leadSemNome, startsAt, endsAt, treatmentName: "Avaliação" });
+    await service.book({ clinic, lead: leadSemNome, startsAt, endsAt, treatmentName: "Avaliação" , origin: "ai_conversation" });
     expect(calendar.lastCreatedTitle).toBe("Avaliação — Paciente | Clínica Teste");
   });
 });

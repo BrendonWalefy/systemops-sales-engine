@@ -250,6 +250,9 @@ export class GoogleCalendarGateway implements CalendarGateway {
       endsAt: input.endsAt,
       status: "scheduled",
       source: "app",
+      // O gateway não sabe quem originou a chamada — quem sabe é o BookingService,
+      // que sobrescreve este campo antes de persistir.
+      origin: null,
       reminderSentAt: null,
       treatmentId: null,
       valueCents: null,

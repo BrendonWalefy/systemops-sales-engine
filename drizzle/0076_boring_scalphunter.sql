@@ -1,0 +1,2 @@
+CREATE TYPE "public"."appointment_origin" AS ENUM('ai_conversation', 'operator_inbox', 'operator_agenda', 'deposit_flow', 'gcal_import');--> statement-breakpoint
+ALTER TABLE "appointments" ADD COLUMN "origin" "appointment_origin";
