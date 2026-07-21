@@ -765,6 +765,34 @@ export function buildBusinessHoursAnswer(businessHoursRaw: string | null, messag
   return `Nosso horário de atendimento é: ${hoursText}.`;
 }
 
+// Mais estrito que isLocationRequest: durante a pausa de revisão clínica, "onde"/
+// "fica" soltos são ambíguos (ex.: "onde está minha avaliação?") e não devem
+// disparar o endereço. Exige intenção explícita de localização.
+export function isDirectAddressQuestion(message: string): boolean {
+  const n = normalizeFreeText(message);
+  if (!n) return false;
+  if (hasAnyKeyword(n, ["endereco", "localizacao", "como chego", "como chegar", "maps"])) return true;
+  return /\bonde\b/.test(n) && hasAnyKeyword(n, ["fica", "ficam", "clinica", "consultorio", "voces"]);
+}
+
+// Perguntas factuais 100% seguras que podem ser respondidas por template mesmo
+// com a IA pausada aguardando revisão humana da foto (caso Nataly): endereço e
+// horário de funcionamento. Não reabre o classificador nem avança o funil — só
+// devolve o dado institucional já cadastrado. Retorna null quando a mensagem não
+// é uma dessas perguntas seguras.
+export function buildSafeReviewPauseAnswer(
+  clinic: { address?: string | null; businessHours?: string | null },
+  message: string,
+): string | null {
+  if (isBusinessHoursQuestion(message)) {
+    return buildBusinessHoursAnswer(clinic.businessHours ?? null, message);
+  }
+  if (isDirectAddressQuestion(message) && clinic.address?.trim()) {
+    return `📍 Estamos na ${clinic.address}.`;
+  }
+  return null;
+}
+
 function isLocationRequestText(normalized: string): boolean {
   return hasAnyKeyword(normalized, ["localizacao", "endereco", "onde", "fica"]);
 }
@@ -1412,6 +1440,88 @@ function isWarrantyQuestion(normalized: string): boolean {
     "é grátis",
   ];
   return warrantyKeywords.some((keyword) => normalized.includes(keyword));
+}
+
+// Palavras vazias que não distinguem uma objeção — ignoradas ao casar a mensagem
+// do lead contra os gatilhos cadastrados.
+const OBJECTION_MATCH_STOPWORDS = new Set([
+  "as", "os", "um", "uma", "uns", "tem", "têm", "ter", "de", "da", "do", "das",
+  "dos", "que", "qual", "quais", "com", "sem", "por", "para", "pra", "voce",
+  "voces", "vcs", "meu", "minha", "meus", "minhas", "esse", "essa", "esses",
+  "essas", "isso", "aqui", "ainda", "muito", "sobre", "tipo", "como", "quanto",
+  "quando", "onde", "ser", "sao", "mas", "nao", "sim", "ele", "ela", "eles",
+]);
+
+// Casa a mensagem do lead contra as objeções cadastradas pela clínica. Quando a
+// clínica cadastra uma objeção (ex.: "…tem garantia e como é a manutenção?") com
+// resposta, ela DECIDIU que a IA responde aquilo — este matcher é o que permite
+// honrar essa decisão em vez de cair no handoff genérico de "manda foto".
+//
+// Conservador por construção: só casa por um token DISTINTIVO — uma palavra forte
+// (≥5 letras) que aparece no gatilho de UMA única objeção (não em várias) e que
+// NÃO é um nome de produto do nicho (ex.: "lentes", "resina" — genéricos, aparecem
+// em tudo). Assim "…tem garantia?" casa pela palavra "garantia" (única da objeção
+// de garantia), mas "as lentes são boas?" não casa por "lentes". Gatilhos compostos
+// (a Vitalli cadastra "Quanto tempo dura? Tem garantia e como é a manutenção?" numa
+// linha só) funcionam porque o casamento é por token distintivo, não por proporção.
+export function matchRegisteredObjection(
+  message: string,
+  objections: { objection: string; response: string }[] | null | undefined,
+  treatmentNames: string[] = [],
+): { objection: string; response: string } | null {
+  if (!objections?.length) return null;
+  const msg = normalizeFreeText(message);
+  if (!msg) return null;
+  const msgTokens = new Set(msg.split(" ").filter((t) => t.length >= 5));
+  if (msgTokens.size === 0) return null;
+
+  const valid = objections.filter((o) => o.objection?.trim() && o.response?.trim());
+  if (!valid.length) return null;
+
+  // Tokens genéricos do nicho (nomes de tratamento) não distinguem objeção nenhuma.
+  const genericTokens = new Set<string>();
+  for (const name of treatmentNames) {
+    for (const t of normalizeFreeText(name).split(" ")) {
+      if (t.length >= 5) genericTokens.add(t);
+    }
+  }
+
+  const trigTokens = valid.map((o) =>
+    normalizeFreeText(o.objection)
+      .split(" ")
+      .filter((t) => t.length >= 5 && !OBJECTION_MATCH_STOPWORDS.has(t) && !genericTokens.has(t)),
+  );
+  // Frequência de cada token entre os gatilhos — um token que aparece em 2+ objeções
+  // não é distintivo (ex.: "tempo" em "quanto tempo dura" e "o procedimento demora").
+  const df = new Map<string, number>();
+  for (const tokens of trigTokens) {
+    for (const t of new Set(tokens)) df.set(t, (df.get(t) ?? 0) + 1);
+  }
+
+  let bestObj: { objection: string; response: string } | null = null;
+  let bestScore = 0;
+  for (let i = 0; i < valid.length; i++) {
+    const distinctive = new Set(trigTokens[i].filter((t) => df.get(t) === 1));
+    const overlap = [...distinctive].filter((t) => msgTokens.has(t)).length;
+    if (overlap >= 1 && overlap > bestScore) {
+      bestObj = valid[i];
+      bestScore = overlap;
+    }
+  }
+  return bestObj;
+}
+
+// Diretiva autoritativa injetada no clinicContext do composer quando uma objeção
+// cadastrada casa com a dúvida do lead. Segue o padrão provado do
+// atypicalTriageContext: a resposta específica vira o contexto primário, em vez de
+// ficar diluída no playbook geral (que a LLM ignorava — bug garantia jul/2026).
+function buildObjectionDirectiveContext(matched: { objection: string; response: string }): string {
+  return [
+    `O lead levantou um ponto que a clínica JÁ respondeu oficialmente (objeção cadastrada: "${matched.objection}").`,
+    `RESPONDA usando esta informação da clínica, no seu tom acolhedor, sem alterar o conteúdo nem inventar política diferente:`,
+    `"${matched.response}"`,
+    `NÃO substitua essa resposta por um pedido de foto nem por "isso depende de avaliação presencial" — a clínica já definiu a resposta acima. Se o lead perguntou mais de uma coisa na mesma mensagem, responda também as outras partes com base nas orientações da clínica.`,
+  ].join("\n");
 }
 
 // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
@@ -3807,11 +3917,18 @@ export class ConversationOrchestrator {
         url: `/app/inbox/${conversation.id}`,
       }).catch(() => {});
 
-      const pendingText = shouldSendShortReviewAck(
+      const baseReviewText = shouldSendShortReviewAck(
         await this.conversationRepo.listMessages(conversation.id),
       )
         ? buildHumanReviewFollowUpAckMessage(lead.name)
         : buildHumanReviewPendingLeadMessage(lead.name);
+      // Se o lead fez uma pergunta factual segura (endereço/horário) enquanto o
+      // doutor avalia, responde por template e ainda reafirma a pausa — sem reabrir
+      // o classificador nem avançar o funil (a trava do caso Nataly segue intacta).
+      const safeReviewAnswer = buildSafeReviewPauseAnswer(clinic, messageText);
+      const pendingText = safeReviewAnswer
+        ? `${safeReviewAnswer}\n\n${baseReviewText}`
+        : baseReviewText;
       const pendingAgentId = randomUUID();
       await this.conversationRepo.appendMessage({
         id: pendingAgentId,
@@ -4438,6 +4555,9 @@ export class ConversationOrchestrator {
     // precisa (radiografia/foto) e sinalizar atenção. Não interrompe pipeline em curso.
     let atypicalTriageContext: string | null = null;
     let atypicalCaseLabel: string | null = null;
+    // Preenchido quando uma objeção cadastrada casa com uma dúvida de
+    // garantia/manutenção que, sem isto, cairia no handoff genérico "manda foto".
+    let objectionDirectiveContext: string | null = null;
     if (
       (effectiveIntent === "general_question" || effectiveIntent === "price_inquiry") &&
       !pipelineState
@@ -4470,10 +4590,25 @@ export class ConversationOrchestrator {
     // P0.2: Detectar pergunta de garantia (cobertura de procedimento recente)
     if (effectiveIntent === "needs_human" && !maintenanceHandoffReason) {
       const normalized = normalizeFreeText(messageText);
-      if (isWarrantyQuestion(normalized)) {
-        maintenanceHandoffReason = "Pergunta sobre cobertura de garantia — avaliar conforme política";
-      } else if (isMaintenanceInquiryText(normalized)) {
-        maintenanceHandoffReason = "Pergunta sobre manutenção/reparo — requer avaliação com foto";
+      const isWarranty = isWarrantyQuestion(normalized);
+      const isMaintenance = isMaintenanceInquiryText(normalized);
+      if (isWarranty || isMaintenance) {
+        // Bug garantia jul/2026: a clínica pode ter cadastrado uma objeção que JÁ
+        // responde essa dúvida (ex.: "as lentes têm garantia?"). Nesse caso ela
+        // decidiu que a IA responde — pausar e mandar "manda foto" ignora a config.
+        // Honra a objeção cadastrada; só cai no handoff quando não há resposta pronta.
+        const matchedObjection = matchRegisteredObjection(
+          messageText,
+          editorial?.objections,
+          clinicTreatments.map((t) => t.name),
+        );
+        if (matchedObjection) {
+          objectionDirectiveContext = buildObjectionDirectiveContext(matchedObjection);
+        } else if (isWarranty) {
+          maintenanceHandoffReason = "Pergunta sobre cobertura de garantia — avaliar conforme política";
+        } else {
+          maintenanceHandoffReason = "Pergunta sobre manutenção/reparo — requer avaliação com foto";
+        }
       }
     }
 
@@ -4854,6 +4989,13 @@ export class ConversationOrchestrator {
           }
         }
 
+        // Precisa ser lido ANTES de qualquer invalidate() abaixo: getOfferedTreatment
+        // só retorna enquanto o estado é "slots_offered", e os ramos "no_match" e "data
+        // não bate" invalidam a oferta antes de re-buscar. Sem carregar aqui, a reoferta
+        // perde a janela de início do tratamento (ex.: lentes 9h/16h) e a duração real,
+        // caindo na grade/duração padrão. É o mesmo objeto usado no book/sinal mais abaixo.
+        const offeredTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
+
         // Lead respondeu com dia/período/hora em vez do número: resolve contra os
         // slots pendentes antes de assumir qualquer opção. Roda ANTES da guarda de
         // data abaixo, que continua sendo a dona do caso "data não bate" (ramo
@@ -4886,7 +5028,7 @@ export class ConversationOrchestrator {
             undefined,
             slotPreference.preferredPeriod ?? undefined,
             slotPreference.preferredTime ?? undefined,
-            undefined, undefined, voiceEnabled,
+            offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
           );
           if (prefSlots.length > 0 && !prefEmpty) {
             replyText = await compose({ type: "slots_found", slots: prefSlots, askedForPreference: false });
@@ -4914,7 +5056,7 @@ export class ConversationOrchestrator {
               const { slots: redirectSlots, preferredDayEmpty: rdEmpty, outsideBookingWindow: rdOutside, outsideBusinessHours: rdNotOpen, preferredPeriodUnavailable: rdPeriod } = await this.fetchAndOfferSlots(
                 conversation.id, clinic, calendarGateway, timezone, businessHours,
                 slotPreference.preferredDate, slotPreference.preferredPeriod ?? undefined,
-                undefined, undefined, undefined, voiceEnabled,
+                undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
               );
               if (rdOutside) {
                 replyText = await compose({ type: "clarification_needed", question: "Só consigo ver horários com até ${clinic.slotLookaheadDays} dias de antecedência. Tem algum dia mais próximo que funcione para você?" });
@@ -4954,7 +5096,7 @@ export class ConversationOrchestrator {
               calendarGateway,
               timezone,
               businessHours,
-              undefined, undefined, undefined, undefined, undefined, voiceEnabled,
+              undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
             );
             if (freshSlots.length > 0) {
               // Se o horário que o lead pediu segue livre na lista atualizada,
@@ -4983,8 +5125,6 @@ export class ConversationOrchestrator {
         // Cancelar antes de book() é perigoso: se book() falhar (slot_taken ou calendar_error),
         // o lead ficaria sem agendamento nenhum.
         const existingAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
-
-        const offeredTreatment = await this.stateMachine.getOfferedTreatment(conversation.id);
 
         // Infere treatmentId e valueCents a partir do tratamento identificado.
         // valueCents é um SNAPSHOT imutável do preço no momento do booking — se uma
@@ -5023,7 +5163,7 @@ export class ConversationOrchestrator {
               // Slot tomado entre a oferta e a escolha → reoferta.
               const { slots: newSlots } = await this.fetchAndOfferSlots(
                 conversation.id, clinic, calendarGateway, timezone, businessHours,
-                undefined, undefined, undefined, undefined, undefined, voiceEnabled,
+                undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
               );
               replyText = newSlots.length > 0
                 ? await compose({ type: "slot_taken_reoffered", newSlots })
@@ -5095,7 +5235,7 @@ export class ConversationOrchestrator {
             calendarGateway,
             timezone,
             businessHours,
-            undefined, undefined, undefined, undefined, undefined, voiceEnabled,
+            undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
           );
           if (newSlots.length > 0) {
             replyText = await compose({ type: "slot_taken_reoffered", newSlots });
@@ -5432,6 +5572,14 @@ export class ConversationOrchestrator {
 
       // ── Precisa de humano (mídia, negociação, falar com dentista, situação especial) ──
       case "needs_human": {
+        // Bug garantia jul/2026: se a dúvida de garantia/manutenção casa com uma
+        // objeção que a clínica cadastrou, ela decidiu que a IA responde — então
+        // responde com a diretiva da objeção em vez de pausar e pedir foto. Sem
+        // handoff, sem pausa: é resposta institucional que a clínica já aprovou.
+        if (objectionDirectiveContext) {
+          replyText = await compose({ type: "general_question", clinicContext: objectionDirectiveContext });
+          break;
+        }
         const reason =
           maintenanceHandoffReason ??
           classification.handoffReason ??
