@@ -84,8 +84,8 @@ import type {
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
+import { buildForwardedMediaFileName } from "@/application/conversations/forwarded-media-file-name";
 import {
-  buildHumanReviewButtonPromptMessage,
   buildHumanReviewButtons,
   buildHumanReviewContextUpdateMessage,
   buildHumanReviewPendingLeadMessage,
@@ -94,7 +94,6 @@ import {
   type HumanReviewDecision,
 } from "@/domain/entities/human-review";
 import {
-  buildDepositProofButtonPromptMessage,
   buildDepositProofButtons,
   buildDepositProofReviewRequestMessage,
   nextAvailableDepositProofReviewCode,
@@ -3664,25 +3663,35 @@ export class ConversationOrchestrator {
               depositAmountCents: depositState.payload.depositAmountCents,
             });
             void (async () => {
-              try {
-                await sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig);
-              } catch (err) {
-                console.warn("[DepositReview] texto de validação falhou:", err);
-              }
-
+              // Uma mensagem só: o texto viaja junto com os botões. Se a camada
+              // interativa falhar, reenvia como texto puro — o mesmo conteúdo já
+              // traz o código e as opções, então a decisão continua possível.
               try {
                 await sendButtonListMessage(
                   receptionistPhone,
-                  buildDepositProofButtonPromptMessage(proofReviewCode),
+                  proofReviewMessage,
                   buildDepositProofButtons(proofReviewCode),
                   channelConfig,
                 );
               } catch (err) {
-                console.warn("[DepositReview] botões de validação falharam:", err);
+                console.warn("[DepositReview] botões falharam; caindo para texto:", err);
+                await sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig)
+                  .catch((textErr) => console.warn("[DepositReview] texto de validação falhou:", textErr));
               }
 
               if (params.mediaUrl) {
-                await sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig).catch(() => {});
+                await sendMediaMessage(
+                  receptionistPhone,
+                  params.mediaUrl,
+                  inboundMediaType,
+                  channelConfig,
+                  undefined,
+                  buildForwardedMediaFileName({
+                    leadName,
+                    contextLabel: depositState.payload.slotLabel,
+                    mediaType: inboundMediaType,
+                  }),
+                ).catch(() => {});
               }
             })();
           }
@@ -3841,27 +3850,25 @@ export class ConversationOrchestrator {
             })
           : `📎 *${leadName}* enviou ${artigo} ${mediaLabel} para avaliação.\n\nPara responder ao lead, abra o WhatsApp da clínica e responda diretamente no chat dele. A IA fica pausada enquanto o humano assume.`;
         if (humanReviewContext) {
-          try {
-            // O contexto com código/nome é uma mensagem de texto independente.
-            // Assim ele continua visível mesmo quando o WhatsApp aceita o request
-            // mas não renderiza os botões interativos na conta do responsável.
-            await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
-          } catch (err) {
-            console.warn("[HumanReview] contexto textual falhou:", err);
-            operatorNotificationIssue = "Falha ao enviar o contexto da avaliação ao doutor";
-          }
+          // Uma mensagem só: contexto e botões viajam juntos. Se a camada
+          // interativa falhar, o mesmo texto vai puro — ele já carrega Axx e as
+          // opções 1..4, então a decisão continua possível.
           try {
             await sendButtonListMessage(
               receptionistPhone,
-              buildHumanReviewButtonPromptMessage(humanReviewContext.reviewCode),
+              contextMsg,
               buildHumanReviewButtons(humanReviewContext.reviewCode),
               channelConfig,
             );
           } catch (err) {
-            // O texto anterior já contém Axx + opções 1..4, portanto a decisão
-            // segue possível mesmo se a camada interativa estiver instável.
-            console.warn("[HumanReview] botões falharam; instrução textual preservada:", err);
-            operatorNotificationIssue ??= "Botões de avaliação falharam; decisão textual Axx continua disponível";
+            console.warn("[HumanReview] botões falharam; caindo para texto:", err);
+            try {
+              await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+              operatorNotificationIssue = "Botões de avaliação falharam; decisão textual Axx continua disponível";
+            } catch (textErr) {
+              console.warn("[HumanReview] contexto textual falhou:", textErr);
+              operatorNotificationIssue = "Falha ao enviar o contexto da avaliação ao doutor";
+            }
           }
         } else {
           try {
@@ -3873,7 +3880,18 @@ export class ConversationOrchestrator {
         }
         if (params.mediaUrl) {
           try {
-            await sendMediaMessage(receptionistPhone, params.mediaUrl, inboundMediaType, channelConfig);
+            await sendMediaMessage(
+              receptionistPhone,
+              params.mediaUrl,
+              inboundMediaType,
+              channelConfig,
+              undefined,
+              buildForwardedMediaFileName({
+                leadName,
+                contextLabel: humanReviewContext?.treatmentName ?? null,
+                mediaType: inboundMediaType,
+              }),
+            );
           } catch (err) {
             console.warn("[MediaForward] mídia falhou:", err);
             operatorNotificationIssue ??= "Aviso enviado, mas a mídia não foi encaminhada ao doutor";

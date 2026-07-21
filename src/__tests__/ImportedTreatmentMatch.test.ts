@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  extractEventValueCents,
   matchImportedTreatment,
   resolveImportedEndsAt,
   type ImportTreatmentCandidate,
@@ -211,5 +212,52 @@ describe("resolveImportedEndsAt", () => {
         resolveImportedEndsAt({ startsAt: inicio, eventEndsAt: fimReal, treatmentDurationMinutes: dur }),
       ).toEqual(fimReal);
     }
+  });
+});
+
+// ── Valor do atendimento ──
+//
+// A home soma valueCents para mostrar faturamento potencial e realizado. Medido
+// em 21/07: 45 de 46 consultas da Vitalli tinham valueCents nulo e os dois
+// números apareciam como R$ 0 — com o valor escrito na agenda o tempo todo.
+
+describe("extractEventValueCents", () => {
+  it.each([
+    ["Laís Manutenção R$400", 40000],
+    ["Leonardo Paciente R$2.000", 200000],
+    ["Amanda 20 lentes + Remoção R$2200", 220000],
+    ["Angelucia 8:30 manutenção 200$", 20000],
+    ["Tatiana 20 lentes 2 mil", 200000],
+    ["Regina Silva Rodrigues 2 mil 200 remoção", 200000],
+  ])("extrai de %s", (summary, esperado) => {
+    expect(extractEventValueCents(summary)).toBe(esperado);
+  });
+
+  it("soma quando o evento itemiza um atendimento combinado", () => {
+    // Os dois procedimentos acontecem na mesma cadeira: o valor da consulta é a soma.
+    expect(extractEventValueCents("Mercia 20 lentes R$2.000 e plástica gengival R$1.000")).toBe(300000);
+    expect(extractEventValueCents("Denis William R$3.000 com a plástica + R$400 da remoção")).toBe(340000);
+  });
+
+  it("NÃO confunde quantidade com dinheiro", () => {
+    // "20 lentes" é quantidade. Sem marcador de moeda, não vira R$ 20.
+    expect(extractEventValueCents("Ana Julia 20 lentes")).toBeNull();
+    expect(extractEventValueCents("André 10 lentes inferiores já paga")).toBeNull();
+  });
+
+  it("NÃO confunde horário com dinheiro", () => {
+    expect(extractEventValueCents("Vilma avaliação 8:30 gregorie")).toBeNull();
+  });
+
+  it("NÃO soma alternativas de preço", () => {
+    // "2500 se fizer raspagem 2650" são dois cenários, não duas parcelas.
+    // Sem cifra explícita, nenhum dos dois é lido — melhor nulo que R$ 5.150.
+    expect(extractEventValueCents("MURILO 20 lentes + PLÁSTICA SUPERIOR 2500 se fizer raspagem 2650")).toBeNull();
+  });
+
+  it("evento sem valor continua sem valor", () => {
+    expect(extractEventValueCents("Kevin Manutenção")).toBeNull();
+    expect(extractEventValueCents("Vitor manutenção gratuita")).toBeNull();
+    expect(extractEventValueCents("")).toBeNull();
   });
 });

@@ -42,6 +42,21 @@ import {
   parseDepositProofReviewReply,
 } from "@/application/conversations/deposit-proof-review";
 import { confirmDepositDecision } from "@/application/conversations/confirm-deposit-decision";
+import {
+  buildAppointmentCompletionInvalidReplyMessage,
+  buildNoShowFollowUpButtons,
+  buildNoShowFollowUpMessage,
+  isMalformedAppointmentCompletionReply,
+  parseAppointmentCompletionReply,
+  parseNoShowFollowUpReply,
+} from "@/application/conversations/appointment-completion-review";
+import {
+  applyAppointmentCompletion,
+  buildCompletionConfirmationMessage,
+  buildCompletionNotFoundMessage,
+} from "@/application/conversations/apply-appointment-completion";
+import { sendButtonListMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { enqueueNoShowRecovery } from "@/application/conversations/enqueue-no-show-recovery";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -178,6 +193,76 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const shouldRejectMalformedReviewReply = isMalformedHumanReviewReply(operatorInput);
     const channelConfig = resolveChannelConfig(clinicRow);
     const reviewRepo = new DrizzleHumanReviewRequestRepository();
+
+    // ── Confirmação de atendimento realizado ──
+    // Sem isto, nenhuma consulta chega a `completed`: a regra de feedback de 24h
+    // não dispara e o faturamento realizado do painel fica em R$ 0.
+    const parsedCompletion = parseAppointmentCompletionReply(operatorInput);
+    if (parsedCompletion) {
+      const outcome = await applyAppointmentCompletion({
+        clinicId,
+        timezone: clinicRow.timezone,
+        target: parsedCompletion.kind === "all"
+          ? { kind: "all" }
+          : { kind: "single", timeCode: parsedCompletion.timeCode },
+        action: parsedCompletion.kind === "all" ? "completed" : parsedCompletion.action,
+      });
+
+      if (!outcome.ok) {
+        await sendTextMessage(
+          body.phone,
+          parsedCompletion.kind === "all"
+            ? "Não encontrei atendimentos pendentes de confirmação hoje."
+            : buildCompletionNotFoundMessage(parsedCompletion.timeCode),
+          channelConfig,
+        ).catch((err) => console.warn("[AppointmentCompletion] aviso falhou:", err));
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      // Falta não é fim de linha: é lead de volta ao funil. Oferece a recuperação
+      // em vez de só registrar o prejuízo.
+      if (outcome.action === "no_show" && outcome.updated.length === 1) {
+        const faltante = outcome.updated[0];
+        await sendButtonListMessage(
+          body.phone,
+          buildNoShowFollowUpMessage(faltante.leadName),
+          buildNoShowFollowUpButtons(faltante.timeCode),
+          channelConfig,
+        ).catch(async (err) => {
+          console.warn("[AppointmentCompletion] botões de recuperação falharam:", err);
+          await sendTextMessage(body.phone, buildNoShowFollowUpMessage(faltante.leadName), channelConfig)
+            .catch(() => {});
+        });
+        return new NextResponse("OK", { status: 200 });
+      }
+
+      await sendTextMessage(body.phone, buildCompletionConfirmationMessage(outcome), channelConfig)
+        .catch((err) => console.warn("[AppointmentCompletion] confirmação falhou:", err));
+      return new NextResponse("OK", { status: 200 });
+    }
+
+    if (isMalformedAppointmentCompletionReply(operatorInput)) {
+      await sendTextMessage(body.phone, buildAppointmentCompletionInvalidReplyMessage(), channelConfig)
+        .catch((err) => console.warn("[AppointmentCompletion] ajuda falhou:", err));
+      return new NextResponse("OK", { status: 200 });
+    }
+
+    // Resposta ao "quer que eu chame para remarcar?"
+    const parsedRecovery = parseNoShowFollowUpReply(operatorInput);
+    if (parsedRecovery) {
+      await sendTextMessage(
+        body.phone,
+        parsedRecovery.recover
+          ? "Combinado! Vou chamar e já ofereço os horários disponíveis."
+          : "Ok, deixo com você então.",
+        channelConfig,
+      ).catch((err) => console.warn("[AppointmentCompletion] ack de recuperação falhou:", err));
+      if (parsedRecovery.recover) {
+        await enqueueNoShowRecovery({ clinicId, timeCode: parsedRecovery.timeCode })
+          .catch((err) => console.error("[AppointmentCompletion] recuperação falhou:", err));
+      }
+      return new NextResponse("OK", { status: 200 });
+    }
 
     if (parsedDepositReply) {
       const pendingDeposit = await findPendingDepositProofByCode({

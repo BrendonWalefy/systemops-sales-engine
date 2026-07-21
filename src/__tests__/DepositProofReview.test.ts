@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildDepositProofButtonPromptMessage,
   buildDepositProofDecisionConfirmation,
   buildDepositProofInvalidReplyMessage,
   buildDepositProofButtons,
@@ -21,8 +20,8 @@ describe("DepositProofReview", () => {
 
   it("parses deterministic quick reply button ids", () => {
     expect(buildDepositProofButtons(12)).toEqual([
-      { id: "deposit:12:confirm", label: "Confirmar Pix" },
-      { id: "deposit:12:reject", label: "Pix não localizado" },
+      { id: "deposit:12:confirm", label: "Pix recebido" },
+      { id: "deposit:12:reject", label: "Não recebi" },
     ]);
     expect(parseDepositProofReviewReply("deposit:12:confirm")).toEqual({ reviewCode: 12, action: "confirm" });
     expect(parseDepositProofReviewReply("deposit:12:reject")).toEqual({ reviewCode: 12, action: "reject" });
@@ -45,7 +44,7 @@ describe("DepositProofReview", () => {
     expect(buildDepositProofInvalidReplyMessage()).toContain("P12 1");
   });
 
-  it("builds the WhatsApp instruction sent to the doctor", () => {
+  it("cabe em uma mensagem só e diz que basta o código", () => {
     const message = buildDepositProofReviewRequestMessage({
       reviewCode: 12,
       leadName: "Vitor",
@@ -53,23 +52,14 @@ describe("DepositProofReview", () => {
       depositAmountCents: 3000,
     });
 
-    expect(message).toContain("Código P12");
-    expect(message).toContain("Paciente: Vitor");
-    expect(message).toContain("Horário reservado: Seg 21/07 às 16h");
-    expect(message).toContain("Toque em um botão");
-    expect(message).toContain("Se os botões não aparecerem");
-    expect(message).toContain("P12 1");
-    expect(message).toContain("P12 2");
+    expect(message).toContain("Vitor");
+    expect(message).toContain("Seg 21/07 às 16h");
+    expect(message).toContain("R$ 30");
+    expect(message).toContain("Responda só o código");
+    expect(message).toContain("*P12 1*");
+    expect(message).toContain("\n2 não recebi");
     expect(message).not.toMatch(/painel/i);
-  });
-
-  it("builds a compact button prompt with manual fallback", () => {
-    const message = buildDepositProofButtonPromptMessage(12);
-
-    expect(message).toContain("P12");
-    expect(message).toContain("Se os botões não aparecerem");
-    expect(message).toContain("P12 1");
-    expect(message).toContain("P12 2");
+    expect(message.split("\n").length).toBeLessThanOrEqual(9);
   });
 
   it("confirms the doctor's Pix decision in plain language", () => {

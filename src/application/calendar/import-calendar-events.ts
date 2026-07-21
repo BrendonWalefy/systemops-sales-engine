@@ -132,6 +132,8 @@ export async function importCalendarEvents(
       );
       const professionalId = matchedProfessional?.id ?? options.defaultProfessionalId ?? null;
 
+      const valueCents = extractEventValueCents(treatmentName);
+
       const endsAt = resolveImportedEndsAt({
         startsAt: event.startTime,
         eventEndsAt: event.endTime,
@@ -145,7 +147,7 @@ export async function importCalendarEvents(
             eq(appts.clinicId, clinicId),
             inArray(appts.calendarEventId, calendarEventIdCandidates(event.uid)),
           ),
-        columns: { id: true, professionalId: true, treatmentId: true, status: true }
+        columns: { id: true, professionalId: true, treatmentId: true, status: true, valueCents: true }
       });
 
       if (existingAppointment) {
@@ -161,6 +163,8 @@ export async function importCalendarEvents(
             status: updatedStatus,
             professionalId: matchedProfessional?.id ?? existingAppointment.professionalId ?? options.defaultProfessionalId ?? null,
             treatmentId: matchedTreatment?.id ?? existingAppointment.treatmentId ?? null,
+            // Não apaga valor já registrado quando o texto do evento perde a cifra.
+            valueCents: valueCents ?? existingAppointment.valueCents ?? null,
             description: event.summary ?? null,
             updatedAt: new Date(),
           })
@@ -181,6 +185,7 @@ export async function importCalendarEvents(
         // é conversão do produto. Ver diagnóstico §8.
         origin: "gcal_import",
         treatmentId: matchedTreatment?.id ?? null,
+        valueCents,
         description: event.summary ?? null,
         calendarEventId: event.uid,
       }).returning({ id: appointments.id });
@@ -263,6 +268,38 @@ export function resolveImportedEndsAt(params: {
   if (!treatmentDurationMinutes || treatmentDurationMinutes <= 0) return eventEndsAt;
   const configuredEnd = new Date(startsAt.getTime() + treatmentDurationMinutes * 60_000);
   return configuredEnd > eventEndsAt ? configuredEnd : eventEndsAt;
+}
+
+/**
+ * Valor do atendimento escrito no texto do evento, em centavos.
+ *
+ * A home soma `valueCents` para mostrar faturamento potencial e realizado. Medido
+ * em 21/07: **45 de 46** consultas da Vitalli tinham `valueCents` nulo e os dois
+ * números apareciam como R$ 0 — enquanto o valor estava escrito na agenda o tempo
+ * todo ("Tatiana 20 lentes 2 mil", "Laís Manutenção R$400").
+ *
+ * Só extrai com **marcador explícito de dinheiro** — `R$`, `$` ou "mil". Número
+ * solto é armadilha: "20 lentes" é quantidade, "8:30" é horário, e
+ * "2500 se fizer raspagem 2650" são duas alternativas, não uma soma.
+ *
+ * Vários valores marcados **somam**: o evento itemiza um atendimento combinado
+ * ("R$2.000 e plástica gengival R$1.000" = R$ 3.000 naquela cadeira).
+ */
+export function extractEventValueCents(summary: string): number | null {
+  const text = summary.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const valores: number[] = [];
+
+  const toNumber = (raw: string): number => Number(raw.replace(/\./g, "").replace(",", "."));
+
+  for (const m of text.matchAll(/r\$\s*([\d.,]+)/g)) valores.push(toNumber(m[1]));
+  for (const m of text.matchAll(/(\d[\d.,]*)\s*\$/g)) valores.push(toNumber(m[1]));
+  for (const m of text.matchAll(/(\d+(?:[.,]\d+)?)\s*mil\b/g)) {
+    valores.push(Number(m[1].replace(",", ".")) * 1000);
+  }
+
+  const validos = valores.filter((v) => Number.isFinite(v) && v > 0);
+  if (validos.length === 0) return null;
+  return Math.round(validos.reduce((a, b) => a + b, 0) * 100);
 }
 
 export type ImportTreatmentCandidate = {

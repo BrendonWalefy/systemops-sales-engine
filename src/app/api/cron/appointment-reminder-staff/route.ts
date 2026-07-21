@@ -13,7 +13,12 @@ import {
   isPendingCompletionAppointment,
 } from "@/core/scheduling/appointment-reminder-staff";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import { sendTextMessage, sendButtonListMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
+import {
+  buildAppointmentCompletionButtons,
+  buildPendingConfirmationMessage,
+  buildTomorrowAgendaMessage,
+} from "@/application/conversations/appointment-completion-review";
 
 export const dynamic = "force-dynamic";
 
@@ -59,8 +64,6 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
 
   // Espelha os mesmos alertas no WhatsApp pessoal do responsável (receptionist_phone),
   // além do push — é o canal que o doutor realmente acompanha (pedido Vitalli 17/07).
-  // Consolidado numa única mensagem para não buzinar duas vezes.
-  const whatsappSections: string[] = [];
 
   // ── Alerta 1: Agenda de amanhã ──
   const tomorrowAppts = await db
@@ -93,9 +96,6 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
       url: "/app/agenda",
     });
 
-    whatsappSections.push(
-      `📅 *Amanhã* — ${tomorrowAppts.length} atendimento${tomorrowAppts.length !== 1 ? "s" : ""}:\n${lines}`,
-    );
 
     console.log(`[AppointmentReminderStaff] clinic=${clinicId} amanhã=${tomorrowAppts.length}`);
   }
@@ -135,26 +135,58 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
       url: "/app/agenda",
     });
 
-    whatsappSections.push(
-      `⏳ *Pendente de confirmação* (hoje, sem conclusão registrada):\n${lines}`,
-    );
 
     console.log(`[AppointmentReminderStaff] clinic=${clinicId} pendentes=${pendingAppts.length}`);
   }
 
   // ── WhatsApp do responsável (opt-in por clínica) ──
-  if (whatsappSections.length > 0 && clinic.staffDigestWhatsAppEnabled && clinic.receptionistPhone) {
+  //
+  // DUAS mensagens, de propósito. A agenda de amanhã é informação: ele lê e
+  // segue. A confirmação é ação pendente e precisa ser a última do chat, que é
+  // onde ele olha. Juntas, a ação ficava enterrada sob uma lista já lida — e
+  // consulta que não vira `completed` trava a regra de feedback e o faturamento
+  // realizado do painel.
+  if (clinic.staffDigestWhatsAppEnabled && clinic.receptionistPhone) {
     const channelConfig = resolveChannelConfig(clinic);
     const hasChannel =
       channelConfig.provider === "z_api" ? !!channelConfig.zapi : !!channelConfig.meta;
+
     if (hasChannel) {
-      const body = `🌙 *Resumo do dia · ${clinic.name}*\n\n${whatsappSections.join("\n\n")}`;
-      try {
-        await sendTextMessage(clinic.receptionistPhone, body, channelConfig);
-        console.log(`[AppointmentReminderStaff] clinic=${clinicId} whatsapp=ok`);
-      } catch (err) {
-        console.error(`[AppointmentReminderStaff] WhatsApp falhou clinic=${clinicId}:`, err);
+      const agendaMessage = buildTomorrowAgendaMessage({
+        clinicName: clinic.name,
+        tomorrow: tomorrowAppts.map((a) => ({
+          time: fmt.format(a.startsAt),
+          leadName: a.leadName ?? a.leadPhone ?? "Paciente",
+        })),
+      });
+      if (agendaMessage) {
+        await sendTextMessage(clinic.receptionistPhone, agendaMessage, channelConfig)
+          .catch((err) => console.error(`[AppointmentReminderStaff] agenda falhou clinic=${clinicId}:`, err));
       }
+
+      const pendingForConfirmation = pendingAppts.map((a) => ({
+        id: a.id,
+        time: fmt.format(a.startsAt),
+        leadName: a.leadName ?? a.leadPhone ?? "Paciente",
+      }));
+      const confirmationMessage = buildPendingConfirmationMessage({ pending: pendingForConfirmation });
+      if (confirmationMessage) {
+        // Botões primeiro; texto puro só se a camada interativa falhar — o mesmo
+        // conteúdo já traz os códigos, então confirmar continua possível.
+        try {
+          await sendButtonListMessage(
+            clinic.receptionistPhone,
+            confirmationMessage,
+            buildAppointmentCompletionButtons(pendingForConfirmation),
+            channelConfig,
+          );
+        } catch (err) {
+          console.warn(`[AppointmentReminderStaff] botões falharam clinic=${clinicId}; caindo para texto:`, err);
+          await sendTextMessage(clinic.receptionistPhone, confirmationMessage, channelConfig)
+            .catch((textErr) => console.error(`[AppointmentReminderStaff] confirmação falhou clinic=${clinicId}:`, textErr));
+        }
+      }
+      console.log(`[AppointmentReminderStaff] clinic=${clinicId} whatsapp=ok`);
     }
   }
 

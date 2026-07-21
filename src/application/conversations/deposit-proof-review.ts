@@ -20,8 +20,8 @@ export function buildDepositProofButtonIds(reviewCode: number): { confirm: strin
 export function buildDepositProofButtons(reviewCode: number): { id: string; label: string }[] {
   const ids = buildDepositProofButtonIds(reviewCode);
   return [
-    { id: ids.confirm, label: "Confirmar Pix" },
-    { id: ids.reject, label: "Pix não localizado" },
+    { id: ids.confirm, label: "Pix recebido" },
+    { id: ids.reject, label: "Não recebi" },
   ];
 }
 
@@ -65,6 +65,11 @@ function formatAmount(cents: number | null | undefined): string {
   return `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * Validação do comprovante — mensagem ÚNICA, enviada junto com os botões.
+ * Ver a justificativa em `buildHumanReviewRequestMessage`: eram duas mensagens
+ * com o mesmo bloco repetido, e o fallback parecia pedir a linha inteira.
+ */
 export function buildDepositProofReviewRequestMessage(params: {
   reviewCode: number;
   leadName: string;
@@ -73,31 +78,13 @@ export function buildDepositProofReviewRequestMessage(params: {
 }): string {
   const code = `P${params.reviewCode}`;
   return [
-    "💸 *Comprovante de sinal recebido*",
+    `💸 *Sinal · ${params.leadName}*`,
+    `${params.slotLabel} · ${formatAmount(params.depositAmountCents)}`,
     "",
-    `Código ${code}`,
-    `Paciente: ${params.leadName}`,
-    `Horário reservado: ${params.slotLabel}`,
-    `Sinal: ${formatAmount(params.depositAmountCents)}`,
-    "",
-    "Valide se o Pix entrou na conta.",
-    "",
-    "Toque em um botão abaixo.",
-    "",
-    "Se os botões não aparecerem, responda:",
-    `${code} 1 — Pix confirmado; confirmar agendamento`,
-    `${code} 2 — Pix não localizado; atendimento manual`,
-  ].join("\n");
-}
-
-export function buildDepositProofButtonPromptMessage(reviewCode: number): string {
-  const code = `P${reviewCode}`;
-  return [
-    `${code}: escolha uma opção para validar o Pix.`,
-    "",
-    "Se os botões não aparecerem, responda:",
-    `${code} 1 — Pix confirmado; confirmar agendamento`,
-    `${code} 2 — Pix não localizado; atendimento manual`,
+    // Uma opção por linha — ver a justificativa em buildHumanReviewRequestMessage.
+    `Sem botões? Responda só o código, ex: *${code} 1*`,
+    "1 Pix recebido",
+    "2 não recebi",
   ].join("\n");
 }
 
