@@ -405,7 +405,7 @@ export function shouldOfferSlotsAfterPipelinePhoto(
     (currentStepType === "photo" && photoReceived);
 }
 
-function shouldSendConciergeStarter(experience: ConversationExperience, intent: IntentType): boolean {
+export function shouldSendConciergeStarter(experience: ConversationExperience, intent: IntentType): boolean {
   if (experience !== "concierge") return false;
   return intent === "greeting" || intent === "acknowledgment" || intent === "unclear";
 }
@@ -4282,7 +4282,22 @@ export class ConversationOrchestrator {
     // ── 7. Carrega histórico de mensagens ──
     const allMessages = await this.conversationRepo.listMessages(conversation.id);
 
+    // Ninguém respondeu ainda. Governa a APRESENTAÇÃO: saudação rica, nome da
+    // clínica dito uma vez. Continua verdadeiro mesmo com várias mensagens do
+    // lead — quem nunca foi atendido merece a apresentação, seja na 1ª ou na 4ª.
     const isFirstMessage = allMessages.filter((m) => m.author !== "lead").length === 0;
+    // Mais estrito: além de ninguém ter respondido, o lead falou UMA vez só.
+    // Governa a ABERTURA enlatada (menu inicial / concierge starter), que
+    // substitui a resposta em vez de complementá-la.
+    //
+    // `isFirstMessage` sozinho media "ninguém respondeu ainda", não "é a 1ª
+    // mensagem do lead": quem mandava 4 mensagens sem resposta seguia sendo
+    // "primeiro contato" e recebia a saudação genérica no lugar da resposta.
+    // Medido em produção: 123 primeiras respostas saíram com o lead já tendo 2+
+    // mensagens; 69 (56%) abriram com apresentação. Um lead da Vitalli chegou a
+    // 14 mensagens nessa condição.
+    const leadMessageCount = allMessages.filter((m) => m.author === "lead").length;
+    const isConversationOpening = isFirstMessage && leadMessageCount <= 1;
     const lastAgentMessage = [...allMessages].reverse().find((m) => m.author === "agent");
     const stateAsOf = isReplay ? undefined : incomingMessage.sentAt;
     const [currentConversationState, lastResetBoundary] = await Promise.all([
@@ -4312,7 +4327,10 @@ export class ConversationOrchestrator {
     // da clínica já faz a pergunta de qualificação (padrão da operadora humana). Nesse
     // caso não despejamos explicação + mídia do pipeline junto; posicionamos o pipeline
     // no passo de conteúdo (deferido) e ele dispara na resposta seguinte do lead.
-    const deferFirstContactPitch = isFirstMessage && experience === "concierge";
+    // Usa a condição estrita: o deferimento existe porque o opener curado já faz
+    // a pergunta de qualificação. Sem opener (lead com 2+ mensagens), segurar o
+    // conteúdo do pipeline deixaria a resposta vazia.
+    const deferFirstContactPitch = isConversationOpening && experience === "concierge";
 
     // A9 — Reenvio idêntico do lead (duplo clique no anúncio CTWA dispara o mesmo texto
     // 2x com horas de intervalo; a janela de dedup de 2min lá em cima não pega). Sem
@@ -5175,13 +5193,22 @@ export class ConversationOrchestrator {
     }
     const responseIntent: IntentType = commercialPauseDetected ? "farewell" : effectiveIntent;
 
-    if (isFirstMessage && shouldShowInitialMenu(experience, effectiveIntent)) {
+    // Abertura enlatada: única resposta que SUBSTITUI o conteúdo em vez de
+    // responder a ele. Marcada aqui para a recheca de rajada logo antes do
+    // envio — ver o guard "Rajada pós-composição" no fim do handle.
+    let replyIsCannedOpener = false;
+
+    if (isConversationOpening && shouldShowInitialMenu(experience, effectiveIntent)) {
       const salutation = getDayGreeting(timezone);
       const nameGreeting = extractFirstName(lead.name) ? `, ${extractFirstName(lead.name)}` : "";
       replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "first", experience)}`;
       await this.stateMachine.offerMenu(conversation.id);
-    } else if (isFirstMessage && shouldSendConciergeStarter(experience, effectiveIntent)) {
+    } else if (isConversationOpening && shouldSendConciergeStarter(experience, effectiveIntent)) {
       replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
+      // Texto puro, sem efeito de estado — pode ser descartado com segurança se
+      // o lead falar de novo enquanto compomos. O menu acima NÃO é marcado:
+      // offerMenu() já gravou estado e o descarte deixaria um menu órfão.
+      replyIsCannedOpener = true;
     } else if (resetRequested) {
       // Zera estado e marca boundary para que a próxima mensagem receba histórico pós-reset
       await this.stateMachine.markResetBoundary(conversation.id);
@@ -7114,6 +7141,33 @@ export class ConversationOrchestrator {
     const outboundParts = hasInterleavedMedia
       ? resolveOutboundParts(composedParts, deliveryMediaLibrary, deliveryLog, activeTreatmentId)
       : [];
+
+    // ── Guard: rajada pós-composição ──
+    //
+    // Existem três recheca de supersessão antes deste ponto (pós-claim,
+    // pós-debounce e pós-classificação), mas nenhuma cobre a chamada do
+    // COMPOSER — 3 a 10 segundos em que o lead pode falar de novo. É a última
+    // janela aberta, e o sintoma dela é o pior: o lead manda "Olá boa tarde" e
+    // logo "Quero saber o endereço de vcs", e recebe a saudação de abertura —
+    // que responde à primeira e enterra a segunda.
+    //
+    // Medido em produção: 123 primeiras respostas saíram com o lead já tendo 2+
+    // mensagens sem resposta; 69 (56%) eram abertura.
+    //
+    // Restrito à abertura enlatada de propósito. Aqui os ramos de resposta já
+    // rodaram: descartar uma oferta de horário deixaria slots reservados que o
+    // lead nunca viu. O starter concierge é texto puro, sem esse risco — e é
+    // exatamente a resposta que não deveria ter saído.
+    if (replyIsCannedOpener && !isReplay) {
+      const latestBeforeSend = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+      if (latestBeforeSend && latestBeforeSend.id !== incomingMessage.id) {
+        console.log(
+          `[Orchestrator] Rajada pós-composição: abertura de ${incomingMessage.id} descartada — ` +
+          `lead falou de novo (${latestBeforeSend.id}); o turno mais recente responde (conv=${conversation.id})`,
+        );
+        return { replied: false };
+      }
+    }
 
     // ── 9. Persiste resposta e outbox antes do envio técnico ──
     const agentMessageId = randomUUID();

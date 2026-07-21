@@ -31,7 +31,7 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | P | # | Problema | Evidência | Solução recomendada | Esforço | Risco |
 |---|---|---|---|---|---|---|
 | **P0** | 1 | Lead que volta após 4–6h recebe saudação de abertura em vez de continuidade | 17,2% dos gaps ≥ 4h; p90 = 17h | **Subir `staleConversationHours` para 24h** nas duas clínicas. É config por clínica — só dado, sem deploy. Depois avaliar 48h. | trivial | 🟢 |
-| **P0** | 2 | Lead com várias mensagens sem resposta é tratado como primeiro contato | 8 de 36 openers (22%) | Corrigir a semântica: `isFirstMessage` deve exigir **1 única mensagem do lead** *e* nenhuma resposta. Com 2+ mensagens do lead, responder ao **conteúdo**, não abrir. | baixo | 🟢 |
+| **P0** | 2 | Lead com várias mensagens sem resposta é tratado como primeiro contato | Remedido 21/07: **123** primeiras respostas com o lead já em 2+ mensagens; **69 (56%)** abriram com apresentação | ✅ **Feito (parcial):** `isConversationOpening` separa "abrir" de "apresentar-se", e um guard pós-composição descarta a abertura quando o lead fala de novo. **Teto de ~33%** — ver abaixo: em 46 dos 69 a 2ª mensagem sequer existia no banco. | baixo | 🟢 |
 | **P0** | 3 | 774 leads (98,5%) parados em `waiting_response` | §7 diagnóstico | Cobertura: varredura que responde/reengaja quem ficou sem resposta. É onde está a receita perdida. | médio | 🟡 |
 | **P1** | 4 | Pedido explícito de agendamento cai em `general_question` | 3 de 7 (43%): *"Me agenda dia 8/8"* → horário de funcionamento | **Guard determinístico** de pré-classificação: frases de agendamento explícito ("me agenda", "podemos marcar", "quero agendar" + data) roteiam direto para o fluxo de slots, sem passar pela LLM. | baixo | 🟢 |
 | **P1** | 5 | Pergunta de horário fora do expediente vira beco sem saída | 11 msgs / 5 convs, repetida em 4: *"posso ir após as 18h?"* → *"Seg-Sáb 8h-18h."* | Ao detectar horário **fora** da janela, nunca só informar o expediente: responder o limite **e ofertar os horários mais próximos**. Espelha o que a operadora faz. | baixo | 🟢 |
@@ -160,6 +160,51 @@ cerca de 16 h **depois** daquela mensagem. Não é bug vivo; é a evidência de 
 
 **Nota de método:** este é o terceiro item do plano (depois de #4 e #7) cuja premissa não sobrevive à
 verificação. `intent` gravado é histórico, não diagnóstico. Reauditar antes de codar.
+
+## Abertura indevida (#2): o gargalo não é a semântica, é o lag de registro
+
+`isFirstMessage` conta mensagens **não-lead**. Zero significa *"ninguém respondeu ainda"*, não *"é a
+primeira mensagem do lead"*. Quem manda quatro mensagens sem ser atendido continua sendo primeiro
+contato — um lead da Vitalli chegou a **14**.
+
+| | |
+|---|---|
+| Primeiras respostas com o lead já em 2+ mensagens | **123** |
+| Dessas, abriram com apresentação | **69 (56%)** |
+
+**O que foi corrigido.** O campo acumulava dois papéis; agora são dois:
+
+| Sinal | Governa | Regra |
+|---|---|---|
+| `isFirstMessage` | **apresentação** — saudação rica, nome da clínica uma vez | ninguém respondeu ainda |
+| `isConversationOpening` | **abertura enlatada** — menu inicial / starter concierge | ninguém respondeu **e** o lead falou 1 vez só |
+
+Quem nunca foi atendido merece a apresentação, seja na 1ª ou na 4ª mensagem. O que não pode é a
+abertura **substituir** a resposta.
+
+Somou-se um guard de rajada **pós-composição**. Já existiam três recheca de supersessão — pós-claim,
+pós-debounce e pós-classificação — mas nenhuma cobria a chamada do composer (3–10 s). Restrito à
+abertura de propósito: ali os ramos de resposta já rodaram, e descartar uma oferta de horário
+deixaria slots reservados que o lead nunca viu.
+
+### Por que o teto é ~33%
+
+Medindo `created_at − sent_at` da 2ª mensagem nos 69 casos:
+
+| | |
+|---|---|
+| Lag de registro (webhook → linha em `messages`) | mediana **50 s**, p90 **75 s**, máx **131 s** |
+| 2ª mensagem **já registrada** quando a resposta foi gravada | **23 (33%)** |
+| 2ª mensagem **ainda não registrada** | **46 (67%)** |
+
+Em dois terços dos casos a segunda mensagem **não existia no banco** no momento da decisão. Nenhum
+guard pode consultar o que não foi gravado, e nenhum ajuste de debounce alcança isso: o debounce
+compara contra mensagens **registradas**, e a janela dele (15 s) é três vezes menor que o lag.
+
+**Consequência de priorização:** o #17 (latência de 0–120 s por dois saltos de cron) deixou de ser só
+um problema de velocidade. Ele é a **causa raiz de dois terços das aberturas indevidas** e do que
+sobra das rajadas. Foi rebaixado a P4 por "melhora velocidade, não qualidade" — a medição desmente
+isso.
 
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
 
