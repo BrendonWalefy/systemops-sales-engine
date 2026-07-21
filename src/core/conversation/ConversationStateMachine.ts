@@ -90,7 +90,7 @@ export type ConversationStateRow = {
 };
 
 // Quanto tempo uma oferta de slots fica válida
-const SLOT_OFFER_TTL_MINUTES = 15;
+export const SLOT_OFFER_TTL_MINUTES = 15;
 
 export class ConversationStateMachine {
   // Estado atual não-expirado da conversa
