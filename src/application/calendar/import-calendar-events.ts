@@ -63,7 +63,7 @@ export async function importCalendarEvents(
 
   const clinicTreatments = await db.query.treatments.findMany({
     where: eq(treatments.clinicId, clinicId),
-    columns: { id: true, name: true },
+    columns: { id: true, name: true, aliases: true, keywordMatchEnabled: true },
   });
 
   const clinicProfessionals = await db.query.professionals.findMany({
@@ -104,9 +104,18 @@ export async function importCalendarEvents(
       // texto livre do evento (não o inverso — o SUMMARY não é um nome exato
       // de tratamento, é uma frase que pode mencioná-lo em qualquer posição).
       const normalizedSummary = normalizeWord(treatmentName);
-      const matchedTreatment = clinicTreatments.find((t) =>
-        normalizedSummary.includes(normalizeWord(t.name)),
-      );
+      const treatmentMatch = matchImportedTreatment(treatmentName, clinicTreatments);
+      const matchedTreatment = treatmentMatch.treatmentId
+        ? clinicTreatments.find((t) => t.id === treatmentMatch.treatmentId)
+        : undefined;
+      // Empate fica registrado: é o operador quem sabe qual técnica foi feita, e
+      // sem esse log o evento sumiria sem tratamento e sem explicação.
+      if (treatmentMatch.ambiguousWith.length > 0) {
+        console.log(
+          `[ImportCalendar] Tratamento ambíguo em "${event.summary}" — candidatos: ` +
+          `${treatmentMatch.ambiguousWith.join(" | ")} (clinic=${clinicId})`,
+        );
+      }
 
       const matchedProfessional = clinicProfessionals.find((p) =>
         matchesProfessionalMention(normalizedSummary, normalizeProfessionalName(p.name)),
@@ -196,6 +205,85 @@ function normalizeWord(word: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "");
+}
+
+// Texto do evento com pontuação virada em espaço: o SUMMARY real vem com "+",
+// "/", "$" grudados nas palavras ("20 lentes + remoção", "lentes / pagou 100$").
+function normalizeEventText(text: string): string {
+  return normalizeWord(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export type ImportTreatmentCandidate = {
+  id: string;
+  name: string;
+  aliases?: string[] | null;
+  keywordMatchEnabled?: boolean | null;
+};
+
+export type ImportTreatmentMatch = {
+  treatmentId: string | null;
+  // Nomes dos tratamentos que empataram. Vazio quando houve match único ou
+  // nenhum. Serve para registrar o caso — é decisão do operador, não nossa.
+  ambiguousWith: string[];
+};
+
+/**
+ * Qual tratamento cadastrado o texto livre do evento menciona?
+ *
+ * A regra anterior comparava só com o NOME COMPLETO do tratamento
+ * (`summary.includes("Manutenção Preventiva de lentes")`). A agenda real não
+ * escreve assim — escreve "Kevin Manutenção", "Ana Julia 20 lentes", "Keyla
+ * remoção 20 lentes". Resultado medido: **0 de 44** eventos importados da
+ * Vitalli tinham `treatmentId`, e as regras de pós-atendimento — que filtram por
+ * tratamento — nunca encontravam ninguém. Nenhuma mensagem de cuidados pós-lentes
+ * jamais saiu.
+ *
+ * Agora casa por nome OU alias, mas **só resolve quando a resposta é única**.
+ * Isto aqui grava prontuário: 24 dos 44 eventos dizem apenas "N lentes", e a
+ * Vitalli tem três tratamentos de lente (Composta, Premium, Estratificada) que
+ * compartilham o alias "lentes". O texto não diz a técnica, então o sistema não
+ * inventa — devolve os candidatos para quem sabe decidir.
+ */
+export function matchImportedTreatment(
+  summary: string,
+  candidates: ImportTreatmentCandidate[],
+): ImportTreatmentMatch {
+  const text = normalizeEventText(summary);
+  if (!text) return { treatmentId: null, ambiguousWith: [] };
+
+  // Comprimento do termo mais ESPECÍFICO que este tratamento casou; 0 = não casou.
+  //
+  // A especificidade desempata: "20 lentes estratificada" casa os três
+  // tratamentos de lente pelo alias genérico "lentes" (6 letras), mas só um casa
+  // "estratificada" (13). O mais específico vence. Quando o topo empata — o caso
+  // de "20 lentes", sem técnica escrita — ninguém vence, e é isso mesmo.
+  const specificity = (candidate: ImportTreatmentCandidate): number => {
+    if (candidate.keywordMatchEnabled === false) return 0;
+    const terms = [candidate.name, ...(candidate.aliases ?? [])];
+    let best = 0;
+    for (const term of terms) {
+      const normalized = normalizeEventText(term);
+      if (normalized.length >= 4 && text.includes(normalized)) {
+        best = Math.max(best, normalized.length);
+      }
+    }
+    return best;
+  };
+
+  const scored = candidates
+    .map((candidate) => ({ candidate, score: specificity(candidate) }))
+    .filter((entry) => entry.score > 0);
+
+  if (scored.length === 0) return { treatmentId: null, ambiguousWith: [] };
+
+  const topScore = Math.max(...scored.map((entry) => entry.score));
+  const winners = scored.filter((entry) => entry.score === topScore);
+
+  if (winners.length === 1) return { treatmentId: winners[0].candidate.id, ambiguousWith: [] };
+  return { treatmentId: null, ambiguousWith: winners.map((entry) => entry.candidate.name) };
 }
 
 // "Dr. Gregorie" → "gregorie" — o SUMMARY real menciona só o núcleo do nome

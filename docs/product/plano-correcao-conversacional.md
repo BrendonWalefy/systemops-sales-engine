@@ -228,15 +228,41 @@ A Vitalli tem as duas regras cadastradas e corretas:
 
 | Bloqueio | Medição | Efeito |
 |---|---|---|
-| **1. `treatment_id` nulo** | **19 de 20** consultas encerradas | As duas regras filtram por *Lentes em Resina Composta*. Sem tratamento na consulta, **zero** elegíveis. |
+| **1. `treatment_id` nulo** ✅ parcial | **19 de 20** consultas encerradas | As duas regras filtram por *Lentes em Resina Composta*. Sem tratamento na consulta, **zero** elegíveis. |
 | **2. Nada vira `completed`** | 43 `scheduled`, 6 `cancelled`, 1 `confirmed`, **0 `completed`** | Mata a regra de 24h, que exige esse status. 16 consultas já encerradas seguem `scheduled`. |
 | **3. `operationalStatus = paused`** | `autoReplyEnabled = false` | `shouldSendAutomatedClinicOutbound` barra **todo** outbound automatizado. |
 
 Resultado: **0 mensagens `postcare:` na outbox desde que a feature existe.**
 
-O bloqueio 1 é o mais silencioso: consulta criada pelo operador na agenda não grava `treatmentId` —
-só o fluxo de booking pela IA grava. Como quase todo agendamento da Vitalli é manual, a regra nunca
-encontra ninguém.
+O bloqueio 1 é o mais silencioso: **44 das 50 consultas vêm do Google Calendar**, não do painel. O
+importador até tentava casar tratamento, mas comparava o texto do evento com o **nome completo** do
+tratamento — e a agenda real escreve *"Kevin Manutenção"*, não *"Manutenção Preventiva de lentes"*.
+Nunca casava nada.
+
+**Corrigido:** o importador passou a casar por nome **ou alias**, com desempate por especificidade —
+o termo mais longo vence, e empate no topo não resolve. Cobertura medida nos 44 eventos reais:
+
+| | Antes | Depois |
+|---|---|---|
+| Resolvido | **0** | **15** |
+| Ambíguo (registrado em log) | — | 21 |
+| Sem match | 44 | 8 |
+
+Dos 15, onze são *Manutenção Preventiva de lentes* e apenas **dois** são *Lentes em Resina Composta* —
+o tratamento que a regra de pós-lentes filtra.
+
+**Os 21 ambíguos são todos da mesma forma: "N lentes".** A Vitalli tem três tratamentos de lente
+(Composta, Premium, Estratificada) que compartilham o alias `lentes`, e o texto do evento não diz a
+técnica. O sistema não inventa: isto grava prontuário, e escrever a técnica errada para fazer uma
+automação disparar é pior do que não disparar.
+
+Três saídas, todas do Victor:
+
+1. **Escrever a técnica no evento** (*"20 lentes estratificada"*) — o matcher já resolve sozinho.
+2. **Consolidar** os três tratamentos de lente em um, se o pós-operatório é o mesmo.
+3. **Escolher no painel** quando a consulta for importada — exige UI.
+
+Enquanto nenhuma for feita, o pós-lentes continua sem alcançar a maioria dos pacientes.
 
 **Questão de produto no bloqueio 3:** cuidados pós-procedimento são instrução clínica, não marketing.
 Faz sentido que a pausa comercial da IA também silencie orientação de cuidado? Provavelmente não —
