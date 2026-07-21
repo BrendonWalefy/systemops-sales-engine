@@ -2,6 +2,7 @@ import { db } from "@/infrastructure/db/client";
 import { appointments, leads, treatments, professionals } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import type { CalendarEvent } from "./parse-ics";
+import { extractCalendarEventPhone } from "./extract-event-phone";
 
 export interface ImportResult {
   imported: number;
@@ -53,12 +54,22 @@ export async function importCalendarEvents(
   // ~1/segundo, função serverless perto do limite de tempo).
   const existingLeads = await db.query.leads.findMany({
     where: eq(leads.clinicId, clinicId),
-    columns: { id: true, name: true },
+    columns: { id: true, name: true, phone: true },
   });
   const leadByNormalizedName = new Map(
     existingLeads
       .filter((l) => l.name)
       .map((l) => [normalizeWord(l.name as string), l.id]),
+  );
+  // Telefone é chave mais forte que nome: "Ana Julia" na agenda tem 10 leads
+  // candidatos na base da Vitalli, o número tem um. Casar por aqui primeiro
+  // reaproveita a conversa que o paciente já teve, em vez de criar um lead
+  // paralelo e mudo.
+  const leadByPhone = new Map(
+    existingLeads.filter((l) => l.phone).map((l) => [l.phone as string, l.id]),
+  );
+  const leadsSemTelefone = new Set(
+    existingLeads.filter((l) => !l.phone).map((l) => l.id),
   );
 
   const clinicTreatments = await db.query.treatments.findMany({
@@ -85,18 +96,32 @@ export async function importCalendarEvents(
     try {
       const { patientName, treatmentName } = extractEventInfo(event);
       const normalizedName = normalizeWord(patientName);
+      const eventPhone = extractCalendarEventPhone(event);
 
-      let leadId = leadByNormalizedName.get(normalizedName);
+      // Telefone antes do nome: é o único identificador que não empata.
+      let leadId = (eventPhone ? leadByPhone.get(eventPhone) : undefined)
+        ?? leadByNormalizedName.get(normalizedName);
 
       if (!leadId) {
+        // `leads_org_phone_idx` é único por clínica: se outro lead tomou esse
+        // número entre a carga em memória e agora, o insert falha. Cair para
+        // lead sem telefone preserva o agendamento — perder a consulta do dia
+        // é pior que perder o contato, que o próximo sync recupera.
         const newLeadResult = await db.insert(leads).values({
           clinicId,
           name: patientName,
-          phone: null,
+          phone: eventPhone,
           email: null,
           channel: "manual",
           temperature: "warm",
-        }).returning({ id: leads.id });
+        }).returning({ id: leads.id }).catch(async (err) => {
+          if (!eventPhone) throw err;
+          console.warn(`[ImportCalendar] telefone ${eventPhone} recusado no insert:`, err);
+          return db.insert(leads).values({
+            clinicId, name: patientName, phone: null, email: null,
+            channel: "manual", temperature: "warm",
+          }).returning({ id: leads.id });
+        });
 
         if (!newLeadResult.length) {
           result.errors.push({
@@ -108,6 +133,22 @@ export async function importCalendarEvents(
 
         leadId = newLeadResult[0].id;
         leadByNormalizedName.set(normalizedName, leadId);
+        if (eventPhone) leadByPhone.set(eventPhone, leadId);
+        else leadsSemTelefone.add(leadId);
+      } else if (eventPhone && leadsSemTelefone.has(leadId)) {
+        // Lead que veio de um import anterior sem contato: agora tem número.
+        // Só preenche o que está vazio — sobrescrever telefone de lead ativo
+        // trocaria o destinatário de uma conversa em andamento.
+        try {
+          await db.update(leads)
+            .set({ phone: eventPhone, updatedAt: new Date() })
+            .where(eq(leads.id, leadId));
+          leadsSemTelefone.delete(leadId);
+          leadByPhone.set(eventPhone, leadId);
+          console.log(`[ImportCalendar] telefone preenchido lead=${leadId} (clinic=${clinicId})`);
+        } catch (err) {
+          console.warn(`[ImportCalendar] telefone ${eventPhone} recusado lead=${leadId}:`, err);
+        }
       }
 
       // Busca fuzzy em memória: qual tratamento cadastrado aparece dentro do
