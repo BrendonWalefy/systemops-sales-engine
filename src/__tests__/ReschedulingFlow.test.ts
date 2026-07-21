@@ -87,6 +87,7 @@ const existingAppt: Appointment = {
   endsAt: new Date("2026-06-08T15:00:00.000Z"),
   status: "scheduled",
   source: "app",
+  origin: null,
   reminderSentAt: null,
   treatmentId: null,
   valueCents: null,
@@ -119,6 +120,7 @@ function makeInternalGateway(opts: { isSlotFree?: boolean } = {}) {
         endsAt: input.endsAt,
         status: "scheduled",
         source: "app",
+        origin: null,
         reminderSentAt: null,
         treatmentId: null,
         valueCents: null,
@@ -265,6 +267,7 @@ describe("ReschedulingFlow — reagendamento no modo interno", () => {
       lead: cancelledLead,
       startsAt: newStart,
       endsAt: newEnd,
+      origin: "ai_conversation",
     });
 
     expect(result.success).toBe(true);
@@ -282,7 +285,7 @@ describe("ReschedulingFlow — reagendamento no modo interno", () => {
     const leads = makeLeadRepo();
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    const result = await service.book({ clinic, lead, startsAt: newStart, endsAt: newEnd });
+    const result = await service.book({ clinic, lead, startsAt: newStart, endsAt: newEnd , origin: "ai_conversation" });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -300,7 +303,7 @@ describe("ReschedulingFlow — reagendamento no modo interno", () => {
     const leads = makeLeadRepo();
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    const result = await service.book({ clinic, lead, startsAt: newStart, endsAt: newEnd });
+    const result = await service.book({ clinic, lead, startsAt: newStart, endsAt: newEnd , origin: "ai_conversation" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.reason).toBe("slot_taken");
@@ -314,7 +317,7 @@ describe("ReschedulingFlow — reagendamento no modo interno", () => {
     const leads = makeLeadRepo();
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    await service.book({ clinic, lead, startsAt: newStart, endsAt: newEnd });
+    await service.book({ clinic, lead, startsAt: newStart, endsAt: newEnd , origin: "ai_conversation" });
 
     expect(leads.saved.at(-1)?.status).toBe("appointment_scheduled");
   });
@@ -337,7 +340,7 @@ describe("ReschedulingFlow — modo interno ignorando googleCalendarId", () => {
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
     const cancelResult = await service.cancel({ lead, appointment: existingAppt });
-    const bookResult = await service.book({ clinic: clinicWithGcal, lead, startsAt: newStart, endsAt: newEnd });
+    const bookResult = await service.book({ clinic: clinicWithGcal, lead, startsAt: newStart, endsAt: newEnd , origin: "ai_conversation" });
 
     expect(cancelResult.success).toBe(true);
     expect(calls.cancelAppointment).toBe(0); // gateway externo não chamado

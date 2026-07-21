@@ -120,6 +120,7 @@ export async function POST(
         endsAt,
         status: "scheduled",
         source: "app",
+        origin: "operator_inbox",
         reminderSentAt: null,
         treatmentId: null,
         valueCents: null,
@@ -170,6 +171,7 @@ export async function POST(
         lead,
         startsAt,
         endsAt,
+        origin: "operator_inbox",
       });
 
       if (!result.success) {

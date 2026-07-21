@@ -163,6 +163,8 @@ export class InternalCalendarGateway implements CalendarGateway {
       endsAt: input.endsAt,
       status: "scheduled",
       source: "app",
+      // Preenchido pelo BookingService, que é quem conhece o chamador.
+      origin: null,
       reminderSentAt: null,
       treatmentId: null,
       valueCents: null,

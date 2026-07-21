@@ -150,6 +150,9 @@ export async function importCalendarEvents(
         endsAt: event.endTime,
         status: "scheduled",
         source: "gcal_import",
+        // Agendado FORA do sistema (telefone/presencial) e importado depois — não
+        // é conversão do produto. Ver diagnóstico §8.
+        origin: "gcal_import",
         treatmentId: matchedTreatment?.id ?? null,
         description: event.summary ?? null,
         calendarEventId: event.uid,

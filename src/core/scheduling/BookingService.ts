@@ -17,7 +17,7 @@ import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
-import type { Appointment } from "@/domain/entities/calendar-slot";
+import type { Appointment, AppointmentOrigin } from "@/domain/entities/calendar-slot";
 import { SlotReservationService, type SlotReservation } from "./SlotReservationService";
 import { cancelPendingFollowUps } from "@/application/use-cases/leads/cancel-pending-follow-ups";
 import {
@@ -58,8 +58,12 @@ export class BookingService {
     // Reserva provisória já feita (fluxo de sinal). Reaproveita o hold do próprio lead
     // em vez de tentar reservar de novo e colidir consigo mesmo (slot_taken falso).
     heldReservationId?: string | null;
+    // Obrigatório: sem isso não há como medir a conversão da IA — os 4 chamadores
+    // deste serviço gravavam todos `source: "app"`, tornando a origem indistinguível.
+    // Ver docs/product/objetividade-conversacional-diagnostico.md §8.
+    origin: AppointmentOrigin;
   }): Promise<BookingResult> {
-    const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null, heldReservationId = null } = params;
+    const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null, heldReservationId = null, origin } = params;
 
     // Passo 1: Lock otimista — previne double-booking. Se veio um hold do fluxo de
     // sinal ainda pendente para o mesmo lead/slot, reaproveita-o; senão, reserva do zero.
@@ -146,7 +150,9 @@ export class BookingService {
         endsAt,
         title: `${procedureLabel} — ${leadName} | ${clinic.name}`,
       });
-      appointment = { ...created, treatmentId, valueCents };
+      // O gateway devolve origin: null (não conhece o chamador); a origem real é a
+      // que veio no input deste serviço.
+      appointment = { ...created, treatmentId, valueCents, origin };
     } catch (err) {
       console.error("[BookingService] CalendarGateway createAppointment failed:", err);
       appointment = {
@@ -161,6 +167,7 @@ export class BookingService {
         endsAt,
         status: "scheduled",
         source: "app",
+        origin,
         reminderSentAt: null,
         treatmentId,
         valueCents,

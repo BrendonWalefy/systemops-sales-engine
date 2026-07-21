@@ -7,6 +7,16 @@ export type CalendarSlot = {
   source: "google_calendar" | "manual";
 };
 
+// Quem produziu o agendamento. `source` não distingue: "app" cobre IA, operador
+// (inbox e agenda) e fluxo de sinal, o que impede medir a conversão de cada um.
+// Ver docs/product/objetividade-conversacional-diagnostico.md §8.
+export type AppointmentOrigin =
+  | "ai_conversation"
+  | "operator_inbox"
+  | "operator_agenda"
+  | "deposit_flow"
+  | "gcal_import";
+
 export type Appointment = {
   id: string;
   clinicId: string;
@@ -19,6 +29,8 @@ export type Appointment = {
   endsAt: Date;
   status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show";
   source: "app" | "gcal_import";
+  // null = agendamento anterior à instrumentação; não contar como conversão.
+  origin: AppointmentOrigin | null;
   reminderSentAt: Date | null;
   treatmentId: string | null;
   valueCents: number | null;

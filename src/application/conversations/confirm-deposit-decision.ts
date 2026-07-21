@@ -129,6 +129,7 @@ export async function confirmDepositDecision(params: {
     treatmentId: payload.treatmentId,
     valueCents: payload.valueCents,
     heldReservationId: payload.reservationId,
+    origin: "deposit_flow",
   });
 
   if (!result.success) {

@@ -98,6 +98,7 @@ function internalGateway(over: Partial<{ isSlotFree: boolean }> = {}) {
         endsAt: input.endsAt,
         status: "scheduled",
         source: "app",
+        origin: null,
         reminderSentAt: null,
         treatmentId: null,
         valueCents: null,
@@ -241,7 +242,7 @@ describe("BookingService — modo interno", () => {
     const appts = apptRepo([]);
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    const result = await service.book({ clinic, lead, startsAt, endsAt });
+    const result = await service.book({ clinic, lead, startsAt, endsAt , origin: "ai_conversation" });
 
     expect(result.success).toBe(true);
     expect(appts.saved).toHaveLength(1);
@@ -258,7 +259,7 @@ describe("BookingService — modo interno", () => {
     const appts = apptRepo([]);
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    const result = await service.book({ clinic, lead, startsAt, endsAt, heldReservationId: "res-1" });
+    const result = await service.book({ clinic, lead, startsAt, endsAt, heldReservationId: "res-1" , origin: "ai_conversation" });
 
     expect(result.success).toBe(true);
     expect(calls.findById).toBe(1);
@@ -271,7 +272,7 @@ describe("BookingService — modo interno", () => {
     const appts = apptRepo([]);
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    const result = await service.book({ clinic, lead, startsAt, endsAt, heldReservationId: "res-x" });
+    const result = await service.book({ clinic, lead, startsAt, endsAt, heldReservationId: "res-x" , origin: "ai_conversation" });
 
     expect(result.success).toBe(true);
     expect(calls.findById).toBe(1);
@@ -285,7 +286,7 @@ describe("BookingService — modo interno", () => {
     const followUps = followUpRepo();
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc, followUps.repo);
-    const result = await service.book({ clinic, lead, startsAt, endsAt });
+    const result = await service.book({ clinic, lead, startsAt, endsAt , origin: "ai_conversation" });
 
     expect(result.success).toBe(true);
     expect(followUps.cancelledLeadIds).toEqual([lead.id]);
@@ -300,7 +301,7 @@ describe("BookingService — modo interno", () => {
 
     const followUps = followUpRepo();
     const service = new BookingService(gateway, appts.repo, leads.repo, svc, followUps.repo);
-    const result = await service.book({ clinic, lead, startsAt, endsAt });
+    const result = await service.book({ clinic, lead, startsAt, endsAt , origin: "ai_conversation" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.reason).toBe("slot_taken");
@@ -320,6 +321,7 @@ describe("BookingService — modo interno", () => {
       endsAt,
       status: "scheduled",
       source: "app",
+      origin: null,
       reminderSentAt: null,
       treatmentId: null,
       valueCents: null,
@@ -331,7 +333,7 @@ describe("BookingService — modo interno", () => {
     const appts = apptRepo([conflicting]);
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    const result = await service.book({ clinic, lead, startsAt, endsAt });
+    const result = await service.book({ clinic, lead, startsAt, endsAt , origin: "ai_conversation" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.reason).toBe("slot_taken");
@@ -358,6 +360,7 @@ describe("BookingService — modo interno", () => {
       endsAt,
       status: "scheduled",
       source: "app",
+      origin: null,
       reminderSentAt: null,
       treatmentId: null,
       valueCents: null,

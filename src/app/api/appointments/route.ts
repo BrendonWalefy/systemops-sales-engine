@@ -344,6 +344,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       treatmentName: bookingTreatmentName,
       treatmentId: primaryTreatmentId,
       valueCents: summedValueCents,
+      origin: "operator_agenda",
     });
 
     if (!result.success) {

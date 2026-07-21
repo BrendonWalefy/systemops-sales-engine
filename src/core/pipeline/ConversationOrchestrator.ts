@@ -5213,6 +5213,7 @@ export class ConversationOrchestrator {
           treatmentName: offeredTreatment?.treatmentName,
           treatmentId: matchedTreatmentForBooking?.id ?? null,
           valueCents: bookingValueCents,
+          origin: "ai_conversation",
         });
 
         if (result.success) {
