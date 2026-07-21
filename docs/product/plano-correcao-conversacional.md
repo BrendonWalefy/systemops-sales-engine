@@ -46,6 +46,7 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P3** | 14 | Parcelamento classificado como `clinical_urgency` | 1 caso | Teste de regressão travando pagamento ≠ urgência. | trivial | 🟢 |
 | **P1** | 15 | Default do debounce abaixo do gap real da rajada | 45 de 763 rajadas (6%) respondidas uma a uma; gap mediano da rajada = 10s vs default de 5s | ✅ **Feito:** default de plataforma extraído para `DEFAULT_MESSAGE_DEBOUNCE_MS` e elevado de 5s para 15s (~40% → ~67% de cobertura). Falta limpar o override de 7s da Vitalli para ela herdar o default. | trivial | 🟢 |
 | **P2** | 16 | Guard de rajada não é observável | 8 openers escapam sem explicação | Instrumentar o guard antes de mexer nele: registrar descarte e passagem. | baixo | 🟢 |
+| **P1** | 18 | Sábado respondido pela config, não pela agenda real | "Vocês atendem sábado?" hoje lê só `businessHours` | Consultar a disponibilidade real do dia antes de responder. Exige o SlotEngine no caminho da resposta determinística — **não implementado**. | médio | 🟡 |
 | **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | Disparo imediato pós-webhook. **Por último**: mexe em infra de processamento e melhora velocidade, não qualidade. | alto | 🔴 |
 
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
