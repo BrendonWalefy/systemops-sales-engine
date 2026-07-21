@@ -134,6 +134,30 @@ Nenhum código foi escrito. Foi adicionado teste de regressão em `BusinessInten
 porque o caminho é uma **composição** de dois guards — coerção de intent e guard de pagamento no
 orquestrador — e nenhum dos dois sozinho cobre todas as frases.
 
+### Parcelamento escala para humano? Não — responde pela configuração
+
+Fluxo atual de *"esse valor pode ser parcelado?"*:
+
+1. O classificador pode devolver `needs_human` — e devolveu, no caso real de 19/07.
+2. O orquestrador **sobrescreve de forma determinística**: pergunta simples de pagamento +
+   `needs_human` → `price_inquiry`. Não é a LLM que decide isso.
+3. A resposta sai da configuração da clínica — `commercialPolicy` + `installmentRates`, montados em
+   `buildInstallmentTable`. Foi de lá que veio *"parcelado em até 21 vezes no cartão"*.
+
+O que **continua** indo para o humano é negociação, pela lista de exclusão de
+`isSimplePaymentPolicyQuestion`: *diferente, especial, desconto, negociar, condição especial, fora,
+exceção, combinado, promoção, permuta, troca*. Ou seja:
+
+| Mensagem | Quem responde |
+|---|---|
+| *"esse valor pode ser parcelado?"* | IA, pela config |
+| *"em quantas vezes dá pra parcelar?"* | IA, pela config |
+| *"tem como parcelar diferente?"* | humano |
+| *"consegue um desconto especial?"* | humano |
+
+O caso de 19/07 falhou porque o guard (`a772f57`) só chegou à `main` às **17:56 do mesmo dia** —
+cerca de 16 h **depois** daquela mensagem. Não é bug vivo; é a evidência de que o guard é necessário.
+
 **Nota de método:** este é o terceiro item do plano (depois de #4 e #7) cuja premissa não sobrevive à
 verificação. `intent` gravado é histórico, não diagnóstico. Reauditar antes de codar.
 

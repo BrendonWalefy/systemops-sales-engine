@@ -164,10 +164,14 @@ describe("perguntas simples de política comercial", () => {
   });
 
   it("parcelamento sem a palavra 'valor' também chega a price_inquiry pelo guard do orquestrador", () => {
-    // Caso real (Vitalli, 19/07): "Esse valor pode ser parcelado ?" foi
+    // Caso real (Vitalli, 19/07 01:34): "Esse valor pode ser parcelado ?" foi
     // classificada needs_human e a resposta certa saiu com um rabo indevido —
-    // "Já avisei a equipe sobre sua dúvida". O guard do orquestrador converte
-    // needs_human + política simples de pagamento em price_inquiry.
+    // "Já avisei a equipe sobre sua dúvida e eles vão te responder em breve!".
+    //
+    // O guard que corrige isso (a772f57) só chegou à main às 17:56 do MESMO dia,
+    // ~16h depois da mensagem. Não é bug vivo: é a evidência de que o guard é
+    // necessário. Sem este teste, removê-lo silenciosamente traria a escalação
+    // de volta — e escalar parcelamento é justamente o que o Victor não quer.
     const frase = "Esse valor pode ser parcelado ?";
     expect(isSimplePaymentPolicyQuestion(frase)).toBe(true);
     expect(coerceBusinessIntent({ message: frase, intent: "unclear", treatments, isClinicSegment: true })).toBe("price_inquiry");
