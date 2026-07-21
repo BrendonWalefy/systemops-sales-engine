@@ -46,6 +46,7 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P3** | 14 | Parcelamento classificado como `clinical_urgency` | 1 caso | Teste de regressão travando pagamento ≠ urgência. | trivial | 🟢 |
 | **P1** | 15 | Ximendes sem `messageDebounceMs` (rajada não é agrupada) | 45 de 763 rajadas (6%) respondidas uma a uma | Definir `messageDebounceMs` na Ximendes (Vitalli usa 7000ms). Config por clínica — só dado. | trivial | 🟢 |
 | **P2** | 16 | Guard de rajada não é observável | 8 openers escapam sem explicação | Instrumentar o guard antes de mexer nele: registrar descarte e passagem. | baixo | 🟢 |
+| **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | Disparo imediato pós-webhook. **Por último**: mexe em infra de processamento e melhora velocidade, não qualidade. | alto | 🔴 |
 
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
 
@@ -91,6 +92,47 @@ envio — janela entre classificação e composição.
 
 **Não corrigir por palpite.** O caminho é instrumentar o guard (registrar quando descarta e quando
 deixa passar) e re-medir depois de alguns dias com o #211 em produção.
+
+## Latência de resposta: 0–120s vêm da arquitetura de filas, não do debounce
+
+Percepção do cliente: *"a Ximendes demora 1 a 2 minutos"*. Os dados **contradizem a comparação
+entre clínicas**, mas **confirmam a faixa**.
+
+| Clínica | mediana | p75 | p90 | máx | >60s |
+|---|---|---|---|---|---|
+| Vitalli | **44s** | 63s | 74s | 115s | **28%** |
+| Ximendes | **15s** | 39s | 58s | **539s** | 9% |
+| Ximendes (testes internos) | 12s | 15s | 30s | 73s | 3% |
+
+A Ximendes é ~3x **mais rápida** na mediana. A percepção inversa provavelmente vem dos outliers
+(máximo de 539s = 9 min) ou de comportamento posterior a 20/07, fora deste recorte.
+
+### A causa é estrutural
+
+Não existe caminho de disparo imediato — toda mensagem passa por **dois saltos de cron**:
+
+```
+webhook → ENFILEIRA (não processa inline)
+   ↓  message-worker  · cron a cada minuto · MAX_JOBS_PER_RUN = 3
+   ↓  outbox
+   ↓  sender-worker   · cron a cada minuto · MAX_JOBS_PER_RUN = 5
+enviado
+```
+
+**Latência de base: 0–120s** — exatamente a faixa relatada.
+
+**Não confundir com o debounce.** O `messageDebounceMs` opera em 7–15 **segundos**; o ciclo de crons,
+em até 120. O debounce responde por ~5–10% do atraso — e, coerente com isso, a clínica que **tem**
+debounce (Vitalli, 7s) é a mais lenta, não a mais rápida.
+
+**Risco de escala:** 3 mensagens processadas/min e 5 enviadas/min. Com ~250 leads/dia na Vitalli a
+média cabe, mas um pico concentrado forma fila — provável origem do outlier de 9 minutos.
+
+### Decisão: deixado por último, de propósito
+
+Corrigir exige mexer na infraestrutura de processamento (disparo imediato pós-webhook) — mais
+arriscado que qualquer item de conversa acima, e **não melhora a qualidade da resposta, só a
+velocidade**. A prioridade é acertar *o que* a IA responde antes de acelerar a entrega.
 
 ## Por que esta ordem
 
