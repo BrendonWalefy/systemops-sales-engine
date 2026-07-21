@@ -63,8 +63,15 @@ export async function importCalendarEvents(
 
   const clinicTreatments = await db.query.treatments.findMany({
     where: eq(treatments.clinicId, clinicId),
-    columns: { id: true, name: true, aliases: true, keywordMatchEnabled: true },
+    columns: { id: true, name: true, aliases: true, keywordMatchEnabled: true, pipelineSteps: true },
   });
+  const treatmentCandidates: ImportTreatmentCandidate[] = clinicTreatments.map((t) => ({
+    id: t.id,
+    name: t.name,
+    aliases: t.aliases,
+    keywordMatchEnabled: t.keywordMatchEnabled,
+    hasPipeline: (t.pipelineSteps?.length ?? 0) > 0,
+  }));
 
   const clinicProfessionals = await db.query.professionals.findMany({
     where: eq(professionals.clinicId, clinicId),
@@ -104,7 +111,7 @@ export async function importCalendarEvents(
       // texto livre do evento (não o inverso — o SUMMARY não é um nome exato
       // de tratamento, é uma frase que pode mencioná-lo em qualquer posição).
       const normalizedSummary = normalizeWord(treatmentName);
-      const treatmentMatch = matchImportedTreatment(treatmentName, clinicTreatments);
+      const treatmentMatch = matchImportedTreatment(treatmentName, treatmentCandidates);
       const matchedTreatment = treatmentMatch.treatmentId
         ? clinicTreatments.find((t) => t.id === treatmentMatch.treatmentId)
         : undefined;
@@ -221,6 +228,11 @@ export type ImportTreatmentCandidate = {
   name: string;
   aliases?: string[] | null;
   keywordMatchEnabled?: boolean | null;
+  // Entrada "guarda-chuva" da família: é ela que carrega o pipeline de conteúdo
+  // e normalmente não é cotável sozinha. Desempata quando o texto cita a família
+  // sem a técnica. Mesma convenção do matcher conversacional, que já prefere o
+  // tratamento com pipeline (ConversationOrchestrator:matchTreatmentByNormalizedMessage).
+  hasPipeline?: boolean | null;
 };
 
 export type ImportTreatmentMatch = {
@@ -241,11 +253,20 @@ export type ImportTreatmentMatch = {
  * tratamento — nunca encontravam ninguém. Nenhuma mensagem de cuidados pós-lentes
  * jamais saiu.
  *
- * Agora casa por nome OU alias, mas **só resolve quando a resposta é única**.
- * Isto aqui grava prontuário: 24 dos 44 eventos dizem apenas "N lentes", e a
- * Vitalli tem três tratamentos de lente (Composta, Premium, Estratificada) que
- * compartilham o alias "lentes". O texto não diz a técnica, então o sistema não
- * inventa — devolve os candidatos para quem sabe decidir.
+ * Agora casa por nome OU alias, com dois desempates, nesta ordem:
+ *
+ * 1. **Especificidade** — vence o termo mais longo. "20 lentes estratificada"
+ *    resolve para Estratificada mesmo com as três casando o alias "lentes".
+ * 2. **Guarda-chuva da família** — quando a especificidade empata, vence o
+ *    tratamento que carrega o pipeline de conteúdo. Foi o caso de 21 dos 44
+ *    eventos, todos na forma "N lentes": a Vitalli tem três tratamentos de lente
+ *    e o texto não diz a técnica. A entrada com pipeline (Lentes em Resina
+ *    Composta) é justamente a genérica — não cotável sozinha, existe para
+ *    representar a família. Registrar ela não é palpite: é o que o texto diz.
+ *
+ * Se nem isso desempatar, não resolve: devolve os candidatos e o operador decide.
+ * Isto grava prontuário — inventar a técnica para fazer uma automação disparar
+ * seria pior do que não disparar.
  */
 export function matchImportedTreatment(
   summary: string,
@@ -283,6 +304,11 @@ export function matchImportedTreatment(
   const winners = scored.filter((entry) => entry.score === topScore);
 
   if (winners.length === 1) return { treatmentId: winners[0].candidate.id, ambiguousWith: [] };
+
+  // Empate na especificidade: o texto citou a família sem a técnica. Vence o
+  // guarda-chuva, se houver exatamente um.
+  const umbrellas = winners.filter((entry) => entry.candidate.hasPipeline === true);
+  if (umbrellas.length === 1) return { treatmentId: umbrellas[0].candidate.id, ambiguousWith: [] };
   return { treatmentId: null, ambiguousWith: winners.map((entry) => entry.candidate.name) };
 }
 

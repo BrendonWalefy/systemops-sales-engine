@@ -26,6 +26,8 @@ const VITALLI: ImportTreatmentCandidate[] = [
     id: "composta",
     name: "Lentes em Resina Composta",
     aliases: ["lentes", "lente", "lentes em resina", "facetas", "faceta", "sorriso", "resina"],
+    // Guarda-chuva real da família: não é cotável sozinha e carrega o pipeline.
+    hasPipeline: true,
   },
   {
     id: "premium",
@@ -45,7 +47,11 @@ const VITALLI: ImportTreatmentCandidate[] = [
   {
     id: "remocao",
     name: "Remoção de lentes",
-    aliases: ["remover lentes", "tirar facetas", "retirar lentes"],
+    // "remoção" solto foi adicionado ao cadastro em 21/07: sem ele, "Keyla
+    // remoção 20 lentes" casava só o alias "lentes" e o desempate de família
+    // registrava INSTALAÇÃO numa consulta de remoção.
+    aliases: ["remoção", "remover lentes", "tirar facetas", "retirar lentes"],
+    hasPipeline: true,
   },
   {
     id: "avaliacao",
@@ -81,18 +87,33 @@ describe("matchImportedTreatment — casos reais da agenda", () => {
   });
 });
 
-describe("ambiguidade não é chutada — isto grava prontuário", () => {
-  it("'20 lentes' empata entre as três técnicas e NÃO resolve", () => {
-    // 24 dos 44 eventos reais têm essa forma. O texto não diz a técnica; supor
-    // uma escreveria a informação errada no prontuário só para a automação
-    // disparar.
+describe("família sem técnica cai no guarda-chuva", () => {
+  it("'20 lentes' resolve para a entrada genérica da família", () => {
+    // 21 dos 44 eventos reais têm essa forma. As três técnicas empatam no alias
+    // "lentes"; vence a que carrega o pipeline — a entrada que existe justamente
+    // para representar a família quando a técnica não foi dita.
     const match = matchImportedTreatment("Ana Julia 20 lentes", VITALLI);
+    expect(match.treatmentId).toBe("composta");
+    expect(match.ambiguousWith).toEqual([]);
+  });
+
+  it("sem guarda-chuva na família, continua sem resolver", () => {
+    // Se nenhuma das candidatas empatadas for a genérica, escolher seria chute.
+    const semGuardaChuva = VITALLI.map((t) =>
+      t.id === "composta" ? { ...t, hasPipeline: false } : t,
+    );
+    const match = matchImportedTreatment("Ana Julia 20 lentes", semGuardaChuva);
     expect(match.treatmentId).toBeNull();
-    expect(match.ambiguousWith).toEqual([
-      "Lentes em Resina Composta",
-      "Lente em Resina Premium",
-      "Lente em Resina Estratificada",
-    ]);
+    expect(match.ambiguousWith).toHaveLength(3);
+  });
+
+  it("REMOÇÃO não pode virar instalação", () => {
+    // O caso perigoso: "remoção 20 lentes" empataria no alias "lentes" e o
+    // guarda-chuva registraria instalação — mandando cuidados pós-instalação
+    // para quem teve a lente RETIRADA. O alias "remoção" desempata antes, por
+    // ser mais específico (7 letras contra 6).
+    expect(matchImportedTreatment("Keyla remoção 20 lentes", VITALLI).treatmentId).toBe("remocao");
+    expect(matchImportedTreatment("Regina Silva 2 mil 200 remoção", VITALLI).treatmentId).toBe("remocao");
   });
 
   it("a técnica escrita no evento desempata", () => {
@@ -102,8 +123,14 @@ describe("ambiguidade não é chutada — isto grava prontuário", () => {
     expect(matchImportedTreatment("Murilo 20 lentes premium", VITALLI).treatmentId).toBe("premium");
   });
 
-  it("devolve os candidatos para quem sabe decidir", () => {
-    expect(matchImportedTreatment("HEMRIQUE 20 lentes", VITALLI).ambiguousWith).toHaveLength(3);
+  it("empate entre DUAS genéricas não resolve — devolve os candidatos", () => {
+    const duasGenericas: ImportTreatmentCandidate[] = [
+      { id: "a", name: "Clareamento caseiro", aliases: ["clareamento"], hasPipeline: true },
+      { id: "b", name: "Clareamento consultório", aliases: ["clareamento"], hasPipeline: true },
+    ];
+    const match = matchImportedTreatment("Joana clareamento", duasGenericas);
+    expect(match.treatmentId).toBeNull();
+    expect(match.ambiguousWith).toEqual(["Clareamento caseiro", "Clareamento consultório"]);
   });
 });
 
