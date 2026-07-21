@@ -183,6 +183,20 @@ export const appointmentSourceEnum = pgEnum("appointment_source", [
   "gcal_import",
 ]);
 
+// Quem de fato produziu o agendamento. `source` não responde isso: "app" é
+// gravado por 4 caminhos distintos (IA, operador pelo inbox, operador pela
+// agenda, fluxo de sinal), o que torna impossível medir a conversão da IA.
+// Nullable de propósito: linhas anteriores a esta coluna ficam null =
+// "origem desconhecida (histórico)" — não devem ser contadas como conversão
+// de nenhum caminho. Ver docs/product/objetividade-conversacional-diagnostico.md §8.
+export const appointmentOriginEnum = pgEnum("appointment_origin", [
+  "ai_conversation",
+  "operator_inbox",
+  "operator_agenda",
+  "deposit_flow",
+  "gcal_import",
+]);
+
 // Fonte de verdade da DISPONIBILIDADE da clínica.
 //   "internal"        → banco (appointments + calendar_blocks) é a fonte de verdade
 //   "google_calendar" → legado/opt-in: GCal é a fonte de verdade para slots
@@ -896,6 +910,7 @@ export const appointments = pgTable(
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     status: appointmentStatusEnum("status").notNull().default("scheduled"),
     source: appointmentSourceEnum("source").notNull().default("app"),
+    origin: appointmentOriginEnum("origin"),
     reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
     treatmentId: uuid("treatment_id").references(() => treatments.id),
     valueCents: integer("value_cents"),
