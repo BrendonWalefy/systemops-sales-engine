@@ -143,6 +143,35 @@ describe("perguntas simples de política comercial", () => {
     expect(isSimplePaymentPolicyQuestion("tem como parcelar diferente?")).toBe(false);
     expect(isSimplePaymentPolicyQuestion("consegue um desconto especial?")).toBe(false);
   });
+
+  // Item #10 do plano de correção: preço e pagamento na MESMA frase. Auditado em
+  // produção em 21/07 e já resolvido — estas frases reais existem só para travar
+  // a regressão, porque o caminho é uma composição de dois guards (coerção de
+  // intent + guard de pagamento no orquestrador) e nenhum dos dois sozinho
+  // cobre todas elas.
+  it.each([
+    "Gostaria de saber valores e formas de pagamento",
+    "Quero sabe valores e formas de pagamento e fazer uma avaliação",
+    "sim, gostaria de saber o valor para colocar as lentes, se passar cartão",
+    "E quanto fica o valor parcelado?",
+    // Caiu em acknowledgment em produção (Ximendes, 04/06) e o lead recebeu o
+    // menu de boas-vindas em vez do preço.
+    "Tenho interesse em lentes de resina estratificadas na cor BL2. Gostaria de saber o valor aproximado",
+  ])("pergunta composta de preço + pagamento vira price_inquiry: %s", (frase) => {
+    expect(
+      coerceBusinessIntent({ message: frase, intent: "unclear", treatments, isClinicSegment: true }),
+    ).toBe("price_inquiry");
+  });
+
+  it("parcelamento sem a palavra 'valor' também chega a price_inquiry pelo guard do orquestrador", () => {
+    // Caso real (Vitalli, 19/07): "Esse valor pode ser parcelado ?" foi
+    // classificada needs_human e a resposta certa saiu com um rabo indevido —
+    // "Já avisei a equipe sobre sua dúvida". O guard do orquestrador converte
+    // needs_human + política simples de pagamento em price_inquiry.
+    const frase = "Esse valor pode ser parcelado ?";
+    expect(isSimplePaymentPolicyQuestion(frase)).toBe(true);
+    expect(coerceBusinessIntent({ message: frase, intent: "unclear", treatments, isClinicSegment: true })).toBe("price_inquiry");
+  });
 });
 
 describe("horário de atendimento determinístico", () => {
