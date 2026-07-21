@@ -30,6 +30,7 @@ type ClinicData = {
   menuItems: MenuItem[] | null;
   receptionistPhone: string | null;
   staleConversationHours: number | null;
+  conversationRestartHours: number | null;
   slotLookaheadDays: number | null;
   mediaTakeoverTtlHours: number | null;
   installmentRates: { n: number; rate: number; active: boolean }[] | null;

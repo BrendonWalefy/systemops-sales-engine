@@ -13,6 +13,7 @@ type ClinicData = {
   takeoverTtlHours: number | null;
   postAppointmentBufferMinutes: number | null;
   staleConversationHours: number | null;
+  conversationRestartHours: number | null;
   slotLookaheadDays: number | null;
   mediaTakeoverTtlHours: number | null;
 };
@@ -107,6 +108,7 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
   const [takeoverTtlHours, setTakeoverTtlHours] = useState(clinic.takeoverTtlHours ?? 4);
   const [postAppointmentBufferMinutes, setPostAppointmentBufferMinutes] = useState(clinic.postAppointmentBufferMinutes ?? 60);
   const [staleConversationHours, setStaleConversationHours] = useState(clinic.staleConversationHours ?? 4);
+  const [conversationRestartHours, setConversationRestartHours] = useState(clinic.conversationRestartHours ?? 24);
   const [slotLookaheadDays, setSlotLookaheadDays] = useState(clinic.slotLookaheadDays ?? 14);
   const [mediaTakeoverTtlHours, setMediaTakeoverTtlHours] = useState(clinic.mediaTakeoverTtlHours ?? 0);
   const { scheduleSave, saving, saved, pending, error } = useReliableAutosave<{
@@ -115,6 +117,7 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
     takeoverTtlHours: number;
     postAppointmentBufferMinutes: number;
     staleConversationHours: number;
+    conversationRestartHours: number;
     slotLookaheadDays: number;
     mediaTakeoverTtlHours: number | null;
   }>({
@@ -135,6 +138,7 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
     takeoverTtlHours?: number;
     postAppointmentBufferMinutes?: number;
     staleConversationHours?: number;
+    conversationRestartHours?: number;
     slotLookaheadDays?: number;
     mediaTakeoverTtlHours?: number;
   }) => {
@@ -144,6 +148,7 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
       takeoverTtlHours: patch.takeoverTtlHours ?? takeoverTtlHours,
       postAppointmentBufferMinutes: patch.postAppointmentBufferMinutes ?? postAppointmentBufferMinutes,
       staleConversationHours: patch.staleConversationHours ?? staleConversationHours,
+      conversationRestartHours: patch.conversationRestartHours ?? conversationRestartHours,
       slotLookaheadDays: patch.slotLookaheadDays ?? slotLookaheadDays,
       mediaTakeoverTtlHours: (() => {
         const v = patch.mediaTakeoverTtlHours ?? mediaTakeoverTtlHours;
@@ -156,6 +161,7 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
     takeoverTtlHours,
     postAppointmentBufferMinutes,
     staleConversationHours,
+    conversationRestartHours,
     slotLookaheadDays,
     mediaTakeoverTtlHours,
     scheduleSave,
@@ -244,11 +250,20 @@ export function TabAgenda({ clinic, focusTarget, onFocusHandled }: {
                 onChange={(v) => { setSlotLookaheadDays(v); triggerSave({ slotLookaheadDays: v }); }}
                 min={1} max={90} unit="dias"
               />
+              {/* Rótulo antigo ("Conversa parada") descrevia o gatilho de reinício da
+                  conversa, que hoje mora em conversationRestartHours. Este campo controla
+                  apenas por quanto tempo o conteúdo do tratamento (pipeline) segue ativo. */}
               <NumericRow
-                label="Conversa parada"
+                label="Conteúdo do tratamento expira"
                 value={staleConversationHours}
                 onChange={(v) => { setStaleConversationHours(v); triggerSave({ staleConversationHours: v }); }}
                 min={1} max={72} unit="horas"
+              />
+              <NumericRow
+                label="Reiniciar conversa após"
+                value={conversationRestartHours}
+                onChange={(v) => { setConversationRestartHours(v); triggerSave({ conversationRestartHours: v }); }}
+                min={1} max={168} unit="horas"
               />
               <NumericRow
                 label="Retorno após mídia"
