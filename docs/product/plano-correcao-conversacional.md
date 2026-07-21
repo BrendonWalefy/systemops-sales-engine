@@ -44,7 +44,7 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P3** | 12 | 7% das respostas saem sem intent classificado | 64 de 867 | Instrumentar: registrar e alertar. Sem intent não há guard nem métrica. | baixo | 🟢 |
 | **P3** | 13 | Sistema nunca registra "não entendi" | `consecutiveUnclearCount = 0` em 100% | Fazer o classificador emitir baixa confiança e acionar `needs_human` antes de responder errado com segurança. | médio | 🟡 |
 | **P3** | 14 | Parcelamento classificado como `clinical_urgency` | 1 caso | Teste de regressão travando pagamento ≠ urgência. | trivial | 🟢 |
-| **P1** | 15 | Ximendes sem `messageDebounceMs` (rajada não é agrupada) | 45 de 763 rajadas (6%) respondidas uma a uma | Definir `messageDebounceMs` na Ximendes (Vitalli usa 7000ms). Config por clínica — só dado. | trivial | 🟢 |
+| **P1** | 15 | Default do debounce abaixo do gap real da rajada | 45 de 763 rajadas (6%) respondidas uma a uma; gap mediano da rajada = 10s vs default de 5s | ✅ **Feito:** default de plataforma extraído para `DEFAULT_MESSAGE_DEBOUNCE_MS` e elevado de 5s para 15s (~40% → ~67% de cobertura). Falta limpar o override de 7s da Vitalli para ela herdar o default. | trivial | 🟢 |
 | **P2** | 16 | Guard de rajada não é observável | 8 openers escapam sem explicação | Instrumentar o guard antes de mexer nele: registrar descarte e passagem. | baixo | 🟢 |
 | **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | Disparo imediato pós-webhook. **Por último**: mexe em infra de processamento e melhora velocidade, não qualidade. | alto | 🔴 |
 
@@ -73,13 +73,18 @@ literalmente um dos 8.
 
 | Mecanismo | Onde | Estado |
 |---|---|---|
-| `messageDebounceMs` — janela de agrupamento antes de processar | config por clínica | **Vitalli 7000ms; Ximendes `null`** |
+| `messageDebounceMs` — janela de agrupamento antes de processar | config por clínica, com default de plataforma | Vitalli 7000ms; Ximendes usa o default |
 | `rapidThrottleMs` | config por clínica | 4000ms nas duas |
 | Guard de rajada pós-classificação — relê a última mensagem do lead e descarta a resposta se foi superada | `ConversationOrchestrator:4416` | ativo, mas só quando `!skipLlm` |
 
-**Lacuna concreta:** a Ximendes — clínica com o histórico de IA mais longo — está **sem
-`messageDebounceMs`**, ou seja, sem agrupamento de mensagens. É config por clínica; dá para corrigir
-sem deploy.
+**Correção de uma leitura inicial:** cheguei a registrar que a Ximendes estava "sem agrupamento".
+**Falso** — `messageDebounceMs` é nulo na coluna, mas o código sempre aplicou um fallback. O problema
+nunca foi ausência do mecanismo, e sim o **valor**: o fallback era de 5s contra um gap mediano de 10s
+dentro da rajada, cobrindo só ~35% dos pares.
+
+O default virou constante única (`DEFAULT_MESSAGE_DEBOUNCE_MS`) em 15s — cobertura de ~67%. A escolha
+de mantê-lo global, e não por clínica, vem do dado: o gap mediano é 10s **nas duas clínicas**, com
+distribuições quase idênticas. É comportamento do canal, não política de clínica.
 
 ### O que ainda não sei
 
