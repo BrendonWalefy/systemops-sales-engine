@@ -1,0 +1,119 @@
+# Plano unificado de correção conversacional — 21/07/2026
+
+Tabela única, priorizada, com a solução recomendada por caso. Base: 855 conversas reais /
+867 mensagens da IA (Ximendes 27/05→20/07, Vitalli 09/07→20/07), conversas de teste excluídas.
+
+Evidências em [mapa-comportamento-conversas-vitalli.md](./mapa-comportamento-conversas-vitalli.md)
+e [objetividade-conversacional-diagnostico.md](./objetividade-conversacional-diagnostico.md).
+
+## A causa dominante: perda de contexto
+
+A hipótese "a IA perde o contexto / não lê antes de responder" **se confirma no código**, e tem
+**três mecanismos distintos** — cada um exige uma correção diferente:
+
+| Mecanismo | Onde | O que faz |
+|---|---|---|
+| **M1 — janela de inatividade** | `ConversationOrchestrator:4246` — `gapHours >= clinic.staleConversationHours` | Lead que volta depois de 4h (Vitalli) / 6h (Ximendes) é tratado como **conversa nova** |
+| **M2 — semântica de "primeiro contato"** | `:4022` — `isFirstMessage = allMessages.filter(m => m.author !== "lead").length === 0` | Mede *"ninguém respondeu ainda"*, não *"é a 1ª mensagem do lead"*. Lead que manda 4 mensagens sem resposta continua "primeiro contato" |
+| **M3 — truncamento pós-reset** | `:4033` — `allMessagesForContext` | Após reset, classifier e composer só veem mensagens pós-reset (TTL 2h) |
+
+**Números que sustentam M1:** o gap p90 entre mensagens consecutivas do mesmo lead é de **17 horas**
+(n=3.183). Com o limite em 4h, **17,2% de todas as respostas de lead** disparam "conversa nova".
+Subindo para 24h isso cai para **5,9%** — redução de 66% sem código.
+
+**Números que sustentam M2:** 8 dos 36 openers no meio da conversa (22%) tinham **zero** mensagens
+não-lead antes.
+
+## Tabela unificada de correção
+
+Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
+
+| P | # | Problema | Evidência | Solução recomendada | Esforço | Risco |
+|---|---|---|---|---|---|---|
+| **P0** | 1 | Lead que volta após 4–6h recebe saudação de abertura em vez de continuidade | 17,2% dos gaps ≥ 4h; p90 = 17h | **Subir `staleConversationHours` para 24h** nas duas clínicas. É config por clínica — só dado, sem deploy. Depois avaliar 48h. | trivial | 🟢 |
+| **P0** | 2 | Lead com várias mensagens sem resposta é tratado como primeiro contato | 8 de 36 openers (22%) | Corrigir a semântica: `isFirstMessage` deve exigir **1 única mensagem do lead** *e* nenhuma resposta. Com 2+ mensagens do lead, responder ao **conteúdo**, não abrir. | baixo | 🟢 |
+| **P0** | 3 | 774 leads (98,5%) parados em `waiting_response` | §7 diagnóstico | Cobertura: varredura que responde/reengaja quem ficou sem resposta. É onde está a receita perdida. | médio | 🟡 |
+| **P1** | 4 | Pedido explícito de agendamento cai em `general_question` | 3 de 7 (43%): *"Me agenda dia 8/8"* → horário de funcionamento | **Guard determinístico** de pré-classificação: frases de agendamento explícito ("me agenda", "podemos marcar", "quero agendar" + data) roteiam direto para o fluxo de slots, sem passar pela LLM. | baixo | 🟢 |
+| **P1** | 5 | Pergunta de horário fora do expediente vira beco sem saída | 11 msgs / 5 convs, repetida em 4: *"posso ir após as 18h?"* → *"Seg-Sáb 8h-18h."* | Ao detectar horário **fora** da janela, nunca só informar o expediente: responder o limite **e ofertar os horários mais próximos**. Espelha o que a operadora faz. | baixo | 🟢 |
+| **P1** | 6 | Lead já deu data **e** hora, sistema pede confirmação numérica | *"Dia 28/07 as 16h"* → *"responda apenas com o número"* | Quando data+hora do lead resolvem para **um único slot livre**, confirmar direto. Passo numérico só em ambiguidade. | médio | 🟡 |
+| **P1** | 7 | Respostas curtas de continuidade perdem o assunto | 23% das msgs; 6 viraram `needs_human` | Herdar o intent do turno anterior quando a mensagem é continuação curta ("sim", "pode", "quero"). Guard `isQuantityFollowupToPriceQuestion` já existe pronto no patch arquivado W4.2. | baixo | 🟢 |
+| **P2** | 8 | Duas personas na mesma conversa | *"recepcionista virtual"* + *"Marina, assistente virtual"* | Unificar: o texto do opener deve derivar de `receptionistName`, nunca ter nome embutido. Ver `persona-config-drift`. | baixo | 🟢 |
+| **P2** | 9 | Paciente em tratamento tratado como lead novo | áudio: *"como eu comecei a usar…"* → opener | Resolvido em grande parte por #1 e #2. Complemento: lead com agendamento ativo/histórico nunca recebe opener de primeiro contato. | baixo | 🟢 |
+| **P2** | 10 | Preço + parcelamento na mesma frase não vira `price_inquiry` | 9 de 34 (26%) | Ampliar detecção para perguntas compostas ("valores **e** formas de pagamento"). | baixo | 🟢 |
+| **P2** | 11 | Texto idêntico repetido na mesma conversa | 34 casos (máx. 2x) | Dedupe determinística: não reenviar bloco de conteúdo já enviado na mesma conversa. | médio | 🟡 |
+| **P3** | 12 | 7% das respostas saem sem intent classificado | 64 de 867 | Instrumentar: registrar e alertar. Sem intent não há guard nem métrica. | baixo | 🟢 |
+| **P3** | 13 | Sistema nunca registra "não entendi" | `consecutiveUnclearCount = 0` em 100% | Fazer o classificador emitir baixa confiança e acionar `needs_human` antes de responder errado com segurança. | médio | 🟡 |
+| **P3** | 14 | Parcelamento classificado como `clinical_urgency` | 1 caso | Teste de regressão travando pagamento ≠ urgência. | trivial | 🟢 |
+| **P1** | 15 | Ximendes sem `messageDebounceMs` (rajada não é agrupada) | 45 de 763 rajadas (6%) respondidas uma a uma | Definir `messageDebounceMs` na Ximendes (Vitalli usa 7000ms). Config por clínica — só dado. | trivial | 🟢 |
+| **P2** | 16 | Guard de rajada não é observável | 8 openers escapam sem explicação | Instrumentar o guard antes de mexer nele: registrar descarte e passagem. | baixo | 🟢 |
+
+## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
+
+Relato do cliente confirmado em dados. Rajada = 2+ mensagens do lead em até 2 minutos:
+
+| | |
+|---|---|
+| Rajadas no corpus | **763** |
+| IA juntou o contexto (0–1 resposta) | 718 (**94%**) |
+| **IA respondeu uma por uma** | **45 (6%)** |
+
+Exemplos reais das que falharam:
+
+- *"Tenho dois implantes e uma coroa eles contam"* + *"Como pode ser feito neste caso?"* → 2 respostas
+- *"Qual a diferença da técnica"* + *"Eu não entendi nada"* → 2 respostas
+- *"Olá bom dia"* + *"Tenho interesse em lentes de resina estratificada…"* → 2 respostas
+
+**É o mesmo fenômeno dos 8 openers indevidos** (E1 do mapa): a rajada dispara pela primeira
+mensagem e a resposta sai depois da segunda já ter chegado. Num caso o sintoma é "respondeu duas
+vezes"; no outro, "respondeu com a saudação em vez do conteúdo". O terceiro exemplo acima é
+literalmente um dos 8.
+
+### O que já existe
+
+| Mecanismo | Onde | Estado |
+|---|---|---|
+| `messageDebounceMs` — janela de agrupamento antes de processar | config por clínica | **Vitalli 7000ms; Ximendes `null`** |
+| `rapidThrottleMs` | config por clínica | 4000ms nas duas |
+| Guard de rajada pós-classificação — relê a última mensagem do lead e descarta a resposta se foi superada | `ConversationOrchestrator:4416` | ativo, mas só quando `!skipLlm` |
+
+**Lacuna concreta:** a Ximendes — clínica com o histórico de IA mais longo — está **sem
+`messageDebounceMs`**, ou seja, sem agrupamento de mensagens. É config por clínica; dá para corrigir
+sem deploy.
+
+### O que ainda não sei
+
+Os 8 openers indevidos **deveriam** ter sido pegos pelo guard: `isolatedGreeting` exige
+`!isFirstMessage`, logo em primeiro contato `skipLlm = false` e o guard roda. Não determinei por que
+escapam.
+
+Hipótese **não verificada**: a segunda mensagem chega depois da releitura do guard mas antes do
+envio — janela entre classificação e composição.
+
+**Não corrigir por palpite.** O caminho é instrumentar o guard (registrar quando descarta e quando
+deixa passar) e re-medir depois de alguns dias com o #211 em produção.
+
+## Por que esta ordem
+
+- **P0 #1 é o melhor retorno do plano**: uma mudança de configuração corrige o mecanismo que
+  provoca a maior parte das aberturas indevidas. Sem deploy, reversível na hora.
+- **#1, #2 e #9 atacam a mesma raiz** (perda de contexto) por caminhos diferentes — juntos cobrem
+  E1, E3 e boa parte de E6.
+- **#4, #5, #7 são guards determinísticos**: não tocam prompt, então não regridem o tom ajustado
+  nas waves 3/4/5. Casam com a regra do `AGENTS.md` — *o sistema decide, a LLM verbaliza*.
+- **#3 é o maior valor absoluto** mas exige decisão de produto (cadência, opt-out, limites do
+  Channel Safety), por isso não é o primeiro a executar apesar do P0.
+
+## O que NÃO mexer
+
+Quando o intent é reconhecido, o agendamento funciona: *"Terça dia 23 as 15h20"* → confirmação
+correta com endereço; *"Dia 03/07"* → horários daquela data; *"Sábado. Atende?"* → informa que não
+há sábado **e oferece alternativas**. Nenhuma correção acima deve alterar esse caminho.
+
+## Ressalvas
+
+- Duas clínicas do mesmo segmento e público. Não generaliza para premium/luxo.
+- M3 (truncamento pós-reset) foi identificado no código mas **não quantificado** — não sei quantos
+  dos 28 openers restantes vêm dele. Investigar antes de mexer.
+- Volumes pequenos (#6, #14) são sinal de padrão, não estatística.
+- Nenhuma correção acima é verificável hoje: a atribuição de conversão (PR #210) começou a medir
+  em 21/07 e ainda não tem linha de base.
