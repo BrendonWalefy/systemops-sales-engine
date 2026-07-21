@@ -35,7 +35,7 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P0** | 3 | 774 leads (98,5%) parados em `waiting_response` | §7 diagnóstico | Cobertura: varredura que responde/reengaja quem ficou sem resposta. É onde está a receita perdida. | médio | 🟡 |
 | **P1** | 4 | Pedido explícito de agendamento cai em `general_question` | 3 de 7 (43%): *"Me agenda dia 8/8"* → horário de funcionamento | **Guard determinístico** de pré-classificação: frases de agendamento explícito ("me agenda", "podemos marcar", "quero agendar" + data) roteiam direto para o fluxo de slots, sem passar pela LLM. | baixo | 🟢 |
 | **P1** | 5 | Pergunta de horário fora do expediente vira beco sem saída | 11 msgs / 5 convs, repetida em 4: *"posso ir após as 18h?"* → *"Seg-Sáb 8h-18h."* | Ao detectar horário **fora** da janela, nunca só informar o expediente: responder o limite **e ofertar os horários mais próximos**. Espelha o que a operadora faz. | baixo | 🟢 |
-| **P1** | 6 | Lead já deu data **e** hora, sistema pede confirmação numérica | *"Dia 28/07 as 16h"* → *"responda apenas com o número"* | Quando data+hora do lead resolvem para **um único slot livre**, confirmar direto. Passo numérico só em ambiguidade. | médio | 🟡 |
+| **P1** | 6 | Lead já deu data **e** hora, sistema pede confirmação numérica | 1 de 19 ofertas numéricas: *"Dia 28/07 as 16h"* → lista de **um item** + *"responda apenas com o número"* | ✅ **Feito:** com data+hora do lead e **um único** horário casando, a resposta vira confirmação direta (*"Consigo sim: Ter 28/07 às 16h. Posso confirmar?"*). O "sim" já resolve o slot pendente pelo caminho normal. | baixo | 🟢 |
 | **P1** | 7 | Quantidade que continua pergunta de preço perde o assunto | **3 de 6** casos: *"Tem 13 lentes"* → `acknowledgment`; *"Das 20 lente"* → `general_question` | ✅ **Feito:** guard `isQuantityFollowupToPriceQuestion` portado do W4.2 e ligado à coerção de intent. **Premissa original revisada:** os "6 que viraram needs_human" eram mídia para avaliação — comportamento correto, não falha. Das 256 continuações curtas, 18% já herdam `price_inquiry` e 11% `confirm_slot`. | baixo | 🟢 |
 | **P2** | 8 | Duas personas na mesma conversa | *"recepcionista virtual"* + *"Marina, assistente virtual"* | Unificar: o texto do opener deve derivar de `receptionistName`, nunca ter nome embutido. Ver `persona-config-drift`. | baixo | 🟢 |
 | **P2** | 9 | Paciente em tratamento tratado como lead novo | áudio: *"como eu comecei a usar…"* → opener | Resolvido em grande parte por #1 e #2. Complemento: lead com agendamento ativo/histórico nunca recebe opener de primeiro contato. | baixo | 🟢 |
@@ -83,6 +83,38 @@ manter a pergunta como institucional preserva a resposta determinística (a LLM 
 afirmando *"Temos horários disponíveis para sábado"* sem consultar nada, em 15/07).
 
 **Restrito ao sábado de propósito** — ver #19: `parseBusinessHours` só sabe decidir esse dia.
+
+## Confirmação numérica (#6): a lista de um item só
+
+Diálogo real reconstruído do banco (Vitalli, 18/07, conversa `ff8fbb07`):
+
+| Hora | Quem | Mensagem |
+|---|---|---|
+| 20:10 | agente | *"não temos horários no sábado. Posso oferecer: 1. Seg 20/07 às 9h … **5. Ter 28/07 às 16h**"* |
+| 21:09 | lead | **"Dia 28/07 as 16h"** — escolheu pelo nome, não pelo número |
+| 21:10 | agente | *"temos o seguinte horário disponível: **1.** Ter 28/07 às 16h. Por favor, responda apenas com o número da opção."* |
+| 21:11 | lead | **"1"** |
+| 21:12 | agente | *"Deixei o horário reservado provisoriamente…"* |
+
+A oferta das 20:10 já havia vencido — TTL de 15 min e o lead voltou 59 minutos depois. Sem oferta
+pendente, a mensagem virou busca nova, que devolveu **exatamente um** horário (o dele) e ainda assim
+pediu um número.
+
+**Não é falha de funil — é fricção.** O agendamento se completou. Mas o lead teve de traduzir a
+própria escolha para o formato do sistema, e o atendimento passou a parecer formulário. O operador
+escreve *"Próximo horário disponível no sábado seria 01.08 às 8:00 tudo bem?"*.
+
+**Frequência: 1 em 19 ofertas numéricas** do corpus. Baixa hoje porque na maior parte do período a
+IA esteve desligada e quem respondia data+hora era o operador — de 16 mensagens de lead com data e
+hora, **15 não tiveram resposta da IA**. Tende a crescer conforme a IA assume.
+
+### O que ficou de fora, de propósito
+
+Agendar **sem confirmação** quando a frase é um comando explícito (*"Marca dia 22 às 16:00"*, *"Pode
+ser dia 17.7 9:00"*) removeria um passo de verdade, não só a fricção. Não foi feito: o corpus
+mistura comando com pergunta (*"Dia 16/07 as 9:00 tá disponível?"*, *"Dia 31 às 8:30 pode ser?"*), e
+confundir os dois agenda alguém que só estava perguntando. Precisa de um guard de intenção
+separado, com evidência própria.
 
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
 

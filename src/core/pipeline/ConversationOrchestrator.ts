@@ -35,7 +35,7 @@ import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/verc
 
 import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/scheduling/ClinicTimezone";
 import type { LocalDateParts, ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
-import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
+import { ConversationStateMachine, SLOT_OFFER_TTL_MINUTES } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType, type SlotPreference } from "@/core/intelligence/IntentClassifier";
 import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
@@ -1828,6 +1828,57 @@ export function findExpressedSlotIndex(params: {
   });
 
   return matches.length === 1 ? matches[0].index : null;
+}
+
+/**
+ * O lead disse data E hora, e sobrou exatamente UM horário — que é o dele.
+ *
+ * Caso real (Vitalli, 18/07, conversa ff8fbb07): às 20:10 a IA ofertou 5 opções
+ * numeradas, sendo a 5 "Ter 28/07 às 16h". Uma hora depois — já fora do TTL de
+ * 15 min — o lead respondeu **"Dia 28/07 as 16h"**, escolhendo pelo nome em vez
+ * do número. Sem oferta pendente, a mensagem virou nova busca, que devolveu o
+ * único horário que casava e pediu *"responda apenas com o número da opção"*
+ * para uma lista de **um item**. O lead teve de digitar "1".
+ *
+ * Devolve o índice do slot quando a lista tem um único item e ele bate com o
+ * dia/hora pedidos; null quando há ambiguidade real ou o lead não foi
+ * específico — aí a lista numerada continua sendo a resposta certa.
+ */
+export function resolveSingleExactSlot(params: {
+  slots: { index: number; startsAt: string; label: string }[];
+  preferredDate: string | null;
+  preferredTime: string | null;
+  timezone: ClinicTimezone;
+  businessHours: ParsedBusinessHours;
+  now: Date;
+}): { index: number; label: string } | null {
+  const { slots, preferredDate, preferredTime, timezone, businessHours, now } = params;
+  // Exige os dois: só a data ("dia 28") deixa a hora em aberto e a lista
+  // numerada é legítima; só a hora ("às 16h") não diz o dia.
+  if (!preferredDate || !preferredTime) return null;
+  if (slots.length !== 1) return null;
+  const preferredDay = timezone.resolvePreferredDate(preferredDate, now, businessHours);
+  if (!preferredDay) return null;
+  const index = findExpressedSlotIndex({ slots, preferredTime, preferredDay, timezone });
+  if (index === null) return null;
+  const slot = slots.find((s) => s.index === index);
+  return slot ? { index: slot.index, label: slot.label } : null;
+}
+
+/**
+ * Confirmação direta no lugar da lista de um item só.
+ *
+ * O operador da Vitalli responde nessa forma — *"Próximo horário disponível no
+ * sábado seria 01.08 às 8:00 tudo bem?"*. Um "sim" já resolve para o único slot
+ * pendente pelo caminho normal de `confirm_slot`, então a etapa numérica não
+ * some do funil: ela deixa de existir.
+ */
+export function buildSingleExactSlotConfirmation(label: string, ttlMinutes: number): string {
+  return [
+    `Consigo sim: ${label}. Posso confirmar esse horário para você?`,
+    "",
+    `Deixo reservado por ${ttlMinutes} minutos aguardando sua resposta.`,
+  ].join("\n");
 }
 
 // ── Verificação exata de um horário pedido explicitamente ──
@@ -5705,12 +5756,28 @@ export class ConversationOrchestrator {
             question: `Não temos atendimento no período da noite — nosso horário vai até as ${businessHours.endHour}h. Posso verificar outro período?`,
           });
         } else if (formattedSlots.length > 0 && !preferredDayEmpty) {
-          replyText = await compose({
-            type: "slots_found",
+          // Lead deu data e hora e sobrou o horário dele, sozinho: pedir "responda
+          // apenas com o número" para uma lista de um item faz o atendimento
+          // parecer formulário. Confirma direto — o "sim" resolve o único slot
+          // pendente pelo caminho normal.
+          const singleExactSlot = resolveSingleExactSlot({
             slots: formattedSlots,
-            askedForPreference: false,
-            treatmentInferredFromHistory: historyTreatment?.name ?? null,
+            preferredDate: slotPreference.preferredDate ?? null,
+            preferredTime: slotPreference.preferredTime ?? null,
+            timezone,
+            businessHours,
+            now: new Date(),
           });
+          if (singleExactSlot) {
+            replyText = buildSingleExactSlotConfirmation(singleExactSlot.label, SLOT_OFFER_TTL_MINUTES);
+          } else {
+            replyText = await compose({
+              type: "slots_found",
+              slots: formattedSlots,
+              askedForPreference: false,
+              treatmentInferredFromHistory: historyTreatment?.name ?? null,
+            });
+          }
           forceTextOnlyReply = true;
         } else if (preferredDayEmpty) {
           replyText = await compose({
