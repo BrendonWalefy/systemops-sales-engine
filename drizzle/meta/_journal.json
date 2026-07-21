@@ -540,6 +540,13 @@
       "when": 1784608747713,
       "tag": "0076_boring_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1784613308541,
+      "tag": "0077_material_blur",
+      "breakpoints": true
     }
   ]
 }
