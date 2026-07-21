@@ -46,8 +46,43 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P3** | 14 | Parcelamento classificado como `clinical_urgency` | 1 caso | Teste de regressão travando pagamento ≠ urgência. | trivial | 🟢 |
 | **P1** | 15 | Default do debounce abaixo do gap real da rajada | 45 de 763 rajadas (6%) respondidas uma a uma; gap mediano da rajada = 10s vs default de 5s | ✅ **Feito:** default de plataforma extraído para `DEFAULT_MESSAGE_DEBOUNCE_MS` e elevado de 5s para 15s (~40% → ~67% de cobertura). Falta limpar o override de 7s da Vitalli para ela herdar o default. | trivial | 🟢 |
 | **P2** | 16 | Guard de rajada não é observável | 8 openers escapam sem explicação | Instrumentar o guard antes de mexer nele: registrar descarte e passagem. | baixo | 🟢 |
-| **P1** | 18 | Sábado respondido pela config, não pela agenda real | "Vocês atendem sábado?" hoje lê só `businessHours` | Consultar a disponibilidade real do dia antes de responder. Exige o SlotEngine no caminho da resposta determinística — **não implementado**. | médio | 🟡 |
+| **P1** | 18 | Sábado respondido pela config, não pela agenda real | Mesma pergunta, respostas opostas com 1 dia de diferença (ver abaixo) | ✅ **Feito:** o ramo institucional passou a consultar a agenda real do sábado e ofertar os horários, reusando `fetchAndOfferSlots`. **Causa real era gramatical**, não arquitetural. | baixo | 🟢 |
+| **P1** | 19 | `parseBusinessHours` só sabe decidir o sábado | NC Beauty cadastra "Terça a sexta" e o parser devolve `[1..6]`; domingo nunca é representável | Segunda a sexta é **assumido**, não lido. O sistema oferta segunda-feira para quem não abre segunda. Ler os dias do texto (ou trocar o campo por dias estruturados no painel). | médio | 🟡 |
 | **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | Disparo imediato pós-webhook. **Por último**: mexe em infra de processamento e melhora velocidade, não qualidade. | alto | 🔴 |
+
+## Sábado (#18): a agenda já era consultada — a pergunta é que não chegava até ela
+
+**O sábado nunca foi um caso especial do agendamento.** O `SlotEngine` trata sábado como qualquer
+dia operado (inclusive com `saturdayEndHour` próprio), e `resolvePreferredDate("sabado")` já resolve
+para o próximo sábado. Não faltava consulta à agenda: faltava a mensagem chegar ao caminho que
+consulta.
+
+Quem decide isso é `isBusinessHoursQuestion()`, que roteia entre dois destinos:
+
+| Destino | Fonte da resposta | Quando |
+|---|---|---|
+| Institucional | string `businessHours` do cadastro | pergunta sobre expediente sem data |
+| Agendamento | agenda real (appointments + bloqueios + GCal) | qualquer coisa com data explícita |
+
+O desempate é `extractExplicitPreferredDateFromText`, cujo regex é `\bsabado\b` — **não casa com o
+plural**. Daí duas respostas opostas para a mesma pergunta, medidas na Vitalli com um dia de
+diferença:
+
+| Data | Mensagem | Caminho | Resposta |
+|---|---|---|---|
+| 18/07 | "Sábado. Atende?" (singular) | agendamento | *"não temos horários disponíveis no sábado. Posso oferecer: 1. Seg 20/07 às 9h…"* |
+| 19/07 | "Vocês atendem aos sábados?" (plural) | institucional | *"Sim, atendemos aos sábados. Horário cadastrado: Seg-Sáb 8h-18h."* |
+
+A segunda é verdadeira e inútil: **sábado é o dia mais movimentado da Vitalli** — 17 agendamentos em
+120 dias, mais que qualquer dia útil, das 08:30 às 17:30. Quem pergunta pelo sábado quer vir no
+sábado. O operador responde *"Próximo horário disponível no sábado seria 01.08 às 8:00 tudo bem?"*.
+
+**Correção:** o ramo institucional, ao detectar sábado numa clínica que abre sábado, chama o mesmo
+`fetchAndOfferSlots` do caminho de agendamento e oferta os horários reais. Não muda o roteamento —
+manter a pergunta como institucional preserva a resposta determinística (a LLM já foi flagrada
+afirmando *"Temos horários disponíveis para sábado"* sem consultar nada, em 15/07).
+
+**Restrito ao sábado de propósito** — ver #19: `parseBusinessHours` só sabe decidir esse dia.
 
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
 
@@ -154,8 +189,9 @@ velocidade**. A prioridade é acertar *o que* a IA responde antes de acelerar a 
 ## O que NÃO mexer
 
 Quando o intent é reconhecido, o agendamento funciona: *"Terça dia 23 as 15h20"* → confirmação
-correta com endereço; *"Dia 03/07"* → horários daquela data; *"Sábado. Atende?"* → informa que não
-há sábado **e oferece alternativas**. Nenhuma correção acima deve alterar esse caminho.
+correta com endereço; *"Dia 03/07"* → horários daquela data; *"Sábado. Atende?"* → informa que
+aquele sábado está sem vaga **e oferece alternativas**. Nenhuma correção acima deve alterar esse
+caminho — #18 justamente trouxe o plural para dentro dele em vez de duplicá-lo.
 
 ## Ressalvas
 

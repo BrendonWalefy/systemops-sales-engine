@@ -919,6 +919,63 @@ export function buildBusinessHoursAnswer(businessHoursRaw: string | null, messag
   return `Nosso horário de atendimento é: ${hoursText}.`;
 }
 
+/**
+ * A pergunta é sobre SÁBADO numa clínica que atende no sábado?
+ *
+ * Existe por causa de uma inconsistência gramatical com efeito comercial: no
+ * singular ("Sábado. Atende?") `extractExplicitPreferredDateFromText` casa
+ * `\bsabado\b`, `isBusinessHoursQuestion` devolve false e a mensagem segue para
+ * o caminho de agendamento — que consulta a agenda real. No plural ("Vocês
+ * atendem aos sábados?") o `\bsabado\b` não casa com "sabados", a mensagem cai
+ * no ramo institucional e morre em "Sim, atendemos aos sábados." Duas respostas
+ * opostas para a mesma pergunta, medidas em produção na Vitalli com um dia de
+ * diferença (18/07 ofertou horários reais, 19/07 recitou o cadastro).
+ *
+ * **Só sábado, de propósito.** `parseBusinessHours` é o único juiz de quais dias
+ * a clínica opera, e ele só decide o sábado: segunda a sexta é assumido sempre,
+ * domingo nunca é representável. Na NC Beauty o cadastro diz "Terça a sexta" e o
+ * parser devolve [1..6] — afirmar "Sim, atendemos às segundas!" ali seria
+ * inventar. Enquanto o parser não souber o resto da semana, o sistema não
+ * afirma o que não sabe. Ver item #19 do plano de correção.
+ *
+ * Sábado fora da escala não passa por aqui: já tem tratamento próprio (escala
+ * para a equipe avaliar exceção — ver item #5).
+ */
+export function isSaturdayQuestionForOperatingClinic(
+  message: string,
+  hours: ParsedBusinessHours,
+): boolean {
+  const normalized = normalizeFreeText(message);
+  if (!normalized) return false;
+  return /\bsabados?\b/.test(normalized) && hours.days.includes(6);
+}
+
+/**
+ * Confirma o dia e emenda a disponibilidade REAL — o que o operador da Vitalli
+ * faz à mão ("Próximo horário disponível no sábado seria 01.08 às 8:00 tudo
+ * bem?"). Confirmar sem ofertar é beco sem saída: quem pergunta pelo sábado
+ * quer vir no sábado.
+ *
+ * `dayIsFull` = o dia está na escala mas sem vaga na janela; os slots são
+ * alternativas de outros dias, e a frase precisa dizer isso para não parecer
+ * que a IA ignorou o pedido.
+ */
+export function buildSaturdayAvailabilityAnswer(params: {
+  slots: { index: number; label: string }[];
+  dayIsFull: boolean;
+}): string {
+  const { slots, dayIsFull } = params;
+  const opening = dayIsFull
+    ? "Atendemos aos sábados, mas as vagas mais próximas já foram preenchidas. Consigo estes horários:"
+    : "Sim, atendemos aos sábados! Tenho estes horários:";
+  return [
+    opening,
+    ...slots.map((slot) => `${slot.index}. ${slot.label}`),
+    "",
+    "Responda apenas com o número da opção que prefere.",
+  ].join("\n");
+}
+
 // Mais estrito que isLocationRequest: durante a pausa de revisão clínica, "onde"/
 // "fica" soltos são ambíguos (ex.: "onde está minha avaliação?") e não devem
 // disparar o endereço. Exige intenção explícita de localização.
@@ -5114,6 +5171,32 @@ export class ConversationOrchestrator {
       }
       replyText = businessHoursAnswer;
       forceTextOnlyReply = true;
+      // "Vocês atendem aos sábados?" numa clínica que atende → confirma E oferta
+      // a agenda real do sábado, em vez de recitar o cadastro e parar. Reusa o
+      // mesmo fetch do caminho de agendamento: a disponibilidade sai do
+      // calendário, nunca do texto de configuração. Sábado não é caso especial
+      // no SlotEngine — o que faltava era a pergunta chegar até ele.
+      //
+      // Não reoferta com proposta aberta (o lead ainda deve um número) e não
+      // atropela a escalação de exceção de horário: lá a resposta é "vou
+      // verificar com a equipe", ofertar slots seria contraditório.
+      if (
+        isSaturdayQuestionForOperatingClinic(messageText, businessHours) &&
+        !hasPendingOffer &&
+        !requiresTeamCheckForHours(messageText, clinic.businessHours)
+      ) {
+        const { slots: saturdaySlots, preferredDayEmpty: saturdayFull } = await this.fetchAndOfferSlots(
+          conversation.id,
+          clinic,
+          calendarGateway,
+          timezone,
+          businessHours,
+          "sabado",
+        );
+        if (saturdaySlots.length > 0) {
+          replyText = buildSaturdayAvailabilityAnswer({ slots: saturdaySlots, dayIsFull: saturdayFull });
+        }
+      }
       // A resposta promete "vou verificar com a equipe" quando o horário pedido sai
       // da janela padrão — a clínica abre exceção (na Vitalli, lente é procedimento
       // longo e o doutor atende após as 17h, terminando até as 21h). Prometer sem
