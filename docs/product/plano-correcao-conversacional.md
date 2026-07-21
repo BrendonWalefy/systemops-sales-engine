@@ -48,7 +48,11 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P2** | 16 | Guard de rajada não é observável | 8 openers escapam sem explicação | Instrumentar o guard antes de mexer nele: registrar descarte e passagem. | baixo | 🟢 |
 | **P1** | 18 | Sábado respondido pela config, não pela agenda real | Mesma pergunta, respostas opostas com 1 dia de diferença (ver abaixo) | ✅ **Feito:** o ramo institucional passou a consultar a agenda real do sábado e ofertar os horários, reusando `fetchAndOfferSlots`. **Causa real era gramatical**, não arquitetural. | baixo | 🟢 |
 | **P1** | 19 | `parseBusinessHours` só sabe decidir o sábado | NC Beauty cadastra "Terça a sexta" e o parser devolve `[1..6]`; domingo nunca é representável | Segunda a sexta é **assumido**, não lido. O sistema oferta segunda-feira para quem não abre segunda. Ler os dias do texto (ou trocar o campo por dias estruturados no painel). | médio | 🟡 |
-| **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | Disparo imediato pós-webhook. **Por último**: mexe em infra de processamento e melhora velocidade, não qualidade. | alto | 🔴 |
+| **P0** | 20 | Pós-procedimento nunca disparou — nenhuma mídia, nenhum feedback | **0** mensagens `postcare:` enviadas desde sempre; 3 bloqueios empilhados | Destravar na ordem: (a) `treatment_id` nulo em 19 de 20 consultas encerradas, (b) nenhuma consulta chega a `completed`, (c) `operationalStatus=paused` bloqueia todo outbound. | médio | 🟡 |
+| **P1** | 21 | Problema relatado pelo paciente vira oferta de venda | *"Um dos dentes quebrou"* → lista de horários; *"meu dente quebrou e queria saber como faço"* → "é importante realizar uma avaliação" | O guard de manutenção só roda sobre `greeting/acknowledgment/unclear`; na prática a LLM classifica como `general_question`, `book_appointment`, `reject_slots`. Ampliar o alcance **e** criar sinal de paciente já atendido. | médio | 🟡 |
+| **P2** | 22 | Confirmação de agendamento não segue o template do operador | Comparado ao print enviado pelo Victor (21/07) | Conteúdo **já está configurado** (`depositConfirmationNotes`). Falta estrutura (Data/Horário em linhas rotuladas), campo de **complemento do endereço** (prédio/sala/andar) e unificar com o caminho sem sinal, hoje texto livre da LLM. | baixo | 🟢 |
+| **P2** | 23 | Endereço vai como texto puro, sem link do Maps | `📍 Estamos na {address}.` — sem URL, sem pré-visualização | O operador manda link do Google Maps, que o WhatsApp renderiza com foto do prédio. Adicionar campo de URL do mapa e usá-lo nas respostas de endereço e na confirmação. | baixo | 🟢 |
+| **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | ⚠️ **Repriorizar:** a medição do #2 mostrou que o lag de registro (mediana 50s) é a causa raiz de 2/3 das aberturas indevidas. Não é só velocidade. | alto | 🔴 |
 
 ## Sábado (#18): a agenda já era consultada — a pergunta é que não chegava até ela
 
@@ -205,6 +209,80 @@ compara contra mensagens **registradas**, e a janela dele (15 s) é três vezes 
 um problema de velocidade. Ele é a **causa raiz de dois terços das aberturas indevidas** e do que
 sobra das rajadas. Foi rebaixado a P4 por "melhora velocidade, não qualidade" — a medição desmente
 isso.
+
+## Casos trazidos pelo Victor (21/07) — verificação
+
+Quatro anotações do cliente, conferidas uma a uma contra o código e o banco.
+
+### #20 — Pós-procedimento: nenhuma mensagem jamais saiu
+
+A observação do Victor foi *"o doutor não confirmou nenhum dos pacientes"*. É verdade, mas é só o
+terceiro de **três bloqueios empilhados** — corrigir só esse não faria a mensagem sair.
+
+A Vitalli tem as duas regras cadastradas e corretas:
+
+| Regra | Offset | Mídias | Condição |
+|---|---|---|---|
+| Cuidados pós-lentes | 1h | **3** | por relógio (sem exigir status) |
+| Pedido de feedback | 24h | 0 | exige `status = completed` |
+
+| Bloqueio | Medição | Efeito |
+|---|---|---|
+| **1. `treatment_id` nulo** | **19 de 20** consultas encerradas | As duas regras filtram por *Lentes em Resina Composta*. Sem tratamento na consulta, **zero** elegíveis. |
+| **2. Nada vira `completed`** | 43 `scheduled`, 6 `cancelled`, 1 `confirmed`, **0 `completed`** | Mata a regra de 24h, que exige esse status. 16 consultas já encerradas seguem `scheduled`. |
+| **3. `operationalStatus = paused`** | `autoReplyEnabled = false` | `shouldSendAutomatedClinicOutbound` barra **todo** outbound automatizado. |
+
+Resultado: **0 mensagens `postcare:` na outbox desde que a feature existe.**
+
+O bloqueio 1 é o mais silencioso: consulta criada pelo operador na agenda não grava `treatmentId` —
+só o fluxo de booking pela IA grava. Como quase todo agendamento da Vitalli é manual, a regra nunca
+encontra ninguém.
+
+**Questão de produto no bloqueio 3:** cuidados pós-procedimento são instrução clínica, não marketing.
+Faz sentido que a pausa comercial da IA também silencie orientação de cuidado? Provavelmente não —
+mas é decisão do Victor, não nossa.
+
+### #21 — Problema relatado vira oferta
+
+Existe `isMaintenanceInquiryText` → `needs_human`, mas ele só roda dentro de `coerceBusinessIntent`,
+que **retorna cedo** para qualquer intent que não seja `greeting`, `acknowledgment` ou `unclear`. Na
+prática a LLM classifica essas mensagens como outra coisa e o guard nunca é consultado:
+
+| Mensagem real | Intent | Resposta |
+|---|---|---|
+| *"Um dos dentes quebrou"* | `reject_slots` | ⚠️ lista de horários de segunda |
+| *"o meu tende quebrou e queria saber como eu posso fazer"* | `general_question` | ⚠️ "é importante realizar uma avaliação clínica" |
+| *"Como que seria a manutenção ?"* | `general_question` | ⚠️ vende manutenção preventiva |
+| *"Na manutenção"* | `needs_human` | ✅ pede foto, escala |
+| *"…ela quebrou ontem :( Queria refazê-la com vocês"* | `clinical_urgency` | ✅ escala |
+
+Não é uniforme: quando cai em `needs_human`/`clinical_urgency` o comportamento é o que o Victor quer.
+O problema é a rota depender da classificação da LLM.
+
+**A segunda metade do pedido — "resgate de contexto" — não existe.** Não há nenhum sinal de paciente
+já atendido em lugar nenhum do pipeline: nem `isReturningPatient`, nem histórico de consultas no
+contexto do composer. Quem já fez lentes é tratado como lead novo de vendas. Conecta com o #9.
+
+### #22 — Template de confirmação
+
+O conteúdo **já está configurado** — `depositConfirmationNotes` da Vitalli tem as três orientações
+(10 minutos de antecedência, reagendamento com 24h, evitar acompanhante). O que difere do template do
+operador:
+
+| | Operador | Sistema |
+|---|---|---|
+| Data e horário | linhas rotuladas separadas | um `slotLabel` só |
+| Prédio / sala / andar | *"Helbor Offices São Paulo Torre Sul, Sala 124 Andar 12"* | não existe campo; "Sala 124" está espremido dentro de `address` |
+| Destaque | `⚠️ *EVITAR LEVAR ACOMPANHANTE*` em bloco próprio, negrito | item de lista igual aos outros |
+
+Há ainda **dois caminhos de confirmação diferentes**: com sinal (Vitalli) usa o template
+determinístico; sem sinal (Ximendes) é texto livre da LLM. Devem convergir.
+
+### #23 — Endereço sem link do Maps
+
+Hoje o endereço sai como `📍 Estamos na {address}.` — texto puro, em três pontos do orquestrador.
+O operador manda o link do Google Maps, que o WhatsApp renderiza com foto do prédio. Não existe
+campo de URL de mapa no cadastro.
 
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
 
