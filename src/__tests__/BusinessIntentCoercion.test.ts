@@ -162,9 +162,12 @@ describe("horário de atendimento determinístico", () => {
       buildBusinessHoursAnswer("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.", "Vocês atendem aos sábados?"),
     ).toContain("Sim, atendemos aos sábados");
 
-    expect(
-      buildBusinessHoursAnswer("Seg-Sex 09:00-18:00", "Vocês atendem aos sábados?"),
-    ).toContain("Não consta atendimento aos sábados");
+    // Sábado fora da agenda padrão não é mais uma negativa seca: a clínica abre
+    // exceção, então a resposta informa o cadastrado E escala para a equipe.
+    // Ver BusinessHoursOutOfWindow.test.ts.
+    const semSabado = buildBusinessHoursAnswer("Seg-Sex 09:00-18:00", "Vocês atendem aos sábados?");
+    expect(semSabado).toContain("não consta na agenda padrão");
+    expect(semSabado).toContain("verificar com a equipe");
   });
 });
 

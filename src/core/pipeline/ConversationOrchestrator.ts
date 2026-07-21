@@ -794,6 +794,62 @@ export function isBusinessHoursQuestion(message: string): boolean {
   ]);
 }
 
+/**
+ * Horário que o lead pediu quando ele está NEGOCIANDO disponibilidade, não
+ * perguntando o expediente: "posso ir após as 18h", "só consigo antes das 9h",
+ * "atendem depois das 19:30?".
+ *
+ * Devolve a hora em minutos desde a meia-noite, ou null quando a mensagem não
+ * traz esse tipo de pedido.
+ */
+export function extractRequestedTimeBoundary(message: string): { minutes: number; direction: "after" | "before" } | null {
+  // Deliberadamente NÃO usa normalizeFreeText: ele troca pontuação por espaço, e
+  // "19:30" viraria "19 30" — o minuto se perderia. Aqui só acentos são removidos.
+  const text = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  // O artigo é opcional e vem com ou sem "d": "após AS 18h" (caso real 19/07),
+  // "depois DAS 19:30", "a partir DE 18h", "apos 18h".
+  const ARTICLE = String.raw`(?:d?[ao]s?\s+)?`;
+  const TIME = String.raw`(\d{1,2})(?:\s*[h:]\s*(\d{2}))?`;
+
+  const after = text.match(new RegExp(String.raw`(?:apos|depois|a partir)\s+${ARTICLE}${TIME}`));
+  if (after) {
+    return { minutes: Number(after[1]) * 60 + Number(after[2] ?? 0), direction: "after" };
+  }
+  const before = text.match(new RegExp(String.raw`(?:antes|ate)\s+${ARTICLE}${TIME}`));
+  if (before) {
+    return { minutes: Number(before[1]) * 60 + Number(before[2] ?? 0), direction: "before" };
+  }
+  return null;
+}
+
+/**
+ * O horário pedido cai FORA da janela de atendimento?
+ *
+ * "após as 18h" com expediente até 18h → fora. "após as 14h" → dentro.
+ */
+export function isRequestedTimeOutsideBusinessHours(
+  boundary: { minutes: number; direction: "after" | "before" },
+  hours: ParsedBusinessHours,
+): boolean {
+  const openMinutes = hours.startHour * 60 + hours.startMinute;
+  const closeMinutes = hours.endHour * 60 + hours.endMinute;
+  return boundary.direction === "after"
+    ? boundary.minutes >= closeMinutes
+    : boundary.minutes <= openMinutes;
+}
+
+/**
+ * A resposta de horário vai prometer verificação com a equipe?
+ *
+ * Existe para o orquestrador sinalizar `needsAttention` no mesmo caso em que o
+ * texto promete retorno — promessa sem escalação é pior do que uma recusa clara.
+ */
+export function requiresTeamCheckForHours(message: string, businessHoursRaw: string | null): boolean {
+  const boundary = extractRequestedTimeBoundary(message);
+  if (!boundary) return false;
+  return isRequestedTimeOutsideBusinessHours(boundary, parseBusinessHours(businessHoursRaw));
+}
+
 export function buildBusinessHoursAnswer(businessHoursRaw: string | null, message: string): string {
   const normalized = normalizeFreeText(message);
   const businessHours = parseBusinessHours(businessHoursRaw);
@@ -801,18 +857,38 @@ export function buildBusinessHoursAnswer(businessHoursRaw: string | null, messag
   const asksSaturday = normalized.includes("sabado");
   const asksSunday = normalized.includes("domingo");
 
+  // Horário fora da janela NÃO é recusa — é caso de escalar.
+  //
+  // A clínica abre exceção: na Vitalli, lente é procedimento longo e o doutor
+  // atende após as 17h, terminando até as 21h. Uma IA que responde "fica fora da
+  // nossa agenda" mata uma venda que o humano fecharia. O sistema não conhece as
+  // exceções; quem conhece é a equipe.
+  //
+  // O que quebrava (caso real 19/07): "posso ir após as 18h na semana" respondido
+  // com "Seg-Sáb 8h-18h." — tecnicamente correto, comercialmente morto.
+  const boundary = extractRequestedTimeBoundary(message);
+  if (boundary && isRequestedTimeOutsideBusinessHours(boundary, businessHours)) {
+    const limite = boundary.direction === "after"
+      ? `Nosso horário padrão vai até ${businessHours.endHour}h`
+      : `Nosso horário padrão começa às ${businessHours.startHour}h`;
+    return `${limite}, mas dependendo do procedimento conseguimos abrir exceção. Vou verificar com a equipe e já te retorno.`;
+  }
+
+  // Sábado/domingo: responde pelo que está CADASTRADO. Não consulta a agenda real
+  // — ver plano-correcao-conversacional.md item #18: a resposta certa é olhar a
+  // disponibilidade do dia, não só a configuração.
   if (asksSaturday) {
     if (businessHours.days.includes(6)) {
       return `Sim, atendemos aos sábados. Horário cadastrado: ${hoursText}.`;
     }
-    return `Pelo horário cadastrado, atendemos ${hoursText}. Não consta atendimento aos sábados.`;
+    return `Pelo horário cadastrado, atendemos ${hoursText}. Sábado não consta na agenda padrão, mas vou verificar com a equipe se há alguma possibilidade.`;
   }
 
   if (asksSunday) {
     if (businessHours.days.includes(0)) {
       return `Sim, atendemos aos domingos. Horário cadastrado: ${hoursText}.`;
     }
-    return `Pelo horário cadastrado, atendemos ${hoursText}. Não consta atendimento aos domingos.`;
+    return `Pelo horário cadastrado, atendemos ${hoursText}. Domingo não consta na agenda padrão, mas vou verificar com a equipe se há alguma possibilidade.`;
   }
 
   return `Nosso horário de atendimento é: ${hoursText}.`;
@@ -4998,6 +5074,20 @@ export class ConversationOrchestrator {
       }
       replyText = businessHoursAnswer;
       forceTextOnlyReply = true;
+      // A resposta promete "vou verificar com a equipe" quando o horário pedido sai
+      // da janela padrão — a clínica abre exceção (na Vitalli, lente é procedimento
+      // longo e o doutor atende após as 17h, terminando até as 21h). Prometer sem
+      // avisar ninguém é pior do que recusar: sinaliza para a equipe ver de fato.
+      if (requiresTeamCheckForHours(messageText, clinic.businessHours)) {
+        await db
+          .update(conversationsTable)
+          .set({
+            needsAttention: true,
+            attentionReason: "Lead pediu horário fora da janela padrão — avaliar exceção",
+            updatedAt: new Date(),
+          })
+          .where(eq(conversationsTable.id, conversation.id));
+      }
     } else if (operatorManagedBooking) {
       // W4.3: o operador está conduzindo o agendamento — a IA acena e devolve o
       // controle, sem re-derivar avaliação nem contradizer a oferta manual.
