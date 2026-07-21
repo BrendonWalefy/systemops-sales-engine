@@ -316,9 +316,26 @@ export const organizations = pgTable("organizations", {
     .notNull()
     .default(false),
   unclearThreshold: integer("unclear_threshold").notNull().default(3),
+  // TTL do pipeline de tratamento (usado como minutos: valor * 60). NÃO usar como
+  // gatilho de reinício de conversa — ver conversationRestartHours abaixo.
   staleConversationHours: integer("stale_conversation_hours")
     .notNull()
     .default(4),
+  // Gap de inatividade a partir do qual o lead volta a ser tratado como primeiro
+  // contato (recebe a saudação de abertura em vez de continuidade).
+  //
+  // Separado de staleConversationHours de propósito: o mesmo campo governava as
+  // duas coisas, e subir a janela de reinício arrastava junto o TTL do pipeline,
+  // que porteia 6 pontos de decisão do orquestrador.
+  //
+  // Default 24h medido em produção: o gap p90 entre mensagens consecutivas do
+  // mesmo lead é de 17h. Com o limite antigo (4h/6h), 17,2% das respostas de lead
+  // disparavam "conversa nova" e recebiam a saudação de abertura no meio do
+  // atendimento. Em 24h isso cai para 5,9%.
+  // Ver docs/product/plano-correcao-conversacional.md item #1.
+  conversationRestartHours: integer("conversation_restart_hours")
+    .notNull()
+    .default(24),
   slotOfferTtlMinutes: integer("slot_offer_ttl_minutes").notNull().default(15),
   maxSlotsToOffer: integer("max_slots_to_offer").notNull().default(5),
   slotLookaheadDays: integer("slot_lookahead_days").notNull().default(14),

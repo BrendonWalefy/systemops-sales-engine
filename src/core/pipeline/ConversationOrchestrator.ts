@@ -245,6 +245,37 @@ const AD_MEDIA_PLACEHOLDER_RE = /^\[(?:imagem|v[ií]deo) recebid[oa]\]$/i;
 const AD_CAPTION_RE = /^(venho|vim|chego|cheguei|chegando|cliquei|vi\s+o?\s*(anúncio|anuncio|post|vídeo|video|reels?|story|stories)|olá|ola|oi|posso|gostaria|queria|me\s+passa)/i;
 const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
 
+// Fallback quando a clínica não tem conversationRestartHours definido.
+// 24h cobre o padrão real do WhatsApp: o gap p90 entre mensagens consecutivas do
+// mesmo lead é de 17h (n=3.183, produção). Ver plano-correcao-conversacional.md.
+export const DEFAULT_CONVERSATION_RESTART_HOURS = 24;
+
+/**
+ * O lead sumiu tempo suficiente para a conversa recomeçar do zero (saudação de
+ * abertura em vez de continuidade)?
+ *
+ * Compara o gap entre as DUAS ÚLTIMAS mensagens do lead — a atual já está em
+ * `leadMessages`, então o antecessor é o penúltimo item.
+ *
+ * Usa `conversationRestartHours`, NUNCA `staleConversationHours`: aquele campo é o
+ * TTL do pipeline de tratamento. Enquanto os dois eram o mesmo valor, a janela de
+ * reinício herdava 4h (Vitalli) / 6h (Ximendes) e 17,2% das respostas de lead
+ * caíam como "conversa nova" — o lead recebia a saudação no meio do atendimento.
+ */
+export function shouldRestartConversation(params: {
+  leadMessages: { sentAt: Date }[];
+  now: Date;
+  restartHours?: number | null;
+}): boolean {
+  const { leadMessages, now, restartHours } = params;
+  // Menos de 2 mensagens do lead = não há gap anterior para medir.
+  if (leadMessages.length < 2) return false;
+  const previous = leadMessages[leadMessages.length - 2];
+  const gapHours = (now.getTime() - new Date(previous.sentAt).getTime()) / (1000 * 60 * 60);
+  const threshold = restartHours ?? DEFAULT_CONVERSATION_RESTART_HOURS;
+  return gapHours >= threshold;
+}
+
 export function resolveAdMediaContext(params: {
   currentMessageId: string;
   currentMessageText: string;
@@ -2176,6 +2207,7 @@ function buildOrganization(row: ClinicRow): Organization {
     rateLimitPerHour: row.rateLimitPerHour,
     unclearThreshold: row.unclearThreshold,
     staleConversationHours: row.staleConversationHours,
+    conversationRestartHours: row.conversationRestartHours,
     slotOfferTtlMinutes: row.slotOfferTtlMinutes,
     maxSlotsToOffer: row.maxSlotsToOffer,
     slotLookaheadDays: row.slotLookaheadDays,
@@ -4237,16 +4269,23 @@ export class ConversationOrchestrator {
     // Lead pediu explicitamente para ver o menu fora do fluxo inicial
     const menuReRequested = !isMenuActive && !isFirstMessage && !resetRequested && isMenuRerequest(messageText);
 
-    // Gap de inatividade: se o lead sumiu por ≥ CONVERSATION_RESTART_HOURS, recomeça
-    let isStaleConversation = false;
-    if (!isFirstMessage && !isMenuActive && !resetRequested && !menuReRequested && !rescheduleAfterReminder) {
-      const prevLeadMsgs = allMessages.filter((m) => m.author === "lead");
-      if (prevLeadMsgs.length >= 2) {
-        const prev = prevLeadMsgs[prevLeadMsgs.length - 2];
-        const gapHours = (timestamp.getTime() - new Date(prev.sentAt).getTime()) / (1000 * 60 * 60);
-        isStaleConversation = gapHours >= clinic.staleConversationHours;
-      }
-    }
+    // Gap de inatividade: se o lead sumiu por tempo demais, recomeça com saudação.
+    //
+    // Usa conversationRestartHours (default 24h), NÃO staleConversationHours: aquele
+    // campo é o TTL do pipeline de tratamento e porteia 6 pontos de decisão abaixo —
+    // acoplar os dois fazia a janela de reinício herdar 4h/6h.
+    //
+    // Medido em produção: o gap p90 entre mensagens consecutivas do mesmo lead é de
+    // 17h. Com 4h, 17,2% das respostas de lead eram tratadas como conversa nova e o
+    // lead recebia a saudação de abertura no meio do atendimento (a maior causa de
+    // perda de contexto). Ver docs/product/plano-correcao-conversacional.md.
+    const isStaleConversation =
+      !isFirstMessage && !isMenuActive && !resetRequested && !menuReRequested && !rescheduleAfterReminder &&
+      shouldRestartConversation({
+        leadMessages: allMessages.filter((m) => m.author === "lead"),
+        now: timestamp,
+        restartHours: clinic.conversationRestartHours,
+      });
 
     // Saudação isolada mid-conversa (sem oferta pendente, sem seleção válida de menu)
     const isolatedGreeting =

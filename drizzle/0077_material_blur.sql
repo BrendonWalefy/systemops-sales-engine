@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "conversation_restart_hours" integer DEFAULT 24 NOT NULL;
