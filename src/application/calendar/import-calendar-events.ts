@@ -54,7 +54,7 @@ export async function importCalendarEvents(
   // ~1/segundo, função serverless perto do limite de tempo).
   const existingLeads = await db.query.leads.findMany({
     where: eq(leads.clinicId, clinicId),
-    columns: { id: true, name: true, phone: true },
+    columns: { id: true, name: true, phone: true, whatsappLid: true },
   });
   const leadByNormalizedName = new Map(
     existingLeads
@@ -70,6 +70,13 @@ export async function importCalendarEvents(
   );
   const leadsSemTelefone = new Set(
     existingLeads.filter((l) => !l.phone).map((l) => l.id),
+  );
+  // Mudo = sem telefone E sem @lid. Distinto de `leadsSemTelefone`: um lead com
+  // @lid conversa pelo WhatsApp normalmente, só não tem número. Preencher o
+  // telefone dele é bom; repontar um agendamento para longe dele seria roubar
+  // uma conversa viva.
+  const leadsMudos = new Set(
+    existingLeads.filter((l) => !l.phone && !l.whatsappLid).map((l) => l.id),
   );
 
   const clinicTreatments = await db.query.treatments.findMany({
@@ -107,6 +114,7 @@ export async function importCalendarEvents(
         // número entre a carga em memória e agora, o insert falha. Cair para
         // lead sem telefone preserva o agendamento — perder a consulta do dia
         // é pior que perder o contato, que o próximo sync recupera.
+        let telefoneAplicado = eventPhone;
         const newLeadResult = await db.insert(leads).values({
           clinicId,
           name: patientName,
@@ -117,6 +125,7 @@ export async function importCalendarEvents(
         }).returning({ id: leads.id }).catch(async (err) => {
           if (!eventPhone) throw err;
           console.warn(`[ImportCalendar] telefone ${eventPhone} recusado no insert:`, err);
+          telefoneAplicado = null;
           return db.insert(leads).values({
             clinicId, name: patientName, phone: null, email: null,
             channel: "manual", temperature: "warm",
@@ -133,8 +142,15 @@ export async function importCalendarEvents(
 
         leadId = newLeadResult[0].id;
         leadByNormalizedName.set(normalizedName, leadId);
-        if (eventPhone) leadByPhone.set(eventPhone, leadId);
-        else leadsSemTelefone.add(leadId);
+        // Só indexa o telefone que o banco de fato aceitou: no fallback o lead
+        // nasceu sem número, e reivindicá-lo aqui faria o próximo evento com o
+        // mesmo telefone cair num lead que não o tem.
+        if (telefoneAplicado) {
+          leadByPhone.set(telefoneAplicado, leadId);
+        } else {
+          leadsSemTelefone.add(leadId);
+          leadsMudos.add(leadId);
+        }
       } else if (eventPhone && leadsSemTelefone.has(leadId)) {
         // Lead que veio de um import anterior sem contato: agora tem número.
         // Só preenche o que está vazio — sobrescrever telefone de lead ativo
@@ -144,6 +160,7 @@ export async function importCalendarEvents(
             .set({ phone: eventPhone, updatedAt: new Date() })
             .where(eq(leads.id, leadId));
           leadsSemTelefone.delete(leadId);
+          leadsMudos.delete(leadId);
           leadByPhone.set(eventPhone, leadId);
           console.log(`[ImportCalendar] telefone preenchido lead=${leadId} (clinic=${clinicId})`);
         } catch (err) {
@@ -188,15 +205,27 @@ export async function importCalendarEvents(
             eq(appts.clinicId, clinicId),
             inArray(appts.calendarEventId, calendarEventIdCandidates(event.uid)),
           ),
-        columns: { id: true, professionalId: true, treatmentId: true, status: true, valueCents: true }
+        columns: { id: true, professionalId: true, treatmentId: true, status: true, valueCents: true, leadId: true }
       });
 
       if (existingAppointment) {
         const updatedStatus =
           existingAppointment.status === "confirmed" ? "confirmed" : "scheduled";
+        const trocaDeLead = shouldRepointAppointmentLead({
+          resolvedLeadId: leadId,
+          currentLeadId: existingAppointment.leadId,
+          muteLeadIds: leadsMudos,
+        });
+        if (trocaDeLead) {
+          console.log(
+            `[ImportCalendar] agendamento ${existingAppointment.id} repontado ` +
+            `lead=${existingAppointment.leadId} -> ${leadId} (clinic=${clinicId})`,
+          );
+        }
         // Reimportação também corrige eventos que foram movidos/editados no Google.
         await db.update(appointments)
           .set({
+            ...(trocaDeLead ? { leadId } : {}),
             startsAt: event.startTime,
             // Reaplica no re-sync: sem isto, a primeira edição do evento no
             // Google devolveria o bloco curto e a proteção se perderia.
@@ -300,6 +329,29 @@ function normalizeEventText(text: string): string {
  *
  * A agenda do Google não é tocada — só a nossa.
  */
+/**
+ * O agendamento já importado deve migrar para o lead que o telefone identificou?
+ *
+ * O caso que isto resolve: André foi importado sem contato, virando um lead
+ * mudo. Depois o operador escreve o telefone na descrição do evento, e esse
+ * número pertence ao "André Silva" que já conversa no WhatsApp. Sem repontar, o
+ * agendamento fica preso ao lead mudo — e o cron de pós-atendimento lê
+ * `appt.leadId`, encontra telefone nulo e pula. A correção falharia justamente
+ * no caso que ela existe para resolver.
+ *
+ * A guarda: só sai de lead MUDO (sem telefone e sem @lid). Um lead com @lid
+ * conversa normalmente, só não tem número — mover um agendamento para longe dele
+ * seria roubar uma conversa viva por causa de um número digitado na agenda.
+ */
+export function shouldRepointAppointmentLead(params: {
+  resolvedLeadId: string;
+  currentLeadId: string;
+  muteLeadIds: ReadonlySet<string>;
+}): boolean {
+  if (params.resolvedLeadId === params.currentLeadId) return false;
+  return params.muteLeadIds.has(params.currentLeadId);
+}
+
 export function resolveImportedEndsAt(params: {
   startsAt: Date;
   eventEndsAt: Date;

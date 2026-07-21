@@ -3,6 +3,7 @@ import {
   extractCalendarEventPhone,
   extractEventPhone,
 } from "@/application/calendar/extract-event-phone";
+import { shouldRepointAppointmentLead } from "@/application/calendar/import-calendar-events";
 
 describe("extractEventPhone — formatos que o operador digita", () => {
   it("aceita o número cru com DDI", () => {
@@ -150,5 +151,64 @@ describe("extractCalendarEventPhone — descrição antes do título", () => {
     expect(extractCalendarEventPhone({ summary: "keylla 11921525494" })).toBe(
       "5511921525494",
     );
+  });
+});
+
+describe("shouldRepointAppointmentLead — agendamento segue o telefone", () => {
+  const MUDO = "lead-mudo";
+  const CONVERSA = "lead-com-conversa";
+  const COM_LID = "lead-so-lid";
+
+  // Mudo = sem telefone e sem @lid. Lead com @lid NÃO entra aqui.
+  const mudos = new Set([MUDO]);
+
+  it("reponta quando o agendamento está preso a um lead mudo", () => {
+    expect(
+      shouldRepointAppointmentLead({
+        resolvedLeadId: CONVERSA,
+        currentLeadId: MUDO,
+        muteLeadIds: mudos,
+      }),
+    ).toBe(true);
+  });
+
+  it("não reponta quando já é o mesmo lead", () => {
+    expect(
+      shouldRepointAppointmentLead({
+        resolvedLeadId: MUDO,
+        currentLeadId: MUDO,
+        muteLeadIds: mudos,
+      }),
+    ).toBe(false);
+  });
+
+  it("NÃO rouba agendamento de lead com conversa viva", () => {
+    expect(
+      shouldRepointAppointmentLead({
+        resolvedLeadId: CONVERSA,
+        currentLeadId: "outro-lead-com-telefone",
+        muteLeadIds: mudos,
+      }),
+    ).toBe(false);
+  });
+
+  it("NÃO rouba de lead que tem só @lid — ele conversa, só não tem número", () => {
+    expect(
+      shouldRepointAppointmentLead({
+        resolvedLeadId: CONVERSA,
+        currentLeadId: COM_LID,
+        muteLeadIds: mudos,
+      }),
+    ).toBe(false);
+  });
+
+  it("não reponta quando nenhum lead é mudo", () => {
+    expect(
+      shouldRepointAppointmentLead({
+        resolvedLeadId: CONVERSA,
+        currentLeadId: COM_LID,
+        muteLeadIds: new Set(),
+      }),
+    ).toBe(false);
   });
 });
