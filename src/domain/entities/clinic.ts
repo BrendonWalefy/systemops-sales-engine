@@ -57,7 +57,11 @@ export type Organization = {
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
   rateLimitPerHour: number;
   unclearThreshold: number;
+  // TTL do pipeline de tratamento (em horas; usado como valor * 60 minutos).
   staleConversationHours: number;
+  // Gap de inatividade que faz o lead voltar a ser tratado como primeiro contato.
+  // Opcional: quando ausente, o orquestrador usa 24h. Ver schema.ts.
+  conversationRestartHours?: number | null;
   slotOfferTtlMinutes: number;
   maxSlotsToOffer: number;
   slotLookaheadDays: number;
