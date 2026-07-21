@@ -44,6 +44,53 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P3** | 12 | 7% das respostas saem sem intent classificado | 64 de 867 | Instrumentar: registrar e alertar. Sem intent não há guard nem métrica. | baixo | 🟢 |
 | **P3** | 13 | Sistema nunca registra "não entendi" | `consecutiveUnclearCount = 0` em 100% | Fazer o classificador emitir baixa confiança e acionar `needs_human` antes de responder errado com segurança. | médio | 🟡 |
 | **P3** | 14 | Parcelamento classificado como `clinical_urgency` | 1 caso | Teste de regressão travando pagamento ≠ urgência. | trivial | 🟢 |
+| **P1** | 15 | Ximendes sem `messageDebounceMs` (rajada não é agrupada) | 45 de 763 rajadas (6%) respondidas uma a uma | Definir `messageDebounceMs` na Ximendes (Vitalli usa 7000ms). Config por clínica — só dado. | trivial | 🟢 |
+| **P2** | 16 | Guard de rajada não é observável | 8 openers escapam sem explicação | Instrumentar o guard antes de mexer nele: registrar descarte e passagem. | baixo | 🟢 |
+
+## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
+
+Relato do cliente confirmado em dados. Rajada = 2+ mensagens do lead em até 2 minutos:
+
+| | |
+|---|---|
+| Rajadas no corpus | **763** |
+| IA juntou o contexto (0–1 resposta) | 718 (**94%**) |
+| **IA respondeu uma por uma** | **45 (6%)** |
+
+Exemplos reais das que falharam:
+
+- *"Tenho dois implantes e uma coroa eles contam"* + *"Como pode ser feito neste caso?"* → 2 respostas
+- *"Qual a diferença da técnica"* + *"Eu não entendi nada"* → 2 respostas
+- *"Olá bom dia"* + *"Tenho interesse em lentes de resina estratificada…"* → 2 respostas
+
+**É o mesmo fenômeno dos 8 openers indevidos** (E1 do mapa): a rajada dispara pela primeira
+mensagem e a resposta sai depois da segunda já ter chegado. Num caso o sintoma é "respondeu duas
+vezes"; no outro, "respondeu com a saudação em vez do conteúdo". O terceiro exemplo acima é
+literalmente um dos 8.
+
+### O que já existe
+
+| Mecanismo | Onde | Estado |
+|---|---|---|
+| `messageDebounceMs` — janela de agrupamento antes de processar | config por clínica | **Vitalli 7000ms; Ximendes `null`** |
+| `rapidThrottleMs` | config por clínica | 4000ms nas duas |
+| Guard de rajada pós-classificação — relê a última mensagem do lead e descarta a resposta se foi superada | `ConversationOrchestrator:4416` | ativo, mas só quando `!skipLlm` |
+
+**Lacuna concreta:** a Ximendes — clínica com o histórico de IA mais longo — está **sem
+`messageDebounceMs`**, ou seja, sem agrupamento de mensagens. É config por clínica; dá para corrigir
+sem deploy.
+
+### O que ainda não sei
+
+Os 8 openers indevidos **deveriam** ter sido pegos pelo guard: `isolatedGreeting` exige
+`!isFirstMessage`, logo em primeiro contato `skipLlm = false` e o guard roda. Não determinei por que
+escapam.
+
+Hipótese **não verificada**: a segunda mensagem chega depois da releitura do guard mas antes do
+envio — janela entre classificação e composição.
+
+**Não corrigir por palpite.** O caminho é instrumentar o guard (registrar quando descarta e quando
+deixa passar) e re-medir depois de alguns dias com o #211 em produção.
 
 ## Por que esta ordem
 
