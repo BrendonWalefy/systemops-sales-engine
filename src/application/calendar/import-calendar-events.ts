@@ -63,7 +63,10 @@ export async function importCalendarEvents(
 
   const clinicTreatments = await db.query.treatments.findMany({
     where: eq(treatments.clinicId, clinicId),
-    columns: { id: true, name: true, aliases: true, keywordMatchEnabled: true, pipelineSteps: true },
+    columns: {
+      id: true, name: true, aliases: true, keywordMatchEnabled: true,
+      pipelineSteps: true, durationMinutes: true,
+    },
   });
   const treatmentCandidates: ImportTreatmentCandidate[] = clinicTreatments.map((t) => ({
     id: t.id,
@@ -129,6 +132,12 @@ export async function importCalendarEvents(
       );
       const professionalId = matchedProfessional?.id ?? options.defaultProfessionalId ?? null;
 
+      const endsAt = resolveImportedEndsAt({
+        startsAt: event.startTime,
+        eventEndsAt: event.endTime,
+        treatmentDurationMinutes: matchedTreatment?.durationMinutes ?? null,
+      });
+
       // Deduplication: check if an appointment with this calendarEventId already exists
       const existingAppointment = await db.query.appointments.findFirst({
         where: (appts, { eq, and, inArray }) =>
@@ -146,7 +155,9 @@ export async function importCalendarEvents(
         await db.update(appointments)
           .set({
             startsAt: event.startTime,
-            endsAt: event.endTime,
+            // Reaplica no re-sync: sem isto, a primeira edição do evento no
+            // Google devolveria o bloco curto e a proteção se perderia.
+            endsAt,
             status: updatedStatus,
             professionalId: matchedProfessional?.id ?? existingAppointment.professionalId ?? options.defaultProfessionalId ?? null,
             treatmentId: matchedTreatment?.id ?? existingAppointment.treatmentId ?? null,
@@ -163,7 +174,7 @@ export async function importCalendarEvents(
         leadId,
         professionalId,
         startsAt: event.startTime,
-        endsAt: event.endTime,
+        endsAt,
         status: "scheduled",
         source: "gcal_import",
         // Agendado FORA do sistema (telefone/presencial) e importado depois — não
@@ -221,6 +232,37 @@ function normalizeEventText(text: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Até quando a consulta importada ocupa a agenda INTERNA.
+ *
+ * A clínica agenda no Google e, na pressa, erra o bloco: das 23 consultas
+ * futuras da Vitalli, **9 estavam mais curtas que o procedimento exige** — duas
+ * delas com 60 minutos para uma instalação de lentes de 5 horas. Como o motor de
+ * horários lê a agenda interna, ele via a tarde livre e podia ofertá-la a outro
+ * lead enquanto o doutor ainda estava atendendo.
+ *
+ * Regra: `max(bloco do Google, duração cadastrada)`. Nunca encurta.
+ *
+ * A assimetria é o ponto. Estender um bloco custa uma vaga não ofertada;
+ * encurtar custa dois pacientes no mesmo horário. E o bloco maior costuma ser
+ * **procedimento combinado** — "Amanda 20 lentes + Remoção" (240min contra 90 de
+ * cadastro), "Ana Cristina manutenção + limpeza" (60 contra 30). O doutor
+ * reservou mais porque há mais; o cadastro guarda um tratamento por consulta e
+ * não tem como saber disso.
+ *
+ * A agenda do Google não é tocada — só a nossa.
+ */
+export function resolveImportedEndsAt(params: {
+  startsAt: Date;
+  eventEndsAt: Date;
+  treatmentDurationMinutes: number | null;
+}): Date {
+  const { startsAt, eventEndsAt, treatmentDurationMinutes } = params;
+  if (!treatmentDurationMinutes || treatmentDurationMinutes <= 0) return eventEndsAt;
+  const configuredEnd = new Date(startsAt.getTime() + treatmentDurationMinutes * 60_000);
+  return configuredEnd > eventEndsAt ? configuredEnd : eventEndsAt;
 }
 
 export type ImportTreatmentCandidate = {

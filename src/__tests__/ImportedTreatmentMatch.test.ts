@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 import {
   matchImportedTreatment,
+  resolveImportedEndsAt,
   type ImportTreatmentCandidate,
 } from "@/application/calendar/import-calendar-events";
 
@@ -157,5 +158,58 @@ describe("bordas", () => {
     // Termos de 3 letras casariam dentro de qualquer palavra.
     const curto: ImportTreatmentCandidate[] = [{ id: "x", name: "Ok", aliases: ["ap"] }];
     expect(matchImportedTreatment("Ana apareceu", curto).treatmentId).toBeNull();
+  });
+});
+
+// ── Duração do bloco importado ──
+//
+// A clínica agenda no Google e, na pressa, erra o bloco: das 23 consultas
+// futuras da Vitalli, 9 estavam mais curtas que o procedimento exige — duas com
+// 60min para uma instalação de lentes de 5h. O motor de horários lê a agenda
+// interna, via a tarde livre e podia ofertá-la a outro lead.
+
+const at = (iso: string) => new Date(iso);
+const minutesBetween = (a: Date, b: Date) => (b.getTime() - a.getTime()) / 60_000;
+
+describe("resolveImportedEndsAt", () => {
+  const inicio = at("2026-07-25T11:00:00.000Z");
+
+  it("estende o bloco curto até a duração cadastrada (caso real: 60min para lentes de 5h)", () => {
+    const fim = resolveImportedEndsAt({
+      startsAt: inicio,
+      eventEndsAt: at("2026-07-25T12:00:00.000Z"),
+      treatmentDurationMinutes: 300,
+    });
+    expect(minutesBetween(inicio, fim)).toBe(300);
+  });
+
+  it("NUNCA encurta — bloco maior é procedimento combinado, e o doutor sabe", () => {
+    // "Amanda 20 lentes + Remoção": 240min de bloco contra 90 de cadastro.
+    // Encurtar liberaria tempo reservado e a IA ofertaria em cima.
+    const fimReal = at("2026-07-25T15:00:00.000Z"); // 240min
+    const fim = resolveImportedEndsAt({
+      startsAt: inicio,
+      eventEndsAt: fimReal,
+      treatmentDurationMinutes: 90,
+    });
+    expect(fim).toEqual(fimReal);
+  });
+
+  it("bloco igual ao cadastro não muda nada", () => {
+    const fimReal = at("2026-07-25T11:30:00.000Z");
+    expect(
+      resolveImportedEndsAt({ startsAt: inicio, eventEndsAt: fimReal, treatmentDurationMinutes: 30 }),
+    ).toEqual(fimReal);
+  });
+
+  it("sem tratamento identificado, respeita o Google", () => {
+    // Sem saber o procedimento não há o que garantir — inventar duração aqui
+    // bloquearia agenda por chute.
+    const fimReal = at("2026-07-25T11:45:00.000Z");
+    for (const dur of [null, 0]) {
+      expect(
+        resolveImportedEndsAt({ startsAt: inicio, eventEndsAt: fimReal, treatmentDurationMinutes: dur }),
+      ).toEqual(fimReal);
+    }
   });
 });
