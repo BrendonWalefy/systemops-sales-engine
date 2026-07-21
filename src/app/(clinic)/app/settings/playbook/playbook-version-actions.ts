@@ -206,6 +206,7 @@ export async function updateClinicOperationalSettings(data: {
   menuItems?: MenuItem[] | null;
   receptionistPhone?: string | null;
   staleConversationHours?: number;
+  conversationRestartHours?: number;
   slotLookaheadDays?: number;
   mediaTakeoverTtlHours?: number | null;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;

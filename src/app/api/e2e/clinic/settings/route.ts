@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH /api/e2e/clinic/settings
-// Body: Partial<{ greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, slotLookaheadDays, mediaTakeoverTtlHours }>
+// Body: Partial<{ greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, conversationRestartHours, slotLookaheadDays, mediaTakeoverTtlHours }>
 export async function PATCH(req: NextRequest) {
   const guard = e2eGuard(req);
   if (guard) return guard;
@@ -53,6 +53,7 @@ export async function PATCH(req: NextRequest) {
     "takeoverTtlHours",
     "postAppointmentBufferMinutes",
     "staleConversationHours",
+    "conversationRestartHours",
     "slotLookaheadDays",
     "mediaTakeoverTtlHours",
   ];
