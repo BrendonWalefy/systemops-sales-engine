@@ -46,6 +46,20 @@ export type StageMessage = {
   body: string | null;
 };
 
+/**
+ * Títulos das mídias que entregam preço na clínica (ex.: "Valores Lente em
+ * Resina Premium").
+ *
+ * Existe porque uma imagem enviada é gravada em `messages` com
+ * `delivery_format = 'text'` e o **título da mídia no corpo** — o valor em si
+ * está dentro do arquivo. Procurar "R$" no texto, portanto, não vê o preço que
+ * o paciente de fato recebeu.
+ *
+ * Custou uma conclusão errada: sem isto, 27 conversas onde o preço saiu por
+ * imagem foram contadas como "perguntou e não foi respondido".
+ */
+export type PriceMediaTitles = ReadonlySet<string>;
+
 // ATENÇÃO: todos os padrões abaixo são testados contra texto JÁ NORMALIZADO
 // (sem acento, ver `normalize`). Escrever "às" ou "preço" aqui nunca casaria —
 // foi o que quebrou o primeiro teste de horário em texto solto.
@@ -79,7 +93,10 @@ function normalize(value: string | null | undefined): string {
  *  4. Recebeu horários e não escolheu.
  *  5. Parou antes de qualquer um desses.
  */
-export function computeSilenceStage(messages: StageMessage[]): SilenceStage {
+export function computeSilenceStage(
+  messages: StageMessage[],
+  priceMediaTitles: PriceMediaTitles = new Set(),
+): SilenceStage {
   const relevantes = messages.filter(
     (m) => typeof m.body === "string" && m.body.trim().length > 0,
   );
@@ -91,7 +108,14 @@ export function computeSilenceStage(messages: StageMessage[]): SilenceStage {
   const daClinica = relevantes.filter((m) => m.author !== "lead");
   const doLead = relevantes.filter((m) => m.author === "lead");
 
-  const clinicaCotou = daClinica.some((m) => QUOTE_PATTERN.test(normalize(m.body)));
+  // Preço em texto OU entregue por imagem. A Vitalli manda os valores em arte
+  // por decisão do dentista — ignorar isso classificaria como "não respondida"
+  // uma conversa em que o paciente recebeu a tabela completa.
+  const clinicaCotou = daClinica.some(
+    (m) =>
+      QUOTE_PATTERN.test(normalize(m.body)) ||
+      priceMediaTitles.has((m.body ?? "").trim()),
+  );
   if (clinicaCotou) return "after_quote";
 
   const leadPerguntouPreco = doLead.some((m) =>
