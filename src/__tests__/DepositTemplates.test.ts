@@ -37,9 +37,12 @@ describe("DepositTemplates", () => {
   });
 
   it("confirmação traz data, endereço e as orientações fixas da clínica", () => {
+    // #22: data e horário passaram a sair em linhas rotuladas, como no template
+    // que o operador manda à mão — antes era um `slotLabel` corrido numa linha só.
     const msg = buildDepositConfirmationMessage(VITALLI, "Seg 21/07 às 09h");
     expect(msg).toContain("✅ Agendamento confirmado!");
-    expect(msg).toContain("📅 Seg 21/07 às 09h");
+    expect(msg).toContain("📅 Data: Seg 21/07");
+    expect(msg).toContain("🕒 Horário: 09h");
     expect(msg).toContain("Av. Adolfo Pinheiro");
     expect(msg).toContain("Evite trazer acompanhante");
   });

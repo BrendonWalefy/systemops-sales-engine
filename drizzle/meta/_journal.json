@@ -575,6 +575,13 @@
       "when": 1784704821777,
       "tag": "0081_rapid_fenris",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1784705471501,
+      "tag": "0082_glamorous_abomination",
+      "breakpoints": true
     }
   ]
 }

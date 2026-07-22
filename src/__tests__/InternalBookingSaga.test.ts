@@ -31,6 +31,8 @@ const clinic: Organization = {
   businessNoun: "clínica",
   city: null,
   address: null,
+  addressComplement: null,
+  mapsUrl: null,
   timezone: "America/Sao_Paulo",
   greetingMessage: null,
   menuItems: null,

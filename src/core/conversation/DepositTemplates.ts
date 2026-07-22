@@ -2,7 +2,9 @@
 // LLM: são textos fixos compostos de fatos estruturados da clínica — a regra do
 // produto é que a IA NUNCA improvisa dinheiro nem valida comprovante.
 
-export type DepositClinic = {
+import { buildAddressLines, type ClinicAddress } from "./AddressBlock";
+
+export type DepositClinic = ClinicAddress & {
   depositAmountCents?: number | null;
   depositPixKey?: string | null;
   depositPixKeyType?: "cnpj" | "cpf" | "email" | "phone" | "random" | null;
@@ -10,7 +12,6 @@ export type DepositClinic = {
   depositTtlHours?: number;
   depositNotes?: string | null;
   depositConfirmationNotes?: string | null;
-  address?: string | null;
 };
 
 function formatBrl(cents: number): string {
@@ -74,24 +75,55 @@ export function buildDepositProofReceivedMessage(): string {
   return "Recebemos seu comprovante! 🙏 Nossa equipe vai conferir e em breve você recebe a confirmação do agendamento por aqui.";
 }
 
-// Confirmação final do agendamento — enviada pelo operador após validar o comprovante.
-export function buildDepositConfirmationMessage(clinic: DepositClinic, slotLabel: string): string {
-  const addressLine = clinic.address?.trim() ? `📍 ${clinic.address.trim()}` : "";
-  const notes = clinic.depositConfirmationNotes?.trim()
-    ? `\nOrientações importantes:\n${clinic.depositConfirmationNotes.trim()}`
-    : "";
+// Separa "Ter 28/07 às 16h" em data e horário. Os dois formatadores da casa
+// (formatForHuman e formatForConfirmation) usam " às " como junção, então o corte
+// é seguro; se algum label fugir do padrão, cai no rótulo único em vez de quebrar.
+export function splitSlotLabel(slotLabel: string): { date: string; time: string | null } {
+  const parts = slotLabel.split(" às ");
+  if (parts.length !== 2) return { date: slotLabel.trim(), time: null };
+  return { date: parts[0].trim(), time: parts[1].trim() };
+}
+
+/**
+ * Confirmação de agendamento — ÚNICA para os dois caminhos (com e sem sinal).
+ *
+ * Item #22: o template do operador separa data e horário em linhas rotuladas e traz
+ * o complemento do endereço; o nosso mandava um `slotLabel` corrido. E o caminho sem
+ * sinal (Ximendes) era texto livre da LLM, ou seja, formato diferente a cada
+ * agendamento — dado estruturado não tem por que passar por modelo nenhum.
+ */
+export function buildAppointmentConfirmationMessage(params: {
+  clinic: DepositClinic;
+  slotLabel: string;
+  treatmentName?: string | null;
+}): string {
+  const { date, time } = splitSlotLabel(params.slotLabel);
+  const addressLines = buildAddressLines(params.clinic, { withPin: false });
+  const notes = params.clinic.depositConfirmationNotes?.trim();
+  const treatment = params.treatmentName?.trim();
+
   return [
     "✅ Agendamento confirmado!",
     "",
-    `📅 ${slotLabel}`,
-    addressLine,
-    notes,
+    time ? `📅 Data: ${date}` : `📅 ${date}`,
+    time ? `🕒 Horário: ${time}` : "",
+    treatment ? `💠 Procedimento: ${treatment}` : "",
+    addressLines.length > 0 ? `📍 Endereço: ${addressLines[0]}` : "",
+    ...addressLines.slice(1),
+    notes ? `\nOrientações importantes:\n${notes}` : "",
     "",
     "Qualquer dúvida, é só chamar por aqui. Até lá! 😊",
   ]
+    .filter((line) => line !== "")
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+// Confirmação final do fluxo de sinal — enviada pelo operador após validar o
+// comprovante. Mantida como nome próprio porque é o que o caminho de sinal chama.
+export function buildDepositConfirmationMessage(clinic: DepositClinic, slotLabel: string): string {
+  return buildAppointmentConfirmationMessage({ clinic, slotLabel });
 }
 
 // Reserva expirou sem comprovante — enviada pelo cron de expiração.

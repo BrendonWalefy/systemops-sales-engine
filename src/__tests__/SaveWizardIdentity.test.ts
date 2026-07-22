@@ -20,6 +20,8 @@ function baseData(overrides: Partial<Parameters<typeof saveWizardIdentity>[1]> =
     specialty: "odontologia",
     city: "São Paulo",
     address: "Rua Teste, 123",
+    addressComplement: "",
+    mapsUrl: "",
     greetingMessage: "Olá!",
     channelProvider: "z_api" as const,
     zapiInstanceId: "instance-1",

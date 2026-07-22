@@ -50,8 +50,8 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P1** | 19 | `parseBusinessHours` só sabe decidir o sábado | NC Beauty cadastra "Terça a sexta" e o parser devolve `[1..6]`; domingo nunca é representável | Segunda a sexta é **assumido**, não lido. O sistema oferta segunda-feira para quem não abre segunda. Ler os dias do texto (ou trocar o campo por dias estruturados no painel). | médio | 🟡 |
 | **P0** | 20 | Pós-procedimento nunca disparou — nenhuma mídia, nenhum feedback | **0** mensagens `postcare:` enviadas desde sempre; 3 bloqueios empilhados | Destravar na ordem: (a) `treatment_id` nulo em 19 de 20 consultas encerradas, (b) nenhuma consulta chega a `completed`, (c) `operationalStatus=paused` bloqueia todo outbound. | médio | 🟡 |
 | **P1** | 21 | Problema relatado pelo paciente vira oferta de venda | *"Um dos dentes quebrou"* → lista de horários; *"meu dente quebrou e queria saber como faço"* → "é importante realizar uma avaliação" | ✅ **Feito:** trilho determinístico de relato de dano rodando sobre **qualquer** intent, com sinal de paciente recorrente (`findPastByLeadId`) e autodeclaração. Três ramos: paciente da casa → escala com data e tratamento da consulta; origem desconhecida → pergunta se o trabalho foi feito aqui; nunca cota, nunca oferta agenda. | médio | 🟡 |
-| **P2** | 22 | Confirmação de agendamento não segue o template do operador | Comparado ao print enviado pelo Victor (21/07) | Conteúdo **já está configurado** (`depositConfirmationNotes`). Falta estrutura (Data/Horário em linhas rotuladas), campo de **complemento do endereço** (prédio/sala/andar) e unificar com o caminho sem sinal, hoje texto livre da LLM. | baixo | 🟢 |
-| **P2** | 23 | Endereço vai como texto puro, sem link do Maps | `📍 Estamos na {address}.` — sem URL, sem pré-visualização | O operador manda link do Google Maps, que o WhatsApp renderiza com foto do prédio. Adicionar campo de URL do mapa e usá-lo nas respostas de endereço e na confirmação. | baixo | 🟢 |
+| **P2** | 22 | Confirmação de agendamento não segue o template do operador | Comparado ao print enviado pelo Victor (21/07) | ✅ **Feito:** Data e Horário em linhas rotuladas, campo `addressComplement` novo e os dois caminhos (com e sem sinal) usando o mesmo template determinístico. Em voz segue pela LLM — linha rotulada com emoji não se lê bem em áudio. | baixo | 🟢 |
+| **P2** | 23 | Endereço vai como texto puro, sem link do Maps | `📍 Estamos na {address}.` — sem URL, sem pré-visualização | ✅ **Feito:** campo `mapsUrl` novo e as **quatro** montagens de endereço espalhadas pelo código unificadas em `buildAddressLines`. O link sai em linha própria — grudado em outro texto o WhatsApp não gera a pré-visualização. | baixo | 🟢 |
 | **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | ⚠️ **Repriorizar:** a medição do #2 mostrou que o lag de registro (mediana 50s) é a causa raiz de 2/3 das aberturas indevidas. Não é só velocidade. | alto | 🔴 |
 
 ## Sábado (#18): a agenda já era consultada — a pergunta é que não chegava até ela
@@ -362,11 +362,31 @@ operador:
 Há ainda **dois caminhos de confirmação diferentes**: com sinal (Vitalli) usa o template
 determinístico; sem sinal (Ximendes) é texto livre da LLM. Devem convergir.
 
+**Resolvido.** Os dois caminhos passaram a chamar `buildAppointmentConfirmationMessage`, com Data e
+Horário em linhas rotuladas. O destaque do `⚠️` continua saindo como a clínica escreveu no campo de
+orientações — não inventamos realce automático em texto que o cliente digitou.
+
+Exceção deliberada: em **voz** a confirmação segue pela LLM. Linha rotulada com emoji não se lê bem
+em áudio, e o ganho do #22 é visual.
+
 ### #23 — Endereço sem link do Maps
 
 Hoje o endereço sai como `📍 Estamos na {address}.` — texto puro, em três pontos do orquestrador.
 O operador manda o link do Google Maps, que o WhatsApp renderiza com foto do prédio. Não existe
 campo de URL de mapa no cadastro.
+
+**Resolvido.** Eram **quatro** montagens, não três — a quarta estava em `DepositTemplates`. Todas
+passaram a derivar de `buildAddressLines`, e entraram dois campos: `addressComplement` e `mapsUrl`.
+
+Duas decisões que valem registro:
+
+- **O link vai sempre em linha própria.** Grudado em outro texto, o WhatsApp não gera a
+  pré-visualização — que é o motivo de existir o campo.
+- **Campo vazio não vira linha vazia.** Sem `mapsUrl` cadastrado a IA não pode inventar uma URL, e
+  sem endereço nenhum a confirmação não ganha linha órfã de `📍`.
+
+Falta preencher os dois campos da Vitalli e da Ximendes pelo painel do owner. Enquanto ninguém
+preencher, a resposta é exatamente a de antes.
 
 ## Rajadas: a IA responde mensagem a mensagem em vez de juntar o contexto
 

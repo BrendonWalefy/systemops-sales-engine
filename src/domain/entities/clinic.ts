@@ -44,6 +44,8 @@ export type Organization = {
   segment: string;
   city: string | null;
   address: string | null;
+  addressComplement: string | null;
+  mapsUrl: string | null;
   timezone: string;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;

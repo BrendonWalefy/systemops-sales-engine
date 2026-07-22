@@ -59,10 +59,12 @@ import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/app
 import { BookingService } from "@/core/scheduling/BookingService";
 import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
 import {
+  buildAppointmentConfirmationMessage,
   buildDepositRequestMessage,
   buildDepositProofReceivedMessage,
   buildDepositProofMissingMessage,
 } from "@/core/conversation/DepositTemplates";
+import { buildAddressAnswer, buildAddressLines, type ClinicAddress } from "@/core/conversation/AddressBlock";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
@@ -1001,14 +1003,14 @@ export function isDirectAddressQuestion(message: string): boolean {
 // devolve o dado institucional já cadastrado. Retorna null quando a mensagem não
 // é uma dessas perguntas seguras.
 export function buildSafeReviewPauseAnswer(
-  clinic: { address?: string | null; businessHours?: string | null },
+  clinic: { address?: string | null; addressComplement?: string | null; mapsUrl?: string | null; businessHours?: string | null },
   message: string,
 ): string | null {
   if (isBusinessHoursQuestion(message)) {
     return buildBusinessHoursAnswer(clinic.businessHours ?? null, message);
   }
   if (isDirectAddressQuestion(message) && clinic.address?.trim()) {
-    return `📍 Estamos na ${clinic.address}.`;
+    return buildAddressAnswer(clinic);
   }
   return null;
 }
@@ -2395,10 +2397,16 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
   }
 }
 
-export function buildLocationClinicContext(address: string | null): string {
+export function buildLocationClinicContext(clinic: ClinicAddress | string | null): string {
+  // Aceita string por compatibilidade com chamadas antigas; o formato novo traz
+  // complemento e link do Maps, que o operador manda à mão e a IA não tinha.
+  const resolved: ClinicAddress = typeof clinic === "string" || clinic === null ? { address: clinic } : clinic;
+  const address = resolved.address?.trim() || null;
+  const extraLines = buildAddressLines(resolved, { withPin: false }).slice(1);
+  const extra = extraLines.length > 0 ? `\nInclua também, em linhas separadas: ${extraLines.join(" | ")}` : "";
   const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
   if (address) {
-    return `${base}\nEndereço: ${address}.\nATENÇÃO CRÍTICA: A clínica possui SOMENTE este endereço. NÃO confirme presença em outros bairros, ruas ou cidades — mesmo que o lead mencione um local diferente na mensagem. Se o lead perguntar sobre outro bairro, responda que a clínica está localizada no endereço acima.`;
+    return `${base}\nEndereço: ${address}.${extra}\nATENÇÃO CRÍTICA: A clínica possui SOMENTE este endereço. NÃO confirme presença em outros bairros, ruas ou cidades — mesmo que o lead mencione um local diferente na mensagem. Se o lead perguntar sobre outro bairro, responda que a clínica está localizada no endereço acima.`;
   }
   // Endereço não cadastrado — instrução explícita para não inventar
   return `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
@@ -2565,6 +2573,8 @@ function buildOrganization(row: ClinicRow): Organization {
     segment: row.segment,
     city: row.city,
     address: row.address ?? null,
+    addressComplement: row.addressComplement ?? null,
+    mapsUrl: row.mapsUrl ?? null,
     timezone: row.timezone,
     greetingMessage: row.greetingMessage ?? null,
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,
@@ -5873,12 +5883,24 @@ export class ConversationOrchestrator {
             await bookingService.cancel({ lead, appointment: existingAppointment });
           }
           await this.stateMachine.transition(conversation.id, "idle");
-          replyText = await compose({
-            type: "appointment_confirmed",
-            slot: chosenSlot,
-            clinicName: clinic.name,
-            clinicAddress: clinic.address,
-          });
+          // #22: confirmação é dado estruturado — data, horário, endereço e as
+          // orientações que a clínica cadastrou. Passava pela LLM só no caminho
+          // sem sinal, o que dava um formato diferente a cada agendamento e
+          // deixava o complemento do endereço fora. Agora os dois caminhos usam o
+          // mesmo template. Em voz, segue pela LLM: linha rotulada com emoji não
+          // se lê bem em áudio.
+          replyText = voiceEnabled
+            ? await compose({
+                type: "appointment_confirmed",
+                slot: chosenSlot,
+                clinicName: clinic.name,
+                clinicAddress: clinic.address,
+              })
+            : buildAppointmentConfirmationMessage({
+                clinic,
+                slotLabel: chosenSlot.label,
+                treatmentName: offeredTreatment?.treatmentName ?? null,
+              });
         } else if (result.reason === "slot_taken") {
           // Slot foi tomado por outro lead entre a oferta e a confirmação
           const { slots: newSlots } = await this.fetchAndOfferSlots(
@@ -6744,7 +6766,7 @@ export class ConversationOrchestrator {
             : null;
           if (combinedPriceTreatment && combinedPriceContent?.step.type === "content") {
             const addressPart = clinic.address
-              ? { type: "text" as const, content: `📍 Estamos na ${clinic.address}.` }
+              ? { type: "text" as const, content: buildAddressAnswer(clinic) }
               : null;
             const contentReply = buildPipelineContentReply(combinedPriceContent.step);
             composedParts = addressPart ? [addressPart, ...contentReply.parts] : contentReply.parts;
@@ -6775,7 +6797,7 @@ export class ConversationOrchestrator {
           }
           // Sem conteúdo curado disponível: contexto combinado obrigatório.
           clinicContext = [
-            buildLocationClinicContext(clinic.address),
+            buildLocationClinicContext(clinic),
             "ATENÇÃO: o lead pediu VALORES na MESMA mensagem. Responda as duas partes — endereço E os valores/condições disponíveis na política comercial. NÃO responda apenas o endereço.",
           ].join("\n");
           replyText = await compose({ type: "general_question", clinicContext });
@@ -6867,7 +6889,7 @@ export class ConversationOrchestrator {
                 : directMediaClarificationRequested
                   ? buildMediaClarificationClinicContext()
                   : directLocationRequested
-                    ? buildLocationClinicContext(clinic.address)
+                    ? buildLocationClinicContext(clinic)
                     : buildDeferredPipelineAnswerContext({
                         treatmentName: pipelineTreatment.name,
                         contentBlocks: currentStep.blocks,
@@ -7262,10 +7284,10 @@ export class ConversationOrchestrator {
             // inventava contexto ("nova localização"). Resposta determinística;
             // só cai na LLM quando há contexto de nome/endereço antigo (P0.5).
             if (clinic.address && !previousClinicNameContext) {
-              replyText = `📍 Estamos na ${clinic.address}.\n\nPosso te ajudar com mais alguma coisa? 😊`;
+              replyText = `${buildAddressAnswer(clinic)}\n\nPosso te ajudar com mais alguma coisa? 😊`;
               break;
             }
-            clinicContext = buildLocationClinicContext(clinic.address);
+            clinicContext = buildLocationClinicContext(clinic);
           }
         } else {
           // Mensagem sem tratamento explícito — tenta inferir tratamento em discussão
