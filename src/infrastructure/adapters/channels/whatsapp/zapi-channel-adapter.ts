@@ -139,6 +139,59 @@ export async function sendZApiTextMessage(
   }
 }
 
+/**
+ * Envia texto COM card de pré-visualização. Endpoint separado de propósito na
+ * Z-API: o `send-text` não monta prévia nenhuma, e o card não é derivado da URL —
+ * quem fornece título, descrição e imagem somos nós.
+ *
+ * A doc exige que o link seja a última coisa da mensagem; quem chama garante isso.
+ */
+export async function sendZApiLinkMessage(
+  phone: string,
+  text: string,
+  link: { linkUrl: string; title: string; linkDescription: string; image: string },
+  creds: { instanceId: string; token: string; clientToken?: string },
+): Promise<string | null> {
+  const { instanceId, token } = creds;
+  const rawClientToken = creds.clientToken;
+  const clientToken = rawClientToken && !rawClientToken.startsWith("http") ? rawClientToken : undefined;
+
+  if (!instanceId || !token) {
+    throw new Error("Z-API instance ID and token must be configured for this clinic");
+  }
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (clientToken) headers["Client-Token"] = clientToken;
+
+  const response = await fetch(
+    `https://api.z-api.io/instances/${instanceId}/token/${token}/send-link`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        phone,
+        message: text,
+        linkUrl: link.linkUrl,
+        title: link.title,
+        linkDescription: link.linkDescription,
+        image: link.image,
+        linkType: "LARGE",
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Z-API send-link failed (${response.status}): ${await response.text()}`);
+  }
+
+  try {
+    const data = (await response.json()) as { messageId?: string; zaapId?: string };
+    return data.messageId ?? data.zaapId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export type ZApiButton = {
   id: string;
   label: string;
