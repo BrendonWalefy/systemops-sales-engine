@@ -1462,6 +1462,16 @@ export const clinicOperationalInsights = pgTable(
 );
 
 // Registra menções de tratamentos não encontrados no catálogo da clínica.
+// Encurtador dos links que saem nas mensagens. O WhatsApp sempre mostra a URL por
+// escrito, e a do Maps tem 180 caracteres — cinco linhas embaixo do card. O slug é
+// derivado da própria URL (hash), então a criação é idempotente: o mesmo endereço
+// enviado 137 vezes gera uma linha, não 137.
+export const shortLinks = pgTable("short_links", {
+  slug: text("slug").primaryKey(),
+  targetUrl: text("target_url").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Cache de pré-visualização de link. A prévia é buscada UMA vez por URL e reusada
 // em todos os envios seguintes — o link do endereço da Vitalli saiu 137 vezes com
 // a mesma URL, então buscar a cada envio seria 137 idas ao Google para o mesmo
