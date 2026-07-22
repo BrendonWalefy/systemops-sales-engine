@@ -2,6 +2,7 @@ import { sendWhatsAppTextMessage } from "./whatsapp-channel-adapter";
 import { sendZApiTextMessage, sendZApiMediaMessage, sendZApiButtonListMessage, sendZApiLinkMessage, type ZApiButton } from "./zapi-channel-adapter";
 import { extractTrailingUrl } from "@/application/messaging/link-preview";
 import { resolveLinkPreview } from "@/application/messaging/link-preview-cache";
+import { shortenUrl } from "@/application/messaging/short-link";
 import type { ClinicChannelConfig } from "./channel-config";
 import type { MediaType } from "@/application/ports/channel-adapter";
 
@@ -36,11 +37,21 @@ export async function sendTextMessage(
         // card com foto, melhor que o link pelado. Exigir imagem faria links sem
         // og:image (o encurtado do Maps é um) regredirem para texto puro.
         if (preview?.title) {
+          // O card já está resolvido a partir da URL ORIGINAL — encurtar depois
+          // disso só troca o que o lead LÊ. É o que permite ter o texto de uma
+          // linha E a foto grande: o link curto do Google devolve título mas não
+          // devolve og:image, então encurtar nós mesmos é o único caminho para os
+          // dois ao mesmo tempo.
+          const shortUrl = await shortenUrl(trailingUrl);
+          const messageText = shortUrl
+            ? formatted.replace(trailingUrl, shortUrl)
+            : formatted;
+
           return await sendZApiLinkMessage(
             to,
-            formatted,
+            messageText,
             {
-              linkUrl: trailingUrl,
+              linkUrl: shortUrl ?? trailingUrl,
               title: preview.title,
               linkDescription: preview.description ?? "",
               image: preview.imageUrl ?? "",
