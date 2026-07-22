@@ -50,7 +50,11 @@ import {
   detectOldPriceObjection,
   detectSelfDeclaredPastWork,
 } from "@/core/intelligence/objection-triage";
-import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import {
+  composeWarrantySection,
+  resolveActiveEditorialConfig,
+  type WarrantyPolicy,
+} from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
@@ -1710,6 +1714,17 @@ function singularize(token: string): string {
   return token.length >= 6 && token.endsWith("s") ? token.slice(0, -1) : token;
 }
 
+// Termos do catálogo que não distinguem objeção: nome E apelidos. Só o nome não
+// bastava — o anúncio da Vitalli ("Quero saber como posso transformar meu sorriso
+// com facetas de resina?") casava com a objeção "Como funciona a troca de facetas
+// antigas por novas?" pela palavra "facetas", que é alias e não nome. Eram 106 dos
+// 218 casamentos da clínica no corpus.
+export function treatmentTermsForObjectionMatch(
+  treatments: Pick<Treatment, "name" | "aliases">[],
+): string[] {
+  return treatments.flatMap((t) => [t.name, ...(t.aliases ?? [])]);
+}
+
 // Casa a mensagem do lead contra as objeções cadastradas pela clínica. Quando a
 // clínica cadastra uma objeção (ex.: "…tem garantia e como é a manutenção?") com
 // resposta, ela DECIDIU que a IA responde aquilo — este matcher é o que permite
@@ -1725,7 +1740,7 @@ function singularize(token: string): string {
 export function matchRegisteredObjection(
   message: string,
   objections: { objection: string; response: string }[] | null | undefined,
-  treatmentNames: string[] = [],
+  treatmentTerms: string[] = [],
 ): { objection: string; response: string } | null {
   if (!objections?.length) return null;
   const msg = normalizeFreeText(message);
@@ -1738,7 +1753,7 @@ export function matchRegisteredObjection(
 
   // Tokens genéricos do nicho (nomes de tratamento) não distinguem objeção nenhuma.
   const genericTokens = new Set<string>();
-  for (const name of treatmentNames) {
+  for (const name of treatmentTerms) {
     for (const t of normalizeFreeText(name).split(" ")) {
       if (t.length >= 5) genericTokens.add(singularize(t));
     }
@@ -1800,27 +1815,52 @@ function buildObjectionDirectiveContext(matched: { objection: string; response: 
 // avaliação" — política inventada + pivô comercial. Passa a dizer que confirma com
 // a equipe. A Ximendes cai nesse caminho hoje: 11 objeções cadastradas, nenhuma
 // sobre garantia.
+// A objeção continua valendo como FALLBACK: a Vitalli já tinha a política escrita
+// lá, e trocar a fonte não pode derrubar quem já estava configurado. Quando o campo
+// estruturado estiver preenchido, ele ganha — é ele que o painel mostra vazio para
+// quem ainda não preencheu.
 export type WarrantyAnswer =
-  | { kind: "registered"; clinicContext: string; objection: string }
+  | { kind: "registered"; source: "structured" | "objection"; clinicContext: string }
   | { kind: "no_policy"; clinicContext: string };
+
+function buildWarrantyDirectiveContext(section: string): string {
+  return [
+    `O lead perguntou sobre GARANTIA. A clínica cadastrou esta política no sistema — ela é a fonte:`,
+    section,
+    `Responda com base nisso, no seu tom acolhedor. NÃO altere prazo nem cobertura e NÃO acrescente regra que não esteja acima.`,
+    `NÃO substitua por pedido de foto nem por "isso depende de avaliação presencial", e NÃO conduza para avaliação por causa da garantia.`,
+    `Se o lead estiver relatando um problema concreto com o trabalho dele, informe a política e diga que a equipe confirma o caso — quem decide cobertura é a equipe, não você.`,
+    `Se ele perguntou outras coisas na mesma mensagem, responda também essas partes com base nas orientações da clínica.`,
+  ].join("\n");
+}
 
 export function resolveWarrantyAnswer(params: {
   message: string;
+  warrantyPolicy: WarrantyPolicy | null | undefined;
   objections: { objection: string; response: string }[] | null | undefined;
-  treatmentNames: string[];
+  treatmentTerms: string[];
 }): WarrantyAnswer | null {
   if (!isWarrantyQuestion(normalizeFreeText(params.message))) return null;
+
+  const structured = composeWarrantySection(params.warrantyPolicy);
+  if (structured) {
+    return {
+      kind: "registered",
+      source: "structured",
+      clinicContext: buildWarrantyDirectiveContext(structured),
+    };
+  }
 
   const registered = matchRegisteredObjection(
     params.message,
     params.objections,
-    params.treatmentNames,
+    params.treatmentTerms,
   );
   if (registered) {
     return {
       kind: "registered",
+      source: "objection",
       clinicContext: buildObjectionDirectiveContext(registered),
-      objection: registered.objection,
     };
   }
 
@@ -5081,7 +5121,7 @@ export class ConversationOrchestrator {
         const matchedObjection = matchRegisteredObjection(
           messageText,
           editorial?.objections,
-          clinicTreatments.map((t) => t.name),
+          treatmentTermsForObjectionMatch(clinicTreatments),
         );
         if (matchedObjection) {
           objectionDirectiveContext = buildObjectionDirectiveContext(matchedObjection);
@@ -5162,8 +5202,9 @@ export class ConversationOrchestrator {
       ? null
       : resolveWarrantyAnswer({
           message: messageText,
+          warrantyPolicy: editorial?.warrantyPolicy,
           objections: editorial?.objections,
-          treatmentNames: clinicTreatments.map((t) => t.name),
+          treatmentTerms: treatmentTermsForObjectionMatch(clinicTreatments),
         });
     if (warrantyAnswer) {
       // general_question porque a resposta é informativa e sai da config. O

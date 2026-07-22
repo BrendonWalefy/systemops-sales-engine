@@ -19,6 +19,13 @@ type PlaybookVersionData = {
   differentials?: string[];
   commercialPolicy?: string | null;
   objections?: { objection: string; response: string }[];
+  // null = não cadastrado (a IA diz que confirma com a equipe);
+  // offersWarranty: false = a clínica não dá garantia, e a IA pode informar isso.
+  warrantyPolicy?: {
+    offersWarranty: boolean;
+    tiers: { periodMonths: number; covers: string }[];
+    conditions: string | null;
+  } | null;
   notes?: string | null;
   // Seleção de ids da biblioteca clinic-level (`media_assets`) que este playbook
   // autoriza a IA a enviar. A biblioteca é gerenciada em /app/settings/biblioteca.

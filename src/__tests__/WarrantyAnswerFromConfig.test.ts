@@ -7,7 +7,9 @@ import { describe, expect, it } from "vitest";
 import {
   matchRegisteredObjection,
   resolveWarrantyAnswer,
+  treatmentTermsForObjectionMatch,
 } from "@/core/pipeline/ConversationOrchestrator";
+import { composeWarrantySection } from "@/application/config/editorial-config";
 
 // Objeção real da Vitalli (playbook ativo).
 const VITALLI_OBJECTIONS = [
@@ -32,9 +34,10 @@ const VITALLI_TREATMENTS = ["Lentes de resina composta estratificada", "Manuten�
 describe("resolveWarrantyAnswer — a config manda", () => {
   it("caso Giuliana (18/07): 'tempo de garantia' devolve a resposta cadastrada", () => {
     const answer = resolveWarrantyAnswer({
+      warrantyPolicy: null,
       message: "tempo de garantia",
       objections: VITALLI_OBJECTIONS,
-      treatmentNames: VITALLI_TREATMENTS,
+      treatmentTerms: VITALLI_TREATMENTS,
     });
     expect(answer?.kind).toBe("registered");
     expect(answer?.clinicContext).toContain("garantia de 2 anos");
@@ -45,9 +48,10 @@ describe("resolveWarrantyAnswer — a config manda", () => {
     // A resposta real foi "depende do tipo de procedimento […] o ideal é passar
     // por uma avaliação". A diretiva bloqueia exatamente isso.
     const answer = resolveWarrantyAnswer({
+      warrantyPolicy: null,
       message: "Bom noite qual o tempo de garantia?",
       objections: VITALLI_OBJECTIONS,
-      treatmentNames: VITALLI_TREATMENTS,
+      treatmentTerms: VITALLI_TREATMENTS,
     });
     expect(answer?.kind).toBe("registered");
     expect(answer?.clinicContext).toContain("depende de avaliação presencial");
@@ -62,9 +66,10 @@ describe("resolveWarrantyAnswer — a config manda", () => {
       "Tem garantia essa resina",
     ]) {
       expect(resolveWarrantyAnswer({
+        warrantyPolicy: null,
         message,
         objections: VITALLI_OBJECTIONS,
-        treatmentNames: VITALLI_TREATMENTS,
+        treatmentTerms: VITALLI_TREATMENTS,
       })?.kind).toBe("registered");
     }
   });
@@ -73,18 +78,20 @@ describe("resolveWarrantyAnswer — a config manda", () => {
     // Ele listou dúvidas: "Formas de pagamento / Garantias / Tipo de material".
     // Sem tolerância a plural, a clínica TEM a resposta e o sistema concluía que não.
     const answer = resolveWarrantyAnswer({
+      warrantyPolicy: null,
       message: "Busco orçamento mesmo que estimado\nFormas de pagamento\nGarantias\n\nTipo de material",
       objections: VITALLI_OBJECTIONS,
-      treatmentNames: VITALLI_TREATMENTS,
+      treatmentTerms: VITALLI_TREATMENTS,
     });
     expect(answer?.kind).toBe("registered");
   });
 
   it("sem política cadastrada (Ximendes hoje), a IA não inventa e não vende", () => {
     const answer = resolveWarrantyAnswer({
+      warrantyPolicy: null,
       message: "qual o tempo de garantia?",
       objections: [{ objection: "Não quero pagar a avaliação", response: "A avaliação é abatida do tratamento." }],
-      treatmentNames: ["Lentes de resina composta estratificada"],
+      treatmentTerms: ["Lentes de resina composta estratificada"],
     });
     expect(answer?.kind).toBe("no_policy");
     expect(answer?.clinicContext).toContain("NÃO invente prazo");
@@ -97,9 +104,10 @@ describe("resolveWarrantyAnswer — a config manda", () => {
 
   it("clínica sem objeção nenhuma também cai no caminho seguro", () => {
     const answer = resolveWarrantyAnswer({
+      warrantyPolicy: null,
       message: "vocês dão garantia?",
       objections: [],
-      treatmentNames: [],
+      treatmentTerms: [],
     });
     expect(answer?.kind).toBe("no_policy");
   });
@@ -114,11 +122,96 @@ describe("resolveWarrantyAnswer — a config manda", () => {
       "Quero descobrir qual técnica combina comigo",
     ]) {
       expect(resolveWarrantyAnswer({
+        warrantyPolicy: null,
         message,
         objections: VITALLI_OBJECTIONS,
-        treatmentNames: VITALLI_TREATMENTS,
+        treatmentTerms: VITALLI_TREATMENTS,
       })).toBeNull();
     }
+  });
+});
+
+describe("campo estruturado de garantia", () => {
+  // A política real da Vitalli, agora como dado e não como frase.
+  const VITALLI_WARRANTY = {
+    offersWarranty: true,
+    tiers: [
+      { periodMonths: 24, covers: "a lente descolar por completo" },
+      { periodMonths: 1, covers: "pigmentação ou quebra por descuido" },
+    ],
+    conditions: "é só trazer a lente descolada",
+  };
+
+  it("composeWarrantySection deriva a prosa do dado, com prazo legível", () => {
+    const section = composeWarrantySection(VITALLI_WARRANTY);
+    expect(section).toContain("2 anos: a lente descolar por completo");
+    expect(section).toContain("1 mês: pigmentação ou quebra por descuido");
+    expect(section).toContain("Condições: é só trazer a lente descolada");
+  });
+
+  it("o campo estruturado tem precedência sobre a objeção cadastrada", () => {
+    const answer = resolveWarrantyAnswer({
+      message: "tempo de garantia",
+      warrantyPolicy: VITALLI_WARRANTY,
+      objections: VITALLI_OBJECTIONS,
+      treatmentTerms: VITALLI_TREATMENTS,
+    });
+    expect(answer).toEqual(
+      expect.objectContaining({ kind: "registered", source: "structured" }),
+    );
+    expect(answer?.clinicContext).toContain("2 anos");
+  });
+
+  it("sem o campo, a objeção cadastrada continua valendo — ninguém regride", () => {
+    const answer = resolveWarrantyAnswer({
+      message: "tempo de garantia",
+      warrantyPolicy: null,
+      objections: VITALLI_OBJECTIONS,
+      treatmentTerms: VITALLI_TREATMENTS,
+    });
+    expect(answer).toEqual(
+      expect.objectContaining({ kind: "registered", source: "objection" }),
+    );
+  });
+
+  it("'não trabalhamos com garantia' é resposta, não ausência", () => {
+    const answer = resolveWarrantyAnswer({
+      message: "tem garantia?",
+      warrantyPolicy: { offersWarranty: false, tiers: [], conditions: null },
+      objections: [],
+      treatmentTerms: [],
+    });
+    expect(answer?.kind).toBe("registered");
+    expect(answer?.clinicContext).toContain("não trabalha com garantia");
+  });
+
+  it("campo criado mas ainda vazio não conta como cadastrado", () => {
+    // O painel cria a faixa com o texto em branco; até alguém escrever o que
+    // cobre, não há o que responder — e inventar é justamente o bug original.
+    expect(composeWarrantySection({ offersWarranty: true, tiers: [{ periodMonths: 12, covers: "  " }], conditions: null }))
+      .toBeNull();
+    const answer = resolveWarrantyAnswer({
+      message: "tem garantia?",
+      warrantyPolicy: { offersWarranty: true, tiers: [], conditions: null },
+      objections: [],
+      treatmentTerms: [],
+    });
+    expect(answer?.kind).toBe("no_policy");
+  });
+
+  it("prazo em meses só vira ano quando fecha ano", () => {
+    const section = composeWarrantySection({
+      offersWarranty: true,
+      tiers: [
+        { periodMonths: 12, covers: "a" },
+        { periodMonths: 18, covers: "b" },
+        { periodMonths: 36, covers: "c" },
+      ],
+      conditions: null,
+    });
+    expect(section).toContain("1 ano: a");
+    expect(section).toContain("18 meses: b");
+    expect(section).toContain("3 anos: c");
   });
 });
 
@@ -129,6 +222,22 @@ describe("matchRegisteredObjection — token fraco não decide objeção", () =>
     expect(matchRegisteredObjection("Posso ver os horários de sexta?", VITALLI_OBJECTIONS, VITALLI_TREATMENTS))
       .toBeNull();
     expect(matchRegisteredObjection("Olá! Posso ter mais informações sobre isso?", VITALLI_OBJECTIONS, VITALLI_TREATMENTS))
+      .toBeNull();
+  });
+
+  it("apelido de tratamento também não decide objeção (106 casos da Vitalli)", () => {
+    // O anúncio do Meta manda sempre a mesma frase, e ela casava com "Como funciona
+    // a troca de facetas antigas por novas?" pela palavra "facetas" — que é ALIAS do
+    // tratamento, não nome. Só os nomes eram descartados como genéricos.
+    const catalogo = [
+      { name: "Lentes de resina composta estratificada", aliases: ["lentes", "facetas", "resina"] },
+      { name: "Manutenção Preventiva de lentes", aliases: ["manutenção", "polimento"] },
+    ];
+    const anuncio = "Olá! Quero saber como posso transformar meu sorriso com facetas de resina?";
+
+    expect(matchRegisteredObjection(anuncio, VITALLI_OBJECTIONS, catalogo.map((t) => t.name))?.objection)
+      .toBe("Como funciona a troca de facetas antigas por novas?");
+    expect(matchRegisteredObjection(anuncio, VITALLI_OBJECTIONS, treatmentTermsForObjectionMatch(catalogo)))
       .toBeNull();
   });
 

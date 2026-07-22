@@ -54,6 +54,7 @@ export default async function PlaybookEditorPage({
         differentials: version.differentials.length > 0 ? version.differentials : [""],
         commercialPolicy: version.commercialPolicy ?? "",
         objections: version.objections.length > 0 ? version.objections : [],
+        warrantyPolicy: version.warrantyPolicy ?? null,
         notes: version.notes ?? "",
         mediaAssetIds: version.mediaAssetIds ?? [],
       }}

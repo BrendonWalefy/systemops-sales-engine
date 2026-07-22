@@ -205,6 +205,65 @@ export async function resolveMediaLibraryForVersion(
   return [];
 }
 
+/**
+ * Política de garantia da clínica, estruturada.
+ *
+ * Antes disso a garantia só existia (quando existia) dentro do texto livre de uma
+ * objeção: a Vitalli tinha, a Ximendes não, e a falta passou meses despercebida
+ * porque não havia campo para ficar vazio. Mesma tese do preço — o dado é
+ * estruturado e a prosa é DERIVADA dele por `composeWarrantySection`.
+ *
+ * `null` (campo não preenchido) ≠ `offersWarranty: false`. O primeiro é ausência de
+ * informação e a IA diz que confirma com a equipe; o segundo é uma decisão da
+ * clínica, que a IA pode informar.
+ */
+export type WarrantyTier = { periodMonths: number; covers: string };
+
+export type WarrantyPolicy = {
+  offersWarranty: boolean;
+  /** Faixas porque a política real tem mais de um prazo. */
+  tiers: WarrantyTier[];
+  conditions: string | null;
+};
+
+export const warrantyPolicySchema = z.object({
+  offersWarranty: z.boolean(),
+  tiers: z
+    .array(
+      z.object({
+        periodMonths: z.number().int().positive(),
+        covers: z.string().trim().min(1),
+      }),
+    )
+    .default([]),
+  conditions: z.string().trim().nullable().default(null),
+});
+
+function formatWarrantyPeriod(months: number): string {
+  if (months % 12 === 0) {
+    const years = months / 12;
+    return years === 1 ? "1 ano" : `${years} anos`;
+  }
+  return months === 1 ? "1 mês" : `${months} meses`;
+}
+
+/**
+ * Prosa determinística a partir da garantia estruturada. Devolve `null` quando não
+ * há nada cadastrado — o chamador distingue "não cadastrado" de "não oferece".
+ */
+export function composeWarrantySection(policy: WarrantyPolicy | null | undefined): string | null {
+  if (!policy) return null;
+  if (!policy.offersWarranty) {
+    return "GARANTIA: a clínica não trabalha com garantia para os procedimentos.";
+  }
+  const tiers = policy.tiers.filter((t) => t.covers.trim() && t.periodMonths > 0);
+  if (tiers.length === 0 && !policy.conditions?.trim()) return null;
+
+  const lines = tiers.map((t) => `• ${formatWarrantyPeriod(t.periodMonths)}: ${t.covers.trim()}`);
+  if (policy.conditions?.trim()) lines.push(`• Condições: ${policy.conditions.trim()}`);
+  return `GARANTIA:\n${lines.join("\n")}`;
+}
+
 export type EditorialConfig = {
   specialty: string | null;
   toneOfVoice: string | null;
@@ -213,6 +272,7 @@ export type EditorialConfig = {
   receptionistName: string;
   differentials: string[];
   objections: { objection: string; response: string }[];
+  warrantyPolicy: WarrantyPolicy | null;
   mediaLibrary: MediaLibraryItem[];
   /** Texto pronto para o prompt, composto a partir dos campos estruturados. */
   playbookText: string;
@@ -253,6 +313,7 @@ export function composePlaybookText(parts: {
   procedures?: EditorialProcedure[];
   notes?: string | null;
   mediaLibrary?: MediaLibraryItem[] | null;
+  warrantyPolicy?: WarrantyPolicy | null;
 }): string {
   const sections: string[] = [];
 
@@ -274,6 +335,11 @@ export function composePlaybookText(parts: {
   const differentials = (parts.differentials ?? []).filter(Boolean);
   if (differentials.length > 0) {
     sections.push(`DIFERENCIAIS:\n${differentials.map((d) => `• ${d}`).join("\n")}`);
+  }
+
+  const warrantySection = composeWarrantySection(parts.warrantyPolicy);
+  if (warrantySection) {
+    sections.push(warrantySection);
   }
 
   const objections = (parts.objections ?? []).filter((o) => o.objection && o.response);
@@ -366,6 +432,8 @@ export async function resolveActiveEditorialConfig(
   const differentials = (activeVersion.differentials as string[] | null) ?? [];
   const objections =
     (activeVersion.objections as { objection: string; response: string }[] | null) ?? [];
+  const parsedWarranty = warrantyPolicySchema.safeParse(activeVersion.warrantyPolicy);
+  const warrantyPolicy = parsedWarranty.success ? parsedWarranty.data : null;
   const mediaLibrary = await resolveMediaLibraryForVersion(clinicId, activeVersion);
 
   return {
@@ -376,6 +444,7 @@ export async function resolveActiveEditorialConfig(
     procedures,
     differentials,
     objections,
+    warrantyPolicy,
     mediaLibrary,
     playbookText: composePlaybookText({
       differentials,
@@ -383,6 +452,7 @@ export async function resolveActiveEditorialConfig(
       procedures,
       notes: activeVersion.notes,
       mediaLibrary,
+      warrantyPolicy,
     }),
   };
 }
