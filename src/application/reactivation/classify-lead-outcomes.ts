@@ -27,6 +27,7 @@ import {
 } from "@/infrastructure/llm/advisor-llm";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
+import { trackUsageSafely } from "@/application/reactivation/track-usage-safely";
 import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
 import {
   evaluateBudget,
@@ -257,22 +258,18 @@ export async function classifyLeadOutcomesForClinic(
         maxTokens: MAX_OUTPUT_TOKENS,
       });
 
-      await costTracker.trackAiUsage({
+      const usage = {
         clinicId,
         provider: llm.provider,
         model: llm.model,
-        operation: "lead_outcome_classification",
+        operation: "lead_outcome_classification" as const,
         inputTokens: llm.inputTokens,
         outputTokens: llm.outputTokens,
-      });
-      spent += estimateAiCostUsdMicros({
-        clinicId,
-        provider: llm.provider,
-        model: llm.model,
-        operation: "lead_outcome_classification",
-        inputTokens: llm.inputTokens,
-        outputTokens: llm.outputTokens,
-      });
+      };
+      // Acumula o gasto antes de registrar: o teto vale mesmo se o INSERT de
+      // contabilidade falhar, e a falha nunca descarta a classificação paga.
+      spent += estimateAiCostUsdMicros(usage);
+      await trackUsageSafely(costTracker, usage);
 
       const classification = parseLeadOutcomeResponse(llm.text, messages);
       if (!classification) {
