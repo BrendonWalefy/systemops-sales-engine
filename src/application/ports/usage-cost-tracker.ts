@@ -8,7 +8,8 @@ export type TrackAiUsageInput = {
     | "follow_up_suggestion"
     | "manual_analysis"
     | "playbook_analysis"
-    | "lead_outcome_classification";
+    | "lead_outcome_classification"
+    | "reactivation_draft";
   inputTokens: number;
   outputTokens: number;
 };
