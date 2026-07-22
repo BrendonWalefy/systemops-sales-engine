@@ -54,7 +54,7 @@ function DateSeparator({ label }: { label: string }) {
   );
 }
 
-function VideoCard({ url, title }: { url: string; title?: string }) {
+function VideoCard({ url }: { url: string }) {
   const [expanded, setExpanded] = useState(false);
   if (expanded) {
     return (
@@ -77,28 +77,27 @@ function VideoCard({ url, title }: { url: string; title?: string }) {
           </div>
         </div>
       </div>
-      {title && (
-        <div className="msg-video-footer">
-          <span className="msg-video-title">{title}</span>
-          <span className="msg-video-sub">Toque para assistir</span>
-        </div>
-      )}
+      <div className="msg-video-footer">
+        <span className="msg-video-sub">Toque para assistir</span>
+      </div>
     </button>
   );
 }
 
-function ImageCard({ url, title }: { url: string; title?: string }) {
+// Imagem no tamanho do balão, como no WhatsApp. Antes era uma miniatura de 76px
+// com a legenda espremida no título do card — o operador manda foto do prédio e
+// tabela de preços, e nenhuma das duas se lê num quadrado desse tamanho.
+function ImageCard({ url, alt }: { url: string; alt?: string }) {
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer"
-      className="msg-media-card" style={{ display: "flex", textDecoration: "none" }}>
-      <div className="msg-media-thumb">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt={title || "imagem"} />
-      </div>
-      <div className="msg-media-info">
-        <div className="msg-media-title">{title || "Imagem"}</div>
-        <div className="msg-media-sub">Toque para ampliar</div>
-      </div>
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="msg-image-card"
+      aria-label="Abrir imagem em tamanho original"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt={alt || "imagem enviada"} />
     </a>
   );
 }
@@ -120,11 +119,18 @@ function DocumentLink({ url, title }: { url: string; title?: string }) {
 
 function MediaPreview({ url, type, title }: { url?: string | null; type?: string | null; title?: string }) {
   if (!url || !type) return null;
-  if (type === "video") return <VideoCard url={url} title={title} />;
-  if (type === "image") return <ImageCard url={url} title={title} />;
+  if (type === "video") return <VideoCard url={url} />;
+  if (type === "image") return <ImageCard url={url} alt={title} />;
   if (type === "audio") return <audio controls src={url} style={{ width: "100%", marginBottom: 4, display: "block" }} />;
   if (type === "document") return <DocumentLink url={url} title={title} />;
   return null;
+}
+
+// Corpo sintético que o webhook grava quando a mídia chega sem legenda
+// ("[imagem enviada pelo operador]"). Com a imagem já renderizada em tamanho
+// cheio, repetir isso como texto é ruído — o WhatsApp também não mostra nada.
+function isMediaPlaceholder(body: string): boolean {
+  return /^\[(?:imagem|foto|v[íi]deo|áudio|audio|documento)[^\]]*\]$/i.test(body.trim());
 }
 
 function cleanBody(body: string): string {
@@ -138,6 +144,29 @@ function shouldCollapseMessage(body: string): boolean {
   return body.length > MESSAGE_PREVIEW_CHAR_LIMIT || body.split("\n").length > MESSAGE_PREVIEW_LINE_LIMIT;
 }
 
+// URL no corpo vira link clicável, como no WhatsApp. O operador manda o link do
+// Maps dentro da legenda da foto do prédio, e até aqui ele saía como texto morto.
+// Construído com nós React (nunca innerHTML) — o corpo é conteúdo do lead.
+const URL_IN_TEXT_RE = /(https?:\/\/[^\s<>"]+)/g;
+
+function linkify(body: string): React.ReactNode[] {
+  return body.split(URL_IN_TEXT_RE).map((chunk, i) =>
+    i % 2 === 1 ? (
+      <a
+        key={i}
+        href={chunk}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        className="message-link"
+      >
+        {chunk}
+      </a>
+    ) : (
+      chunk
+    ),
+  );
+}
+
 function MessageText({ body }: { body: string }) {
   const [expanded, setExpanded] = useState(false);
   const collapsible = shouldCollapseMessage(body);
@@ -145,7 +174,7 @@ function MessageText({ body }: { body: string }) {
   return (
     <>
       <p className={collapsible && !expanded ? "message-text message-text-collapsed" : "message-text"}>
-        {body}
+        {linkify(body)}
       </p>
       {collapsible && (
         <button
@@ -399,8 +428,10 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
               {hasMedia && (
                 <MediaPreview url={msg.mediaUrl} type={msg.mediaType} title={bodyText || undefined} />
               )}
-              {bodyText && !hasMedia && <MessageText body={bodyText} />}
-              {bodyText && hasMedia && msg.mediaType === "audio" && <MessageText body={bodyText} />}
+              {/* Legenda por baixo da mídia e por inteiro — é assim que o
+                  WhatsApp mostra, e é onde mora o endereço/preço que o
+                  operador escreve junto da foto. */}
+              {bodyText && !isMediaPlaceholder(bodyText) && <MessageText body={bodyText} />}
             </div>
           );
         })}
