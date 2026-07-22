@@ -154,10 +154,32 @@ Requisitos:
 ## 8. Estado de execução
 
 - [x] ADR-009 + este plano
-- [ ] Fase 1 — schema + migração
-- [ ] Fase 1 — classificador + testes
-- [ ] Fase 1 — instrumentação de custo
-- [ ] Fase 1 — cron + relatório
-- [ ] Fase 2
-- [ ] Fase 3
-- [ ] Fase 4
+- [x] Fase 1 — schema + migração (`0078`)
+- [x] Fase 1 — classificador + testes
+- [x] Fase 1 — instrumentação de custo
+- [x] Fase 1 — cron + relatório
+- [x] Fase 2 — segmento declarativo + validação
+- [x] Fase 2 — AudienceResolver + preview (com `willMaterialize`)
+- [x] Fase 2 — schema de campanhas (`0079`)
+- [x] Fase 2 — compositor + guards de preço/urgência
+- [x] Fase 2 — criação com alvos congelados + geração de rascunhos
+- [x] Fase 2 — revisão em lote + UI
+- [x] Fase 3 — obsolescência de campanha no sender
+- [x] Fase 3 — dispatcher com modo ensaio e ramp
+- [ ] Fase 3 — ensaio real contra o número de teste **em produção** (pendente de deploy)
+- [ ] Fase 4 — contexto de campanha na conversa + métricas
+
+## 9. Achados da validação (o que quase passou batido)
+
+Cada item abaixo saiu de rodar o fluxo contra uma branch efêmera do banco com
+dados reais, não de revisão de código.
+
+| Achado | Por que importava | Onde |
+|---|---|---|
+| `preview.total` mentia quando a audiência estourava o teto | Clínica veria 655 e receberia 500 | `AudiencePreview.willMaterialize` |
+| Falha ao gravar custo descartava o rascunho já pago | Seis chamadas ao modelo perdidas por uma linha de contabilidade | `track-usage-safely.ts` |
+| Orçamento único de IA truncava campanhas grandes | Teto de fundo é US$ 0,20/dia; redigir 300 mensagens custa ~US$ 1,50 | `cost-guard.ts`, dois orçamentos |
+| Prazo sem oferta virava promessa de agenda | A IA gerou "consigo te encaixar até sábado" — compromisso que a clínica não fez | `create-campaign.ts` |
+| `getObsoleteAutomationReason` ignorava `campaign` | Oferta de recuperação para quem acabou de agendar | `send-message-job.ts` |
+| Ensaio marcaria alvos como enviados | O teste queimaria o cap de vida de quem não recebeu nada | `dispatch-campaign.ts` |
+| Colunas de auditoria eram `uuid` | A sessão só carrega email — coluna impossível de preencher | schema `created_by_email` |

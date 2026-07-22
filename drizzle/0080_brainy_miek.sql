@@ -1,0 +1,2 @@
+CREATE TYPE "public"."silence_stage" AS ENUM('after_quote', 'price_unanswered', 'after_slots', 'awaiting_clinic', 'early');--> statement-breakpoint
+ALTER TABLE "lead_outcomes" ADD COLUMN "silence_stage" "silence_stage";

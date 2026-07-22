@@ -90,6 +90,7 @@ export const aiOperationEnum = pgEnum("ai_operation", [
   "manual_analysis",
   "playbook_analysis",
   "lead_outcome_classification",
+  "reactivation_draft",
 ]);
 
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", [
@@ -270,6 +271,18 @@ export const leadOutcomeSourceEnum = pgEnum("lead_outcome_source", [
   "llm",
   "human",
   "system",
+]);
+
+// O que estava na mesa quando a pessoa parou de responder (ADR-009).
+// Complementa o motivo: em produção 82 de 94 leads vieram como "no_response" —
+// correto, mas sem poder de segmentação. Este campo é DETERMINÍSTICO, calculado
+// do histórico em src/core/intelligence/silence-stage.ts, não perguntado ao LLM.
+export const silenceStageEnum = pgEnum("silence_stage", [
+  "after_quote",
+  "price_unanswered",
+  "after_slots",
+  "awaiting_clinic",
+  "early",
 ]);
 
 export const organizations = pgTable("organizations", {
@@ -1571,6 +1584,40 @@ export const conversationReviews = pgTable(
   }),
 );
 
+// Motor de Reativação (ADR-009), Fase 2.
+// draft: sendo montada. reviewing: rascunhos gerados, aguardando a clínica.
+// approved: liberada por um humano — sem isso nada é enfileirado.
+// running/paused/done/cancelled: ciclo de disparo.
+export const reactivationCampaignStatusEnum = pgEnum(
+  "reactivation_campaign_status",
+  ["draft", "reviewing", "approved", "running", "paused", "done", "cancelled"],
+);
+
+// pending: rascunho gerado, ninguém olhou. approved/rejected: decisão humana.
+// queued: entrou na outbox. sent: entregue. skipped: excluído no disparo por
+// segurança (agendou no meio do caminho, opt-out). replied/converted: resultado.
+export const reactivationTargetStatusEnum = pgEnum(
+  "reactivation_target_status",
+  [
+    "pending",
+    "approved",
+    "rejected",
+    "queued",
+    "sent",
+    "skipped",
+    "failed",
+    "replied",
+    "converted",
+  ],
+);
+
+// ai_per_lead: uma mensagem por pessoa, escrita com o contexto da conversa dela.
+// template: mesmo texto para todos, com variáveis.
+export const reactivationMessageModeEnum = pgEnum("reactivation_message_mode", [
+  "ai_per_lead",
+  "template",
+]);
+
 // Motor de Reativação (ADR-009), Fase 1. Por que cada lead não fechou, com o
 // trecho da conversa que sustenta a conclusão — a evidência é o que torna a
 // classificação auditável pela clínica, e foi pedido explícito do cliente
@@ -1604,6 +1651,9 @@ export const leadOutcomes = pgTable(
     model: text("model"),
     // Última mensagem da conversa vista nesta classificação. Se não mudou, não
     // há o que reclassificar — é o corte que impede gastar LLM à toa todo dia.
+    // Estágio do silêncio — ver silenceStageEnum. Nullable porque registros
+    // classificados antes deste campo existir só ganham valor no backfill.
+    silenceStage: silenceStageEnum("silence_stage"),
     lastSeenMessageId: uuid("last_seen_message_id"),
     classifiedAt: timestamp("classified_at", { withTimezone: true })
       .notNull()
@@ -1625,6 +1675,127 @@ export const leadOutcomes = pgTable(
     clinicReasonIdx: index("lead_outcomes_org_reason_idx").on(
       t.clinicId,
       t.reason,
+    ),
+  }),
+);
+
+// Motor de Reativação (ADR-009), Fase 2 — a campanha.
+//
+// Liga audiência (segment) + oferta (price_campaigns, que já existia) + prazo.
+// A oferta NÃO é reinventada aqui: a clínica já cadastra campanha de preço por
+// tratamento em settings/tratamentos, e a IA já usa isso para cotar.
+export const reactivationCampaigns = pgTable(
+  "reactivation_campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // AudienceSegment (application/reactivation/audience-segment.ts). Congelado
+    // no momento da criação: os alvos são materializados a partir dele, e o
+    // preview que a clínica aprovou precisa ser o que de fato sai.
+    segment: jsonb("segment").notNull(),
+    // Oferta opcional. Sem ela a campanha é só reengajamento.
+    priceCampaignId: uuid("price_campaign_id").references(() => priceCampaigns.id, {
+      onDelete: "set null",
+    }),
+    // "fechar no máximo até sexta" — a urgência é real, não inventada pela IA.
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }),
+    status: reactivationCampaignStatusEnum("status").notNull().default("draft"),
+    messageMode: reactivationMessageModeEnum("message_mode")
+      .notNull()
+      .default("ai_per_lead"),
+    templateText: text("template_text"),
+    // Ramp da própria campanha, ALÉM dos caps da clínica no Safety Gate.
+    // Dois freios independentes: um protege o número, outro protege a campanha.
+    dailySendCap: integer("daily_send_cap").notNull().default(30),
+    // Modo ensaio: quando preenchido, tudo é entregue na conversa deste lead de
+    // teste em vez dos leads reais. Aponta para um lead porque o sender valida
+    // que o destino bate com o lead da conversa (automationDestinationMatchesLead).
+    testLeadId: uuid("test_lead_id").references(() => leads.id, {
+      onDelete: "set null",
+    }),
+    // Email de quem criou/aprovou: é o que a sessão carrega (ver SessionPayload),
+    // e o mesmo padrão de clinic_modules.updatedBy. Um uuid aqui seria uma coluna
+    // que nunca teríamos como preencher.
+    createdByEmail: text("created_by_email"),
+    // Enquanto for null, nada é enfileirado. Aprovação humana é obrigatória.
+    approvedByEmail: text("approved_by_email"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    lastDispatchAt: timestamp("last_dispatch_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    clinicStatusIdx: index("reactivation_campaigns_org_status_idx").on(
+      t.clinicId,
+      t.status,
+    ),
+    clinicCreatedAtIdx: index("reactivation_campaigns_org_created_at_idx").on(
+      t.clinicId,
+      t.createdAt,
+    ),
+  }),
+);
+
+// Um alvo por lead na campanha. Materializado na criação — a audiência é
+// congelada ali. As exclusões de SEGURANÇA (opt-out, agendou no meio do
+// caminho) são reavaliadas no disparo; a lista de quem entrou, não.
+export const reactivationCampaignTargets = pgTable(
+  "reactivation_campaign_targets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => reactivationCampaigns.id, { onDelete: "cascade" }),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    status: reactivationTargetStatusEnum("status").notNull().default("pending"),
+    // Escrito pela IA. Nunca enviado sem passar por revisão humana.
+    draftMessage: text("draft_message"),
+    // Preenchido quando o operador reescreve. Vence o rascunho no envio.
+    editedMessage: text("edited_message"),
+    rejectionReason: text("rejection_reason"),
+    skipReason: text("skip_reason"),
+    outboundMessageId: uuid("outbound_message_id"),
+    queuedAt: timestamp("queued_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    // Métricas de resultado (Fase 4): o lead respondeu? virou agendamento?
+    repliedAt: timestamp("replied_at", { withTimezone: true }),
+    convertedAppointmentId: uuid("converted_appointment_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    // Um lead não entra duas vezes na mesma campanha.
+    campaignLeadIdx: uniqueIndex("reactivation_targets_campaign_lead_idx").on(
+      t.campaignId,
+      t.leadId,
+    ),
+    campaignStatusIdx: index("reactivation_targets_campaign_status_idx").on(
+      t.campaignId,
+      t.status,
+    ),
+    // Índice do cap de vida: "quantas campanhas este lead já recebeu".
+    clinicLeadIdx: index("reactivation_targets_org_lead_idx").on(
+      t.clinicId,
+      t.leadId,
     ),
   }),
 );

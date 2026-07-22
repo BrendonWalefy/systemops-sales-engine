@@ -50,7 +50,9 @@ export async function listAllClinicIds(): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-async function readSession(): Promise<SessionPayload | null> {
+/** Sessão atual (email + papel). Exportada para actions que precisam auditar
+ *  quem executou — a identidade que temos é o email, não um uuid. */
+export async function readSession(): Promise<SessionPayload | null> {
   const store = await cookies();
   const token = store.get(COOKIE_NAME)?.value;
   if (!token) return null;

@@ -16,6 +16,10 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { leadOutcomes, organizations } from "@/infrastructure/db/schema";
 import {
+  computeSilenceStage,
+  type SilenceStage,
+} from "@/core/intelligence/silence-stage";
+import {
   buildLeadOutcomePrompt,
   parseLeadOutcomeResponse,
   MAX_CLASSIFIER_MESSAGES,
@@ -27,6 +31,7 @@ import {
 } from "@/infrastructure/llm/advisor-llm";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
+import { trackUsageSafely } from "@/application/reactivation/track-usage-safely";
 import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
 import {
   evaluateBudget,
@@ -141,6 +146,7 @@ async function persistOutcome(input: {
   confidence: number;
   model: string;
   lastSeenMessageId: string;
+  silenceStage: SilenceStage;
 }): Promise<void> {
   const now = new Date();
   const values = {
@@ -155,6 +161,7 @@ async function persistOutcome(input: {
     source: "llm" as const,
     model: input.model,
     lastSeenMessageId: input.lastSeenMessageId,
+    silenceStage: input.silenceStage,
     classifiedAt: now,
     createdAt: now,
     updatedAt: now,
@@ -174,6 +181,7 @@ async function persistOutcome(input: {
         source: values.source,
         model: values.model,
         lastSeenMessageId: values.lastSeenMessageId,
+        silenceStage: values.silenceStage,
         classifiedAt: now,
         updatedAt: now,
       },
@@ -257,22 +265,18 @@ export async function classifyLeadOutcomesForClinic(
         maxTokens: MAX_OUTPUT_TOKENS,
       });
 
-      await costTracker.trackAiUsage({
+      const usage = {
         clinicId,
         provider: llm.provider,
         model: llm.model,
-        operation: "lead_outcome_classification",
+        operation: "lead_outcome_classification" as const,
         inputTokens: llm.inputTokens,
         outputTokens: llm.outputTokens,
-      });
-      spent += estimateAiCostUsdMicros({
-        clinicId,
-        provider: llm.provider,
-        model: llm.model,
-        operation: "lead_outcome_classification",
-        inputTokens: llm.inputTokens,
-        outputTokens: llm.outputTokens,
-      });
+      };
+      // Acumula o gasto antes de registrar: o teto vale mesmo se o INSERT de
+      // contabilidade falhar, e a falha nunca descarta a classificação paga.
+      spent += estimateAiCostUsdMicros(usage);
+      await trackUsageSafely(costTracker, usage);
 
       const classification = parseLeadOutcomeResponse(llm.text, messages);
       if (!classification) {
@@ -293,6 +297,8 @@ export async function classifyLeadOutcomesForClinic(
         confidence: classification.confidence,
         model: llm.model,
         lastSeenMessageId: lead.last_message_id,
+        // Determinístico: o que estava na mesa quando a pessoa sumiu.
+        silenceStage: computeSilenceStage(messages),
       });
 
       classified++;

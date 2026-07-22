@@ -359,10 +359,26 @@ function parseFollowUpDedupeKey(dedupeKey: string | null): string | null {
   return dedupeKey?.startsWith(prefix) ? dedupeKey.slice(prefix.length) : null;
 }
 
-function getObsoleteAutomationReason(
+export function getObsoleteAutomationReason(
   category: string,
   context: OutboundSafetyContext,
 ): "automation_obsolete" | null {
+  // Campanha de reativação (ADR-009) tem regra própria, e ela é diferente da do
+  // follow-up em dois pontos que importam:
+  //  - "lost" NÃO a torna obsoleta: quem não fechou é exatamente o público.
+  //  - A última mensagem ser do lead também não: o normal é o lead ter dito
+  //    "tá caro" e a conversa ter parado ali. Aplicar a regra do follow-up aqui
+  //    cancelaria quase toda campanha.
+  // O que a torna obsoleta é o mundo ter mudado desde a montagem: a pessoa
+  // agendou/fechou, ou um humano assumiu a conversa.
+  if (category === "campaign") {
+    if (context.lead?.status && ["appointment_scheduled", "won"].includes(context.lead.status)) {
+      return "automation_obsolete";
+    }
+    if (context.conversation?.aiPaused) return "automation_obsolete";
+    return null;
+  }
+
   if (category !== "follow_up") return null;
   if (context.lead?.status && ["appointment_scheduled", "lost", "won"].includes(context.lead.status)) {
     return "automation_obsolete";
