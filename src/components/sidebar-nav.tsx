@@ -2,7 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Inbox, Home, Settings2, CalendarDays, LogOut, Users, Workflow, Plus, LayoutGrid, RefreshCw, PanelLeftClose, PanelLeftOpen, Images } from "lucide-react";
+import { Inbox, Home, Settings2, CalendarDays, LogOut, Users, Workflow, Plus, LayoutGrid, RefreshCw, PanelLeftClose, PanelLeftOpen, Images, Megaphone } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { MobileAvatarMenu } from "./mobile-avatar-menu";
 import { BellToggle } from "./bell-toggle";
@@ -15,6 +15,7 @@ const NAV_ITEMS: { href: string; label: string; Icon: React.ElementType; mobileH
   { href: "/app/agenda", label: "Agenda", Icon: CalendarDays },
   { href: "/app/settings/pipeline", label: "Pipeline", Icon: Workflow, mobileHidden: true },
   { href: "/app/inbox?filter=recovery", label: "Recuperação", Icon: RefreshCw, mobileHidden: true },
+  { href: "/app/campanhas", label: "Campanhas", Icon: Megaphone, mobileHidden: true },
   { href: "/app/settings/profissionais", label: "Profissionais", Icon: Users, mobileHidden: true },
   { href: "/app/settings/biblioteca", label: "Biblioteca", Icon: Images, mobileHidden: true },
   { href: "/app/settings/playbook", label: "Configurações", Icon: Settings2, mobileHidden: true },
