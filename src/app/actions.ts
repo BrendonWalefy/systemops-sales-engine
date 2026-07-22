@@ -163,7 +163,7 @@ export async function runAutonomousReceptionistTurn(
     clinicId: "demo",
     provider: "openai",
     model: composed.model,
-    operation: "sales_conversation_analysis",
+    operation: "conversation_reply",
     inputTokens: composed.inputTokens,
     outputTokens: composed.outputTokens,
   });

@@ -7578,7 +7578,7 @@ export class ConversationOrchestrator {
         clinicId,
         provider: "openai",
         model: composerModel,
-        operation: "sales_conversation_analysis",
+        operation: "conversation_reply",
         inputTokens: composerInputTokens,
         outputTokens: composerOutputTokens,
       });
