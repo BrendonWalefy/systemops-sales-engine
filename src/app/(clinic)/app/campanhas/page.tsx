@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 
+import "./campanhas.css";
+
 import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
@@ -47,7 +49,7 @@ export default async function CampanhasPage() {
     .orderBy(desc(reactivationCampaigns.createdAt));
 
   return (
-    <div className="page">
+    <div className="campanhas-page">
       <header className="page-header">
         <h1>Campanhas de reativação</h1>
         <p className="muted">

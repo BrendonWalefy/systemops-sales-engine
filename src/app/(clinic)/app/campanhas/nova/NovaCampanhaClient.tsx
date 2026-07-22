@@ -49,7 +49,7 @@ export function NovaCampanhaClient({
   }
 
   return (
-    <div className="page">
+    <div className="campanhas-page">
       <header className="page-header">
         <h1>Nova campanha de reativação</h1>
         <p className="muted">

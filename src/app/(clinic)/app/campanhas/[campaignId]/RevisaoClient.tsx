@@ -132,7 +132,7 @@ export function RevisaoClient({
   const podeDisparar = ["approved", "running"].includes(campaign.status);
 
   return (
-    <div className="page">
+    <div className="campanhas-page">
       <header className="page-header">
         <h1>{campaign.name}</h1>
         <p className="muted small">

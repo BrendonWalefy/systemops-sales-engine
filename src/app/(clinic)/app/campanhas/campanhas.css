@@ -1,0 +1,443 @@
+/* Motor de Reativação (ADR-009) — estilos das telas de campanha.
+ *
+ * Escopado sob .campanhas-page, no mesmo padrão de profissionais.css: tokens
+ * locais e tema escuro, para a página não depender de classes globais que não
+ * existem nem vazar estilo para o resto do app. */
+
+.campanhas-page {
+  --background: #0d1218;
+  --surface: rgba(17, 25, 34, 0.9);
+  --surface-muted: #111a23;
+  --surface-raised: rgba(25, 36, 48, 0.96);
+  --surface-soft: rgba(148, 163, 184, 0.075);
+  --text: #f7fbff;
+  --text-soft: #dce9f2;
+  --muted: #94a6b7;
+  --line: rgba(148, 163, 184, 0.18);
+  --line-strong: rgba(148, 163, 184, 0.3);
+  --accent: #00d4aa;
+  --accent-strong: #35f3cf;
+  --accent-soft: rgba(0, 212, 170, 0.13);
+  --warm: #f5b451;
+  --warm-soft: rgba(245, 180, 81, 0.12);
+  --danger: #fb7185;
+  --danger-soft: rgba(251, 113, 133, 0.12);
+
+  min-height: var(--vh, 100dvh);
+  padding: 40px 24px 96px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(0, 212, 170, 0.15), transparent 28rem),
+    radial-gradient(circle at 86% 4%, rgba(96, 165, 250, 0.1), transparent 26rem),
+    linear-gradient(180deg, #111923 0%, var(--background) 42%);
+  color: var(--text);
+}
+
+.campanhas-page > * {
+  width: min(940px, 100%);
+  margin-inline: auto;
+}
+
+/* ── Cabeçalho ─────────────────────────────────────────────────────────── */
+
+.campanhas-page .page-header {
+  margin-bottom: 24px;
+}
+
+.campanhas-page .page-header h1 {
+  font-size: 1.6rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+
+.campanhas-page .muted {
+  color: var(--muted);
+  margin: 0;
+}
+
+.campanhas-page .small {
+  font-size: 0.85rem;
+}
+
+/* ── Avisos ────────────────────────────────────────────────────────────── */
+
+.campanhas-page .callout {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 12px 14px;
+  margin: 12px 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.campanhas-page .callout-warning {
+  border-color: rgba(245, 180, 81, 0.4);
+  background: var(--warm-soft);
+}
+
+.campanhas-page .callout-success {
+  border-color: rgba(0, 212, 170, 0.4);
+  background: var(--accent-soft);
+}
+
+.campanhas-page .callout-error {
+  border-color: rgba(251, 113, 133, 0.4);
+  background: var(--danger-soft);
+}
+
+.campanhas-page .warning {
+  color: var(--warm);
+  margin: 6px 0 0;
+}
+
+/* ── Botões ────────────────────────────────────────────────────────────── */
+
+.campanhas-page .btn {
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 9px 16px;
+  font-size: 0.9rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.campanhas-page .btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.campanhas-page .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.campanhas-page .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06231d;
+}
+
+.campanhas-page .btn-primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.campanhas-page .btn-link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 4px 0;
+  font-size: 0.85rem;
+}
+
+/* ── Lista de campanhas ────────────────────────────────────────────────── */
+
+.campanhas-page .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.campanhas-page .card-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.campanhas-page .card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  transition: border-color 0.15s ease;
+}
+
+.campanhas-page .card:hover {
+  border-color: var(--line-strong);
+}
+
+.campanhas-page .card-link {
+  display: block;
+  padding: 16px 18px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.campanhas-page .card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.campanhas-page .badge {
+  display: inline-block;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+}
+
+.campanhas-page .badge-reviewing {
+  border-color: rgba(245, 180, 81, 0.5);
+  color: var(--warm);
+}
+
+.campanhas-page .badge-running,
+.campanhas-page .badge-approved {
+  border-color: rgba(0, 212, 170, 0.5);
+  color: var(--accent);
+}
+
+.campanhas-page .badge-cancelled,
+.campanhas-page .badge-paused {
+  color: var(--muted);
+}
+
+/* ── Estado vazio ──────────────────────────────────────────────────────── */
+
+.campanhas-page .empty-state {
+  border: 1px dashed var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface-soft);
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.campanhas-page .empty-state h2 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.campanhas-page .empty-state p {
+  margin: 0 auto 18px;
+  max-width: 46ch;
+}
+
+/* ── Formulário ────────────────────────────────────────────────────────── */
+
+.campanhas-page .form-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.campanhas-page .field-group {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.campanhas-page .field-group legend {
+  padding: 0 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.campanhas-page .field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.campanhas-page .field > span,
+.campanhas-page .field-label {
+  color: var(--text-soft);
+  font-weight: 550;
+}
+
+.campanhas-page .field input,
+.campanhas-page .field select,
+.campanhas-page textarea {
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 9px 12px;
+  font: inherit;
+  width: 100%;
+}
+
+.campanhas-page .field input:focus,
+.campanhas-page .field select:focus,
+.campanhas-page textarea:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.campanhas-page .field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.campanhas-page .checkbox-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.campanhas-page .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.campanhas-page .checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── Revisão ───────────────────────────────────────────────────────────── */
+
+.campanhas-page .tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.campanhas-page .tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.campanhas-page .tab-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* A barra de ações acompanha a rolagem: revisar 200 mensagens exige aprovar
+ * sem voltar ao topo a cada lote. */
+.campanhas-page .toolbar-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  backdrop-filter: blur(8px);
+}
+
+.campanhas-page .review-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.campanhas-page .review-item {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 14px 16px;
+}
+
+.campanhas-page .review-approved {
+  border-color: rgba(0, 212, 170, 0.4);
+}
+
+.campanhas-page .review-rejected {
+  opacity: 0.55;
+}
+
+.campanhas-page .review-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.campanhas-page .review-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* O trecho que a pessoa realmente disse — é o que torna a aprovação uma
+ * decisão informada em vez de um "sim" no automático. */
+.campanhas-page .evidence {
+  margin: 0;
+  padding: 6px 0 6px 12px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.campanhas-page .draft {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.campanhas-page .edit-box {
+  display: grid;
+  gap: 8px;
+}
+
+.campanhas-page .edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.campanhas-page .page-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 640px) {
+  .campanhas-page {
+    padding: 24px 14px 96px;
+  }
+
+  .campanhas-page .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .campanhas-page .toolbar-sticky {
+    gap: 8px;
+  }
+
+  .campanhas-page .review-item {
+    padding: 12px;
+  }
+}
