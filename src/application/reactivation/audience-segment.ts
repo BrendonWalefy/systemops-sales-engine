@@ -17,6 +17,7 @@
  */
 
 import { LEAD_OUTCOME_REASONS, type LeadOutcomeReason } from "@/core/intelligence/LeadOutcomeClassifier";
+import { SILENCE_STAGES, type SilenceStage } from "@/core/intelligence/silence-stage";
 
 export const SEGMENTABLE_LEAD_STATUSES = [
   "new",
@@ -35,6 +36,15 @@ export type AudienceSegment = {
   windowToDaysAgo: number;
   /** Motivos de não-fechamento aceitos. Vazio/ausente = qualquer motivo. */
   outcomeReasons?: LeadOutcomeReason[];
+  /**
+   * Estágio do silêncio — o que estava na mesa quando a pessoa parou.
+   *
+   * É o filtro que faz a campanha do preço existir de verdade. Em produção o
+   * motivo `price` pegava 1 pessoa, porque quase ninguém escreve "achou caro"
+   * antes de sumir; `silenceStages: ["after_quote"]` pega as 17 que viram um
+   * valor e não voltaram. Ver `silence-stage.ts`.
+   */
+  silenceStages?: SilenceStage[];
   /** Status de lead aceitos. Vazio/ausente = todos os segmentáveis. */
   leadStatuses?: SegmentableLeadStatus[];
   /** Confiança mínima da classificação (0-100). Protege contra oferta baseada em palpite. */
@@ -125,6 +135,22 @@ export function validateSegment(segment: AudienceSegment): SegmentValidationErro
     }
   }
 
+  if (segment.silenceStages !== undefined) {
+    if (!Array.isArray(segment.silenceStages)) {
+      errors.push({ field: "silenceStages", message: "Estágios precisam ser uma lista." });
+    } else {
+      const invalidos = segment.silenceStages.filter(
+        (s) => !(SILENCE_STAGES as readonly string[]).includes(s),
+      );
+      if (invalidos.length > 0) {
+        errors.push({
+          field: "silenceStages",
+          message: `Estágio desconhecido: ${invalidos.join(", ")}.`,
+        });
+      }
+    }
+  }
+
   if (segment.leadStatuses !== undefined) {
     if (!Array.isArray(segment.leadStatuses)) {
       errors.push({ field: "leadStatuses", message: "Status precisam ser uma lista." });
@@ -198,6 +224,9 @@ export function parseSegment(
     leadStatuses: Array.isArray(input.leadStatuses)
       ? (input.leadStatuses as SegmentableLeadStatus[])
       : undefined,
+    silenceStages: Array.isArray(input.silenceStages)
+      ? (input.silenceStages as SilenceStage[])
+      : undefined,
     minConfidence:
       input.minConfidence === undefined
         ? DEFAULT_SEGMENT.minConfidence
@@ -231,6 +260,9 @@ export function describeSegment(segment: AudienceSegment): string {
   }
   if (segment.leadStatuses?.length) {
     partes.push(`status em [${segment.leadStatuses.join(", ")}]`);
+  }
+  if (segment.silenceStages?.length) {
+    partes.push(`parou em [${segment.silenceStages.join(", ")}]`);
   }
   if (segment.minConfidence) {
     partes.push(`confiança ≥ ${segment.minConfidence}%`);

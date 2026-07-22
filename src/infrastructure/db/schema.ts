@@ -273,6 +273,18 @@ export const leadOutcomeSourceEnum = pgEnum("lead_outcome_source", [
   "system",
 ]);
 
+// O que estava na mesa quando a pessoa parou de responder (ADR-009).
+// Complementa o motivo: em produção 82 de 94 leads vieram como "no_response" —
+// correto, mas sem poder de segmentação. Este campo é DETERMINÍSTICO, calculado
+// do histórico em src/core/intelligence/silence-stage.ts, não perguntado ao LLM.
+export const silenceStageEnum = pgEnum("silence_stage", [
+  "after_quote",
+  "price_unanswered",
+  "after_slots",
+  "awaiting_clinic",
+  "early",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -1639,6 +1651,9 @@ export const leadOutcomes = pgTable(
     model: text("model"),
     // Última mensagem da conversa vista nesta classificação. Se não mudou, não
     // há o que reclassificar — é o corte que impede gastar LLM à toa todo dia.
+    // Estágio do silêncio — ver silenceStageEnum. Nullable porque registros
+    // classificados antes deste campo existir só ganham valor no backfill.
+    silenceStage: silenceStageEnum("silence_stage"),
     lastSeenMessageId: uuid("last_seen_message_id"),
     classifiedAt: timestamp("classified_at", { withTimezone: true })
       .notNull()

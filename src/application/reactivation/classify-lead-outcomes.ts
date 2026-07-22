@@ -16,6 +16,10 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { leadOutcomes, organizations } from "@/infrastructure/db/schema";
 import {
+  computeSilenceStage,
+  type SilenceStage,
+} from "@/core/intelligence/silence-stage";
+import {
   buildLeadOutcomePrompt,
   parseLeadOutcomeResponse,
   MAX_CLASSIFIER_MESSAGES,
@@ -142,6 +146,7 @@ async function persistOutcome(input: {
   confidence: number;
   model: string;
   lastSeenMessageId: string;
+  silenceStage: SilenceStage;
 }): Promise<void> {
   const now = new Date();
   const values = {
@@ -156,6 +161,7 @@ async function persistOutcome(input: {
     source: "llm" as const,
     model: input.model,
     lastSeenMessageId: input.lastSeenMessageId,
+    silenceStage: input.silenceStage,
     classifiedAt: now,
     createdAt: now,
     updatedAt: now,
@@ -175,6 +181,7 @@ async function persistOutcome(input: {
         source: values.source,
         model: values.model,
         lastSeenMessageId: values.lastSeenMessageId,
+        silenceStage: values.silenceStage,
         classifiedAt: now,
         updatedAt: now,
       },
@@ -290,6 +297,8 @@ export async function classifyLeadOutcomesForClinic(
         confidence: classification.confidence,
         model: llm.model,
         lastSeenMessageId: lead.last_message_id,
+        // Determinístico: o que estava na mesa quando a pessoa sumiu.
+        silenceStage: computeSilenceStage(messages),
       });
 
       classified++;

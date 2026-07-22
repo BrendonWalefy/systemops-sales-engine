@@ -30,6 +30,7 @@ export type AudienceLead = {
   lead_status: string;
   outcome_reason: string | null;
   outcome_confidence: number | null;
+  silence_stage: string | null;
   evidence_excerpt: string | null;
   last_message_at: string;
 };
@@ -49,6 +50,8 @@ export type AudiencePreview = {
   sample: AudienceLead[];
   /** Por motivo de não-fechamento — dá à clínica a leitura antes de aprovar. */
   byReason: Array<{ reason: string | null; count: number }>;
+  /** Por estágio do silêncio — a quebra que orienta a decisão de campanha. */
+  byStage: Array<{ stage: string | null; count: number }>;
 };
 
 /** Amostra mostrada no preview. O total vem da contagem completa, não daqui. */
@@ -121,6 +124,18 @@ function buildAudienceQuery(clinicId: string, segment: AudienceSegment) {
     }
   }
 
+  // Estágio é fato calculado, não julgamento do modelo — por isso NÃO exige
+  // `minConfidence`. Amarrá-lo à confiança da classificação recriaria o gargalo
+  // que ele veio resolver: em produção, `price` com confiança ≥60% dava 1 lead,
+  // enquanto `after_quote` dá 17.
+  if (segment.silenceStages?.length) {
+    conditions.push(
+      sql`lo.silence_stage::text IN (
+        SELECT jsonb_array_elements_text(${JSON.stringify(segment.silenceStages)}::jsonb)
+      )`,
+    );
+  }
+
   if (segment.leadStatuses?.length) {
     conditions.push(
       sql`l.status::text IN (
@@ -161,7 +176,7 @@ export async function previewAudience(
   assertValidSegment(segment);
   const from = buildAudienceQuery(clinicId, segment);
 
-  const [countResult, sampleResult, byReasonResult] = await Promise.all([
+  const [countResult, sampleResult, byReasonResult, byStageResult] = await Promise.all([
     db.execute(sql`SELECT COUNT(*)::int AS total ${from}`),
     db.execute(sql`
       SELECT
@@ -174,6 +189,7 @@ export async function previewAudience(
         l.status             AS lead_status,
         lo.reason            AS outcome_reason,
         lo.confidence        AS outcome_confidence,
+        lo.silence_stage,
         lo.evidence_excerpt
       ${from}
       ORDER BY c.last_message_at DESC
@@ -183,6 +199,15 @@ export async function previewAudience(
       SELECT lo.reason AS reason, COUNT(*)::int AS count
       ${from}
       GROUP BY lo.reason
+      ORDER BY COUNT(*) DESC
+    `),
+    // Quebra por estágio: é a leitura acionável. "82 sem resposta" não ajuda
+    // ninguém a decidir; "17 viram o valor e sumiram, 18 perguntaram preço e
+    // não foram respondidas" ajuda.
+    db.execute(sql`
+      SELECT lo.silence_stage AS stage, COUNT(*)::int AS count
+      ${from}
+      GROUP BY lo.silence_stage
       ORDER BY COUNT(*) DESC
     `),
   ]);
@@ -195,6 +220,7 @@ export async function previewAudience(
     truncated: total > MAX_AUDIENCE_SIZE,
     sample: sampleResult.rows as AudienceLead[],
     byReason: byReasonResult.rows as Array<{ reason: string | null; count: number }>,
+    byStage: byStageResult.rows as Array<{ stage: string | null; count: number }>,
   };
 }
 
@@ -221,6 +247,7 @@ export async function resolveAudience(
       lo.reason            AS outcome_reason,
       lo.confidence        AS outcome_confidence,
       lo.evidence_excerpt,
+      lo.silence_stage,
       c.last_message_at
     ${from}
     ORDER BY c.last_message_at DESC
