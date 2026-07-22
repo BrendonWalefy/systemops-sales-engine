@@ -87,6 +87,60 @@ describe("Estágio do silêncio — perguntou preço e não foi respondida", () 
   });
 });
 
+describe("Estágio do silêncio — preço entregue por imagem", () => {
+  // A Vitalli manda os valores em arte, por decisão do dentista. A imagem é
+  // gravada como mensagem de texto com o TÍTULO da mídia no corpo — o valor
+  // está dentro do arquivo. Sem tratar isso, quem recebeu a tabela completa
+  // era contado como "perguntou e não foi respondida".
+  const titulos = new Set([
+    "Valores Lente em Resina Premium",
+    "Valores Lente em Resina Estratificada",
+  ]);
+
+  it("conta imagem de preço como cotação", () => {
+    expect(
+      computeSilenceStage(
+        [
+          lead("Ver valores"),
+          clinica("Trabalhamos com duas técnicas, já com os valores 👇"),
+          clinica("Valores Lente em Resina Premium"),
+        ],
+        titulos,
+      ),
+    ).toBe("after_quote");
+  });
+
+  it("sem a lista de títulos, a mesma conversa vira price_unanswered", () => {
+    // Guarda contra regressão: foi exatamente esta diferença que produziu uma
+    // conclusão errada sobre 27 conversas.
+    expect(
+      computeSilenceStage([
+        lead("Ver valores"),
+        clinica("Trabalhamos com duas técnicas, já com os valores 👇"),
+        clinica("Valores Lente em Resina Premium"),
+      ]),
+    ).toBe("price_unanswered");
+  });
+
+  it("mídia que não é de preço não conta como cotação", () => {
+    expect(
+      computeSilenceStage(
+        [lead("quanto custa?"), clinica("Cuidados Pós Lentes")],
+        titulos,
+      ),
+    ).toBe("price_unanswered");
+  });
+
+  it("ignora espaço em volta do título", () => {
+    expect(
+      computeSilenceStage(
+        [lead("valores?"), clinica("  Valores Lente em Resina Premium  ")],
+        titulos,
+      ),
+    ).toBe("after_quote");
+  });
+});
+
 describe("Estágio do silêncio — recebeu horários", () => {
   it("detecta lista de horários do menu", () => {
     expect(
