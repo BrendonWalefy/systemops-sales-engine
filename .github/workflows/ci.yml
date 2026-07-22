@@ -4,8 +4,19 @@ name: CI
 # COMMIT (PR + base), não sobre o branch isolado — então já testa exatamente o
 # que a main terá. O run que disparava em `push: main` refazia o mesmo trabalho
 # depois do merge: era 1 dos 3 runs por PR, medidos em 21/07.
+#
+# PR que só mexe em documentação não roda a suíte: medido em 22/07, 17 dos
+# últimos 40 PRs mergeados tocavam apenas `docs/` — 42% dos runs validando
+# markdown contra 1.766 testes.
+#
+# Se um dia existir branch protection exigindo o check "Verify", estes PRs
+# ficariam pendurados esperando um check que nunca aparece. A saída seria um
+# job stub; hoje não há branch protection, então não há o que resolver.
 on:
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 # Push novo no mesmo PR cancela o run anterior, que já está obsoleto. Medido:
 # ~3 runs de CI por PR, e os intermediários rodavam até o fim sem ninguém olhar.
