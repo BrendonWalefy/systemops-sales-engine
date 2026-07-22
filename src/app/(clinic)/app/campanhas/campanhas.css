@@ -281,6 +281,17 @@
   width: 100%;
 }
 
+/* Campo travado por dependência (prazo sem oferta) fica visivelmente inerte,
+   em vez de aceitar valor e recusar só no submit. */
+.campanhas-page .field-disabled {
+  opacity: 0.5;
+}
+
+.campanhas-page .field input:disabled {
+  cursor: not-allowed;
+  background: var(--surface-soft);
+}
+
 /* Campo de número não precisa de 900px para caber "30". Largura proporcional
    ao dado deixa o formulário legível em vez de uma pilha de caixas gigantes. */
 .campanhas-page .field input[type="number"],

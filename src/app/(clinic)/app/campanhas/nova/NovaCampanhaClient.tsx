@@ -29,6 +29,9 @@ export function NovaCampanhaClient({
   const [state, formAction] = useActionState<ActionState, FormData>(createCampaignAction, null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Prazo é a validade da oferta. Sem oferta escolhida o campo fica travado —
+  // deixá-lo aberto convida a preencher e levar um erro no submit.
+  const [temOferta, setTemOferta] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handlePreview(form: HTMLFormElement) {
@@ -182,7 +185,11 @@ export function NovaCampanhaClient({
           <legend>Oferta e prazo</legend>
           <label className="field">
             <span>Oferta (opcional)</span>
-            <select name="priceCampaignId" defaultValue="">
+            <select
+              name="priceCampaignId"
+              defaultValue=""
+              onChange={(e) => setTemOferta(e.target.value !== "")}
+            >
               <option value="">Sem oferta — só reengajamento</option>
               {offers.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -191,13 +198,14 @@ export function NovaCampanhaClient({
               ))}
             </select>
           </label>
-          <label className="field">
+          <label className={`field${temOferta ? "" : " field-disabled"}`}>
             <span>Válida até</span>
-            <input type="date" name="deadlineAt" />
+            <input type="date" name="deadlineAt" disabled={!temOferta} />
           </label>
           <p className="muted small">
-            O prazo é a validade da oferta, então só faz sentido com uma escolhida. Sem oferta, a
-            IA é proibida de citar valores ou criar urgência.
+            {temOferta
+              ? "Depois dessa data a condição não é mais oferecida. A IA menciona o prazo uma vez, sem pressionar."
+              : "O prazo é a validade da oferta — escolha uma acima para liberar o campo. Sem oferta, a IA é proibida de citar valores ou criar urgência."}
           </p>
         </fieldset>
 

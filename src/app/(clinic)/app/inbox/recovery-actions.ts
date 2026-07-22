@@ -12,6 +12,8 @@ import { inferReceptionistNameFromGreeting } from "@/core/intelligence/reception
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { deliverRecoveryMessage } from "@/application/conversations/recovery-delivery";
+import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
+import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import OpenAI from "openai";
 
 export async function composeRecoveryMessageAction(
@@ -75,6 +77,31 @@ Responda APENAS com o texto da mensagem, sem aspas.`,
     ],
   });
 
+  // Esta chamada sempre gastou token e nunca foi registrada — o gasto de
+  // composição da recuperação era invisível em `ai_usage_costs`, o que dava a
+  // impressão de que a aba Recuperação não custa nada. Registrar aqui não muda
+  // o custo, só o torna visível ao lado das demais operações.
+  const usage = resp.usage;
+  if (usage) {
+    try {
+      await new DefaultUsageCostTracker({
+        usageCostRepository: new DrizzleUsageCostRepository(),
+        idGenerator: () => randomUUID(),
+        now: () => new Date(),
+      }).trackAiUsage({
+        clinicId,
+        provider: "openai",
+        model: "gpt-4o-mini",
+        operation: "follow_up_suggestion",
+        inputTokens: usage.prompt_tokens ?? 0,
+        outputTokens: usage.completion_tokens ?? 0,
+      });
+    } catch (err) {
+      // Contabilidade não pode derrubar a composição já paga.
+      console.error("[Recovery] custo não registrado:", err);
+    }
+  }
+
   const message = resp.choices[0]?.message?.content?.trim() ?? null;
   return { message };
 }
@@ -97,6 +124,19 @@ export async function sendRecoveryMessageAction(
     where: eq(leads.id, conv.leadId),
   });
   if (!lead) return { ok: false, error: "Lead não encontrado" };
+
+  // Opt-out vale mesmo em envio manual. Este caminho entrega direto pelo
+  // provider, sem passar pelo Safety Gate (que é quem barra consentimento
+  // revogado nos envios automáticos) — sem esta checagem, um clique no botão
+  // "Enviar retomada" alcançaria quem pediu explicitamente para não receber
+  // mais mensagens. É a única regra que a decisão humana não pode atropelar:
+  // as outras (caps, quiet hours) protegem o número; esta protege a pessoa.
+  if (lead.contactConsentRevokedAt) {
+    return {
+      ok: false,
+      error: "Este contato pediu para não receber mais mensagens. Envio bloqueado.",
+    };
+  }
 
   const channelAddress = resolveWhatsAppChannelAddress({
     phone: lead.phone,
