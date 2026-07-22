@@ -1,0 +1,12 @@
+-- Renomeia o valor do enum preservando as linhas existentes.
+--
+-- O drizzle-kit gerou originalmente DROP TYPE + CREATE TYPE + cast de volta.
+-- Isso quebraria em produção: no momento do cast as 871 linhas ainda contêm
+-- 'sales_conversation_analysis', valor que não existe no tipo recriado, e o
+-- ALTER falharia com "invalid input value for enum". Corrigido antes de ser
+-- aplicado em qualquer ambiente — o caso que o AGENTS.md permite editar à mão.
+--
+-- ALTER TYPE ... RENAME VALUE é atômico, mantém a posição ordinal do valor
+-- (era o primeiro, segue o primeiro) e atualiza todas as linhas de uma vez,
+-- sem reescrever a tabela.
+ALTER TYPE "public"."ai_operation" RENAME VALUE 'sales_conversation_analysis' TO 'conversation_reply';

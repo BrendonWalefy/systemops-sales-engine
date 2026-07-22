@@ -84,7 +84,10 @@ export const aiProviderEnum = pgEnum("ai_provider", ["openai", "anthropic"]);
 export const ttsProviderEnum = pgEnum("tts_provider", ["elevenlabs", "openai_tts"]);
 
 export const aiOperationEnum = pgEnum("ai_operation", [
-  "sales_conversation_analysis",
+  // Toda resposta que a IA dá numa conversa (classificador + compositor).
+  // Chamava-se "sales_conversation_analysis", nome que sugeria relatório de
+  // fundo quando na verdade é a linha de frente — o custo de operar o produto.
+  "conversation_reply",
   "conversation_summary",
   "follow_up_suggestion",
   "manual_analysis",
@@ -1462,6 +1465,20 @@ export const clinicOperationalInsights = pgTable(
 );
 
 // Registra menções de tratamentos não encontrados no catálogo da clínica.
+// Cache de pré-visualização de link. A prévia é buscada UMA vez por URL e reusada
+// em todos os envios seguintes — o link do endereço da Vitalli saiu 137 vezes com
+// a mesma URL, então buscar a cada envio seria 137 idas ao Google para o mesmo
+// resultado. `ok=false` guarda a falha por menos tempo, para não martelar um site
+// fora do ar nem tentar de novo a cada mensagem.
+export const linkPreviews = pgTable("link_previews", {
+  url: text("url").primaryKey(),
+  title: text("title"),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  ok: boolean("ok").notNull().default(true),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Alimenta os insights operacionais no Inbox: "X leads mencionaram Y — cadastrar?"
 // Permite ao doutor identificar lacunas no catálogo sem precisar ler cada conversa.
 export const treatmentGapReports = pgTable(

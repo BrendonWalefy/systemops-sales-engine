@@ -4,7 +4,7 @@ export type AiUsageCost = {
   provider: "openai" | "anthropic";
   model: string;
   operation:
-    | "sales_conversation_analysis"
+    | "conversation_reply"
     | "conversation_summary"
     | "follow_up_suggestion"
     | "manual_analysis"

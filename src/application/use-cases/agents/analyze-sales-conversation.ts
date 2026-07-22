@@ -70,7 +70,10 @@ export class AnalyzeSalesConversation {
         clinicId: input.clinic.id,
         provider: "openai",
         model: output.model,
-        operation: "sales_conversation_analysis",
+        // Este caso de uso não tem chamador hoje (agent_recommendations está
+        // vazia). Se voltar a ser usado, é análise sob demanda — não resposta
+        // de conversa, que agora tem rótulo próprio.
+        operation: "manual_analysis",
         inputTokens: output.usage.inputTokens,
         outputTokens: output.usage.outputTokens,
       });
