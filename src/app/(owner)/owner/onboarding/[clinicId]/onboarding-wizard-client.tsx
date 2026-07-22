@@ -82,6 +82,7 @@ type WizardInitial = {
     address: string;
     addressComplement: string;
     mapsUrl: string;
+    locationMessage: string;
     greetingMessage: string;
   };
   receptionist: { toneOfVoice: string; differentials: string[] };
@@ -204,6 +205,24 @@ function initPipelineConfig(t: WizardTreatment): PipelineConfig {
 }
 
 // ─── Step config ──────────────────────────────────────────────────────────────
+
+// Modelo da mensagem de localização. O texto real da Vitalli — escrito por quem o
+// Victor contratou — é melhor do que qualquer template que a gente inventaria:
+// traz o endereço ALTERNATIVO do estacionamento e as estações de metrô, dois fatos
+// que nenhum campo estruturado nosso teria previsto. Aqui fica a forma dele, para a
+// próxima clínica editar em vez de começar do zero. Ponto de partida, não formato
+// obrigatório.
+const LOCATION_MESSAGE_TEMPLATE = `🏢 Nome do prédio – Torre/Bloco
+
+📍 Rua, número – Bairro, Sala – Andar
+Cidade/UF – CEP
+
+*🚗 Para acessar o estacionamento, colocar o endereço "..."*
+
+🚊 Aproximadamente X minutos das estações ...
+
+🗺️ Localização:
+https://maps.google.com/...`;
 
 const STEPS = [
   {
@@ -667,6 +686,21 @@ function StepIdentidade({
           placeholder="https://maps.app.goo.gl/... — o WhatsApp mostra a foto do prédio"
           style={inputStyle}
         />
+      </div>
+      <div>
+        <FieldLabel>Mensagem de localização (opcional)</FieldLabel>
+        <textarea
+          value={data.locationMessage}
+          onChange={f("locationMessage")}
+          rows={8}
+          placeholder={LOCATION_MESSAGE_TEMPLATE}
+          style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+        />
+        <p style={{ margin: "6px 0 0", fontSize: 11, color: "#52525b", lineHeight: 1.5 }}>
+          É o que a IA responde quando perguntam onde fica. Deixe em branco para o
+          sistema montar a resposta a partir do endereço acima. O link no fim vira
+          curto sozinho e ganha a foto do lugar.
+        </p>
       </div>
       <div>
         <FieldLabel>Mensagem de boas-vindas da IA</FieldLabel>

@@ -26,6 +26,7 @@ const clinic: Organization = {
   address: null,
   addressComplement: null,
   mapsUrl: null,
+  locationMessage: null,
   timezone: "America/Sao_Paulo",
   greetingMessage: null,
   menuItems: null,
