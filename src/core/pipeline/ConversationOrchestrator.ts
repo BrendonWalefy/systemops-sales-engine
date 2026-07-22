@@ -1645,28 +1645,70 @@ function isMaintenanceInquiryText(normalized: string): boolean {
 }
 
 // P0.2: Detectar pergunta de garantia (cobertura, procedimento recente, etc)
+//
+// Precisão importa mais aqui do que antes: este detector passou a decidir um trilho
+// que responde pela config em qualquer intent. Duas correções em relação à lista
+// original de palavras-chave:
+//   • "ainda está coberto" e "é grátis" nunca casavam — a comparação é feita contra
+//     texto normalizado (sem acento), e as chaves vinham acentuadas.
+//   • "cobre" era comparado como substring solta, então "cobrei" e "descobre" também
+//     entravam. Sozinho ele é ambíguo ("quanto vocês cobram") — agora só conta perto
+//     de algo que indique trabalho já realizado.
+const WARRANTY_TERM_RE = /\bgarantias?\b|\bcobertura\b|\bcaiu em garantia\b|\bprocedimento recente\b/;
+const WARRANTY_COVERAGE_RE =
+  /\b(cobre|coberto|coberta)\b[^.?!]{0,40}\b(procedimento|tratamento|lente|lentes|faceta|facetas|conserto|reparo|troca|refazer)\b/;
+const WARRANTY_COVERAGE_REVERSE_RE =
+  /\b(procedimento|tratamento|lente|lentes|faceta|facetas)\b[^.?!]{0,40}\b(cobre|coberto|coberta)\b/;
+
 function isWarrantyQuestion(normalized: string): boolean {
-  const warrantyKeywords = [
-    "garantia",
-    "cobre",
-    "cobertura",
-    "procedimento recente",
-    "ainda está coberto",
-    "caiu em garantia",
-    "é grátis",
-  ];
-  return warrantyKeywords.some((keyword) => normalized.includes(keyword));
+  return (
+    WARRANTY_TERM_RE.test(normalized) ||
+    WARRANTY_COVERAGE_RE.test(normalized) ||
+    WARRANTY_COVERAGE_REVERSE_RE.test(normalized)
+  );
 }
 
 // Palavras vazias que não distinguem uma objeção — ignoradas ao casar a mensagem
 // do lead contra os gatilhos cadastrados.
+//
+// Os verbos de pedido entraram depois de um falso positivo medido: "Posso ver os
+// horários de sexta?" casava com a objeção "Posso cancelar ou remarcar meu
+// horário?" pela palavra "posso" — 5 letras, logo "forte" pelo critério antigo.
+// Enquanto o matcher só rodava no handoff isso ficava contido; qualquer ampliação
+// do alcance espalharia a resposta errada.
 const OBJECTION_MATCH_STOPWORDS = new Set([
   "as", "os", "um", "uma", "uns", "tem", "têm", "ter", "de", "da", "do", "das",
   "dos", "que", "qual", "quais", "com", "sem", "por", "para", "pra", "voce",
   "voces", "vcs", "meu", "minha", "meus", "minhas", "esse", "essa", "esses",
   "essas", "isso", "aqui", "ainda", "muito", "sobre", "tipo", "como", "quanto",
   "quando", "onde", "ser", "sao", "mas", "nao", "sim", "ele", "ela", "eles",
+  // Verbos e pronomes de pedido: aparecem em qualquer pergunta de lead e não
+  // dizem nada sobre QUAL objeção é.
+  "posso", "podem", "poderia", "pode", "quero", "queria", "gostaria", "preciso",
+  "precisa", "consigo", "tenho", "estou", "fazer", "seria", "gostei", "sabia",
+  "dessa", "desse", "deste", "desta", "aquele", "aquela", "algum", "alguma",
+  "outro", "outra", "mesmo", "mesma", "tambem", "depois", "antes", "agora",
+  "entao", "assim", "vezes",
 ]);
+
+// Substantivos que aparecem em qualquer conversa de clínica e não distinguem
+// objeção nenhuma. Mesma ideia dos nomes de tratamento, que já eram descartados:
+// "Posso ver os horários de sexta?" não é a objeção "Posso cancelar ou remarcar meu
+// horário?" só porque as duas falam de horário. Ficam de fora de propósito palavras
+// que REALMENTE distinguem uma objeção quando a clínica a cadastra ("avaliação",
+// "sinal", "garantia", "manutenção").
+const OBJECTION_GENERIC_DOMAIN_TOKENS = new Set([
+  "horario", "agenda", "agendamento", "consulta", "valor", "preco", "atendimento",
+  "clinica", "dentista", "doutor", "doutora", "sorriso", "dente",
+]);
+
+// Plural simples do português. O lead escreve "Garantias" numa lista de dúvidas
+// (caso Adriano, Vitalli 10/07) e o gatilho cadastrado diz "garantia" — sem isso a
+// clínica tem a resposta cadastrada e o sistema conclui que não tem. Só para
+// tokens longos, onde cortar o "s" final não muda a palavra.
+function singularize(token: string): string {
+  return token.length >= 6 && token.endsWith("s") ? token.slice(0, -1) : token;
+}
 
 // Casa a mensagem do lead contra as objeções cadastradas pela clínica. Quando a
 // clínica cadastra uma objeção (ex.: "…tem garantia e como é a manutenção?") com
@@ -1688,7 +1730,7 @@ export function matchRegisteredObjection(
   if (!objections?.length) return null;
   const msg = normalizeFreeText(message);
   if (!msg) return null;
-  const msgTokens = new Set(msg.split(" ").filter((t) => t.length >= 5));
+  const msgTokens = new Set(msg.split(" ").filter((t) => t.length >= 5).map(singularize));
   if (msgTokens.size === 0) return null;
 
   const valid = objections.filter((o) => o.objection?.trim() && o.response?.trim());
@@ -1698,14 +1740,16 @@ export function matchRegisteredObjection(
   const genericTokens = new Set<string>();
   for (const name of treatmentNames) {
     for (const t of normalizeFreeText(name).split(" ")) {
-      if (t.length >= 5) genericTokens.add(t);
+      if (t.length >= 5) genericTokens.add(singularize(t));
     }
   }
 
   const trigTokens = valid.map((o) =>
     normalizeFreeText(o.objection)
       .split(" ")
-      .filter((t) => t.length >= 5 && !OBJECTION_MATCH_STOPWORDS.has(t) && !genericTokens.has(t)),
+      .filter((t) => t.length >= 5 && !OBJECTION_MATCH_STOPWORDS.has(t))
+      .map(singularize)
+      .filter((t) => !genericTokens.has(t) && !OBJECTION_GENERIC_DOMAIN_TOKENS.has(t)),
   );
   // Frequência de cada token entre os gatilhos — um token que aparece em 2+ objeções
   // não é distintivo (ex.: "tempo" em "quanto tempo dura" e "o procedimento demora").
@@ -1738,6 +1782,58 @@ function buildObjectionDirectiveContext(matched: { objection: string; response: 
     `"${matched.response}"`,
     `NÃO substitua essa resposta por um pedido de foto nem por "isso depende de avaliação presencial" — a clínica já definiu a resposta acima. Se o lead perguntou mais de uma coisa na mesma mensagem, responda também as outras partes com base nas orientações da clínica.`,
   ].join("\n");
+}
+
+// ── Garantia: a resposta é a que a clínica cadastrou ──
+// Bug medido: a objeção de garantia da Vitalli está cadastrada desde 07/07 22:04
+// ("2 anos caso a lente descole por completo; 30 dias contra pigmentação ou quebra
+// por descuido"). Em 18/07 a Giuliana perguntou "tempo de garantia" e recebeu uma
+// descrição das técnicas de lente — 11 dias depois de cadastrada. A causa: o
+// matcher de objeção só era consultado dentro de `effectiveIntent === "needs_human"`,
+// e pergunta de garantia é classificada `general_question` pela LLM. A objeção
+// existia apenas como dica solta no bloco "COMO LIDAR COM OBJEÇÕES" do prompt, e a
+// LLM passou por cima — o padrão que a casa já resolveu em outros pontos: o sistema
+// decide, a LLM verbaliza.
+//
+// Sem nada cadastrado, a IA NÃO inventa: em 06/07 a Tatiana perguntou o tempo de
+// garantia e ouviu "depende do tipo de procedimento… o ideal é passar por uma
+// avaliação" — política inventada + pivô comercial. Passa a dizer que confirma com
+// a equipe. A Ximendes cai nesse caminho hoje: 11 objeções cadastradas, nenhuma
+// sobre garantia.
+export type WarrantyAnswer =
+  | { kind: "registered"; clinicContext: string; objection: string }
+  | { kind: "no_policy"; clinicContext: string };
+
+export function resolveWarrantyAnswer(params: {
+  message: string;
+  objections: { objection: string; response: string }[] | null | undefined;
+  treatmentNames: string[];
+}): WarrantyAnswer | null {
+  if (!isWarrantyQuestion(normalizeFreeText(params.message))) return null;
+
+  const registered = matchRegisteredObjection(
+    params.message,
+    params.objections,
+    params.treatmentNames,
+  );
+  if (registered) {
+    return {
+      kind: "registered",
+      clinicContext: buildObjectionDirectiveContext(registered),
+      objection: registered.objection,
+    };
+  }
+
+  return {
+    kind: "no_policy",
+    clinicContext: [
+      `O lead perguntou sobre GARANTIA e a clínica NÃO tem política de garantia cadastrada neste sistema.`,
+      `NÃO invente prazo, cobertura nem condição. Especificamente: não diga "depende do procedimento", não diga "varia conforme o caso" e não descreva regra nenhuma de garantia — isso é inventar com outras palavras.`,
+      `Diga de forma curta e acolhedora que você vai confirmar essa informação com a equipe e já retorna. A equipe já foi avisada em paralelo.`,
+      `NÃO peça foto, NÃO ofereça horários, NÃO cote preço de manutenção e NÃO conduza para avaliação por causa da garantia.`,
+      `Se o lead perguntou OUTRAS coisas na mesma mensagem (valores, formas de pagamento, material, técnica), responda essas partes normalmente com base nas orientações da clínica — só a parte da garantia fica pendente da equipe. Seja breve.`,
+    ].join("\n"),
+  };
 }
 
 // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
@@ -4974,16 +5070,14 @@ export class ConversationOrchestrator {
     const oldPriceObjectionDetected =
       isPriceShapedIntent && !atypicalTriageContext && detectOldPriceObjection(messageText);
 
-    // P0.2: Detectar pergunta de garantia (cobertura de procedimento recente)
+    // P0.2: Detectar pergunta de manutenção (garantia tem trilho próprio, abaixo)
     if (effectiveIntent === "needs_human" && !maintenanceHandoffReason) {
       const normalized = normalizeFreeText(messageText);
-      const isWarranty = isWarrantyQuestion(normalized);
-      const isMaintenance = isMaintenanceInquiryText(normalized);
-      if (isWarranty || isMaintenance) {
-        // Bug garantia jul/2026: a clínica pode ter cadastrado uma objeção que JÁ
-        // responde essa dúvida (ex.: "as lentes têm garantia?"). Nesse caso ela
-        // decidiu que a IA responde — pausar e mandar "manda foto" ignora a config.
-        // Honra a objeção cadastrada; só cai no handoff quando não há resposta pronta.
+      if (isMaintenanceInquiryText(normalized)) {
+        // A clínica pode ter cadastrado uma objeção que JÁ responde essa dúvida
+        // (ex.: "como é a manutenção?"). Nesse caso ela decidiu que a IA responde —
+        // pausar e mandar "manda foto" ignora a config. Honra a objeção cadastrada;
+        // só cai no handoff quando não há resposta pronta.
         const matchedObjection = matchRegisteredObjection(
           messageText,
           editorial?.objections,
@@ -4991,8 +5085,6 @@ export class ConversationOrchestrator {
         );
         if (matchedObjection) {
           objectionDirectiveContext = buildObjectionDirectiveContext(matchedObjection);
-        } else if (isWarranty) {
-          maintenanceHandoffReason = "Pergunta sobre cobertura de garantia — avaliar conforme política";
         } else {
           maintenanceHandoffReason = "Pergunta sobre manutenção/reparo — requer avaliação com foto";
         }
@@ -5059,6 +5151,26 @@ export class ConversationOrchestrator {
           atypicalTriageContext = null;
         }
       }
+    }
+
+    // ── Garantia: segue o que a clínica cadastrou, em qualquer intent ──
+    // Roda depois do trilho de dano de propósito. "Minha lente descolou, tem
+    // garantia?" é decisão sobre um caso concreto, e essa é do operador — foi o que
+    // ele fez em produção ("Cobre o descolamento por completo da lente", 07/07).
+    // Aqui é a pergunta sobre a POLÍTICA, que a clínica já respondeu no cadastro.
+    const warrantyAnswer = existingWorkProblem
+      ? null
+      : resolveWarrantyAnswer({
+          message: messageText,
+          objections: editorial?.objections,
+          treatmentNames: clinicTreatments.map((t) => t.name),
+        });
+    if (warrantyAnswer) {
+      // general_question porque a resposta é informativa e sai da config. O
+      // contexto é consumido no topo daquele ramo, antes de qualquer resolução de
+      // tratamento — a Vitalli cadastrou "garantia" como alias de "Manutenção
+      // Preventiva de lentes" (R$400), e sem isso a pergunta viraria cotação.
+      effectiveIntent = "general_question";
     }
 
     // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
@@ -6532,6 +6644,26 @@ export class ConversationOrchestrator {
           });
           break;
         }
+
+        // Garantia tem precedência sobre todo o resto do ramo: catálogo, vitrine,
+        // preço e resolução de tratamento por alias. A resposta já está decidida —
+        // é a da clínica, ou o aviso de que a equipe vai confirmar.
+        if (warrantyAnswer) {
+          if (warrantyAnswer.kind === "no_policy") {
+            const attentionReason = "Pergunta sobre garantia sem política cadastrada — confirmar com a equipe";
+            await db
+              .update(conversationsTable)
+              .set({ needsAttention: true, attentionReason, updatedAt: new Date() })
+              .where(eq(conversationsTable.id, conversation.id));
+            await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, attentionReason);
+          }
+          replyText = await compose({
+            type: "general_question",
+            clinicContext: warrantyAnswer.clinicContext,
+          });
+          break;
+        }
+
         let clinicContext: string;
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
