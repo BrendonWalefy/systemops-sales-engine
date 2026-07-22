@@ -67,6 +67,17 @@ describe("parseLinkPreviewHtml", () => {
     expect(parseLinkPreviewHtml(html, "https://x.com").title).toBe("ABC");
   });
 
+  it("página sem og:image ainda vira card — título é o requisito", () => {
+    // O link encurtado do Maps (share.google) dá título e descrição mas não dá
+    // imagem. Testado em produção: a Z-API aceita e o WhatsApp desenha o card
+    // sem foto. Exigir imagem faria esse caso regredir para link pelado.
+    const html = `<meta content="Helbor Offices São Paulo II · São Paulo - SP" property="og:title">` +
+      `<meta content="4.5 ⭐ · Área de escritórios em São Paulo" property="og:description">`;
+    const preview = parseLinkPreviewHtml(html, "https://share.google/x");
+    expect(preview.title).toBeTruthy();
+    expect(preview.imageUrl).toBeNull();
+  });
+
   it("descarta imagem que não é buscável", () => {
     const html = `<meta content="Título" property="og:title"><meta content="http://127.0.0.1/x.png" property="og:image">`;
     expect(parseLinkPreviewHtml(html, "https://x.com").imageUrl).toBeNull();

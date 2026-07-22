@@ -31,7 +31,11 @@ export async function sendTextMessage(
     if (trailingUrl) {
       try {
         const preview = await resolveLinkPreview(trailingUrl);
-        if (preview?.title && preview.imageUrl) {
+        // Título basta. Testado em produção: sem `image` a Z-API aceita e o
+        // WhatsApp desenha o card só com título, descrição e fonte — pior que o
+        // card com foto, melhor que o link pelado. Exigir imagem faria links sem
+        // og:image (o encurtado do Maps é um) regredirem para texto puro.
+        if (preview?.title) {
           return await sendZApiLinkMessage(
             to,
             formatted,
@@ -39,7 +43,7 @@ export async function sendTextMessage(
               linkUrl: trailingUrl,
               title: preview.title,
               linkDescription: preview.description ?? "",
-              image: preview.imageUrl,
+              image: preview.imageUrl ?? "",
             },
             config.zapi,
           );
