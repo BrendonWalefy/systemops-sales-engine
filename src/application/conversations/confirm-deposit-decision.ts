@@ -93,6 +93,8 @@ export async function confirmDepositDecision(params: {
       specialty: clinic.specialty,
       city: clinic.city,
       address: clinic.address,
+      addressComplement: clinic.addressComplement ?? null,
+      mapsUrl: clinic.mapsUrl ?? null,
       timezone: clinic.timezone,
       greetingMessage: clinic.greetingMessage,
       menuItems: clinic.menuItems,
@@ -162,6 +164,8 @@ export async function confirmDepositDecision(params: {
   const confirmationText = buildDepositConfirmationMessage(
     {
       address: clinic.address,
+      addressComplement: clinic.addressComplement,
+      mapsUrl: clinic.mapsUrl,
       depositConfirmationNotes: clinic.depositConfirmationNotes,
     },
     payload.slotLabel,

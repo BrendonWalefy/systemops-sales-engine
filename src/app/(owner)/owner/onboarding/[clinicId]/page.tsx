@@ -31,6 +31,8 @@ export default async function OnboardingWizardPage({
         specialty: true,
         city: true,
         address: true,
+        addressComplement: true,
+        mapsUrl: true,
         greetingMessage: true,
         businessHours: true,
         calendarMode: true,
@@ -91,6 +93,8 @@ export default async function OnboardingWizardPage({
           specialty: clinic.specialty ?? "",
           city: clinic.city ?? "",
           address: clinic.address ?? "",
+          addressComplement: clinic.addressComplement ?? "",
+          mapsUrl: clinic.mapsUrl ?? "",
           greetingMessage: clinic.greetingMessage ?? "",
         },
         receptionist: {

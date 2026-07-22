@@ -80,6 +80,8 @@ type WizardInitial = {
     specialty: string;
     city: string;
     address: string;
+    addressComplement: string;
+    mapsUrl: string;
     greetingMessage: string;
   };
   receptionist: { toneOfVoice: string; differentials: string[] };
@@ -645,6 +647,24 @@ function StepIdentidade({
           value={data.address}
           onChange={f("address")}
           placeholder="Rua, número, bairro — aparece na confirmação de agendamento"
+          style={inputStyle}
+        />
+      </div>
+      <div>
+        <FieldLabel>Complemento (prédio, torre, sala, andar)</FieldLabel>
+        <input
+          value={data.addressComplement}
+          onChange={f("addressComplement")}
+          placeholder="Ex: Helbor Offices Torre Sul, Sala 124, Andar 12"
+          style={inputStyle}
+        />
+      </div>
+      <div>
+        <FieldLabel>Link do Google Maps</FieldLabel>
+        <input
+          value={data.mapsUrl}
+          onChange={f("mapsUrl")}
+          placeholder="https://maps.app.goo.gl/... — o WhatsApp mostra a foto do prédio"
           style={inputStyle}
         />
       </div>

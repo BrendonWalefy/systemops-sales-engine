@@ -293,6 +293,15 @@ export const organizations = pgTable("organizations", {
   specialty: text("specialty").notNull(),
   city: text("city"),
   address: text("address"),
+  // Prédio, torre, sala, andar. Campo próprio porque espremer isso no `address`
+  // some na leitura: a Vitalli tem "Sala 124" no meio de "Av. Adolfo Pinheiro,
+  // 1.029, Sala 124 - Santo Amaro", enquanto o template do operador separa em
+  // linha ("Helbor Offices Torre Sul, Sala 124, Andar 12"). Item #22 do plano.
+  addressComplement: text("address_complement"),
+  // Link do Google Maps. O WhatsApp renderiza o link com pré-visualização e foto
+  // do prédio — é o que o operador manda à mão hoje, enquanto a IA manda texto
+  // puro. Item #23. Sem campo, a IA não pode inventar uma URL.
+  mapsUrl: text("maps_url"),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   greetingMessage: text("greeting_message"),
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),

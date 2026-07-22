@@ -309,6 +309,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         specialty: clinicRow.specialty,
         city: clinicRow.city,
         address: clinicRow.address,
+        addressComplement: clinicRow.addressComplement ?? null,
+        mapsUrl: clinicRow.mapsUrl ?? null,
         timezone: clinicRow.timezone,
         greetingMessage: clinicRow.greetingMessage,
         menuItems: clinicRow.menuItems,
