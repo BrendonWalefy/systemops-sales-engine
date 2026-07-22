@@ -547,6 +547,13 @@
       "when": 1784613308541,
       "tag": "0077_material_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1784695001460,
+      "tag": "0078_smooth_vulcan",
+      "breakpoints": true
     }
   ]
 }

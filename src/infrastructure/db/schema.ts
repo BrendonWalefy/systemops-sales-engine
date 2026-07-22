@@ -89,6 +89,7 @@ export const aiOperationEnum = pgEnum("ai_operation", [
   "follow_up_suggestion",
   "manual_analysis",
   "playbook_analysis",
+  "lead_outcome_classification",
 ]);
 
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", [
@@ -244,6 +245,31 @@ export const humanReviewDecisionEnum = pgEnum("human_review_decision", [
 export const humanReviewDecisionSourceEnum = pgEnum("human_review_decision_source", [
   "whatsapp",
   "panel",
+]);
+
+// Motor de Reativação (ADR-009). Motivo pelo qual o lead não fechou — enum
+// fechado porque texto livre não segmenta ("achou caro", "preço alto" e "valor"
+// virariam três segmentos distintos). A evidência textual mora em coluna
+// separada, não aqui.
+export const leadOutcomeReasonEnum = pgEnum("lead_outcome_reason", [
+  "price",
+  "schedule",
+  "location",
+  "fear",
+  "third_party_decision",
+  "competitor",
+  "treatment_mismatch",
+  "no_response",
+  "already_treated",
+  "other",
+]);
+
+// Quem classificou. "human" é soberano: uma correção do operador nunca é
+// sobrescrita por reclassificação automática (ver drizzle-lead-outcome-repository).
+export const leadOutcomeSourceEnum = pgEnum("lead_outcome_source", [
+  "llm",
+  "human",
+  "system",
 ]);
 
 export const organizations = pgTable("organizations", {
@@ -1541,6 +1567,64 @@ export const conversationReviews = pgTable(
     orgCreatedAtIdx: index("conversation_reviews_org_created_at_idx").on(
       t.organizationId,
       t.createdAt,
+    ),
+  }),
+);
+
+// Motor de Reativação (ADR-009), Fase 1. Por que cada lead não fechou, com o
+// trecho da conversa que sustenta a conclusão — a evidência é o que torna a
+// classificação auditável pela clínica, e foi pedido explícito do cliente
+// ("verificar o porquê não fechou — ler um trecho da conversa").
+//
+// Um outcome corrente por lead (índice único). O histórico não é objetivo aqui:
+// o que interessa é o motivo vigente para segmentar campanhas.
+export const leadOutcomes = pgTable(
+  "lead_outcomes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    reason: leadOutcomeReasonEnum("reason").notNull(),
+    // Trecho literal da conversa que justifica o motivo. Copiado, não referenciado:
+    // apagar a mensagem de origem não pode invalidar a evidência já apresentada.
+    evidenceExcerpt: text("evidence_excerpt"),
+    evidenceMessageId: uuid("evidence_message_id"),
+    // 0-100. Abaixo do limiar a UI mostra como "sugestão" e pede confirmação.
+    confidence: integer("confidence").notNull().default(0),
+    source: leadOutcomeSourceEnum("source").notNull().default("llm"),
+    // Modelo que produziu a classificação — permite comparar qualidade entre
+    // modelos sem reclassificar tudo às cegas.
+    model: text("model"),
+    // Última mensagem da conversa vista nesta classificação. Se não mudou, não
+    // há o que reclassificar — é o corte que impede gastar LLM à toa todo dia.
+    lastSeenMessageId: uuid("last_seen_message_id"),
+    classifiedAt: timestamp("classified_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    clinicLeadIdx: uniqueIndex("lead_outcomes_org_lead_idx").on(
+      t.clinicId,
+      t.leadId,
+    ),
+    // Índice da consulta que a audiência faz: "leads desta clínica cujo motivo
+    // é X" (ver audience-resolver na Fase 2).
+    clinicReasonIdx: index("lead_outcomes_org_reason_idx").on(
+      t.clinicId,
+      t.reason,
     ),
   }),
 );
