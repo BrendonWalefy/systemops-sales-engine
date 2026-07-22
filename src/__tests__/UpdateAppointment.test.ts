@@ -82,6 +82,7 @@ function makeApptRepo(appt: Appointment | null = makeAppointment()): Appointment
     findByLeadId: vi.fn().mockResolvedValue(appt),
     findActiveByLeadId: vi.fn().mockResolvedValue(appt),
     findAllActiveByLeadId: vi.fn().mockResolvedValue(appt ? [appt] : []),
+    findPastByLeadId: vi.fn().mockResolvedValue([]),
     findByPeriod: vi.fn().mockResolvedValue([]),
     findDueReminders: vi.fn().mockResolvedValue([]),
     findByCalendarEventId: vi.fn().mockResolvedValue(null),

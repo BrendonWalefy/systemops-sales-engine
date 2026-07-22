@@ -43,7 +43,13 @@ import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery, extractQuantity } from "@/core/intelligence/quantity-price";
 import { extractReferencedPrice } from "@/core/intelligence/price-reference";
-import { detectAtypicalClinicalCase, detectCommercialPauseText, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
+import {
+  detectAtypicalClinicalCase,
+  detectCommercialPauseText,
+  detectExistingWorkProblem,
+  detectOldPriceObjection,
+  detectSelfDeclaredPastWork,
+} from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
@@ -2563,6 +2569,66 @@ function formatBrl(cents: number): string {
     maximumFractionDigits: isRound ? 0 : 2,
   })}`;
 }
+
+// "23/06" — data de uma consulta passada. Ano só quando não é o ano corrente:
+// "esteve com a gente em 23/06" lê melhor do que "em 23/06/2026".
+function formatVisitDate(timezone: ClinicTimezone, date: Date): string {
+  const parts = timezone.toLocalParts(date);
+  const today = timezone.toLocalParts(new Date());
+  const day = String(parts.day).padStart(2, "0");
+  const month = String(parts.month + 1).padStart(2, "0");
+  return parts.year === today.year ? `${day}/${month}` : `${day}/${month}/${parts.year}`;
+}
+
+// #21 — decide se o trilho de relato de dano assume a resposta. Separado do
+// detector porque a decisão não é sobre o texto: é sobre o que o sistema sabe do
+// lead. Regras, em ordem de risco:
+//   • alvo "work" (a lente/faceta/coroa quebrou) sempre assume, com ou sem
+//     vínculo — só cede a um pipeline em curso quando não há vínculo nenhum.
+//   • alvo "tooth" ("meu dente quebrou") é ambíguo: sem vínculo é dente natural
+//     comprometido (caso clínico novo, tratado pela triagem atípica). Com vínculo
+//     é relato de dano — exceto quando vem dentro de uma pergunta de preço, que é
+//     alguém pedindo orçamento e mencionando um dente lascado de passagem
+//     (Ana Paula, Vitalli 18/07): sequestrar isso mata uma venda legítima.
+export function shouldEngageDamageRail(params: {
+  target: "work" | "tooth";
+  relationship: "known_patient" | "self_declared" | "unknown";
+  askedPrice: boolean;
+  hasActivePipeline: boolean;
+}): boolean {
+  const hasBond = params.relationship !== "unknown";
+  if (params.target === "tooth") return hasBond && !params.askedPrice;
+  return hasBond || !params.hasActivePipeline;
+}
+
+// O preço da manutenção sai RESOLVIDO do catálogo para a resposta de handoff.
+// Antes, o template mandava a LLM "informar o valor conforme configurado" e ela
+// inventava: Ximendes, 16/07 — "manutenção sai a partir de R$ 100", quando o
+// catálogo diz R$500 (manutenção) e R$200 (conserto); R$100 é o da Avaliação.
+// Só devolve os serviços que o lead citou, e só se a clínica autorizou cotar.
+export function resolveMaintenancePriceLabel(
+  message: string,
+  treatments: Treatment[],
+): string | null {
+  const tokens = new Set(normalizeFreeText(message).split(/\s+/).filter(Boolean));
+  const labels: string[] = [];
+  for (const treatment of treatments) {
+    if (!treatment.priceQuotableInChat) continue;
+    const priceCents = treatment.priceCents ?? treatment.minPriceCents;
+    if (!priceCents) continue;
+    const matchesAskedService = [treatment.name, ...(treatment.aliases ?? [])].some((term) =>
+      normalizeFreeText(term)
+        .split(/\s+/)
+        .some((word) => MAINTENANCE_SERVICE_KEYWORDS.includes(word) && tokens.has(word)),
+    );
+    if (!matchesAskedService) continue;
+    const prefix = treatment.priceKind === "from" ? "a partir de " : "";
+    const unit = treatment.priceUnit ? ` (${treatment.priceUnit})` : "";
+    labels.push(`${treatment.name}: ${prefix}${formatBrl(priceCents)}${unit}`);
+  }
+  return labels.length > 0 ? labels.join(" | ") : null;
+}
+
 export function mergeDeliveryMediaLibrary(
   editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
   directlyReferencedAssets: DeliveryMediaLibraryItem[],
@@ -4933,6 +4999,68 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── #21: relato de dano em trabalho existente ──
+    // "Um dos dentes quebrou" tem três desfechos comerciais opostos — garantia
+    // (trabalho nosso, recente), manutenção paga (trabalho nosso, fora da garantia)
+    // ou venda nova (trabalho de outra clínica) — e a IA não pode escolher sozinha.
+    // O que ela nunca pode fazer é o que fez com a Carla em 16/07: responder um
+    // relato de dano com lista de horários. O trilho roda sobre QUALQUER intent,
+    // fora do alcance da LLM, porque é justamente o rótulo dela que falha aqui
+    // (reject_slots, general_question, book_appointment nos casos medidos).
+    // Não roda quando a clínica cadastrou uma objeção que já responde a dúvida:
+    // config da clínica tem precedência sobre trilho nosso.
+    let existingWorkProblem: {
+      damageLabel: string;
+      relationship: "known_patient" | "self_declared" | "unknown";
+      lastVisitLabel: string | null;
+      lastVisitTreatment: string | null;
+      askedPrice: boolean;
+    } | null = null;
+    if (!objectionDirectiveContext) {
+      const damage = detectExistingWorkProblem(messageText);
+      if (damage) {
+        const pastVisits = await this.appointmentRepo.findPastByLeadId(lead.id);
+        const relationship = pastVisits.length > 0
+          ? "known_patient"
+          : detectSelfDeclaredPastWork(messageText)
+            ? "self_declared"
+            : "unknown";
+        const askedPrice = isPriceRequestText(normalizeFreeText(messageText));
+        if (
+          shouldEngageDamageRail({
+            target: damage.target,
+            relationship,
+            askedPrice,
+            hasActivePipeline: pipelineState !== null,
+          })
+        ) {
+          const lastVisit = pastVisits[0] ?? null;
+          const lastVisitTreatment = lastVisit?.treatmentId
+            ? clinicTreatments.find((t) => t.id === lastVisit.treatmentId)?.name ?? null
+            : null;
+          const lastVisitLabel = lastVisit ? formatVisitDate(timezone, lastVisit.startsAt) : null;
+          existingWorkProblem = {
+            damageLabel: damage.label,
+            relationship,
+            lastVisitLabel,
+            lastVisitTreatment,
+            askedPrice,
+          };
+          effectiveIntent = "needs_human";
+          maintenanceHandoffReason =
+            relationship === "known_patient"
+              ? `Relato de dano (${damage.label}) — paciente com consulta em ${lastVisitLabel}` +
+                `${lastVisitTreatment ? ` (${lastVisitTreatment})` : ""}. Verificar garantia.`
+              : relationship === "self_declared"
+                ? `Relato de dano (${damage.label}) — lead diz que o trabalho foi feito aqui. Verificar garantia.`
+                : `Relato de dano (${damage.label}) — origem do trabalho não confirmada`;
+          // O trilho substitui a triagem de caso atípico: mesma mensagem, leitura
+          // mais específica (não é dente natural comprometido, é trabalho quebrado).
+          atypicalTriageContext = null;
+        }
+      }
+    }
+
     // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
     let previousClinicNameContext: string | null = null;
     if (effectiveIntent === "general_question" || effectiveIntent === "greeting") {
@@ -5971,11 +6099,24 @@ export class ConversationOrchestrator {
           maintenanceHandoffReason ??
           classification.handoffReason ??
           "Lead solicitou atendimento humano";
-        replyText = await compose({ type: "handoff_requested", handoffReason: reason });
+        // #21: relato de dano tem resposta própria e pausa própria. Quando o
+        // sistema já sabe que é paciente da casa, quem decide garantia é o
+        // operador — pausa. Quando não sabe, a resposta PERGUNTA a origem do
+        // trabalho, e pausar deixaria a IA surda à resposta que ela mesma pediu.
+        if (existingWorkProblem) {
+          replyText = await compose({ type: "existing_work_problem", ...existingWorkProblem });
+        } else {
+          replyText = await compose({
+            type: "handoff_requested",
+            handoffReason: reason,
+            maintenancePriceLabel: resolveMaintenancePriceLabel(messageText, clinicTreatments),
+          });
+        }
+        const pauseAi = !existingWorkProblem || existingWorkProblem.relationship !== "unknown";
         await db
           .update(conversationsTable)
           .set({
-            aiPaused: true,
+            aiPaused: pauseAi,
             takeoverExpiresAt: null, // pausa permanente — operador decide quando retomar
             needsAttention: true,
             attentionReason: reason,

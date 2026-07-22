@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, isNull, lt, lte } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, ne } from "drizzle-orm";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import { calendarEventIdCandidates } from "@/application/calendar/import-calendar-events";
@@ -80,6 +80,18 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
       where: and(
         eq(appointments.leadId, leadId),
         inArray(appointments.status, ["scheduled", "confirmed"]),
+      ),
+      orderBy: [desc(appointments.startsAt)],
+    });
+    return rows.map(mapRow);
+  }
+
+  async findPastByLeadId(leadId: string, now: Date = new Date()): Promise<Appointment[]> {
+    const rows = await db.query.appointments.findMany({
+      where: and(
+        eq(appointments.leadId, leadId),
+        lt(appointments.startsAt, now),
+        ne(appointments.status, "cancelled"),
       ),
       orderBy: [desc(appointments.startsAt)],
     });

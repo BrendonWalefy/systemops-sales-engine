@@ -202,6 +202,10 @@ class FakeAppointmentRepository implements AppointmentRepository {
     return [];
   }
 
+  async findPastByLeadId(): Promise<Appointment[]> {
+    return [];
+  }
+
   async findByPeriod(): Promise<Appointment[]> {
     return [];
   }
