@@ -1,10 +1,17 @@
 name: CI
 
+# Só em pull_request. O evento `pull_request` do GitHub roda sobre o MERGE
+# COMMIT (PR + base), não sobre o branch isolado — então já testa exatamente o
+# que a main terá. O run que disparava em `push: main` refazia o mesmo trabalho
+# depois do merge: era 1 dos 3 runs por PR, medidos em 21/07.
 on:
   pull_request:
-  push:
-    branches:
-      - main
+
+# Push novo no mesmo PR cancela o run anterior, que já está obsoleto. Medido:
+# ~3 runs de CI por PR, e os intermediários rodavam até o fim sem ninguém olhar.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
