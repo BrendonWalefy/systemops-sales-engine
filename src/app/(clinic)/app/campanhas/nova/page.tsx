@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 
+import "../campanhas.css";
+
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { leads, priceCampaigns, treatments } from "@/infrastructure/db/schema";

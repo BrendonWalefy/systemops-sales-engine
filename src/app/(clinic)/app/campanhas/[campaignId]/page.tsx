@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 
+import "../campanhas.css";
+
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
