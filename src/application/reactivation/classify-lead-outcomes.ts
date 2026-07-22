@@ -117,6 +117,28 @@ async function findEligibleLeads(clinicId: string): Promise<EligibleLead[]> {
   return result.rows as EligibleLead[];
 }
 
+/**
+ * Títulos das mídias que entregam preço nesta clínica.
+ *
+ * A Vitalli manda os valores em arte por decisão do dentista, e a imagem é
+ * gravada como mensagem de texto com o título no corpo. Sem esta lista, o
+ * estágio do silêncio classificaria como "perguntou e não foi respondida" uma
+ * conversa em que o paciente recebeu a tabela inteira.
+ *
+ * Heurística pelo título porque não há campo que marque "esta mídia contém
+ * preço" — quando existir, trocar por ele.
+ */
+async function loadPriceMediaTitles(clinicId: string): Promise<Set<string>> {
+  const result = await db.execute(sql`
+    SELECT title FROM media_assets
+    WHERE organization_id = ${clinicId}
+      AND title ~* 'valor|preç|preco|pacote|investiment|tabela'
+  `);
+  return new Set(
+    (result.rows as Array<{ title: string }>).map((r) => r.title.trim()),
+  );
+}
+
 async function loadConversationMessages(
   conversationId: string,
 ): Promise<ClassifierMessage[]> {
@@ -217,6 +239,8 @@ export async function classifyLeadOutcomesForClinic(
     return { ...empty, budgetExhausted: true, spentUsdMicros: spent };
   }
 
+  const priceMediaTitles = await loadPriceMediaTitles(clinicId);
+
   const leads = await findEligibleLeads(clinicId);
   console.log(`[LeadOutcome] clinic=${clinicId} elegíveis=${leads.length}`);
 
@@ -298,7 +322,7 @@ export async function classifyLeadOutcomesForClinic(
         model: llm.model,
         lastSeenMessageId: lead.last_message_id,
         // Determinístico: o que estava na mesa quando a pessoa sumiu.
-        silenceStage: computeSilenceStage(messages),
+        silenceStage: computeSilenceStage(messages, priceMediaTitles),
       });
 
       classified++;

@@ -26,6 +26,7 @@ function parseIntOrUndefined(value: FormDataEntryValue | null): number | undefin
 
 function segmentFromForm(formData: FormData): AudienceSegment {
   const reasons = formData.getAll("outcomeReasons").map(String).filter(Boolean);
+  const stages = formData.getAll("silenceStages").map(String).filter(Boolean);
   const { segment } = parseSegment({
     windowFromDaysAgo: parseIntOrUndefined(formData.get("windowFromDaysAgo")),
     windowToDaysAgo: parseIntOrUndefined(formData.get("windowToDaysAgo")),
@@ -33,6 +34,7 @@ function segmentFromForm(formData: FormData): AudienceSegment {
     excludeContactedWithinDays: parseIntOrUndefined(formData.get("excludeContactedWithinDays")),
     lifetimeCampaignCap: parseIntOrUndefined(formData.get("lifetimeCampaignCap")),
     outcomeReasons: reasons.length > 0 ? reasons : undefined,
+    silenceStages: stages.length > 0 ? stages : undefined,
   });
   return segment;
 }

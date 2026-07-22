@@ -9,8 +9,9 @@
  * sumiu), mas inútil para segmentar: não diz por quê.
  *
  * O detalhe que faltava estava no histórico, não na cabeça do modelo. Dos
- * mesmos 82: 17 sumiram **depois de ver um valor** e 18 **perguntaram preço e
- * nunca receberam um R$**. Enquanto o filtro `price` do LLM pegava 1 pessoa.
+ * mesmos 82: 35 sumiram **depois de ver um valor** e 7 **perguntaram preço e
+ * nunca receberam resposta**. Enquanto o filtro `price` do LLM, com a confiança
+ * mínima padrão, pegava **zero**.
  *
  * Por isso isto é **determinístico**, não uma segunda pergunta ao LLM: o
  * estágio é um fato verificável sobre as mensagens. O motivo é julgamento e
@@ -46,6 +47,20 @@ export type StageMessage = {
   body: string | null;
 };
 
+/**
+ * Títulos das mídias que entregam preço na clínica (ex.: "Valores Lente em
+ * Resina Premium").
+ *
+ * A Vitalli manda os valores em arte — decisão do dentista, não falha. Mas a
+ * imagem é gravada em `messages` com `delivery_format = 'text'` e o **título da
+ * mídia no corpo**; o valor está dentro do arquivo. Procurar "R$" no texto,
+ * portanto, não vê o preço que o paciente de fato recebeu.
+ *
+ * Sem isto, conversas em que a pessoa recebeu a tabela completa de pacotes eram
+ * marcadas como "perguntou e não foi respondida".
+ */
+export type PriceMediaTitles = ReadonlySet<string>;
+
 // ATENÇÃO: todos os padrões abaixo são testados contra texto JÁ NORMALIZADO
 // (sem acento, ver `normalize`). Escrever "às" ou "preço" aqui nunca casaria —
 // foi o que quebrou o primeiro teste de horário em texto solto.
@@ -79,7 +94,10 @@ function normalize(value: string | null | undefined): string {
  *  4. Recebeu horários e não escolheu.
  *  5. Parou antes de qualquer um desses.
  */
-export function computeSilenceStage(messages: StageMessage[]): SilenceStage {
+export function computeSilenceStage(
+  messages: StageMessage[],
+  priceMediaTitles: PriceMediaTitles = new Set(),
+): SilenceStage {
   const relevantes = messages.filter(
     (m) => typeof m.body === "string" && m.body.trim().length > 0,
   );
@@ -91,7 +109,12 @@ export function computeSilenceStage(messages: StageMessage[]): SilenceStage {
   const daClinica = relevantes.filter((m) => m.author !== "lead");
   const doLead = relevantes.filter((m) => m.author === "lead");
 
-  const clinicaCotou = daClinica.some((m) => QUOTE_PATTERN.test(normalize(m.body)));
+  // Preço em texto OU entregue por imagem — ver PriceMediaTitles.
+  const clinicaCotou = daClinica.some(
+    (m) =>
+      QUOTE_PATTERN.test(normalize(m.body)) ||
+      priceMediaTitles.has((m.body ?? "").trim()),
+  );
   if (clinicaCotou) return "after_quote";
 
   const leadPerguntouPreco = doLead.some((m) =>

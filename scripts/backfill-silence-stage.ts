@@ -26,7 +26,8 @@ if (!aplicar) {
 }
 
 const pendentes = await db.execute(sql`
-  SELECT lo.id, lo.conversation_id, lo.reason::text AS reason, o.name AS clinica
+  SELECT lo.id, lo.conversation_id, lo.organization_id, lo.reason::text AS reason,
+         o.name AS clinica
   FROM lead_outcomes lo
   JOIN organizations o ON o.id = lo.organization_id
   WHERE lo.silence_stage IS NULL
@@ -37,9 +38,32 @@ const pendentes = await db.execute(sql`
 const linhas = pendentes.rows as Array<{
   id: string;
   conversation_id: string;
+  organization_id: string;
   reason: string;
   clinica: string;
 }>;
+
+/**
+ * Mídias de preço por clínica, em cache. Clínicas que mandam os valores em arte
+ * (a Vitalli faz isso por decisão do dentista) gravam a imagem como mensagem de
+ * texto com o título no corpo — sem esta lista, o backfill marcaria como
+ * "perguntou e não foi respondida" quem recebeu a tabela completa.
+ */
+const midiasPorClinica = new Map<string, Set<string>>();
+async function titulosDePreco(clinicId: string): Promise<Set<string>> {
+  const cache = midiasPorClinica.get(clinicId);
+  if (cache) return cache;
+  const r = await db.execute(sql`
+    SELECT title FROM media_assets
+    WHERE organization_id = ${clinicId}
+      AND title ~* 'valor|preç|preco|pacote|investiment|tabela'
+  `);
+  const set = new Set(
+    (r.rows as Array<{ title: string }>).map((x) => x.title.trim()),
+  );
+  midiasPorClinica.set(clinicId, set);
+  return set;
+}
 
 console.log(`${linhas.length} classificações sem estágio.\n`);
 
@@ -54,7 +78,10 @@ for (const linha of linhas) {
     ORDER BY sent_at ASC
   `);
 
-  const stage = computeSilenceStage(msgs.rows as StageMessage[]);
+  const stage = computeSilenceStage(
+    msgs.rows as StageMessage[],
+    await titulosDePreco(linha.organization_id),
+  );
   contagem.set(stage, (contagem.get(stage) ?? 0) + 1);
 
   const chave = `${linha.reason} → ${stage}`;

@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createCampaignAction, previewCampaignAudience, type ActionState } from "../actions";
 import { LEAD_OUTCOME_REASON_LABELS } from "@/core/intelligence/LeadOutcomeClassifier";
+import { SILENCE_STAGE_LABELS } from "@/core/intelligence/silence-stage";
 import { DEFAULT_SEGMENT } from "@/application/reactivation/audience-segment";
 
 type Offer = { id: string; label: string };
@@ -14,6 +15,7 @@ type Preview = {
   willMaterialize: number;
   truncated: boolean;
   byReason: Array<{ reason: string | null; count: number }>;
+  byStage: Array<{ stage: string | null; count: number }>;
 };
 
 export function NovaCampanhaClient({
@@ -96,30 +98,51 @@ export function NovaCampanhaClient({
             Conversa de ontem ainda pode estar viva — por isso o mínimo de 2 dias no fim da janela.
           </p>
 
+          {/* Filtro principal: é o que de fato seleciona gente. Segmentar pelo
+              motivo declarado quase não devolve ninguém — pouca gente escreve
+              "achou caro" antes de sumir; o que ficou na mesa, sim. */}
           <div className="checkbox-grid">
-            <span className="field-label">Motivo de não ter fechado</span>
-            {Object.entries(LEAD_OUTCOME_REASON_LABELS).map(([value, label]) => (
+            <span className="field-label">O que estava na mesa quando a pessoa parou</span>
+            {Object.entries(SILENCE_STAGE_LABELS).map(([value, label]) => (
               <label key={value} className="checkbox">
-                <input type="checkbox" name="outcomeReasons" value={value} />
+                <input type="checkbox" name="silenceStages" value={value} />
                 {label}
               </label>
             ))}
             <p className="muted small">
-              Sem nenhum marcado, entra todo mundo da janela. Marcando algum, só entra quem já foi
-              classificado com aquele motivo.
+              Para uma campanha de oferta, <strong>&ldquo;viu o valor e sumiu&rdquo;</strong> é
+              normalmente o grupo certo.
             </p>
           </div>
 
-          <label className="field">
-            <span>Confiança mínima da classificação (%)</span>
-            <input
-              type="number"
-              name="minConfidence"
-              defaultValue={DEFAULT_SEGMENT.minConfidence}
-              min={0}
-              max={100}
-            />
-          </label>
+          <details className="advanced">
+            <summary>Filtros avançados</summary>
+
+            <div className="checkbox-grid">
+              <span className="field-label">Motivo de não ter fechado</span>
+              {Object.entries(LEAD_OUTCOME_REASON_LABELS).map(([value, label]) => (
+                <label key={value} className="checkbox">
+                  <input type="checkbox" name="outcomeReasons" value={value} />
+                  {label}
+                </label>
+              ))}
+              <p className="muted small">
+                Depende de a pessoa ter dito o motivo com todas as letras — poucos dizem. Use
+                junto com o filtro acima, não no lugar dele.
+              </p>
+            </div>
+
+            <label className="field">
+              <span>Confiança mínima da classificação (%)</span>
+              <input
+                type="number"
+                name="minConfidence"
+                defaultValue={DEFAULT_SEGMENT.minConfidence}
+                min={0}
+                max={100}
+              />
+            </label>
+          </details>
         </fieldset>
 
         <fieldset className="field-group">
@@ -198,26 +221,37 @@ export function NovaCampanhaClient({
         </fieldset>
 
         {preview && (
-          <div className="callout">
-            <strong>{preview.total} contatos entram nesse filtro.</strong>
+          <div className="preview-card">
+            <div className="preview-head">
+              <span className="preview-number">{preview.willMaterialize}</span>
+              <span>
+                {preview.willMaterialize === 1 ? "contato entra" : "contatos entram"} nesse
+                filtro
+              </span>
+            </div>
+
             {preview.truncated && (
-              <p className="warning">
-                A campanha vai levar {preview.willMaterialize} — o limite por campanha. Aperte a
-                janela para escolher melhor quem entra.
+              <p className="warning small">
+                O filtro encontrou {preview.total}, mas a campanha leva no máximo{" "}
+                {preview.willMaterialize}. Aperte a janela para escolher melhor quem entra.
               </p>
             )}
-            <ul className="small">
-              {preview.byReason.map((r) => (
-                <li key={r.reason ?? "none"}>
-                  {r.reason
-                    ? (LEAD_OUTCOME_REASON_LABELS[
-                        r.reason as keyof typeof LEAD_OUTCOME_REASON_LABELS
-                      ] ?? r.reason)
-                    : "Ainda sem classificação"}
-                  : {r.count}
-                </li>
-              ))}
-            </ul>
+
+            {preview.byStage.length > 0 && (
+              <ul className="preview-stages">
+                {preview.byStage.map((s) => (
+                  <li key={s.stage ?? "none"}>
+                    {s.stage
+                      ? (SILENCE_STAGE_LABELS[
+                          s.stage as keyof typeof SILENCE_STAGE_LABELS
+                        ] ?? s.stage)
+                      : "Ainda sem análise"}
+                    {" · "}
+                    {s.count}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

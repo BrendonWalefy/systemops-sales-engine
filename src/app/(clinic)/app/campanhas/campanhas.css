@@ -235,20 +235,27 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
-  padding: 18px;
+  padding: 20px;
   display: grid;
-  gap: 12px;
+  gap: 14px;
   margin: 0;
+  min-width: 0;
 }
 
+/* Legenda como título de seção, não como rótulo perdido na borda — é o que dá
+   hierarquia a um formulário longo. */
 .campanhas-page .field-group legend {
-  padding: 0 8px;
-  font-weight: 600;
+  padding: 0 10px;
+  margin-left: -4px;
+  font-weight: 650;
   font-size: 0.95rem;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .campanhas-page .field {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   font-size: 0.9rem;
 }
@@ -256,7 +263,9 @@
 .campanhas-page .field > span,
 .campanhas-page .field-label {
   color: var(--text-soft);
-  font-weight: 550;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
 }
 
 .campanhas-page .field input,
@@ -266,9 +275,17 @@
   border-radius: 10px;
   background: var(--surface-muted);
   color: var(--text);
-  padding: 9px 12px;
+  padding: 10px 12px;
   font: inherit;
+  font-size: 0.92rem;
   width: 100%;
+}
+
+/* Campo de número não precisa de 900px para caber "30". Largura proporcional
+   ao dado deixa o formulário legível em vez de uma pilha de caixas gigantes. */
+.campanhas-page .field input[type="number"],
+.campanhas-page .field input[type="date"] {
+  max-width: 180px;
 }
 
 .campanhas-page .field input:focus,
@@ -280,22 +297,111 @@
 
 .campanhas-page .field-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
 }
 
+/* ── Preview da audiência ──────────────────────────────────────────────── */
+
+/* Gruda no rodapé da janela: é o número que decide se a campanha faz sentido,
+   e a clínica precisa vê-lo mudar enquanto mexe nos filtros — não depois de
+   rolar até o fim do formulário. */
+.campanhas-page .preview-card {
+  position: sticky;
+  bottom: 12px;
+  z-index: 4;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--surface-raised), var(--surface));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.campanhas-page .preview-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.campanhas-page .preview-number {
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+}
+
+.campanhas-page .preview-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.campanhas-page .preview-stages li {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+}
+
+/* Lista de motivos: duas colunas em tela larga. Dez itens empilhados viravam
+   uma coluna interminável que empurrava tudo que importa para baixo da dobra. */
 .campanhas-page .checkbox-grid {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 8px;
 }
 
+/* O rótulo do grupo e a nota ocupam a linha inteira. */
+.campanhas-page .checkbox-grid > .field-label,
+.campanhas-page .checkbox-grid > p {
+  grid-column: 1 / -1;
+}
+
+/* globals.css define `label { display: flex; flex-direction: column }` para o
+   app inteiro. Sem reverter a direção aqui, o quadradinho fica EM CIMA do texto
+   e centralizado — foi o que apareceu na primeira versão da tela. */
 .campanhas-page .checkbox {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
   font-size: 0.88rem;
+  font-weight: 500;
   color: var(--text-soft);
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.campanhas-page .checkbox:hover {
+  border-color: var(--line-strong);
+}
+
+.campanhas-page .checkbox:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Na barra de revisão o checkbox é só o controle, sem moldura. */
+.campanhas-page .toolbar .checkbox,
+.campanhas-page .review-item > .checkbox {
+  padding: 0;
+  border: none;
+  background: none;
 }
 
 .campanhas-page .checkbox input {
@@ -303,6 +409,44 @@
   height: 16px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* Filtros que a maioria não usa ficam recolhidos — o formulário já é longo. */
+.campanhas-page .advanced {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 0 14px;
+}
+
+.campanhas-page .advanced[open] {
+  padding-bottom: 14px;
+}
+
+.campanhas-page .advanced summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  list-style: none;
+}
+
+.campanhas-page .advanced summary::before {
+  content: "▸ ";
+  color: var(--accent);
+}
+
+.campanhas-page .advanced[open] summary::before {
+  content: "▾ ";
+}
+
+.campanhas-page .advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.campanhas-page .advanced > *:not(summary) {
+  margin-top: 12px;
 }
 
 /* ── Revisão ───────────────────────────────────────────────────────────── */
