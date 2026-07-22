@@ -34,6 +34,24 @@ const AI_MODEL_PRICES: Record<string, AiModelPrice> = {
     inputUsdMicrosPerMillionTokens: 5_000_000,
     outputUsdMicrosPerMillionTokens: 30_000_000,
   },
+  // Modelos Anthropic (advisor-llm roteia "claude-*" para a Anthropic).
+  // Sem estas linhas, toda chamada Claude — setup study (ADR-002) e Motor de
+  // Reativação (ADR-009) — era estimada como custo zero.
+  // Preços de jul/2026, USD por milhão de tokens.
+  // claude-sonnet-5 está em preço introdutório ($2/$10) até 31/08/2026;
+  // registramos o preço cheio ($3/$15) para não subestimar a margem.
+  "claude-sonnet-5": {
+    inputUsdMicrosPerMillionTokens: 3_000_000,
+    outputUsdMicrosPerMillionTokens: 15_000_000,
+  },
+  "claude-opus-4-8": {
+    inputUsdMicrosPerMillionTokens: 5_000_000,
+    outputUsdMicrosPerMillionTokens: 25_000_000,
+  },
+  "claude-haiku-4-5": {
+    inputUsdMicrosPerMillionTokens: 1_000_000,
+    outputUsdMicrosPerMillionTokens: 5_000_000,
+  },
 };
 
 

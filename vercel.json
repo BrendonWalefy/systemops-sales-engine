@@ -54,6 +54,10 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/cron/lead-outcome-classifier",
+      "schedule": "30 6 * * *"
+    },
+    {
       "path": "/api/cron/appointment-reminder-staff",
       "schedule": "0 0 * * *"
     },

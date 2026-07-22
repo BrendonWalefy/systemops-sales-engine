@@ -8,7 +8,8 @@ export type AiUsageCost = {
     | "conversation_summary"
     | "follow_up_suggestion"
     | "manual_analysis"
-    | "playbook_analysis";
+    | "playbook_analysis"
+    | "lead_outcome_classification";
   inputTokens: number;
   outputTokens: number;
   estimatedCostUsdMicros: number;
