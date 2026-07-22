@@ -160,6 +160,7 @@ function makeApptRepo(overlap: Appointment[] = []) {
     async findByLeadId() { return null; },
     async findActiveByLeadId() { return null; },
     async findAllActiveByLeadId() { return overlap; },
+    async findPastByLeadId() { return []; },
     async findByPeriod() { return []; },
     async findDueReminders() { return []; },
     async findByCalendarEventId() { return null; },

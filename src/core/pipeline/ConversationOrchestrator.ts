@@ -43,8 +43,18 @@ import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery, extractQuantity } from "@/core/intelligence/quantity-price";
 import { extractReferencedPrice } from "@/core/intelligence/price-reference";
-import { detectAtypicalClinicalCase, detectCommercialPauseText, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
-import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
+import {
+  detectAtypicalClinicalCase,
+  detectCommercialPauseText,
+  detectExistingWorkProblem,
+  detectOldPriceObjection,
+  detectSelfDeclaredPastWork,
+} from "@/core/intelligence/objection-triage";
+import {
+  composeWarrantySection,
+  resolveActiveEditorialConfig,
+  type WarrantyPolicy,
+} from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
@@ -1639,28 +1649,81 @@ function isMaintenanceInquiryText(normalized: string): boolean {
 }
 
 // P0.2: Detectar pergunta de garantia (cobertura, procedimento recente, etc)
+//
+// Precisão importa mais aqui do que antes: este detector passou a decidir um trilho
+// que responde pela config em qualquer intent. Duas correções em relação à lista
+// original de palavras-chave:
+//   • "ainda está coberto" e "é grátis" nunca casavam — a comparação é feita contra
+//     texto normalizado (sem acento), e as chaves vinham acentuadas.
+//   • "cobre" era comparado como substring solta, então "cobrei" e "descobre" também
+//     entravam. Sozinho ele é ambíguo ("quanto vocês cobram") — agora só conta perto
+//     de algo que indique trabalho já realizado.
+const WARRANTY_TERM_RE = /\bgarantias?\b|\bcobertura\b|\bcaiu em garantia\b|\bprocedimento recente\b/;
+const WARRANTY_COVERAGE_RE =
+  /\b(cobre|coberto|coberta)\b[^.?!]{0,40}\b(procedimento|tratamento|lente|lentes|faceta|facetas|conserto|reparo|troca|refazer)\b/;
+const WARRANTY_COVERAGE_REVERSE_RE =
+  /\b(procedimento|tratamento|lente|lentes|faceta|facetas)\b[^.?!]{0,40}\b(cobre|coberto|coberta)\b/;
+
 function isWarrantyQuestion(normalized: string): boolean {
-  const warrantyKeywords = [
-    "garantia",
-    "cobre",
-    "cobertura",
-    "procedimento recente",
-    "ainda está coberto",
-    "caiu em garantia",
-    "é grátis",
-  ];
-  return warrantyKeywords.some((keyword) => normalized.includes(keyword));
+  return (
+    WARRANTY_TERM_RE.test(normalized) ||
+    WARRANTY_COVERAGE_RE.test(normalized) ||
+    WARRANTY_COVERAGE_REVERSE_RE.test(normalized)
+  );
 }
 
 // Palavras vazias que não distinguem uma objeção — ignoradas ao casar a mensagem
 // do lead contra os gatilhos cadastrados.
+//
+// Os verbos de pedido entraram depois de um falso positivo medido: "Posso ver os
+// horários de sexta?" casava com a objeção "Posso cancelar ou remarcar meu
+// horário?" pela palavra "posso" — 5 letras, logo "forte" pelo critério antigo.
+// Enquanto o matcher só rodava no handoff isso ficava contido; qualquer ampliação
+// do alcance espalharia a resposta errada.
 const OBJECTION_MATCH_STOPWORDS = new Set([
   "as", "os", "um", "uma", "uns", "tem", "têm", "ter", "de", "da", "do", "das",
   "dos", "que", "qual", "quais", "com", "sem", "por", "para", "pra", "voce",
   "voces", "vcs", "meu", "minha", "meus", "minhas", "esse", "essa", "esses",
   "essas", "isso", "aqui", "ainda", "muito", "sobre", "tipo", "como", "quanto",
   "quando", "onde", "ser", "sao", "mas", "nao", "sim", "ele", "ela", "eles",
+  // Verbos e pronomes de pedido: aparecem em qualquer pergunta de lead e não
+  // dizem nada sobre QUAL objeção é.
+  "posso", "podem", "poderia", "pode", "quero", "queria", "gostaria", "preciso",
+  "precisa", "consigo", "tenho", "estou", "fazer", "seria", "gostei", "sabia",
+  "dessa", "desse", "deste", "desta", "aquele", "aquela", "algum", "alguma",
+  "outro", "outra", "mesmo", "mesma", "tambem", "depois", "antes", "agora",
+  "entao", "assim", "vezes",
 ]);
+
+// Substantivos que aparecem em qualquer conversa de clínica e não distinguem
+// objeção nenhuma. Mesma ideia dos nomes de tratamento, que já eram descartados:
+// "Posso ver os horários de sexta?" não é a objeção "Posso cancelar ou remarcar meu
+// horário?" só porque as duas falam de horário. Ficam de fora de propósito palavras
+// que REALMENTE distinguem uma objeção quando a clínica a cadastra ("avaliação",
+// "sinal", "garantia", "manutenção").
+const OBJECTION_GENERIC_DOMAIN_TOKENS = new Set([
+  "horario", "agenda", "agendamento", "consulta", "valor", "preco", "atendimento",
+  "clinica", "dentista", "doutor", "doutora", "sorriso", "dente",
+]);
+
+// Plural simples do português. O lead escreve "Garantias" numa lista de dúvidas
+// (caso Adriano, Vitalli 10/07) e o gatilho cadastrado diz "garantia" — sem isso a
+// clínica tem a resposta cadastrada e o sistema conclui que não tem. Só para
+// tokens longos, onde cortar o "s" final não muda a palavra.
+function singularize(token: string): string {
+  return token.length >= 6 && token.endsWith("s") ? token.slice(0, -1) : token;
+}
+
+// Termos do catálogo que não distinguem objeção: nome E apelidos. Só o nome não
+// bastava — o anúncio da Vitalli ("Quero saber como posso transformar meu sorriso
+// com facetas de resina?") casava com a objeção "Como funciona a troca de facetas
+// antigas por novas?" pela palavra "facetas", que é alias e não nome. Eram 106 dos
+// 218 casamentos da clínica no corpus.
+export function treatmentTermsForObjectionMatch(
+  treatments: Pick<Treatment, "name" | "aliases">[],
+): string[] {
+  return treatments.flatMap((t) => [t.name, ...(t.aliases ?? [])]);
+}
 
 // Casa a mensagem do lead contra as objeções cadastradas pela clínica. Quando a
 // clínica cadastra uma objeção (ex.: "…tem garantia e como é a manutenção?") com
@@ -1677,12 +1740,12 @@ const OBJECTION_MATCH_STOPWORDS = new Set([
 export function matchRegisteredObjection(
   message: string,
   objections: { objection: string; response: string }[] | null | undefined,
-  treatmentNames: string[] = [],
+  treatmentTerms: string[] = [],
 ): { objection: string; response: string } | null {
   if (!objections?.length) return null;
   const msg = normalizeFreeText(message);
   if (!msg) return null;
-  const msgTokens = new Set(msg.split(" ").filter((t) => t.length >= 5));
+  const msgTokens = new Set(msg.split(" ").filter((t) => t.length >= 5).map(singularize));
   if (msgTokens.size === 0) return null;
 
   const valid = objections.filter((o) => o.objection?.trim() && o.response?.trim());
@@ -1690,16 +1753,18 @@ export function matchRegisteredObjection(
 
   // Tokens genéricos do nicho (nomes de tratamento) não distinguem objeção nenhuma.
   const genericTokens = new Set<string>();
-  for (const name of treatmentNames) {
+  for (const name of treatmentTerms) {
     for (const t of normalizeFreeText(name).split(" ")) {
-      if (t.length >= 5) genericTokens.add(t);
+      if (t.length >= 5) genericTokens.add(singularize(t));
     }
   }
 
   const trigTokens = valid.map((o) =>
     normalizeFreeText(o.objection)
       .split(" ")
-      .filter((t) => t.length >= 5 && !OBJECTION_MATCH_STOPWORDS.has(t) && !genericTokens.has(t)),
+      .filter((t) => t.length >= 5 && !OBJECTION_MATCH_STOPWORDS.has(t))
+      .map(singularize)
+      .filter((t) => !genericTokens.has(t) && !OBJECTION_GENERIC_DOMAIN_TOKENS.has(t)),
   );
   // Frequência de cada token entre os gatilhos — um token que aparece em 2+ objeções
   // não é distintivo (ex.: "tempo" em "quanto tempo dura" e "o procedimento demora").
@@ -1732,6 +1797,83 @@ function buildObjectionDirectiveContext(matched: { objection: string; response: 
     `"${matched.response}"`,
     `NÃO substitua essa resposta por um pedido de foto nem por "isso depende de avaliação presencial" — a clínica já definiu a resposta acima. Se o lead perguntou mais de uma coisa na mesma mensagem, responda também as outras partes com base nas orientações da clínica.`,
   ].join("\n");
+}
+
+// ── Garantia: a resposta é a que a clínica cadastrou ──
+// Bug medido: a objeção de garantia da Vitalli está cadastrada desde 07/07 22:04
+// ("2 anos caso a lente descole por completo; 30 dias contra pigmentação ou quebra
+// por descuido"). Em 18/07 a Giuliana perguntou "tempo de garantia" e recebeu uma
+// descrição das técnicas de lente — 11 dias depois de cadastrada. A causa: o
+// matcher de objeção só era consultado dentro de `effectiveIntent === "needs_human"`,
+// e pergunta de garantia é classificada `general_question` pela LLM. A objeção
+// existia apenas como dica solta no bloco "COMO LIDAR COM OBJEÇÕES" do prompt, e a
+// LLM passou por cima — o padrão que a casa já resolveu em outros pontos: o sistema
+// decide, a LLM verbaliza.
+//
+// Sem nada cadastrado, a IA NÃO inventa: em 06/07 a Tatiana perguntou o tempo de
+// garantia e ouviu "depende do tipo de procedimento… o ideal é passar por uma
+// avaliação" — política inventada + pivô comercial. Passa a dizer que confirma com
+// a equipe. A Ximendes cai nesse caminho hoje: 11 objeções cadastradas, nenhuma
+// sobre garantia.
+// A objeção continua valendo como FALLBACK: a Vitalli já tinha a política escrita
+// lá, e trocar a fonte não pode derrubar quem já estava configurado. Quando o campo
+// estruturado estiver preenchido, ele ganha — é ele que o painel mostra vazio para
+// quem ainda não preencheu.
+export type WarrantyAnswer =
+  | { kind: "registered"; source: "structured" | "objection"; clinicContext: string }
+  | { kind: "no_policy"; clinicContext: string };
+
+function buildWarrantyDirectiveContext(section: string): string {
+  return [
+    `O lead perguntou sobre GARANTIA. A clínica cadastrou esta política no sistema — ela é a fonte:`,
+    section,
+    `Responda com base nisso, no seu tom acolhedor. NÃO altere prazo nem cobertura e NÃO acrescente regra que não esteja acima.`,
+    `NÃO substitua por pedido de foto nem por "isso depende de avaliação presencial", e NÃO conduza para avaliação por causa da garantia.`,
+    `Se o lead estiver relatando um problema concreto com o trabalho dele, informe a política e diga que a equipe confirma o caso — quem decide cobertura é a equipe, não você.`,
+    `Se ele perguntou outras coisas na mesma mensagem, responda também essas partes com base nas orientações da clínica.`,
+  ].join("\n");
+}
+
+export function resolveWarrantyAnswer(params: {
+  message: string;
+  warrantyPolicy: WarrantyPolicy | null | undefined;
+  objections: { objection: string; response: string }[] | null | undefined;
+  treatmentTerms: string[];
+}): WarrantyAnswer | null {
+  if (!isWarrantyQuestion(normalizeFreeText(params.message))) return null;
+
+  const structured = composeWarrantySection(params.warrantyPolicy);
+  if (structured) {
+    return {
+      kind: "registered",
+      source: "structured",
+      clinicContext: buildWarrantyDirectiveContext(structured),
+    };
+  }
+
+  const registered = matchRegisteredObjection(
+    params.message,
+    params.objections,
+    params.treatmentTerms,
+  );
+  if (registered) {
+    return {
+      kind: "registered",
+      source: "objection",
+      clinicContext: buildObjectionDirectiveContext(registered),
+    };
+  }
+
+  return {
+    kind: "no_policy",
+    clinicContext: [
+      `O lead perguntou sobre GARANTIA e a clínica NÃO tem política de garantia cadastrada neste sistema.`,
+      `NÃO invente prazo, cobertura nem condição. Especificamente: não diga "depende do procedimento", não diga "varia conforme o caso" e não descreva regra nenhuma de garantia — isso é inventar com outras palavras.`,
+      `Diga de forma curta e acolhedora que você vai confirmar essa informação com a equipe e já retorna. A equipe já foi avisada em paralelo.`,
+      `NÃO peça foto, NÃO ofereça horários, NÃO cote preço de manutenção e NÃO conduza para avaliação por causa da garantia.`,
+      `Se o lead perguntou OUTRAS coisas na mesma mensagem (valores, formas de pagamento, material, técnica), responda essas partes normalmente com base nas orientações da clínica — só a parte da garantia fica pendente da equipe. Seja breve.`,
+    ].join("\n"),
+  };
 }
 
 // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
@@ -2563,6 +2705,66 @@ function formatBrl(cents: number): string {
     maximumFractionDigits: isRound ? 0 : 2,
   })}`;
 }
+
+// "23/06" — data de uma consulta passada. Ano só quando não é o ano corrente:
+// "esteve com a gente em 23/06" lê melhor do que "em 23/06/2026".
+function formatVisitDate(timezone: ClinicTimezone, date: Date): string {
+  const parts = timezone.toLocalParts(date);
+  const today = timezone.toLocalParts(new Date());
+  const day = String(parts.day).padStart(2, "0");
+  const month = String(parts.month + 1).padStart(2, "0");
+  return parts.year === today.year ? `${day}/${month}` : `${day}/${month}/${parts.year}`;
+}
+
+// #21 — decide se o trilho de relato de dano assume a resposta. Separado do
+// detector porque a decisão não é sobre o texto: é sobre o que o sistema sabe do
+// lead. Regras, em ordem de risco:
+//   • alvo "work" (a lente/faceta/coroa quebrou) sempre assume, com ou sem
+//     vínculo — só cede a um pipeline em curso quando não há vínculo nenhum.
+//   • alvo "tooth" ("meu dente quebrou") é ambíguo: sem vínculo é dente natural
+//     comprometido (caso clínico novo, tratado pela triagem atípica). Com vínculo
+//     é relato de dano — exceto quando vem dentro de uma pergunta de preço, que é
+//     alguém pedindo orçamento e mencionando um dente lascado de passagem
+//     (Ana Paula, Vitalli 18/07): sequestrar isso mata uma venda legítima.
+export function shouldEngageDamageRail(params: {
+  target: "work" | "tooth";
+  relationship: "known_patient" | "self_declared" | "unknown";
+  askedPrice: boolean;
+  hasActivePipeline: boolean;
+}): boolean {
+  const hasBond = params.relationship !== "unknown";
+  if (params.target === "tooth") return hasBond && !params.askedPrice;
+  return hasBond || !params.hasActivePipeline;
+}
+
+// O preço da manutenção sai RESOLVIDO do catálogo para a resposta de handoff.
+// Antes, o template mandava a LLM "informar o valor conforme configurado" e ela
+// inventava: Ximendes, 16/07 — "manutenção sai a partir de R$ 100", quando o
+// catálogo diz R$500 (manutenção) e R$200 (conserto); R$100 é o da Avaliação.
+// Só devolve os serviços que o lead citou, e só se a clínica autorizou cotar.
+export function resolveMaintenancePriceLabel(
+  message: string,
+  treatments: Treatment[],
+): string | null {
+  const tokens = new Set(normalizeFreeText(message).split(/\s+/).filter(Boolean));
+  const labels: string[] = [];
+  for (const treatment of treatments) {
+    if (!treatment.priceQuotableInChat) continue;
+    const priceCents = treatment.priceCents ?? treatment.minPriceCents;
+    if (!priceCents) continue;
+    const matchesAskedService = [treatment.name, ...(treatment.aliases ?? [])].some((term) =>
+      normalizeFreeText(term)
+        .split(/\s+/)
+        .some((word) => MAINTENANCE_SERVICE_KEYWORDS.includes(word) && tokens.has(word)),
+    );
+    if (!matchesAskedService) continue;
+    const prefix = treatment.priceKind === "from" ? "a partir de " : "";
+    const unit = treatment.priceUnit ? ` (${treatment.priceUnit})` : "";
+    labels.push(`${treatment.name}: ${prefix}${formatBrl(priceCents)}${unit}`);
+  }
+  return labels.length > 0 ? labels.join(" | ") : null;
+}
+
 export function mergeDeliveryMediaLibrary(
   editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
   directlyReferencedAssets: DeliveryMediaLibraryItem[],
@@ -4908,29 +5110,108 @@ export class ConversationOrchestrator {
     const oldPriceObjectionDetected =
       isPriceShapedIntent && !atypicalTriageContext && detectOldPriceObjection(messageText);
 
-    // P0.2: Detectar pergunta de garantia (cobertura de procedimento recente)
+    // P0.2: Detectar pergunta de manutenção (garantia tem trilho próprio, abaixo)
     if (effectiveIntent === "needs_human" && !maintenanceHandoffReason) {
       const normalized = normalizeFreeText(messageText);
-      const isWarranty = isWarrantyQuestion(normalized);
-      const isMaintenance = isMaintenanceInquiryText(normalized);
-      if (isWarranty || isMaintenance) {
-        // Bug garantia jul/2026: a clínica pode ter cadastrado uma objeção que JÁ
-        // responde essa dúvida (ex.: "as lentes têm garantia?"). Nesse caso ela
-        // decidiu que a IA responde — pausar e mandar "manda foto" ignora a config.
-        // Honra a objeção cadastrada; só cai no handoff quando não há resposta pronta.
+      if (isMaintenanceInquiryText(normalized)) {
+        // A clínica pode ter cadastrado uma objeção que JÁ responde essa dúvida
+        // (ex.: "como é a manutenção?"). Nesse caso ela decidiu que a IA responde —
+        // pausar e mandar "manda foto" ignora a config. Honra a objeção cadastrada;
+        // só cai no handoff quando não há resposta pronta.
         const matchedObjection = matchRegisteredObjection(
           messageText,
           editorial?.objections,
-          clinicTreatments.map((t) => t.name),
+          treatmentTermsForObjectionMatch(clinicTreatments),
         );
         if (matchedObjection) {
           objectionDirectiveContext = buildObjectionDirectiveContext(matchedObjection);
-        } else if (isWarranty) {
-          maintenanceHandoffReason = "Pergunta sobre cobertura de garantia — avaliar conforme política";
         } else {
           maintenanceHandoffReason = "Pergunta sobre manutenção/reparo — requer avaliação com foto";
         }
       }
+    }
+
+    // ── #21: relato de dano em trabalho existente ──
+    // "Um dos dentes quebrou" tem três desfechos comerciais opostos — garantia
+    // (trabalho nosso, recente), manutenção paga (trabalho nosso, fora da garantia)
+    // ou venda nova (trabalho de outra clínica) — e a IA não pode escolher sozinha.
+    // O que ela nunca pode fazer é o que fez com a Carla em 16/07: responder um
+    // relato de dano com lista de horários. O trilho roda sobre QUALQUER intent,
+    // fora do alcance da LLM, porque é justamente o rótulo dela que falha aqui
+    // (reject_slots, general_question, book_appointment nos casos medidos).
+    // Não roda quando a clínica cadastrou uma objeção que já responde a dúvida:
+    // config da clínica tem precedência sobre trilho nosso.
+    let existingWorkProblem: {
+      damageLabel: string;
+      relationship: "known_patient" | "self_declared" | "unknown";
+      lastVisitLabel: string | null;
+      lastVisitTreatment: string | null;
+      askedPrice: boolean;
+    } | null = null;
+    if (!objectionDirectiveContext) {
+      const damage = detectExistingWorkProblem(messageText);
+      if (damage) {
+        const pastVisits = await this.appointmentRepo.findPastByLeadId(lead.id);
+        const relationship = pastVisits.length > 0
+          ? "known_patient"
+          : detectSelfDeclaredPastWork(messageText)
+            ? "self_declared"
+            : "unknown";
+        const askedPrice = isPriceRequestText(normalizeFreeText(messageText));
+        if (
+          shouldEngageDamageRail({
+            target: damage.target,
+            relationship,
+            askedPrice,
+            hasActivePipeline: pipelineState !== null,
+          })
+        ) {
+          const lastVisit = pastVisits[0] ?? null;
+          const lastVisitTreatment = lastVisit?.treatmentId
+            ? clinicTreatments.find((t) => t.id === lastVisit.treatmentId)?.name ?? null
+            : null;
+          const lastVisitLabel = lastVisit ? formatVisitDate(timezone, lastVisit.startsAt) : null;
+          existingWorkProblem = {
+            damageLabel: damage.label,
+            relationship,
+            lastVisitLabel,
+            lastVisitTreatment,
+            askedPrice,
+          };
+          effectiveIntent = "needs_human";
+          maintenanceHandoffReason =
+            relationship === "known_patient"
+              ? `Relato de dano (${damage.label}) — paciente com consulta em ${lastVisitLabel}` +
+                `${lastVisitTreatment ? ` (${lastVisitTreatment})` : ""}. Verificar garantia.`
+              : relationship === "self_declared"
+                ? `Relato de dano (${damage.label}) — lead diz que o trabalho foi feito aqui. Verificar garantia.`
+                : `Relato de dano (${damage.label}) — origem do trabalho não confirmada`;
+          // O trilho substitui a triagem de caso atípico: mesma mensagem, leitura
+          // mais específica (não é dente natural comprometido, é trabalho quebrado).
+          atypicalTriageContext = null;
+        }
+      }
+    }
+
+    // ── Garantia: segue o que a clínica cadastrou, em qualquer intent ──
+    // Roda depois do trilho de dano de propósito. "Minha lente descolou, tem
+    // garantia?" é decisão sobre um caso concreto, e essa é do operador — foi o que
+    // ele fez em produção ("Cobre o descolamento por completo da lente", 07/07).
+    // Aqui é a pergunta sobre a POLÍTICA, que a clínica já respondeu no cadastro.
+    const warrantyAnswer = existingWorkProblem
+      ? null
+      : resolveWarrantyAnswer({
+          message: messageText,
+          warrantyPolicy: editorial?.warrantyPolicy,
+          objections: editorial?.objections,
+          treatmentTerms: treatmentTermsForObjectionMatch(clinicTreatments),
+        });
+    if (warrantyAnswer) {
+      // general_question porque a resposta é informativa e sai da config. O
+      // contexto é consumido no topo daquele ramo, antes de qualquer resolução de
+      // tratamento — a Vitalli cadastrou "garantia" como alias de "Manutenção
+      // Preventiva de lentes" (R$400), e sem isso a pergunta viraria cotação.
+      effectiveIntent = "general_question";
     }
 
     // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
@@ -5971,11 +6252,24 @@ export class ConversationOrchestrator {
           maintenanceHandoffReason ??
           classification.handoffReason ??
           "Lead solicitou atendimento humano";
-        replyText = await compose({ type: "handoff_requested", handoffReason: reason });
+        // #21: relato de dano tem resposta própria e pausa própria. Quando o
+        // sistema já sabe que é paciente da casa, quem decide garantia é o
+        // operador — pausa. Quando não sabe, a resposta PERGUNTA a origem do
+        // trabalho, e pausar deixaria a IA surda à resposta que ela mesma pediu.
+        if (existingWorkProblem) {
+          replyText = await compose({ type: "existing_work_problem", ...existingWorkProblem });
+        } else {
+          replyText = await compose({
+            type: "handoff_requested",
+            handoffReason: reason,
+            maintenancePriceLabel: resolveMaintenancePriceLabel(messageText, clinicTreatments),
+          });
+        }
+        const pauseAi = !existingWorkProblem || existingWorkProblem.relationship !== "unknown";
         await db
           .update(conversationsTable)
           .set({
-            aiPaused: true,
+            aiPaused: pauseAi,
             takeoverExpiresAt: null, // pausa permanente — operador decide quando retomar
             needsAttention: true,
             attentionReason: reason,
@@ -6391,6 +6685,26 @@ export class ConversationOrchestrator {
           });
           break;
         }
+
+        // Garantia tem precedência sobre todo o resto do ramo: catálogo, vitrine,
+        // preço e resolução de tratamento por alias. A resposta já está decidida —
+        // é a da clínica, ou o aviso de que a equipe vai confirmar.
+        if (warrantyAnswer) {
+          if (warrantyAnswer.kind === "no_policy") {
+            const attentionReason = "Pergunta sobre garantia sem política cadastrada — confirmar com a equipe";
+            await db
+              .update(conversationsTable)
+              .set({ needsAttention: true, attentionReason, updatedAt: new Date() })
+              .where(eq(conversationsTable.id, conversation.id));
+            await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, attentionReason);
+          }
+          replyText = await compose({
+            type: "general_question",
+            clinicContext: warrantyAnswer.clinicContext,
+          });
+          break;
+        }
+
         let clinicContext: string;
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);

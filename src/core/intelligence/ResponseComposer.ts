@@ -122,7 +122,16 @@ export type ActionResult =
   | { type: "appointments_listed"; appointments: FormattedAppointment[] }
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
-  | { type: "handoff_requested"; handoffReason?: string | null }
+  | {
+      type: "existing_work_problem";
+      damageLabel: string;
+      /** Como o sistema sabe (ou não) que o trabalho é da casa. */
+      relationship: "known_patient" | "self_declared" | "unknown";
+      lastVisitLabel?: string | null;
+      lastVisitTreatment?: string | null;
+      askedPrice?: boolean;
+    }
+  | { type: "handoff_requested"; handoffReason?: string | null; maintenancePriceLabel?: string | null }
   | { type: "commercial_pause" }
   | { type: "quantity_price_confirmation_required"; quantity: number; scope: "total" | "superior" | "inferior" }
   | { type: "clinical_evaluation_required"; reason: string }
@@ -674,6 +683,48 @@ Informe gentilmente e ofereça agendar uma avaliação.`;
       return `AÇÃO EXECUTADA: Detectada urgência clínica.
 Demonstre empatia, informe que irá acionar a equipe imediatamente e diga que alguém entrará em contato. Não minimize a situação.`;
 
+    // #21 — o lead relatou que um trabalho quebrou/caiu. Nunca é hora de vender:
+    // pode ser garantia (trabalho nosso), manutenção paga (trabalho nosso fora da
+    // garantia) ou caso novo (trabalho de outra clínica). Quem decide qual é são o
+    // operador e a foto — não a IA, e nunca uma lista de horários.
+    case "existing_work_problem": {
+      const priceRule = result.askedPrice
+        ? `O LEAD PERGUNTOU PREÇO: NÃO informe nenhum valor, nem "a partir de", nem faixa. Diga que passa o valor certo depois que a equipe olhar a foto — cobrar por algo que pode estar coberto pela garantia é pior do que demorar um pouco.`
+        : `NÃO informe valores de manutenção, reparo ou do tratamento.`;
+      const common = `REGRAS ABSOLUTAS: NÃO ofereça horários, NÃO sugira agendar avaliação, NÃO envie vídeos ou fotos da clínica, NÃO diagnostique e NÃO prometa solução. ${priceRule} Máximo 3 frases.`;
+
+      if (result.relationship === "known_patient") {
+        const visit = [result.lastVisitLabel, result.lastVisitTreatment]
+          .filter(Boolean)
+          .join(" — ");
+        return `AÇÃO EXECUTADA: Paciente da casa relatou um problema com o trabalho (${result.damageLabel}). O sistema confirmou no histórico: ${visit || "consulta anterior registrada"}.
+INSTRUÇÕES:
+1. ACOLHER de verdade — é frustrante, e a pessoa já é paciente daqui. Nada de tom comercial.
+2. RECONHECER O HISTÓRICO citando a data da consulta (${result.lastVisitLabel ?? "a consulta anterior"}). Fale que ela ESTEVE com a gente nessa data — NÃO afirme que o trabalho danificado foi feito por nós, isso quem confirma é a equipe.
+3. PEDIR UMA FOTO do detalhe, para a equipe avaliar.
+4. DIZER que já avisou a equipe e que ela retorna com o que dá para fazer. NÃO afirme nem negue garantia — quem decide isso é a equipe.
+${common}`;
+      }
+
+      if (result.relationship === "self_declared") {
+        return `AÇÃO EXECUTADA: O lead disse que o trabalho foi feito nesta clínica e relatou um problema (${result.damageLabel}). Não há registro dessa consulta no sistema — o cadastro só cobre o período recente, então a fala dele é a fonte.
+INSTRUÇÕES:
+1. ACOLHER com empatia, tratando como paciente da casa. NÃO peça comprovação nem duvide do relato.
+2. NÃO invente data nem tratamento: você não tem o registro. Não diga "vi aqui no seu histórico".
+3. PEDIR UMA FOTO do detalhe e, se ele ainda não disse, perguntar de quando foi o procedimento.
+4. DIZER que já avisou a equipe e que ela retorna. NÃO afirme nem negue garantia.
+${common}`;
+      }
+
+      return `AÇÃO EXECUTADA: O lead relatou um problema com um trabalho odontológico (${result.damageLabel}), e o sistema NÃO sabe se esse trabalho foi feito aqui.
+POR QUE ISSO IMPORTA: se foi feito aqui, pode ser garantia e quem decide é a equipe. Se foi feito em outro lugar, é um caso novo. A resposta muda por completo, então a pergunta precisa ser feita agora.
+INSTRUÇÕES:
+1. ACOLHER o relato com empatia — comece por aí, nunca pela pergunta.
+2. PERGUNTAR de forma leve e direta se esse trabalho foi feito aqui na clínica ou em outro lugar.
+3. PEDIR UMA FOTO do detalhe para a equipe conseguir avaliar.
+${common}`;
+    }
+
     case "quantity_price_confirmation_required": {
       const scopeLabel = result.scope === "superior"
         ? "dentes superiores"
@@ -697,14 +748,20 @@ Responda com uma única mensagem breve, acolhedora e sem pressão. NÃO informe 
       const handoffType = detectHandoffType(result.handoffReason);
 
       if (handoffType === "maintenance") {
+        // O preço vem RESOLVIDO do catálogo (ou não vem). Mandar a LLM "informar o
+        // valor conforme configurado" fazia ela inventar: Ximendes, 16/07 — "manutenção
+        // sai a partir de R$ 100" quando o catálogo diz R$500 (manutenção) e R$200
+        // (conserto). R$100 é o preço da Avaliação. O sistema decide, a LLM verbaliza.
+        const priceRule = result.maintenancePriceLabel
+          ? `3. PREÇO (valor exato, já resolvido pelo sistema): ${result.maintenancePriceLabel}. Use ESTE texto — não arredonde, não converta e não busque outro valor no histórico ou na política.`
+          : `3. PREÇO: a clínica NÃO tem valor de manutenção cadastrado. NÃO informe nenhum número, nem "a partir de", nem estimativa — diga que a equipe confirma o valor depois de ver a foto.`;
         return `AÇÃO EXECUTADA: Pergunta sobre manutenção/reparo requer avaliação técnica com foto.
 INSTRUÇÕES ESPECÍFICAS:
 1. ACOLHER: comece reconhecendo que precisa avaliar o caso visualmente
 2. PEDIR FOTO/VÍDEO: solicite de forma educada uma foto ou vídeo do detalhe
-3. MENCIONAR PREÇO: informe o valor "a partir de R$" conforme configurado para o serviço de manutenção
+${priceRule}
 4. TRANQUILIZAR: avise que a equipe foi notificada e irá avaliar
 REGRA CRÍTICA: NÃO faça diagnóstico ou prometa valor exato antes da foto. Seu papel é coletar informações.
-PADRÃO DE RESPOSTA: "Para avaliar melhor, você poderia enviar uma foto/vídeo mostrando o detalhe? Manutenção normalmente sai a partir de R$ [valor]. Já aviso a equipe para analisar seu caso!"
 MÁXIMO 2 FRASES.`;
       }
 

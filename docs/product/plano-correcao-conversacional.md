@@ -49,7 +49,7 @@ Prioridade = impacto no funil ÷ risco. **P0** = fazer primeiro.
 | **P1** | 18 | Sábado respondido pela config, não pela agenda real | Mesma pergunta, respostas opostas com 1 dia de diferença (ver abaixo) | ✅ **Feito:** o ramo institucional passou a consultar a agenda real do sábado e ofertar os horários, reusando `fetchAndOfferSlots`. **Causa real era gramatical**, não arquitetural. | baixo | 🟢 |
 | **P1** | 19 | `parseBusinessHours` só sabe decidir o sábado | NC Beauty cadastra "Terça a sexta" e o parser devolve `[1..6]`; domingo nunca é representável | Segunda a sexta é **assumido**, não lido. O sistema oferta segunda-feira para quem não abre segunda. Ler os dias do texto (ou trocar o campo por dias estruturados no painel). | médio | 🟡 |
 | **P0** | 20 | Pós-procedimento nunca disparou — nenhuma mídia, nenhum feedback | **0** mensagens `postcare:` enviadas desde sempre; 3 bloqueios empilhados | Destravar na ordem: (a) `treatment_id` nulo em 19 de 20 consultas encerradas, (b) nenhuma consulta chega a `completed`, (c) `operationalStatus=paused` bloqueia todo outbound. | médio | 🟡 |
-| **P1** | 21 | Problema relatado pelo paciente vira oferta de venda | *"Um dos dentes quebrou"* → lista de horários; *"meu dente quebrou e queria saber como faço"* → "é importante realizar uma avaliação" | O guard de manutenção só roda sobre `greeting/acknowledgment/unclear`; na prática a LLM classifica como `general_question`, `book_appointment`, `reject_slots`. Ampliar o alcance **e** criar sinal de paciente já atendido. | médio | 🟡 |
+| **P1** | 21 | Problema relatado pelo paciente vira oferta de venda | *"Um dos dentes quebrou"* → lista de horários; *"meu dente quebrou e queria saber como faço"* → "é importante realizar uma avaliação" | ✅ **Feito:** trilho determinístico de relato de dano rodando sobre **qualquer** intent, com sinal de paciente recorrente (`findPastByLeadId`) e autodeclaração. Três ramos: paciente da casa → escala com data e tratamento da consulta; origem desconhecida → pergunta se o trabalho foi feito aqui; nunca cota, nunca oferta agenda. | médio | 🟡 |
 | **P2** | 22 | Confirmação de agendamento não segue o template do operador | Comparado ao print enviado pelo Victor (21/07) | Conteúdo **já está configurado** (`depositConfirmationNotes`). Falta estrutura (Data/Horário em linhas rotuladas), campo de **complemento do endereço** (prédio/sala/andar) e unificar com o caminho sem sinal, hoje texto livre da LLM. | baixo | 🟢 |
 | **P2** | 23 | Endereço vai como texto puro, sem link do Maps | `📍 Estamos na {address}.` — sem URL, sem pré-visualização | O operador manda link do Google Maps, que o WhatsApp renderiza com foto do prédio. Adicionar campo de URL do mapa e usá-lo nas respostas de endereço e na confirmação. | baixo | 🟢 |
 | **P4** | 17 | Latência de 0–120s por dois saltos de cron | mediana 44s (Vitalli) / 15s (Ximendes); outlier de 539s | ⚠️ **Repriorizar:** a medição do #2 mostrou que o lag de registro (mediana 50s) é a causa raiz de 2/3 das aberturas indevidas. Não é só velocidade. | alto | 🔴 |
@@ -288,6 +288,64 @@ O problema é a rota depender da classificação da LLM.
 **A segunda metade do pedido — "resgate de contexto" — não existe.** Não há nenhum sinal de paciente
 já atendido em lugar nenhum do pipeline: nem `isReturningPatient`, nem histórico de consultas no
 contexto do composer. Quem já fez lentes é tratado como lead novo de vendas. Conecta com o #9.
+
+#### O caso Carla inteiro (Ximendes, 16/07) — o dado estava no banco
+
+| Quando | O quê |
+|---|---|
+| 23/06 12:00 | Consulta `completed`, **Lentes de resina composta estratificada**, com `treatment_id` |
+| 23/06 18:01 | Dr. Gregorie, à mão: *"Escova curaprox. Primeira manutenção com 3 meses, as demais 6 meses"* |
+| 16/07 21:20 | Lead: *"Pode ser na segunda?"* + *"Um dos dentes quebrou"* — **4 segundos de intervalo** |
+| 16/07 21:22 | IA (`reject_slots`): 5 horários de segunda |
+| 16/07 21:23 | IA (`clinical_urgency`): *"vou acionar a equipe"* — resposta **separada**, 1 min depois |
+| 16/07 21:24 | Lead responde "5" → IA agenda 20/07 14h |
+| 16/07 21:44 | Operador desdiz: *"só vou ter horário amanhã ou dia 24"* |
+
+Três falhas empilhadas — rajada partida (#15), relato virando venda (#21) e agenda ofertada que o
+doutor não tinha. A que importa aqui: **o sistema tinha o histórico e não olhou**.
+
+#### Medição das duas clínicas (5.606 mensagens de lead)
+
+| | |
+|---|---|
+| Relatos de problema com trabalho existente | **22** (~19 reais; 3 eram pergunta sobre desgaste do procedimento) |
+| Com consulta anterior registrada no sistema | **1** — a Carla |
+| Leads com pelo menos uma consulta passada | 50 de 1.109 (4,5%) |
+
+Daí a regra de desenho: **histórico é sinal positivo forte e sinal negativo nulo.** A Ximendes entrou
+em 27/05 e a Vitalli em 09/07 — quem fez lentes há 9 meses não existe como consulta. Caso Mô (Vitalli,
+14/07): *"troquei minhas lentes de resina com vcs lá na av Sabará tem aproximadamente 9 meses […] a
+maioria das lentes estão quebrando"* — zero histórico, garantia pura, **autodeclarada no texto**. A IA
+nunca pode dizer "não encontrei você aqui".
+
+#### O trilho entregue
+
+Três portas de entrada, uma para cada desfecho comercial:
+
+| Porta | Como o sistema sabe | Resposta |
+|---|---|---|
+| Paciente da casa | consulta passada no banco (`findPastByLeadId`: `startsAt < agora`, não cancelada) | Acolhe citando a data da visita, pede foto, escala com *"consulta em 23/06 (Lentes estratificada) — verificar garantia"* |
+| Autodeclarado | *"fiz com vocês"*, *"troquei com vcs"*, *"sou paciente"* | Igual, sem afirmar data ou tratamento que não temos |
+| Origem desconhecida | nenhum dos dois | **Pergunta** se o trabalho foi feito aqui + pede foto. Não pausa a IA — pausar deixaria ela surda à resposta que ela mesma pediu |
+
+Vale para as três: **nunca oferta horário, nunca cota, nunca envia mídia**. E a IA nunca afirma nem
+nega garantia — não existe campo de garantia no cadastro, e a decisão é do dono da clínica.
+
+Alcance medido no corpus: **8 mensagens em 5.606** (0,14%). Duas travas evitam sequestrar venda:
+proximidade máxima de 40 caracteres entre o dano e o substantivo, e o substantivo **mais próximo**
+vence — sem isso, *"só quero fazer as lentes, mas terei que remover 2 dentes quebrados"* (ST, 19/07) e
+*"restaurações nesses dentes, alem de um quebrado […] as lentes resolvem isso?"* (Marta, 21/07) viravam
+triagem de dano.
+
+#### Achado paralelo: o preço da manutenção era da LLM
+
+Eduardo (Ximendes, 16/07) — *"Manutenção e uma lente quebrada"* → IA: *"a manutenção normalmente sai
+**a partir de R$ 100**"*. O catálogo da Ximendes diz **R$500** (Manutenção periódicas lentes) e
+**R$200** (Conserto lentes); **R$100 é o preço da Avaliação**. O template de handoff mandava a LLM
+*"informar o valor conforme configurado"* — preço na mão do modelo, contra a regra da casa. Agora o
+valor sai resolvido do catálogo (`resolveMaintenancePriceLabel`) e, quando não existe cadastro, a
+instrução é proibir qualquer número. A Vitalli tem os dois serviços cadastrados (Manutenção Preventiva
+R$400, Substituição de lente R$200) — exatamente os valores que o operador respondeu à Amanda em 08/07.
 
 ### #22 — Template de confirmação
 

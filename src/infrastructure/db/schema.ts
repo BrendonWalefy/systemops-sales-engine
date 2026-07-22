@@ -1185,6 +1185,18 @@ export const playbookVersions = pgTable(
       .$type<{ objection: string; response: string }[]>()
       .notNull()
       .default([]),
+    // Política de garantia estruturada. Antes vivia (quando vivia) dentro do texto
+    // livre de uma objeção — a Vitalli tinha, a Ximendes não, e ninguém percebeu a
+    // falta porque não existia campo para ficar vazio. `null` = não cadastrado (a IA
+    // diz que confirma com a equipe); `offersWarranty: false` = a clínica decidiu que
+    // não dá garantia, o que também é uma resposta que ela autorizou.
+    // Faixas porque a política real tem mais de um prazo: a Vitalli dá 2 anos para
+    // descolamento e 30 dias para pigmentação/quebra por descuido.
+    warrantyPolicy: jsonb("warranty_policy").$type<{
+      offersWarranty: boolean;
+      tiers: { periodMonths: number; covers: string }[];
+      conditions: string | null;
+    }>(),
     // DEPRECATED (biblioteca de mídia): substituída por media_assets +
     // mediaAssetIds abaixo. Mantida só como fallback de leitura até a Fase 4
     // (contração) da migração — não escrever mais aqui.

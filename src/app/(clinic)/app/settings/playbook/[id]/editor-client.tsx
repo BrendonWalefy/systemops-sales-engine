@@ -29,6 +29,11 @@ type Objection = { objection: string; response: string };
 type LibraryAsset = { id: string; title: string; type: "video" | "image" | "document" };
 type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
 
+type WarrantyTier = { periodMonths: number; covers: string };
+// null = nunca preenchido (a IA diz que confirma com a equipe).
+// offersWarranty: false = a clínica decidiu que não dá garantia — também é resposta.
+type WarrantyPolicy = { offersWarranty: boolean; tiers: WarrantyTier[]; conditions: string | null };
+
 type EditorData = {
   specialty: string;
   toneOfVoice: string;
@@ -36,6 +41,7 @@ type EditorData = {
   differentials: string[];
   commercialPolicy: string;
   objections: Objection[];
+  warrantyPolicy: WarrantyPolicy | null;
   notes: string;
   // Seleção de mídias da biblioteca clinic-level (gerenciada em
   // /app/settings/biblioteca) que a IA pode enviar a partir deste playbook.
@@ -69,7 +75,8 @@ function completude(data: EditorData): number {
   if (data.differentials.filter((d) => d.trim()).length > 0) filled++;
   if (data.commercialPolicy.trim()) filled++;
   if (data.objections.filter((o) => o.objection.trim()).length > 0) filled++;
-  return Math.round((filled / 7) * 100);
+  if (data.warrantyPolicy) filled++;
+  return Math.round((filled / 8) * 100);
 }
 
 type ObjectionFilter = "all" | "pending";
@@ -98,6 +105,13 @@ function toPlaybookVersionPayload(data: EditorData): PlaybookVersionPayload {
     differentials: data.differentials.filter((d) => d.trim()),
     commercialPolicy: data.commercialPolicy || null,
     objections: data.objections.filter((o) => o.objection.trim()),
+    warrantyPolicy: data.warrantyPolicy
+      ? {
+          offersWarranty: data.warrantyPolicy.offersWarranty,
+          tiers: data.warrantyPolicy.tiers.filter((t) => t.covers.trim() && t.periodMonths > 0),
+          conditions: data.warrantyPolicy.conditions?.trim() || null,
+        }
+      : null,
     notes: data.notes || null,
     mediaAssetIds: data.mediaAssetIds,
   };
@@ -138,6 +152,7 @@ function SimulatorPanel({ data, greetingMessage }: { data: EditorData; greetingM
             differentials: data.differentials.filter((d) => d.trim()),
             commercialPolicy: data.commercialPolicy,
             objections: data.objections.filter((o) => o.objection.trim()),
+            warrantyPolicy: data.warrantyPolicy,
             greetingMessage,
             notes: data.notes || null,
           },
@@ -999,6 +1014,16 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
                     ]}
                   />
                 </FieldGroup>
+
+                <FieldGroup
+                  label="Garantia"
+                  hint="Por que importa: enquanto isto fica vazio, a IA responde toda pergunta de garantia com “vou confirmar com a equipe” — ela nunca inventa prazo. Preenchido, ela responde exatamente o que está aqui."
+                >
+                  <WarrantyEditor
+                    value={data.warrantyPolicy}
+                    onChange={(warrantyPolicy) => updateVersion({ warrantyPolicy })}
+                  />
+                </FieldGroup>
               </EditorSection>
 
               <EditorSection step="3" title="Objeções e respostas" description="Cada objeção fica em uma linha; abra somente a resposta que estiver editando.">
@@ -1242,6 +1267,109 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+// Garantia estruturada. Três estados de propósito: não cadastrado (null), cadastrado
+// com faixas, e "não trabalhamos com garantia". O terceiro é uma resposta legítima e
+// precisa ser distinguível do primeiro — enquanto for null a IA não afirma nada.
+function WarrantyEditor({
+  value,
+  onChange,
+}: {
+  value: WarrantyPolicy | null;
+  onChange: (next: WarrantyPolicy | null) => void;
+}) {
+  if (value === null) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", fontSize: "12px", color: "#fbbf24", lineHeight: 1.5 }}>
+          Não cadastrado. Quem perguntar sobre garantia recebe “vou confirmar com a equipe”, e a conversa é marcada para alguém responder.
+        </div>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => onChange({ offersWarranty: true, tiers: [{ periodMonths: 12, covers: "" }], conditions: null })}
+            style={addBtnStyle}
+          >
+            <Plus size={13} /> Cadastrar garantia
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange({ offersWarranty: false, tiers: [], conditions: null })}
+            style={addBtnStyle}
+          >
+            Não trabalhamos com garantia
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!value.offersWarranty) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "10px 12px", borderRadius: "8px", background: "rgba(63,63,70,0.35)", border: "1px solid #3f3f46" }}>
+        <span style={{ fontSize: "12px", color: "#a1a1aa" }}>
+          A clínica não trabalha com garantia — a IA informa isso quando perguntarem.
+        </span>
+        <button type="button" onClick={() => onChange(null)} style={iconBtnStyle}>
+          <X size={13} />
+        </button>
+      </div>
+    );
+  }
+
+  function updateTier(index: number, patch: Partial<WarrantyTier>) {
+    const tiers = value!.tiers.map((t, i) => (i === index ? { ...t, ...patch } : t));
+    onChange({ ...value!, tiers });
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {value.tiers.map((tier, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <input
+            type="number"
+            min={1}
+            value={tier.periodMonths || ""}
+            onChange={(e) => updateTier(i, { periodMonths: Number(e.target.value) || 0 })}
+            style={{ ...inputStyle, width: "72px", flexShrink: 0 }}
+          />
+          <span style={{ fontSize: "12px", color: "#52525b", flexShrink: 0 }}>meses para</span>
+          <input
+            type="text"
+            value={tier.covers}
+            onChange={(e) => updateTier(i, { covers: e.target.value })}
+            placeholder="Ex: a lente descolar por completo"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => onChange({ ...value, tiers: value.tiers.filter((_, index) => index !== i) })}
+            style={iconBtnStyle}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange({ ...value, tiers: [...value.tiers, { periodMonths: 1, covers: "" }] })}
+        style={addBtnStyle}
+      >
+        <Plus size={13} /> Adicionar prazo
+      </button>
+      <input
+        type="text"
+        value={value.conditions ?? ""}
+        onChange={(e) => onChange({ ...value, conditions: e.target.value || null })}
+        placeholder="Condições (opcional). Ex: é só trazer a lente descolada"
+        style={inputStyle}
+      />
+      <button type="button" onClick={() => onChange(null)} style={{ ...addBtnStyle, alignSelf: "flex-start" }}>
+        Limpar garantia
+      </button>
+    </div>
+  );
+}
 
 function FieldGroup({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (

@@ -138,6 +138,17 @@ export class InMemoryDemoStore
     );
   }
 
+  async findPastByLeadId(leadId: string, now: Date = new Date()): Promise<Appointment[]> {
+    return Array.from(this.appointments.values())
+      .filter(
+        (appointment) =>
+          appointment.leadId === leadId &&
+          appointment.startsAt < now &&
+          appointment.status !== "cancelled",
+      )
+      .sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime());
+  }
+
   async findByPeriod(clinicId: string, from: Date, to: Date): Promise<Appointment[]> {
     return Array.from(this.appointments.values()).filter(
       (a) => a.clinicId === clinicId && a.startsAt < to && a.endsAt > from,

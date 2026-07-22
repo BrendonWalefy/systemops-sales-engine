@@ -10,6 +10,7 @@ import { GoogleCalendarGateway } from "@/infrastructure/adapters/calendar/google
 import type { ActionResult, ComposedResponse } from "@/core/intelligence/ResponseComposer";
 import type { Message } from "@/domain/entities/conversation";
 import type { IntentClassification, IntentType } from "@/core/intelligence/IntentClassifier";
+import { composeWarrantySection, type WarrantyPolicy } from "@/application/config/editorial-config";
 import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import {
   CONCIERGE_MENU_ITEMS,
@@ -40,6 +41,7 @@ type PlaybookInput = {
   differentials: string[];
   commercialPolicy: string;
   objections?: { objection: string; response: string }[];
+  warrantyPolicy?: WarrantyPolicy | null;
   greetingMessage: string;
   conversationExperience?: ConversationExperience;
   notes?: string | null;
@@ -194,6 +196,10 @@ function buildPlaybookText(p: PlaybookInput): string | null {
   if (p.specialty) parts.push(`ESPECIALIDADE: ${p.specialty}`);
   const diffs = p.differentials.filter((d) => d.trim());
   if (diffs.length > 0) parts.push(`\nDIFERENCIAIS DO NEGÓCIO:\n${diffs.map((d) => `- ${d}`).join("\n")}`);
+  // O simulador tem que ler a MESMA garantia que a produção lê — senão o cliente
+  // testa no painel e vê um comportamento que não é o do WhatsApp.
+  const warrantySection = composeWarrantySection(p.warrantyPolicy);
+  if (warrantySection) parts.push(`\n${warrantySection}`);
   const objections = p.objections?.filter((o) => o.objection.trim() || o.response.trim()) ?? [];
   if (objections.length > 0) {
     const objectionText = objections

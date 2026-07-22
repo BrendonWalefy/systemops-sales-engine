@@ -1,0 +1,1 @@
+ALTER TABLE "playbook_versions" ADD COLUMN "warranty_policy" jsonb;
