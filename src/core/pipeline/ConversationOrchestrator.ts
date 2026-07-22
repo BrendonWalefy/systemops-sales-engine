@@ -2575,6 +2575,7 @@ function buildOrganization(row: ClinicRow): Organization {
     address: row.address ?? null,
     addressComplement: row.addressComplement ?? null,
     mapsUrl: row.mapsUrl ?? null,
+    locationMessage: row.locationMessage ?? null,
     timezone: row.timezone,
     greetingMessage: row.greetingMessage ?? null,
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,

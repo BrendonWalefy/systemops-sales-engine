@@ -302,6 +302,15 @@ export const organizations = pgTable("organizations", {
   // do prédio — é o que o operador manda à mão hoje, enquanto a IA manda texto
   // puro. Item #23. Sem campo, a IA não pode inventar uma URL.
   mapsUrl: text("maps_url"),
+  // Bloco de localização escrito pela clínica, do jeito dela. OPCIONAL: sem ele, o
+  // sistema compõe a resposta a partir de address/complemento/mapsUrl, como sempre.
+  //
+  // É texto livre de propósito. Estruturar isto seria chumbar o formato de UMA
+  // clínica: a Vitalli fica num prédio comercial e cita torre, sala, andar, endereço
+  // alternativo do estacionamento e estações de metrô; a próxima vai querer ponto de
+  // referência ou "toque o interfone". O sistema nunca calcula nada com esses fatos —
+  // só imprime. Estrutura só se paga quando há conta a fazer (preço, garantia).
+  locationMessage: text("location_message"),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   greetingMessage: text("greeting_message"),
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),

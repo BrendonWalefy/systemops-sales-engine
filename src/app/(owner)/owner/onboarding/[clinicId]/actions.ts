@@ -46,6 +46,7 @@ export async function saveWizardIdentity(
     address: string;
     addressComplement: string;
     mapsUrl: string;
+    locationMessage: string;
     greetingMessage: string;
     channelProvider: "z_api" | "meta_cloud_api";
     zapiInstanceId: string;

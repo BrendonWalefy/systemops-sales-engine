@@ -311,6 +311,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         address: clinicRow.address,
         addressComplement: clinicRow.addressComplement ?? null,
         mapsUrl: clinicRow.mapsUrl ?? null,
+        locationMessage: clinicRow.locationMessage ?? null,
         timezone: clinicRow.timezone,
         greetingMessage: clinicRow.greetingMessage,
         menuItems: clinicRow.menuItems,

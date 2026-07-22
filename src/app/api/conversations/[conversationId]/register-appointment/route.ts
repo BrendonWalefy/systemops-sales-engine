@@ -141,6 +141,7 @@ export async function POST(
           address: clinic.address,
           addressComplement: clinic.addressComplement ?? null,
           mapsUrl: clinic.mapsUrl ?? null,
+          locationMessage: clinic.locationMessage ?? null,
           timezone: clinic.timezone,
           greetingMessage: clinic.greetingMessage,
           menuItems: clinic.menuItems,

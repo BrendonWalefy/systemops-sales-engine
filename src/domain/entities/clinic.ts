@@ -46,6 +46,7 @@ export type Organization = {
   address: string | null;
   addressComplement: string | null;
   mapsUrl: string | null;
+  locationMessage: string | null;
   timezone: string;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;

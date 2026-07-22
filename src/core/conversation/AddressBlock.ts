@@ -12,6 +12,8 @@ export type ClinicAddress = {
   address?: string | null;
   addressComplement?: string | null;
   mapsUrl?: string | null;
+  /** Bloco escrito pela clínica. Quando existe, manda nele. */
+  locationMessage?: string | null;
 };
 
 function clean(value: string | null | undefined): string | null {
@@ -43,8 +45,20 @@ export function buildAddressLines(clinic: ClinicAddress, options?: { withPin?: b
   return lines;
 }
 
-/** Resposta direta a "onde vocês ficam?". Vazio quando não há endereço cadastrado. */
+/**
+ * Resposta direta a "onde vocês ficam?".
+ *
+ * O texto da clínica ganha quando existe — e ganha INTEIRO, sem a gente costurar
+ * linha nenhuma em volta. Quem escreve o bloco costuma escrever melhor que o nosso
+ * template: o da Vitalli traz o endereço alternativo do estacionamento e as estações
+ * de metrô, dois fatos que nenhum campo nosso teria.
+ *
+ * Vazio quando não há nem bloco nem endereço cadastrado.
+ */
 export function buildAddressAnswer(clinic: ClinicAddress): string {
+  const written = clean(clinic.locationMessage);
+  if (written) return written;
+
   const address = clean(clinic.address);
   if (!address) return "";
   const rest = buildAddressLines(clinic).slice(1);

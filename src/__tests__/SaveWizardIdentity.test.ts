@@ -22,6 +22,7 @@ function baseData(overrides: Partial<Parameters<typeof saveWizardIdentity>[1]> =
     address: "Rua Teste, 123",
     addressComplement: "",
     mapsUrl: "",
+    locationMessage: "",
     greetingMessage: "Olá!",
     channelProvider: "z_api" as const,
     zapiInstanceId: "instance-1",
