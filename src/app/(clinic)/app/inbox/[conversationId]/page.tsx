@@ -9,6 +9,7 @@ import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { AiPauseButton } from "./AiPauseButton";
 import { ChatWindow } from "./ChatWindow";
+import { attachInboxPreviews } from "@/application/messaging/attach-inbox-previews";
 import { ConvComposer } from "./ConvComposer";
 import { DepositBanner } from "./DepositBanner";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -58,7 +59,7 @@ export default async function ConversationPage({
       .limit(MSG_LIMIT)
       .then((rows) => rows.reverse()),
   ]);
-  const msgs = recentMsgs;
+  const msgs = await attachInboxPreviews(recentMsgs);
   const hasOlderMessages = (totalMsgsRow[0]?.total ?? 0) > MSG_LIMIT;
 
   const [appointment] = await db
