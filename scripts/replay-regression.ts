@@ -1,21 +1,28 @@
 #!/usr/bin/env tsx
 /**
- * Harness de replay conversacional — Fase 4 do plano de excelência conversacional
- * (docs/product/plano-excelencia-conversacional.md).
+ * Harness de regressão das CAMADAS DE CLASSIFICAÇÃO E VERBALIZAÇÃO da conversa
+ * (IntentClassifier → coerceBusinessIntent → ResponseComposer). Serve para
+ * exercitar rapidamente o efeito dos Modos de Conversa (verbosity/drive) e o
+ * tom das respostas contra mensagens reais/típicas de leads.
  *
- * Roda o pipeline REAL de produção (IntentClassifier → coerceBusinessIntent →
- * ação → ResponseComposer, mesma IA do WhatsApp) contra mensagens reais/típicas
- * de leads — começando pelos padrões de falha da auditoria jul/2026 (base
- * Ximendes). Imprime a conversa para avaliação de tom contra o padrão-ouro da
- * demo curada e roda checks determinísticos (intent certo, sem saudação
- * genérica por cima de pergunta de negócio).
+ * ⚠️ FIDELIDADE — LEIA: este harness NÃO roda o ConversationOrchestrator real.
+ * Ele usa `mapToAction` abaixo, um espelho COMPACTO da lógica de ação (mesma
+ * abordagem do gerador de conversas da demo). Portanto NÃO cobre: debounce/fila,
+ * agendamento real, reserva de slot, pipelines por tratamento, takeover humano,
+ * mídia, Safety Gate, etc. É uma lupa sobre "o sistema decide, a LLM verbaliza"
+ * — não uma prova do pipeline de ponta a ponta.
+ *
+ * Para replay FIEL do pipeline de produção (leads reais contra o Orchestrator
+ * real, com envio desligado), use `scripts/replay-leads-reais-vitalli.ts`
+ * (worktree em origin/main + branch Neon + DISABLE_REAL_WHATSAPP_SEND).
  *
  * Uso:
- *   npm run replay:conversas                      # clínica default (ximendes)
- *   npm run replay:conversas -- --clinic <slug>   # qualquer clínica do banco
+ *   npm run replay:regressao -- --cases <arquivo.json>
+ *   npm run replay:regressao -- --cases <arquivo.json> --clinic <slug>
+ *   npm run replay:regressao -- --cases <arquivo.json> --verbosity concisa --drive responder_e_parar
  *
  * Requer .env.local com DATABASE_URL e OPENAI_API_KEY (DISABLE_REAL_OPENAI
- * não pode estar "true" — o objetivo é ver o comportamento real de produção).
+ * não pode estar "true" — o objetivo é ver a verbalização real da LLM).
  * Não grava nada no banco: apenas lê config e compõe respostas.
  */
 import "dotenv/config";

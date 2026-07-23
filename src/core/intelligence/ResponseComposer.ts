@@ -10,6 +10,8 @@ import type { ConversationExperience } from "@/domain/entities/clinic";
 import { DEFAULT_CONVERSATION_EXPERIENCE } from "@/domain/entities/clinic";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { formatReferencedPrice } from "@/core/intelligence/price-reference";
+import type { ConciergeVerbosity, ConciergeDrive } from "@/application/modules/module-configs";
+import { DEFAULT_CONCIERGE_DRIVE } from "@/application/modules/module-configs";
 
 type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
@@ -177,8 +179,8 @@ export type ComposerInput = {
   conversationExperience?: ConversationExperience;
   resumedFromHumanTakeover?: boolean;
   voiceResponseEnabled?: boolean;
-  conciergeVerbosity?: "concisa" | "equilibrada" | "detalhada";
-  conciergeDrive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento";
+  conciergeVerbosity?: ConciergeVerbosity;
+  conciergeDrive?: ConciergeDrive;
 };
 
 // Um bloco de entrega: texto puro ou mídia a ser enviada.
@@ -501,14 +503,14 @@ function buildSystemPrompt(input: ComposerInput): string {
   if (conversationExperience === "concierge") {
     let verbosityRule = "";
     if (input.conciergeVerbosity === "concisa") {
-      verbosityRule = "- REGRA DE VERBOSIDADE: Responda em no máximo 1 ou 2 frases curtas (41 a 120 caracteres). Vá direto ao ponto.\n";
+      verbosityRule = "- REGRA DE VERBOSIDADE: Seja o mais breve possível — no máximo 1 ou 2 frases curtas, direto ao ponto, sem rodeio. Exceção: se a REGRA ABSOLUTA de fidelidade editorial exigir preservar valores, condições ou dados autorizados, mantenha-os mesmo que a resposta fique um pouco maior.\n";
     } else if (input.conciergeVerbosity === "detalhada") {
       verbosityRule = "- REGRA DE VERBOSIDADE: Forneça uma explicação detalhada e consultiva sobre o procedimento ou dúvida levantada.\n";
     }
 
     let driveRule = "";
     if (input.conciergeDrive === "responder_e_parar") {
-      driveRule = "- Não faça perguntas no final da resposta. Apenas responda a dúvida.";
+      driveRule = "- REGRA DE ENCERRAMENTO (responder e parar): NUNCA termine a resposta com uma pergunta (ex.: \"que tal agendar?\", \"posso ver horários?\"). Apenas responda objetivamente o que o lead pediu e encerre a frase.";
     } else if (input.conciergeDrive === "sempre_proximo_passo") {
       driveRule = "- Encerre sempre com UMA pergunta para conduzir ao próximo passo natural.";
     } else if (input.conciergeDrive === "direto_ao_agendamento") {
@@ -545,7 +547,6 @@ REGRAS ABSOLUTAS:
 4. Use o nome do lead no máximo UMA VEZ por resposta. NUNCA use o nome logo após uma palavra de reconhecimento ("Entendo, Flavia" → PROIBIDO se o nome já aparece logo antes ou depois de forma redundante). Se já usou o nome na abertura, não repita no corpo. Padrão proibido: "Entendo. [Nome]. [continuação]" — integre em uma frase fluida em vez disso.
 5. GÊNERO — REGRA CRÍTICA: Infira o gênero do lead pelo nome antes de fazer qualquer concordância (tranquilo/tranquila, bem-vindo/bem-vinda, pronto/pronta, animado/animada). Exemplos seguros: "Gabriel", "Diego", "Wandrew" → masculino; "Maria", "Ana", "Fernanda" → feminino. Se o nome for neutro, ambíguo ou desconhecido, prefira construções sem marcador de gênero: "pode ficar à vontade", "fico por aqui", "sem problema nenhum". NUNCA use forma feminina para nomes claramente masculinos nem o contrário.
 6. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
-${input.conciergeDrive === "responder_e_parar" ? "7. PROIBIDO PERGUNTAR: NUNCA termine a sua resposta com uma pergunta (ex: 'Que tal agendar?', 'Posso ver horários?'). Apenas informe o que foi pedido e termine a frase." : ""}
 7. Saudações: ${isFirstMessage
     ? `é a primeira mensagem da conversa — o sistema JÁ insere "Bom dia/Boa tarde/Boa noite${leadName ? `, ${leadName}` : ""}!" automaticamente antes da sua resposta. NÃO abra com nenhuma saudação própria (nem "Bom dia/Boa tarde/Boa noite", nem "Olá", nem "Oi") — isso duplicaria a saudação. Comece direto no conteúdo.`
     : `se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.`}
@@ -557,14 +558,14 @@ COMO CONDUZIR A RESPOSTA (arco de 4 passos — adapte ao contexto, sem virar fó
 1. ACOLHER: se a mensagem do lead carrega emoção ou contexto pessoal (medo, vergonha, pressa, ocasião especial, indicação de alguém), reconheça isso PRIMEIRO, em uma frase genuína e específica. Nunca argumente contra um sentimento.
 2. RESPONDER: responda diretamente o que o lead perguntou — sem rodeio, sem repetir saudação, sem menu.
 3. PROVAR: quando houver evidência disponível no contexto (vídeo da biblioteca, avaliação com planejamento, experiência da equipe), use-a para sustentar a resposta. Nunca invente evidência.
-${input.conciergeDrive === "responder_e_parar" ? "" : "4. AVANÇAR: feche com UM próximo passo claro (e no máximo UMA pergunta, conforme a regra do modo de experiência)."}
+${input.conciergeDrive === "responder_e_parar" ? "4. ENCERRAR: responda o que foi pedido e finalize — sem pergunta de próximo passo." : "4. AVANÇAR: feche com UM próximo passo claro (e no máximo UMA pergunta, conforme a regra do modo de experiência)."}
 
 PADRÃO DEMO DE QUALIDADE (o objetivo é soar como uma atendente excelente, não como texto institucional):
 - PERSONALIZE O HUMANO: quando o lead trouxer casamento, medo, indicação, pressa, vergonha, compra para outra pessoa ou comparação de preço, use esse detalhe na resposta. Não responda como se fosse um lead genérico.
 - TROQUE CLICHÊ POR CONCRETO: evite frases soltas como "cada caso é único", "avaliação detalhada", "resultado de alta qualidade" e "melhor plano" se elas não vierem acompanhadas de uma prova concreta. Explique o que muda na prática: desenho/planejamento, ver antes de decidir, exames/imagem, orçamento fechado, etapas, naturalidade, segurança, condições.
 - FAÇA O VALOR SER SENTIDO: preço autorizado deve vir com uma ponte de valor ("por isso a avaliação define X", "você sai sabendo Y", "o profissional analisa Z"), não como tabela fria.
 - RESPOSTAS EMOCIONAIS PEDEM IMAGEM MENTAL: medo de artificialidade → fale de naturalidade e harmonia; medo de dor/cirurgia → fale de controle, explicação e decisão no ritmo do paciente; evento com prazo → fale de planejamento sem correria. Sem prometer resultado.
-${input.conciergeDrive === "responder_e_parar" ? "" : `- FECHAMENTO CONFIANTE: prefira "posso ver os horários para sua avaliação?" a encerramentos passivos como "caso tenha interesse". A pergunta final deve parecer continuação natural da conversa.`}
+${input.conciergeDrive === "responder_e_parar" ? "- ENCERRAMENTO SEM PERGUNTA: responda com clareza e finalize; não convide para avaliação nem para ver horários neste modo." : `- FECHAMENTO CONFIANTE: prefira "posso ver os horários para sua avaliação?" a encerramentos passivos como "caso tenha interesse". A pergunta final deve parecer continuação natural da conversa.`}
 - NÃO INVENTE PROVAS DE DEMO: só mencione simulação digital, desenho prévio, escolha de cor/transparência, casos anteriores, especialista, material de alta qualidade, atendimento exclusivo ou resultado duradouro se isso estiver explícito na política/playbook/histórico. Quando não estiver, use linguagem segura: avaliação, planejamento, naturalidade, harmonia, expectativas e orçamento.
 - EVITE LINGUAGEM DE CALL CENTER: "agradeço pelo contato", "estarei à disposição", "caso tenha interesse" e "para mais informações" deixam a conversa morna. Use frases mais naturais e diretas.
 
@@ -639,10 +640,10 @@ export function buildActionContext(
   conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE,
   installmentTable?: string | null,
   suppressNextStepCta?: boolean,
-  conciergeDrive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento",
+  conciergeDrive?: ConciergeDrive,
 ): string {
   const isConcierge = conversationExperience === "concierge";
-  const drive = isConcierge ? (conciergeDrive || "sempre_proximo_passo") : null;
+  const drive = isConcierge ? (conciergeDrive || DEFAULT_CONCIERGE_DRIVE) : null;
 
   switch (result.type) {
     case "slots_found": {

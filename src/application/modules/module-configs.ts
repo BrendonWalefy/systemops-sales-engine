@@ -17,10 +17,44 @@ export type VoiceElevenLabsConfig = {
   voiceOutputEnabled?: boolean; // default true; false = envia só texto mesmo com módulo ativo
 };
 
+export type ConciergeVerbosity = "concisa" | "equilibrada" | "detalhada";
+export type ConciergeDrive =
+  | "responder_e_parar"
+  | "sempre_proximo_passo"
+  | "direto_ao_agendamento";
+
 export type ConciergeModeConfig = {
-  verbosity?: "concisa" | "equilibrada" | "detalhada";
-  drive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento";
+  verbosity?: ConciergeVerbosity;
+  drive?: ConciergeDrive;
 };
+
+// Padrões que preservam o comportamento histórico do modo concierge quando a
+// clínica não configura nada (config = null): verbosidade equilibrada e
+// condução ativa para o próximo passo.
+export const DEFAULT_CONCIERGE_VERBOSITY: ConciergeVerbosity = "equilibrada";
+export const DEFAULT_CONCIERGE_DRIVE: ConciergeDrive = "sempre_proximo_passo";
+
+// Rótulos/descrições para a UI do painel owner — fonte única para não divergir
+// entre o formulário e o prompt.
+export const CONCIERGE_VERBOSITY_OPTIONS: {
+  value: ConciergeVerbosity;
+  label: string;
+  description: string;
+}[] = [
+  { value: "concisa", label: "Concisa", description: "Respostas curtas e diretas, sem rodeios." },
+  { value: "equilibrada", label: "Equilibrada", description: "Padrão: responde com contexto sem alongar." },
+  { value: "detalhada", label: "Detalhada", description: "Explicação consultiva e aprofundada do procedimento." },
+];
+
+export const CONCIERGE_DRIVE_OPTIONS: {
+  value: ConciergeDrive;
+  label: string;
+  description: string;
+}[] = [
+  { value: "responder_e_parar", label: "Responder e parar", description: "Só responde a dúvida — nunca termina com pergunta." },
+  { value: "sempre_proximo_passo", label: "Sempre próximo passo", description: "Padrão: encerra conduzindo ao próximo passo natural." },
+  { value: "direto_ao_agendamento", label: "Direto ao agendamento", description: "Sempre oferta ativamente a avaliação/agendamento." },
+];
 
 export type ModuleConfigMap = {
   voice_tts: VoiceTtsConfig;

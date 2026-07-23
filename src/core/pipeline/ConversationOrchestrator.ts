@@ -29,7 +29,7 @@ import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure
 import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 import { createLogger, type Logger } from "@/infrastructure/logging/logger";
 import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, type TtsConfig } from "@/domain/entities/tts-config";
-import type { VoiceElevenLabsConfig, VoiceTtsConfig } from "@/application/modules/module-configs";
+import type { VoiceElevenLabsConfig, VoiceTtsConfig, ConciergeModeConfig } from "@/application/modules/module-configs";
 import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voice-mode";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
@@ -3723,7 +3723,7 @@ export class ConversationOrchestrator {
     }
     const conciergeModule = activeModules.find((m) => m.key === "concierge_mode");
     const clinicExperience: ConversationExperience = conciergeModule ? "concierge" : "menu_first";
-    const conciergeConfig = conciergeModule?.config as { verbosity?: "concisa" | "equilibrada" | "detalhada"; drive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento" } | undefined;
+    const conciergeConfig = (conciergeModule?.config ?? undefined) as ConciergeModeConfig | undefined;
 
     // ── 3. Registra lead, conversa e mensagem ──
     const usageCostTracker = new DefaultUsageCostTracker({
@@ -4279,6 +4279,8 @@ export class ConversationOrchestrator {
         timezone,
         isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
         conversationExperience: clinicExperience,
+        conciergeVerbosity: conciergeConfig?.verbosity,
+        conciergeDrive: conciergeConfig?.drive,
         resumedFromHumanTakeover: false,
       });
       const mediaReplyText = mediaComposed.text;
