@@ -75,4 +75,43 @@ describe("DrizzleLeadRepository", () => {
       }),
     );
   });
+
+  it("caso Américo: o lead recebido JÁ carrega o id existente — atualiza, nunca insere", async () => {
+    // Bug real (Ximendes, 22/07): o resolvedor enriquece o lead existente e reusa o
+    // id dele, então lead.id === byLid.id. O guard antigo `byLid.id !== lead.id`
+    // pulava o update e caía num insert que colidia no PK/índice do @lid → o job
+    // message.process morria e a mensagem do lead (pergunta quente) sumia.
+    const existingByLid = lead({
+      id: "amrico",
+      phone: null,
+      whatsappLid: "257547881697439@lid",
+    });
+    const update = updateChain();
+    dbMock.query.leads.findFirst
+      .mockResolvedValueOnce(null) // byPhone: ninguém com esse telefone ainda
+      .mockResolvedValueOnce(existingByLid); // byLid: o lead só-LID já existe
+    dbMock.update.mockReturnValue(update);
+
+    // Mesmo id do lead existente — o cenário que o teste anterior não cobria.
+    await new DrizzleLeadRepository().save(
+      lead({ id: "amrico", phone: "5511976898360", whatsappLid: "257547881697439@lid" }),
+    );
+
+    expect(dbMock.insert).not.toHaveBeenCalled();
+    expect(dbMock.update).toHaveBeenCalledOnce();
+    expect(update.set).toHaveBeenCalledWith(expect.objectContaining({ phone: "5511976898360" }));
+  });
+
+  it("lead genuinamente novo é inserido", async () => {
+    dbMock.query.leads.findFirst
+      .mockResolvedValueOnce(null) // byPhone
+      .mockResolvedValueOnce(null); // byLid
+    const insertChain = { values: vi.fn().mockReturnThis(), onConflictDoUpdate: vi.fn().mockResolvedValue([]) };
+    dbMock.insert.mockReturnValue(insertChain);
+
+    await new DrizzleLeadRepository().save(lead({ id: "novo", phone: "5511900000000" }));
+
+    expect(dbMock.insert).toHaveBeenCalledOnce();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
 });
