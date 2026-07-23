@@ -3721,9 +3721,9 @@ export class ConversationOrchestrator {
       if (voiceBasicEnabled) return shouldUseBWaveForMessage(voiceBasicMode, messageIntent, responseText, inputWasAudio);
       return false;
     }
-    const clinicExperience: ConversationExperience = activeModules.some((m) => m.key === "concierge_mode")
-      ? "concierge"
-      : "menu_first";
+    const conciergeModule = activeModules.find((m) => m.key === "concierge_mode");
+    const clinicExperience: ConversationExperience = conciergeModule ? "concierge" : "menu_first";
+    const conciergeConfig = conciergeModule?.config as { verbosity?: "concisa" | "equilibrada" | "detalhada"; drive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento" } | undefined;
 
     // ── 3. Registra lead, conversa e mensagem ──
     const usageCostTracker = new DefaultUsageCostTracker({
@@ -4223,6 +4223,8 @@ export class ConversationOrchestrator {
               timezone,
               isFirstMessage: false,
               conversationExperience: clinicExperience,
+              conciergeVerbosity: conciergeConfig?.verbosity,
+              conciergeDrive: conciergeConfig?.drive,
               resumedFromHumanTakeover: false,
             });
             const photoNow = new Date();
@@ -5334,6 +5336,8 @@ export class ConversationOrchestrator {
           timezone,
           isFirstMessage,
           conversationExperience: experience,
+          conciergeVerbosity: conciergeConfig?.verbosity,
+          conciergeDrive: conciergeConfig?.drive,
           resumedFromHumanTakeover,
           voiceResponseEnabled: voiceEnabled,
         });

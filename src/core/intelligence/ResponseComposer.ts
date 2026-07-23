@@ -177,6 +177,8 @@ export type ComposerInput = {
   conversationExperience?: ConversationExperience;
   resumedFromHumanTakeover?: boolean;
   voiceResponseEnabled?: boolean;
+  conciergeVerbosity?: "concisa" | "equilibrada" | "detalhada";
+  conciergeDrive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento";
 };
 
 // Um bloco de entrega: texto puro ou mídia a ser enviada.
@@ -495,17 +497,38 @@ function buildSystemPrompt(input: ComposerInput): string {
   const businessDescriptor = ctx?.businessDescriptor ?? `negócio de ${clinic.specialty}`;
   const conversationExperience = input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE;
   const nowStr = timezone.formatNowForPrompt();
-  const experienceRules = conversationExperience === "concierge"
-    ? `MODO DE EXPERIÊNCIA: concierge.
+  let experienceRules = "";
+  if (conversationExperience === "concierge") {
+    let verbosityRule = "";
+    if (input.conciergeVerbosity === "concisa") {
+      verbosityRule = "- REGRA DE VERBOSIDADE: Responda em no máximo 1 ou 2 frases curtas (41 a 120 caracteres). Vá direto ao ponto.\n";
+    } else if (input.conciergeVerbosity === "detalhada") {
+      verbosityRule = "- REGRA DE VERBOSIDADE: Forneça uma explicação detalhada e consultiva sobre o procedimento ou dúvida levantada.\n";
+    }
+
+    let driveRule = "";
+    if (input.conciergeDrive === "responder_e_parar") {
+      driveRule = "- Não faça perguntas no final da resposta. Apenas responda a dúvida.";
+    } else if (input.conciergeDrive === "sempre_proximo_passo") {
+      driveRule = "- Encerre sempre com UMA pergunta para conduzir ao próximo passo natural.";
+    } else if (input.conciergeDrive === "direto_ao_agendamento") {
+      driveRule = "- Sempre que a resposta for conclusiva, oferte ativamente o agendamento de uma avaliação com urgência.";
+    } else {
+      driveRule = "- Máximo 1 pergunta no final. A pergunta deve ter objetivo claro.";
+    }
+
+    experienceRules = `MODO DE EXPERIÊNCIA: concierge.
 - Responda primeiro ao que o lead escreveu; menu é fallback, não ponto de partida.
 - Não encerre com "digite menu" ou variações, a menos que o lead tenha pedido o menu.
 - Se o lead perguntou preço, pagamento ou serviço, responda a dúvida e conduza para o próximo passo apenas quando fizer sentido.
-- Máximo 1 pergunta no final. A pergunta deve ter objetivo claro.`
-    : `MODO DE EXPERIÊNCIA: menu-first.
+${verbosityRule}${driveRule}`;
+  } else {
+    experienceRules = `MODO DE EXPERIÊNCIA: menu-first.
 - O menu pode ser usado para saudações genéricas, pedidos de menu ou entradas confusas.
 - Se o lead fez uma pergunta clara, responda a intenção antes de oferecer qualquer menu.
 - Não repita o menu depois de responder preço, pagamento, endereço ou tratamento.
 - Máximo 1 pergunta no final.`;
+  }
 
   return `Você é ${clinic.receptionistName ?? "a assistente virtual"}, ${agentRole} de ${businessDescriptor}, do ${clinic.name}.
 
@@ -522,6 +545,7 @@ REGRAS ABSOLUTAS:
 4. Use o nome do lead no máximo UMA VEZ por resposta. NUNCA use o nome logo após uma palavra de reconhecimento ("Entendo, Flavia" → PROIBIDO se o nome já aparece logo antes ou depois de forma redundante). Se já usou o nome na abertura, não repita no corpo. Padrão proibido: "Entendo. [Nome]. [continuação]" — integre em uma frase fluida em vez disso.
 5. GÊNERO — REGRA CRÍTICA: Infira o gênero do lead pelo nome antes de fazer qualquer concordância (tranquilo/tranquila, bem-vindo/bem-vinda, pronto/pronta, animado/animada). Exemplos seguros: "Gabriel", "Diego", "Wandrew" → masculino; "Maria", "Ana", "Fernanda" → feminino. Se o nome for neutro, ambíguo ou desconhecido, prefira construções sem marcador de gênero: "pode ficar à vontade", "fico por aqui", "sem problema nenhum". NUNCA use forma feminina para nomes claramente masculinos nem o contrário.
 6. Não use emojis em excesso — no máximo 1 por mensagem e só se o tom for informal.
+${input.conciergeDrive === "responder_e_parar" ? "7. PROIBIDO PERGUNTAR: NUNCA termine a sua resposta com uma pergunta (ex: 'Que tal agendar?', 'Posso ver horários?'). Apenas informe o que foi pedido e termine a frase." : ""}
 7. Saudações: ${isFirstMessage
     ? `é a primeira mensagem da conversa — o sistema JÁ insere "Bom dia/Boa tarde/Boa noite${leadName ? `, ${leadName}` : ""}!" automaticamente antes da sua resposta. NÃO abra com nenhuma saudação própria (nem "Bom dia/Boa tarde/Boa noite", nem "Olá", nem "Oi") — isso duplicaria a saudação. Comece direto no conteúdo.`
     : `se a mensagem atual do lead começar com uma saudação temporal ("bom dia", "boa tarde", "boa noite", "oi", "olá"), espelhe-a naturalmente na abertura da resposta. Não adicione saudações espontaneamente no meio de uma conversa em que o lead não cumprimentou.`}
@@ -533,14 +557,14 @@ COMO CONDUZIR A RESPOSTA (arco de 4 passos — adapte ao contexto, sem virar fó
 1. ACOLHER: se a mensagem do lead carrega emoção ou contexto pessoal (medo, vergonha, pressa, ocasião especial, indicação de alguém), reconheça isso PRIMEIRO, em uma frase genuína e específica. Nunca argumente contra um sentimento.
 2. RESPONDER: responda diretamente o que o lead perguntou — sem rodeio, sem repetir saudação, sem menu.
 3. PROVAR: quando houver evidência disponível no contexto (vídeo da biblioteca, avaliação com planejamento, experiência da equipe), use-a para sustentar a resposta. Nunca invente evidência.
-4. AVANÇAR: feche com UM próximo passo claro (e no máximo UMA pergunta, conforme a regra do modo de experiência).
+${input.conciergeDrive === "responder_e_parar" ? "" : "4. AVANÇAR: feche com UM próximo passo claro (e no máximo UMA pergunta, conforme a regra do modo de experiência)."}
 
 PADRÃO DEMO DE QUALIDADE (o objetivo é soar como uma atendente excelente, não como texto institucional):
 - PERSONALIZE O HUMANO: quando o lead trouxer casamento, medo, indicação, pressa, vergonha, compra para outra pessoa ou comparação de preço, use esse detalhe na resposta. Não responda como se fosse um lead genérico.
 - TROQUE CLICHÊ POR CONCRETO: evite frases soltas como "cada caso é único", "avaliação detalhada", "resultado de alta qualidade" e "melhor plano" se elas não vierem acompanhadas de uma prova concreta. Explique o que muda na prática: desenho/planejamento, ver antes de decidir, exames/imagem, orçamento fechado, etapas, naturalidade, segurança, condições.
 - FAÇA O VALOR SER SENTIDO: preço autorizado deve vir com uma ponte de valor ("por isso a avaliação define X", "você sai sabendo Y", "o profissional analisa Z"), não como tabela fria.
 - RESPOSTAS EMOCIONAIS PEDEM IMAGEM MENTAL: medo de artificialidade → fale de naturalidade e harmonia; medo de dor/cirurgia → fale de controle, explicação e decisão no ritmo do paciente; evento com prazo → fale de planejamento sem correria. Sem prometer resultado.
-- FECHAMENTO CONFIANTE: prefira "posso ver os horários para sua avaliação?" a encerramentos passivos como "caso tenha interesse". A pergunta final deve parecer continuação natural da conversa.
+${input.conciergeDrive === "responder_e_parar" ? "" : `- FECHAMENTO CONFIANTE: prefira "posso ver os horários para sua avaliação?" a encerramentos passivos como "caso tenha interesse". A pergunta final deve parecer continuação natural da conversa.`}
 - NÃO INVENTE PROVAS DE DEMO: só mencione simulação digital, desenho prévio, escolha de cor/transparência, casos anteriores, especialista, material de alta qualidade, atendimento exclusivo ou resultado duradouro se isso estiver explícito na política/playbook/histórico. Quando não estiver, use linguagem segura: avaliação, planejamento, naturalidade, harmonia, expectativas e orçamento.
 - EVITE LINGUAGEM DE CALL CENTER: "agradeço pelo contato", "estarei à disposição", "caso tenha interesse" e "para mais informações" deixam a conversa morna. Use frases mais naturais e diretas.
 
@@ -615,8 +639,10 @@ export function buildActionContext(
   conversationExperience: ConversationExperience = DEFAULT_CONVERSATION_EXPERIENCE,
   installmentTable?: string | null,
   suppressNextStepCta?: boolean,
+  conciergeDrive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento",
 ): string {
   const isConcierge = conversationExperience === "concierge";
+  const drive = isConcierge ? (conciergeDrive || "sempre_proximo_passo") : null;
 
   switch (result.type) {
     case "slots_found": {
@@ -831,7 +857,7 @@ ${installmentInstruction}
 ${treatmentMediaInstruction}
 SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes. Em seguida, traga de volta para o degrau seguro: avaliação para ver o que o caso realmente precisa e quais condições fazem sentido.
 SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o serviço como se o destinatário fosse o cliente; sugira uma visita presencial para que a equipe avalie o caso da pessoa real.
-${suppressNextStepCta ? SUPPRESSED_CTA_GUIDANCE : isConcierge ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Prefira um fechamento confiante e humano: 'posso ver os horários para sua avaliação?' Evite encerramentos passivos como 'caso tenha interesse'." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
+${suppressNextStepCta ? SUPPRESSED_CTA_GUIDANCE : drive === "sempre_proximo_passo" ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Prefira um fechamento confiante e humano: 'posso ver os horários para sua avaliação?' Evite encerramentos passivos como 'caso tenha interesse'." : drive === "responder_e_parar" ? "Apenas responda a dúvida e não faça nenhuma pergunta." : drive === "direto_ao_agendamento" ? "Após passar o valor, ofereça imediatamente ver os horários disponíveis para agendamento." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
     }
 
 case "general_question":
@@ -842,7 +868,7 @@ PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CL�
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
 PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
 SE O LEAD EXPRESSAR MEDO DE RESULTADO ARTIFICIAL: acolha o receio e fale de naturalidade/harmonia sem inventar processos específicos. Só diga que escolhe cor/transparência, mostra casos anteriores ou faz simulação se isso estiver nas ORIENTAÇÕES DA CLÍNICA.
-Responda de forma informativa e acolhedora. ${suppressNextStepCta ? SUPPRESSED_CTA_GUIDANCE : isConcierge ? "Após responder a dúvida, conduza ativamente para o próximo passo: se o assunto for um procedimento estético ou de alto valor e o lead demonstrou interesse genuíno, ofereça gentilmente uma avaliação presencial como próximo passo natural — sem pressionar, sem mencionar horários específicos. Só pule esta etapa se as ORIENTAÇÕES DA CLÍNICA definirem uma sequência diferente para este momento." : "Não reapresente menu quando a pergunta do lead for clara."}`;
+Responda de forma informativa e acolhedora. ${suppressNextStepCta ? SUPPRESSED_CTA_GUIDANCE : drive === "sempre_proximo_passo" ? "Após responder a dúvida, conduza ativamente para o próximo passo: se o assunto for um procedimento estético ou de alto valor e o lead demonstrou interesse genuíno, ofereça gentilmente uma avaliação presencial como próximo passo natural — sem pressionar, sem mencionar horários específicos. Só pule esta etapa se as ORIENTAÇÕES DA CLÍNICA definirem uma sequência diferente para este momento." : drive === "responder_e_parar" ? "Apenas responda a dúvida e não faça perguntas de fechamento." : drive === "direto_ao_agendamento" ? "Ao final, direcione diretamente para o agendamento de uma avaliação." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
     case "greeting":
@@ -1005,6 +1031,7 @@ export class ResponseComposer {
       input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
       input.clinic.installmentTable,
       input.suppressNextStepCta,
+      input.conciergeDrive,
     );
 
     // Histórico recente — filtra mensagens de sistema (marcadores internos como __appointment_confirmed__)

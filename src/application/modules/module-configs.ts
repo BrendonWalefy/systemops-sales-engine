@@ -17,11 +17,16 @@ export type VoiceElevenLabsConfig = {
   voiceOutputEnabled?: boolean; // default true; false = envia só texto mesmo com módulo ativo
 };
 
+export type ConciergeModeConfig = {
+  verbosity?: "concisa" | "equilibrada" | "detalhada";
+  drive?: "responder_e_parar" | "sempre_proximo_passo" | "direto_ao_agendamento";
+};
+
 export type ModuleConfigMap = {
   voice_tts: VoiceTtsConfig;
   voice_elevenlabs: VoiceElevenLabsConfig;
   menu_mode: null;
-  concierge_mode: null;
+  concierge_mode: ConciergeModeConfig | null;
   revenue_pipeline: null;
   team_roles: null;
   video_library: null;
