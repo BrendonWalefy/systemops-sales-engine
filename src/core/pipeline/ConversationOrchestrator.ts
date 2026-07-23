@@ -775,23 +775,42 @@ export function isSimplePaymentPolicyQuestion(message: string): boolean {
 }
 
 export function isBusinessHoursQuestion(message: string): boolean {
-  const normalized = normalizeFreeText(message);
+  const raw = normalizeFreeText(message);
+  if (!raw) return false;
+
+  // Saudação NÃO é pergunta de expediente. "bom dia/boa tarde/boa noite" fazia
+  // "dia/tarde/noite" casarem como período do dia — falso positivo clássico com
+  // "Bom dia, como funciona o orçamento?" (caso SP/ZN 23/07, lead querendo iniciar
+  // tratamento recebeu o texto de horário). Removemos SÓ a saudação; "atendem à
+  // tarde?" continua valendo (o "tarde" ali não é saudação).
+  const normalized = raw
+    .replace(/\bbo[ma]\s+(dia|tarde|noite|madrugada)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!normalized) return false;
+
+  // "como funciona o X" pergunta o PROCESSO (orçamento, pagamento, tratamento),
+  // não o horário. Nesse padrão, "funciona" não conta como sinal de expediente —
+  // exige um verbo real de atendimento (atende/abre/horario/expediente/funcionamento).
+  const asksHowItWorks = /\bcomo funciona/.test(normalized);
+  const operatingVerbs = asksHowItWorks
+    ? ["atende", "atendem", "atendimento", "abrem", "abre", "horario", "expediente", "funcionamento"]
+    : ["atende", "atendem", "atendimento", "abrem", "abre", "horario", "expediente", "funcionamento", "funciona"];
+
   const hasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
-  const explicitlyAsksOperatingHours = hasAnyKeyword(normalized, [
-    "funciona",
-    "funcionamento",
-    "abrem",
-    "abre",
-    "expediente",
-  ]);
+  const explicitlyAsksOperatingHours = hasAnyKeyword(
+    normalized,
+    asksHowItWorks
+      ? ["funcionamento", "abrem", "abre", "expediente"]
+      : ["funciona", "funcionamento", "abrem", "abre", "expediente"],
+  );
   // Uma data concreta acompanhada de "horário" é uma consulta de
   // disponibilidade, não uma pergunta institucional. Caso Tatiana (19/07):
   // "Me agenda ... dia 8/8 se tiver horário" não pode cair no texto de
   // funcionamento da clínica.
   if (hasExplicitDate && !explicitlyAsksOperatingHours) return false;
   const asksAttendance =
-    hasAnyKeyword(normalized, ["atende", "atendem", "atendimento", "funciona", "abrem", "abre", "horario", "expediente"]) &&
+    hasAnyKeyword(normalized, operatingVerbs) &&
     hasAnyKeyword(normalized, ["sabado", "domingo", "semana", "dia", "dias", "manha", "tarde", "noite", "horario", "expediente"]);
   return asksAttendance && !hasAnyKeyword(normalized, [
     "agenda",
@@ -2932,18 +2951,31 @@ function normalizeContentFingerprint(text: string): string {
 export function hasPipelineContentStepBeenSent(
   step: Extract<PipelineStep, { type: "content" }>,
   history: Pick<Message, "author" | "body">[],
+  mediaTitleById?: Map<string, string>,
 ): boolean {
   if (step.once === false) return false;
 
-  const fingerprints = step.blocks
-    .map((block) => {
-      if (block.kind === "text") return block.content;
-      return block.caption ?? "";
-    })
+  // Texto e legenda casam por SUBSTRING dentro do corpo já enviado.
+  const substringFingerprints = step.blocks
+    .map((block) => (block.kind === "text" ? block.content : block.caption ?? ""))
     .map(normalizeContentFingerprint)
     .filter(Boolean);
 
-  if (fingerprints.length === 0) return false;
+  // Mídia: o corpo gravado é o TÍTULO do arquivo (ver outbound-message-persistence),
+  // nunca a legenda. Sem casar por título, um content step SÓ de mídia jamais era
+  // reconhecido como enviado e reenviava a cada virada — o loop de vídeos da Ximendes
+  // (23/07). Casamento EXATO de propósito: um título curto ("Vídeo") por substring
+  // deduplicaria conteúdo alheio. Requer o mapa id→título (opcional p/ compatibilidade
+  // dos callers que ainda não o passam).
+  const exactMediaTitleFingerprints = step.blocks
+    .flatMap((block) => {
+      if (block.kind !== "media") return [];
+      const title = mediaTitleById?.get(block.mediaId);
+      return title ? [normalizeContentFingerprint(title)] : [];
+    })
+    .filter(Boolean);
+
+  if (substringFingerprints.length === 0 && exactMediaTitleFingerprints.length === 0) return false;
 
   // clinic_user conta: conteúdo que a operação já enviou manualmente não deve
   // ser repetido pelo motor quando o pipeline assume a conversa depois.
@@ -2951,8 +2983,9 @@ export function hasPipelineContentStepBeenSent(
     .filter((message) => message.author === "agent" || message.author === "clinic_user")
     .map((message) => normalizeContentFingerprint(message.body));
 
-  return fingerprints.some((fingerprint) =>
-    outboundBodies.some((body) => body.includes(fingerprint)),
+  return (
+    substringFingerprints.some((fp) => outboundBodies.some((body) => body.includes(fp))) ||
+    exactMediaTitleFingerprints.some((fp) => outboundBodies.some((body) => body === fp))
   );
 }
 
@@ -3354,6 +3387,7 @@ export function nextActivePipelineStep(
     skipOptionalPhoto?: boolean;
     skipPhotoInstructionContent?: boolean;
     conversationHistory?: Pick<Message, "author" | "body">[];
+    mediaTitleById?: Map<string, string>;
   },
 ): { step: PipelineStep; index: number } | null {
   for (let i = fromIndex; i < steps.length; i++) {
@@ -3367,7 +3401,7 @@ export function nextActivePipelineStep(
     if (
       s.type === "content" &&
       options?.conversationHistory &&
-      hasPipelineContentStepBeenSent(s, options.conversationHistory)
+      hasPipelineContentStepBeenSent(s, options.conversationHistory, options.mediaTitleById)
     ) {
       continue;
     }
@@ -3382,13 +3416,14 @@ function nextUnsentPipelineContentStep(
   steps: PipelineStep[],
   fromIndex: number,
   conversationHistory: Pick<Message, "author" | "body">[],
+  mediaTitleById?: Map<string, string>,
 ): { step: Extract<PipelineStep, { type: "content" }>; index: number } | null {
   for (let i = fromIndex; i < steps.length; i++) {
     const step = steps[i];
     if (step.type === "ask_availability" || step.type === "offer_slots" || step.type === "book") {
       return null;
     }
-    if (step.type === "content" && !hasPipelineContentStepBeenSent(step, conversationHistory)) {
+    if (step.type === "content" && !hasPipelineContentStepBeenSent(step, conversationHistory, mediaTitleById)) {
       return { step, index: i };
     }
   }
@@ -4555,6 +4590,14 @@ export class ConversationOrchestrator {
       ? allMessages.filter((m) => m.sentAt >= lastResetBoundary)
       : allMessages;
 
+    // Mapa id→título da biblioteca de mídia. O dedup de content step de mídia
+    // (hasPipelineContentStepBeenSent) casa pelo TÍTULO — que é o que fica gravado
+    // no corpo da mensagem enviada — e não pela legenda. Sem ele, um content step
+    // só-de-mídia reenviava a cada virada (loop de vídeos da Ximendes, 23/07).
+    const pipelineMediaTitleById = new Map<string, string>(
+      (editorial?.mediaLibrary ?? []).map((m) => [m.id, m.title] as const),
+    );
+
     // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id, stateAsOf);
     const hasPendingOffer = pendingSlots !== null;
@@ -5644,6 +5687,7 @@ export class ConversationOrchestrator {
                 pipelineTreatment.pipelineSteps,
                 pipelineState.stepIndex,
                 allMessagesForContext,
+                pipelineMediaTitleById,
               )
             : null;
           if (nextContent) {
@@ -6415,6 +6459,7 @@ export class ConversationOrchestrator {
         const pipelinePriceContent = pipelinePriceTreatment?.pipelineSteps
           ? nextActivePipelineStep(pipelinePriceTreatment.pipelineSteps, 0, {
               conversationHistory: allMessagesForContext,
+              mediaTitleById: pipelineMediaTitleById,
             })
           : null;
 
@@ -6461,6 +6506,7 @@ export class ConversationOrchestrator {
                 pipelinePriceTreatment.pipelineSteps!,
                 pipelinePriceContent.index + 1,
                 allMessagesForContext,
+                pipelineMediaTitleById,
               )
             : null;
           if (
@@ -6526,6 +6572,7 @@ export class ConversationOrchestrator {
             pipelinePriceTreatment.pipelineSteps!,
             pipelineState.stepIndex + 1,
             allMessagesForContext,
+            pipelineMediaTitleById,
           );
           if (
             remotePreEvaluationContent &&
@@ -6642,6 +6689,7 @@ export class ConversationOrchestrator {
           if (greetingTreatment?.pipelineSteps?.length) {
             const firstActive = nextActivePipelineStep(greetingTreatment.pipelineSteps, 0, {
               conversationHistory: allMessagesForContext,
+              mediaTitleById: pipelineMediaTitleById,
             });
             if (firstActive) {
               await this.stateMachine.startTreatmentPipeline(
@@ -6777,6 +6825,7 @@ export class ConversationOrchestrator {
           const combinedPriceContent = combinedPriceTreatment?.pipelineSteps
             ? nextActivePipelineStep(combinedPriceTreatment.pipelineSteps, 0, {
                 conversationHistory: allMessagesForContext,
+                mediaTitleById: pipelineMediaTitleById,
               })
             : null;
           if (combinedPriceTreatment && combinedPriceContent?.step.type === "content") {
@@ -6881,7 +6930,7 @@ export class ConversationOrchestrator {
               ? { action: "advance", nextStepIndex: next.index }
               : { action: "exit" };
 
-            if (!hasPipelineContentStepBeenSent(currentStep, allMessagesForContext)) {
+            if (!hasPipelineContentStepBeenSent(currentStep, allMessagesForContext, pipelineMediaTitleById)) {
               // N1 — Interesse genérico no tratamento: o conteúdo curado É a
               // resposta. Compor explicação por LLM antes duplicava a informação
               // e vazava valores em prosa (caso Nathan, 18/07).
@@ -6923,6 +6972,7 @@ export class ConversationOrchestrator {
                     pipelineTreatment.pipelineSteps!,
                     pipelineState.stepIndex + 1,
                     allMessagesForContext,
+                    pipelineMediaTitleById,
                   )
                 : null;
               if (
@@ -6966,6 +7016,7 @@ export class ConversationOrchestrator {
               pipelineTreatment.pipelineSteps!,
               pipelineState.stepIndex + 1,
               allMessagesForContext,
+              pipelineMediaTitleById,
             );
             const shouldAppendPhotoInstructionContent = nextContent
               ? !pipelineState.photoReceived && isPipelinePhotoInstructionContentStep(nextContent.step)
@@ -7124,6 +7175,7 @@ export class ConversationOrchestrator {
           if (pipelineTreatment.pipelineSteps?.length && !pipelineState && explicitPipelineTrigger) {
             const firstActive = nextActivePipelineStep(pipelineTreatment.pipelineSteps, 0, {
               conversationHistory: allMessagesForContext,
+              mediaTitleById: pipelineMediaTitleById,
             });
             if (firstActive) {
               // A3 — 1º contato concierge com passo de conteúdo: envia só o opener de
@@ -7178,6 +7230,7 @@ export class ConversationOrchestrator {
                       pipelineTreatment.pipelineSteps!,
                       firstActive.index + 1,
                       allMessagesForContext,
+                      pipelineMediaTitleById,
                     )
                   : null;
                 if (
@@ -7249,6 +7302,7 @@ export class ConversationOrchestrator {
               if (keywordTreatment?.pipelineSteps?.length) {
                 const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0, {
                   conversationHistory: allMessagesForContext,
+                  mediaTitleById: pipelineMediaTitleById,
                 });
                 if (firstActive) {
                   await this.stateMachine.startTreatmentPipeline(
@@ -7356,12 +7410,13 @@ export class ConversationOrchestrator {
             const priceCardContent = priceCardTreatment?.pipelineSteps
               ? nextActivePipelineStep(priceCardTreatment.pipelineSteps, 0, {
                   conversationHistory: allMessagesForContext,
+                  mediaTitleById: pipelineMediaTitleById,
                 })
               : null;
             if (
               priceCardTreatment &&
               priceCardContent?.step.type === "content" &&
-              !hasPipelineContentStepBeenSent(priceCardContent.step, allMessagesForContext)
+              !hasPipelineContentStepBeenSent(priceCardContent.step, allMessagesForContext, pipelineMediaTitleById)
             ) {
               const cards = buildPipelineContentReply(priceCardContent.step);
               const scrubbedParts = composedParts
