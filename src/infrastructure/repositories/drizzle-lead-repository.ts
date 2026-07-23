@@ -90,44 +90,48 @@ export class DrizzleLeadRepository implements LeadRepository {
       updatedAt: lead.updatedAt,
     };
 
-    if (lead.phone && lead.whatsappLid) {
-      const byPhone = await this.findByPhone(lead.clinicId, lead.phone);
-      const byLid = await this.findByWhatsAppLid(lead.clinicId, lead.whatsappLid);
+    // A tabela tem DOIS índices únicos — (clinicId, phone) e (clinicId,
+    // whatsappLid). Um único ON CONFLICT só cobre um deles, então quando um lead
+    // já existe por uma identidade e a mensagem seguinte traz a outra, o insert
+    // colide no índice NÃO nomeado (ou no próprio id) e o job morre — mensagem do
+    // lead engolida em silêncio (caso Américo, Ximendes 22/07: pergunta quente sem
+    // resposta). A correção: resolver o lead existente por QUALQUER identidade e
+    // atualizar por id, que é a chave que nunca colide. Só inserir quando é novo.
+    const byPhone = lead.phone ? await this.findByPhone(lead.clinicId, lead.phone) : null;
+    const byLid = lead.whatsappLid ? await this.findByWhatsAppLid(lead.clinicId, lead.whatsappLid) : null;
 
-      if (byPhone && byLid && byPhone.id !== byLid.id) {
-        await this.mergeDuplicateLeads({
-          canonicalLeadId: byPhone.id,
-          duplicateLeadId: byLid.id,
-        });
-      } else if (!byPhone && byLid && byLid.id !== lead.id) {
-        await db
-          .update(leads)
-          .set(set)
-          .where(eq(leads.id, byLid.id));
-        return;
-      }
+    // Telefone e @lid apontando para leads distintos: funde antes (telefone é o
+    // canônico) para não deixar dois cadastros do mesmo paciente.
+    if (byPhone && byLid && byPhone.id !== byLid.id) {
+      await this.mergeDuplicateLeads({
+        canonicalLeadId: byPhone.id,
+        duplicateLeadId: byLid.id,
+      });
     }
 
-    if (lead.phone) {
-      await db.insert(leads).values(values).onConflictDoUpdate({
-        target: [leads.clinicId, leads.phone],
-        set,
-      });
+    const existingId = byPhone?.id ?? byLid?.id ?? null;
+    if (existingId) {
+      // Enriquece o lead existente (ex.: preenche o phone que faltava, ou
+      // acrescenta o @lid) sem arriscar colisão — update por id.
+      await db.update(leads).set(set).where(eq(leads.id, existingId));
       return;
     }
 
-    if (lead.whatsappLid) {
+    // Lead novo. ON CONFLICT no id torna o retry idempotente; uma corrida (outra
+    // requisição inseriu o mesmo phone/lid entre o find e o insert) é recuperada
+    // no catch, relendo a identidade e atualizando.
+    try {
       await db.insert(leads).values(values).onConflictDoUpdate({
-        target: [leads.clinicId, leads.whatsappLid],
+        target: leads.id,
         set,
       });
-      return;
+    } catch (error) {
+      const raced =
+        (lead.phone ? await this.findByPhone(lead.clinicId, lead.phone) : null) ??
+        (lead.whatsappLid ? await this.findByWhatsAppLid(lead.clinicId, lead.whatsappLid) : null);
+      if (!raced) throw error;
+      await db.update(leads).set(set).where(eq(leads.id, raced.id));
     }
-
-    await db.insert(leads).values(values).onConflictDoUpdate({
-      target: leads.id,
-      set,
-    });
   }
 
   async mergeDuplicateLeads(params: {
