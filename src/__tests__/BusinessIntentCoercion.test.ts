@@ -190,6 +190,26 @@ describe("horário de atendimento determinístico", () => {
     expect(isBusinessHoursQuestion("Qual o horário de funcionamento no dia 08/08?")).toBe(true);
   });
 
+  it("saudação + 'como funciona X' NÃO é pergunta de horário (caso SP/ZN 23/07)", () => {
+    // "funciona" (de "como funciona o orçamento") + "dia" (de "bom dia") casavam
+    // como pergunta de expediente e o lead quente recebia o texto de horário.
+    expect(
+      isBusinessHoursQuestion(
+        "Bom dia Dr, tudo bem? Me chamo Guilherme. Quero iniciar as lentes em resina, como funciona o orçamento?",
+      ),
+    ).toBe(false);
+    expect(isBusinessHoursQuestion("Boa noite Dr. Quero iniciar as lentes, como funciona o orçamento?")).toBe(false);
+    expect(isBusinessHoursQuestion("Bom dia! Como funciona o tratamento?")).toBe(false);
+    expect(isBusinessHoursQuestion("Boa tarde, como funciona o pagamento?")).toBe(false);
+  });
+
+  it("preserva perguntas legítimas de expediente mesmo com saudação e 'funciona'", () => {
+    expect(isBusinessHoursQuestion("Bom dia, vocês atendem aos sábados?")).toBe(true);
+    expect(isBusinessHoursQuestion("Vocês funcionam aos sábados?")).toBe(true);
+    expect(isBusinessHoursQuestion("A clínica funciona de manhã?")).toBe(true);
+    expect(isBusinessHoursQuestion("Boa tarde, atendem à tarde?")).toBe(true);
+  });
+
   it("responde sábado a partir do businessHours cadastrado", () => {
     expect(
       buildBusinessHoursAnswer("Segunda a sexta das 8h às 18h. Sábado das 8h às 13h.", "Vocês atendem aos sábados?"),

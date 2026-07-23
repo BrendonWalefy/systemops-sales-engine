@@ -82,6 +82,62 @@ describe("Pipeline v2 Fase 1 — answer-first + once", () => {
     ).toBe(false);
   });
 
+  // Regressão do LOOP DE VÍDEOS (Ximendes 23/07): content step SÓ de mídia. O corpo
+  // gravado da mídia é o TÍTULO do arquivo, não a legenda — sem o mapa id→título o
+  // dedup nunca reconhecia o envio e o vídeo era reenviado a cada pergunta de preço.
+  describe("content step só-de-mídia (loop de vídeos)", () => {
+    const videoStep: Extract<PipelineStep, { type: "content" }> = {
+      type: "content",
+      label: "Vídeos das Técnicas",
+      blocks: [
+        { kind: "media", mediaId: "vid-simplificada", caption: "✨ Técnica Simplificada: ..." },
+        { kind: "media", mediaId: "vid-estratificada", caption: "✨ Técnica Estratificada: ..." },
+      ],
+    };
+    const historyComoGravado = [
+      { author: "agent" as const, body: "Video simplificada" },
+      { author: "agent" as const, body: "Video estratificada" },
+    ];
+    const titleById = new Map([
+      ["vid-simplificada", "Video simplificada"],
+      ["vid-estratificada", "Video estratificada"],
+    ]);
+
+    it("SEM o mapa id→título não reconhece o envio (comportamento legado)", () => {
+      expect(hasPipelineContentStepBeenSent(videoStep, historyComoGravado)).toBe(false);
+    });
+
+    it("COM o mapa id→título reconhece que o vídeo já foi enviado (fix)", () => {
+      expect(hasPipelineContentStepBeenSent(videoStep, historyComoGravado, titleById)).toBe(true);
+    });
+
+    it("não deduplica antes de o vídeo sair", () => {
+      expect(
+        hasPipelineContentStepBeenSent(
+          videoStep,
+          [{ author: "lead" as const, body: "Qual seria o valor?" }],
+          titleById,
+        ),
+      ).toBe(false);
+    });
+
+    it("título curto não deduplica conteúdo alheio (casamento exato, não substring)", () => {
+      const genericStep: Extract<PipelineStep, { type: "content" }> = {
+        type: "content",
+        label: "Vídeo",
+        blocks: [{ kind: "media", mediaId: "vid", caption: "" }],
+      };
+      const generic = new Map([["vid", "Vídeo"]]);
+      expect(
+        hasPipelineContentStepBeenSent(
+          genericStep,
+          [{ author: "agent" as const, body: "Te enviei um vídeo explicativo agora" }],
+          generic,
+        ),
+      ).toBe(false);
+    });
+  });
+
   it("reconhece bloco de conteúdo que instrui envio de foto de avaliação", () => {
     expect(
       isPipelinePhotoInstructionContentStep({
