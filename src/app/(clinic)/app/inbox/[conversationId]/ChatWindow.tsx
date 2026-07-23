@@ -13,6 +13,14 @@ type Msg = {
   deliveryFormat?: "text" | "audio" | null;
   /** true quando composta em shadow mode: nunca chegou de verdade ao lead. */
   simulated?: boolean;
+  /** Card de pré-visualização do link, quando o texto termina em URL com prévia
+      em cache. Espelha o que o WhatsApp desenha para o lead. */
+  linkPreview?: {
+    url: string;
+    title: string;
+    description?: string | null;
+    imageUrl?: string | null;
+  } | null;
 };
 
 const TZ = "America/Sao_Paulo";
@@ -115,6 +123,32 @@ function DocumentLink({ url, title }: { url: string; title?: string }) {
       </div>
     </a>
   );
+}
+
+// Card de link igual ao do WhatsApp: foto grande (quando há), título e descrição.
+// Os dados vêm do mesmo cache que alimentou o send-link — o inbox não busca nada.
+function LinkPreviewCard({ preview }: { preview: NonNullable<Msg["linkPreview"]> }) {
+  return (
+    <a href={preview.url} target="_blank" rel="noopener noreferrer" className="msg-link-card">
+      {preview.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="msg-link-card-img" src={preview.imageUrl} alt={preview.title} />
+      )}
+      <div className="msg-link-card-body">
+        <div className="msg-link-card-title">{preview.title}</div>
+        {preview.description && <div className="msg-link-card-desc">{preview.description}</div>}
+        <div className="msg-link-card-host">{hostOf(preview.url)}</div>
+      </div>
+    </a>
+  );
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
 
 function MediaPreview({ url, type, title }: { url?: string | null; type?: string | null; title?: string }) {
@@ -432,6 +466,7 @@ export function ChatWindow({ initialMessages, conversationId, leadName, leadPhon
                   WhatsApp mostra, e é onde mora o endereço/preço que o
                   operador escreve junto da foto. */}
               {bodyText && !isMediaPlaceholder(bodyText) && <MessageText body={bodyText} />}
+              {msg.linkPreview && <LinkPreviewCard preview={msg.linkPreview} />}
             </div>
           );
         })}

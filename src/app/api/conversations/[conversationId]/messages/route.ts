@@ -3,6 +3,7 @@ import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { conversations, messages } from "@/infrastructure/db/schema";
 import { and, asc, desc, eq, gt, lt, or } from "drizzle-orm";
+import { attachInboxPreviews } from "@/application/messaging/attach-inbox-previews";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,7 @@ export async function GET(
       .limit(60)
       .then((rows) => rows.reverse());
 
-    return NextResponse.json({ messages: msgs });
+    return NextResponse.json({ messages: await attachInboxPreviews(msgs) });
   }
 
   if (!afterId) {
@@ -68,7 +69,7 @@ export async function GET(
       .where(eq(messages.conversationId, conversationId))
       .orderBy(asc(messages.sentAt), asc(messages.createdAt), asc(messages.id));
 
-    return NextResponse.json({ messages: msgs });
+    return NextResponse.json({ messages: await attachInboxPreviews(msgs) });
   }
 
   const [afterMessage] = await db
@@ -102,5 +103,5 @@ export async function GET(
     )
     .orderBy(asc(messages.sentAt), asc(messages.createdAt), asc(messages.id));
 
-  return NextResponse.json({ messages: msgs });
+  return NextResponse.json({ messages: await attachInboxPreviews(msgs) });
 }
