@@ -21,6 +21,7 @@
     "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
     "demo:roteiro": "dotenv -e .env.local -- tsx scripts/demo-roteiro.ts",
     "replay:conversas": "dotenv -e .env.local -- tsx scripts/replay-conversas.ts",
+    "replay:regressao": "dotenv -e .env.local -- tsx scripts/replay-regression.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
     "dev:workers": "dotenv -e .env.local -- ./scripts/dev-workers.sh"
   },

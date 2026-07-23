@@ -19,6 +19,7 @@ import {
 import type { ConversationExperience, MenuItem } from "@/domain/entities/clinic";
 import { resolveActiveEditorialConfig, resolveMediaLibraryForVersion } from "@/application/config/editorial-config";
 import { getClinicModules } from "@/application/modules/module-gate";
+import type { ConciergeModeConfig } from "@/application/modules/module-configs";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 
 const QA_CALENDAR_ID = process.env.QA_GOOGLE_CALENDAR_ID;
@@ -478,9 +479,9 @@ export async function POST(req: NextRequest) {
     const businessHours = clinic?.businessHours ?? null;
     const durationMinutes = clinic?.defaultAppointmentDurationMinutes ?? 60;
     const clinicAddress = clinic?.address ?? null;
-    const dbExperience: ConversationExperience = activeModules.some((m) => m.key === "concierge_mode")
-      ? "concierge"
-      : "menu_first";
+    const conciergeModule = activeModules.find((m) => m.key === "concierge_mode");
+    const dbExperience: ConversationExperience = conciergeModule ? "concierge" : "menu_first";
+    const conciergeConfig = (conciergeModule?.config ?? undefined) as ConciergeModeConfig | undefined;
     const conversationExperience: ConversationExperience =
       body.playbook?.conversationExperience ?? dbExperience;
     const menuItems: MenuItem[] = (clinic?.menuItems as MenuItem[] | null) ?? defaultMenuItemsForExperience(conversationExperience);
@@ -654,6 +655,8 @@ export async function POST(req: NextRequest) {
           timezone,
           isFirstMessage: isFirst,
           conversationExperience,
+          conciergeVerbosity: conciergeConfig?.verbosity,
+          conciergeDrive: conciergeConfig?.drive,
         });
 
     const debugInfo = process.env.E2E_MODE === "true"

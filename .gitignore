@@ -25,3 +25,14 @@ scripts/nc-media/
 public/*.ical.zip
 public/*.ics
 *.ics
+
+# Artefatos de scratch do harness de replay/regressão (mensagens reais de leads
+# = PII) — gerados por scripts/extract-replay-cases.ts e afins. Nunca versionar.
+*_cases.json
+*_messages.json
+*_replay_results*.txt
+mensagens_operador_*.txt
+
+# Scripts de investigação descartáveis (data-munging pontual, IDs hardcoded).
+# Ficam locais; não entram no verify nem no repo.
+scripts/scratch/

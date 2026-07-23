@@ -5,7 +5,7 @@ const eslintConfig = [
   ...nextVitals,
   ...nextTs,
   {
-    ignores: [".claude/**", ".next/**", "node_modules/**", "drizzle/**"],
+    ignores: [".claude/**", ".next/**", "node_modules/**", "drizzle/**", "scripts/scratch/**"],
   },
 ];
 

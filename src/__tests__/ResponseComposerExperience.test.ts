@@ -110,6 +110,42 @@ describe("ResponseComposer — conversation experience", () => {
   });
 });
 
+describe("ResponseComposer — concierge modes (drive)", () => {
+  // undefined drive deve preservar o comportamento histórico do concierge:
+  // condução ativa ao próximo passo (default = "sempre_proximo_passo").
+  it("defaults to active next-step drive when no drive is configured", () => {
+    const ctx = buildActionContext({ type: "price_inquiry" }, "concierge", undefined, undefined, undefined);
+    expect(ctx).toContain("conduza ativamente para o próximo passo");
+  });
+
+  it("responder_e_parar suppresses the closing question on price inquiries", () => {
+    const ctx = buildActionContext({ type: "price_inquiry" }, "concierge", undefined, undefined, "responder_e_parar");
+    expect(ctx).toContain("não faça nenhuma pergunta");
+    expect(ctx).not.toContain("conduza ativamente para o próximo passo");
+  });
+
+  it("direto_ao_agendamento pushes straight to scheduling on price inquiries", () => {
+    const ctx = buildActionContext({ type: "price_inquiry" }, "concierge", undefined, undefined, "direto_ao_agendamento");
+    expect(ctx).toContain("ofereça imediatamente ver os horários");
+  });
+
+  it("responder_e_parar suppresses the closing question on general questions", () => {
+    const ctx = buildActionContext(
+      { type: "general_question", clinicContext: "Lead perguntou sobre o procedimento." },
+      "concierge",
+      undefined,
+      undefined,
+      "responder_e_parar",
+    );
+    expect(ctx).toContain("não faça perguntas de fechamento");
+  });
+
+  it("drive is ignored outside concierge (menu-first keeps its own guidance)", () => {
+    const ctx = buildActionContext({ type: "price_inquiry" }, "menu_first", undefined, undefined, "responder_e_parar");
+    expect(ctx).not.toContain("não faça nenhuma pergunta");
+  });
+});
+
 describe("ResponseComposer — model routing", () => {
   it("keeps Start on the standard composer model by default", () => {
     clearComposerModelEnv();

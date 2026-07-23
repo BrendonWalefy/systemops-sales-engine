@@ -9,13 +9,23 @@ import { eq } from "drizzle-orm";
 import { MODULE_CATALOG } from "@/application/modules/module-catalog";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { OrgPlan } from "@/application/onboarding/clinic-commercial-settings";
-import type { VoiceTtsConfig, VoiceElevenLabsConfig } from "@/application/modules/module-configs";
+import type { VoiceTtsConfig, VoiceElevenLabsConfig, ConciergeModeConfig } from "@/application/modules/module-configs";
+import {
+  CONCIERGE_VERBOSITY_OPTIONS,
+  CONCIERGE_DRIVE_OPTIONS,
+  DEFAULT_CONCIERGE_VERBOSITY,
+  DEFAULT_CONCIERGE_DRIVE,
+  type ConciergeVerbosity,
+  type ConciergeDrive,
+} from "@/application/modules/module-configs";
 import { REDE_RECOMMENDED_BWAVE_CONFIG } from "@/application/modules/plan-presets";
 import { VOICE_MODE_LABELS, type VoiceMode } from "@/domain/entities/voice-mode";
 import { toggleModule, updateClinicPlan, updateModuleConfig } from "./actions";
 
 const PLAN_OPTIONS = ["start", "growth", "scale", "enterprise"] as const;
-const CONFIGURABLE_MODULE_KEYS = ["voice_tts", "voice_elevenlabs"] as const;
+const CONFIGURABLE_MODULE_KEYS = ["voice_tts", "voice_elevenlabs", "concierge_mode"] as const;
+const CONCIERGE_VERBOSITY_VALUES = CONCIERGE_VERBOSITY_OPTIONS.map((o) => o.value);
+const CONCIERGE_DRIVE_VALUES = CONCIERGE_DRIVE_OPTIONS.map((o) => o.value);
 
 type ConfigurableModuleKey = (typeof CONFIGURABLE_MODULE_KEYS)[number];
 
@@ -135,6 +145,7 @@ export default async function ClinicModulesPage({
 
           const voiceTtsConfig = def.key === "voice_tts" ? (config as VoiceTtsConfig | null) : null;
           const elevenLabsConfig = def.key === "voice_elevenlabs" ? (config as VoiceElevenLabsConfig | null) : null;
+          const conciergeConfig = def.key === "concierge_mode" ? (config as ConciergeModeConfig | null) : null;
           const isConfigurable = isConfigurableModuleKey(def.key);
           const showConfigPanel = isActive && isConfigurable && (
             openModuleKey === def.key ||
@@ -414,6 +425,92 @@ export default async function ClinicModulesPage({
                     }}
                   >
                     Salvar configuração B-WAVE
+                  </button>
+                </form>
+              )}
+
+              {/* Config panel — Modo Concierge (verbosidade + condução) */}
+              {showConfigPanel && def.key === "concierge_mode" && (
+                <form
+                  action={async (formData: FormData) => {
+                    "use server";
+                    const rawVerbosity = String(formData.get("verbosity") ?? DEFAULT_CONCIERGE_VERBOSITY);
+                    const rawDrive = String(formData.get("drive") ?? DEFAULT_CONCIERGE_DRIVE);
+                    const verbosity = (CONCIERGE_VERBOSITY_VALUES as readonly string[]).includes(rawVerbosity)
+                      ? (rawVerbosity as ConciergeVerbosity)
+                      : DEFAULT_CONCIERGE_VERBOSITY;
+                    const drive = (CONCIERGE_DRIVE_VALUES as readonly string[]).includes(rawDrive)
+                      ? (rawDrive as ConciergeDrive)
+                      : DEFAULT_CONCIERGE_DRIVE;
+                    await updateModuleConfig(clinicId, "concierge_mode", { verbosity, drive });
+                  }}
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,0.06)",
+                    padding: "14px 16px",
+                    background: "rgba(255,255,255,0.015)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "18px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Settings2 size={14} style={{ color: "#52525b" }} />
+                    <span style={{ fontSize: "12px", color: "#71717a", fontWeight: 600 }}>Modo Concierge — Tom da conversa</span>
+                  </div>
+
+                  {/* Verbosidade */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label style={{ fontSize: "11px", color: "#52525b" }}>Verbosidade das respostas</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {CONCIERGE_VERBOSITY_OPTIONS.map((opt) => {
+                        const selected = (conciergeConfig?.verbosity ?? DEFAULT_CONCIERGE_VERBOSITY) === opt.value;
+                        return (
+                          <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 10px", borderRadius: "6px", background: selected ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)", border: selected ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
+                            <input type="radio" name="verbosity" value={opt.value} defaultChecked={selected} style={{ marginTop: "2px", accentColor: "#10b981" }} />
+                            <div>
+                              <div style={{ fontSize: "12px", fontWeight: 600, color: "#fafafa" }}>{opt.label}</div>
+                              <div style={{ fontSize: "11px", color: "#52525b", marginTop: "1px" }}>{opt.description}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Condução (drive) */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label style={{ fontSize: "11px", color: "#52525b" }}>Condução ao próximo passo</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {CONCIERGE_DRIVE_OPTIONS.map((opt) => {
+                        const selected = (conciergeConfig?.drive ?? DEFAULT_CONCIERGE_DRIVE) === opt.value;
+                        return (
+                          <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "8px 10px", borderRadius: "6px", background: selected ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)", border: selected ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(255,255,255,0.06)", cursor: "pointer" }}>
+                            <input type="radio" name="drive" value={opt.value} defaultChecked={selected} style={{ marginTop: "2px", accentColor: "#10b981" }} />
+                            <div>
+                              <div style={{ fontSize: "12px", fontWeight: 600, color: "#fafafa" }}>{opt.label}</div>
+                              <div style={{ fontSize: "11px", color: "#52525b", marginTop: "1px" }}>{opt.description}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "5px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid rgba(16,185,129,0.3)",
+                      background: "rgba(16,185,129,0.08)",
+                      color: "#34d399",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Salvar modo de conversa
                   </button>
                 </form>
               )}
