@@ -48,12 +48,12 @@ export function extractTrailingUrl(text: string): string | null {
 }
 
 /**
- * Só http(s), e nunca endereço interno. As URLs daqui vêm da IA ou do operador,
- * nunca do lead — mas o custo de fechar isso agora é uma função, e o de descobrir
- * depois que o servidor busca `http://169.254.169.254` é outro.
+ * http(s) público, sem host interno. Base das duas checagens abaixo. As URLs que
+ * chegam aqui vêm da IA ou do operador, nunca do lead — mas o custo de fechar
+ * endereço interno agora é uma função, e o de descobrir depois que o servidor
+ * busca `http://169.254.169.254` é outro. Não olha comprimento de propósito.
  */
-export function isFetchableUrl(raw: string): boolean {
-  if (raw.length > MAX_URL_LENGTH) return false;
+function isPublicHttpUrl(raw: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -78,6 +78,24 @@ export function isFetchableUrl(raw: string): boolean {
   if (host === "::1" || host.startsWith("[")) return false;
 
   return true;
+}
+
+/**
+ * URL que o NOSSO servidor vai buscar. Aqui o comprimento importa: uma URL
+ * gigante é chave de cache ruim e busca cara, e não vem de fonte confiável.
+ */
+export function isFetchableUrl(raw: string): boolean {
+  return raw.length <= MAX_URL_LENGTH && isPublicHttpUrl(raw);
+}
+
+/**
+ * URL de IMAGEM do card. Não aplica o teto de comprimento: nós nunca buscamos
+ * essa URL — só a repassamos ao WhatsApp para exibir — e a og:image do Google
+ * embute a origem em base64, chegando a ~1300 caracteres (medido no link da
+ * Ximendes). O teto de fetch derrubava a foto de qualquer link do Google.
+ */
+export function isDisplayableImageUrl(raw: string): boolean {
+  return isPublicHttpUrl(raw);
 }
 
 /**
@@ -141,7 +159,7 @@ export function parseLinkPreviewHtml(html: string, url: string): LinkPreview {
     url,
     title: title ? decodeEntities(title) : null,
     description,
-    imageUrl: imageUrl && isFetchableUrl(imageUrl) ? imageUrl : null,
+    imageUrl: imageUrl && isDisplayableImageUrl(imageUrl) ? imageUrl : null,
   };
 }
 
