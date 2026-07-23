@@ -162,25 +162,83 @@ describe("AgentResponseThrottle — integração com Orchestrator", () => {
     };
   }
 
-  it("silencia segunda mensagem rápida de baixa informação antes de responder de novo", () => {
+  // Nova semântica (jul/2026): adia a mensagem que TEM um follow-up rápido
+  // depois dela; a TERMINAL do burst sempre responde (com o histórico completo).
+  it("adia a mensagem com follow-up rápido, mas responde a TERMINAL do burst", () => {
     const messages = [
-      lead("msg-1", "Boa tarde", 0),
-      lead("msg-2", "Aqui é o Bruno", 2_000),
+      lead("msg-1", "oi", 0),
+      lead("msg-2", "chegou", 2_000),
     ];
 
+    // msg-1 tem um follow-up rápido (msg-2) → adia, a resposta sai da msg-2.
+    expect(shouldThrottleRapidLeadMessage({
+      messages,
+      currentExternalId: "msg-1",
+      hasPendingSlotOffer: false,
+      isMenuActive: false,
+      treatments,
+    })).toBe(true);
+
+    // msg-2 é a terminal (nada mais novo) → NÃO adia, responde uma vez.
     expect(shouldThrottleRapidLeadMessage({
       messages,
       currentExternalId: "msg-2",
       hasPendingSlotOffer: false,
       isMenuActive: false,
       treatments,
-    })).toBe(true);
+    })).toBe(false);
   });
 
-  it("não silencia escolha de slot quando há oferta pendente", () => {
+  // REGRESSÃO real: Ximendes 23/07 — "quero ve-los / mande / pelo / menos /
+  // duas / midias" (6 msgs rápidas, deltas 2/2/1/2/1s). A regra antiga suprimia
+  // a última ("midias", 1s após "duas") e a rajada inteira ficava sem resposta.
+  it("REGRESSÃO Ximendes: só as intermediárias são adiadas; a última responde", () => {
+    const burst = [
+      lead("quero", "quero ve-los", 0),
+      lead("mande", "mande", 2_000),
+      lead("pelo", "pelo", 4_000),
+      lead("menos", "menos", 5_000),
+      lead("duas", "duas", 7_000),
+      lead("midias", "midias", 8_000),
+    ];
+    const throttleOf = (externalId: string) =>
+      shouldThrottleRapidLeadMessage({
+        messages: burst,
+        currentExternalId: externalId,
+        hasPendingSlotOffer: false,
+        isMenuActive: false,
+        treatments,
+      });
+
+    for (const id of ["quero", "mande", "pelo", "menos", "duas"]) {
+      expect(throttleOf(id)).toBe(true); // têm follow-up rápido → adiam
+    }
+    expect(throttleOf("midias")).toBe(false); // terminal → responde
+  });
+
+  it("follow-up FORA da janela (turno separado) não adia a mensagem anterior", () => {
+    const messages = [
+      lead("msg-1", "oi", 0),
+      lead("msg-2", "voltei", 10_000), // 10s depois → não é a mesma rajada
+    ];
+
+    expect(shouldThrottleRapidLeadMessage({
+      messages,
+      currentExternalId: "msg-1",
+      hasPendingSlotOffer: false,
+      isMenuActive: false,
+      treatments,
+    })).toBe(false);
+  });
+
+  // Guards (early-return): cada cenário tem um follow-up rápido DEPOIS da
+  // mensagem atual, para que seja o GUARD — e não a terminalidade — a impedir
+  // o adiamento.
+  it("não adia escolha de slot quando há oferta pendente", () => {
     const messages = [
       lead("msg-1", "quero agendar uma avaliacao", 0),
       lead("msg-2", "1", 2_000),
+      lead("msg-3", "pode ser", 3_000),
     ];
 
     expect(shouldThrottleRapidLeadMessage({
@@ -192,10 +250,11 @@ describe("AgentResponseThrottle — integração com Orchestrator", () => {
     })).toBe(false);
   });
 
-  it("não silencia número enquanto uma lista de procedimentos está ativa", () => {
+  it("não adia número enquanto uma lista de procedimentos está ativa", () => {
     const messages = [
       lead("msg-1", "quais procedimentos voces fazem", 0),
       lead("msg-2", "8", 2_000),
+      lead("msg-3", "esse", 3_000),
     ];
 
     expect(shouldThrottleRapidLeadMessage({
@@ -208,10 +267,11 @@ describe("AgentResponseThrottle — integração com Orchestrator", () => {
     })).toBe(false);
   });
 
-  it("não silencia mensagem rápida com conteúdo de tratamento", () => {
+  it("não adia mensagem de conteúdo de tratamento, mesmo com follow-up rápido", () => {
     const messages = [
       lead("msg-1", "Boa tarde", 0),
       lead("msg-2", "Lentes", 2_000),
+      lead("msg-3", "quanto", 3_000),
     ];
 
     expect(shouldThrottleRapidLeadMessage({
@@ -223,10 +283,11 @@ describe("AgentResponseThrottle — integração com Orchestrator", () => {
     })).toBe(false);
   });
 
-  it("não silencia preferência de período enviada em seguida", () => {
+  it("não adia preferência de período, mesmo com follow-up rápido", () => {
     const messages = [
       lead("msg-1", "quero agendar", 0),
       lead("msg-2", "de tarde", 2_000),
+      lead("msg-3", "por favor", 3_000),
     ];
 
     expect(shouldThrottleRapidLeadMessage({

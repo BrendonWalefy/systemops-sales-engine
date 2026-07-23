@@ -2357,14 +2357,22 @@ export function shouldThrottleRapidLeadMessage(params: {
   if (!current || current.author !== "lead") return false;
   if (isLikelyBusinessMessage(current.body, params.treatments)) return false;
 
-  const previousLead = params.messages
-    .filter((m) => m.author === "lead" && m.id !== current.id && m.sentAt <= current.sentAt)
-    .sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime())
-    .at(-1);
-  if (!previousLead) return false;
-
   const windowMs = params.windowMs ?? 4_000;
-  return current.sentAt.getTime() - previousLead.sentAt.getTime() < windowMs;
+  // Adia esta mensagem SÓ quando um follow-up rápido do lead já chegou DEPOIS
+  // dela (mesma rajada) — aí a resposta sai da mensagem mais recente, com o
+  // histórico completo. A mensagem TERMINAL do burst (nada mais novo dentro da
+  // janela) SEMPRE responde; caso contrário a rajada inteira fica muda.
+  // Regressão real: Ximendes 23/07, "…mande pelo menos duas midias" quebrado em
+  // 6 mensagens rápidas — a última ("midias", 1s após "duas") era suprimida e
+  // ninguém respondia, porque a regra antiga olhava a mensagem ANTERIOR (a
+  // terminal sempre vem logo após outra) em vez de olhar se há uma mais nova.
+  return params.messages.some(
+    (m) =>
+      m.author === "lead" &&
+      m.id !== current.id &&
+      m.sentAt.getTime() > current.sentAt.getTime() &&
+      m.sentAt.getTime() - current.sentAt.getTime() < windowMs,
+  );
 }
 
 function getDayGreeting(timezone: ClinicTimezone): string {
