@@ -78,9 +78,19 @@ describe("parseLinkPreviewHtml", () => {
     expect(preview.imageUrl).toBeNull();
   });
 
-  it("descarta imagem que não é buscável", () => {
+  it("descarta imagem em host interno", () => {
     const html = `<meta content="Título" property="og:title"><meta content="http://127.0.0.1/x.png" property="og:image">`;
     expect(parseLinkPreviewHtml(html, "https://x.com").imageUrl).toBeNull();
+  });
+
+  it("mantém og:image longa — a do Google embute a origem em base64 (~1300 chars)", () => {
+    // Bug real: a og:image do link da Ximendes tinha 1290 caracteres e o teto de
+    // 1000 (feito para a URL que BUSCAMOS) derrubava a foto de todo link do Google.
+    // A imagem nós só repassamos ao WhatsApp, nunca buscamos — comprimento não vale.
+    const longImg = "https://dimg-pa.googleapis.com/ic/" + "A".repeat(1300);
+    const html = `<meta content="Dr Gregorie" property="og:title"><meta content="${longImg}" property="og:image">`;
+    const preview = parseLinkPreviewHtml(html, "https://share.google/x");
+    expect(preview.imageUrl).toBe(longImg);
   });
 });
 
