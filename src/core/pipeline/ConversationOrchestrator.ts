@@ -4594,8 +4594,19 @@ export class ConversationOrchestrator {
     // (hasPipelineContentStepBeenSent) casa pelo TÍTULO — que é o que fica gravado
     // no corpo da mensagem enviada — e não pela legenda. Sem ele, um content step
     // só-de-mídia reenviava a cada virada (loop de vídeos da Ximendes, 23/07).
+    //
+    // Lê a biblioteca CHEIA da clínica (media_assets), não a seleção do playbook
+    // (editorial.mediaLibrary): o pipeline determinístico entrega o vídeo por id
+    // mesmo quando ele NÃO está na seleção do playbook (resolveDeliveryMediaLibrary
+    // busca no banco). Se o mapa dependesse da seleção, desmarcar o vídeo no editor
+    // do playbook — para a LLM parar de emiti-lo — reintroduziria o loop, porque o
+    // dedup perderia o título. Desacoplado, desmarcar vira o fix limpo.
+    const clinicMediaTitleRows = await db
+      .select({ id: mediaAssets.id, title: mediaAssets.title })
+      .from(mediaAssets)
+      .where(eq(mediaAssets.clinicId, clinicId));
     const pipelineMediaTitleById = new Map<string, string>(
-      (editorial?.mediaLibrary ?? []).map((m) => [m.id, m.title] as const),
+      clinicMediaTitleRows.map((m) => [m.id, m.title] as const),
     );
 
     // ── 8. Verifica oferta de slots pendente ──
