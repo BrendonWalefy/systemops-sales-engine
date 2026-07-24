@@ -57,6 +57,7 @@ describe("buildSanitizedReplayCorpus", () => {
       humanReviewRequired: true,
       humanReviewApprovedAt: null,
     });
+    expect(dataset.approval).toBeNull();
     expect(serialized).not.toContain("João");
     expect(serialized).not.toContain("123.456.789-00");
     expect(serialized).not.toContain("98765-4321");

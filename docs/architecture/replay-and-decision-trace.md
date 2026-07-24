@@ -41,6 +41,7 @@ Os contratos neutros vivem em:
 Versões iniciais:
 
 - `replay-scenario.v1`;
+- `replay-dataset.v2`;
 - `decision-trace.v1`;
 - `replay-result.v1`;
 - `replay-evaluation.v1`.
@@ -126,24 +127,53 @@ O export:
 - sempre nasce `needs_review`.
 
 `needs_review` não pode ser entregue ao OMNIQA. Mesmo com detecção automática,
-texto livre pode conter um identificador não reconhecido; a etapa posterior de
-aprovação humana será um gate explícito, não uma edição manual do JSON.
+texto livre pode conter um identificador não reconhecido.
+
+### Aprovação assinada
+
+A aprovação não é uma edição manual do JSON. Gere uma vez o par Ed25519 em um
+diretório privado fora de qualquer repositório:
+
+```bash
+npm run replay:keys -- --out-dir /caminho/privado/replay-keys
+```
+
+Depois de revisar manualmente todos os textos e placeholders do arquivo
+`needs-review`, aprove sem sobrescrever a origem:
+
+```bash
+npm run replay:approve -- \
+  --input /caminho/corpus/clinica.baseline.needs-review.json \
+  --output /caminho/corpus/clinica.baseline.approved.json \
+  --private-key /caminho/privado/replay-keys/replay-approval-private.pem \
+  --reviewer qa-owner \
+  --confirm-reviewed YES
+```
+
+O arquivo aprovado contém digest da origem, identidade não pessoal do revisor,
+data, ID da chave e assinatura do conteúdo inteiro. Alterar qualquer turno,
+fingerprint ou metadado após a aprovação invalida a assinatura. O OMNIQA recebe
+somente a chave pública confiável.
+
+Os critérios para chamar uma execução de replay fiel estão em
+[`replay-fidelity-contract.md`](replay-fidelity-contract.md).
 
 ## Estado atual
 
 Implementado:
 
-- contratos `v1`;
+- contratos de cenário/resultado `v1` e dataset assinado `v2`;
 - `turnId` entre ingresso, orquestrador, outbox e sender;
 - sink noop, em memória e log estruturado opt-in;
 - estágios iniciais de ingresso, configuração, planejamento, enqueue e entrega;
 - bloqueio da exportação bruta;
 - exportador read-only com allowlist, pseudonimização, sanitização e saída fora
   de Git em estado `needs_review`.
+- geração local de chaves Ed25519 e aprovação humana assinada, sem sobrescrita.
 
 Ainda não implementado:
 
-- workflow de revisão/aprovação do corpus e entrega segura ao OMNIQA;
+- verificação da assinatura pelo consumidor OMNIQA;
 - fingerprint persistido no runtime do trace;
 - trace de estado antes/depois, classificador e cada override determinístico;
 - sandbox com banco, relógio, calendário e canal isolados;

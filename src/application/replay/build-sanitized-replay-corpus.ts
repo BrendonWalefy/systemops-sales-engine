@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import {
   REPLAY_DATASET_SCHEMA_VERSION,
   REPLAY_SCENARIO_SCHEMA_VERSION,
-  type ReplayDatasetV1,
+  type ReplayDatasetV2,
   type ReplayScenarioMode,
   type ReplayScenarioTurnV1,
   type ReplayTurnAuthor,
@@ -40,7 +40,7 @@ export type BuildSanitizedReplayCorpusInput = {
 
 export function buildSanitizedReplayCorpus(
   input: BuildSanitizedReplayCorpusInput,
-): ReplayDatasetV1 {
+): ReplayDatasetV2 {
   if (input.sourceHashKey.length < 32) {
     throw new Error("Replay source hash key must have at least 32 characters");
   }
@@ -124,7 +124,7 @@ export function buildSanitizedReplayCorpus(
     }];
   });
 
-  const dataset: ReplayDatasetV1 = {
+  const dataset: ReplayDatasetV2 = {
     schemaVersion: REPLAY_DATASET_SCHEMA_VERSION,
     datasetVersion: input.datasetVersion,
     generatedAt: input.generatedAt.toISOString(),
@@ -134,6 +134,7 @@ export function buildSanitizedReplayCorpus(
       humanReviewRequired: true,
       humanReviewApprovedAt: null,
     },
+    approval: null,
     clinic: {
       clinicKey: input.clinicKey,
       timezone: input.timezone,
@@ -157,7 +158,7 @@ function opaqueRef(key: string, parts: string[]): string {
 }
 
 function assertNoKnownSourceIdentifiers(
-  dataset: ReplayDatasetV1,
+  dataset: ReplayDatasetV2,
   sources: ReplaySourceConversation[],
 ): void {
   const serialized = JSON.stringify(dataset).toLocaleLowerCase("pt-BR");
@@ -183,7 +184,7 @@ function assertNoKnownSourceIdentifiers(
   }
 }
 
-function assertNoDetectedPii(dataset: ReplayDatasetV1): void {
+function assertNoDetectedPii(dataset: ReplayDatasetV2): void {
   const transcript = dataset.scenarios
     .flatMap((scenario) => scenario.turns.map((turn) => turn.content.text))
     .join("\n");

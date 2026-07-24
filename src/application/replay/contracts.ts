@@ -1,7 +1,7 @@
 import type { DecisionTraceEventV1 } from "@/core/observability/DecisionTrace";
 
 export const REPLAY_SCENARIO_SCHEMA_VERSION = "replay-scenario.v1" as const;
-export const REPLAY_DATASET_SCHEMA_VERSION = "replay-dataset.v1" as const;
+export const REPLAY_DATASET_SCHEMA_VERSION = "replay-dataset.v2" as const;
 export const REPLAY_RESULT_SCHEMA_VERSION = "replay-result.v1" as const;
 export const REPLAY_EVALUATION_SCHEMA_VERSION = "replay-evaluation.v1" as const;
 
@@ -52,7 +52,17 @@ export type ReplayScenarioV1 = {
   turns: ReplayScenarioTurnV1[];
 };
 
-export type ReplayDatasetV1 = {
+export type ReplayDatasetApprovalV1 = {
+  algorithm: "ed25519";
+  checklistVersion: "replay-privacy-review.v1";
+  approvedAt: string;
+  approvedBy: string;
+  keyId: string;
+  sourceDigest: string;
+  signature: string;
+};
+
+export type ReplayDatasetV2 = {
   schemaVersion: typeof REPLAY_DATASET_SCHEMA_VERSION;
   datasetVersion: string;
   generatedAt: string;
@@ -62,6 +72,7 @@ export type ReplayDatasetV1 = {
     humanReviewRequired: true;
     humanReviewApprovedAt: string | null;
   };
+  approval: ReplayDatasetApprovalV1 | null;
   clinic: ReplayScenarioV1["clinic"] & {
     timezone: string;
   };
