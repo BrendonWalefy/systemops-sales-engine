@@ -32,6 +32,8 @@ public/*.ics
 *_messages.json
 *_replay_results*.txt
 mensagens_operador_*.txt
+*.needs-review.json
+replay-datasets/
 
 # Scripts de investigação descartáveis (data-munging pontual, IDs hardcoded).
 # Ficam locais; não entram no verify nem no repo.

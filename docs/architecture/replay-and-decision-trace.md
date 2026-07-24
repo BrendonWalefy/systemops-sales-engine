@@ -95,6 +95,40 @@ O exportador substituto deve:
 7. gravar artefatos fora do Git;
 8. ter retenção e acesso restritos.
 
+### Exportador local
+
+O primeiro exportador read-only está disponível por:
+
+```bash
+npm run replay:export -- \
+  --clinic <slug-da-clinica> \
+  --dataset-version <versao-imutavel> \
+  --out-dir <caminho-absoluto-fora-de-qualquer-repositorio-git> \
+  --limit 50
+```
+
+Ele exige:
+
+```bash
+REPLAY_EXPORT_ALLOWED_CLINICS=slug-explicitamente-autorizado
+REPLAY_EXPORT_HASH_KEY=chave-local-com-pelo-menos-32-caracteres
+```
+
+O export:
+
+- consulta apenas tabelas necessárias em modo read-only;
+- inclui a conversa intercalada inteira das conversas selecionadas;
+- preserva offsets e tipo de mídia, sem URL;
+- pseudonimiza IDs por HMAC;
+- gera fingerprints de configuração e playbook;
+- sanitiza padrões conhecidos de PII;
+- grava com permissão `0600` e `flag=wx`, sem sobrescrever baseline;
+- sempre nasce `needs_review`.
+
+`needs_review` não pode ser entregue ao OMNIQA. Mesmo com detecção automática,
+texto livre pode conter um identificador não reconhecido; a etapa posterior de
+aprovação humana será um gate explícito, não uma edição manual do JSON.
+
 ## Estado atual
 
 Implementado:
@@ -103,12 +137,14 @@ Implementado:
 - `turnId` entre ingresso, orquestrador, outbox e sender;
 - sink noop, em memória e log estruturado opt-in;
 - estágios iniciais de ingresso, configuração, planejamento, enqueue e entrega;
-- bloqueio da exportação bruta.
+- bloqueio da exportação bruta;
+- exportador read-only com allowlist, pseudonimização, sanitização e saída fora
+  de Git em estado `needs_review`.
 
 Ainda não implementado:
 
-- exportador de corpus anonimizado;
-- fingerprint completo de configuração/playbook;
+- workflow de revisão/aprovação do corpus e entrega segura ao OMNIQA;
+- fingerprint persistido no runtime do trace;
 - trace de estado antes/depois, classificador e cada override determinístico;
 - sandbox com banco, relógio, calendário e canal isolados;
 - modos `historical_turn`, `closed_loop`, `counterfactual` e `concurrency`;
