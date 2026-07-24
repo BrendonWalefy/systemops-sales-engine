@@ -1,0 +1,3199 @@
+{
+  "metadata": {
+    "generatedAt": "2026-07-24T21:21:58.152Z",
+    "gitCommit": "6f7d5706e9abbebfc0b3adc9434a0cf89c39f9f4",
+    "branch": "chore/conversation-engine-validation",
+    "schemaVersion": "6f7d570",
+    "auditedProductionCommit": "d8c0fd0c7602fe635601afeb0778b1f982301fc7",
+    "sanitized": true,
+    "source": "read-only production database query"
+  },
+  "organization": {
+    "id": "d24a584a-faac-4a46-9750-a718d0f8e686",
+    "name": "Clínica Vitalli",
+    "slug": "clinica-vitalli",
+    "specialty": "Odontologia Estética com Foco em Lentes de Resina Composta",
+    "city": "São Paulo",
+    "timezone": "America/Sao_Paulo",
+    "businessHours": "Seg-Sáb 8h-18h",
+    "calendarMode": "google_calendar",
+    "googleCalendarIdConfigured": true,
+    "autoReplyEnabled": false,
+    "operationalStatus": "paused",
+    "shadowModeEnabled": false,
+    "automatedReengagementPaused": true,
+    "staleConversationHours": 4,
+    "conversationRestartHours": 24,
+    "slotOfferTtlMinutes": 15,
+    "maxSlotsToOffer": 5,
+    "slotLookaheadDays": 30,
+    "offerSlotsAfterPriceEnabled": true,
+    "rapidThrottleMs": 4000,
+    "messageDebounceMs": null,
+    "defaultAppointmentDurationMinutes": 60,
+    "postAppointmentBufferMinutes": 60,
+    "depositEnabled": true,
+    "depositAmountCents": 3000,
+    "depositTtlHours": 24,
+    "channelProvider": "z_api",
+    "isTest": false,
+    "isDemo": false,
+    "segment": "dental",
+    "serviceNoun": "tratamento",
+    "bookingNoun": "consulta",
+    "contactNoun": "paciente",
+    "agentRole": "recepcionista virtual",
+    "businessDescriptor": null,
+    "updatedAt": "2026-07-22T22:37:01.611Z"
+  },
+  "productionSchemaExtensions": {
+    "address_complement_configured": false,
+    "maps_url_configured": false,
+    "location_message_configured": true,
+    "warranty_policy_configured": true,
+    "warranty_tier_count": 2
+  },
+  "activePlaybook": {
+    "id": "623b0cd4-89e1-4c70-89f4-05142200f515",
+    "name": "Clínica Vitalli — v4 Preços Normais + conteúdo Victor (17/07)",
+    "status": "active",
+    "specialty": "Odontologia Estética e Reabilitação Oral",
+    "toneOfVoice": "acolhedor",
+    "commercialPolicy": "Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.\n\nTrabalhamos com duas técnicas de lentes em resina. A Lente em Resina Premium usa uma única resina de alta qualidade, para um sorriso bonito e natural com excelente acabamento — é o investimento mais acessível. A Lente em Resina Estratificada combina duas resinas de alta qualidade com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. Nossos pacotes fechados são de 10 ou 20 lentes, e o tratamento é totalmente personalizado: o paciente escolhe a cor e o formato dos dentes junto com o Doutor.\n\nFormas de pagamento: à vista (Pix, débito ou crédito), com 5% de desconto no pagamento via Pix, ou parcelado em até 21x no cartão (taxas e condições consultadas na clínica). Não trabalhamos com boleto.\n\nCaso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nTambém realizamos plástica gengival, que dá simetria ao sorriso corrigindo a gengiva para que todos os dentes fiquem do mesmo tamanho (procedimento totalmente indolor), clareamento dental com protocolo caseiro, de consultório ou os dois combinados, e tratamento de canal.\n\nPara reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal não é uma cobrança pela avaliação: ele é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Dr. Victor Cavalcante.",
+    "notes": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Lente em Resina Premium e Lente em Resina Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nOBJETIVIDADE:\nSeja direto e objetivo. Responda o que foi perguntado em blocos curtos e conduza ativamente a conversa para o agendamento da avaliação — não espere o lead pedir para ver horários.\n\nCORES DAS LENTES:\nSe o lead perguntar sobre cor ou tom das lentes, envie a imagem \"Cores BL1, BL2 e BL3\" e explique que a cor e o formato dos dentes são escolhidos junto com o Doutor — o tratamento é totalmente personalizado.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.\nPara confirmar e agendar a avaliação presencial, informe que a avaliação não tem custo e que, para reservar o horário na agenda concorrida do Doutor, a clínica exige um sinal via Pix configurado separadamente no cadastro da clínica. Nunca apresente esse sinal como preço, taxa ou valor da avaliação. O sinal é abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a Lente Premium e a Estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"",
+    "receptionistName": "Gleice",
+    "differentials": [
+      "Especialistas em lentes de resina composta",
+      "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+      "Lentes finas, translúcidas e com aspecto super natural",
+      "Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido",
+      "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+      "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+      "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+      "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+    ],
+    "objections": [
+      {
+        "response": "O investimento varia conforme a técnica escolhida (Premium ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?",
+        "objection": "Qual o valor do tratamento?"
+      },
+      {
+        "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+        "objection": "Precisa desgastar muito os dentes?"
+      },
+      {
+        "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+        "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+      },
+      {
+        "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+        "objection": "Vocês fazem somente as lentes inferiores?"
+      },
+      {
+        "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+        "objection": "Como funciona a troca de facetas antigas por novas?"
+      },
+      {
+        "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.",
+        "objection": "O procedimento demora quanto tempo?"
+      },
+      {
+        "response": "Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+        "objection": "Tem algum desconto pagando à vista no Pix?"
+      },
+      {
+        "response": "Que bom que você lembra do nosso contato! Aquele valor era de uma promoção com prazo que já passou. O valor atual é o vigente e seguimos com condições bem flexíveis de parcelamento. Posso te mostrar os horários para a avaliação com o Doutor?",
+        "objection": "Vocês me passaram um valor menor antes / era mais barato antes"
+      }
+    ],
+    "mediaAssetIds": [
+      "0c771e1b-a1e2-45cb-8a3d-ecbd0b2f0c7c",
+      "5ffd33e9-0f06-47b9-b07f-21405a283391",
+      "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+      "cc7b30c5-6715-4704-9f1a-d890ed976c0f",
+      "5e19bb59-0560-495d-b036-52e949b8d34c",
+      "1cc316f2-c755-478a-a1a8-59fda28979e1",
+      "b8b86eea-e273-4f3e-9fed-808b271913ee",
+      "0d09a724-108d-4368-84dc-6a68b0551c30"
+    ],
+    "legacyMediaCount": 0,
+    "createdAt": "2026-07-19T21:52:32.453Z",
+    "updatedAt": "2026-07-23T20:41:29.289Z"
+  },
+  "playbookVersions": [
+    {
+      "id": "31a4f906-3bee-4e82-b421-daebfebda6af",
+      "name": "Clínica Vitalli — v2 (Preços Normais)",
+      "status": "historical",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "Caloroso, acolhedor e profissional. Amigável, consultivo e direto. Usa frases que passam segurança (como 'pode ficar tranquila') e usa emojis leves. Muito atencioso e empático.",
+      "commercialPolicy": "Nós trabalhamos com duas técnicas excelentes de lentes em resina. O investimento depende da avaliação clínica:\n\n- Técnica Simplificada (1 resina, sem estratificação): pacote de 20 lentes por R$ 2.000,00; pacote de 10 lentes por R$ 1.700,00.\n\n- Técnica Estratificada (2 resinas com bordas translúcidas, para máxima naturalidade): pacote de 20 lentes por R$ 2.500,00; pacote de 10 lentes por R$ 2.000,00.\n\nTrabalhamos com opções bem flexíveis de pagamento, podendo parcelar em até 21 vezes no cartão, com a opção de fazer em até 3 vezes sem juros. Só para você ter uma ideia de simulação, em um procedimento de R$ 2.000,00 o parcelamento em 8 vezes fica em torno de R$ 277,96 e em 10 vezes fica cerca de R$ 226,66.\n\nCaso você já possua lentes antigas e precise fazer a troca, a remoção tem um valor de R$ 400,00. Também realizamos prótese adesiva (R$ 600,00) e limpeza (R$ 250,00). Nossa manutenção preventiva periódica custa R$ 400,00 e já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nPara reservarmos o seu horário na agenda, como os horários do Doutor são muito concorridos, nós cobramos um sinal no valor de R$ 30,00. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Dr. Victor Cavalcante. Fique tranquila, pois esse valor do sinal é integralmente abatido no dia do procedimento.",
+      "notes": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Técnicas Simplificada e Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.\nPara confirmar e agendar a avaliação presencial, informe que a agenda do Doutor é muito concorrida e que a clínica exige o pagamento de um sinal de R$ 30,00 via Pix. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a técnica simplificada e a estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"",
+      "receptionistName": "Marina",
+      "differentials": [
+        "Especialistas em lentes de resina composta",
+        "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+        "Lentes finas, translúcidas e com aspecto super natural",
+        "Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido",
+        "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+        "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+        "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+        "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento varia conforme a técnica escolhida (Simplificada ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?",
+          "objection": "Qual o valor do tratamento?"
+        },
+        {
+          "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+          "objection": "Precisa desgastar muito os dentes?"
+        },
+        {
+          "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+          "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+        },
+        {
+          "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+          "objection": "Vocês fazem somente as lentes inferiores?"
+        },
+        {
+          "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+          "objection": "Como funciona a troca de facetas antigas por novas?"
+        },
+        {
+          "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.",
+          "objection": "O procedimento demora quanto tempo?"
+        },
+        {
+          "response": "Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+          "objection": "Tem algum desconto pagando à vista no Pix?"
+        }
+      ],
+      "mediaAssetIds": [
+        "636dd855-b5b9-4775-b765-be52f4e75986",
+        "14b3ce5b-f4da-4d69-9793-0c47d77458a8",
+        "3618aee7-b85f-46ff-9e55-dac535065ae2"
+      ],
+      "legacyMediaCount": 0,
+      "createdAt": "2026-07-07T22:04:36.105Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z"
+    },
+    {
+      "id": "71dc1709-f008-42d9-ba40-12369f3813ba",
+      "name": "Clínica Vitalli — Promocional (vigente)",
+      "status": "historical",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "acolhedor",
+      "commercialPolicy": "Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.\n\nNós trabalhamos com duas técnicas excelentes de lentes em resina, e estamos com preços promocionais por tempo limitado. O investimento depende da avaliação clínica:\n\n- Técnica Simplificada (1 resina, sem estratificação): pacote de 20 lentes de R$ 2.000,00 por R$ 1.800,00. O pacote de 10 lentes está no valor promocional informado acima.\n\n- Técnica Estratificada (2 resinas com bordas translúcidas, para máxima naturalidade): pacote de 20 lentes de R$ 2.500,00 por R$ 2.000,00. O pacote de 10 lentes está no valor promocional informado acima.\n\nTrabalhamos com opções bem flexíveis de pagamento, podendo parcelar em até 21 vezes no cartão, com a opção de fazer em até 3 vezes sem juros.\n\nCaso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza — valores informados acima. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nPara reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal para confirmar a avaliação (valor informado acima). Esse sinal é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Dr. Victor Cavalcante.",
+      "notes": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Técnicas Simplificada e Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.\nPara confirmar e agendar a avaliação presencial, informe que a agenda do Doutor é muito concorrida e que a clínica exige o pagamento do sinal da avaliação via Pix (valor informado no cadastro do procedimento), abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a técnica simplificada e a estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"",
+      "receptionistName": "Gleice",
+      "differentials": [
+        "Especialistas em lentes de resina composta",
+        "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+        "Lentes finas, translúcidas e com aspecto super natural",
+        "Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido",
+        "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+        "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+        "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+        "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento varia conforme a técnica escolhida (Simplificada ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?",
+          "objection": "Qual o valor do tratamento?"
+        },
+        {
+          "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+          "objection": "Precisa desgastar muito os dentes?"
+        },
+        {
+          "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+          "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+        },
+        {
+          "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+          "objection": "Vocês fazem somente as lentes inferiores?"
+        },
+        {
+          "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+          "objection": "Como funciona a troca de facetas antigas por novas?"
+        },
+        {
+          "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.",
+          "objection": "O procedimento demora quanto tempo?"
+        },
+        {
+          "response": "Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+          "objection": "Tem algum desconto pagando à vista no Pix?"
+        }
+      ],
+      "mediaAssetIds": [
+        "636dd855-b5b9-4775-b765-be52f4e75986",
+        "14b3ce5b-f4da-4d69-9793-0c47d77458a8",
+        "3618aee7-b85f-46ff-9e55-dac535065ae2"
+      ],
+      "legacyMediaCount": 0,
+      "createdAt": "2026-07-07T22:04:36.126Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z"
+    },
+    {
+      "id": "22668cd8-9bb4-483f-9483-05a9e21d9d20",
+      "name": "Clínica Vitalli — Promocional v3 (config IA jul/2026)",
+      "status": "historical",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "acolhedor",
+      "commercialPolicy": "Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.\n\nTrabalhamos com duas técnicas de lentes em resina e estamos com preços promocionais por tempo limitado. A Técnica Simplificada usa uma resina de alta qualidade para um sorriso harmônico e natural, com um investimento mais acessível. A Técnica Estratificada combina duas resinas com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. Nossos pacotes fechados são de 10 ou 20 lentes.\n\nTrabalhamos com opções bem flexíveis de pagamento, podendo parcelar em até 21 vezes no cartão, com a opção de fazer em até 3 vezes sem juros.\n\nCaso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nPara reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal para confirmar a avaliação. Esse sinal é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Dr. Victor Cavalcante.",
+      "notes": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Técnicas Simplificada e Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.\nPara confirmar e agendar a avaliação presencial, informe que a agenda do Doutor é muito concorrida e que a clínica exige o pagamento do sinal da avaliação via Pix (valor informado no cadastro do procedimento), abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a técnica simplificada e a estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"",
+      "receptionistName": "Gleice",
+      "differentials": [
+        "Especialistas em lentes de resina composta",
+        "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+        "Lentes finas, translúcidas e com aspecto super natural",
+        "Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido",
+        "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+        "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+        "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+        "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento varia conforme a técnica escolhida (Simplificada ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?",
+          "objection": "Qual o valor do tratamento?"
+        },
+        {
+          "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+          "objection": "Precisa desgastar muito os dentes?"
+        },
+        {
+          "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+          "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+        },
+        {
+          "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+          "objection": "Vocês fazem somente as lentes inferiores?"
+        },
+        {
+          "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+          "objection": "Como funciona a troca de facetas antigas por novas?"
+        },
+        {
+          "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.",
+          "objection": "O procedimento demora quanto tempo?"
+        },
+        {
+          "response": "Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+          "objection": "Tem algum desconto pagando à vista no Pix?"
+        },
+        {
+          "response": "Que bom que você lembra do nosso contato! Aquele valor era de uma promoção com prazo que já passou. O valor atual é o vigente e seguimos com condições bem flexíveis de parcelamento. Posso te mostrar os horários para a avaliação com o Doutor?",
+          "objection": "Vocês me passaram um valor menor antes / era mais barato antes"
+        }
+      ],
+      "mediaAssetIds": [
+        "636dd855-b5b9-4775-b765-be52f4e75986",
+        "14b3ce5b-f4da-4d69-9793-0c47d77458a8",
+        "3618aee7-b85f-46ff-9e55-dac535065ae2"
+      ],
+      "legacyMediaCount": 0,
+      "createdAt": "2026-07-16T16:09:42.557Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z"
+    },
+    {
+      "id": "9ef464d2-96ac-4e08-be3a-4862e0ad3681",
+      "name": "Clínica Vitalli — v4 Preços Normais + conteúdo Victor (17/07)",
+      "status": "historical",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "acolhedor",
+      "commercialPolicy": "Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.\n\nTrabalhamos com duas técnicas de lentes em resina:\n A Lente em Resina Premium usa uma única resina de alta qualidade, para um sorriso bonito e natural com excelente acabamento — é o investimento mais acessível. \n\n A Lente em Resina Estratificada combina duas resinas de alta qualidade com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. \n\nNossos pacotes fechados são de 10 ou 20 lentes, e o tratamento é totalmente personalizado: o paciente escolhe a cor e o formato dos dentes junto com o Doutor.\n\nFormas de pagamento: à vista (Pix, débito ou crédito), com 5% de desconto no pagamento via Pix, ou parcelado em até 21x no cartão (taxas e condições consultadas na clínica). Não trabalhamos com boleto.\n\nCaso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. \n\nNossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nTambém realizamos plástica gengival, que dá simetria ao sorriso corrigindo a gengiva para que todos os dentes fiquem do mesmo tamanho (procedimento totalmente indolor), clareamento dental com protocolo caseiro, de consultório ou os dois combinados, e tratamento de canal.\n\nPara reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Victor Cavalcante.",
+      "notes": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Lente em Resina Premium e Lente em Resina Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nOBJETIVIDADE:\nSeja direto e objetivo. Responda o que foi perguntado em blocos curtos e conduza ativamente a conversa para o agendamento da avaliação — não espere o lead pedir para ver horários.\n\nCORES DAS LENTES:\nSe o lead perguntar sobre cor ou tom das lentes, envie a imagem \"Cores BL1, BL2 e BL3\" e explique que a cor e o formato dos dentes são escolhidos junto com o Doutor — o tratamento é totalmente personalizado.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. \nPara confirmar e agendar a avaliação presencial, a avaliação não tem custo e que, para reservar o horário na agenda concorrida do Doutor, a clínica exige um sinal via Pix configurado separadamente no cadastro da clínica, abatido integralmente no dia do procedimento. Se o lead perguntar a localização envie o endereço completo. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a Lente Premium e a Estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"\n\nINSTAGRAM OFICIAL: [REDACTED_URL]",
+      "receptionistName": "Gleice",
+      "differentials": [
+        "Especialistas em lentes de resina composta",
+        "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+        "Lentes finas, translúcidas e com aspecto super natural",
+        "Garantia de 2 anos contra descolamento completo. e 30 dias contra pigmentação ou quebra por descuido",
+        "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+        "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+        "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+        "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento varia conforme a técnica escolhida (Premium ou Estratificada) e se faremos 10 ou 20 lentes. Gostaria de ver nossos horários disponíveis?",
+          "objection": "Qual o valor do tratamento?"
+        },
+        {
+          "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste agressivo ou notável. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+          "objection": "Precisa desgastar muito os dentes?"
+        },
+        {
+          "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo, e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. \n\nCom os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+          "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+        },
+        {
+          "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+          "objection": "Vocês fazem somente as lentes inferiores?"
+        },
+        {
+          "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+          "objection": "Como funciona a troca de facetas antigas por novas?"
+        },
+        {
+          "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquilo(a).",
+          "objection": "O procedimento demora quanto tempo?"
+        },
+        {
+          "response": "Temos 5% de desconto no pagamento via Pix. e se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+          "objection": "Tem algum desconto pagando à vista no Pix?"
+        },
+        {
+          "response": "Que bom que você lembra do nosso contato! Aquele valor era de uma promoção com prazo que já passou. O valor atual é o vigente e seguimos com condições bem flexíveis de parcelamento. Posso te mostrar os horários para a avaliação com o Doutor?",
+          "objection": "Vocês me passaram um valor menor antes / era mais barato antes"
+        }
+      ],
+      "mediaAssetIds": [
+        "3348e716-33fa-429e-9850-9cf64de974f6",
+        "61b3a144-5edb-4749-976c-c812c55e4f77",
+        "5d383eb4-7dce-4fe3-a14a-5fad569fe6a7",
+        "360c1034-7c6c-42d3-878b-abe58e7d0824",
+        "7e620435-40bc-46ba-8051-9d52732ec525",
+        "9c48477a-55da-4ff4-ace1-3677b233ab9b",
+        "6c52ec45-ff22-44c8-9e72-f9efc034f9e0",
+        "827d3d96-022e-43ea-9d32-441e752acdcf"
+      ],
+      "legacyMediaCount": 0,
+      "createdAt": "2026-07-17T04:31:25.844Z",
+      "updatedAt": "2026-07-22T05:09:28.129Z"
+    },
+    {
+      "id": "68627241-84c3-41f6-9ffd-1a5d62e62031",
+      "name": "Clínica Vitalli — Promocional v3 (config IA jul/2026)",
+      "status": "historical",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "acolhedor",
+      "commercialPolicy": "Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.\n\nTrabalhamos com duas técnicas de lentes em resina e estamos com preços promocionais por tempo limitado. A Técnica Simplificada usa uma resina de alta qualidade para um sorriso harmônico e natural, com um investimento mais acessível. A Técnica Estratificada combina duas resinas com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. Nossos pacotes fechados são de 10 ou 20 lentes.\n\nTrabalhamos com opções bem flexíveis de pagamento, podendo parcelar em até 21 vezes no cartão, com a opção de fazer em até 3 vezes sem juros.\n\nCaso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nPara reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal não é uma cobrança pela avaliação: ele é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Dr. Victor Cavalcante.",
+      "notes": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Lente em Resina Premium e Lente em Resina Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nOBJETIVIDADE:\nSeja direto e objetivo. Responda o que foi perguntado em blocos curtos e conduza ativamente a conversa para o agendamento da avaliação — não espere o lead pedir para ver horários.\n\nCORES DAS LENTES:\nSe o lead perguntar sobre cor ou tom das lentes, envie a imagem \"Cores BL1, BL2 e BL3\" e explique que a cor e o formato dos dentes são escolhidos junto com o Doutor — o tratamento é totalmente personalizado.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.\nPara confirmar e agendar a avaliação presencial, informe que a agenda do Doutor é muito concorrida e que a clínica exige o a avaliação não tem custo e que, para reservar o horário na agenda concorrida do Doutor, a clínica exige um sinal via Pix configurado separadamente no cadastro da clínica, abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a Lente Premium e a Estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"\n\nINSTAGRAM OFICIAL: [REDACTED_URL]",
+      "receptionistName": "Gleice",
+      "differentials": [
+        "Especialistas em lentes de resina composta",
+        "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+        "Lentes finas, translúcidas e com aspecto super natural",
+        "Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido",
+        "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+        "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+        "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+        "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento varia conforme a técnica escolhida (Simplificada ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?",
+          "objection": "Qual o valor do tratamento?"
+        },
+        {
+          "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+          "objection": "Precisa desgastar muito os dentes?"
+        },
+        {
+          "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+          "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+        },
+        {
+          "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+          "objection": "Vocês fazem somente as lentes inferiores?"
+        },
+        {
+          "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+          "objection": "Como funciona a troca de facetas antigas por novas?"
+        },
+        {
+          "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.",
+          "objection": "O procedimento demora quanto tempo?"
+        },
+        {
+          "response": "Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+          "objection": "Tem algum desconto pagando à vista no Pix?"
+        },
+        {
+          "response": "Que bom que você lembra do nosso contato! Aquele valor era de uma promoção com prazo que já passou. O valor atual é o vigente e seguimos com condições bem flexíveis de parcelamento. Posso te mostrar os horários para a avaliação com o Doutor?",
+          "objection": "Vocês me passaram um valor menor antes / era mais barato antes"
+        }
+      ],
+      "mediaAssetIds": [
+        "3348e716-33fa-429e-9850-9cf64de974f6",
+        "61b3a144-5edb-4749-976c-c812c55e4f77",
+        "5d383eb4-7dce-4fe3-a14a-5fad569fe6a7",
+        "360c1034-7c6c-42d3-878b-abe58e7d0824",
+        "7e620435-40bc-46ba-8051-9d52732ec525",
+        "9c48477a-55da-4ff4-ace1-3677b233ab9b",
+        "6c52ec45-ff22-44c8-9e72-f9efc034f9e0",
+        "827d3d96-022e-43ea-9d32-441e752acdcf"
+      ],
+      "legacyMediaCount": 0,
+      "createdAt": "2026-07-19T21:37:12.818Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z"
+    },
+    {
+      "id": "623b0cd4-89e1-4c70-89f4-05142200f515",
+      "name": "Clínica Vitalli — v4 Preços Normais + conteúdo Victor (17/07)",
+      "status": "active",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "acolhedor",
+      "commercialPolicy": "Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.\n\nTrabalhamos com duas técnicas de lentes em resina. A Lente em Resina Premium usa uma única resina de alta qualidade, para um sorriso bonito e natural com excelente acabamento — é o investimento mais acessível. A Lente em Resina Estratificada combina duas resinas de alta qualidade com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. Nossos pacotes fechados são de 10 ou 20 lentes, e o tratamento é totalmente personalizado: o paciente escolhe a cor e o formato dos dentes junto com o Doutor.\n\nFormas de pagamento: à vista (Pix, débito ou crédito), com 5% de desconto no pagamento via Pix, ou parcelado em até 21x no cartão (taxas e condições consultadas na clínica). Não trabalhamos com boleto.\n\nCaso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nTambém realizamos plástica gengival, que dá simetria ao sorriso corrigindo a gengiva para que todos os dentes fiquem do mesmo tamanho (procedimento totalmente indolor), clareamento dental com protocolo caseiro, de consultório ou os dois combinados, e tratamento de canal.\n\nPara reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal não é uma cobrança pela avaliação: ele é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Dr. Victor Cavalcante.",
+      "notes": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Lente em Resina Premium e Lente em Resina Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nOBJETIVIDADE:\nSeja direto e objetivo. Responda o que foi perguntado em blocos curtos e conduza ativamente a conversa para o agendamento da avaliação — não espere o lead pedir para ver horários.\n\nCORES DAS LENTES:\nSe o lead perguntar sobre cor ou tom das lentes, envie a imagem \"Cores BL1, BL2 e BL3\" e explique que a cor e o formato dos dentes são escolhidos junto com o Doutor — o tratamento é totalmente personalizado.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.\nPara confirmar e agendar a avaliação presencial, informe que a avaliação não tem custo e que, para reservar o horário na agenda concorrida do Doutor, a clínica exige um sinal via Pix configurado separadamente no cadastro da clínica. Nunca apresente esse sinal como preço, taxa ou valor da avaliação. O sinal é abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a Lente Premium e a Estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"",
+      "receptionistName": "Gleice",
+      "differentials": [
+        "Especialistas em lentes de resina composta",
+        "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+        "Lentes finas, translúcidas e com aspecto super natural",
+        "Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido",
+        "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+        "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+        "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+        "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento varia conforme a técnica escolhida (Premium ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?",
+          "objection": "Qual o valor do tratamento?"
+        },
+        {
+          "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+          "objection": "Precisa desgastar muito os dentes?"
+        },
+        {
+          "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+          "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+        },
+        {
+          "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+          "objection": "Vocês fazem somente as lentes inferiores?"
+        },
+        {
+          "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+          "objection": "Como funciona a troca de facetas antigas por novas?"
+        },
+        {
+          "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.",
+          "objection": "O procedimento demora quanto tempo?"
+        },
+        {
+          "response": "Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+          "objection": "Tem algum desconto pagando à vista no Pix?"
+        },
+        {
+          "response": "Que bom que você lembra do nosso contato! Aquele valor era de uma promoção com prazo que já passou. O valor atual é o vigente e seguimos com condições bem flexíveis de parcelamento. Posso te mostrar os horários para a avaliação com o Doutor?",
+          "objection": "Vocês me passaram um valor menor antes / era mais barato antes"
+        }
+      ],
+      "mediaAssetIds": [
+        "0c771e1b-a1e2-45cb-8a3d-ecbd0b2f0c7c",
+        "5ffd33e9-0f06-47b9-b07f-21405a283391",
+        "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+        "cc7b30c5-6715-4704-9f1a-d890ed976c0f",
+        "5e19bb59-0560-495d-b036-52e949b8d34c",
+        "1cc316f2-c755-478a-a1a8-59fda28979e1",
+        "b8b86eea-e273-4f3e-9fed-808b271913ee",
+        "0d09a724-108d-4368-84dc-6a68b0551c30"
+      ],
+      "legacyMediaCount": 0,
+      "createdAt": "2026-07-19T21:52:32.453Z",
+      "updatedAt": "2026-07-23T20:41:29.289Z"
+    }
+  ],
+  "treatments": [
+    {
+      "id": "b6b79a66-a2f4-46e5-8bbd-65c0065d5315",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Avaliação Clínica Inicial",
+      "durationMinutes": 60,
+      "description": "Consulta clínica completa para planejamento do tratamento.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "avaliação",
+        "consulta inicial",
+        "quero marcar"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": [
+        {
+          "startHour": 9,
+          "startMinute": 0
+        },
+        {
+          "startHour": 16,
+          "startMinute": 0
+        }
+      ],
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-21T16:47:03.101Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "553a40d1-2a91-45ea-96cc-69761c26910a",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Clareamento caseiro",
+      "durationMinutes": 60,
+      "description": "Protocolo caseiro: é feito um molde copiando todos os seus dentes (superior e inferior) e a aplicação é feita em casa, todos os dias, por 2 horas, durante 3 semanas — com acompanhamento presencial 1 vez por semana para acompanhar a evolução do clareamento.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 60000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:50.848Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "2da2356e-febd-4568-8f65-2ffc1cefa909",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Clareamento consultório",
+      "durationMinutes": 60,
+      "description": "Protocolo no consultório: 1 aplicação por semana (superior e inferior) durante 3 semanas, com 15 minutos por sessão. Antes e depois de cada aplicação usamos um dessensibilizante para não causar sensibilidade, com registro fotográfico para acompanhar a evolução.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 120000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:50.870Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "83daf129-74ad-4508-838b-9aab2726afe5",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Clareamento consultório e caseiro",
+      "durationMinutes": 60,
+      "description": "Combina os dois protocolos (consultório + caseiro juntos), com acompanhamento completo — é a opção com o melhor resultado.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 150000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:50.893Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "35fae619-5b50-410e-9bd2-16a8cbbc7129",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Implante",
+      "durationMinutes": 180,
+      "description": "Solução definitiva e segura para repor dentes perdidos.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "implante",
+        "pino no dente",
+        "dente caiu"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 250000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-09T16:44:55.776Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "a5e7baee-8ad0-412d-8405-3a5ca1d40dd2",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Lente em Resina Estratificada",
+      "durationMinutes": 300,
+      "description": "É confeccionada com a combinação de duas resinas de alta qualidade, incluindo uma camada translúcida nas bordas, reproduzindo com mais fidelidade as características de um dente natural. Essa técnica oferece um resultado com maior riqueza de detalhes, profundidade e estética, sendo a opção mais sofisticada para quem busca máxima naturalidade.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "lentes",
+        "lentes de resina",
+        "resina",
+        "estratificada",
+        "tecnica estratificada",
+        "policromatica",
+        "multicamada",
+        "camadas",
+        "lente estratificada",
+        "lente em resina estratificada"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": [
+        {
+          "type": "content",
+          "label": "Apresentação e artes",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Premium — feita com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.",
+              "mediaId": "dbfef876-9cf1-426d-94ba-9e58a46575c1"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Estratificada — combina duas resinas de alta qualidade, com camada translúcida nas bordas, reproduzindo com mais fidelidade um dente natural. É a opção mais sofisticada, com máxima naturalidade.",
+              "mediaId": "ae30136a-6f3e-459c-b00f-9d669e23149b"
+            },
+            {
+              "kind": "text",
+              "content": "Oi! Trabalhamos com essas duas técnicas de lentes em resina (Estratificada e Premium Simplificada). Qual delas mais te agradou ou você tem alguma dúvida inicial?"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 8,
+          "instruction": "Esclareça as dúvidas de forma muito objetiva (máximo 2 frases). Se o lead focar em valores, seja direto e reforce o que está na arte. Avance para o próximo passo de pré-análise assim que o lead demonstrar interesse. Se o lead perguntar sobre cores ou tons, explique brevemente que temos desde tons super naturais até o branco absoluto (BL1/BL2) e que a escolha exata é feita na avaliação.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Você poderia me encaminhar uma foto ou um vídeo curto do seu sorriso? Assim o Doutor já consegue fazer uma pré-avaliação do seu caso por aqui 😊"
+            },
+            {
+              "kind": "media",
+              "caption": "É só tirar nesses dois ângulos, mordendo e sorrindo: uma foto frontal e uma de perfil, como no exemplo.",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico no aguardo da sua foto ou vídeo para seguirmos!",
+          "required": true
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento (Cobra Sinal Automático)"
+        }
+      ],
+      "pipelineSourceTreatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "priceCents": 200000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": "lentes",
+      "priceDeductible": false,
+      "quantityPrices": [
+        {
+          "quantity": 10,
+          "priceCents": 200000
+        },
+        {
+          "quantity": 20,
+          "priceCents": 250000
+        }
+      ],
+      "bookingWindows": [
+        {
+          "startHour": 9,
+          "startMinute": 0
+        },
+        {
+          "startHour": 16,
+          "startMinute": 0
+        }
+      ],
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "33942861-3209-42d3-9f32-3ea85514742f",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Lente em Resina Premium",
+      "durationMinutes": 300,
+      "description": "É confeccionada com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "lentes",
+        "lentes de resina",
+        "resina",
+        "simplificada",
+        "tecnica simplificada",
+        "cor unica",
+        "camada unica",
+        "tradicional",
+        "premium",
+        "lente premium",
+        "resina premium",
+        "lente em resina premium"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": [
+        {
+          "type": "content",
+          "label": "Apresentação e artes",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Premium — feita com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.",
+              "mediaId": "dbfef876-9cf1-426d-94ba-9e58a46575c1"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Estratificada — combina duas resinas de alta qualidade, com camada translúcida nas bordas, reproduzindo com mais fidelidade um dente natural. É a opção mais sofisticada, com máxima naturalidade.",
+              "mediaId": "ae30136a-6f3e-459c-b00f-9d669e23149b"
+            },
+            {
+              "kind": "text",
+              "content": "Oi! Trabalhamos com essas duas técnicas de lentes em resina (Estratificada e Premium Simplificada). Qual delas mais te agradou ou você tem alguma dúvida inicial?"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 8,
+          "instruction": "Esclareça as dúvidas de forma muito objetiva (máximo 2 frases). Se o lead focar em valores, seja direto e reforce o que está na arte. Avance para o próximo passo de pré-análise assim que o lead demonstrar interesse. Se o lead perguntar sobre cores ou tons, explique brevemente que temos desde tons super naturais até o branco absoluto (BL1/BL2) e que a escolha exata é feita na avaliação.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Você poderia me encaminhar uma foto ou um vídeo curto do seu sorriso? Assim o Doutor já consegue fazer uma pré-avaliação do seu caso por aqui 😊"
+            },
+            {
+              "kind": "media",
+              "caption": "É só tirar nesses dois ângulos, mordendo e sorrindo: uma foto frontal e uma de perfil, como no exemplo.",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico no aguardo da sua foto ou vídeo para seguirmos!",
+          "required": true
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento (Cobra Sinal Automático)"
+        }
+      ],
+      "pipelineSourceTreatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "priceCents": 170000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": "lentes",
+      "priceDeductible": false,
+      "quantityPrices": [
+        {
+          "quantity": 10,
+          "priceCents": 170000
+        },
+        {
+          "quantity": 20,
+          "priceCents": 200000
+        }
+      ],
+      "bookingWindows": [
+        {
+          "startHour": 9,
+          "startMinute": 0
+        },
+        {
+          "startHour": 16,
+          "startMinute": 0
+        }
+      ],
+      "createdAt": "2026-07-10T03:59:12.060Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Lentes em Resina Composta",
+      "durationMinutes": 300,
+      "description": "Tratamento estético para melhorar formato, cor, tamanho e harmonia dos dentes. Inclui as técnicas Simplificada e Estratificada.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "lentes",
+        "lente",
+        "lentes em resina",
+        "lentes de resina",
+        "facetas",
+        "faceta",
+        "facetas de resina",
+        "lentes superiores",
+        "lentes inferiores",
+        "modelo classico",
+        "lente no dente",
+        "sorriso",
+        "resina"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": [
+        {
+          "type": "content",
+          "label": "Apresentação e artes",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Premium — feita com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.",
+              "mediaId": "dbfef876-9cf1-426d-94ba-9e58a46575c1"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Estratificada — combina duas resinas de alta qualidade, com camada translúcida nas bordas, reproduzindo com mais fidelidade um dente natural. É a opção mais sofisticada, com máxima naturalidade.",
+              "mediaId": "ae30136a-6f3e-459c-b00f-9d669e23149b"
+            },
+            {
+              "kind": "text",
+              "content": "Oi! Trabalhamos com essas duas técnicas de lentes em resina (Estratificada e Premium Simplificada). Qual delas mais te agradou ou você tem alguma dúvida inicial?"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 8,
+          "instruction": "Esclareça as dúvidas de forma muito objetiva (máximo 2 frases). Se o lead focar em valores, seja direto e reforce o que está na arte. Avance para o próximo passo de pré-análise assim que o lead demonstrar interesse. Se o lead perguntar sobre cores ou tons, explique brevemente que temos desde tons super naturais até o branco absoluto (BL1/BL2) e que a escolha exata é feita na avaliação.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Você poderia me encaminhar uma foto ou um vídeo curto do seu sorriso? Assim o Doutor já consegue fazer uma pré-avaliação do seu caso por aqui 😊"
+            },
+            {
+              "kind": "media",
+              "caption": "É só tirar nesses dois ângulos, mordendo e sorrindo: uma foto frontal e uma de perfil, como no exemplo.",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico no aguardo da sua foto ou vídeo para seguirmos!",
+          "required": true
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento (Cobra Sinal Automático)"
+        }
+      ],
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": [
+        {
+          "startHour": 9,
+          "startMinute": 0
+        },
+        {
+          "startHour": 16,
+          "startMinute": 0
+        }
+      ],
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-21T15:55:50.581Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "340fdac7-5d1f-4bab-8955-3a8b612abd8c",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Manutenção Preventiva de lentes",
+      "durationMinutes": 30,
+      "description": "Plano de manutenção preventiva completo: inclui profilaxia, polimento e nova aplicação da película protetora, para manter o brilho e a limpeza dos dentes. Aciona a garantia de 2 anos.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "manutenção",
+        "polimento",
+        "limpar lentes"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 40000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-22T05:42:32.114Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "d6a4c5db-8115-4b12-9b8a-dd405d2b27f9",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Placa miorrelaxante (bruxismo)",
+      "durationMinutes": 60,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 70000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-20T19:50:40.379Z",
+      "updatedAt": "2026-07-20T19:51:19.839Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Plástica Gengival",
+      "durationMinutes": 60,
+      "description": "Serve para dar simetria ao sorriso: é feita uma correção na gengiva para que todos os dentes fiquem do mesmo tamanho. O procedimento é totalmente indolor.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "plastica gengival",
+        "gengivoplastia",
+        "sorriso gengival",
+        "gengiva aparecendo",
+        "corrigir gengiva"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-17T04:31:15.538Z",
+      "updatedAt": "2026-07-17T04:31:15.538Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "d95b548f-047d-4ed3-8ec1-5c4b39e4fa59",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Profilaxia Odontológica (Limpeza Dental)",
+      "durationMinutes": 30,
+      "description": "Procedimento preventivo e essencial que remove placa e tártaro.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "limpeza",
+        "tártaro",
+        "profilaxia"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 25000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-09T16:44:56.133Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "cfadee94-dbaf-4cc2-870b-aefb7beb0728",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Prótese Adesiva",
+      "durationMinutes": 60,
+      "description": "Prótese fixa adesiva para reposição de dente ausente, fixada aos dentes vizinhos.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 60000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-08T03:32:06.994Z",
+      "updatedAt": "2026-07-09T16:44:56.252Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "b3059525-b747-4664-b21f-6f06e5753ae6",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Prótese flexível",
+      "durationMinutes": 60,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 180000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:50.978Z",
+      "updatedAt": "2026-07-09T16:44:56.372Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "4a1cc724-d0a0-4b6a-9d3b-555215abc3c9",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Prótese grampo",
+      "durationMinutes": 60,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 140000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:51.000Z",
+      "updatedAt": "2026-07-09T16:44:56.489Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "824f0e9a-c36f-48ab-89a1-9ed8066a7335",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Remoção de lentes",
+      "durationMinutes": 90,
+      "description": "Procedimento cuidadoso para retirar resina ou porcelana antiga.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "remoção",
+        "remover lentes",
+        "tirar facetas",
+        "retirar lentes",
+        "remoção de lentes antigas"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": [
+        {
+          "type": "qa",
+          "label": "Sessão de dúvidas",
+          "maxTurns": 5,
+          "instruction": "Responda de forma segura que a troca e remoção podem ser feitas no mesmo dia, mas o doutor sempre faz uma avaliação minuciosa da estrutura do dente base antes de iniciar o procedimento."
+        },
+        {
+          "type": "content",
+          "label": "Exemplo de foto",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "Se você se sentir à vontade, me manda uma foto ou um vídeo curto do seu sorriso atual nesses dois ângulos (frontal e perfil, mordendo e sorrindo). Ajuda o Doutor na pré-avaliação 😊",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Solicitar foto",
+          "message": "Se você se sentir à vontade, consegue me mandar uma foto clara ou um vídeo curto do seu sorriso atual (como no exemplo acima)? Ajuda na pré-avaliação, mas se não puder agora, avaliamos presencialmente sem problemas!",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Perguntar disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Mostrar horários"
+        },
+        {
+          "type": "book",
+          "label": "Confirmar agendamento"
+        }
+      ],
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 40000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": [
+        {
+          "startHour": 9,
+          "startMinute": 0
+        },
+        {
+          "startHour": 16,
+          "startMinute": 0
+        }
+      ],
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-22T07:13:39.816Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "1d34b81a-42ef-469f-a315-e1026df6639f",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Restauração Estética",
+      "durationMinutes": 120,
+      "description": "Recupera partes danificadas do dente.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "restauração",
+        "restauração estética",
+        "cárie",
+        "quebrou dente"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 40000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-09T16:45:14.765Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "a0f7b205-9a13-4a66-9f22-629a8d27f861",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Retratamento de Canal (dentes anteriores)",
+      "durationMinutes": 120,
+      "description": "Trata e preserva o dente em casos de comprometimento interno.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "retratamento",
+        "retratamento de canal",
+        "refazer canal"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 65000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": "por dente",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-17T04:31:15.538Z",
+      "updatedAt": "2026-07-17T04:31:15.538Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "c95d0d88-ca89-4448-83a4-ba1c91198850",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Retratamento de Canal (molares)",
+      "durationMinutes": 120,
+      "description": "Trata e preserva o dente em casos de comprometimento interno.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "retratamento",
+        "retratamento de canal",
+        "refazer canal"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 95000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": "por dente",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-17T04:31:15.538Z",
+      "updatedAt": "2026-07-17T04:31:15.538Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "e2aa618d-6ec9-46b4-8b0e-7c65e8e889c9",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Retratamento de Canal (pré-molares)",
+      "durationMinutes": 120,
+      "description": "Trata e preserva o dente em casos de comprometimento interno.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "retratamento",
+        "retratamento de canal",
+        "refazer canal"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 75000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": "por dente",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-17T04:31:15.538Z",
+      "updatedAt": "2026-07-17T04:31:15.538Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "6485454a-26f9-478d-9239-d8e439501eba",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Siso impactado",
+      "durationMinutes": 180,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 100000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:50.955Z",
+      "updatedAt": "2026-07-09T16:44:56.846Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "cad46f58-f03b-4bec-9f1a-dce1ed31e48f",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Siso incluso",
+      "durationMinutes": 180,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 60000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:50.934Z",
+      "updatedAt": "2026-07-09T16:44:56.963Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "ab4bfb23-3c7d-4e36-94a1-15127cd8ecfb",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Siso normal",
+      "durationMinutes": 180,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 40000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-09T05:17:50.914Z",
+      "updatedAt": "2026-07-09T16:44:57.082Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "c1fa928d-778e-402f-bc28-cc8bcb482ed4",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Substituição de lente (un)",
+      "durationMinutes": 180,
+      "description": "Remoção das lentes antigas e confecção de novas lentes no mesmo dia.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "troca de lentes",
+        "trocar lentes antigas",
+        "fazer lentes novas",
+        "troca de facetas",
+        "remover e colocar novas"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": [
+        {
+          "type": "qa",
+          "label": "Sessão de dúvidas",
+          "maxTurns": 5,
+          "instruction": "Responda de forma segura que a troca e remoção podem ser feitas no mesmo dia, mas o doutor sempre faz uma avaliação minuciosa da estrutura do dente base antes de iniciar o procedimento."
+        },
+        {
+          "type": "content",
+          "label": "Exemplo de foto",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "Se você se sentir à vontade, me manda uma foto ou um vídeo curto do seu sorriso atual nesses dois ângulos (frontal e perfil, mordendo e sorrindo). Ajuda o Doutor na pré-avaliação 😊",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Solicitar foto",
+          "message": "Se você se sentir à vontade, consegue me mandar uma foto clara ou um vídeo curto do seu sorriso atual (como no exemplo acima)? Ajuda na pré-avaliação, mas se não puder agora, avaliamos presencialmente sem problemas!",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Perguntar disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Mostrar horários"
+        },
+        {
+          "type": "book",
+          "label": "Confirmar agendamento"
+        }
+      ],
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 20000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-22T07:13:39.816Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "12fc10fa-29e9-4385-8cc5-5f2869d697d8",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Tratamento de Canal (dentes anteriores)",
+      "durationMinutes": 120,
+      "description": "Trata e preserva o dente em casos de comprometimento interno.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "canal",
+        "matar o nervo",
+        "dor de dente",
+        "endodontia",
+        "tratamento de canal"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 60000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": "por dente",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-07T22:04:36.175Z",
+      "updatedAt": "2026-07-19T21:52:22.789Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "7862656a-6b95-40ce-8628-f664820f741d",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Tratamento de Canal (molares)",
+      "durationMinutes": 120,
+      "description": "Trata e preserva o dente em casos de comprometimento interno.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "canal",
+        "endodontia",
+        "tratamento de canal"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 85000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": "por dente",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-17T04:31:15.538Z",
+      "updatedAt": "2026-07-17T04:31:15.538Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "873f86cd-8549-4c17-a81b-1b9c16c5336c",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "name": "Tratamento de Canal (pré-molares)",
+      "durationMinutes": 120,
+      "description": "Trata e preserva o dente em casos de comprometimento interno.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "canal",
+        "endodontia",
+        "tratamento de canal"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 70000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": "por dente",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-17T04:31:15.538Z",
+      "updatedAt": "2026-07-17T04:31:15.538Z",
+      "triggerTemplateConfigured": false
+    }
+  ],
+  "resolvedPipelines": [
+    {
+      "treatmentId": "b6b79a66-a2f4-46e5-8bbd-65c0065d5315",
+      "treatmentName": "Avaliação Clínica Inicial",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "b6b79a66-a2f4-46e5-8bbd-65c0065d5315",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "553a40d1-2a91-45ea-96cc-69761c26910a",
+      "treatmentName": "Clareamento caseiro",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "553a40d1-2a91-45ea-96cc-69761c26910a",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "2da2356e-febd-4568-8f65-2ffc1cefa909",
+      "treatmentName": "Clareamento consultório",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "2da2356e-febd-4568-8f65-2ffc1cefa909",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "83daf129-74ad-4508-838b-9aab2726afe5",
+      "treatmentName": "Clareamento consultório e caseiro",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "83daf129-74ad-4508-838b-9aab2726afe5",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "35fae619-5b50-410e-9bd2-16a8cbbc7129",
+      "treatmentName": "Implante",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "35fae619-5b50-410e-9bd2-16a8cbbc7129",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "a5e7baee-8ad0-412d-8405-3a5ca1d40dd2",
+      "treatmentName": "Lente em Resina Estratificada",
+      "sourceTreatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "sourceTreatmentName": "Lentes em Resina Composta",
+      "resolvedTreatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "stepCount": 7,
+      "steps": [
+        {
+          "type": "content",
+          "label": "Apresentação e artes",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Premium — feita com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.",
+              "mediaId": "dbfef876-9cf1-426d-94ba-9e58a46575c1"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Estratificada — combina duas resinas de alta qualidade, com camada translúcida nas bordas, reproduzindo com mais fidelidade um dente natural. É a opção mais sofisticada, com máxima naturalidade.",
+              "mediaId": "ae30136a-6f3e-459c-b00f-9d669e23149b"
+            },
+            {
+              "kind": "text",
+              "content": "Oi! Trabalhamos com essas duas técnicas de lentes em resina (Estratificada e Premium Simplificada). Qual delas mais te agradou ou você tem alguma dúvida inicial?"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 8,
+          "instruction": "Esclareça as dúvidas de forma muito objetiva (máximo 2 frases). Se o lead focar em valores, seja direto e reforce o que está na arte. Avance para o próximo passo de pré-análise assim que o lead demonstrar interesse. Se o lead perguntar sobre cores ou tons, explique brevemente que temos desde tons super naturais até o branco absoluto (BL1/BL2) e que a escolha exata é feita na avaliação.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Você poderia me encaminhar uma foto ou um vídeo curto do seu sorriso? Assim o Doutor já consegue fazer uma pré-avaliação do seu caso por aqui 😊"
+            },
+            {
+              "kind": "media",
+              "caption": "É só tirar nesses dois ângulos, mordendo e sorrindo: uma foto frontal e uma de perfil, como no exemplo.",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico no aguardo da sua foto ou vídeo para seguirmos!",
+          "required": true
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento (Cobra Sinal Automático)"
+        }
+      ]
+    },
+    {
+      "treatmentId": "33942861-3209-42d3-9f32-3ea85514742f",
+      "treatmentName": "Lente em Resina Premium",
+      "sourceTreatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "sourceTreatmentName": "Lentes em Resina Composta",
+      "resolvedTreatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "stepCount": 7,
+      "steps": [
+        {
+          "type": "content",
+          "label": "Apresentação e artes",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Premium — feita com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.",
+              "mediaId": "dbfef876-9cf1-426d-94ba-9e58a46575c1"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Estratificada — combina duas resinas de alta qualidade, com camada translúcida nas bordas, reproduzindo com mais fidelidade um dente natural. É a opção mais sofisticada, com máxima naturalidade.",
+              "mediaId": "ae30136a-6f3e-459c-b00f-9d669e23149b"
+            },
+            {
+              "kind": "text",
+              "content": "Oi! Trabalhamos com essas duas técnicas de lentes em resina (Estratificada e Premium Simplificada). Qual delas mais te agradou ou você tem alguma dúvida inicial?"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 8,
+          "instruction": "Esclareça as dúvidas de forma muito objetiva (máximo 2 frases). Se o lead focar em valores, seja direto e reforce o que está na arte. Avance para o próximo passo de pré-análise assim que o lead demonstrar interesse. Se o lead perguntar sobre cores ou tons, explique brevemente que temos desde tons super naturais até o branco absoluto (BL1/BL2) e que a escolha exata é feita na avaliação.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Você poderia me encaminhar uma foto ou um vídeo curto do seu sorriso? Assim o Doutor já consegue fazer uma pré-avaliação do seu caso por aqui 😊"
+            },
+            {
+              "kind": "media",
+              "caption": "É só tirar nesses dois ângulos, mordendo e sorrindo: uma foto frontal e uma de perfil, como no exemplo.",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico no aguardo da sua foto ou vídeo para seguirmos!",
+          "required": true
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento (Cobra Sinal Automático)"
+        }
+      ]
+    },
+    {
+      "treatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "treatmentName": "Lentes em Resina Composta",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "stepCount": 7,
+      "steps": [
+        {
+          "type": "content",
+          "label": "Apresentação e artes",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Premium — feita com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.",
+              "mediaId": "dbfef876-9cf1-426d-94ba-9e58a46575c1"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Lente em Resina Estratificada — combina duas resinas de alta qualidade, com camada translúcida nas bordas, reproduzindo com mais fidelidade um dente natural. É a opção mais sofisticada, com máxima naturalidade.",
+              "mediaId": "ae30136a-6f3e-459c-b00f-9d669e23149b"
+            },
+            {
+              "kind": "text",
+              "content": "Oi! Trabalhamos com essas duas técnicas de lentes em resina (Estratificada e Premium Simplificada). Qual delas mais te agradou ou você tem alguma dúvida inicial?"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 8,
+          "instruction": "Esclareça as dúvidas de forma muito objetiva (máximo 2 frases). Se o lead focar em valores, seja direto e reforce o que está na arte. Avance para o próximo passo de pré-análise assim que o lead demonstrar interesse. Se o lead perguntar sobre cores ou tons, explique brevemente que temos desde tons super naturais até o branco absoluto (BL1/BL2) e que a escolha exata é feita na avaliação.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Você poderia me encaminhar uma foto ou um vídeo curto do seu sorriso? Assim o Doutor já consegue fazer uma pré-avaliação do seu caso por aqui 😊"
+            },
+            {
+              "kind": "media",
+              "caption": "É só tirar nesses dois ângulos, mordendo e sorrindo: uma foto frontal e uma de perfil, como no exemplo.",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico no aguardo da sua foto ou vídeo para seguirmos!",
+          "required": true
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento (Cobra Sinal Automático)"
+        }
+      ]
+    },
+    {
+      "treatmentId": "340fdac7-5d1f-4bab-8955-3a8b612abd8c",
+      "treatmentName": "Manutenção Preventiva de lentes",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "340fdac7-5d1f-4bab-8955-3a8b612abd8c",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "d6a4c5db-8115-4b12-9b8a-dd405d2b27f9",
+      "treatmentName": "Placa miorrelaxante (bruxismo)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "d6a4c5db-8115-4b12-9b8a-dd405d2b27f9",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8",
+      "treatmentName": "Plástica Gengival",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "d95b548f-047d-4ed3-8ec1-5c4b39e4fa59",
+      "treatmentName": "Profilaxia Odontológica (Limpeza Dental)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "d95b548f-047d-4ed3-8ec1-5c4b39e4fa59",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "cfadee94-dbaf-4cc2-870b-aefb7beb0728",
+      "treatmentName": "Prótese Adesiva",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "cfadee94-dbaf-4cc2-870b-aefb7beb0728",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "b3059525-b747-4664-b21f-6f06e5753ae6",
+      "treatmentName": "Prótese flexível",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "b3059525-b747-4664-b21f-6f06e5753ae6",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "4a1cc724-d0a0-4b6a-9d3b-555215abc3c9",
+      "treatmentName": "Prótese grampo",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "4a1cc724-d0a0-4b6a-9d3b-555215abc3c9",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "824f0e9a-c36f-48ab-89a1-9ed8066a7335",
+      "treatmentName": "Remoção de lentes",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "824f0e9a-c36f-48ab-89a1-9ed8066a7335",
+      "stepCount": 6,
+      "steps": [
+        {
+          "type": "qa",
+          "label": "Sessão de dúvidas",
+          "maxTurns": 5,
+          "instruction": "Responda de forma segura que a troca e remoção podem ser feitas no mesmo dia, mas o doutor sempre faz uma avaliação minuciosa da estrutura do dente base antes de iniciar o procedimento."
+        },
+        {
+          "type": "content",
+          "label": "Exemplo de foto",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "Se você se sentir à vontade, me manda uma foto ou um vídeo curto do seu sorriso atual nesses dois ângulos (frontal e perfil, mordendo e sorrindo). Ajuda o Doutor na pré-avaliação 😊",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Solicitar foto",
+          "message": "Se você se sentir à vontade, consegue me mandar uma foto clara ou um vídeo curto do seu sorriso atual (como no exemplo acima)? Ajuda na pré-avaliação, mas se não puder agora, avaliamos presencialmente sem problemas!",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Perguntar disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Mostrar horários"
+        },
+        {
+          "type": "book",
+          "label": "Confirmar agendamento"
+        }
+      ]
+    },
+    {
+      "treatmentId": "1d34b81a-42ef-469f-a315-e1026df6639f",
+      "treatmentName": "Restauração Estética",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "1d34b81a-42ef-469f-a315-e1026df6639f",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "a0f7b205-9a13-4a66-9f22-629a8d27f861",
+      "treatmentName": "Retratamento de Canal (dentes anteriores)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "a0f7b205-9a13-4a66-9f22-629a8d27f861",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "c95d0d88-ca89-4448-83a4-ba1c91198850",
+      "treatmentName": "Retratamento de Canal (molares)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "c95d0d88-ca89-4448-83a4-ba1c91198850",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "e2aa618d-6ec9-46b4-8b0e-7c65e8e889c9",
+      "treatmentName": "Retratamento de Canal (pré-molares)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "e2aa618d-6ec9-46b4-8b0e-7c65e8e889c9",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "6485454a-26f9-478d-9239-d8e439501eba",
+      "treatmentName": "Siso impactado",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "6485454a-26f9-478d-9239-d8e439501eba",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "cad46f58-f03b-4bec-9f1a-dce1ed31e48f",
+      "treatmentName": "Siso incluso",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "cad46f58-f03b-4bec-9f1a-dce1ed31e48f",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "ab4bfb23-3c7d-4e36-94a1-15127cd8ecfb",
+      "treatmentName": "Siso normal",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "ab4bfb23-3c7d-4e36-94a1-15127cd8ecfb",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "c1fa928d-778e-402f-bc28-cc8bcb482ed4",
+      "treatmentName": "Substituição de lente (un)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "c1fa928d-778e-402f-bc28-cc8bcb482ed4",
+      "stepCount": 6,
+      "steps": [
+        {
+          "type": "qa",
+          "label": "Sessão de dúvidas",
+          "maxTurns": 5,
+          "instruction": "Responda de forma segura que a troca e remoção podem ser feitas no mesmo dia, mas o doutor sempre faz uma avaliação minuciosa da estrutura do dente base antes de iniciar o procedimento."
+        },
+        {
+          "type": "content",
+          "label": "Exemplo de foto",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "Se você se sentir à vontade, me manda uma foto ou um vídeo curto do seu sorriso atual nesses dois ângulos (frontal e perfil, mordendo e sorrindo). Ajuda o Doutor na pré-avaliação 😊",
+              "mediaId": "cc7b30c5-6715-4704-9f1a-d890ed976c0f"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Solicitar foto",
+          "message": "Se você se sentir à vontade, consegue me mandar uma foto clara ou um vídeo curto do seu sorriso atual (como no exemplo acima)? Ajuda na pré-avaliação, mas se não puder agora, avaliamos presencialmente sem problemas!",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Perguntar disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Mostrar horários"
+        },
+        {
+          "type": "book",
+          "label": "Confirmar agendamento"
+        }
+      ]
+    },
+    {
+      "treatmentId": "12fc10fa-29e9-4385-8cc5-5f2869d697d8",
+      "treatmentName": "Tratamento de Canal (dentes anteriores)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "12fc10fa-29e9-4385-8cc5-5f2869d697d8",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "7862656a-6b95-40ce-8628-f664820f741d",
+      "treatmentName": "Tratamento de Canal (molares)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "7862656a-6b95-40ce-8628-f664820f741d",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "873f86cd-8549-4c17-a81b-1b9c16c5336c",
+      "treatmentName": "Tratamento de Canal (pré-molares)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "873f86cd-8549-4c17-a81b-1b9c16c5336c",
+      "stepCount": 0,
+      "steps": []
+    }
+  ],
+  "priceCampaigns": [
+    {
+      "id": "9cb15e38-fccc-49a6-b08f-07e27883a831",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "treatmentId": "a5e7baee-8ad0-412d-8405-3a5ca1d40dd2",
+      "name": "Promoção de lançamento",
+      "priceCents": 180000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceKind": "from",
+      "startsAt": null,
+      "endsAt": null,
+      "isActive": false,
+      "createdAt": "2026-07-09T03:58:11.505Z",
+      "updatedAt": "2026-07-18T20:56:20.844Z"
+    },
+    {
+      "id": "4244d18d-d836-42b5-9fe1-b95d8ffdee11",
+      "clinicId": "d24a584a-faac-4a46-9750-a718d0f8e686",
+      "treatmentId": "33942861-3209-42d3-9f32-3ea85514742f",
+      "name": "Promoção de lançamento",
+      "priceCents": 150000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceKind": "from",
+      "startsAt": null,
+      "endsAt": null,
+      "isActive": false,
+      "createdAt": "2026-07-09T03:58:11.505Z",
+      "updatedAt": "2026-07-18T20:56:20.844Z"
+    }
+  ],
+  "effectivePrices": [
+    {
+      "treatmentId": "b6b79a66-a2f4-46e5-8bbd-65c0065d5315",
+      "treatmentName": "Avaliação Clínica Inicial",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "553a40d1-2a91-45ea-96cc-69761c26910a",
+      "treatmentName": "Clareamento caseiro",
+      "value": {
+        "priceCents": 60000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "2da2356e-febd-4568-8f65-2ffc1cefa909",
+      "treatmentName": "Clareamento consultório",
+      "value": {
+        "priceCents": 120000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "83daf129-74ad-4508-838b-9aab2726afe5",
+      "treatmentName": "Clareamento consultório e caseiro",
+      "value": {
+        "priceCents": 150000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "35fae619-5b50-410e-9bd2-16a8cbbc7129",
+      "treatmentName": "Implante",
+      "value": {
+        "priceCents": 250000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "a5e7baee-8ad0-412d-8405-3a5ca1d40dd2",
+      "treatmentName": "Lente em Resina Estratificada",
+      "value": {
+        "priceCents": 200000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "33942861-3209-42d3-9f32-3ea85514742f",
+      "treatmentName": "Lente em Resina Premium",
+      "value": {
+        "priceCents": 170000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "treatmentName": "Lentes em Resina Composta",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "340fdac7-5d1f-4bab-8955-3a8b612abd8c",
+      "treatmentName": "Manutenção Preventiva de lentes",
+      "value": {
+        "priceCents": 40000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "d6a4c5db-8115-4b12-9b8a-dd405d2b27f9",
+      "treatmentName": "Placa miorrelaxante (bruxismo)",
+      "value": {
+        "priceCents": 70000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8",
+      "treatmentName": "Plástica Gengival",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "d95b548f-047d-4ed3-8ec1-5c4b39e4fa59",
+      "treatmentName": "Profilaxia Odontológica (Limpeza Dental)",
+      "value": {
+        "priceCents": 25000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "cfadee94-dbaf-4cc2-870b-aefb7beb0728",
+      "treatmentName": "Prótese Adesiva",
+      "value": {
+        "priceCents": 60000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "b3059525-b747-4664-b21f-6f06e5753ae6",
+      "treatmentName": "Prótese flexível",
+      "value": {
+        "priceCents": 180000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "4a1cc724-d0a0-4b6a-9d3b-555215abc3c9",
+      "treatmentName": "Prótese grampo",
+      "value": {
+        "priceCents": 140000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "824f0e9a-c36f-48ab-89a1-9ed8066a7335",
+      "treatmentName": "Remoção de lentes",
+      "value": {
+        "priceCents": 40000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "1d34b81a-42ef-469f-a315-e1026df6639f",
+      "treatmentName": "Restauração Estética",
+      "value": {
+        "priceCents": 40000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "a0f7b205-9a13-4a66-9f22-629a8d27f861",
+      "treatmentName": "Retratamento de Canal (dentes anteriores)",
+      "value": {
+        "priceCents": 65000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "c95d0d88-ca89-4448-83a4-ba1c91198850",
+      "treatmentName": "Retratamento de Canal (molares)",
+      "value": {
+        "priceCents": 95000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "e2aa618d-6ec9-46b4-8b0e-7c65e8e889c9",
+      "treatmentName": "Retratamento de Canal (pré-molares)",
+      "value": {
+        "priceCents": 75000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "6485454a-26f9-478d-9239-d8e439501eba",
+      "treatmentName": "Siso impactado",
+      "value": {
+        "priceCents": 100000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "cad46f58-f03b-4bec-9f1a-dce1ed31e48f",
+      "treatmentName": "Siso incluso",
+      "value": {
+        "priceCents": 60000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "ab4bfb23-3c7d-4e36-94a1-15127cd8ecfb",
+      "treatmentName": "Siso normal",
+      "value": {
+        "priceCents": 40000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "c1fa928d-778e-402f-bc28-cc8bcb482ed4",
+      "treatmentName": "Substituição de lente (un)",
+      "value": {
+        "priceCents": 20000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "12fc10fa-29e9-4385-8cc5-5f2869d697d8",
+      "treatmentName": "Tratamento de Canal (dentes anteriores)",
+      "value": {
+        "priceCents": 60000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "7862656a-6b95-40ce-8628-f664820f741d",
+      "treatmentName": "Tratamento de Canal (molares)",
+      "value": {
+        "priceCents": 85000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "873f86cd-8549-4c17-a81b-1b9c16c5336c",
+      "treatmentName": "Tratamento de Canal (pré-molares)",
+      "value": {
+        "priceCents": 70000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    }
+  ],
+  "modules": [
+    {
+      "moduleKey": "ai_co_writer",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-07-04T22:10:26.340Z"
+    },
+    {
+      "moduleKey": "concierge_mode",
+      "isActive": true,
+      "config": {
+        "drive": "sempre_proximo_passo",
+        "verbosity": "concisa"
+      },
+      "updatedAt": "2026-07-04T22:10:25.753Z"
+    },
+    {
+      "moduleKey": "menu_mode",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-07-04T22:10:25.634Z"
+    },
+    {
+      "moduleKey": "price_campaigns",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-07-09T04:02:04.091Z"
+    },
+    {
+      "moduleKey": "revenue_pipeline",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-07-04T22:10:02.710Z"
+    },
+    {
+      "moduleKey": "team_roles",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-07-04T22:10:26.105Z"
+    },
+    {
+      "moduleKey": "video_library",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-07-04T22:10:26.223Z"
+    },
+    {
+      "moduleKey": "voice_elevenlabs",
+      "isActive": true,
+      "config": {
+        "mode": "impact",
+        "speed": 1,
+        "voiceId": "RGymW84CSmfVugnA5tvA",
+        "stability": 0.55,
+        "similarityBoost": 0.85,
+        "voiceOutputEnabled": false
+      },
+      "updatedAt": "2026-07-18T04:44:36.432Z"
+    },
+    {
+      "moduleKey": "voice_tts",
+      "isActive": true,
+      "config": {
+        "voiceOutputEnabled": false
+      },
+      "updatedAt": "2026-07-18T04:44:36.432Z"
+    }
+  ],
+  "runtimeModules": [
+    {
+      "key": "revenue_pipeline",
+      "config": null
+    },
+    {
+      "key": "price_campaigns",
+      "config": null
+    },
+    {
+      "key": "menu_mode",
+      "config": null
+    },
+    {
+      "key": "team_roles",
+      "config": null
+    },
+    {
+      "key": "video_library",
+      "config": null
+    },
+    {
+      "key": "ai_co_writer",
+      "config": null
+    },
+    {
+      "key": "voice_elevenlabs",
+      "config": {
+        "mode": "impact",
+        "speed": 1,
+        "voiceId": "RGymW84CSmfVugnA5tvA",
+        "stability": 0.55,
+        "similarityBoost": 0.85,
+        "voiceOutputEnabled": false
+      }
+    },
+    {
+      "key": "voice_tts",
+      "config": {
+        "voiceOutputEnabled": false
+      }
+    },
+    {
+      "key": "concierge_mode",
+      "config": {
+        "drive": "sempre_proximo_passo",
+        "verbosity": "concisa"
+      }
+    }
+  ],
+  "mediaAssets": [
+    {
+      "id": "a04719ef-86d0-4ba7-9873-78328dcd2281",
+      "treatmentId": null,
+      "title": "20 lentes estratificadas 10x230 220726",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 218420,
+      "folder": "Promocional",
+      "createdAt": "2026-07-22T18:31:22.226Z",
+      "updatedAt": "2026-07-22T18:31:34.140Z"
+    },
+    {
+      "id": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+      "treatmentId": null,
+      "title": "Cores BL1, BL2 e BL3",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 152632,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:25.998Z",
+      "updatedAt": "2026-07-19T21:52:25.998Z"
+    },
+    {
+      "id": "5e19bb59-0560-495d-b036-52e949b8d34c",
+      "treatmentId": null,
+      "title": "Cuidados Pós Lentes",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 140438,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:28.346Z",
+      "updatedAt": "2026-07-19T21:52:28.346Z"
+    },
+    {
+      "id": "e367d809-588e-4100-bf39-2e89401ae8ab",
+      "treatmentId": null,
+      "title": "Cuidados Pós Lentes — guia",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 141266,
+      "folder": null,
+      "createdAt": "2026-07-18T00:39:17.882Z",
+      "updatedAt": "2026-07-18T00:39:17.882Z"
+    },
+    {
+      "id": "aeec6f88-fa24-4b8b-997b-61c620cfd168",
+      "treatmentId": null,
+      "title": "Cuidados Pós Lentes — vídeo",
+      "type": "video",
+      "mimeType": "video/mp4",
+      "sizeBytes": 10254470,
+      "folder": null,
+      "createdAt": "2026-07-18T00:39:22.866Z",
+      "updatedAt": "2026-07-18T00:39:22.866Z"
+    },
+    {
+      "id": "cc7b30c5-6715-4704-9f1a-d890ed976c0f",
+      "treatmentId": null,
+      "title": "Exemplo Foto Avaliação (frontal e perfil)",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 176826,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:27.203Z",
+      "updatedAt": "2026-07-19T21:52:27.203Z"
+    },
+    {
+      "id": "1cc316f2-c755-478a-a1a8-59fda28979e1",
+      "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8",
+      "title": "Plástica Gengival — antes",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 150599,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:29.584Z",
+      "updatedAt": "2026-07-19T21:52:29.584Z"
+    },
+    {
+      "id": "0d09a724-108d-4368-84dc-6a68b0551c30",
+      "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8",
+      "title": "Plástica Gengival — antes e depois",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 216153,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:32.202Z",
+      "updatedAt": "2026-07-19T21:52:32.202Z"
+    },
+    {
+      "id": "b8b86eea-e273-4f3e-9fed-808b271913ee",
+      "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8",
+      "title": "Plástica Gengival — depois",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 151954,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:30.833Z",
+      "updatedAt": "2026-07-19T21:52:30.833Z"
+    },
+    {
+      "id": "ae30136a-6f3e-459c-b00f-9d669e23149b",
+      "treatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "title": "Valores Lente em Resina Estratificada",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 190223,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:25.016Z",
+      "updatedAt": "2026-07-19T21:52:25.016Z"
+    },
+    {
+      "id": "dbfef876-9cf1-426d-94ba-9e58a46575c1",
+      "treatmentId": "39b29140-f356-4a0c-aa36-be533aa58c8e",
+      "title": "Valores Lente em Resina Premium",
+      "type": "image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 189167,
+      "folder": null,
+      "createdAt": "2026-07-19T21:52:23.710Z",
+      "updatedAt": "2026-07-19T21:52:23.710Z"
+    }
+  ],
+  "runtimeResolution": {
+    "editorialConfig": {
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "acolhedor",
+      "commercialPolicy": "VALORES (informe exatamente estes; nunca invente outros):\nPlaca miorrelaxante (bruxismo): a partir de R$ 700; o valor exato é definido na avaliação.\nSiso normal: R$ 400.\nClareamento caseiro: R$ 600.\nClareamento consultório: R$ 1.200.\nClareamento consultório e caseiro: R$ 1.500.\nPrótese Adesiva: R$ 600.\nPrótese flexível: R$ 1.800.\nPrótese grampo: R$ 1.400.\nSiso impactado: R$ 1.000.\nRetratamento de Canal (dentes anteriores): R$ 650 (por dente).\nRetratamento de Canal (pré-molares): R$ 750 (por dente).\nRetratamento de Canal (molares): R$ 950 (por dente).\nSiso incluso: R$ 600.\nTratamento de Canal (pré-molares): R$ 700 (por dente).\nTratamento de Canal (molares): R$ 850 (por dente).\nRemoção de lentes: R$ 400.\nSubstituição de lente (un): R$ 200.\nLente em Resina Estratificada — pacotes fechados: 10 lentes: R$ 2.000, 20 lentes: R$ 2.500. Cote SOMENTE estas quantidades exatas; para qualquer outra quantidade, NÃO calcule proporcional nem invente — diga que confirma o valor exato com a equipe.\nTratamento de Canal (dentes anteriores): R$ 600 (por dente).\nProfilaxia Odontológica (Limpeza Dental): R$ 250.\nImplante: R$ 2.500.\nManutenção Preventiva de lentes: R$ 400.\nRestauração Estética: R$ 400.\nLente em Resina Premium — pacotes fechados: 10 lentes: R$ 1.700, 20 lentes: R$ 2.000. Cote SOMENTE estas quantidades exatas; para qualquer outra quantidade, NÃO calcule proporcional nem invente — diga que confirma o valor exato com a equipe.\nPara os demais procedimentos, não informe valores por mensagem — oriente que os valores são definidos na avaliação com o profissional.\n\nÉramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.\n\nTrabalhamos com duas técnicas de lentes em resina. A Lente em Resina Premium usa uma única resina de alta qualidade, para um sorriso bonito e natural com excelente acabamento — é o investimento mais acessível. A Lente em Resina Estratificada combina duas resinas de alta qualidade com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. Nossos pacotes fechados são de 10 ou 20 lentes, e o tratamento é totalmente personalizado: o paciente escolhe a cor e o formato dos dentes junto com o Doutor.\n\nFormas de pagamento: à vista (Pix, débito ou crédito), com 5% de desconto no pagamento via Pix, ou parcelado em até 21x no cartão (taxas e condições consultadas na clínica). Não trabalhamos com boleto.\n\nCaso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes.\n\nTambém realizamos plástica gengival, que dá simetria ao sorriso corrigindo a gengiva para que todos os dentes fiquem do mesmo tamanho (procedimento totalmente indolor), clareamento dental com protocolo caseiro, de consultório ou os dois combinados, e tratamento de canal.\n\nPara reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal não é uma cobrança pela avaliação: ele é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [REDACTED_CNPJ] em nome de Dr. Victor Cavalcante.",
+      "procedures": [
+        {
+          "name": "Placa miorrelaxante (bruxismo)",
+          "description": null
+        },
+        {
+          "name": "Siso normal",
+          "description": null
+        },
+        {
+          "name": "Clareamento caseiro",
+          "description": "Protocolo caseiro: é feito um molde copiando todos os seus dentes (superior e inferior) e a aplicação é feita em casa, todos os dias, por 2 horas, durante 3 semanas — com acompanhamento presencial 1 vez por semana para acompanhar a evolução do clareamento."
+        },
+        {
+          "name": "Clareamento consultório",
+          "description": "Protocolo no consultório: 1 aplicação por semana (superior e inferior) durante 3 semanas, com 15 minutos por sessão. Antes e depois de cada aplicação usamos um dessensibilizante para não causar sensibilidade, com registro fotográfico para acompanhar a evolução."
+        },
+        {
+          "name": "Clareamento consultório e caseiro",
+          "description": "Combina os dois protocolos (consultório + caseiro juntos), com acompanhamento completo — é a opção com o melhor resultado."
+        },
+        {
+          "name": "Prótese Adesiva",
+          "description": "Prótese fixa adesiva para reposição de dente ausente, fixada aos dentes vizinhos."
+        },
+        {
+          "name": "Prótese flexível",
+          "description": null
+        },
+        {
+          "name": "Prótese grampo",
+          "description": null
+        },
+        {
+          "name": "Siso impactado",
+          "description": null
+        },
+        {
+          "name": "Retratamento de Canal (dentes anteriores)",
+          "description": "Trata e preserva o dente em casos de comprometimento interno."
+        },
+        {
+          "name": "Retratamento de Canal (pré-molares)",
+          "description": "Trata e preserva o dente em casos de comprometimento interno."
+        },
+        {
+          "name": "Retratamento de Canal (molares)",
+          "description": "Trata e preserva o dente em casos de comprometimento interno."
+        },
+        {
+          "name": "Siso incluso",
+          "description": null
+        },
+        {
+          "name": "Plástica Gengival",
+          "description": "Serve para dar simetria ao sorriso: é feita uma correção na gengiva para que todos os dentes fiquem do mesmo tamanho. O procedimento é totalmente indolor."
+        },
+        {
+          "name": "Tratamento de Canal (pré-molares)",
+          "description": "Trata e preserva o dente em casos de comprometimento interno."
+        },
+        {
+          "name": "Tratamento de Canal (molares)",
+          "description": "Trata e preserva o dente em casos de comprometimento interno."
+        },
+        {
+          "name": "Remoção de lentes",
+          "description": "Procedimento cuidadoso para retirar resina ou porcelana antiga."
+        },
+        {
+          "name": "Substituição de lente (un)",
+          "description": "Remoção das lentes antigas e confecção de novas lentes no mesmo dia."
+        },
+        {
+          "name": "Lente em Resina Estratificada",
+          "description": "É confeccionada com a combinação de duas resinas de alta qualidade, incluindo uma camada translúcida nas bordas, reproduzindo com mais fidelidade as características de um dente natural. Essa técnica oferece um resultado com maior riqueza de detalhes, profundidade e estética, sendo a opção mais sofisticada para quem busca máxima naturalidade."
+        },
+        {
+          "name": "Tratamento de Canal (dentes anteriores)",
+          "description": "Trata e preserva o dente em casos de comprometimento interno."
+        },
+        {
+          "name": "Avaliação Clínica Inicial",
+          "description": "Consulta clínica completa para planejamento do tratamento."
+        },
+        {
+          "name": "Profilaxia Odontológica (Limpeza Dental)",
+          "description": "Procedimento preventivo e essencial que remove placa e tártaro."
+        },
+        {
+          "name": "Implante",
+          "description": "Solução definitiva e segura para repor dentes perdidos."
+        },
+        {
+          "name": "Manutenção Preventiva de lentes",
+          "description": "Plano de manutenção preventiva completo: inclui profilaxia, polimento e nova aplicação da película protetora, para manter o brilho e a limpeza dos dentes. Aciona a garantia de 2 anos."
+        },
+        {
+          "name": "Restauração Estética",
+          "description": "Recupera partes danificadas do dente."
+        },
+        {
+          "name": "Lentes em Resina Composta",
+          "description": "Tratamento estético para melhorar formato, cor, tamanho e harmonia dos dentes. Inclui as técnicas Simplificada e Estratificada."
+        },
+        {
+          "name": "Lente em Resina Premium",
+          "description": "É confeccionada com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento."
+        }
+      ],
+      "receptionistName": "Gleice",
+      "differentials": [
+        "Especialistas em lentes de resina composta",
+        "Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)",
+        "Lentes finas, translúcidas e com aspecto super natural",
+        "Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido",
+        "Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)",
+        "Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação",
+        "Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)",
+        "Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento varia conforme a técnica escolhida (Premium ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?",
+          "objection": "Qual o valor do tratamento?"
+        },
+        {
+          "response": "A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.",
+          "objection": "Precisa desgastar muito os dentes?"
+        },
+        {
+          "response": "Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!",
+          "objection": "Quanto tempo dura? Tem garantia e como é a manutenção?"
+        },
+        {
+          "response": "Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.",
+          "objection": "Vocês fazem somente as lentes inferiores?"
+        },
+        {
+          "response": "A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.",
+          "objection": "Como funciona a troca de facetas antigas por novas?"
+        },
+        {
+          "response": "Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.",
+          "objection": "O procedimento demora quanto tempo?"
+        },
+        {
+          "response": "Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.",
+          "objection": "Tem algum desconto pagando à vista no Pix?"
+        },
+        {
+          "response": "Que bom que você lembra do nosso contato! Aquele valor era de uma promoção com prazo que já passou. O valor atual é o vigente e seguimos com condições bem flexíveis de parcelamento. Posso te mostrar os horários para a avaliação com o Doutor?",
+          "objection": "Vocês me passaram um valor menor antes / era mais barato antes"
+        }
+      ],
+      "mediaLibrary": [
+        {
+          "id": "5660e76c-d349-4dea-bc15-a78180d4b3ad",
+          "title": "Cores BL1, BL2 e BL3",
+          "type": "image",
+          "treatmentId": null
+        },
+        {
+          "id": "cc7b30c5-6715-4704-9f1a-d890ed976c0f",
+          "title": "Exemplo Foto Avaliação (frontal e perfil)",
+          "type": "image",
+          "treatmentId": null
+        },
+        {
+          "id": "5e19bb59-0560-495d-b036-52e949b8d34c",
+          "title": "Cuidados Pós Lentes",
+          "type": "image",
+          "treatmentId": null
+        },
+        {
+          "id": "1cc316f2-c755-478a-a1a8-59fda28979e1",
+          "title": "Plástica Gengival — antes",
+          "type": "image",
+          "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8"
+        },
+        {
+          "id": "b8b86eea-e273-4f3e-9fed-808b271913ee",
+          "title": "Plástica Gengival — depois",
+          "type": "image",
+          "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8"
+        },
+        {
+          "id": "0d09a724-108d-4368-84dc-6a68b0551c30",
+          "title": "Plástica Gengival — antes e depois",
+          "type": "image",
+          "treatmentId": "0fee44ba-7c82-4b76-97b3-ffd1702e10e8"
+        }
+      ],
+      "playbookText": "ESPECIALIDADE DA CLÍNICA:\nA Clínica Vitalli é especialista em lentes de resina composta (Lente em Resina Premium e Lente em Resina Estratificada). Toda conversa sobre lentes tem prioridade máxima e deve ser conduzida com muita atenção.\n\nOBJETIVIDADE:\nSeja direto e objetivo. Responda o que foi perguntado em blocos curtos e conduza ativamente a conversa para o agendamento da avaliação — não espere o lead pedir para ver horários.\n\nCORES DAS LENTES:\nSe o lead perguntar sobre cor ou tom das lentes, envie a imagem \"Cores BL1, BL2 e BL3\" e explique que a cor e o formato dos dentes são escolhidos junto com o Doutor — o tratamento é totalmente personalizado.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nNunca prometa resultados fechados ou definitivos por mensagem. Sempre informe que a indicação correta depende de avaliação presencial.\nPara confirmar e agendar a avaliação presencial, informe que a avaliação não tem custo e que, para reservar o horário na agenda concorrida do Doutor, a clínica exige um sinal via Pix configurado separadamente no cadastro da clínica. Nunca apresente esse sinal como preço, taxa ou valor da avaliação. O sinal é abatido integralmente no dia do procedimento. Se o lead perguntar a localização, você pode informar que a clínica fica na Avenida Adolfo Pinheiro em Santo Amaro, mas só informe o endereço completo (incluindo que a sala é a 124) após confirmar o agendamento via Pix. Sempre aja de forma acolhedora e calorosa. Use sempre quebras de linha ao explicar valores ou mudar de assunto, para que os textos longos fiquem legíveis (ex: pule linha entre a Lente Premium e a Estratificada). Quando um agendamento for confirmado, SEMPRE envie EXATAMENTE este aviso ao final da mensagem, usando o emoji de alerta: \"⚠️ Importante: Chegue com 10 minutos de antecedência, temos tolerância de atraso, e caso precise reagendar, avise-nos com no mínimo 24h de antecedência.\"\n\nPROCEDIMENTOS OFERECIDOS:\n• Placa miorrelaxante (bruxismo)\n• Siso normal\n• Clareamento caseiro — Protocolo caseiro: é feito um molde copiando todos os seus dentes (superior e inferior) e a aplicação é feita em casa, todos os dias, por 2 horas, durante 3 semanas — com acompanhamento presencial 1 vez por semana para acompanhar a evolução do clareamento.\n• Clareamento consultório — Protocolo no consultório: 1 aplicação por semana (superior e inferior) durante 3 semanas, com 15 minutos por sessão. Antes e depois de cada aplicação usamos um dessensibilizante para não causar sensibilidade, com registro fotográfico para acompanhar a evolução.\n• Clareamento consultório e caseiro — Combina os dois protocolos (consultório + caseiro juntos), com acompanhamento completo — é a opção com o melhor resultado.\n• Prótese Adesiva — Prótese fixa adesiva para reposição de dente ausente, fixada aos dentes vizinhos.\n• Prótese flexível\n• Prótese grampo\n• Siso impactado\n• Retratamento de Canal (dentes anteriores) — Trata e preserva o dente em casos de comprometimento interno.\n• Retratamento de Canal (pré-molares) — Trata e preserva o dente em casos de comprometimento interno.\n• Retratamento de Canal (molares) — Trata e preserva o dente em casos de comprometimento interno.\n• Siso incluso\n• Plástica Gengival — Serve para dar simetria ao sorriso: é feita uma correção na gengiva para que todos os dentes fiquem do mesmo tamanho. O procedimento é totalmente indolor.\n• Tratamento de Canal (pré-molares) — Trata e preserva o dente em casos de comprometimento interno.\n• Tratamento de Canal (molares) — Trata e preserva o dente em casos de comprometimento interno.\n• Remoção de lentes — Procedimento cuidadoso para retirar resina ou porcelana antiga.\n• Substituição de lente (un) — Remoção das lentes antigas e confecção de novas lentes no mesmo dia.\n• Lente em Resina Estratificada — É confeccionada com a combinação de duas resinas de alta qualidade, incluindo uma camada translúcida nas bordas, reproduzindo com mais fidelidade as características de um dente natural. Essa técnica oferece um resultado com maior riqueza de detalhes, profundidade e estética, sendo a opção mais sofisticada para quem busca máxima naturalidade.\n• Tratamento de Canal (dentes anteriores) — Trata e preserva o dente em casos de comprometimento interno.\n• Avaliação Clínica Inicial — Consulta clínica completa para planejamento do tratamento.\n• Profilaxia Odontológica (Limpeza Dental) — Procedimento preventivo e essencial que remove placa e tártaro.\n• Implante — Solução definitiva e segura para repor dentes perdidos.\n• Manutenção Preventiva de lentes — Plano de manutenção preventiva completo: inclui profilaxia, polimento e nova aplicação da película protetora, para manter o brilho e a limpeza dos dentes. Aciona a garantia de 2 anos.\n• Restauração Estética — Recupera partes danificadas do dente.\n• Lentes em Resina Composta — Tratamento estético para melhorar formato, cor, tamanho e harmonia dos dentes. Inclui as técnicas Simplificada e Estratificada.\n• Lente em Resina Premium — É confeccionada com uma única resina de alta qualidade, proporcionando um sorriso bonito, natural e com excelente acabamento.\n\nDIFERENCIAIS:\n• Especialistas em lentes de resina composta\n• Troca de lentes antigas realizada no mesmo dia (remoção e confecção na mesma sessão)\n• Lentes finas, translúcidas e com aspecto super natural\n• Garantia de 2 anos contra descolamento completo (basta trazer a lente descolada) e 30 dias contra pigmentação ou quebra por descuido\n• Plano de manutenção preventiva completo por R$ 400,00 (profilaxia, polimento e nova aplicação da película)\n• Aplicação de película protetora que dá um brilho como o de lentes de porcelana e permite beber café e vinho sem preocupação\n• Flexibilidade de parcelamento em até 21 vezes no cartão (3 vezes sem juros)\n• Localização Premium na Avenida Adolfo Pinheiro (Helbor Offices São Paulo II)\n\nCOMO LIDAR COM OBJEÇÕES:\n- \"Qual o valor do tratamento?\" → O investimento varia conforme a técnica escolhida (Premium ou Estratificada) e se faremos 10 ou 20 lentes. Pode me enviar uma foto do seu sorriso para a nossa equipe fazer uma pré-avaliação antes de agendarmos?\n- \"Precisa desgastar muito os dentes?\" → A nossa abordagem estética é muito conservadora. Em alguns casos precisamos fazer apenas pequenos ajustes no esmalte para garantir o encaixe perfeito e a naturalidade, mas nunca um desgaste que te deixaria sem as lentes. O doutor fará uma avaliação minuciosa da sua mordida para te dar certeza de como será feito no seu caso.\n- \"Quanto tempo dura? Tem garantia e como é a manutenção?\" → Nós damos uma garantia de 2 anos caso a lente descole por completo (é só trazer a lente descolada), e de 30 dias contra pigmentação ou quebra por descuido. Além disso, aplicamos uma película protetora que dá um brilho como o de lentes de porcelana e te deixa livre para tomar aquele cafezinho ou vinho sem medo. Com os cuidados em casa (escova Curaprox, pasta sem corante, fio dental encerado e Listerine, evitando roer unhas ou morder objetos) e a manutenção preventiva (R$ 400,00, que inclui profilaxia, polimento e nova aplicação da película), elas duram anos!\n- \"Vocês fazem somente as lentes inferiores?\" → Fazemos sim! Mas, para garantir que as inferiores não fiquem de cor diferente das superiores e percam a naturalidade, recomendamos sempre que o doutor avalie todo o seu sorriso. Mas se a sua vontade for manter as de cima naturais, o doutor avalia se é viável harmonizar a cor das inferiores com elas.\n- \"Como funciona a troca de facetas antigas por novas?\" → A troca pode ser feita toda no mesmo dia. Nós fazemos a remoção cuidadosa das suas lentes antigas (R$ 400) e já confeccionamos as novas para você sair de sorriso renovado. Lembrando que no dia o doutor fará uma análise clínica completa da gengiva e do dente antes de começar.\n- \"O procedimento demora quanto tempo?\" → Para fazer as lentes, o procedimento leva em torno de 3 a 4 horas. Sabemos que é um tempinho, então se precisar justificar no trabalho, nós emitimos atestado ou comprovante de horas, pode ficar tranquila.\n- \"Tem algum desconto pagando à vista no Pix?\" → Nós não conseguimos dar desconto extra no pagamento à vista pois nossos valores já estão super justos e otimizados. Porém, se o doutor identificar na avaliação que você precisa de algum procedimento complementar, nós conseguimos negociar os valores extras presencialmente.\n- \"Vocês me passaram um valor menor antes / era mais barato antes\" → Que bom que você lembra do nosso contato! Aquele valor era de uma promoção com prazo que já passou. O valor atual é o vigente e seguimos com condições bem flexíveis de parcelamento. Posso te mostrar os horários para a avaliação com o Doutor?"
+    }
+  },
+  "findings": [
+    {
+      "id": "CFG-PRICE-IN-COMMERCIAL-POLICY-31a4f906-3bee-4e82-b421-daebfebda6af",
+      "severity": "P1",
+      "category": "duplicate",
+      "title": "Playbook \"Clínica Vitalli — v2 (Preços Normais)\" contém preço digitado na política comercial",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.commercial_policy:31a4f906-3bee-4e82-b421-daebfebda6af"
+        }
+      ],
+      "recommendation": "Remover o número manual após confirmar que composePriceSection cobre o caso.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-PRICE-IN-COMMERCIAL-POLICY-71dc1709-f008-42d9-ba40-12369f3813ba",
+      "severity": "P1",
+      "category": "duplicate",
+      "title": "Playbook \"Clínica Vitalli — Promocional (vigente)\" contém preço digitado na política comercial",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.commercial_policy:71dc1709-f008-42d9-ba40-12369f3813ba"
+        }
+      ],
+      "recommendation": "Remover o número manual após confirmar que composePriceSection cobre o caso.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-MISSING-MEDIA-31a4f906-3bee-4e82-b421-daebfebda6af",
+      "severity": "P1",
+      "category": "orphan",
+      "title": "Playbook \"Clínica Vitalli — v2 (Preços Normais)\" referencia mídias inexistentes",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.media_asset_ids:31a4f906-3bee-4e82-b421-daebfebda6af",
+          "value": [
+            "636dd855-b5b9-4775-b765-be52f4e75986",
+            "14b3ce5b-f4da-4d69-9793-0c47d77458a8",
+            "3618aee7-b85f-46ff-9e55-dac535065ae2"
+          ]
+        }
+      ],
+      "recommendation": "Remover os IDs órfãos ou restaurar os assets corretos da mesma clínica.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-MISSING-MEDIA-71dc1709-f008-42d9-ba40-12369f3813ba",
+      "severity": "P1",
+      "category": "orphan",
+      "title": "Playbook \"Clínica Vitalli — Promocional (vigente)\" referencia mídias inexistentes",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.media_asset_ids:71dc1709-f008-42d9-ba40-12369f3813ba",
+          "value": [
+            "636dd855-b5b9-4775-b765-be52f4e75986",
+            "14b3ce5b-f4da-4d69-9793-0c47d77458a8",
+            "3618aee7-b85f-46ff-9e55-dac535065ae2"
+          ]
+        }
+      ],
+      "recommendation": "Remover os IDs órfãos ou restaurar os assets corretos da mesma clínica.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-MISSING-MEDIA-22668cd8-9bb4-483f-9483-05a9e21d9d20",
+      "severity": "P1",
+      "category": "orphan",
+      "title": "Playbook \"Clínica Vitalli — Promocional v3 (config IA jul/2026)\" referencia mídias inexistentes",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.media_asset_ids:22668cd8-9bb4-483f-9483-05a9e21d9d20",
+          "value": [
+            "636dd855-b5b9-4775-b765-be52f4e75986",
+            "14b3ce5b-f4da-4d69-9793-0c47d77458a8",
+            "3618aee7-b85f-46ff-9e55-dac535065ae2"
+          ]
+        }
+      ],
+      "recommendation": "Remover os IDs órfãos ou restaurar os assets corretos da mesma clínica.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-MISSING-MEDIA-9ef464d2-96ac-4e08-be3a-4862e0ad3681",
+      "severity": "P1",
+      "category": "orphan",
+      "title": "Playbook \"Clínica Vitalli — v4 Preços Normais + conteúdo Victor (17/07)\" referencia mídias inexistentes",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.media_asset_ids:9ef464d2-96ac-4e08-be3a-4862e0ad3681",
+          "value": [
+            "3348e716-33fa-429e-9850-9cf64de974f6",
+            "61b3a144-5edb-4749-976c-c812c55e4f77",
+            "5d383eb4-7dce-4fe3-a14a-5fad569fe6a7",
+            "360c1034-7c6c-42d3-878b-abe58e7d0824",
+            "7e620435-40bc-46ba-8051-9d52732ec525",
+            "9c48477a-55da-4ff4-ace1-3677b233ab9b",
+            "6c52ec45-ff22-44c8-9e72-f9efc034f9e0",
+            "827d3d96-022e-43ea-9d32-441e752acdcf"
+          ]
+        }
+      ],
+      "recommendation": "Remover os IDs órfãos ou restaurar os assets corretos da mesma clínica.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-MISSING-MEDIA-68627241-84c3-41f6-9ffd-1a5d62e62031",
+      "severity": "P1",
+      "category": "orphan",
+      "title": "Playbook \"Clínica Vitalli — Promocional v3 (config IA jul/2026)\" referencia mídias inexistentes",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.media_asset_ids:68627241-84c3-41f6-9ffd-1a5d62e62031",
+          "value": [
+            "3348e716-33fa-429e-9850-9cf64de974f6",
+            "61b3a144-5edb-4749-976c-c812c55e4f77",
+            "5d383eb4-7dce-4fe3-a14a-5fad569fe6a7",
+            "360c1034-7c6c-42d3-878b-abe58e7d0824",
+            "7e620435-40bc-46ba-8051-9d52732ec525",
+            "9c48477a-55da-4ff4-ace1-3677b233ab9b",
+            "6c52ec45-ff22-44c8-9e72-f9efc034f9e0",
+            "827d3d96-022e-43ea-9d32-441e752acdcf"
+          ]
+        }
+      ],
+      "recommendation": "Remover os IDs órfãos ou restaurar os assets corretos da mesma clínica.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-MISSING-MEDIA-623b0cd4-89e1-4c70-89f4-05142200f515",
+      "severity": "P1",
+      "category": "orphan",
+      "title": "Playbook \"Clínica Vitalli — v4 Preços Normais + conteúdo Victor (17/07)\" referencia mídias inexistentes",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.media_asset_ids:623b0cd4-89e1-4c70-89f4-05142200f515",
+          "value": [
+            "0c771e1b-a1e2-45cb-8a3d-ecbd0b2f0c7c",
+            "5ffd33e9-0f06-47b9-b07f-21405a283391"
+          ]
+        }
+      ],
+      "recommendation": "Remover os IDs órfãos ou restaurar os assets corretos da mesma clínica.",
+      "autoFixSafe": false
+    }
+  ]
+}

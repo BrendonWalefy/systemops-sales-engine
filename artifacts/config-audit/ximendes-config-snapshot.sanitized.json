@@ -1,0 +1,2046 @@
+{
+  "metadata": {
+    "generatedAt": "2026-07-24T21:21:56.881Z",
+    "gitCommit": "6f7d5706e9abbebfc0b3adc9434a0cf89c39f9f4",
+    "branch": "chore/conversation-engine-validation",
+    "schemaVersion": "6f7d570",
+    "auditedProductionCommit": "d8c0fd0c7602fe635601afeb0778b1f982301fc7",
+    "sanitized": true,
+    "source": "read-only production database query"
+  },
+  "organization": {
+    "id": "c9137774-e783-4461-ac2b-e2f01be739a6",
+    "name": "Ximendes Odontologia",
+    "slug": "ximendes",
+    "specialty": "Odontologia Estética e Reabilitação Oral",
+    "city": "São Paulo",
+    "timezone": "America/Sao_Paulo",
+    "businessHours": "Segunda a sexta das 8h às 19h. Sábado das 8h às 13h.",
+    "calendarMode": "internal",
+    "googleCalendarIdConfigured": true,
+    "autoReplyEnabled": true,
+    "operationalStatus": "active",
+    "shadowModeEnabled": false,
+    "automatedReengagementPaused": false,
+    "staleConversationHours": 6,
+    "conversationRestartHours": 24,
+    "slotOfferTtlMinutes": 15,
+    "maxSlotsToOffer": 5,
+    "slotLookaheadDays": 21,
+    "offerSlotsAfterPriceEnabled": false,
+    "rapidThrottleMs": 4000,
+    "messageDebounceMs": null,
+    "defaultAppointmentDurationMinutes": 60,
+    "postAppointmentBufferMinutes": 30,
+    "depositEnabled": false,
+    "depositAmountCents": null,
+    "depositTtlHours": 24,
+    "channelProvider": "z_api",
+    "isTest": false,
+    "isDemo": false,
+    "segment": "dental",
+    "serviceNoun": "tratamento",
+    "bookingNoun": "consulta",
+    "contactNoun": "paciente",
+    "agentRole": "recepcionista virtual",
+    "businessDescriptor": null,
+    "updatedAt": "2026-07-23T20:01:55.145Z"
+  },
+  "productionSchemaExtensions": {
+    "address_complement_configured": false,
+    "maps_url_configured": true,
+    "location_message_configured": true,
+    "warranty_policy_configured": true,
+    "warranty_tier_count": 2
+  },
+  "activePlaybook": {
+    "id": "15cebe98-64ed-4895-a5f7-68a3b4b415da",
+    "name": "Ximendes Odontologia — Canônico v5 (Dr. Gregorie — especialista em lentes)",
+    "status": "active",
+    "specialty": "Odontologia Estética e Reabilitação Oral",
+    "toneOfVoice": "Profissional, caloroso e consultivo. Sem gírias, calmo e nunca insistente. Português brasileiro natural, como uma conversa real.",
+    "commercialPolicy": "A avaliação inicial com o Dr. Gregorie custa R$ 100 e esse valor é integralmente abatido do tratamento se o paciente decidir avançar. Sempre mencione esse abatimento ao falar da avaliação. mas só mencione quanto estiver na etapa de agendamento, ou se o lead perguntar sobre custo de avaliação\n\nPara lentes de resina, único procedimento com valor autorizado por mensagem: Técnica Simplificada a partir de  para vinte elementos, e Técnica Estratificada a partir de para vinte elementos. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade.\n\nParcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos de referência e deixe explícito que a clínica pode parcelar em até 12 vezes. Use uma formulação natural, como \"Aqui estão algumas simulações de valores\", sem mencionar taxa adicional nem tratar os exemplos como condição única.\n\nPara todos os outros procedimentos: não informe valores por mensagem. Oriente que os valores são definidos na avaliação.",
+    "notes": "ESPECIALIDADE DO DR. GREGORIE:\nO Dr. Gregorie Ximendes é especialista em lentes de resina composta. Toda conversa sobre lentes tem prioridade máxima e segue a sequência abaixo sem exceção.\n\nTRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: \"lentes\", \"técnica\", \"simplificada\", \"estratificada\", \"lentes de contato dental\", \"faceta\", \"faceta de resina\", \"resina nos dentes\", \"lente no dente\", \"lentes de porcelana\" ou pedir agendamento relacionado a lentes. NUNCA mostre horários antes de concluir os passos abaixo, mesmo quando a ação for de agendamento.\n\nPasso 1 — apresente cada técnica em dois blocos separados. Em cada bloco: primeiro a explicação em prosa, depois o vídeo correspondente (tag [MEDIA:id] na linha seguinte à explicação).\n\nBloco A — Técnica Simplificada: escreva em prosa corrida \"A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo.\" Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Simplificada (busque na biblioteca pelo título — deve conter \"simplificada\").\n\nBloco B — Técnica Estratificada: escreva em prosa corrida \"A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético.\" Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Estratificada (busque na biblioteca pelo título — deve conter \"estratificada\").\n\nPasso 2 — após os dois blocos, adote uma abordagem consultiva e pergunte: \"Qual desses dois resultados chamou mais a sua atenção?\". Aguarde a resposta do paciente para entender a preferência dele antes de revelar qualquer valor ou conduzir para avaliação. Se o lead tiver dúvidas, responda de forma consultiva antes de seguir. Não compacte explicação técnica, convite de foto e agenda no mesmo turno. Só após ele responder qual técnica preferiu (ou tirar as dúvidas), você pode falar os valores de referência e então oferecer horários disponíveis com o Dr. Gregorie.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nSó ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço (Rua Guararapes, 1894, Brooklin Novo, São Paulo) só ao confirmar agendamento ou se o lead perguntar diretamente.",
+    "receptionistName": "Marina",
+    "differentials": [
+      "Especialista em lentes de resina — Técnica Simplificada e Estratificada",
+      "Dr. Gregorie avalia o sorriso com uma pré avaliação",
+      "Avaliação abatida integralmente do tratamento se avançar",
+      "Resina preserva o esmalte — procedimento reversível sem desgaste permanente",
+      "Parcelamento em até 12 vezes (juros da operadora)"
+    ],
+    "objections": [
+      {
+        "response": "O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregorie monta um plano personalizado com valores e parcelamento em até 12 vezes. Os R$ 100 da avaliação são abatidos do tratamento se você decidir avançar.",
+        "objection": "Está muito caro / não tenho esse valor agora"
+      },
+      {
+        "response": "A resina preserva cem por cento do esmalte, sem nenhum desgaste permanente. É reversível e tem resultado estético muito próximo da porcelana. Na avaliação o Dr. Gregorie mostra casos dos dois e explica o que faz mais sentido para o seu sorriso.",
+        "objection": "Resina não é pior que porcelana?"
+      },
+      {
+        "response": "O resultado é personalizado em cor, forma e transparência para combinar com o seu rosto e o tom da sua pele. O objetivo é um sorriso que pareça completamente natural, só mais bonito. O Dr. Gregorie tem cases para mostrar na avaliação.",
+        "objection": "Tenho medo que fique artificial / exagerado"
+      },
+      {
+        "response": "Entendo. Na avaliação você pode mostrar o que não gostou e o Dr. Gregorie analisa o caso com cuidado antes de propor qualquer solução. Resultado estético depende muito do olhar e da técnica do profissional.",
+        "objection": "Já fiz lentes em outro lugar e não gostei do resultado"
+      },
+      {
+        "response": "Os R$ 100 garantem uma consulta completa e dedicada ao seu caso, com análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você decidir avançar. Não é custo a mais, é o primeiro passo.",
+        "objection": "Não quero pagar a avaliação"
+      },
+      {
+        "response": "Claro, sem pressa. Qualquer dúvida é só chamar aqui. Quando quiser, a agenda está aberta.",
+        "objection": "Vou pensar..."
+      },
+      {
+        "response": "Sem problema. Pode perguntar tudo que quiser. Se fizer sentido no seu tempo, vemos um horário para avaliação.",
+        "objection": "Estou só pesquisando"
+      },
+      {
+        "response": "É muito comum ter essa preocupação. Todos os procedimentos são realizados com anestesia local e a maioria dos pacientes fica surpresa com o quanto é tranquilo. O Dr. Gregorie tem o cuidado de explicar cada etapa antes de começar.",
+        "objection": "Tenho medo de dor / medo de dentista"
+      },
+      {
+        "response": "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregorie.",
+        "objection": "Implante é doloroso? Tenho medo da cirurgia"
+      },
+      {
+        "response": "Não. O canal remove apenas a polpa infectada. A estrutura do dente fica completamente preservada e ele continua funcional. É a melhor alternativa antes de considerar a extração.",
+        "objection": "Canal não mata o dente?"
+      },
+      {
+        "response": "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregorie explica as opções e o que é mais indicado para o seu caso.",
+        "objection": "Preciso mesmo de implante? Não dá para fazer uma ponte?"
+      }
+    ],
+    "mediaAssetIds": [
+      "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+      "b4585a6b-0021-4e12-9c5f-292f47d2aa25",
+      "74f42829-7968-4e8f-aa38-ad3df352fa8c",
+      "ee6c81a6-1703-4cde-a55f-dbfd5ba92550"
+    ],
+    "legacyMediaCount": 0,
+    "createdAt": "2026-07-09T05:00:34.348Z",
+    "updatedAt": "2026-07-23T20:39:59.448Z"
+  },
+  "playbookVersions": [
+    {
+      "id": "a356d06d-329c-4a3c-9878-53eaa8271e16",
+      "name": "Ximendes — Reescrita Afiada v4 (Fluxo Blindado)",
+      "status": "historical",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "Profissional, cordial e consultivo — sem gírias, calmo e nunca insistente.",
+      "commercialPolicy": "PREÇO — REGRA GERAL: não informar valores de procedimentos por mensagem. O plano e os valores são apresentados pelo Dr. Gregorie na avaliação.\n\nPREÇO — EXCEÇÃO (LENTES EM RESINA, foco da clínica): os valores de partida das lentes estão na seção VALORES. Ao falar de lentes, SEMPRE: (1) deixar claro que é valor inicial; (2) explicar que cada caso é avaliado individualmente para indicação e valor final; (3) responder primeiro a dúvida principal do lead. Só conduza para avaliação quando houver interesse real ou quando o lead pedir disponibilidade. NÃO pule direto para horários no mesmo turno em que estiver explicando técnica, valor ou comparação. NÃO aplicar essa exceção a nenhum outro procedimento.\n\nPARCELAMENTO: a clínica trabalha com parcelamento em até 12x. Quando o lead perguntar sobre parcelas, deixe explícito que os valores enviados são algumas simulações para facilitar a visualização e que o parcelamento pode ser feito em até 12x. Apresente as simulações de forma natural, sem detalhar taxas e sem tratar os exemplos como condição única.\n\nENDEREÇO: compartilhar apenas ao confirmar agendamento ou quando o lead perguntar diretamente — \"Rua Guararapes, 1894 — Brooklin Novo, São Paulo/SP.\"\n\nREGRAS ABSOLUTAS:\n- Preço só para lentes em resina (regra acima). Para todos os demais: NUNCA citar valor.\n- SEMPRE mencionar o abatimento da avaliação ao falar dela.\n- NUNCA pressionar para fechar na primeira mensagem.\n- NÃO oferecer agendamento em toda mensagem — apenas com interesse claro.",
+      "notes": "ESPECIALIDADE DO DR. GREGORIE:\nO Dr. Gregorie Ximendes é especialista em lentes de resina composta, o procedimento de referência da clínica. Toda conversa sobre lentes tem prioridade máxima.\n\nTIPO DE LENTES PADRÃO:\nQuando o lead mencionar \"lentes\" sem especificar o tipo, apresente SEMPRE as lentes de resina composta (Simplificada e Estratificada) — são o foco da clínica. Só mencione lentes de porcelana se o lead perguntar especificamente por porcelana.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nSó ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço (Rua Guararapes, 1894, Brooklin Novo, São Paulo) só ao confirmar agendamento ou se o lead perguntar diretamente.",
+      "receptionistName": "Marina",
+      "differentials": [
+        "Dente original preservado sempre que possível",
+        "Atendimento exclusivo com Dr. Gregorie Ximendes",
+        "Ambiente climatizado, com TV e Wi-Fi durante o procedimento",
+        "Parcelamento em até 12x (juros da operadora)",
+        "Avaliação de R$100 abatida integralmente do tratamento"
+      ],
+      "objections": [
+        {
+          "response": "O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregorie monta um plano personalizado, com valores e parcelamento em até 12x. E os R$100 da avaliação saem do tratamento se você decidir avançar.",
+          "objection": "Está muito caro / não tenho esse valor agora"
+        },
+        {
+          "response": "Claro, sem pressa nenhuma. Qualquer dúvida é só me chamar aqui. Quando quiser, a agenda está aberta.",
+          "objection": "Vou pensar..."
+        },
+        {
+          "response": "É muito comum ter essa preocupação. Todos os procedimentos da clínica são realizados com anestesia local — a maioria dos pacientes fica surpreso com o quanto é tranquilo. O Dr. Gregorie tem o cuidado de explicar cada etapa antes de começar.",
+          "objection": "Tenho medo de dor / medo de dentista"
+        },
+        {
+          "response": "Os R$100 garantem uma consulta completa e dedicada ao seu caso — análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você avançar. Não é custo a mais, é o primeiro passo.",
+          "objection": "Não quero pagar a avaliação"
+        },
+        {
+          "response": "É verdade que a porcelana tem durabilidade maior. Mas ela exige desgaste permanente e irreversível do esmalte — o dente não volta ao estado original. A resina preserva 100% do dente, é reversível e tem resultado estético muito bom. Na avaliação o Dr. Gregorie mostra casos dos dois e explica qual faz mais sentido para o seu sorriso.",
+          "objection": "Porcelana não é mais durável que resina?"
+        },
+        {
+          "response": "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregorie.",
+          "objection": "Implante é doloroso? Tenho medo da cirurgia"
+        },
+        {
+          "response": "Não. O canal remove apenas a polpa infectada — a estrutura do dente fica completamente preservada. O dente continua vivo, ancorado no osso e funcional. É a melhor alternativa antes de considerar a extração.",
+          "objection": "Canal não mata o dente?"
+        },
+        {
+          "response": "O protocolo que utilizamos é seguro e aprovado. Pode causar sensibilidade temporária durante o tratamento, mas não prejudica o esmalte. Na avaliação verificamos se o seu caso é indicado e qual modalidade — laser ou caseiro — traz o melhor resultado.",
+          "objection": "Clareamento danifica o esmalte?"
+        },
+        {
+          "response": "O resultado é personalizado junto com você — cor, forma e transparência escolhidas para combinar com o seu rosto e o tom da sua pele. O Dr. Gregorie tem cases para mostrar na avaliação. O objetivo é um sorriso que pareça natural, só mais bonito.",
+          "objection": "Tenho medo que fique artificial / exagerado"
+        },
+        {
+          "response": "Resultado estético depende muito do olhar e da técnica do profissional. Na avaliação você pode ver os casos da clínica e conversar abertamente sobre o que não gostou no tratamento anterior — o Dr. Gregorie vai analisar e propor o que faz mais sentido para o seu caso.",
+          "objection": "Já fiz em outro lugar e não gostei do resultado"
+        },
+        {
+          "response": "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregorie explica as opções e o que é mais indicado para o seu caso.",
+          "objection": "Preciso mesmo de implante? Não dá para fazer uma ponte?"
+        },
+        {
+          "response": "Sim. Dentistas são os profissionais mais habilitados para harmonização orofacial — conhecem profundamente a anatomia da face e da região oral. O Dr. Gregorie realiza o procedimento com protocolo seguro e resultado natural, sempre com foco no equilíbrio entre sorriso e face.",
+          "objection": "Harmonização facial é feita mesmo no dentista?"
+        },
+        {
+          "response": "Trabalhamos com duas técnicas de lentes em resina:\n\nSimplificada (resina nacional): resina de alta qualidade para um sorriso harmonioso e natural — a opção mais acessível. A partir de R$2.500 para 20 elementos.\n\nEstratificada (resina importada): resina premium em múltiplas camadas, com translucidez, profundidade e brilho — resultado mais refinado e personalizado. A partir de R$5.000 para 20 elementos.\n\nEsses são valores iniciais. A indicação ideal e o valor do seu caso o Dr. Gregorie define na avaliação. Se quiser, posso te explicar melhor qual costuma fazer mais sentido em cada caso — e, quando preferir, também te ajudo com a avaliação.",
+          "objection": "Quanto custam as lentes? / Qual a diferença entre as lentes?"
+        },
+        {
+          "response": "Entendo! 😊 Muitos dos nossos pacientes também pensaram isso antes de visitar — mas depois de ver a transformação do sorriso, todos dizem que valeu cada quilômetro. Estamos no Brooklin Novo, com fácil acesso pela Linha 5-Lilás (estação Brooklin) ou de carro pela Marginal. Que tal uma avaliação com o Dr. Gregorie para conhecer a clínica pessoalmente? Sem compromisso!",
+          "objection": "é longe / fica longe / é bem longe de onde moro"
+        }
+      ],
+      "mediaAssetIds": [
+        "1cd64101-9a82-4891-b091-0283237cf46d",
+        "b220b903-fa8d-4c4b-a765-defd10246ec4"
+      ],
+      "legacyMediaCount": 2,
+      "createdAt": "2026-06-11T21:16:22.737Z",
+      "updatedAt": "2026-07-09T05:00:34.324Z"
+    },
+    {
+      "id": "15cebe98-64ed-4895-a5f7-68a3b4b415da",
+      "name": "Ximendes Odontologia — Canônico v5 (Dr. Gregorie — especialista em lentes)",
+      "status": "active",
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "Profissional, caloroso e consultivo. Sem gírias, calmo e nunca insistente. Português brasileiro natural, como uma conversa real.",
+      "commercialPolicy": "A avaliação inicial com o Dr. Gregorie custa R$ 100 e esse valor é integralmente abatido do tratamento se o paciente decidir avançar. Sempre mencione esse abatimento ao falar da avaliação. mas só mencione quanto estiver na etapa de agendamento, ou se o lead perguntar sobre custo de avaliação\n\nPara lentes de resina, único procedimento com valor autorizado por mensagem: Técnica Simplificada a partir de  para vinte elementos, e Técnica Estratificada a partir de para vinte elementos. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade.\n\nParcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos de referência e deixe explícito que a clínica pode parcelar em até 12 vezes. Use uma formulação natural, como \"Aqui estão algumas simulações de valores\", sem mencionar taxa adicional nem tratar os exemplos como condição única.\n\nPara todos os outros procedimentos: não informe valores por mensagem. Oriente que os valores são definidos na avaliação.",
+      "notes": "ESPECIALIDADE DO DR. GREGORIE:\nO Dr. Gregorie Ximendes é especialista em lentes de resina composta. Toda conversa sobre lentes tem prioridade máxima e segue a sequência abaixo sem exceção.\n\nTRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: \"lentes\", \"técnica\", \"simplificada\", \"estratificada\", \"lentes de contato dental\", \"faceta\", \"faceta de resina\", \"resina nos dentes\", \"lente no dente\", \"lentes de porcelana\" ou pedir agendamento relacionado a lentes. NUNCA mostre horários antes de concluir os passos abaixo, mesmo quando a ação for de agendamento.\n\nPasso 1 — apresente cada técnica em dois blocos separados. Em cada bloco: primeiro a explicação em prosa, depois o vídeo correspondente (tag [MEDIA:id] na linha seguinte à explicação).\n\nBloco A — Técnica Simplificada: escreva em prosa corrida \"A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo.\" Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Simplificada (busque na biblioteca pelo título — deve conter \"simplificada\").\n\nBloco B — Técnica Estratificada: escreva em prosa corrida \"A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético.\" Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Estratificada (busque na biblioteca pelo título — deve conter \"estratificada\").\n\nPasso 2 — após os dois blocos, adote uma abordagem consultiva e pergunte: \"Qual desses dois resultados chamou mais a sua atenção?\". Aguarde a resposta do paciente para entender a preferência dele antes de revelar qualquer valor ou conduzir para avaliação. Se o lead tiver dúvidas, responda de forma consultiva antes de seguir. Não compacte explicação técnica, convite de foto e agenda no mesmo turno. Só após ele responder qual técnica preferiu (ou tirar as dúvidas), você pode falar os valores de referência e então oferecer horários disponíveis com o Dr. Gregorie.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nSó ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço (Rua Guararapes, 1894, Brooklin Novo, São Paulo) só ao confirmar agendamento ou se o lead perguntar diretamente.",
+      "receptionistName": "Marina",
+      "differentials": [
+        "Especialista em lentes de resina — Técnica Simplificada e Estratificada",
+        "Dr. Gregorie avalia o sorriso com uma pré avaliação",
+        "Avaliação abatida integralmente do tratamento se avançar",
+        "Resina preserva o esmalte — procedimento reversível sem desgaste permanente",
+        "Parcelamento em até 12 vezes (juros da operadora)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregorie monta um plano personalizado com valores e parcelamento em até 12 vezes. Os R$ 100 da avaliação são abatidos do tratamento se você decidir avançar.",
+          "objection": "Está muito caro / não tenho esse valor agora"
+        },
+        {
+          "response": "A resina preserva cem por cento do esmalte, sem nenhum desgaste permanente. É reversível e tem resultado estético muito próximo da porcelana. Na avaliação o Dr. Gregorie mostra casos dos dois e explica o que faz mais sentido para o seu sorriso.",
+          "objection": "Resina não é pior que porcelana?"
+        },
+        {
+          "response": "O resultado é personalizado em cor, forma e transparência para combinar com o seu rosto e o tom da sua pele. O objetivo é um sorriso que pareça completamente natural, só mais bonito. O Dr. Gregorie tem cases para mostrar na avaliação.",
+          "objection": "Tenho medo que fique artificial / exagerado"
+        },
+        {
+          "response": "Entendo. Na avaliação você pode mostrar o que não gostou e o Dr. Gregorie analisa o caso com cuidado antes de propor qualquer solução. Resultado estético depende muito do olhar e da técnica do profissional.",
+          "objection": "Já fiz lentes em outro lugar e não gostei do resultado"
+        },
+        {
+          "response": "Os R$ 100 garantem uma consulta completa e dedicada ao seu caso, com análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você decidir avançar. Não é custo a mais, é o primeiro passo.",
+          "objection": "Não quero pagar a avaliação"
+        },
+        {
+          "response": "Claro, sem pressa. Qualquer dúvida é só chamar aqui. Quando quiser, a agenda está aberta.",
+          "objection": "Vou pensar..."
+        },
+        {
+          "response": "Sem problema. Pode perguntar tudo que quiser. Se fizer sentido no seu tempo, vemos um horário para avaliação.",
+          "objection": "Estou só pesquisando"
+        },
+        {
+          "response": "É muito comum ter essa preocupação. Todos os procedimentos são realizados com anestesia local e a maioria dos pacientes fica surpresa com o quanto é tranquilo. O Dr. Gregorie tem o cuidado de explicar cada etapa antes de começar.",
+          "objection": "Tenho medo de dor / medo de dentista"
+        },
+        {
+          "response": "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregorie.",
+          "objection": "Implante é doloroso? Tenho medo da cirurgia"
+        },
+        {
+          "response": "Não. O canal remove apenas a polpa infectada. A estrutura do dente fica completamente preservada e ele continua funcional. É a melhor alternativa antes de considerar a extração.",
+          "objection": "Canal não mata o dente?"
+        },
+        {
+          "response": "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregorie explica as opções e o que é mais indicado para o seu caso.",
+          "objection": "Preciso mesmo de implante? Não dá para fazer uma ponte?"
+        }
+      ],
+      "mediaAssetIds": [
+        "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+        "b4585a6b-0021-4e12-9c5f-292f47d2aa25",
+        "74f42829-7968-4e8f-aa38-ad3df352fa8c",
+        "ee6c81a6-1703-4cde-a55f-dbfd5ba92550"
+      ],
+      "legacyMediaCount": 0,
+      "createdAt": "2026-07-09T05:00:34.348Z",
+      "updatedAt": "2026-07-23T20:39:59.448Z"
+    }
+  ],
+  "treatments": [
+    {
+      "id": "d48c86d5-4a67-4891-b015-328f969129ea",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Avaliação",
+      "durationMinutes": 40,
+      "description": "Consulta inicial com o Dr. Gregorie: análise do sorriso e plano de tratamento personalizado.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": false,
+      "aliases": [
+        "avaliação gratuita",
+        "consulta",
+        "consulta inicial",
+        "avaliação inicial"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 10000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "fixed",
+      "priceUnit": null,
+      "priceDeductible": true,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:47:41.107Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "ba695f70-ef3c-4fe8-aa52-e48600a5a9f7",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Botox odontológico",
+      "durationMinutes": 30,
+      "description": "Para bruxismo, DTM e harmonização do sorriso gengival. Complementa tratamentos estéticos.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "botox",
+        "toxina botulínica",
+        "bruxismo",
+        "apertar dente",
+        "ranger dente",
+        "dtm"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:47:59.936Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "5cdf51ea-078f-4e46-8c15-c549ba2ef098",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Clareamento caseiro",
+      "durationMinutes": 60,
+      "description": "A laser (resultado na mesma sessão) ou caseiro com moldeiras (7-14 dias). Clareia até 8 tons, seguro para o esmalte.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "clareamento",
+        "clarear",
+        "branquear",
+        "dentes brancos",
+        "dentes amarelos"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 90000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:47:06.743Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "2484649e-9495-4692-a08f-b592f913cc6c",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Clareamento de consultório",
+      "durationMinutes": 60,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 150000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-16T22:45:42.220Z",
+      "updatedAt": "2026-07-16T22:47:15.969Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "dc6664f4-4924-4198-9c1d-58bc1598faa0",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Conserto lentes",
+      "durationMinutes": 60,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 20000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": "Unidade",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-16T22:52:51.933Z",
+      "updatedAt": "2026-07-16T22:53:31.974Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "aabb9bc6-4f8e-467b-b590-ea3fb8cad4d6",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Exodontia (extração)",
+      "durationMinutes": 60,
+      "description": "Extração simples ou cirúrgica, incluindo siso incluso. Anestesia local, pós-operatório orientado pelo Dr. Gregorie.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "extração",
+        "arrancar dente",
+        "siso",
+        "dente do siso",
+        "dente juízo"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:57:20.825Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "17817f23-a801-4613-a383-d20e4cd1bc68",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Gengivoplastia",
+      "durationMinutes": 45,
+      "description": "Remodelamento do contorno gengival para equilibrar o sorriso. A laser ou bisturi, recuperação rápida.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "gengiva",
+        "gengival",
+        "sorriso gengival",
+        "gummy smile",
+        "excesso de gengiva"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 50000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:57:34.919Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "c1629b04-e45d-46f8-8d96-2f9f2cbf430e",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Harmonização orofacial",
+      "durationMinutes": 60,
+      "description": "Preenchimento labial, bichectomia, bioestimuladores e toxina botulínica. Protocolo seguro, resultado natural.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "harmonização",
+        "preenchimento",
+        "lábio",
+        "bichectomia",
+        "bioestimulador",
+        "harmonização facial",
+        "preenchimento labial"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-06-15T00:27:18.693Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "646a08d1-088c-4aa6-b59d-bef9534a8133",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Implante dentário",
+      "durationMinutes": 60,
+      "description": "Titânio biocompatível com osseointegração. Substitui raiz e coroa como um dente natural. Alta durabilidade.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "implante",
+        "dente perdido",
+        "pino no dente",
+        "osseointegração"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 250000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:49:19.882Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "8812130d-f97c-40d1-bee8-2407d34a38da",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Lentes de resina composta estratificada",
+      "durationMinutes": 300,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "lentes",
+        "lente",
+        "faceta",
+        "facetas",
+        "resina",
+        "lentes de resina",
+        "lentes de contato dental",
+        "faceta de resina",
+        "resina nos dentes",
+        "lente no dente",
+        "estratificada",
+        "premium"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": [
+        {
+          "type": "content",
+          "label": "Vídeos das Técnicas",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Simplificada Uma opção com excelente custo-benefício para deixar o sorriso mais harmonioso, bonito e natural, utilizando resina de alta qualidade.",
+              "mediaId": "60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Estratificada Uma técnica mais detalhada, feita em múltiplas camadas de resina premium para criar maior profundidade, translucidez e naturalidade no sorriso.",
+              "mediaId": "74c60f17-02bf-4fb3-82dc-1817322304dc"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 5,
+          "instruction": "Cumprimente o lead de forma calorosa e personalizada, sempre se apresentando como Marina, assistente virtual da Ximendes Odontologia.\n\nUse mensagens curtas, com quebras de linha, linguagem clara e tom receptivo. Evite respostas frias, longas ou excessivamente comerciais.\n\nExemplo:\n\nOi, João! Tudo bem? 😊\nAqui é a Marina, assistente virtual da Ximendes Odontologia. Que bom ter você por aqui!\n\nAcabamos de te enviar dois vídeos para você conhecer melhor as técnicas Simplificada e Estratificada.\n\nResponda dúvidas sobre valores e tratamentos de forma direta, mas acolhedora.\n\nAo explicar a avaliação, utilize:\n\nA avaliação clínica inicial tem o valor de R$ 100. Caso você realize o tratamento conosco, esse valor é abatido do total do procedimento.\n\nQuando o lead demonstrar interesse em prosseguir, avance naturalmente para a solicitação das fotos.\n\nSe o lead perguntar sobre cores ou tonalidades, responda:\n\nTrabalhamos desde tonalidades mais naturais até tons mais claros, como BL1, BL2 e BL3, conhecidos pelo efeito de branco mais intenso. A escolha ideal é feita durante a avaliação, considerando seu sorriso, tom de pele e o resultado que você deseja.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Para agilizar seu atendimento, você poderia me enviar uma foto ou um vídeo curto do seu sorriso? 😊\n\nAssim, o Dr. Gregorie já consegue realizar uma pré-avaliação do seu caso e te orientar com mais precisão por aqui."
+            },
+            {
+              "kind": "media",
+              "caption": "É bem simples:  Envie uma foto frontal, sorrindo e mordendo normalmente, e outra foto de perfil, seguindo os mesmos ângulos mostrados no exemplo.  Procure tirar as fotos em um ambiente bem iluminado e com a câmera próxima ao sorriso, para que o doutor consiga visualizar melhor os dentes.",
+              "mediaId": "b4585a6b-0021-4e12-9c5f-292f47d2aa25"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico aguardando sua foto ou vídeo para darmos continuidade ao atendimento e o Dr.  realizar sua pré-avaliação 😊",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento"
+        }
+      ],
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 400000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": "20 elementos",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-20T05:45:30.785Z",
+      "updatedAt": "2026-07-23T11:17:38.693Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "49d2d841-6808-4928-ab95-053870162c2e",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Lentes de resina composta simplificada",
+      "durationMinutes": 240,
+      "description": "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado.\nA indicação e o valor do caso são definidos na avaliação com o Dr. Gregorie.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "lentes",
+        "lente",
+        "faceta",
+        "facetas",
+        "resina",
+        "lentes de resina",
+        "lentes de contato dental",
+        "faceta de resina",
+        "resina nos dentes",
+        "lente no dente",
+        "simplificada"
+      ],
+      "isAesthetic": true,
+      "pipelineSteps": [
+        {
+          "type": "content",
+          "label": "Vídeos das Técnicas",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Simplificada Uma opção com excelente custo-benefício para deixar o sorriso mais harmonioso, bonito e natural, utilizando resina de alta qualidade.",
+              "mediaId": "60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Estratificada Uma técnica mais detalhada, feita em múltiplas camadas de resina premium para criar maior profundidade, translucidez e naturalidade no sorriso.",
+              "mediaId": "74c60f17-02bf-4fb3-82dc-1817322304dc"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 5,
+          "instruction": "Cumprimente o lead de forma calorosa e personalizada, sempre se apresentando como Marina, assistente virtual da Ximendes Odontologia.\n\nUse mensagens curtas, com quebras de linha, linguagem clara e tom receptivo. Evite respostas frias, longas ou excessivamente comerciais.\n\nExemplo:\n\nOi, João! Tudo bem? 😊\nAqui é a Marina, assistente virtual da Ximendes Odontologia. Que bom ter você por aqui!\n\nAcabamos de te enviar dois vídeos para você conhecer melhor as técnicas Simplificada e Estratificada.\n\nResponda dúvidas sobre valores e tratamentos de forma direta, mas acolhedora.\n\nAo explicar a avaliação, utilize:\n\nA avaliação clínica inicial tem o valor de R$ 100. Caso você realize o tratamento conosco, esse valor é abatido do total do procedimento.\n\nQuando o lead demonstrar interesse em prosseguir, avance naturalmente para a solicitação das fotos.\n\nSe o lead perguntar sobre cores ou tonalidades, responda:\n\nTrabalhamos desde tonalidades mais naturais até tons mais claros, como BL1, BL2 e BL3, conhecidos pelo efeito de branco mais intenso. A escolha ideal é feita durante a avaliação, considerando seu sorriso, tom de pele e o resultado que você deseja.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Para agilizar seu atendimento, você poderia me enviar uma foto ou um vídeo curto do seu sorriso? 😊\n\nAssim, o Dr. Gregorie já consegue realizar uma pré-avaliação do seu caso e te orientar com mais precisão por aqui."
+            },
+            {
+              "kind": "media",
+              "caption": "É bem simples:  Envie uma foto frontal, sorrindo e mordendo normalmente, e outra foto de perfil, seguindo os mesmos ângulos mostrados no exemplo.  Procure tirar as fotos em um ambiente bem iluminado e com a câmera próxima ao sorriso, para que o doutor consiga visualizar melhor os dentes.",
+              "mediaId": "b4585a6b-0021-4e12-9c5f-292f47d2aa25"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico aguardando sua foto ou vídeo para darmos continuidade ao atendimento e o Dr.  realizar sua pré-avaliação 😊",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento"
+        }
+      ],
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 200000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": "20 elementos",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-23T11:17:38.681Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "2eb04b50-4a9b-45c5-bff0-91748f8a50b0",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Lentes em Resina Composta",
+      "durationMinutes": 60,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": false,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": [
+        {
+          "type": "content",
+          "label": "Vídeos das Técnicas",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Simplificada Uma opção com excelente custo-benefício para deixar o sorriso mais harmonioso, bonito e natural, utilizando resina de alta qualidade.",
+              "mediaId": "60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Estratificada Uma técnica mais detalhada, feita em múltiplas camadas de resina premium para criar maior profundidade, translucidez e naturalidade no sorriso.",
+              "mediaId": "74c60f17-02bf-4fb3-82dc-1817322304dc"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 5,
+          "instruction": "Cumprimente o lead de forma calorosa e personalizada, sempre se apresentando como Marina, assistente virtual da Ximendes Odontologia.\n\nUse mensagens curtas, com quebras de linha, linguagem clara e tom receptivo. Evite respostas frias, longas ou excessivamente comerciais.\n\nExemplo:\n\nOi, João! Tudo bem? 😊\nAqui é a Marina, assistente virtual da Ximendes Odontologia. Que bom ter você por aqui!\n\nAcabamos de te enviar dois vídeos para você conhecer melhor as técnicas Simplificada e Estratificada.\n\nResponda dúvidas sobre valores e tratamentos de forma direta, mas acolhedora.\n\nAo explicar a avaliação, utilize:\n\nA avaliação clínica inicial tem o valor de R$ 100. Caso você realize o tratamento conosco, esse valor é abatido do total do procedimento.\n\nQuando o lead demonstrar interesse em prosseguir, avance naturalmente para a solicitação das fotos.\n\nSe o lead perguntar sobre cores ou tonalidades, responda:\n\nTrabalhamos desde tonalidades mais naturais até tons mais claros, como BL1, BL2 e BL3, conhecidos pelo efeito de branco mais intenso. A escolha ideal é feita durante a avaliação, considerando seu sorriso, tom de pele e o resultado que você deseja.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Para agilizar seu atendimento, você poderia me enviar uma foto ou um vídeo curto do seu sorriso? 😊\n\nAssim, o Dr. Gregorie já consegue realizar uma pré-avaliação do seu caso e te orientar com mais precisão por aqui."
+            },
+            {
+              "kind": "media",
+              "caption": "É bem simples:  Envie uma foto frontal, sorrindo e mordendo normalmente, e outra foto de perfil, seguindo os mesmos ângulos mostrados no exemplo.  Procure tirar as fotos em um ambiente bem iluminado e com a câmera próxima ao sorriso, para que o doutor consiga visualizar melhor os dentes.",
+              "mediaId": "b4585a6b-0021-4e12-9c5f-292f47d2aa25"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico aguardando sua foto ou vídeo para darmos continuidade ao atendimento e o Dr.  realizar sua pré-avaliação 😊",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento"
+        }
+      ],
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-23T09:40:22.568Z",
+      "updatedAt": "2026-07-23T11:28:37.251Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "87971198-5caa-415b-a4f4-d6d08ac7c07d",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Limpeza dental",
+      "durationMinutes": 40,
+      "description": "Profilaxia completa com remoção de tártaro e biofilme. Indicada a cada 6 meses.",
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "limpeza",
+        "profilaxia",
+        "raspagem",
+        "tártaro"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 25000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:49:38.278Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "62185c2e-58eb-4635-b75c-6837d98f28fb",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Manutenção periódicas lentes",
+      "durationMinutes": 60,
+      "description": null,
+      "requiresEvaluationFirst": false,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 50000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-07-04T01:49:02.690Z",
+      "updatedAt": "2026-07-16T22:52:00.039Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "0554f522-2192-4303-a114-4c84348864f3",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Prótese dentária",
+      "durationMinutes": 60,
+      "description": "Fixa, removível ou protocolo All-on-4. Laboratório próprio, entrega em 48h.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "prótese",
+        "dentadura",
+        "all on 4",
+        "protocolo",
+        "coroa"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-06-15T00:25:37.229Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "e1be5aa3-fe28-4368-bd36-0ee6c6f99373",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Restauração em resina",
+      "durationMinutes": 60,
+      "description": "Resina composta para dentes trincados, lascados ou com cárie. Estético e natural, em sessão única.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "restauração",
+        "obturação",
+        "cárie",
+        "dente trincado",
+        "dente lascado"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": 25000,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": true,
+      "priceKind": "from",
+      "priceUnit": "Unidade",
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-07-16T22:54:21.512Z",
+      "triggerTemplateConfigured": false
+    },
+    {
+      "id": "740f3101-e035-45d0-b491-400a4b21f2c4",
+      "clinicId": "c9137774-e783-4461-ac2b-e2f01be739a6",
+      "name": "Tratamento de canal",
+      "durationMinutes": 60,
+      "description": "Preserva o dente natural eliminando a infecção da polpa. Indolor com anestesia local.",
+      "requiresEvaluationFirst": true,
+      "triggerTemplate": null,
+      "keywordMatchEnabled": true,
+      "aliases": [
+        "canal",
+        "endodontia",
+        "nervinho",
+        "matar o nervo"
+      ],
+      "isAesthetic": false,
+      "pipelineSteps": null,
+      "pipelineSourceTreatmentId": null,
+      "priceCents": null,
+      "minPriceCents": null,
+      "maxPriceCents": null,
+      "priceQuotableInChat": false,
+      "priceKind": "from",
+      "priceUnit": null,
+      "priceDeductible": false,
+      "quantityPrices": null,
+      "bookingWindows": null,
+      "createdAt": "2026-06-03T16:42:58.210Z",
+      "updatedAt": "2026-06-15T00:25:37.465Z",
+      "triggerTemplateConfigured": false
+    }
+  ],
+  "resolvedPipelines": [
+    {
+      "treatmentId": "d48c86d5-4a67-4891-b015-328f969129ea",
+      "treatmentName": "Avaliação",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "d48c86d5-4a67-4891-b015-328f969129ea",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "ba695f70-ef3c-4fe8-aa52-e48600a5a9f7",
+      "treatmentName": "Botox odontológico",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "ba695f70-ef3c-4fe8-aa52-e48600a5a9f7",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "5cdf51ea-078f-4e46-8c15-c549ba2ef098",
+      "treatmentName": "Clareamento caseiro",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "5cdf51ea-078f-4e46-8c15-c549ba2ef098",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "2484649e-9495-4692-a08f-b592f913cc6c",
+      "treatmentName": "Clareamento de consultório",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "2484649e-9495-4692-a08f-b592f913cc6c",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "dc6664f4-4924-4198-9c1d-58bc1598faa0",
+      "treatmentName": "Conserto lentes",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "dc6664f4-4924-4198-9c1d-58bc1598faa0",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "aabb9bc6-4f8e-467b-b590-ea3fb8cad4d6",
+      "treatmentName": "Exodontia (extração)",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "aabb9bc6-4f8e-467b-b590-ea3fb8cad4d6",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "17817f23-a801-4613-a383-d20e4cd1bc68",
+      "treatmentName": "Gengivoplastia",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "17817f23-a801-4613-a383-d20e4cd1bc68",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "c1629b04-e45d-46f8-8d96-2f9f2cbf430e",
+      "treatmentName": "Harmonização orofacial",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "c1629b04-e45d-46f8-8d96-2f9f2cbf430e",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "646a08d1-088c-4aa6-b59d-bef9534a8133",
+      "treatmentName": "Implante dentário",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "646a08d1-088c-4aa6-b59d-bef9534a8133",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "8812130d-f97c-40d1-bee8-2407d34a38da",
+      "treatmentName": "Lentes de resina composta estratificada",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "8812130d-f97c-40d1-bee8-2407d34a38da",
+      "stepCount": 7,
+      "steps": [
+        {
+          "type": "content",
+          "label": "Vídeos das Técnicas",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Simplificada Uma opção com excelente custo-benefício para deixar o sorriso mais harmonioso, bonito e natural, utilizando resina de alta qualidade.",
+              "mediaId": "60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Estratificada Uma técnica mais detalhada, feita em múltiplas camadas de resina premium para criar maior profundidade, translucidez e naturalidade no sorriso.",
+              "mediaId": "74c60f17-02bf-4fb3-82dc-1817322304dc"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 5,
+          "instruction": "Cumprimente o lead de forma calorosa e personalizada, sempre se apresentando como Marina, assistente virtual da Ximendes Odontologia.\n\nUse mensagens curtas, com quebras de linha, linguagem clara e tom receptivo. Evite respostas frias, longas ou excessivamente comerciais.\n\nExemplo:\n\nOi, João! Tudo bem? 😊\nAqui é a Marina, assistente virtual da Ximendes Odontologia. Que bom ter você por aqui!\n\nAcabamos de te enviar dois vídeos para você conhecer melhor as técnicas Simplificada e Estratificada.\n\nResponda dúvidas sobre valores e tratamentos de forma direta, mas acolhedora.\n\nAo explicar a avaliação, utilize:\n\nA avaliação clínica inicial tem o valor de R$ 100. Caso você realize o tratamento conosco, esse valor é abatido do total do procedimento.\n\nQuando o lead demonstrar interesse em prosseguir, avance naturalmente para a solicitação das fotos.\n\nSe o lead perguntar sobre cores ou tonalidades, responda:\n\nTrabalhamos desde tonalidades mais naturais até tons mais claros, como BL1, BL2 e BL3, conhecidos pelo efeito de branco mais intenso. A escolha ideal é feita durante a avaliação, considerando seu sorriso, tom de pele e o resultado que você deseja.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Para agilizar seu atendimento, você poderia me enviar uma foto ou um vídeo curto do seu sorriso? 😊\n\nAssim, o Dr. Gregorie já consegue realizar uma pré-avaliação do seu caso e te orientar com mais precisão por aqui."
+            },
+            {
+              "kind": "media",
+              "caption": "É bem simples:  Envie uma foto frontal, sorrindo e mordendo normalmente, e outra foto de perfil, seguindo os mesmos ângulos mostrados no exemplo.  Procure tirar as fotos em um ambiente bem iluminado e com a câmera próxima ao sorriso, para que o doutor consiga visualizar melhor os dentes.",
+              "mediaId": "b4585a6b-0021-4e12-9c5f-292f47d2aa25"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico aguardando sua foto ou vídeo para darmos continuidade ao atendimento e o Dr.  realizar sua pré-avaliação 😊",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento"
+        }
+      ]
+    },
+    {
+      "treatmentId": "49d2d841-6808-4928-ab95-053870162c2e",
+      "treatmentName": "Lentes de resina composta simplificada",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "49d2d841-6808-4928-ab95-053870162c2e",
+      "stepCount": 7,
+      "steps": [
+        {
+          "type": "content",
+          "label": "Vídeos das Técnicas",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Simplificada Uma opção com excelente custo-benefício para deixar o sorriso mais harmonioso, bonito e natural, utilizando resina de alta qualidade.",
+              "mediaId": "60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Estratificada Uma técnica mais detalhada, feita em múltiplas camadas de resina premium para criar maior profundidade, translucidez e naturalidade no sorriso.",
+              "mediaId": "74c60f17-02bf-4fb3-82dc-1817322304dc"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 5,
+          "instruction": "Cumprimente o lead de forma calorosa e personalizada, sempre se apresentando como Marina, assistente virtual da Ximendes Odontologia.\n\nUse mensagens curtas, com quebras de linha, linguagem clara e tom receptivo. Evite respostas frias, longas ou excessivamente comerciais.\n\nExemplo:\n\nOi, João! Tudo bem? 😊\nAqui é a Marina, assistente virtual da Ximendes Odontologia. Que bom ter você por aqui!\n\nAcabamos de te enviar dois vídeos para você conhecer melhor as técnicas Simplificada e Estratificada.\n\nResponda dúvidas sobre valores e tratamentos de forma direta, mas acolhedora.\n\nAo explicar a avaliação, utilize:\n\nA avaliação clínica inicial tem o valor de R$ 100. Caso você realize o tratamento conosco, esse valor é abatido do total do procedimento.\n\nQuando o lead demonstrar interesse em prosseguir, avance naturalmente para a solicitação das fotos.\n\nSe o lead perguntar sobre cores ou tonalidades, responda:\n\nTrabalhamos desde tonalidades mais naturais até tons mais claros, como BL1, BL2 e BL3, conhecidos pelo efeito de branco mais intenso. A escolha ideal é feita durante a avaliação, considerando seu sorriso, tom de pele e o resultado que você deseja.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Para agilizar seu atendimento, você poderia me enviar uma foto ou um vídeo curto do seu sorriso? 😊\n\nAssim, o Dr. Gregorie já consegue realizar uma pré-avaliação do seu caso e te orientar com mais precisão por aqui."
+            },
+            {
+              "kind": "media",
+              "caption": "É bem simples:  Envie uma foto frontal, sorrindo e mordendo normalmente, e outra foto de perfil, seguindo os mesmos ângulos mostrados no exemplo.  Procure tirar as fotos em um ambiente bem iluminado e com a câmera próxima ao sorriso, para que o doutor consiga visualizar melhor os dentes.",
+              "mediaId": "b4585a6b-0021-4e12-9c5f-292f47d2aa25"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico aguardando sua foto ou vídeo para darmos continuidade ao atendimento e o Dr.  realizar sua pré-avaliação 😊",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento"
+        }
+      ]
+    },
+    {
+      "treatmentId": "2eb04b50-4a9b-45c5-bff0-91748f8a50b0",
+      "treatmentName": "Lentes em Resina Composta",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "2eb04b50-4a9b-45c5-bff0-91748f8a50b0",
+      "stepCount": 7,
+      "steps": [
+        {
+          "type": "content",
+          "label": "Vídeos das Técnicas",
+          "blocks": [
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Simplificada Uma opção com excelente custo-benefício para deixar o sorriso mais harmonioso, bonito e natural, utilizando resina de alta qualidade.",
+              "mediaId": "60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44"
+            },
+            {
+              "kind": "media",
+              "caption": "✨ Técnica Estratificada Uma técnica mais detalhada, feita em múltiplas camadas de resina premium para criar maior profundidade, translucidez e naturalidade no sorriso.",
+              "mediaId": "74c60f17-02bf-4fb3-82dc-1817322304dc"
+            }
+          ]
+        },
+        {
+          "type": "qa",
+          "label": "Dúvidas",
+          "maxTurns": 5,
+          "instruction": "Cumprimente o lead de forma calorosa e personalizada, sempre se apresentando como Marina, assistente virtual da Ximendes Odontologia.\n\nUse mensagens curtas, com quebras de linha, linguagem clara e tom receptivo. Evite respostas frias, longas ou excessivamente comerciais.\n\nExemplo:\n\nOi, João! Tudo bem? 😊\nAqui é a Marina, assistente virtual da Ximendes Odontologia. Que bom ter você por aqui!\n\nAcabamos de te enviar dois vídeos para você conhecer melhor as técnicas Simplificada e Estratificada.\n\nResponda dúvidas sobre valores e tratamentos de forma direta, mas acolhedora.\n\nAo explicar a avaliação, utilize:\n\nA avaliação clínica inicial tem o valor de R$ 100. Caso você realize o tratamento conosco, esse valor é abatido do total do procedimento.\n\nQuando o lead demonstrar interesse em prosseguir, avance naturalmente para a solicitação das fotos.\n\nSe o lead perguntar sobre cores ou tonalidades, responda:\n\nTrabalhamos desde tonalidades mais naturais até tons mais claros, como BL1, BL2 e BL3, conhecidos pelo efeito de branco mais intenso. A escolha ideal é feita durante a avaliação, considerando seu sorriso, tom de pele e o resultado que você deseja.",
+          "mediaOnKeywords": [
+            {
+              "mediaId": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+              "keywords": [
+                "cor",
+                "cores",
+                "branco",
+                "brancas",
+                "bl1",
+                "tom",
+                "tons",
+                "naturais",
+                "branquinhos"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "content",
+          "label": "Instrução foto pré-avaliação",
+          "blocks": [
+            {
+              "kind": "text",
+              "content": "Para agilizar seu atendimento, você poderia me enviar uma foto ou um vídeo curto do seu sorriso? 😊\n\nAssim, o Dr. Gregorie já consegue realizar uma pré-avaliação do seu caso e te orientar com mais precisão por aqui."
+            },
+            {
+              "kind": "media",
+              "caption": "É bem simples:  Envie uma foto frontal, sorrindo e mordendo normalmente, e outra foto de perfil, seguindo os mesmos ângulos mostrados no exemplo.  Procure tirar as fotos em um ambiente bem iluminado e com a câmera próxima ao sorriso, para que o doutor consiga visualizar melhor os dentes.",
+              "mediaId": "b4585a6b-0021-4e12-9c5f-292f47d2aa25"
+            }
+          ]
+        },
+        {
+          "type": "photo",
+          "label": "Pedido de Foto",
+          "message": "Fico aguardando sua foto ou vídeo para darmos continuidade ao atendimento e o Dr.  realizar sua pré-avaliação 😊",
+          "required": false
+        },
+        {
+          "type": "ask_availability",
+          "label": "Disponibilidade"
+        },
+        {
+          "type": "offer_slots",
+          "label": "Horários"
+        },
+        {
+          "type": "book",
+          "label": "Agendamento"
+        }
+      ]
+    },
+    {
+      "treatmentId": "87971198-5caa-415b-a4f4-d6d08ac7c07d",
+      "treatmentName": "Limpeza dental",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "87971198-5caa-415b-a4f4-d6d08ac7c07d",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "62185c2e-58eb-4635-b75c-6837d98f28fb",
+      "treatmentName": "Manutenção periódicas lentes",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "62185c2e-58eb-4635-b75c-6837d98f28fb",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "0554f522-2192-4303-a114-4c84348864f3",
+      "treatmentName": "Prótese dentária",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "0554f522-2192-4303-a114-4c84348864f3",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "e1be5aa3-fe28-4368-bd36-0ee6c6f99373",
+      "treatmentName": "Restauração em resina",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "e1be5aa3-fe28-4368-bd36-0ee6c6f99373",
+      "stepCount": 0,
+      "steps": []
+    },
+    {
+      "treatmentId": "740f3101-e035-45d0-b491-400a4b21f2c4",
+      "treatmentName": "Tratamento de canal",
+      "sourceTreatmentId": null,
+      "sourceTreatmentName": null,
+      "resolvedTreatmentId": "740f3101-e035-45d0-b491-400a4b21f2c4",
+      "stepCount": 0,
+      "steps": []
+    }
+  ],
+  "priceCampaigns": [],
+  "effectivePrices": [
+    {
+      "treatmentId": "d48c86d5-4a67-4891-b015-328f969129ea",
+      "treatmentName": "Avaliação",
+      "value": {
+        "priceCents": 10000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "fixed",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "ba695f70-ef3c-4fe8-aa52-e48600a5a9f7",
+      "treatmentName": "Botox odontológico",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "5cdf51ea-078f-4e46-8c15-c549ba2ef098",
+      "treatmentName": "Clareamento caseiro",
+      "value": {
+        "priceCents": 90000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "2484649e-9495-4692-a08f-b592f913cc6c",
+      "treatmentName": "Clareamento de consultório",
+      "value": {
+        "priceCents": 150000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "dc6664f4-4924-4198-9c1d-58bc1598faa0",
+      "treatmentName": "Conserto lentes",
+      "value": {
+        "priceCents": 20000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "aabb9bc6-4f8e-467b-b590-ea3fb8cad4d6",
+      "treatmentName": "Exodontia (extração)",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "17817f23-a801-4613-a383-d20e4cd1bc68",
+      "treatmentName": "Gengivoplastia",
+      "value": {
+        "priceCents": 50000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "c1629b04-e45d-46f8-8d96-2f9f2cbf430e",
+      "treatmentName": "Harmonização orofacial",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "646a08d1-088c-4aa6-b59d-bef9534a8133",
+      "treatmentName": "Implante dentário",
+      "value": {
+        "priceCents": 250000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "8812130d-f97c-40d1-bee8-2407d34a38da",
+      "treatmentName": "Lentes de resina composta estratificada",
+      "value": {
+        "priceCents": 400000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "49d2d841-6808-4928-ab95-053870162c2e",
+      "treatmentName": "Lentes de resina composta simplificada",
+      "value": {
+        "priceCents": 200000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "2eb04b50-4a9b-45c5-bff0-91748f8a50b0",
+      "treatmentName": "Lentes em Resina Composta",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "87971198-5caa-415b-a4f4-d6d08ac7c07d",
+      "treatmentName": "Limpeza dental",
+      "value": {
+        "priceCents": 25000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "62185c2e-58eb-4635-b75c-6837d98f28fb",
+      "treatmentName": "Manutenção periódicas lentes",
+      "value": {
+        "priceCents": 50000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "0554f522-2192-4303-a114-4c84348864f3",
+      "treatmentName": "Prótese dentária",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "e1be5aa3-fe28-4368-bd36-0ee6c6f99373",
+      "treatmentName": "Restauração em resina",
+      "value": {
+        "priceCents": 25000,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    },
+    {
+      "treatmentId": "740f3101-e035-45d0-b491-400a4b21f2c4",
+      "treatmentName": "Tratamento de canal",
+      "value": {
+        "priceCents": null,
+        "minPriceCents": null,
+        "maxPriceCents": null,
+        "priceKind": "from",
+        "originalPriceCents": null,
+        "campaignName": null,
+        "campaignEndsAt": null
+      }
+    }
+  ],
+  "modules": [
+    {
+      "moduleKey": "ai_co_writer",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-06-20T16:52:26.477Z"
+    },
+    {
+      "moduleKey": "concierge_mode",
+      "isActive": true,
+      "config": {
+        "drive": "sempre_proximo_passo",
+        "verbosity": "concisa"
+      },
+      "updatedAt": "2026-06-20T16:52:25.766Z"
+    },
+    {
+      "moduleKey": "menu_mode",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-06-20T16:52:25.647Z"
+    },
+    {
+      "moduleKey": "revenue_pipeline",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-06-20T16:52:26.122Z"
+    },
+    {
+      "moduleKey": "team_roles",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-06-20T16:52:26.241Z"
+    },
+    {
+      "moduleKey": "video_library",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-06-20T16:52:26.358Z"
+    },
+    {
+      "moduleKey": "voice_elevenlabs",
+      "isActive": true,
+      "config": {
+        "mode": "impact",
+        "speed": 1,
+        "voiceId": "GM2UA3fbsIaLHcswCDX9",
+        "stability": 0.35,
+        "similarityBoost": 0.85,
+        "voiceOutputEnabled": false
+      },
+      "updatedAt": "2026-07-04T02:35:56.217Z"
+    },
+    {
+      "moduleKey": "voice_tts",
+      "isActive": true,
+      "config": null,
+      "updatedAt": "2026-06-20T16:52:25.885Z"
+    }
+  ],
+  "runtimeModules": [
+    {
+      "key": "voice_elevenlabs",
+      "config": {
+        "mode": "impact",
+        "speed": 1,
+        "voiceId": "GM2UA3fbsIaLHcswCDX9",
+        "stability": 0.35,
+        "similarityBoost": 0.85,
+        "voiceOutputEnabled": false
+      }
+    },
+    {
+      "key": "menu_mode",
+      "config": null
+    },
+    {
+      "key": "voice_tts",
+      "config": null
+    },
+    {
+      "key": "revenue_pipeline",
+      "config": null
+    },
+    {
+      "key": "team_roles",
+      "config": null
+    },
+    {
+      "key": "video_library",
+      "config": null
+    },
+    {
+      "key": "ai_co_writer",
+      "config": null
+    },
+    {
+      "key": "concierge_mode",
+      "config": {
+        "drive": "sempre_proximo_passo",
+        "verbosity": "concisa"
+      }
+    }
+  ],
+  "mediaAssets": [
+    {
+      "id": "74f42829-7968-4e8f-aa38-ad3df352fa8c",
+      "treatmentId": null,
+      "title": "Clareamento branco",
+      "type": "image",
+      "mimeType": "image/png",
+      "sizeBytes": 1616203,
+      "folder": null,
+      "createdAt": "2026-07-23T09:33:54.225Z",
+      "updatedAt": "2026-07-23T09:33:54.225Z"
+    },
+    {
+      "id": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+      "treatmentId": null,
+      "title": "Cores BL1 2 e 3",
+      "type": "image",
+      "mimeType": "image/png",
+      "sizeBytes": 1890008,
+      "folder": null,
+      "createdAt": "2026-07-23T09:33:10.449Z",
+      "updatedAt": "2026-07-23T09:33:10.449Z"
+    },
+    {
+      "id": "ee6c81a6-1703-4cde-a55f-dbfd5ba92550",
+      "treatmentId": null,
+      "title": "Cuidados pós colocaçao das lentes",
+      "type": "image",
+      "mimeType": "image/png",
+      "sizeBytes": 1554664,
+      "folder": null,
+      "createdAt": "2026-07-23T11:40:18.072Z",
+      "updatedAt": "2026-07-23T11:40:18.072Z"
+    },
+    {
+      "id": "b220b903-fa8d-4c4b-a765-defd10246ec4",
+      "treatmentId": null,
+      "title": "Lentes – Técnica Estratificada",
+      "type": "video",
+      "mimeType": null,
+      "sizeBytes": null,
+      "folder": null,
+      "createdAt": "2026-07-07T23:05:52.663Z",
+      "updatedAt": "2026-07-07T23:05:52.663Z"
+    },
+    {
+      "id": "1cd64101-9a82-4891-b091-0283237cf46d",
+      "treatmentId": null,
+      "title": "Lentes – Técnica Simplificada",
+      "type": "video",
+      "mimeType": null,
+      "sizeBytes": null,
+      "folder": null,
+      "createdAt": "2026-07-07T23:05:52.663Z",
+      "updatedAt": "2026-07-07T23:05:52.663Z"
+    },
+    {
+      "id": "74c60f17-02bf-4fb3-82dc-1817322304dc",
+      "treatmentId": null,
+      "title": "Video estratificada",
+      "type": "video",
+      "mimeType": "video/mp4",
+      "sizeBytes": 2815358,
+      "folder": null,
+      "createdAt": "2026-07-18T17:36:10.592Z",
+      "updatedAt": "2026-07-18T17:36:10.592Z"
+    },
+    {
+      "id": "60c0f9a3-6d7e-47d7-ae9f-0f63f94a5e44",
+      "treatmentId": null,
+      "title": "Video simplificada",
+      "type": "video",
+      "mimeType": "video/mp4",
+      "sizeBytes": 4308892,
+      "folder": null,
+      "createdAt": "2026-07-18T17:35:24.499Z",
+      "updatedAt": "2026-07-18T17:35:24.499Z"
+    },
+    {
+      "id": "b4585a6b-0021-4e12-9c5f-292f47d2aa25",
+      "treatmentId": null,
+      "title": "foto para pré avaliaçao",
+      "type": "image",
+      "mimeType": "image/png",
+      "sizeBytes": 1803343,
+      "folder": null,
+      "createdAt": "2026-07-23T09:33:18.556Z",
+      "updatedAt": "2026-07-23T09:33:18.556Z"
+    }
+  ],
+  "runtimeResolution": {
+    "editorialConfig": {
+      "specialty": "Odontologia Estética e Reabilitação Oral",
+      "toneOfVoice": "Profissional, caloroso e consultivo. Sem gírias, calmo e nunca insistente. Português brasileiro natural, como uma conversa real.",
+      "commercialPolicy": "VALORES (informe exatamente estes; nunca invente outros):\nImplante dentário: a partir de R$ 2.500; o valor exato é definido na avaliação.\nClareamento caseiro: a partir de R$ 900; o valor exato é definido na avaliação.\nAvaliação: R$ 100. Esse valor é abatido integralmente do tratamento se o paciente decidir avançar; sempre mencione esse abatimento.\nLimpeza dental: a partir de R$ 250; o valor exato é definido na avaliação.\nRestauração em resina: a partir de R$ 250 (Unidade); o valor exato é definido na avaliação.\nLentes de resina composta simplificada: a partir de R$ 2.000 (20 elementos); o valor exato é definido na avaliação.\nLentes de resina composta estratificada: a partir de R$ 4.000 (20 elementos); o valor exato é definido na avaliação.\nClareamento de consultório: a partir de R$ 1.500; o valor exato é definido na avaliação.\nManutenção periódicas lentes: a partir de R$ 500; o valor exato é definido na avaliação.\nConserto lentes: a partir de R$ 200 (Unidade); o valor exato é definido na avaliação.\nGengivoplastia: a partir de R$ 500; o valor exato é definido na avaliação.\nPara os demais procedimentos, não informe valores por mensagem — oriente que os valores são definidos na avaliação com o profissional.\n\nA avaliação inicial com o Dr. Gregorie custa R$ 100 e esse valor é integralmente abatido do tratamento se o paciente decidir avançar. Sempre mencione esse abatimento ao falar da avaliação. mas só mencione quanto estiver na etapa de agendamento, ou se o lead perguntar sobre custo de avaliação\n\nPara lentes de resina, único procedimento com valor autorizado por mensagem: Técnica Simplificada a partir de  para vinte elementos, e Técnica Estratificada a partir de para vinte elementos. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade.\n\nParcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos de referência e deixe explícito que a clínica pode parcelar em até 12 vezes. Use uma formulação natural, como \"Aqui estão algumas simulações de valores\", sem mencionar taxa adicional nem tratar os exemplos como condição única.\n\nPara todos os outros procedimentos: não informe valores por mensagem. Oriente que os valores são definidos na avaliação.",
+      "procedures": [
+        {
+          "name": "Prótese dentária",
+          "description": "Fixa, removível ou protocolo All-on-4. Laboratório próprio, entrega em 48h."
+        },
+        {
+          "name": "Tratamento de canal",
+          "description": "Preserva o dente natural eliminando a infecção da polpa. Indolor com anestesia local."
+        },
+        {
+          "name": "Implante dentário",
+          "description": "Titânio biocompatível com osseointegração. Substitui raiz e coroa como um dente natural. Alta durabilidade."
+        },
+        {
+          "name": "Clareamento caseiro",
+          "description": "A laser (resultado na mesma sessão) ou caseiro com moldeiras (7-14 dias). Clareia até 8 tons, seguro para o esmalte."
+        },
+        {
+          "name": "Avaliação",
+          "description": "Consulta inicial com o Dr. Gregorie: análise do sorriso e plano de tratamento personalizado."
+        },
+        {
+          "name": "Limpeza dental",
+          "description": "Profilaxia completa com remoção de tártaro e biofilme. Indicada a cada 6 meses."
+        },
+        {
+          "name": "Restauração em resina",
+          "description": "Resina composta para dentes trincados, lascados ou com cárie. Estético e natural, em sessão única."
+        },
+        {
+          "name": "Exodontia (extração)",
+          "description": "Extração simples ou cirúrgica, incluindo siso incluso. Anestesia local, pós-operatório orientado pelo Dr. Gregorie."
+        },
+        {
+          "name": "Lentes de resina composta simplificada",
+          "description": "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado.\nA indicação e o valor do caso são definidos na avaliação com o Dr. Gregorie."
+        },
+        {
+          "name": "Harmonização orofacial",
+          "description": "Preenchimento labial, bichectomia, bioestimuladores e toxina botulínica. Protocolo seguro, resultado natural."
+        },
+        {
+          "name": "Lentes de resina composta estratificada",
+          "description": null
+        },
+        {
+          "name": "Clareamento de consultório",
+          "description": null
+        },
+        {
+          "name": "Botox odontológico",
+          "description": "Para bruxismo, DTM e harmonização do sorriso gengival. Complementa tratamentos estéticos."
+        },
+        {
+          "name": "Manutenção periódicas lentes",
+          "description": null
+        },
+        {
+          "name": "Conserto lentes",
+          "description": null
+        },
+        {
+          "name": "Gengivoplastia",
+          "description": "Remodelamento do contorno gengival para equilibrar o sorriso. A laser ou bisturi, recuperação rápida."
+        },
+        {
+          "name": "Lentes em Resina Composta",
+          "description": null
+        }
+      ],
+      "receptionistName": "Marina",
+      "differentials": [
+        "Especialista em lentes de resina — Técnica Simplificada e Estratificada",
+        "Dr. Gregorie avalia o sorriso com uma pré avaliação",
+        "Avaliação abatida integralmente do tratamento se avançar",
+        "Resina preserva o esmalte — procedimento reversível sem desgaste permanente",
+        "Parcelamento em até 12 vezes (juros da operadora)"
+      ],
+      "objections": [
+        {
+          "response": "O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregorie monta um plano personalizado com valores e parcelamento em até 12 vezes. Os R$ 100 da avaliação são abatidos do tratamento se você decidir avançar.",
+          "objection": "Está muito caro / não tenho esse valor agora"
+        },
+        {
+          "response": "A resina preserva cem por cento do esmalte, sem nenhum desgaste permanente. É reversível e tem resultado estético muito próximo da porcelana. Na avaliação o Dr. Gregorie mostra casos dos dois e explica o que faz mais sentido para o seu sorriso.",
+          "objection": "Resina não é pior que porcelana?"
+        },
+        {
+          "response": "O resultado é personalizado em cor, forma e transparência para combinar com o seu rosto e o tom da sua pele. O objetivo é um sorriso que pareça completamente natural, só mais bonito. O Dr. Gregorie tem cases para mostrar na avaliação.",
+          "objection": "Tenho medo que fique artificial / exagerado"
+        },
+        {
+          "response": "Entendo. Na avaliação você pode mostrar o que não gostou e o Dr. Gregorie analisa o caso com cuidado antes de propor qualquer solução. Resultado estético depende muito do olhar e da técnica do profissional.",
+          "objection": "Já fiz lentes em outro lugar e não gostei do resultado"
+        },
+        {
+          "response": "Os R$ 100 garantem uma consulta completa e dedicada ao seu caso, com análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você decidir avançar. Não é custo a mais, é o primeiro passo.",
+          "objection": "Não quero pagar a avaliação"
+        },
+        {
+          "response": "Claro, sem pressa. Qualquer dúvida é só chamar aqui. Quando quiser, a agenda está aberta.",
+          "objection": "Vou pensar..."
+        },
+        {
+          "response": "Sem problema. Pode perguntar tudo que quiser. Se fizer sentido no seu tempo, vemos um horário para avaliação.",
+          "objection": "Estou só pesquisando"
+        },
+        {
+          "response": "É muito comum ter essa preocupação. Todos os procedimentos são realizados com anestesia local e a maioria dos pacientes fica surpresa com o quanto é tranquilo. O Dr. Gregorie tem o cuidado de explicar cada etapa antes de começar.",
+          "objection": "Tenho medo de dor / medo de dentista"
+        },
+        {
+          "response": "O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregorie.",
+          "objection": "Implante é doloroso? Tenho medo da cirurgia"
+        },
+        {
+          "response": "Não. O canal remove apenas a polpa infectada. A estrutura do dente fica completamente preservada e ele continua funcional. É a melhor alternativa antes de considerar a extração.",
+          "objection": "Canal não mata o dente?"
+        },
+        {
+          "response": "A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregorie explica as opções e o que é mais indicado para o seu caso.",
+          "objection": "Preciso mesmo de implante? Não dá para fazer uma ponte?"
+        }
+      ],
+      "mediaLibrary": [
+        {
+          "id": "f92b856a-b8b7-4d80-9b30-f81d8a6ff8a7",
+          "title": "Cores BL1 2 e 3",
+          "type": "image",
+          "treatmentId": null
+        },
+        {
+          "id": "b4585a6b-0021-4e12-9c5f-292f47d2aa25",
+          "title": "foto para pré avaliaçao",
+          "type": "image",
+          "treatmentId": null
+        },
+        {
+          "id": "74f42829-7968-4e8f-aa38-ad3df352fa8c",
+          "title": "Clareamento branco",
+          "type": "image",
+          "treatmentId": null
+        },
+        {
+          "id": "ee6c81a6-1703-4cde-a55f-dbfd5ba92550",
+          "title": "Cuidados pós colocaçao das lentes",
+          "type": "image",
+          "treatmentId": null
+        }
+      ],
+      "playbookText": "ESPECIALIDADE DO DR. GREGORIE:\nO Dr. Gregorie Ximendes é especialista em lentes de resina composta. Toda conversa sobre lentes tem prioridade máxima e segue a sequência abaixo sem exceção.\n\nTRIGGER DE LENTES — execute SEMPRE que o lead mencionar qualquer referência a lentes ou estética dental: \"lentes\", \"técnica\", \"simplificada\", \"estratificada\", \"lentes de contato dental\", \"faceta\", \"faceta de resina\", \"resina nos dentes\", \"lente no dente\", \"lentes de porcelana\" ou pedir agendamento relacionado a lentes. NUNCA mostre horários antes de concluir os passos abaixo, mesmo quando a ação for de agendamento.\n\nPasso 1 — apresente cada técnica em dois blocos separados. Em cada bloco: primeiro a explicação em prosa, depois o vídeo correspondente (tag [MEDIA:id] na linha seguinte à explicação).\n\nBloco A — Técnica Simplificada: escreva em prosa corrida \"A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso harmonioso e natural, com investimento mais acessível. É a escolha ideal para quem busca equilíbrio entre resultado e custo.\" Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Simplificada (busque na biblioteca pelo título — deve conter \"simplificada\").\n\nBloco B — Técnica Estratificada: escreva em prosa corrida \"A Técnica Estratificada usa resina premium em múltiplas camadas, reproduzindo a translucidez e o brilho natural dos dentes. É para quem deseja o nível máximo de personalização e refinamento estético.\" Na linha seguinte, escreva [MEDIA:id] usando o id do vídeo da Estratificada (busque na biblioteca pelo título — deve conter \"estratificada\").\n\nPasso 2 — após os dois blocos, adote uma abordagem consultiva e pergunte: \"Qual desses dois resultados chamou mais a sua atenção?\". Aguarde a resposta do paciente para entender a preferência dele antes de revelar qualquer valor ou conduzir para avaliação. Se o lead tiver dúvidas, responda de forma consultiva antes de seguir. Não compacte explicação técnica, convite de foto e agenda no mesmo turno. Só após ele responder qual técnica preferiu (ou tirar as dúvidas), você pode falar os valores de referência e então oferecer horários disponíveis com o Dr. Gregorie.\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nSó ofereça agendamento quando o lead demonstrar interesse real. Toda jornada começa pela avaliação. O endereço (Rua Guararapes, 1894, Brooklin Novo, São Paulo) só ao confirmar agendamento ou se o lead perguntar diretamente.\n\nPROCEDIMENTOS OFERECIDOS:\n• Prótese dentária — Fixa, removível ou protocolo All-on-4. Laboratório próprio, entrega em 48h.\n• Tratamento de canal — Preserva o dente natural eliminando a infecção da polpa. Indolor com anestesia local.\n• Implante dentário — Titânio biocompatível com osseointegração. Substitui raiz e coroa como um dente natural. Alta durabilidade.\n• Clareamento caseiro — A laser (resultado na mesma sessão) ou caseiro com moldeiras (7-14 dias). Clareia até 8 tons, seguro para o esmalte.\n• Avaliação — Consulta inicial com o Dr. Gregorie: análise do sorriso e plano de tratamento personalizado.\n• Limpeza dental — Profilaxia completa com remoção de tártaro e biofilme. Indicada a cada 6 meses.\n• Restauração em resina — Resina composta para dentes trincados, lascados ou com cárie. Estético e natural, em sessão única.\n• Exodontia (extração) — Extração simples ou cirúrgica, incluindo siso incluso. Anestesia local, pós-operatório orientado pelo Dr. Gregorie.\n• Lentes de resina composta simplificada — Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado.\nA indicação e o valor do caso são definidos na avaliação com o Dr. Gregorie.\n• Harmonização orofacial — Preenchimento labial, bichectomia, bioestimuladores e toxina botulínica. Protocolo seguro, resultado natural.\n• Lentes de resina composta estratificada\n• Clareamento de consultório\n• Botox odontológico — Para bruxismo, DTM e harmonização do sorriso gengival. Complementa tratamentos estéticos.\n• Manutenção periódicas lentes\n• Conserto lentes\n• Gengivoplastia — Remodelamento do contorno gengival para equilibrar o sorriso. A laser ou bisturi, recuperação rápida.\n• Lentes em Resina Composta\n\nDIFERENCIAIS:\n• Especialista em lentes de resina — Técnica Simplificada e Estratificada\n• Dr. Gregorie avalia o sorriso com uma pré avaliação\n• Avaliação abatida integralmente do tratamento se avançar\n• Resina preserva o esmalte — procedimento reversível sem desgaste permanente\n• Parcelamento em até 12 vezes (juros da operadora)\n\nCOMO LIDAR COM OBJEÇÕES:\n- \"Está muito caro / não tenho esse valor agora\" → O investimento depende do seu caso e da quantidade de dentes. Na avaliação o Dr. Gregorie monta um plano personalizado com valores e parcelamento em até 12 vezes. Os R$ 100 da avaliação são abatidos do tratamento se você decidir avançar.\n- \"Resina não é pior que porcelana?\" → A resina preserva cem por cento do esmalte, sem nenhum desgaste permanente. É reversível e tem resultado estético muito próximo da porcelana. Na avaliação o Dr. Gregorie mostra casos dos dois e explica o que faz mais sentido para o seu sorriso.\n- \"Tenho medo que fique artificial / exagerado\" → O resultado é personalizado em cor, forma e transparência para combinar com o seu rosto e o tom da sua pele. O objetivo é um sorriso que pareça completamente natural, só mais bonito. O Dr. Gregorie tem cases para mostrar na avaliação.\n- \"Já fiz lentes em outro lugar e não gostei do resultado\" → Entendo. Na avaliação você pode mostrar o que não gostou e o Dr. Gregorie analisa o caso com cuidado antes de propor qualquer solução. Resultado estético depende muito do olhar e da técnica do profissional.\n- \"Não quero pagar a avaliação\" → Os R$ 100 garantem uma consulta completa e dedicada ao seu caso, com análise do sorriso e plano detalhado. E esse valor sai integralmente do tratamento se você decidir avançar. Não é custo a mais, é o primeiro passo.\n- \"Vou pensar...\" → Claro, sem pressa. Qualquer dúvida é só chamar aqui. Quando quiser, a agenda está aberta.\n- \"Estou só pesquisando\" → Sem problema. Pode perguntar tudo que quiser. Se fizer sentido no seu tempo, vemos um horário para avaliação.\n- \"Tenho medo de dor / medo de dentista\" → É muito comum ter essa preocupação. Todos os procedimentos são realizados com anestesia local e a maioria dos pacientes fica surpresa com o quanto é tranquilo. O Dr. Gregorie tem o cuidado de explicar cada etapa antes de começar.\n- \"Implante é doloroso? Tenho medo da cirurgia\" → O procedimento é realizado com anestesia local. Durante a cirurgia você não sente dor. No pós-operatório pode haver um desconforto parecido com uma extração simples, controlado com a medicação prescrita pelo Dr. Gregorie.\n- \"Canal não mata o dente?\" → Não. O canal remove apenas a polpa infectada. A estrutura do dente fica completamente preservada e ele continua funcional. É a melhor alternativa antes de considerar a extração.\n- \"Preciso mesmo de implante? Não dá para fazer uma ponte?\" → A ponte é uma alternativa, mas exige desgaste dos dentes vizinhos saudáveis para servir de apoio. O implante preserva os dentes ao redor e tem durabilidade muito maior. Na avaliação o Dr. Gregorie explica as opções e o que é mais indicado para o seu caso."
+    }
+  },
+  "findings": [
+    {
+      "id": "CFG-LEGACY-MEDIA-a356d06d-329c-4a3c-9878-53eaa8271e16",
+      "severity": "P2",
+      "category": "migration",
+      "title": "Playbook \"Ximendes — Reescrita Afiada v4 (Fluxo Blindado)\" ainda possui media_library legado",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.media_library:a356d06d-329c-4a3c-9878-53eaa8271e16",
+          "value": {
+            "count": 2
+          }
+        }
+      ],
+      "recommendation": "Confirmar backfill para media_assets/media_asset_ids antes de remover o fallback.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-PRICE-IN-COMMERCIAL-POLICY-15cebe98-64ed-4895-a5f7-68a3b4b415da",
+      "severity": "P1",
+      "category": "duplicate",
+      "title": "Playbook \"Ximendes Odontologia — Canônico v5 (Dr. Gregorie — especialista em lentes)\" contém preço digitado na política comercial",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.commercial_policy:15cebe98-64ed-4895-a5f7-68a3b4b415da"
+        }
+      ],
+      "recommendation": "Remover o número manual após confirmar que composePriceSection cobre o caso.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-LEGACY-TRIGGER-NOTES-15cebe98-64ed-4895-a5f7-68a3b4b415da",
+      "severity": "P1",
+      "category": "duplicate",
+      "title": "Playbook \"Ximendes Odontologia — Canônico v5 (Dr. Gregorie — especialista em lentes)\" contém trigger legado em notes",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "playbook_versions.notes:15cebe98-64ed-4895-a5f7-68a3b4b415da"
+        }
+      ],
+      "recommendation": "Migrar o comportamento para pipelineSteps e remover a instrução duplicada.",
+      "autoFixSafe": false
+    },
+    {
+      "id": "CFG-INACTIVE-GOOGLE-CALENDAR-ID",
+      "severity": "P3",
+      "category": "runtime",
+      "title": "googleCalendarId está preenchido, mas calendarMode é internal",
+      "evidence": [
+        {
+          "source": "db",
+          "reference": "organizations.calendar_mode/google_calendar_id",
+          "value": {
+            "calendarMode": "internal",
+            "googleCalendarIdConfigured": true
+          }
+        }
+      ],
+      "recommendation": "Confirmar se o ID é legado intencional e sinalizar claramente na UI que está inativo.",
+      "autoFixSafe": false
+    }
+  ]
+}
