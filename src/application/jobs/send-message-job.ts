@@ -33,6 +33,10 @@ import { DrizzleConversationRepository } from "@/infrastructure/repositories/dri
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { areEquivalentWhatsAppPhones } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createLogger } from "@/infrastructure/logging/logger";
+import {
+  recordDecisionTrace,
+  type DecisionTraceSink,
+} from "@/core/observability/DecisionTrace";
 import { db } from "@/infrastructure/db/client";
 import { organizations, messages, followUps, leads } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
@@ -43,6 +47,7 @@ export type SendMessageJobDependencies = {
   automationDispatchLifecycle?: AutomationDispatchLifecycle;
   now?: () => Date;
   capJitterMs?: () => number;
+  decisionTraceSink?: DecisionTraceSink;
   delivery?: (input: {
     payload: OutboundPayload;
     clinicId: string;
@@ -86,12 +91,13 @@ export class SendMessageJobHandler {
   async processJob(job: { id?: string; payload: unknown }): Promise<SendMessageJobProcessResult> {
     const outboundMessageId = getOutboundMessageId(job.payload);
     if (!outboundMessageId) throw new Error("message.send job has no outboundMessageId");
+    const jobTurnId = getTurnId(job.payload);
 
     const log = createLogger({
       scope: "SendMessageJob",
       jobId: job.id,
       queue: "message.send",
-      traceId: outboundMessageId,
+      traceId: jobTurnId ?? outboundMessageId,
     });
     const startedAt = Date.now();
 
@@ -105,6 +111,7 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,
     });
+    const turnId = jobTurnId ?? getTurnId(outbound.payload);
     if (await this.deps.outboundMessageStore.hasEarlierActiveMessage(outbound)) {
       outboundLog.info("job.deferred", { reason: "earlier_message_active", durationMs: Date.now() - startedAt });
       return "deferred";
@@ -272,6 +279,20 @@ export class SendMessageJobHandler {
       }
     }
 
+    if (turnId) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId,
+        stage: "delivery.started",
+        occurredAt: this.now().toISOString(),
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+        metadata: {
+          outboundMessageId: outbound.id,
+          attempt: outbound.attempts,
+          category: outbound.category,
+        },
+      });
+    }
     const providerMessageId = await this.delivery({
       payload: outbound.payload,
       clinicId: outbound.clinicId,
@@ -282,6 +303,19 @@ export class SendMessageJobHandler {
       providerMessageId,
     });
     await this.automationDispatchLifecycle.markDelivered(outboundForLifecycle, this.now());
+    if (turnId) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId,
+        stage: "delivery.sent",
+        occurredAt: this.now().toISOString(),
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+        metadata: {
+          outboundMessageId: outbound.id,
+          providerAccepted: providerMessageId !== null,
+        },
+      });
+    }
     outboundLog.info("job.sent", { durationMs: Date.now() - startedAt, providerMessageId });
     return "sent";
   }
@@ -408,6 +442,12 @@ function automationDestinationMatchesLead(
 function getOutboundMessageId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const value = (payload as Record<string, unknown>).outboundMessageId;
+  return typeof value === "string" && value ? value : null;
+}
+
+function getTurnId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>).turnId;
   return typeof value === "string" && value ? value : null;
 }
 

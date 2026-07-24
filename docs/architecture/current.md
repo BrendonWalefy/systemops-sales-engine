@@ -59,6 +59,20 @@ WhatsApp (Z-API hoje, Meta como compatibilidade)
   -> Z-API envia texto, mídia ou áudio
 ```
 
+### Correlação e Decision Trace
+
+O fluxo principal propaga um `turnId` do `inboundEventId` até a outbox e o
+sender. A captura detalhada é injetável e permanece desligada por padrão; o
+runtime pode emitir metadados estruturados com
+`DECISION_TRACE_MODE=structured_log`, sem corpo de mensagem, prompt, telefone
+ou nome.
+
+Os contratos, limites de privacidade e o estado incremental da implementação
+estão em
+[`docs/architecture/replay-and-decision-trace.md`](replay-and-decision-trace.md).
+O endpoint antigo de exportação bruta de conversas reais está desativado e não
+é parte da arquitetura suportada.
+
 O endpoint Meta Cloud API (`/api/whatsapp/webhook`) existe como compatibilidade,
 mas a produção atual usa Z-API como canal principal.
 

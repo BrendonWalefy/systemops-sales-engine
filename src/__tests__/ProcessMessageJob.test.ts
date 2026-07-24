@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ProcessMessageJobHandler } from "@/application/jobs/process-message-job";
 import type { InboundEvent } from "@/application/ports/inbound-event-store";
 import type { JobRecord } from "@/application/ports/job-queue";
+import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 
 const event: InboundEvent = {
   id: "event-1",
@@ -56,6 +57,7 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
   const automationPolicy = { canSendAutomatedReply: vi.fn().mockResolvedValue(true) };
   const conversationHandler = { handle: vi.fn().mockResolvedValue({ replied: true }) };
   const resolveInboundContent = vi.fn().mockResolvedValue({ messageText: "Olá", shouldReply: true });
+  const decisionTraceSink = new InMemoryDecisionTraceSink();
 
   return {
     handler: new ProcessMessageJobHandler({
@@ -64,18 +66,20 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
       conversationHandler,
       resolveInboundContent,
       transcribeAudio: vi.fn(),
+      decisionTraceSink,
       ...overrides,
     }),
     inboundEventStore,
     automationPolicy,
     conversationHandler,
     resolveInboundContent,
+    decisionTraceSink,
   };
 }
 
 describe("ProcessMessageJobHandler", () => {
   it("processa o evento persistido e só então marca a entrada como concluída", async () => {
-    const { handler, inboundEventStore, conversationHandler } = makeHandler();
+    const { handler, inboundEventStore, conversationHandler, decisionTraceSink } = makeHandler();
 
     const result = await handler.processJob(job);
 
@@ -86,10 +90,16 @@ describe("ProcessMessageJobHandler", () => {
         clinicId: "clinic-1",
         phone: "5511999999999",
         messageId: "message-1",
+        turnId: "event-1",
         replyEnabled: true,
       }),
     );
     expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
+    expect(decisionTraceSink.getEvents("event-1").map((entry) => entry.stage)).toEqual([
+      "ingress.received",
+      "ingress.content_resolved",
+      "orchestrator.completed",
+    ]);
   });
 
   it.each([
@@ -189,5 +199,23 @@ describe("ProcessMessageJobHandler", () => {
     });
     expect(conversationHandler.handle).not.toHaveBeenCalled();
     expect(inboundEventStore.markInboundEventProcessing).not.toHaveBeenCalled();
+  });
+
+  it("registra falha do turno sem engolir o erro do orquestrador", async () => {
+    const conversationHandler = {
+      handle: vi.fn().mockRejectedValue(new TypeError("composer unavailable")),
+    };
+    const { handler, decisionTraceSink } = makeHandler({ conversationHandler });
+
+    await expect(handler.processJob(job)).rejects.toThrow("composer unavailable");
+    expect(decisionTraceSink.getEvents("event-1").at(-1)).toEqual(
+      expect.objectContaining({
+        stage: "turn.failed",
+        metadata: {
+          phase: "orchestrator_or_acknowledgement",
+          errorName: "TypeError",
+        },
+      }),
+    );
   });
 });

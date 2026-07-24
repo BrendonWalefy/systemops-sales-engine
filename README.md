@@ -416,6 +416,7 @@ Env é para infraestrutura compartilhada. Configuração de clínica fica no ban
 | `RESEND_API_KEY` | Emails transacionais e digest |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account GCal (só modo `google_calendar`) |
 | `GOOGLE_PRIVATE_KEY` | Chave privada GCal (só modo `google_calendar`) |
+| `DECISION_TRACE_MODE` | Opcional: `structured_log` para metadados de trace; omitido = desligado |
 
 ---
 
@@ -432,6 +433,7 @@ Detalhes em [docs/operations/migrations-baseline.md](docs/operations/migrations-
 ## Documentação
 
 - [Arquitetura atual](docs/architecture/current.md)
+- [Replay e Decision Trace](docs/architecture/replay-and-decision-trace.md)
 - [Diagramas de arquitetura](docs/architecture/diagrams/README.md)
 - [Arquitetura alvo 2.0](docs/architecture/target-architecture.md)
 - [Infraestrutura de mídia](docs/architecture/media-infrastructure.md)

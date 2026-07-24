@@ -11,6 +11,12 @@ Use este documento como roteiro de execução, não como substituto dos testes
 automatizados — testes automatizados provam a regra de negócio isolada; este plano prova
 o comportamento do sistema como um todo, com dados e canais reais/simulados.
 
+> **Privacidade:** não use nem reative
+> `/api/e2e/production-conversations`. A rota de exportação bruta está
+> deliberadamente desativada. Conversas reais só poderão entrar no novo replay
+> pelo exportador anonimizado descrito em
+> [`docs/architecture/replay-and-decision-trace.md`](../architecture/replay-and-decision-trace.md).
+
 ---
 
 ## Achados da primeira execução (jul/2026) — ler antes de rodar de novo

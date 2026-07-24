@@ -7,6 +7,10 @@ import {
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import { createLogger } from "@/infrastructure/logging/logger";
+import {
+  recordDecisionTrace,
+  type DecisionTraceSink,
+} from "@/core/observability/DecisionTrace";
 
 type ConversationHandler = {
   handle(input: {
@@ -18,6 +22,7 @@ type ConversationHandler = {
     senderName?: string;
     senderPhoto?: string | null;
     timestamp: Date;
+    turnId?: string;
     replyEnabled?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
@@ -39,6 +44,7 @@ export type ProcessMessageJobDependencies = {
     transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
   }) => Promise<ResolvedLeadInboundContent>;
   transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
+  decisionTraceSink?: DecisionTraceSink;
 };
 
 export class ProcessMessageJobHandler {
@@ -78,6 +84,17 @@ export class ProcessMessageJobHandler {
       clinicId: event.clinicId,
       correlationId: event.providerMessageId,
     });
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "ingress.received",
+      occurredAt: event.receivedAt.toISOString(),
+      clinicId: event.clinicId,
+      metadata: {
+        provider: event.provider,
+        queue: job.queue,
+        attempt: job.attempts,
+      },
+    });
 
     const payload = event.provider === "z_api" ? normalizeZApiInboundPayload(event.payload) : null;
     if (!payload) {
@@ -105,21 +122,56 @@ export class ProcessMessageJobHandler {
       return { outcome: "ignored", inboundEventId: event.id };
     }
 
-    await this.deps.conversationHandler.handle({
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "ingress.content_resolved",
+      occurredAt: new Date().toISOString(),
       clinicId: event.clinicId,
-      phone: payload.phone,
-      whatsappLid: payload.chatLid ?? null,
-      messageText: content.messageText,
-      messageId: payload.messageId,
-      senderName: payload.senderName || undefined,
-      senderPhoto: payload.senderPhoto ?? null,
-      timestamp: event.receivedAt,
-      replyEnabled: content.shouldReply,
-      mediaUrl: content.mediaUrl,
-      mediaType: content.mediaType,
+      metadata: {
+        contentType: content.mediaType ?? "text",
+        replyEnabled: content.shouldReply,
+        hasText: content.messageText.trim().length > 0,
+      },
     });
 
-    await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
+    let handleResult: { replied: boolean };
+    try {
+      handleResult = await this.deps.conversationHandler.handle({
+        clinicId: event.clinicId,
+        phone: payload.phone,
+        whatsappLid: payload.chatLid ?? null,
+        messageText: content.messageText,
+        messageId: payload.messageId,
+        turnId: inboundEventId,
+        senderName: payload.senderName || undefined,
+        senderPhoto: payload.senderPhoto ?? null,
+        timestamp: event.receivedAt,
+        replyEnabled: content.shouldReply,
+        mediaUrl: content.mediaUrl,
+        mediaType: content.mediaType,
+      });
+      await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
+    } catch (error) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.failed",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: {
+          phase: "orchestrator_or_acknowledgement",
+          errorName: error instanceof Error ? error.name : "unknown",
+        },
+      });
+      throw error;
+    }
+
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "orchestrator.completed",
+      occurredAt: new Date().toISOString(),
+      clinicId: event.clinicId,
+      metadata: { replied: handleResult.replied },
+    });
     eventLog.info("job.processed", { durationMs: Date.now() - startedAt });
     return { outcome: "processed", inboundEventId: event.id };
   }

@@ -19,6 +19,8 @@ export type PipelineAdvance =
 export type ConversationOutboundPayload = {
   version: 1;
   kind: "conversation_reply";
+  /** Correlaciona ingress → decisão → outbox → entrega. Opcional para payloads legados. */
+  turnId?: string;
   to: string;
   agentMessageId: string;
   replyText: string;
@@ -57,6 +59,7 @@ export function isConversationOutboundPayload(
   return (
     value.version === 1 &&
     value.kind === "conversation_reply" &&
+    (value.turnId === undefined || typeof value.turnId === "string") &&
     typeof value.to === "string" &&
     typeof value.agentMessageId === "string" &&
     typeof value.replyText === "string" &&

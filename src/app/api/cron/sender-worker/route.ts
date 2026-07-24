@@ -7,6 +7,7 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { createLogger } from "@/infrastructure/logging/logger";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,11 +28,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const startedAt = Date.now();
   const outboundMessageStore = new DrizzleOutboundMessageStore();
   const safetyContextReader = new DrizzleOutboundSafetyContextReader();
+  const decisionTraceSink = createRuntimeDecisionTraceSink();
   try {
     const result = await drainMessageSendQueue({
       jobQueue: new DrizzleJobQueue(),
       outboundMessageStore,
-      handler: new SendMessageJobHandler({ outboundMessageStore, safetyContextReader }),
+      handler: new SendMessageJobHandler({
+        outboundMessageStore,
+        safetyContextReader,
+        decisionTraceSink,
+      }),
       workerId,
       maxJobs: MAX_JOBS_PER_RUN,
     });

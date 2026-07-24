@@ -14,6 +14,7 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { createLogger } from "@/infrastructure/logging/logger";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,11 +39,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const inboundEventStore = new DrizzleInboundEventStore();
   const jobQueue = new DrizzleJobQueue();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
+  const decisionTraceSink = createRuntimeDecisionTraceSink();
   const handler = new ProcessMessageJobHandler({
     inboundEventStore,
     automationPolicy: new DrizzleClinicAutomationPolicyReader(),
-    conversationHandler: new ConversationOrchestrator(),
+    conversationHandler: new ConversationOrchestrator({ decisionTraceSink }),
     transcribeAudio: audioTranscriber.transcribe.bind(audioTranscriber),
+    decisionTraceSink,
   });
 
   try {
@@ -75,6 +78,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           handler: new SendMessageJobHandler({
             outboundMessageStore,
             safetyContextReader: new DrizzleOutboundSafetyContextReader(),
+            decisionTraceSink,
           }),
           workerId: `${workerId}:send`,
           maxJobs: MAX_JOBS_PER_RUN,

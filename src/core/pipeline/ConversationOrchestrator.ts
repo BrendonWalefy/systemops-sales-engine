@@ -110,6 +110,11 @@ import {
   buildDepositProofReviewRequestMessage,
   nextAvailableDepositProofReviewCode,
 } from "@/application/conversations/deposit-proof-review";
+import {
+  noopDecisionTraceSink,
+  recordDecisionTrace,
+  type DecisionTraceSink,
+} from "@/core/observability/DecisionTrace";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -3516,6 +3521,7 @@ export function contextualizeReplyWhileAwaitingDeposit(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class ConversationOrchestrator {
+  private readonly decisionTraceSink: DecisionTraceSink;
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
@@ -3531,6 +3537,10 @@ export class ConversationOrchestrator {
     new DrizzlePushSubscriptionRepository(),
     new WebPushGateway(),
   );
+
+  constructor(deps: { decisionTraceSink?: DecisionTraceSink } = {}) {
+    this.decisionTraceSink = deps.decisionTraceSink ?? noopDecisionTraceSink;
+  }
 
   // Carrega mensagem/conversa/lead existentes para o modo replay do handle()
   // (ação guiada do operador). Retorna null se a mensagem não pertencer à
@@ -3621,6 +3631,7 @@ export class ConversationOrchestrator {
     whatsappLid?: string | null;
     messageText: string;
     messageId: string;
+    turnId?: string;
     senderName?: string;
     senderPhoto?: string | null;
     timestamp: Date;
@@ -3633,6 +3644,18 @@ export class ConversationOrchestrator {
     replayOfMessageDbId?: string;
   }): Promise<{ replied: boolean }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
+    const turnId = params.turnId ?? messageId;
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "orchestrator.started",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      metadata: {
+        replay: Boolean(params.replayOfMessageDbId),
+        mediaType: params.mediaType ?? "text",
+        replyEnabled: params.replyEnabled ?? true,
+      },
+    });
     const isReplay = !!params.replayOfMessageDbId;
     let messageText = params.messageText;
     const replyEnabled = params.replyEnabled ?? true;
@@ -3718,6 +3741,20 @@ export class ConversationOrchestrator {
       resolveActiveEditorialConfig(clinicId),
       getClinicModules(clinicId),
     ]);
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "tenant.config_loaded",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      metadata: {
+        timezone: clinic.timezone,
+        segment: clinic.segment ?? "unknown",
+        hasActiveEditorial: editorial !== null,
+        activeModuleCount: activeModules.length,
+        procedureCount: editorial?.procedures.length ?? 0,
+        mediaAssetCount: editorial?.mediaLibrary.length ?? 0,
+      },
+    });
     const channelConfig = resolveChannelConfig(clinicRows[0]);
 
     // Derivados de módulos — usados em todo o método no lugar dos campos legados
@@ -3986,6 +4023,7 @@ export class ConversationOrchestrator {
             await this.enqueueConversationReply(clinicId, conversation.id, {
               version: 1,
               kind: "conversation_reply",
+              turnId,
               to: outboundAddress,
               agentMessageId: proofAgentId,
               replyText: proofText,
@@ -4205,6 +4243,7 @@ export class ConversationOrchestrator {
         await this.enqueueConversationReply(clinicId, conversation.id, {
           version: 1,
           kind: "conversation_reply",
+          turnId,
           to: outboundAddress,
           agentMessageId: photoAgentId,
           replyText: pendingReviewText,
@@ -4286,6 +4325,7 @@ export class ConversationOrchestrator {
             await this.enqueueConversationReply(clinicId, conversation.id, {
               version: 1,
               kind: "conversation_reply",
+              turnId,
               to: outboundAddress,
               agentMessageId: photoAgentId,
               replyText: photoComposed.text,
@@ -4363,6 +4403,7 @@ export class ConversationOrchestrator {
       await this.enqueueConversationReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
+        turnId,
         to: outboundAddress,
         agentMessageId: mediaAgentId,
         replyText: mediaReplyText,
@@ -4484,6 +4525,7 @@ export class ConversationOrchestrator {
       await this.enqueueConversationReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
+        turnId,
         to: outboundAddress,
         agentMessageId: pendingAgentId,
         replyText: pendingText,
@@ -4660,6 +4702,7 @@ export class ConversationOrchestrator {
         await this.enqueueConversationReply(clinicId, conversation.id, {
           version: 1,
           kind: "conversation_reply",
+          turnId,
           to: outboundAddress,
           agentMessageId: nudgeAgentId,
           replyText: nudge,
@@ -4751,6 +4794,7 @@ export class ConversationOrchestrator {
           await this.enqueueConversationReply(clinicId, conversation.id, {
             version: 1,
             kind: "conversation_reply",
+            turnId,
             to: outboundAddress,
             agentMessageId: confirmAgentId,
             replyText: confirmReplyText,
@@ -5017,6 +5061,7 @@ export class ConversationOrchestrator {
       await this.enqueueConversationReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
+        turnId,
         to: outboundAddress,
         agentMessageId: optOutAgentId,
         replyText: optOutText,
@@ -5516,6 +5561,7 @@ export class ConversationOrchestrator {
           await this.enqueueConversationReply(clinicId, conversation.id, {
             version: 1,
             kind: "conversation_reply",
+            turnId,
             to: outboundAddress,
             agentMessageId: missingAgentId,
             replyText: missingText,
@@ -7631,6 +7677,7 @@ export class ConversationOrchestrator {
     await this.enqueueConversationReply(clinicId, conversation.id, {
       version: 1,
       kind: "conversation_reply",
+      turnId,
       to: outboundAddress,
       agentMessageId,
       replyText,
@@ -7714,6 +7761,7 @@ export class ConversationOrchestrator {
     reviewRequestId: string;
     decision: HumanReviewDecision;
   }): Promise<{ replied: boolean; reason?: string }> {
+    const turnId = `human-review:${params.reviewRequestId}`;
     if (params.decision !== "approved_direct_booking" && params.decision !== "needs_evaluation") {
       return { replied: false, reason: "decision_does_not_resume_automation" };
     }
@@ -7838,6 +7886,7 @@ export class ConversationOrchestrator {
     await this.enqueueConversationReply(params.clinicId, conversation.id, {
       version: 1,
       kind: "conversation_reply",
+      turnId,
       to: leadAddress,
       agentMessageId,
       replyText,
@@ -7858,7 +7907,23 @@ export class ConversationOrchestrator {
     conversationId: string,
     payload: ConversationOutboundPayload,
   ): Promise<void> {
-    await enqueueOutboundMessage(
+    if (payload.turnId) {
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId: payload.turnId,
+        stage: "outbound.planned",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId,
+        metadata: {
+          agentMessageId: payload.agentMessageId,
+          intent: payload.intent,
+          useVoice: payload.useVoice,
+          interleavedPartCount: payload.interleavedParts.length,
+          mediaPartCount: payload.mediaParts.length,
+        },
+      });
+    }
+    const enqueueResult = await enqueueOutboundMessage(
       {
         clinicId,
         conversationId,
@@ -7872,6 +7937,20 @@ export class ConversationOrchestrator {
         jobQueue: new DrizzleJobQueue(),
       },
     );
+    if (payload.turnId) {
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId: payload.turnId,
+        stage: "outbound.enqueued",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId,
+        metadata: {
+          outboundMessageId: enqueueResult.outboundMessageId,
+          messageWasNew: enqueueResult.messageWasNew,
+          jobWasNew: enqueueResult.jobWasNew,
+        },
+      });
+    }
   }
 
   // ── Claim de processamento por conversa (CAS single-statement) ──────────────

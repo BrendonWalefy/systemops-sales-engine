@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
+import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 
 const outbound: OutboundMessage = {
   id: "outbound-1",
@@ -125,12 +126,18 @@ describe("SendMessageJobHandler", () => {
   it("envia somente após obter o claim da outbox e marca a entrega", async () => {
     const store = makeStore();
     const delivery = vi.fn().mockResolvedValue("zapi-message-1");
+    const decisionTraceSink = new InMemoryDecisionTraceSink();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       delivery,
+      decisionTraceSink,
     });
 
-    await expect(handler.processJob({ payload: { outboundMessageId: "outbound-1" } })).resolves.toBe("sent");
+    await expect(
+      handler.processJob({
+        payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
+      }),
+    ).resolves.toBe("sent");
     expect(delivery).toHaveBeenCalledWith(
       expect.objectContaining({ clinicId: "clinic-1", conversationId: "conversation-1" }),
     );
@@ -138,6 +145,10 @@ describe("SendMessageJobHandler", () => {
       id: "outbound-1",
       providerMessageId: "zapi-message-1",
     });
+    expect(decisionTraceSink.getEvents("turn-1").map((entry) => entry.stage)).toEqual([
+      "delivery.started",
+      "delivery.sent",
+    ]);
   });
 
   it("não reenfileira uma saída já entregue", async () => {

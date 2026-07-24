@@ -1,0 +1,95 @@
+/**
+ * Contrato neutro e versionado da trilha de decisão de um turno.
+ *
+ * A trilha registra decisões e referências, nunca o conteúdo bruto da conversa,
+ * prompts, telefones ou outros dados pessoais. O sink é injetável para que o
+ * runtime normal use noop e o replay capture a sequência completa em memória.
+ */
+
+export const DECISION_TRACE_SCHEMA_VERSION = "decision-trace.v1" as const;
+
+export type DecisionTraceStage =
+  | "ingress.received"
+  | "ingress.content_resolved"
+  | "orchestrator.started"
+  | "tenant.config_loaded"
+  | "outbound.planned"
+  | "outbound.enqueued"
+  | "orchestrator.completed"
+  | "delivery.started"
+  | "delivery.sent"
+  | "turn.ignored"
+  | "turn.failed";
+
+export type DecisionTraceMetadataValue = string | number | boolean | null;
+export type DecisionTraceMetadata = Readonly<Record<string, DecisionTraceMetadataValue>>;
+
+export type DecisionTraceRecord = {
+  turnId: string;
+  stage: DecisionTraceStage;
+  occurredAt: string;
+  clinicId?: string;
+  conversationId?: string;
+  metadata?: DecisionTraceMetadata;
+};
+
+export type DecisionTraceEventV1 = DecisionTraceRecord & {
+  schemaVersion: typeof DECISION_TRACE_SCHEMA_VERSION;
+  sequence: number;
+};
+
+export type DecisionTraceSink = {
+  record(record: DecisionTraceRecord): void | Promise<void>;
+};
+
+export const noopDecisionTraceSink: DecisionTraceSink = {
+  record() {
+    // Produção não captura traces por padrão.
+  },
+};
+
+/**
+ * Trace nunca pode interromper o atendimento. Em replay, o sink em memória
+ * continua expondo todos os eventos capturados para que ausência de estágio
+ * seja tratada como falha do teste.
+ */
+export async function recordDecisionTrace(
+  sink: DecisionTraceSink | undefined,
+  record: DecisionTraceRecord,
+): Promise<void> {
+  try {
+    await (sink ?? noopDecisionTraceSink).record(record);
+  } catch {
+    // Observabilidade é best-effort no runtime e não muda decisões de negócio.
+  }
+}
+
+export class InMemoryDecisionTraceSink implements DecisionTraceSink {
+  private readonly events: DecisionTraceEventV1[] = [];
+  private readonly nextSequenceByTurn = new Map<string, number>();
+
+  record(record: DecisionTraceRecord): void {
+    const sequence = this.nextSequenceByTurn.get(record.turnId) ?? 0;
+    this.nextSequenceByTurn.set(record.turnId, sequence + 1);
+    this.events.push({
+      schemaVersion: DECISION_TRACE_SCHEMA_VERSION,
+      sequence,
+      ...record,
+      metadata: record.metadata ? { ...record.metadata } : undefined,
+    });
+  }
+
+  getEvents(turnId?: string): DecisionTraceEventV1[] {
+    return this.events
+      .filter((event) => !turnId || event.turnId === turnId)
+      .map((event) => ({
+        ...event,
+        metadata: event.metadata ? { ...event.metadata } : undefined,
+      }));
+  }
+
+  clear(): void {
+    this.events.length = 0;
+    this.nextSequenceByTurn.clear();
+  }
+}
