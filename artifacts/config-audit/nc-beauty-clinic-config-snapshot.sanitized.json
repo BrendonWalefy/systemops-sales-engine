@@ -1,9 +1,9 @@
 {
   "metadata": {
-    "generatedAt": "2026-07-24T21:21:59.404Z",
-    "gitCommit": "6f7d5706e9abbebfc0b3adc9434a0cf89c39f9f4",
+    "generatedAt": "2026-07-24T21:40:56.693Z",
+    "gitCommit": "68a447f45d5aed80b5816d1496a6562cc05af9a2",
     "branch": "chore/conversation-engine-validation",
-    "schemaVersion": "6f7d570",
+    "schemaVersion": "68a447f",
     "auditedProductionCommit": "d8c0fd0c7602fe635601afeb0778b1f982301fc7",
     "sanitized": true,
     "source": "read-only production database query"
@@ -46,12 +46,12 @@
     "businessDescriptor": "clínica de estética e bem-estar especializada em extensão de cílios, sobrancelhas e tratamentos faciais",
     "updatedAt": "2026-07-08T15:15:26.217Z"
   },
-  "productionSchemaExtensions": {
-    "address_complement_configured": false,
-    "maps_url_configured": false,
-    "location_message_configured": false,
-    "warranty_policy_configured": false,
-    "warranty_tier_count": 0
+  "currentSchemaExtensions": {
+    "addressComplementConfigured": false,
+    "mapsUrlConfigured": false,
+    "locationMessageConfigured": false,
+    "warrantyPolicyConfigured": false,
+    "warrantyTierCount": 0
   },
   "activePlaybook": {
     "id": "69f4303d-f740-49a3-ab01-f31478f8a69e",
@@ -108,6 +108,8 @@
         "objection": "Posso cancelar ou remarcar meu horário?"
       }
     ],
+    "warrantyPolicyConfigured": false,
+    "warrantyTierCount": 0,
     "mediaAssetIds": [
       "6f7bfb80-3635-449f-bcea-f493422cd7a3"
     ],
@@ -127,6 +129,8 @@
       "receptionistName": "Marina",
       "differentials": [],
       "objections": [],
+      "warrantyPolicyConfigured": false,
+      "warrantyTierCount": 0,
       "mediaAssetIds": [],
       "legacyMediaCount": 0,
       "createdAt": "2026-07-07T03:05:26.689Z",
@@ -187,6 +191,8 @@
           "objection": "Posso cancelar ou remarcar meu horário?"
         }
       ],
+      "warrantyPolicyConfigured": false,
+      "warrantyTierCount": 0,
       "mediaAssetIds": [],
       "legacyMediaCount": 0,
       "createdAt": "2026-07-08T12:51:01.593Z",
@@ -247,6 +253,8 @@
           "objection": "Posso cancelar ou remarcar meu horário?"
         }
       ],
+      "warrantyPolicyConfigured": false,
+      "warrantyTierCount": 0,
       "mediaAssetIds": [
         "6f7bfb80-3635-449f-bcea-f493422cd7a3"
       ],

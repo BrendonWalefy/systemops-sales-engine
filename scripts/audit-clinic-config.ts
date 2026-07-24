@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { getClinicModules } from "@/application/modules/module-gate";
@@ -363,39 +363,16 @@ async function auditClinic(slug: string) {
     };
   });
 
-  // `origin/main` está à frente de `origin/develop` e já possui campos aditivos
-  // que o schema TypeScript desta branch ainda não conhece. A consulta continua
-  // read-only e registra somente presença/contagens, sem exportar endereço, URL
-  // ou texto de garantia.
-  const productionExtensionResult = await db.execute<{
-    address_complement_configured: boolean;
-    maps_url_configured: boolean;
-    location_message_configured: boolean;
-    warranty_policy_configured: boolean;
-    warranty_tier_count: number;
-  }>(sql`
-    SELECT
-      (o.address_complement IS NOT NULL AND btrim(o.address_complement) <> '')
-        AS address_complement_configured,
-      (o.maps_url IS NOT NULL AND btrim(o.maps_url) <> '')
-        AS maps_url_configured,
-      (o.location_message IS NOT NULL AND btrim(o.location_message) <> '')
-        AS location_message_configured,
-      (p.warranty_policy IS NOT NULL) AS warranty_policy_configured,
-      COALESCE(jsonb_array_length(p.warranty_policy -> 'tiers'), 0)::int
-        AS warranty_tier_count
-    FROM organizations o
-    LEFT JOIN LATERAL (
-      SELECT warranty_policy
-      FROM playbook_versions
-      WHERE organization_id = o.id AND status = 'active'
-      ORDER BY created_at DESC
-      LIMIT 1
-    ) p ON TRUE
-    WHERE o.id = ${organization.id}
-    LIMIT 1
-  `);
-  const productionSchemaExtensions = productionExtensionResult.rows[0] ?? null;
+  // Campos adicionados em produção depois do antigo ponto de corte da develop.
+  // Agora são lidos pelo schema canônico já sincronizado. Exportamos somente
+  // presença/contagem para não copiar endereço, URL ou texto de garantia.
+  const currentSchemaExtensions = {
+    addressComplementConfigured: Boolean(organization.addressComplement?.trim()),
+    mapsUrlConfigured: Boolean(organization.mapsUrl?.trim()),
+    locationMessageConfigured: Boolean(organization.locationMessage?.trim()),
+    warrantyPolicyConfigured: Boolean(activePlaybooks[0]?.warrantyPolicy),
+    warrantyTierCount: activePlaybooks[0]?.warrantyPolicy?.tiers.length ?? 0,
+  };
 
   return {
     metadata: {
@@ -445,7 +422,7 @@ async function auditClinic(slug: string) {
       businessDescriptor: organization.businessDescriptor,
       updatedAt: organization.updatedAt,
     }),
-    productionSchemaExtensions: sanitizeValue(productionSchemaExtensions),
+    currentSchemaExtensions: sanitizeValue(currentSchemaExtensions),
     activePlaybook: activePlaybooks[0]
       ? sanitizeValue({
           id: activePlaybooks[0].id,
@@ -458,6 +435,8 @@ async function auditClinic(slug: string) {
           receptionistName: activePlaybooks[0].receptionistName,
           differentials: activePlaybooks[0].differentials,
           objections: activePlaybooks[0].objections,
+          warrantyPolicyConfigured: Boolean(activePlaybooks[0].warrantyPolicy),
+          warrantyTierCount: activePlaybooks[0].warrantyPolicy?.tiers.length ?? 0,
           mediaAssetIds: activePlaybooks[0].mediaAssetIds,
           legacyMediaCount: activePlaybooks[0].mediaLibrary.length,
           createdAt: activePlaybooks[0].createdAt,
@@ -476,6 +455,8 @@ async function auditClinic(slug: string) {
         receptionistName: playbook.receptionistName,
         differentials: playbook.differentials,
         objections: playbook.objections,
+        warrantyPolicyConfigured: Boolean(playbook.warrantyPolicy),
+        warrantyTierCount: playbook.warrantyPolicy?.tiers.length ?? 0,
         mediaAssetIds: playbook.mediaAssetIds,
         legacyMediaCount: playbook.mediaLibrary.length,
         createdAt: playbook.createdAt,

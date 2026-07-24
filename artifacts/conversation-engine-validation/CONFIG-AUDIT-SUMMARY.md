@@ -1,6 +1,6 @@
 # Auditoria de configuração e banco real
 
-Data: 24/07/2026  
+Data: 24/07/2026
 Fonte: consultas read-only ao banco real, com snapshots sanitizados.
 
 ## Resumo
@@ -24,6 +24,9 @@ As três clínicas possuem exatamente um playbook ativo. Isso refuta uma violaç
 | CFG-05 | Confirmado | Playbook ativo da Vitalli seleciona 8 mídias, 6 resolvem e 2 estão órfãs |
 | CFG-06 | Confirmado | NC Beauty usa `shadowModeEnabled`, que ainda permite efeitos do engine |
 | CFG-07 | Parcial | Resolver atual aposentou fallbacks importantes, mas schema/código de ativação conservam resíduos |
+| CFG-08 | Confirmado | Conteúdo Premium/Estratificada da Vitalli está duplicado no core universal |
+| CFG-09 | Confirmado | `depositEnabled` não modela se a avaliação é gratuita ou paga |
+| CFG-10 | Confirmado | Runtime contorna `treatments.isAesthetic` com heurística de nome |
 
 ## Ximendes
 
@@ -111,6 +114,12 @@ O nome “shadow” pode sugerir execução sem efeitos, mas a flag somente supr
 - A ativação ainda possui um `compileToClinicFields()` legado; os campos retornados não existem mais em `organizations`, e o SQL gerado atualiza apenas `updated_at`.
 - Não existe constraint para um único playbook ativo.
 - Referências de mídia em JSONB podem ficar órfãs.
+- O mesmo conteúdo Premium/Estratificada do playbook da Vitalli existe em
+  `buildMediaClarificationClinicContext()` e pode ser acionado por outro tenant.
+- A gratuidade da avaliação está embutida no template de depósito, embora a
+  Ximendes tenha avaliação paga e o schema não relacione os dois conceitos.
+- `isAesthetic` está configurável no tratamento, mas o runtime ainda decide por
+  palavras no nome e usa critérios diferentes conforme o caminho.
 
 ## Snapshots
 
@@ -124,7 +133,9 @@ O exportador está em `scripts/audit-clinic-config.ts`. Ele:
 - registra branch e commits de integração/produção;
 - redige e-mail, telefone, CPF, CNPJ, credenciais, chaves Pix e URLs;
 - não exporta URLs de assets/canais;
-- inclui somente presença/contagem para campos de produção ainda ausentes do schema de `develop`.
+- usa o mesmo schema agora compartilhado por `develop` e `main`;
+- inclui somente presença/contagem para endereço complementar, Maps, mensagem de
+  localização e política/faixas de garantia.
 
 ## Recomendações
 
@@ -134,3 +145,7 @@ O exportador está em `scripts/audit-clinic-config.ts`. Ele:
 4. Planejar unique index parcial para playbook ativo somente depois de auditoria global e fluxo transacional.
 5. Remover dual-write/no-op legado em PR mecânico separado.
 6. Não remover colunas legadas até medir zero leituras e concluir backfill de todas as versões necessárias.
+7. Remover conteúdo clinic-specific do core e resolver a resposta pela mídia,
+   pipeline e tratamento do tenant.
+8. Modelar preço/abatimento de avaliação separadamente da política de depósito.
+9. Fazer `Treatment.isAesthetic` ser o owner único da decisão em runtime.

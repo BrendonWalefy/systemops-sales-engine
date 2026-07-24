@@ -1,6 +1,6 @@
 # Fluxo real atual
 
-Referência principal: `origin/main@d8c0fd0` (produção). Diferenças de `origin/develop` são destacadas.
+Referência: `origin/main == origin/develop == d8c0fd0`.
 
 ## Entrada Z-API
 
@@ -38,7 +38,8 @@ sender
   → marca outbox/job como concluído
 ```
 
-Em produção, o `message-worker` drena a fila de envio na mesma invocação depois do lote de processamento. O cron separado do sender continua como fallback. Em `develop`, esse dreno inline ainda não existe.
+O `message-worker` drena a fila de envio na mesma invocação depois do lote de
+processamento. O cron separado do sender continua como fallback.
 
 O dreno inline reduz a duração média da janela, mas não elimina a corrida: o lease da conversa já foi liberado antes de o sender aplicar `pipelineAdvance`.
 
@@ -121,6 +122,30 @@ Além de decidir texto, a classe atual:
 - controla debounce, supersession e lease.
 
 Isso confirma o alto acoplamento, mas não justifica um rewrite. A extração deve ocorrer por seams preservando V1.
+
+## Como uma regra de uma clínica alcança outra
+
+O tenant é resolvido corretamente antes do processamento. O vazamento não ocorre
+por consulta sem `clinicId`; ocorre depois, na decisão:
+
+```text
+mensagem + config do tenant
+  → helpers universais no ConversationOrchestrator
+  → regra/copy sem `appliesTo`
+  → resposta aplicada à clínica corrente
+```
+
+Exemplos atuais:
+
+- pedido fora do horário sempre promete avaliar exceção;
+- “qual foto?” pode injetar a comparação Premium/Estratificada;
+- depósito habilitado implica “avaliação gratuita”;
+- nome do tratamento pode superar o `isAesthetic` cadastrado;
+- um regex amplo reduz dental, saúde e estética ao mesmo
+  `isClinicSegment=true`.
+
+Portanto, tenancy de dados está majoritariamente presente, mas isolamento de
+política conversacional ainda não está.
 
 ## Shadow atual
 

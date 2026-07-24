@@ -2,15 +2,23 @@
 
 ## Decisão
 
-**Seguir com ajustes.**
+**Seguir com ajustes arquiteturais obrigatórios.**
 
 O pacote identificou problemas reais e propôs uma direção de coexistência segura, mas não deve ser aplicado literalmente. Há três correções essenciais:
 
-1. a auditoria corresponde quase exatamente ao `main` atual, não ao `develop`;
-2. algumas contagens e severidades foram infladas;
-3. parte da migração de configuração e de outbound já existe e não deve ser refeita.
+1. `develop` precisava ser sincronizada antes de ser usada como baseline; isso foi
+   concluído pela PR #244 e agora `develop == main == d8c0fd0`;
+2. algumas contagens e severidades do pacote foram infladas;
+3. parte da migração de configuração e de outbound já existe e não deve ser refeita;
+4. V1/V2, shadow e flags não resolvem sozinhos o vazamento de regras entre clínicas.
 
 Não foi aplicada nenhuma mudança de comportamento ou banco.
+
+O risco multi-clínica relatado pelo usuário também foi confirmado. O relatório
+específico está em `CLINIC-ISOLATION-REPORT.md`.
+
+A árvore de dependências também possui advisories atuais confirmados. A triagem,
+sem alteração de versões, está em `DEPENDENCY-SECURITY-SUMMARY.md`.
 
 ## Matriz executiva
 
@@ -28,6 +36,11 @@ Não foi aplicada nenhuma mudança de comportamento ou banco.
 | P1-07 | Confirmado | `{ replied }` não participa do outcome do job |
 | P2-01 | Confirmado | Guards distribuídos e efeitos antes da obsolescência |
 | P2-02 | Confirmado | 8.222 linhas em produção |
+| ISO-01 | Confirmado | Exceção de horário específica virou promessa global |
+| ISO-02 | Confirmado | Conteúdo Premium/Estratificada hardcoded pode vazar entre tenants |
+| ISO-03 | Confirmado como modelagem | Depósito implica indevidamente avaliação gratuita |
+| ISO-04 | Confirmado | Heurística de nome contorna `Treatment.isAesthetic` |
+| ISO-05 | Confirmado | Segmentos distintos colapsam em `isClinicSegment` |
 
 ## Findings detalhados
 
@@ -255,7 +268,7 @@ Não foi aplicada nenhuma mudança de comportamento ou banco.
 
 **Status:** confirmado.
 
-**Código/linhas atuais:** 8.222 linhas em `origin/main`; 7.543 em `origin/develop`.
+**Código/linhas atuais:** 8.222 linhas em `origin/main` e `origin/develop`.
 
 **Evidência:** a classe combina DB, agenda, intenção, pipeline, mídia, depósito, handoff, TTS, custos e outbound.
 
@@ -273,11 +286,14 @@ Não foi aplicada nenhuma mudança de comportamento ou banco.
 
 ## Novos achados
 
-### N-01 — `develop` não representa a produção atual
+### N-01 — Divergência de branches foi corrigida antes do parecer final
 
-`main` está 27 commits e oito migrations à frente. Começar implementação diretamente sobre `develop` produziria análise e patches sobre código antigo.
+`main` estava 27 commits e oito migrations à frente. A PR #244 passou por Verify,
+Migration staging e Vercel; em seguida `develop` foi atualizada por fast-forward
+para o mesmo commit `d8c0fd0`. A branch de auditoria foi rebaseada e os achados
+foram verificados novamente.
 
-**Ação necessária:** decisão explícita de back-merge/reconciliação de `main` para `develop`, seguindo change control.
+**Resultado:** `origin/develop...origin/main = 0 / 0`.
 
 ### N-02 — Compilação legada de playbook é silenciosamente inócua
 
@@ -293,14 +309,46 @@ O documento canônico ainda precisa refletir que vários crons já usam outbox e
 
 `PipelineDeferredAdvance.test.ts` caracteriza a intenção do fix, mas não testa os componentes reais juntos. A prioridade inicial deve ser construir a reprodução determinística antes de alterar o modelo de estado.
 
+### N-05 — Política de exceção de horário não tem escopo de tenant
+
+`buildBusinessHoursAnswer()` promete avaliar exceção para qualquer clínica quando
+o horário solicitado está fora da janela. O comentário justifica o comportamento
+com um caso da Vitalli, mas a função recebe apenas horário e mensagem. Não há
+policy/capability por organização ou tratamento.
+
+### N-06 — Conteúdo de tratamento da Vitalli vive no orquestrador universal
+
+`buildMediaClarificationClinicContext()` descreve Premium e Estratificada em
+texto fixo. O detector aceita genericamente “foto + qual”, sem conferir tenant,
+tratamento ou mídia. O mesmo fato existe no playbook da Vitalli, violando dono
+único e permitindo vazamento de conteúdo para outra clínica.
+
+### N-07 — Configuração explícita é contornada por inferência
+
+O runtime possui `Treatment.isAesthetic`, mas ainda infere estética por palavras
+no nome e usa combinações diferentes nos caminhos de seleção e menção direta.
+Alterar o nome pode alterar o fluxo, e `false` não funciona como desativação.
+
+### N-08 — Capability insuficiente mistura política comercial
+
+`depositEnabled` ativa uma resposta que afirma “A avaliação não tem custo”. Isso
+é verdade para a Vitalli atual, mas não é uma consequência lógica de depósito. A
+Ximendes possui avaliação paga. Falta um contrato estruturado para preço da
+avaliação, abatimento e regra de reserva.
+
 ## Conclusão
 
-A direção V1/V2 é válida se for usada como migração incremental e mensurável. Recomenda-se:
+A direção V1/V2 é válida se for usada como migração incremental e mensurável,
+mas o objetivo principal não deve ser “ter duas engines”. Deve ser reduzir o raio
+de mudança e tornar a aplicabilidade de cada regra explícita. Recomenda-se:
 
-1. reconciliar branches;
-2. corrigir bugs concretos pequenos;
-3. provar e fechar a corrida com teste integrado e commit de turno revisionado;
-4. unificar ingress/outbound gradualmente;
-5. somente então introduzir engine V2 shadow puro.
+1. manter `develop` alinhada — gate já concluído;
+2. corrigir primeiro os vazamentos clinic-specific com testes cruzados;
+3. introduzir `TenantPolicy`/capabilities e ownership explícitos;
+4. corrigir bugs concretos pequenos;
+5. provar e fechar a corrida com teste integrado e commit de turno revisionado;
+6. unificar ingress/outbound gradualmente;
+7. somente então introduzir engine V2 shadow puro.
 
-Parar aqui para revisão antes de qualquer mudança de comportamento ou banco.
+Não iniciar rewrite nem copiar o orquestrador para uma V2. Parar aqui para
+revisão antes de qualquer mudança de comportamento ou banco.

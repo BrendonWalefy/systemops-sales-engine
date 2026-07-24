@@ -1,11 +1,11 @@
 # ADR proposta — Coexistência segura do Conversation Engine V1/V2
 
-Status: Proposta para revisão  
+Status: Proposta para revisão
 Data: 24/07/2026
 
 ## Contexto
 
-O V1 está em produção e concentra decisão, estado e efeitos no `ConversationOrchestrator`. A auditoria confirmou riscos de concorrência, decisão implícita, fragmentação de ingress/outbound e ausência de outcome semântico. Também confirmou que um rewrite ou troca direta aumentaria o risco operacional.
+O V1 está em produção e concentra decisão, estado e efeitos no `ConversationOrchestrator`. A auditoria confirmou riscos de concorrência, decisão implícita, fragmentação de ingress/outbound e ausência de outcome semântico. Também confirmou vazamento de regras entre clínicas: políticas motivadas por um tenant e conteúdo editorial de tratamento existem no core universal sem escopo explícito. Um rewrite ou troca direta aumentaria o risco operacional.
 
 O `shadowModeEnabled` existente não serve para comparar engines porque executa o motor e pode produzir efeitos, suprimindo apenas a entrega ao provider.
 
@@ -27,6 +27,14 @@ Adotar coexistência incremental com estes contratos:
 8. **Transições críticas usam revision/CAS** e são comprometidas junto à outbox.
 9. **O sender confirma entrega; não decide estado de negócio pela primeira vez.**
 10. **DecisionTrace é sanitizado**, versionado e amostrado; conteúdo sensível não é copiado indiscriminadamente.
+11. **V1 e V2 compartilham contratos de policy, não regras específicas por clínica.**
+    O kernel recebe uma `TenantPolicy` validada e capabilities explícitas.
+12. **Toda regra declara aplicabilidade.** Tenant, segmento e tratamento não são
+    inferidos de comentários, nomes ou posição no código.
+13. **Decisão e conteúdo são separados.** O rule engine não contém comparação
+    comercial, técnica ou copy pertencente a uma clínica.
+14. **Uma correção de tenant exige regressão cruzada.** O teste positivo da
+    clínica de origem deve vir acompanhado de casos negativos de outras policies.
 
 ## Contratos
 
@@ -45,6 +53,12 @@ interface ConversationEngine {
   evaluate(input: TurnSnapshot): Promise<TurnPlan>;
 }
 
+type RuleApplicability = {
+  requiredCapabilities?: CapabilityKey[];
+  segment?: SegmentKey;
+  treatmentId?: string;
+};
+
 type TurnPlan = {
   turnId: string;
   engineVersion: EngineVersion;
@@ -58,6 +72,35 @@ type TurnPlan = {
 ```
 
 No primeiro estágio, o adaptador V1 pode produzir esse envelope sem alterar as regras internas. Isso cria observabilidade e contrato antes de extrair comportamento.
+
+## Composição multi-clínica
+
+O engine não deve ser selecionado por clínica como substituto de configuração.
+Cada avaliação recebe quatro blocos com donos distintos:
+
+```text
+TurnSnapshot
+  + TenantPolicy operacional
+  + SegmentCapabilities explícitas
+  + TreatmentPolicy estruturada
+  + EditorialContent autorizado
+  → ConversationEngine
+```
+
+Exemplos:
+
+- “pode solicitar exceção fora do horário” pertence à policy operacional, não a
+  `buildBusinessHoursAnswer()`;
+- “avaliação é gratuita” pertence ao tratamento/preço efetivo, não a
+  `depositEnabled`;
+- “Premium usa uma resina” pertence ao conteúdo do tratamento/pipeline, não ao
+  orquestrador;
+- `isAesthetic` é decisão estruturada do tratamento, não inferência pelo nome em
+  runtime.
+
+Capabilities devem ser coesas (`clinical_urgency`, `appointment_arrival`,
+`warranty`, `maintenance`, `visual_preassessment`) e não um booleano amplo
+`isClinicSegment`.
 
 ## Persistência aditiva sugerida
 
@@ -144,6 +187,17 @@ Rejeitado porque estado e decisões podem ter semânticas incompatíveis.
 
 Rejeitado porque concorrência, idempotência, agenda e transição são regras determinísticas.
 
+### Criar uma engine ou branch de regras por clínica
+
+Rejeitado porque multiplica divergências. A variação pertence a policy,
+capabilities, tratamento e conteúdo; o kernel permanece compartilhado.
+
+### Introduzir flags ad hoc para cada incidente
+
+Rejeitado como estratégia principal. Uma flag pode ser patch temporário, mas
+capabilities precisam de schema, validação, owner e semântica claros para não
+virarem outro conjunto de condicionais.
+
 ## Consequências
 
 ### Positivas
@@ -163,8 +217,9 @@ Rejeitado porque concorrência, idempotência, agenda e transição são regras 
 
 ## Questões para decisão
 
-1. Autorizar reconciliação `main` → `develop` antes dos patches?
-2. Corrigir P1-05 isoladamente antes da iniciativa V2?
-3. Priorizar o teste/reparo da corrida antes da interface de engine?
-4. Quais clínicas podem participar de shadow e qual orçamento de custo?
-5. Qual janela e quais thresholds definem rollback automático?
+1. Reconciliação `main` → `develop`: **concluída na PR #244**.
+2. Aprovar uma fase inicial de isolamento multi-clínica antes da interface V2?
+3. Corrigir P1-05 isoladamente antes da iniciativa V2?
+4. Priorizar o teste/reparo da corrida antes da interface de engine?
+5. Quais clínicas podem participar de shadow e qual orçamento de custo?
+6. Qual janela e quais thresholds definem rollback automático?

@@ -2,19 +2,39 @@
 
 Este plano começa somente após revisão do relatório. Nenhuma fase autoriza deploy automático.
 
-## Gate 0 — Reconciliar a fonte de verdade
+## Gate 0 — Reconciliar a fonte de verdade — CONCLUÍDO
 
 Objetivo: restaurar `develop` como integração real.
 
-- decidir e executar back-merge seguro de `main` para `develop`;
-- resolver conflitos em branch dedicada;
-- rodar `npm run verify`;
-- confirmar journal até `0085`;
-- não misturar correções conversacionais nessa PR.
+- PR #244 criada em branch dedicada;
+- Verify, Migration staging e Vercel aprovados;
+- fast-forward exato de `main@d8c0fd0` para `develop`;
+- journal confirmado até `0085`;
+- nenhuma correção conversacional misturada;
+- divergência final `0 / 0`.
 
 Rollback: reverter a PR de reconciliação; não reescrever histórico.
 
-## PR 1 — Bugs concretos sem schema
+## PR 1 — Fechar vazamentos clinic-specific sem criar nova arquitetura
+
+Escopo:
+
+- remover Premium/Estratificada do orquestrador universal;
+- resolver esclarecimento de mídia pelo tenant, tratamento e conteúdo/caption;
+- separar pedido fora do horário de permissão para prometer exceção;
+- fazer resposta de avaliação usar fato estruturado, sem inferir gratuidade de
+  `depositEnabled`;
+- tornar `Treatment.isAesthetic` o owner único em runtime;
+- adicionar testes positivos e negativos entre Ximendes, Vitalli, NC Beauty e
+  uma fixture não clínica.
+
+Não objetivos: criar V2, migration ampla de policy ou refatorar todo o
+orquestrador.
+
+Rollback: commits independentes por vazamento; fallback conservador sem promessa
+ou conteúdo não autorizado.
+
+## PR 2 — Bugs concretos sem schema
 
 Escopo:
 
@@ -26,7 +46,7 @@ Não objetivos: engine V2, state model, refactor do orquestrador.
 
 Rollback: revert simples.
 
-## PR 2 — Caracterização e outcomes
+## PR 3 — Caracterização e outcomes
 
 Escopo:
 
@@ -39,23 +59,23 @@ Rollout: observabilidade primeiro; mudança de retry em PR posterior.
 
 Rollback: ignorar o novo outcome e manter comportamento anterior.
 
-## PR 3 — Reprodução e commit revisionado do pipeline
+## PR 4 — Reprodução e commit revisionado do pipeline
 
-### 3A — Teste que falha
+### 4A — Teste que falha
 
 - harness integrado com dois jobs da mesma conversa;
 - sender artificialmente bloqueado;
 - provar leitura dupla do mesmo step;
 - cobrir retry e outbox fora de ordem.
 
-### 3B — Migration aditiva
+### 4B — Migration aditiva
 
 - revision/turn ID;
 - índice/idempotency key;
 - backfill neutro;
 - plano de rollback documentado.
 
-### 3C — Commit atômico
+### 4C — Commit atômico
 
 - repository explícito para estado + turno + outbound;
 - CAS por expected revision;
@@ -65,7 +85,7 @@ Rollout: flag por organização; métricas de conflito CAS.
 
 Rollback: dual-write/read com retorno ao caminho V1; manter colunas.
 
-## PR 4 — Ingress comum
+## PR 5 — Ingress comum
 
 Escopo:
 
@@ -78,7 +98,7 @@ Testes: duplicata, retry, tipo não suportado, clínica ausente, assinatura e or
 
 Rollback: flag `meta_durable_ingress`.
 
-## PR 5 — Outbox lead-facing restante
+## PR 6 — Outbox lead-facing restante
 
 Ordem:
 
@@ -92,7 +112,29 @@ Testes: texto, mídia, echo, falha, retry, idempotência, status visível na inb
 
 Rollback: flag por categoria.
 
-## PR 6 — Interface do engine e adaptador V1
+## PR 7 — TenantPolicy, capabilities e registry de aplicabilidade
+
+Escopo:
+
+- materializar um `TenantPolicySnapshot` validado;
+- substituir `isClinicSegment` por capabilities coesas onde houver decisão;
+- introduzir registry de regras com `id`, prioridade, `appliesTo` e trace;
+- manter regras V1 e sua precedência, inicialmente sem alterar resposta;
+- criar lint/teste arquitetural contra conteúdo clinic-specific no core.
+
+Migration somente quando um dado realmente variar por tenant. Preferir campos
+de tratamento já existentes e configuração tipada de módulo; não criar uma flag
+por bug.
+
+Testes:
+
+- matriz regra × capability;
+- mesma mensagem em tenants com policies diferentes;
+- ausência de capability;
+- compatibilidade de defaults;
+- ativação rejeita combinações incompletas.
+
+## PR 8 — Interface do engine e adaptador V1
 
 Escopo:
 
@@ -110,7 +152,7 @@ Migration:
 
 Testes: criação de conversa, conversa existente, mudança de flag, rollback.
 
-## PR 7 — DecisionTrace e replay
+## PR 9 — DecisionTrace e replay
 
 Escopo:
 
@@ -118,11 +160,12 @@ Escopo:
 - sanitização e retenção;
 - dataset anonimizado de replay;
 - golden tests;
+- matriz de regressão cruzada das clínicas;
 - custo/latência por engine.
 
 Rollback: desligar sink/sampling.
 
-## PR 8 — V2 shadow puro
+## PR 10 — V2 shadow puro
 
 Escopo:
 
@@ -139,7 +182,7 @@ Stop conditions:
 - custo/latência acima do teto;
 - divergência grave sem explicação.
 
-## PR 9 — Canary
+## PR 11 — Canary
 
 - somente novas conversas;
 - bucket determinístico;
@@ -160,6 +203,19 @@ PRs independentes:
 6. contração de colunas legadas somente após zero leituras e backfill completo.
 
 Nenhum reparo de dado real deve ser automático.
+
+## Trilha paralela de segurança de dependências
+
+PRs separados da arquitetura conversacional:
+
+1. confirmar e remover `@auth/core` se continuar sem consumidor no build/runtime;
+2. atualizar Next na linha corrigida, com smoke completo de proxy, autenticação,
+   Server Actions, imagens, webhooks e preview;
+3. atualizar Vitest e tooling;
+4. reauditar transitivas restantes.
+
+Não usar `npm audit fix --force` nem aceitar downgrade automático de
+`drizzle-kit`.
 
 ## Verificação obrigatória por PR
 
@@ -189,16 +245,18 @@ Também serão obrigatórios, conforme o PR:
 
 ## Ordem de prioridade
 
-1. reconciliar branches;
-2. P1-05;
-3. teste integrado P0-01;
-4. TurnOutcome;
-5. commit revisionado;
-6. Meta durable ingress;
-7. operator outbox;
-8. interface V1/V2;
-9. shadow;
-10. canary.
+1. reconciliação de branches — concluída;
+2. vazamentos clinic-specific ISO-01 a ISO-04;
+3. P1-05;
+4. teste integrado P0-01;
+5. TurnOutcome;
+6. commit revisionado;
+7. Meta durable ingress;
+8. operator outbox;
+9. TenantPolicy/capabilities;
+10. interface V1/V2;
+11. shadow;
+12. canary.
 
 ## Ponto de parada
 
