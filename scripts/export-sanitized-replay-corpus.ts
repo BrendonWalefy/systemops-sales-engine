@@ -2,20 +2,16 @@ import { mkdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { buildSanitizedReplayCorpus } from "@/application/replay/build-sanitized-replay-corpus";
-import { fingerprintReplayConfig } from "@/application/replay/fingerprint-replay-config";
+import { loadReplayClinicManifest } from "@/application/replay/load-replay-clinic-manifest";
 import {
   assertClinicAllowedForReplayExport,
   assertReplayOutputOutsideGitRepository,
 } from "@/application/replay/replay-export-policy";
 import { db } from "@/infrastructure/db/client";
 import {
-  clinicModules,
   conversations,
   leads,
   messages,
-  organizations,
-  playbookVersions,
-  treatments,
 } from "@/infrastructure/db/schema";
 
 type Arguments = {
@@ -40,60 +36,30 @@ async function main(): Promise<void> {
   const outputDirectory = await realpath(args.outputDirectory);
   await assertReplayOutputOutsideGitRepository(outputDirectory);
 
-  const [clinic] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.slug, args.clinicKey))
-    .limit(1);
-  if (!clinic?.slug) throw new Error(`Clinic not found or without slug: ${args.clinicKey}`);
+  const {
+    clinic,
+    configFingerprint,
+    playbookFingerprint,
+  } = await loadReplayClinicManifest(args.clinicKey);
   assertClinicAllowedForReplayExport(
     clinic.slug,
     process.env.REPLAY_EXPORT_ALLOWED_CLINICS,
   );
 
-  const [sourceConversations, activePlaybook, clinicTreatments, modules] =
-    await Promise.all([
-      db
-        .select({
-          id: conversations.id,
-          leadId: conversations.leadId,
-        })
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.clinicId, clinic.id),
-            eq(conversations.category, "sales"),
-          ),
-        )
-        .orderBy(desc(conversations.lastMessageAt))
-        .limit(args.limit),
-      db
-        .select()
-        .from(playbookVersions)
-        .where(
-          and(
-            eq(playbookVersions.clinicId, clinic.id),
-            eq(playbookVersions.status, "active"),
-          ),
-        )
-        .orderBy(desc(playbookVersions.updatedAt))
-        .limit(1)
-        .then((rows) => rows[0] ?? null),
-      db
-        .select()
-        .from(treatments)
-        .where(eq(treatments.clinicId, clinic.id))
-        .orderBy(asc(treatments.name)),
-      db
-        .select({
-          moduleKey: clinicModules.moduleKey,
-          isActive: clinicModules.isActive,
-          config: clinicModules.config,
-        })
-        .from(clinicModules)
-        .where(eq(clinicModules.clinicId, clinic.id))
-        .orderBy(asc(clinicModules.moduleKey)),
-    ]);
+  const sourceConversations = await db
+    .select({
+      id: conversations.id,
+      leadId: conversations.leadId,
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.clinicId, clinic.id),
+        eq(conversations.category, "sales"),
+      ),
+    )
+    .orderBy(desc(conversations.lastMessageAt))
+    .limit(args.limit);
 
   const conversationIds = sourceConversations.map((conversation) => conversation.id);
   const leadIds = [...new Set(sourceConversations.map((conversation) => conversation.leadId))];
@@ -127,62 +93,6 @@ async function main(): Promise<void> {
     entries.push(message);
     messagesByConversation.set(message.conversationId, entries);
   }
-
-  const configFingerprint = fingerprintReplayConfig({
-    clinic: {
-      specialty: clinic.specialty,
-      timezone: clinic.timezone,
-      businessHours: clinic.businessHours,
-      calendarMode: clinic.calendarMode,
-      autoReplyEnabled: clinic.autoReplyEnabled,
-      takeoverTtlHours: clinic.takeoverTtlHours,
-      postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
-      defaultAppointmentDurationMinutes: clinic.defaultAppointmentDurationMinutes,
-      unclearThreshold: clinic.unclearThreshold,
-      staleConversationHours: clinic.staleConversationHours,
-      conversationRestartHours: clinic.conversationRestartHours,
-      slotOfferTtlMinutes: clinic.slotOfferTtlMinutes,
-      maxSlotsToOffer: clinic.maxSlotsToOffer,
-      slotLookaheadDays: clinic.slotLookaheadDays,
-      offerSlotsAfterPriceEnabled: clinic.offerSlotsAfterPriceEnabled,
-      rapidThrottleMs: clinic.rapidThrottleMs,
-      messageDebounceMs: clinic.messageDebounceMs,
-    },
-    treatments: clinicTreatments.map((treatment) => ({
-      name: treatment.name,
-      durationMinutes: treatment.durationMinutes,
-      description: treatment.description,
-      requiresEvaluationFirst: treatment.requiresEvaluationFirst,
-      triggerTemplate: treatment.triggerTemplate,
-      keywordMatchEnabled: treatment.keywordMatchEnabled,
-      aliases: treatment.aliases,
-      isAesthetic: treatment.isAesthetic,
-      pipelineSteps: treatment.pipelineSteps,
-      priceCents: treatment.priceCents,
-      minPriceCents: treatment.minPriceCents,
-      maxPriceCents: treatment.maxPriceCents,
-      priceQuotableInChat: treatment.priceQuotableInChat,
-      priceKind: treatment.priceKind,
-      priceUnit: treatment.priceUnit,
-      priceDeductible: treatment.priceDeductible,
-      quantityPrices: treatment.quantityPrices,
-      bookingWindows: treatment.bookingWindows,
-    })),
-    modules,
-  });
-  const playbookFingerprint = activePlaybook
-    ? fingerprintReplayConfig({
-        specialty: activePlaybook.specialty,
-        toneOfVoice: activePlaybook.toneOfVoice,
-        differentials: activePlaybook.differentials,
-        commercialPolicy: activePlaybook.commercialPolicy,
-        notes: activePlaybook.notes,
-        receptionistName: activePlaybook.receptionistName,
-        objections: activePlaybook.objections,
-        warrantyPolicy: activePlaybook.warrantyPolicy,
-        mediaAssetIds: activePlaybook.mediaAssetIds,
-      })
-    : null;
 
   const dataset = buildSanitizedReplayCorpus({
     datasetVersion: args.datasetVersion,

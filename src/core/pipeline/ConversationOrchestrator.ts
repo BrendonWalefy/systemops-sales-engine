@@ -3522,6 +3522,7 @@ export function contextualizeReplyWhileAwaitingDeposit(
 
 export class ConversationOrchestrator {
   private readonly decisionTraceSink: DecisionTraceSink;
+  private readonly calendarGatewayResolver: typeof resolveCalendarGateway;
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
@@ -3538,8 +3539,13 @@ export class ConversationOrchestrator {
     new WebPushGateway(),
   );
 
-  constructor(deps: { decisionTraceSink?: DecisionTraceSink } = {}) {
+  constructor(deps: {
+    decisionTraceSink?: DecisionTraceSink;
+    calendarGatewayResolver?: typeof resolveCalendarGateway;
+  } = {}) {
     this.decisionTraceSink = deps.decisionTraceSink ?? noopDecisionTraceSink;
+    this.calendarGatewayResolver =
+      deps.calendarGatewayResolver ?? resolveCalendarGateway;
   }
 
   // Carrega mensagem/conversa/lead existentes para o modo replay do handle()
@@ -4624,6 +4630,19 @@ export class ConversationOrchestrator {
       this.stateMachine.getCurrentState(conversation.id, stateAsOf),
       this.stateMachine.getLastResetBoundary(conversation.id),
     ]);
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "state.loaded",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      conversationId: conversation.id,
+      metadata: {
+        state: currentConversationState?.state ?? "none",
+        hasResetBoundary: lastResetBoundary !== null,
+        leadMessageCount,
+        isConversationOpening,
+      },
+    });
 
     // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
     // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
@@ -4979,6 +4998,31 @@ export class ConversationOrchestrator {
           clinicTreatments.map((t) => ({ name: t.name, aliases: t.aliases ?? [] })),
           promptContext,
         );
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "intent.classified",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      conversationId: conversation.id,
+      metadata: {
+        intent: classification.intent,
+        confidence: classification.confidence,
+        source:
+          expiredSlotSelection !== null
+            ? "expired_slot"
+            : rescheduleAfterReminder
+              ? "appointment_reminder"
+              : procedureSelection
+                ? "procedure_selection"
+                : menuResolution
+                  ? "menu"
+                  : skipLlm
+                    ? "deterministic_skip"
+                    : "llm",
+        hasPendingOffer,
+        pipelineActive: pipelineState !== null,
+      },
+    });
 
     const slotPreference = withDeterministicSlotPreferenceFallback(
       messageText,
@@ -5379,7 +5423,7 @@ export class ConversationOrchestrator {
     // nunca sintetizar áudio para essas respostas, independente do modo B-WAVE.
     let forceTextOnlyReply = false;
 
-    const calendarGateway = resolveCalendarGateway({
+    const calendarGateway = this.calendarGatewayResolver({
       clinicId: clinic.id,
       calendarMode: clinic.calendarMode,
       googleCalendarId: clinic.googleCalendarId,
@@ -5616,6 +5660,23 @@ export class ConversationOrchestrator {
       effectiveIntent = "general_question";
     }
     const responseIntent: IntentType = commercialPauseDetected ? "farewell" : effectiveIntent;
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "intent.resolved",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      conversationId: conversation.id,
+      metadata: {
+        classifiedIntent: classification.intent,
+        normalizedIntent: intent,
+        coercedIntent,
+        finalIntent: responseIntent,
+        classifierOverridden:
+          classification.intent !== responseIntent,
+        commercialPauseDetected,
+        skipLlm,
+      },
+    });
 
     // Abertura enlatada: única resposta que SUBSTITUI o conteúdo em vez de
     // responder a ele. Marcada aqui para a recheca de rajada logo antes do
@@ -7797,7 +7858,7 @@ export class ConversationOrchestrator {
     const clinic = buildOrganization(clinicRow);
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
-    const calendarGateway = resolveCalendarGateway({
+    const calendarGateway = this.calendarGatewayResolver({
       clinicId: clinic.id,
       calendarMode: clinic.calendarMode,
       googleCalendarId: clinic.googleCalendarId,
@@ -7908,6 +7969,19 @@ export class ConversationOrchestrator {
     payload: ConversationOutboundPayload,
   ): Promise<void> {
     if (payload.turnId) {
+      const stateBeforeDelivery =
+        await this.stateMachine.getCurrentState(conversationId);
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId: payload.turnId,
+        stage: "state.before_delivery",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId,
+        metadata: {
+          state: stateBeforeDelivery?.state ?? "none",
+          pendingPipelineAdvance: payload.pipelineAdvance?.action ?? "none",
+        },
+      });
       await recordDecisionTrace(this.decisionTraceSink, {
         turnId: payload.turnId,
         stage: "outbound.planned",

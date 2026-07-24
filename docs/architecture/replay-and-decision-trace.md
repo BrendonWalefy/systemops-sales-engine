@@ -170,13 +170,18 @@ Implementado:
 - exportador read-only com allowlist, pseudonimização, sanitização e saída fora
   de Git em estado `needs_review`.
 - geração local de chaves Ed25519 e aprovação humana assinada, sem sobrescrita.
+- captura injetável de WhatsApp, TTS, storage e escritas de calendário, mantendo
+  sender, persistência multiparte, follow-ups e avanço de pipeline reais;
+- resolvedor de calendário injetável no orquestrador;
+- trace de estado carregado, classificação, intenção final e estado antes/depois
+  da entrega.
 
 Ainda não implementado:
 
 - verificação da assinatura pelo consumidor OMNIQA;
 - fingerprint persistido no runtime do trace;
-- trace de estado antes/depois, classificador e cada override determinístico;
-- sandbox com banco, relógio, calendário e canal isolados;
+- identificação individual de cada override determinístico no trace;
+- sandbox de banco e relógio, mais fotografia de leitura do calendário;
 - modos `historical_turn`, `closed_loop`, `counterfactual` e `concurrency`;
 - adapter SystemOps para OMNIQA;
 - baseline das clínicas e relatório comparativo.

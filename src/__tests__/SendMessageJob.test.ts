@@ -131,6 +131,9 @@ describe("SendMessageJobHandler", () => {
       outboundMessageStore: store as never,
       delivery,
       decisionTraceSink,
+      conversationStateReader: {
+        getCurrentState: vi.fn().mockResolvedValue(null),
+      },
     });
 
     await expect(
@@ -147,6 +150,7 @@ describe("SendMessageJobHandler", () => {
     });
     expect(decisionTraceSink.getEvents("turn-1").map((entry) => entry.stage)).toEqual([
       "delivery.started",
+      "state.after_delivery",
       "delivery.sent",
     ]);
   });

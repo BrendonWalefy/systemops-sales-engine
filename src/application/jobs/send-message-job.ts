@@ -48,11 +48,25 @@ export type SendMessageJobDependencies = {
   now?: () => Date;
   capJitterMs?: () => number;
   decisionTraceSink?: DecisionTraceSink;
+  conversationStateReader?: Pick<ConversationStateMachine, "getCurrentState">;
+  outboundBoundary?: Partial<OutboundDeliveryBoundary>;
   delivery?: (input: {
     payload: OutboundPayload;
     clinicId: string;
     conversationId: string;
   }) => Promise<string | null>;
+};
+
+export type OutboundDeliveryBoundary = {
+  sendVoiceOrText: typeof sendVoiceOrText;
+  sendMediaMessage: typeof sendMediaMessage;
+  createDeliveryService: () => OutboundDeliveryService;
+};
+
+const DEFAULT_OUTBOUND_BOUNDARY: OutboundDeliveryBoundary = {
+  sendVoiceOrText,
+  sendMediaMessage,
+  createDeliveryService: () => new OutboundDeliveryService(),
 };
 
 export type AutomationDispatchLifecycle = {
@@ -79,13 +93,25 @@ export class SendMessageJobHandler {
   private readonly automationDispatchLifecycle: AutomationDispatchLifecycle;
   private readonly now: () => Date;
   private readonly capJitterMs: () => number;
+  private readonly conversationStateReader: Pick<
+    ConversationStateMachine,
+    "getCurrentState"
+  >;
 
   constructor(private readonly deps: SendMessageJobDependencies) {
-    this.delivery = deps.delivery ?? deliverOutboundPayload;
+    const outboundBoundary = {
+      ...DEFAULT_OUTBOUND_BOUNDARY,
+      ...deps.outboundBoundary,
+    };
+    this.delivery =
+      deps.delivery ??
+      ((input) => deliverOutboundPayload(input, outboundBoundary));
     this.safetyContextReader = deps.safetyContextReader ?? new DrizzleOutboundSafetyContextReader();
     this.automationDispatchLifecycle = deps.automationDispatchLifecycle ?? drizzleAutomationDispatchLifecycle;
     this.now = deps.now ?? (() => new Date());
     this.capJitterMs = deps.capJitterMs ?? (() => Math.floor(Math.random() * 30 * 60_000));
+    this.conversationStateReader =
+      deps.conversationStateReader ?? new ConversationStateMachine();
   }
 
   async processJob(job: { id?: string; payload: unknown }): Promise<SendMessageJobProcessResult> {
@@ -298,6 +324,24 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,
     });
+    if (turnId && isConversationOutboundPayload(outbound.payload)) {
+      const stateAfterDelivery =
+        await this.conversationStateReader.getCurrentState(
+          outbound.conversationId,
+        );
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId,
+        stage: "state.after_delivery",
+        occurredAt: this.now().toISOString(),
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+        metadata: {
+          state: stateAfterDelivery?.state ?? "none",
+          pipelineAdvanceApplied:
+            outbound.payload.pipelineAdvance?.action ?? "none",
+        },
+      });
+    }
     await this.deps.outboundMessageStore.markOutboundDelivered({
       id: outbound.id,
       providerMessageId,
@@ -455,20 +499,20 @@ async function deliverOutboundPayload(input: {
   payload: OutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   if (isConversationOutboundPayload(input.payload)) {
     return deliverConversationOutbound({
       payload: input.payload,
       clinicId: input.clinicId,
       conversationId: input.conversationId,
-    });
+    }, boundary);
   }
   if (isAutomationOutboundPayload(input.payload)) {
     return deliverAutomationOutbound({
       payload: input.payload,
       clinicId: input.clinicId,
       conversationId: input.conversationId,
-    });
+    }, boundary);
   }
   throw new Error("Unsupported outbound payload");
 }
@@ -477,7 +521,7 @@ async function deliverConversationOutbound(input: {
   payload: ConversationOutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -495,7 +539,7 @@ async function deliverConversationOutbound(input: {
   const conversationRepository = new DrizzleConversationRepository();
   const appointmentRepository = new DrizzleAppointmentRepository();
   const followUpRepository = new DrizzleFollowUpRepository();
-  const delivery = new OutboundDeliveryService();
+  const delivery = boundary.createDeliveryService();
   const log = createLogger({
     scope: "SenderWorker",
     correlationId: input.payload.agentMessageId,
@@ -557,7 +601,7 @@ async function deliverConversationOutbound(input: {
       config,
       log,
       sendText: async (content) => {
-        const result = await sendVoiceOrText(
+        const result = await boundary.sendVoiceOrText(
           input.payload.to,
           content,
           config,
@@ -596,7 +640,7 @@ async function deliverConversationOutbound(input: {
       onMediaSent: persistMedia,
     });
   } else {
-    const result = await sendVoiceOrText(
+    const result = await boundary.sendVoiceOrText(
       input.payload.to,
       input.payload.replyText,
       config,
@@ -646,7 +690,7 @@ async function deliverAutomationOutbound(input: {
   payload: AutomationOutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -668,7 +712,7 @@ async function deliverAutomationOutbound(input: {
   }
 
   const config = resolveChannelConfig(clinic);
-  const result = await sendVoiceOrText(
+  const result = await boundary.sendVoiceOrText(
     input.payload.to,
     input.payload.text,
     config,
@@ -707,7 +751,7 @@ async function deliverAutomationOutbound(input: {
     for (const part of mediaParts) {
       if (part.type !== "media") continue;
       try {
-        const mediaMsgId = await sendMediaMessage(
+        const mediaMsgId = await boundary.sendMediaMessage(
           input.payload.to,
           part.url,
           part.mediaType,
