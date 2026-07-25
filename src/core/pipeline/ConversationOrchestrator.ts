@@ -112,7 +112,9 @@ import {
 } from "@/application/conversations/deposit-proof-review";
 import {
   noopDecisionTraceSink,
+  recordDeterministicDecisionTraceCompletion,
   recordDecisionTrace,
+  type DeterministicDecisionTraceCompletion,
   type DecisionTraceSink,
 } from "@/core/observability/DecisionTrace";
 
@@ -124,6 +126,11 @@ type MenuResolution =
   | { intent: "needs_human" }
   | { intent: "general_question"; subtype: "procedures"; treatmentKeyword?: string }
   | { intent: "general_question"; subtype: "location" };
+
+type ConversationDeterministicTraceCompletion = Omit<
+  DeterministicDecisionTraceCompletion,
+  "turnId" | "clinicId" | "conversationId" | "state"
+>;
 
 export function resolveVoiceOutputFlags(params: {
   hasElevenLabsModule: boolean;
@@ -4040,6 +4047,16 @@ export class ConversationOrchestrator {
               mediaParts: [],
               leadId: lead.id,
               pipelineAdvance: null,
+            }, {
+              source: "deposit_proof_media",
+              classifiedIntent: "acknowledgment",
+              finalIntent: "acknowledgment",
+              confidence: 1,
+              missingStages: [
+                "state.loaded",
+                "intent.classified",
+                "intent.resolved",
+              ],
             });
           }
           return { replied: replyEnabled && !conversation.aiPaused };
@@ -4260,6 +4277,16 @@ export class ConversationOrchestrator {
           mediaParts: [],
           leadId: lead.id,
           pipelineAdvance: null,
+        }, {
+          source: "human_review_media",
+          classifiedIntent: "needs_human",
+          finalIntent: "needs_human",
+          confidence: 1,
+          missingStages: [
+            "state.loaded",
+            "intent.classified",
+            "intent.resolved",
+          ],
         });
         return { replied: true };
       }
@@ -4344,6 +4371,16 @@ export class ConversationOrchestrator {
               pipelineAdvance: next
                 ? { action: "advance", nextStepIndex: next.index }
                 : { action: "exit" },
+            }, {
+              source: "pipeline_photo",
+              classifiedIntent: "check_availability",
+              finalIntent: "check_availability",
+              confidence: 1,
+              missingStages: [
+                "state.loaded",
+                "intent.classified",
+                "intent.resolved",
+              ],
             });
             return { replied: true };
           }
@@ -4420,6 +4457,16 @@ export class ConversationOrchestrator {
         mediaParts: [],
         leadId: lead.id,
         pipelineAdvance: null,
+      }, {
+        source: "media_received",
+        classifiedIntent: "needs_human",
+        finalIntent: "needs_human",
+        confidence: 1,
+        missingStages: [
+          "state.loaded",
+          "intent.classified",
+          "intent.resolved",
+        ],
       });
 
       return { replied: true };
@@ -4542,6 +4589,16 @@ export class ConversationOrchestrator {
         mediaParts: [],
         leadId: lead.id,
         pipelineAdvance: null,
+      }, {
+        source: "pending_human_review",
+        classifiedIntent: "needs_human",
+        finalIntent: "needs_human",
+        confidence: 1,
+        missingStages: [
+          "state.loaded",
+          "intent.classified",
+          "intent.resolved",
+        ],
       });
       return { replied: true };
     }
@@ -4732,6 +4789,12 @@ export class ConversationOrchestrator {
           mediaParts: [],
           leadId: lead.id,
           pipelineAdvance: null,
+        }, {
+          source: "duplicate_lead_message",
+          classifiedIntent: "acknowledgment",
+          finalIntent: "acknowledgment",
+          confidence: 1,
+          missingStages: ["intent.classified", "intent.resolved"],
         });
         return { replied: true };
       }
@@ -4824,6 +4887,12 @@ export class ConversationOrchestrator {
             mediaParts: [],
             leadId: lead.id,
             pipelineAdvance: null,
+          }, {
+            source: "appointment_confirmation",
+            classifiedIntent: "acknowledgment",
+            finalIntent: null,
+            confidence: 1,
+            missingStages: ["intent.classified", "intent.resolved"],
           });
           return { replied: true };
         }
@@ -5116,6 +5185,12 @@ export class ConversationOrchestrator {
         mediaParts: [],
         leadId: lead.id,
         pipelineAdvance: null,
+      }, {
+        source: "stop_contact_policy",
+        classifiedIntent: "stop_contact",
+        finalIntent: "stop_contact",
+        confidence: 1,
+        missingStages: ["intent.resolved"],
       });
       return { replied: true };
     }
@@ -7967,10 +8042,23 @@ export class ConversationOrchestrator {
     clinicId: string,
     conversationId: string,
     payload: ConversationOutboundPayload,
+    deterministicTrace?: ConversationDeterministicTraceCompletion,
   ): Promise<void> {
     if (payload.turnId) {
       const stateBeforeDelivery =
         await this.stateMachine.getCurrentState(conversationId);
+      if (deterministicTrace) {
+        await recordDeterministicDecisionTraceCompletion(
+          this.decisionTraceSink,
+          {
+            ...deterministicTrace,
+            turnId: payload.turnId,
+            clinicId,
+            conversationId,
+            state: stateBeforeDelivery?.state ?? "none",
+          },
+        );
+      }
       await recordDecisionTrace(this.decisionTraceSink, {
         turnId: payload.turnId,
         stage: "state.before_delivery",

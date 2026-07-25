@@ -47,6 +47,20 @@ export type DecisionTraceSink = {
   record(record: DecisionTraceRecord): void | Promise<void>;
 };
 
+export type DeterministicDecisionTraceCompletion = {
+  turnId: string;
+  clinicId: string;
+  conversationId: string;
+  state: string;
+  source: string;
+  classifiedIntent: string | null;
+  finalIntent: string | null;
+  confidence?: number;
+  missingStages: ReadonlyArray<
+    "state.loaded" | "intent.classified" | "intent.resolved"
+  >;
+};
+
 export const noopDecisionTraceSink: DecisionTraceSink = {
   record() {
     // Produção não captura traces por padrão.
@@ -66,6 +80,60 @@ export async function recordDecisionTrace(
     await (sink ?? noopDecisionTraceSink).record(record);
   } catch {
     // Observabilidade é best-effort no runtime e não muda decisões de negócio.
+  }
+}
+
+/**
+ * Completa a trilha quando uma regra determinística encerra o turno antes do
+ * classificador normal. O chamador declara somente os estágios que o seu ramo
+ * pulou, evitando duplicar eventos já registrados.
+ */
+export async function recordDeterministicDecisionTraceCompletion(
+  sink: DecisionTraceSink | undefined,
+  input: DeterministicDecisionTraceCompletion,
+): Promise<void> {
+  const base = {
+    turnId: input.turnId,
+    occurredAt: new Date().toISOString(),
+    clinicId: input.clinicId,
+    conversationId: input.conversationId,
+  };
+
+  if (input.missingStages.includes("state.loaded")) {
+    await recordDecisionTrace(sink, {
+      ...base,
+      stage: "state.loaded",
+      metadata: {
+        state: input.state,
+        source: input.source,
+        deterministic: true,
+      },
+    });
+  }
+  if (input.missingStages.includes("intent.classified")) {
+    await recordDecisionTrace(sink, {
+      ...base,
+      stage: "intent.classified",
+      metadata: {
+        intent: input.classifiedIntent,
+        confidence: input.confidence ?? 1,
+        source: input.source,
+        deterministic: true,
+      },
+    });
+  }
+  if (input.missingStages.includes("intent.resolved")) {
+    await recordDecisionTrace(sink, {
+      ...base,
+      stage: "intent.resolved",
+      metadata: {
+        classifiedIntent: input.classifiedIntent,
+        finalIntent: input.finalIntent,
+        classifierOverridden: input.classifiedIntent !== input.finalIntent,
+        source: input.source,
+        deterministic: true,
+      },
+    });
   }
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DECISION_TRACE_SCHEMA_VERSION,
   InMemoryDecisionTraceSink,
+  recordDeterministicDecisionTraceCompletion,
   recordDecisionTrace,
   type DecisionTraceSink,
 } from "@/core/observability/DecisionTrace";
@@ -60,5 +61,72 @@ describe("DecisionTrace", () => {
         occurredAt: "2026-07-24T12:00:00.000Z",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("completa apenas os estágios pulados por uma decisão determinística", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+
+    await recordDeterministicDecisionTraceCompletion(sink, {
+      turnId: "turn-media",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      state: "awaiting_human_review",
+      source: "human_review_media",
+      classifiedIntent: "needs_human",
+      finalIntent: "needs_human",
+      confidence: 1,
+      missingStages: [
+        "state.loaded",
+        "intent.classified",
+        "intent.resolved",
+      ],
+    });
+
+    expect(sink.getEvents("turn-media")).toEqual([
+      expect.objectContaining({
+        sequence: 0,
+        stage: "state.loaded",
+        metadata: expect.objectContaining({
+          state: "awaiting_human_review",
+          source: "human_review_media",
+          deterministic: true,
+        }),
+      }),
+      expect.objectContaining({
+        sequence: 1,
+        stage: "intent.classified",
+        metadata: expect.objectContaining({
+          intent: "needs_human",
+          confidence: 1,
+        }),
+      }),
+      expect.objectContaining({
+        sequence: 2,
+        stage: "intent.resolved",
+        metadata: expect.objectContaining({
+          finalIntent: "needs_human",
+          classifierOverridden: false,
+        }),
+      }),
+    ]);
+  });
+
+  it("não duplica os estágios que o ramo determinístico já registrou", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+
+    await recordDeterministicDecisionTraceCompletion(sink, {
+      turnId: "turn-opt-out",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      state: "none",
+      source: "stop_contact_policy",
+      classifiedIntent: "stop_contact",
+      finalIntent: "stop_contact",
+      missingStages: ["intent.resolved"],
+    });
+
+    expect(sink.getEvents("turn-opt-out").map((event) => event.stage)).toEqual([
+      "intent.resolved",
+    ]);
   });
 });

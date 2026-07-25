@@ -285,6 +285,7 @@ async function runClosedLoopScenario(
         return [
           "ingress.received",
           "orchestrator.started",
+          "state.loaded",
           "intent.classified",
           "intent.resolved",
           "outbound.enqueued",
