@@ -20,8 +20,6 @@
     "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
     "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
     "demo:roteiro": "dotenv -e .env.local -- tsx scripts/demo-roteiro.ts",
-    "replay:conversas": "dotenv -e .env.local -- tsx scripts/replay-conversas.ts",
-    "replay:regressao": "dotenv -e .env.local -- tsx scripts/replay-regression.ts",
     "replay:export": "dotenv -e .env.local -- tsx scripts/export-sanitized-replay-corpus.ts",
     "replay:review": "tsx scripts/render-replay-review.ts",
     "replay:keys": "tsx scripts/generate-replay-approval-keypair.ts",

@@ -34,6 +34,7 @@ public/*.ics
 mensagens_operador_*.txt
 *.needs-review.json
 replay-datasets/
+vitalli-last-*.json
 
 # Scripts de investigação descartáveis (data-munging pontual, IDs hardcoded).
 # Ficam locais; não entram no verify nem no repo.
