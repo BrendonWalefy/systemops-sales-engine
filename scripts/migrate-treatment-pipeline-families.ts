@@ -19,6 +19,8 @@
  * aborta se uma cópia local divergir, para nunca apagar conteúdo não equivalente.
  */
 import { and, eq, inArray } from "drizzle-orm";
+import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import { db } from "../src/infrastructure/db/client";
 import { organizations, treatments } from "../src/infrastructure/db/schema";
 import type {
@@ -120,6 +122,12 @@ const entryBehavior: PipelineEntryBehavior | null =
 if (apply && rollback) {
   throw new Error("Use apenas --apply ou --rollback.");
 }
+const maintenanceClient = apply || rollback
+  ? postgres(process.env.DATABASE_URL ?? "", { max: 1 })
+  : null;
+const maintenanceDb = maintenanceClient
+  ? drizzlePostgres(maintenanceClient)
+  : null;
 
 function normalize(value: string): string {
   return value
@@ -210,7 +218,8 @@ async function migratePlan(plan: FamilyPlan) {
   console.log(JSON.stringify(changes, null, 2));
   if (!apply && !rollback) return;
 
-  await db.transaction(async (tx) => {
+  if (!maintenanceDb) throw new Error("Conexão transacional indisponível.");
+  await maintenanceDb.transaction(async (tx) => {
     const now = new Date();
     const canonicalAliases = rollback && !plan.canonicalOwnedGenericAliasesBefore
       ? withoutAliases(canonical.aliases, plan.genericAliases)
@@ -264,9 +273,11 @@ async function main() {
   for (const plan of selectedPlans) {
     await migratePlan(plan);
   }
+  await maintenanceClient?.end();
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
+  await maintenanceClient?.end().catch(() => undefined);
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });
