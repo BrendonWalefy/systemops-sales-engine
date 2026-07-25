@@ -251,6 +251,43 @@ async function auditClinic(slug: string) {
           recommendation: "Selecionar uma fonte de pipeline existente da mesma clínica ou remover a herança.",
           autoFixSafe: false,
         });
+      } else if (source.pipelineSourceTreatmentId || !(source.pipelineSteps?.length)) {
+        pushFinding(findings, {
+          id: `CFG-PIPELINE-SOURCE-NOT-CANONICAL-${treatment.id}`,
+          severity: "P1",
+          category: "orphan",
+          title: `A fonte de pipeline de "${treatment.name}" não é canônica`,
+          evidence: [
+            {
+              source: "db",
+              reference: `treatments.pipeline_source_treatment_id:${treatment.id}`,
+              value: {
+                sourceTreatmentId: source.id,
+                sourceHasOwnSource: Boolean(source.pipelineSourceTreatmentId),
+                sourceStepCount: source.pipelineSteps?.length ?? 0,
+              },
+            },
+          ],
+          recommendation: "A variante deve apontar diretamente para um tratamento com etapas próprias.",
+          autoFixSafe: false,
+        });
+      }
+      if (treatment.pipelineSteps?.length) {
+        pushFinding(findings, {
+          id: `CFG-PIPELINE-VARIANT-LOCAL-COPY-${treatment.id}`,
+          severity: "P1",
+          category: "duplicate",
+          title: `Variante "${treatment.name}" ainda mantém uma cópia local do pipeline`,
+          evidence: [
+            {
+              source: "db",
+              reference: `treatments.pipeline_steps:${treatment.id}`,
+              value: { stepCount: treatment.pipelineSteps.length },
+            },
+          ],
+          recommendation: "Limpar pipeline_steps da variante; a jornada deve existir somente no canônico.",
+          autoFixSafe: false,
+        });
       }
     }
 
@@ -426,6 +463,8 @@ async function auditClinic(slug: string) {
       sourceTreatmentId: source?.id ?? null,
       sourceTreatmentName: source?.name ?? null,
       resolvedTreatmentId: resolved.id,
+      pipelineEntryBehavior:
+        treatment.pipelineEntryBehavior ?? resolved.pipelineEntryBehavior ?? null,
       stepCount: resolved.pipelineSteps?.length ?? 0,
       steps: sanitizeValue(resolved.pipelineSteps ?? []),
     };

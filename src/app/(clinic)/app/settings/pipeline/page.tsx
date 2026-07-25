@@ -49,8 +49,13 @@ function stepBadgeStyle(type: string) {
 export default async function PipelinePage() {
   const clinicId = await requireSessionClinicId();
   const treatments = await getCachedPipelineTreatments(clinicId);
+  const treatmentById = new Map(treatments.map((treatment) => [treatment.id, treatment]));
+  const effectiveSteps = (treatment: (typeof treatments)[number]) =>
+    treatment.pipelineSourceTreatmentId
+      ? treatmentById.get(treatment.pipelineSourceTreatmentId)?.pipelineSteps ?? treatment.pipelineSteps
+      : treatment.pipelineSteps;
 
-  const configured = treatments.filter((t) => (t.pipelineSteps?.length ?? 0) > 0).length;
+  const configured = treatments.filter((t) => (effectiveSteps(t)?.length ?? 0) > 0).length;
   const total = treatments.length;
   const pct = total > 0 ? Math.round((configured / total) * 100) : 0;
 
@@ -122,8 +127,12 @@ export default async function PipelinePage() {
           borderRadius: T.cardRadius, overflow: "hidden",
         }}>
           {treatments.map((t, idx) => {
-            const stepCount = t.pipelineSteps?.length ?? 0;
+            const steps = effectiveSteps(t);
+            const stepCount = steps?.length ?? 0;
             const hasPipeline = stepCount > 0;
+            const source = t.pipelineSourceTreatmentId
+              ? treatmentById.get(t.pipelineSourceTreatmentId) ?? null
+              : null;
             const isLast = idx === treatments.length - 1;
 
             return (
@@ -159,7 +168,12 @@ export default async function PipelinePage() {
                     </span>
                   ) : (
                     <div className="pipeline-step-badges" style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
-                      {t.pipelineSteps!.map((s, i) => (
+                      {source && (
+                        <span style={{ fontSize: "10px", color: T.teal }}>
+                          Variante de {source.name}
+                        </span>
+                      )}
+                      {steps!.map((s, i) => (
                         <span
                           key={i}
                           style={{
