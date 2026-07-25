@@ -641,7 +641,7 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
     return { intent: "book_appointment" };
   if (n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
     return { intent: "price_inquiry" };
-  if (n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
+  if (isLocationRequestText(n))
     return { intent: "general_question", subtype: "location" };
   if (n.includes("especialista") || n.includes("dentista") || n.includes("doutor") || n.includes("medico") || n.includes("medica") || n === "dr")
     return { intent: "needs_human" };
@@ -650,8 +650,7 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
 }
 
 function isLocationRequest(message: string): boolean {
-  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
-  return n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica");
+  return isLocationRequestText(normalizeFreeText(message));
 }
 
 export function isSocialProfileRequest(message: string): boolean {
@@ -1028,7 +1027,8 @@ export function isDirectAddressQuestion(message: string): boolean {
   const n = normalizeFreeText(message);
   if (!n) return false;
   if (hasAnyKeyword(n, ["endereco", "localizacao", "como chego", "como chegar", "maps"])) return true;
-  return /\bonde\b/.test(n) && hasAnyKeyword(n, ["fica", "ficam", "clinica", "consultorio", "voces"]);
+  return /\b(?:onde|aonde)\b/.test(n) &&
+    /\b(?:fica|ficam|clinica|consultorio|voces)\b/.test(n);
 }
 
 // Perguntas factuais 100% seguras que podem ser respondidas por template mesmo
@@ -1050,7 +1050,7 @@ export function buildSafeReviewPauseAnswer(
 }
 
 function isLocationRequestText(normalized: string): boolean {
-  return hasAnyKeyword(normalized, ["localizacao", "endereco", "onde", "fica"]);
+  return /\b(?:localizacao|endereco|onde|aonde|fica|ficam)\b/.test(normalized);
 }
 
 function isProcedureCatalogRequestText(normalized: string): boolean {
@@ -1348,7 +1348,13 @@ export function resolveDirectTreatmentMention(
   const normalized = normalizeFreeText(message);
   if (!normalized || /^\d+$/.test(normalized)) return null;
   if (normalized.split(/\s+/).length > 8) return null;
-  if (isSchedulingRequestText(normalized) || isPriceRequestText(normalized)) return null;
+  if (
+    isSchedulingRequestText(normalized) ||
+    isPriceRequestText(normalized) ||
+    isLocationRequestText(normalized)
+  ) {
+    return null;
+  }
   if (didAgentAskForProcedure(lastAgentMessage)) return null;
   return matchTreatmentByNormalizedMessage(normalized, treatments, TREATMENT_MENTION_STOPWORDS);
 }
@@ -2190,6 +2196,10 @@ export function resolveInformationalTreatmentTarget(params: {
       })
     : null;
   if (selectedTreatment) return selectedTreatment;
+  // Uma pergunta de endereço não pode virar tratamento por coincidência de
+  // substring ("fica" casava com "estratificada") nem por palpite do
+  // classificador. O ramo de localização é o único dono desse pedido.
+  if (isLocationRequestText(normalizeFreeText(params.message))) return null;
 
   const directMentionTreatment = resolveDirectTreatmentMention(
     params.message,
@@ -2277,6 +2287,36 @@ export function resolvePipelineSourceTreatment(
       (candidate.pipelineSteps?.length ?? 0) > 0,
   );
   return source ?? treatment;
+}
+
+export function resolveMediaScopeTreatmentId(params: {
+  pipelineTreatmentId?: string | null;
+  classifiedTreatment?: Treatment | null;
+  treatments: Treatment[];
+}): string | null {
+  if (params.pipelineTreatmentId) return params.pipelineTreatmentId;
+  return params.classifiedTreatment
+    ? resolvePipelineSourceTreatment(
+        params.classifiedTreatment,
+        params.treatments,
+      ).id
+    : null;
+}
+
+export function resolvePriceTreatmentTarget(params: {
+  message: string;
+  treatments: Treatment[];
+  identifiedTreatment?: string | null;
+}): Treatment | null {
+  const directEvidence = matchTreatmentByNormalizedMessage(
+    normalizeFreeText(params.message),
+    params.treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+  if (directEvidence) return directEvidence;
+  return findTreatmentByIdOrName(params.treatments, {
+    treatmentName: params.identifiedTreatment ?? null,
+  });
 }
 
 export function resolvePipelineEntryBehavior(
@@ -5165,10 +5205,15 @@ export class ConversationOrchestrator {
     // MÍDIA do prompt e (b) bloquear no envio qualquer [MEDIA:id] cujo
     // treatmentId divirja deste (ver resolveOutboundParts). null = sem
     // isolamento aplicável nesta virada (comportamento de hoje, sem filtro).
-    const activeTreatmentId: string | null =
-      pipelineState?.treatmentId ??
-      findTreatmentByIdOrName(clinicTreatments, { treatmentName: slotPreference.identifiedTreatment })?.id ??
-      null;
+    const classifiedActiveTreatment = findTreatmentByIdOrName(
+      clinicTreatments,
+      { treatmentName: slotPreference.identifiedTreatment },
+    );
+    const activeTreatmentId = resolveMediaScopeTreatmentId({
+      pipelineTreatmentId: pipelineState?.treatmentId,
+      classifiedTreatment: classifiedActiveTreatment,
+      treatments: clinicTreatments,
+    });
     const stopContactDecision = resolveStopContactDecision({
       classifiedIntent: classification.intent,
       messageText,
@@ -6641,13 +6686,13 @@ export class ConversationOrchestrator {
           ? null
           : classification.slotPreference.identifiedTreatment ?? null;
         // Gap: lead perguntou preço de tratamento não cadastrado
-        let matchedPriceTreatment: Treatment | undefined;
-        if (priceIdentifiedTreatment) {
-          matchedPriceTreatment = clinicTreatments.find(
-            (t) => t.name.toLowerCase() === priceIdentifiedTreatment.toLowerCase() ||
-              (t.aliases ?? []).some((a) => a.toLowerCase() === priceIdentifiedTreatment.toLowerCase()),
-          );
-          if (!matchedPriceTreatment) {
+        const matchedPriceTreatment =
+          resolvePriceTreatmentTarget({
+            message: messageText,
+            treatments: clinicTreatments,
+            identifiedTreatment: priceIdentifiedTreatment,
+          }) ?? undefined;
+        if (priceIdentifiedTreatment && !matchedPriceTreatment) {
             maybeLogTreatmentGap(
               clinicId,
               conversation.id,
@@ -6655,7 +6700,6 @@ export class ConversationOrchestrator {
               priceIdentifiedTreatment,
               messageText,
             ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
-          }
         }
 
         // A4 — Bloqueio determinístico: sem pacote exato, não há cotação.
@@ -6717,6 +6761,29 @@ export class ConversationOrchestrator {
           activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
           history: allMessagesForContext,
         });
+        const selectedPriceTreatment =
+          matchedPriceTreatment ?? pipelinePriceTreatment ?? null;
+        if (selectedPriceTreatment) {
+          const canonicalPriceTreatment = resolvePipelineSourceTreatment(
+            selectedPriceTreatment,
+            clinicTreatments,
+          );
+          await recordDecisionTrace(this.decisionTraceSink, {
+            turnId,
+            stage: "treatment.resolved",
+            occurredAt: new Date().toISOString(),
+            clinicId,
+            conversationId: conversation.id,
+            metadata: {
+              source: "price_inquiry",
+              selectedTreatmentId: selectedPriceTreatment.id,
+              selectedTreatmentName: selectedPriceTreatment.name,
+              canonicalTreatmentId: canonicalPriceTreatment.id,
+              canonicalTreatmentName: canonicalPriceTreatment.name,
+              hasPipeline: Boolean(canonicalPriceTreatment.pipelineSteps?.length),
+            },
+          });
+        }
         const pipelinePriceContent = pipelinePriceTreatment?.pipelineSteps
           ? nextActivePipelineStep(pipelinePriceTreatment.pipelineSteps, 0, {
               conversationHistory: allMessagesForContext,
@@ -7457,6 +7524,21 @@ export class ConversationOrchestrator {
             matchedTreatment,
             clinicTreatments,
           );
+          await recordDecisionTrace(this.decisionTraceSink, {
+            turnId,
+            stage: "treatment.resolved",
+            occurredAt: new Date().toISOString(),
+            clinicId,
+            conversationId: conversation.id,
+            metadata: {
+              source: "informational",
+              selectedTreatmentId: matchedTreatment.id,
+              selectedTreatmentName: matchedTreatment.name,
+              canonicalTreatmentId: pipelineTreatment.id,
+              canonicalTreatmentName: pipelineTreatment.name,
+              hasPipeline: Boolean(pipelineTreatment.pipelineSteps?.length),
+            },
+          });
           const selectedTreatment = procedureSelection
             ? findTreatmentByIdOrName(clinicTreatments, {
                 treatmentId: procedureSelection.treatmentId,

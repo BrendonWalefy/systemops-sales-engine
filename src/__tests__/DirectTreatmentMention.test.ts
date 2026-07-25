@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   resolveDirectTreatmentMention,
   resolveInformationalTreatmentTarget,
+  resolveMediaScopeTreatmentId,
   resolvePipelineTreatmentMention,
+  resolvePriceTreatmentTarget,
   resolveSchedulingTreatmentTarget,
+  shouldBypassPendingPipelineContent,
 } from "@/core/pipeline/ConversationOrchestrator";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 import type { Treatment } from "@/domain/entities/treatment";
@@ -69,6 +72,42 @@ describe("resolveDirectTreatmentMention", () => {
     expect(result).toBeNull();
   });
 
+  it("não confunde 'aonde fica' com o sufixo de 'estratificada'", () => {
+    const estratificada = treatment("Lente em Resina Estratificada", {
+      aliases: ["estratificada"],
+      pipelineSteps: [{
+        type: "content",
+        label: "Apresentação",
+        once: true,
+        blocks: [{ kind: "text", content: "Conteúdo" }],
+      }],
+    });
+
+    expect(
+      resolveDirectTreatmentMention("Aonde fica", [estratificada]),
+    ).toBeNull();
+    expect(
+      resolveInformationalTreatmentTarget({
+        message: "Aonde fica",
+        treatments: [estratificada],
+        identifiedTreatment: estratificada.name,
+      }),
+    ).toBeNull();
+    expect(
+      resolveDirectTreatmentMention(
+        "Esse valor faz na estratificada? Pois quero bem natural",
+        [estratificada],
+      ),
+    ).toBeNull();
+    expect(
+      resolveInformationalTreatmentTarget({
+        message: "Quero uma lente estratificada bem natural",
+        treatments: [estratificada],
+        identifiedTreatment: estratificada.name,
+      })?.id,
+    ).toBe(estratificada.id);
+  });
+
   it("não intercepta resposta ao agente quando ele acabou de perguntar o procedimento", () => {
     const result = resolveDirectTreatmentMention(
       "Avaliação",
@@ -90,6 +129,17 @@ describe("resolveDirectTreatmentMention", () => {
   it("detecta tratamento em saudação composta de várias palavras", () => {
     const result = resolveDirectTreatmentMention("boa tarde, gostaria de saber sobre lentes", treatments);
     expect(result?.name).toBe("Lentes de resina composta");
+  });
+});
+
+describe("guarda de localização", () => {
+  it("usa palavras inteiras para não tratar estratificada como 'fica'", () => {
+    expect(
+      shouldBypassPendingPipelineContent(
+        "Quero uma lente estratificada bem natural",
+      ),
+    ).toBe(false);
+    expect(shouldBypassPendingPipelineContent("Aonde fica?")).toBe(true);
   });
 });
 
@@ -281,6 +331,48 @@ describe("especificidade de variantes", () => {
         resolveDirectTreatmentMention("Quero fox eyes", ordered)?.id,
       ).toBe(international.id);
     }
+  });
+
+  it("usa o tratamento canônico como escopo de mídia da variante", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      pipelineSteps: [{
+        type: "content",
+        label: "Apresentação",
+        once: true,
+        blocks: [{ kind: "text", content: "Conteúdo" }],
+      }],
+    });
+    const estratificada = treatment("Lente em Resina Estratificada", {
+      id: "variant",
+      pipelineSourceTreatmentId: canonical.id,
+    });
+
+    expect(
+      resolveMediaScopeTreatmentId({
+        classifiedTreatment: estratificada,
+        treatments: [estratificada, canonical],
+      }),
+    ).toBe(canonical.id);
+  });
+
+  it("preço de fox eyes resolve a técnica gringa por evidência textual", () => {
+    const common = treatment("Extensão de cílios — Técnicas Comuns", {
+      id: "common",
+      aliases: ["cílios", "extensão de cílios"],
+    });
+    const international = treatment("Extensão de cílios — Técnicas Gringas", {
+      id: "international",
+      aliases: ["fox eyes", "técnica gringa", "cílios fox"],
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "Olá, quanto está a aplicação do cílios fox?",
+        treatments: [common, international],
+        identifiedTreatment: common.name,
+      })?.id,
+    ).toBe(international.id);
   });
 });
 

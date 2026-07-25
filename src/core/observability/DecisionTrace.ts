@@ -16,6 +16,7 @@ export type DecisionTraceStage =
   | "state.loaded"
   | "intent.classified"
   | "intent.resolved"
+  | "treatment.resolved"
   | "state.before_delivery"
   | "outbound.planned"
   | "outbound.enqueued"
