@@ -78,6 +78,8 @@ export async function loadReplayClinicManifest(clinicKey: string) {
       aliases: treatment.aliases,
       isAesthetic: treatment.isAesthetic,
       pipelineSteps: treatment.pipelineSteps,
+      pipelineSourceTreatmentId: treatment.pipelineSourceTreatmentId,
+      pipelineEntryBehavior: treatment.pipelineEntryBehavior,
       priceCents: treatment.priceCents,
       minPriceCents: treatment.minPriceCents,
       maxPriceCents: treatment.maxPriceCents,

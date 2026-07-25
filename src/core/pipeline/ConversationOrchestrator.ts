@@ -1179,27 +1179,51 @@ function matchTreatmentByNormalizedMessage(
     .split(/\s+/)
     .filter((token) => token.length >= 4 && !stopwords.has(token));
 
-  const matches = (treatment: Treatment): boolean => {
-    if (!treatment.keywordMatchEnabled) return false;
+  const score = (treatment: Treatment): number => {
+    if (!treatment.keywordMatchEnabled) return -1;
 
     const treatmentName = normalizeFreeText(treatment.name);
-    if (treatmentName === normalized) return true;
-    if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
-    if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
-    if (tokens.some((token) => treatmentName.includes(token))) return true;
+    let result = -1;
+    if (treatmentName === normalized) result = Math.max(result, 4_000 + treatmentName.length);
+    if (normalized.length >= 4 && treatmentName.includes(normalized)) {
+      result = Math.max(result, 3_000 + normalized.length);
+    }
+    if (treatmentName.length >= 4 && normalized.includes(treatmentName)) {
+      result = Math.max(result, 2_000 + treatmentName.length);
+    }
+    const matchingTokens = tokens.filter((token) => treatmentName.includes(token));
+    if (matchingTokens.length > 0) {
+      result = Math.max(
+        result,
+        100 + matchingTokens.reduce((total, token) => total + token.length, 0),
+      );
+    }
 
     const aliases = treatment.aliases ?? [];
-    return aliases.some((alias) => {
+    for (const alias of aliases) {
       const normalizedAlias = normalizeFreeText(alias);
-      return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
-    });
+      if (normalizedAlias === normalized) {
+        result = Math.max(result, 3_500 + normalizedAlias.length);
+      } else if (normalizedAlias.length >= 4 && normalized.includes(normalizedAlias)) {
+        result = Math.max(result, 1_500 + normalizedAlias.length);
+      }
+    }
+    return result;
   };
 
-  return (
-    treatments.find((t) => matches(t) && t.pipelineSteps !== null) ??
-    treatments.find((t) => matches(t)) ??
-    null
-  );
+  return treatments
+    .map((treatment, index) => ({
+      treatment,
+      index,
+      score: score(treatment),
+    }))
+    .filter((candidate) => candidate.score >= 0)
+    .sort((a, b) =>
+      b.score - a.score ||
+      Number(Boolean(b.treatment.pipelineSteps?.length)) -
+        Number(Boolean(a.treatment.pipelineSteps?.length)) ||
+      a.index - b.index,
+    )[0]?.treatment ?? null;
 }
 
 // Enquanto uma revisão clínica está pendente, toda mensagem do lead volta pelo
@@ -1346,7 +1370,9 @@ export function resolvePipelineTreatmentMention(
     treatments,
     TREATMENT_MENTION_STOPWORDS,
   );
-  return matched?.pipelineSteps?.length ? matched : null;
+  return matched && resolvePipelineSourceTreatment(matched, treatments).pipelineSteps?.length
+    ? matched
+    : null;
 }
 
 // Frases fortes de chegada física à clínica. Deliberadamente específicas
@@ -2248,6 +2274,27 @@ export function resolvePipelineSourceTreatment(
       (candidate.pipelineSteps?.length ?? 0) > 0,
   );
   return source ?? treatment;
+}
+
+export function resolvePipelineEntryBehavior(
+  treatment: Treatment,
+  treatments: Treatment[],
+): Treatment["pipelineEntryBehavior"] {
+  const source = resolvePipelineSourceTreatment(treatment, treatments);
+  return treatment.pipelineEntryBehavior ?? source.pipelineEntryBehavior ?? null;
+}
+
+export function shouldDeferTreatmentPipelineEntry(params: {
+  treatment: Treatment;
+  treatments: Treatment[];
+  isConversationOpening: boolean;
+  legacyShouldDefer: boolean;
+}): boolean {
+  if (!params.isConversationOpening) return false;
+  const behavior = resolvePipelineEntryBehavior(params.treatment, params.treatments);
+  if (behavior === "immediate") return false;
+  if (behavior === "qualify_then_present") return true;
+  return params.legacyShouldDefer;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.
@@ -3358,19 +3405,28 @@ export function findPipelineTreatmentContextForPriceRequest(params: {
   const byActivePipeline = findTreatmentByIdOrName(params.treatments, {
     treatmentId: params.activePipelineTreatmentId ?? null,
   });
-  if (byActivePipeline?.pipelineSteps?.length) return byActivePipeline;
+  if (byActivePipeline) {
+    const source = resolvePipelineSourceTreatment(byActivePipeline, params.treatments);
+    if (source.pipelineSteps?.length) return source;
+  }
 
   const byClassification = findTreatmentByIdOrName(params.treatments, {
     treatmentName: params.identifiedTreatment ?? null,
   });
-  if (byClassification?.pipelineSteps?.length) return byClassification;
+  if (byClassification) {
+    const source = resolvePipelineSourceTreatment(byClassification, params.treatments);
+    if (source.pipelineSteps?.length) return source;
+  }
 
   const currentMention = matchTreatmentByNormalizedMessage(
     normalizeFreeText(params.message),
     params.treatments,
     TREATMENT_MENTION_STOPWORDS,
   );
-  if (currentMention?.pipelineSteps?.length) return currentMention;
+  if (currentMention) {
+    const source = resolvePipelineSourceTreatment(currentMention, params.treatments);
+    if (source.pipelineSteps?.length) return source;
+  }
 
   const recent = [...(params.history ?? [])].reverse().slice(0, 8);
   for (const item of recent) {
@@ -3379,7 +3435,10 @@ export function findPipelineTreatmentContextForPriceRequest(params: {
       params.treatments,
       TREATMENT_MENTION_STOPWORDS,
     );
-    if (contextualMention?.pipelineSteps?.length) return contextualMention;
+    if (contextualMention) {
+      const source = resolvePipelineSourceTreatment(contextualMention, params.treatments);
+      if (source.pipelineSteps?.length) return source;
+    }
   }
 
   return null;
@@ -5615,10 +5674,14 @@ export class ConversationOrchestrator {
         return false;
       }
 
-      const evaluationTreatment = pipelineTreatment?.requiresEvaluationFirst
+      const selectedTreatment = pipelineState.selectedTreatmentId
+        ? clinicTreatments.find((t) => t.id === pipelineState.selectedTreatmentId) ?? null
+        : null;
+      const commercialTreatment = selectedTreatment ?? pipelineTreatment;
+      const evaluationTreatment = commercialTreatment?.requiresEvaluationFirst
         ? clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name))
         : null;
-      const bookingTreatment = evaluationTreatment ?? pipelineTreatment;
+      const bookingTreatment = evaluationTreatment ?? commercialTreatment;
       if (!bookingTreatment) return false;
 
       const { slots } = await this.fetchAndOfferSlots(
@@ -6272,6 +6335,8 @@ export class ConversationOrchestrator {
           schedulingTreatment?.name ??
           slotPreference.identifiedTreatment ??
           clarificationTreatmentName ??
+          pipelineState?.selectedTreatmentName ??
+          pipelineState?.treatmentName ??
           lead.treatmentInterest ??
           null;
 
@@ -6673,12 +6738,21 @@ export class ConversationOrchestrator {
           forceTextOnlyReply = true;
 
           if (!pipelineState) {
+            const selectedPriceTreatment =
+              matchedPriceTreatment &&
+              resolvePipelineSourceTreatment(matchedPriceTreatment, clinicTreatments).id ===
+                pipelinePriceTreatment.id
+                ? matchedPriceTreatment
+                : null;
             await this.stateMachine.startTreatmentPipeline(
               conversation.id,
               pipelinePriceTreatment.id,
               pipelinePriceTreatment.name,
               clinic.staleConversationHours * 60,
               pipelinePriceContent.index,
+              selectedPriceTreatment
+                ? { id: selectedPriceTreatment.id, name: selectedPriceTreatment.name }
+                : null,
             );
           }
           const next = nextActivePipelineStep(
@@ -6807,7 +6881,7 @@ export class ConversationOrchestrator {
           !isFirstMessage &&
           !pipelineState &&
           matchedPriceTreatment &&
-          !matchedPriceTreatment.pipelineSteps?.length &&
+          !resolvePipelineSourceTreatment(matchedPriceTreatment, clinicTreatments).pipelineSteps?.length &&
           (quantityPriceResolution == null || quantityPriceResolution.kind === "exact") &&
           !oldPriceObjectionDetected
         ) {
@@ -6875,8 +6949,14 @@ export class ConversationOrchestrator {
 
           // Se a saudação também menciona um tratamento com pipeline, inicia o
           // pipeline imediatamente e entrega saudação + primeiro step juntos.
-          const greetingTreatment = !pipelineState
-            ? resolveDirectTreatmentMention(messageText, clinicTreatments)
+          const greetingSelection = !pipelineState
+            ? (
+                resolveDirectTreatmentMention(messageText, clinicTreatments) ??
+                resolvePipelineTreatmentMention(messageText, clinicTreatments)
+              )
+            : null;
+          const greetingTreatment = greetingSelection
+            ? resolvePipelineSourceTreatment(greetingSelection, clinicTreatments)
             : null;
 
           if (greetingTreatment?.pipelineSteps?.length) {
@@ -6891,8 +6971,25 @@ export class ConversationOrchestrator {
                 greetingTreatment.name,
                 clinic.staleConversationHours * 60,
                 firstActive.index,
+                greetingSelection
+                  ? { id: greetingSelection.id, name: greetingSelection.name }
+                  : null,
               );
               if (firstActive.step.type === "content") {
+                if (
+                  greetingSelection &&
+                  shouldDeferTreatmentPipelineEntry({
+                    treatment: greetingSelection,
+                    treatments: clinicTreatments,
+                    isConversationOpening,
+                    // Preserva o comportamento anterior quando o campo novo é null:
+                    // o ramo greeting sempre apresentava imediatamente.
+                    legacyShouldDefer: false,
+                  })
+                ) {
+                  replyText = greetingText;
+                  break;
+                }
                 const pipelineParts = buildPipelineContentParts(firstActive.step.blocks);
                 const pipelineText = pipelineParts
                   .filter((p): p is { type: "text"; content: string } => p.type === "text")
@@ -7034,12 +7131,20 @@ export class ConversationOrchestrator {
               .join("\n\n");
             forceTextOnlyReply = true;
             if (!pipelineState) {
+              const combinedSelection = findTreatmentByIdOrName(clinicTreatments, {
+                treatmentName: classification.slotPreference.identifiedTreatment ?? null,
+              });
               await this.stateMachine.startTreatmentPipeline(
                 conversation.id,
                 combinedPriceTreatment.id,
                 combinedPriceTreatment.name,
                 clinic.staleConversationHours * 60,
                 combinedPriceContent.index,
+                combinedSelection &&
+                  resolvePipelineSourceTreatment(combinedSelection, clinicTreatments).id ===
+                    combinedPriceTreatment.id
+                  ? { id: combinedSelection.id, name: combinedSelection.name }
+                  : null,
               );
             }
             const next = nextActivePipelineStep(
@@ -7070,6 +7175,7 @@ export class ConversationOrchestrator {
           isShowcaseRequestText(messageText)
         ) {
           const showcaseTreatmentId =
+            pipelineState?.selectedTreatmentId ??
             pipelineState?.treatmentId ??
             inferTreatmentContextFromHistory({
               message: messageText,
@@ -7376,13 +7482,22 @@ export class ConversationOrchestrator {
               // emiti-lo). A explicação + mídia dispara na continuação, quando o lead
               // responde — espelhando o ritmo da operadora humana (qualifica, depois
               // apresenta). Passos que começam com "qa" não têm mídia e seguem normais.
-              if (deferFirstContactPitch && firstActive.step.type === "content") {
+              if (
+                firstActive.step.type === "content" &&
+                shouldDeferTreatmentPipelineEntry({
+                  treatment: matchedTreatment,
+                  treatments: clinicTreatments,
+                  isConversationOpening,
+                  legacyShouldDefer: deferFirstContactPitch,
+                })
+              ) {
                 await this.stateMachine.startTreatmentPipeline(
                   conversation.id,
                   pipelineTreatment.id,
                   pipelineTreatment.name,
                   clinic.staleConversationHours * 60,
                   firstActive.index,
+                  { id: matchedTreatment.id, name: matchedTreatment.name },
                 );
                 replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
                 clinicContext = "";
@@ -7394,6 +7509,7 @@ export class ConversationOrchestrator {
                 pipelineTreatment.name,
                 clinic.staleConversationHours * 60,
                 firstActive.index,
+                { id: matchedTreatment.id, name: matchedTreatment.name },
               );
               if (firstActive.step.type === "content") {
                 // Blocos crus: a saudação da primeira mensagem é aplicada UMA vez
@@ -7492,18 +7608,24 @@ export class ConversationOrchestrator {
                 return tNorm.includes(keywordNorm) || keywordNorm.includes(tNorm) ||
                   (t.aliases ?? []).some((a) => normalizeFreeText(a).includes(keywordNorm));
               });
-              if (keywordTreatment?.pipelineSteps?.length) {
-                const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0, {
+              const keywordPipelineTreatment = keywordTreatment
+                ? resolvePipelineSourceTreatment(keywordTreatment, clinicTreatments)
+                : null;
+              if (keywordPipelineTreatment?.pipelineSteps?.length) {
+                const firstActive = nextActivePipelineStep(keywordPipelineTreatment.pipelineSteps, 0, {
                   conversationHistory: allMessagesForContext,
                   mediaTitleById: pipelineMediaTitleById,
                 });
                 if (firstActive) {
                   await this.stateMachine.startTreatmentPipeline(
                     conversation.id,
-                    keywordTreatment.id,
-                    keywordTreatment.name,
+                    keywordPipelineTreatment.id,
+                    keywordPipelineTreatment.name,
                     clinic.staleConversationHours * 60,
                     firstActive.index,
+                    keywordTreatment
+                      ? { id: keywordTreatment.id, name: keywordTreatment.name }
+                      : null,
                   );
                   if (firstActive.step.type === "content") {
                     // Blocos crus: saudação aplicada uma única vez pelo bloco
@@ -7514,7 +7636,7 @@ export class ConversationOrchestrator {
                     composedMediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
                     replyText = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
                     clinicContext = "";
-                    const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1, {
+                    const next = nextActivePipelineStep(keywordPipelineTreatment.pipelineSteps!, firstActive.index + 1, {
                       conversationHistory: allMessagesForContext,
                     });
                     pendingPipelineAdvance = next

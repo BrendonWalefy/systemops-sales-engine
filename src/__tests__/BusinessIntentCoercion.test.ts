@@ -14,6 +14,8 @@ import {
   isBusinessHoursQuestion,
   isSimplePaymentPolicyQuestion,
   resolvePipelineSourceTreatment,
+  resolvePipelineEntryBehavior,
+  shouldDeferTreatmentPipelineEntry,
 } from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { toWhatsAppFormatting } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
@@ -311,6 +313,42 @@ describe("pipeline canônico compartilhado por variantes", () => {
       pipelineSourceTreatmentId: "missing",
     });
     expect(resolvePipelineSourceTreatment(child, [child])).toBe(child);
+  });
+
+  it("herda o modo de entrada do canônico e permite override na variante", () => {
+    const parent = treatment("Lentes em Resina Composta", {
+      id: "lenses-parent",
+      pipelineEntryBehavior: "immediate",
+      pipelineSteps: [{ type: "content", label: "Cards e fotos", blocks: [] }],
+    });
+    const inherited = treatment("Lente em Resina Premium", {
+      id: "premium-child",
+      pipelineSourceTreatmentId: parent.id,
+    });
+    const overridden = treatment("Lente em Resina Estratificada", {
+      id: "layered-child",
+      pipelineSourceTreatmentId: parent.id,
+      pipelineEntryBehavior: "qualify_then_present",
+    });
+
+    expect(resolvePipelineEntryBehavior(inherited, [inherited, parent])).toBe("immediate");
+    expect(resolvePipelineEntryBehavior(overridden, [overridden, parent])).toBe("qualify_then_present");
+    expect(
+      shouldDeferTreatmentPipelineEntry({
+        treatment: inherited,
+        treatments: [inherited, parent],
+        isConversationOpening: true,
+        legacyShouldDefer: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldDeferTreatmentPipelineEntry({
+        treatment: overridden,
+        treatments: [overridden, parent],
+        isConversationOpening: true,
+        legacyShouldDefer: false,
+      }),
+    ).toBe(true);
   });
 });
 

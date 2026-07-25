@@ -240,6 +240,48 @@ describe("resolvePipelineTreatmentMention", () => {
 
     expect(result).toBeNull();
   });
+
+  it("reconhece variante específica que herda o pipeline canônico", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      aliases: ["lentes", "lentes de resina"],
+      pipelineSteps: [
+        { type: "content", label: "Comparação", blocks: [] },
+      ],
+    });
+    const premium = treatment("Lente em Resina Premium", {
+      id: "premium",
+      aliases: ["premium", "lente premium"],
+      pipelineSourceTreatmentId: canonical.id,
+    });
+
+    expect(
+      resolvePipelineTreatmentMention(
+        "Quero conhecer a lente premium",
+        [canonical, premium],
+      )?.id,
+    ).toBe(premium.id);
+  });
+});
+
+describe("especificidade de variantes", () => {
+  it("a técnica explícita vence o alias genérico independentemente da ordem", () => {
+    const common = treatment("Extensão de cílios — Técnicas Comuns", {
+      aliases: ["cílios", "extensão de cílios", "clássico"],
+    });
+    const international = treatment("Extensão de cílios — Técnicas Gringas", {
+      aliases: ["cílios", "extensão de cílios", "fox eyes", "técnica gringa"],
+    });
+
+    for (const ordered of [
+      [common, international],
+      [international, common],
+    ]) {
+      expect(
+        resolveDirectTreatmentMention("Quero fox eyes", ordered)?.id,
+      ).toBe(international.id);
+    }
+  });
 });
 
 describe("resolveSchedulingTreatmentTarget", () => {

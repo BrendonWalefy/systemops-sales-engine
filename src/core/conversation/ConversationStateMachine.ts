@@ -49,8 +49,13 @@ export type ProcedureListPayload = {
 };
 
 export type TreatmentPipelinePayload = {
+  // Dono canônico do pipeline e de seus content blocks.
   treatmentId: string;
   treatmentName: string;
+  // Variante comercial originalmente escolhida. Preço, duração e agendamento
+  // continuam pertencendo a ela, mesmo quando a jornada vem do tratamento pai.
+  selectedTreatmentId?: string;
+  selectedTreatmentName?: string;
   stepIndex: number;
   qaTurns: number;
   photoReceived: boolean;
@@ -365,10 +370,17 @@ export class ConversationStateMachine {
     treatmentName: string,
     ttlMinutes = 240,
     startStepIndex = 0,
+    selectedTreatment?: { id: string; name: string } | null,
   ): Promise<void> {
     const payload: TreatmentPipelinePayload = {
       treatmentId,
       treatmentName,
+      ...(selectedTreatment && selectedTreatment.id !== treatmentId
+        ? {
+            selectedTreatmentId: selectedTreatment.id,
+            selectedTreatmentName: selectedTreatment.name,
+          }
+        : {}),
       stepIndex: startStepIndex,
       qaTurns: 0,
       photoReceived: false,
