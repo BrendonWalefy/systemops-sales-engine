@@ -155,6 +155,83 @@ async function auditClinic(slug: string) {
   }
 
   const treatmentById = new Map(clinicTreatments.map((treatment) => [treatment.id, treatment]));
+  const pipelineOwners = new Map<string, typeof clinicTreatments>();
+  const aliasOwners = new Map<string, typeof clinicTreatments>();
+
+  for (const treatment of clinicTreatments) {
+    if (treatment.pipelineSteps?.length) {
+      const fingerprint = JSON.stringify(treatment.pipelineSteps);
+      pipelineOwners.set(fingerprint, [
+        ...(pipelineOwners.get(fingerprint) ?? []),
+        treatment,
+      ]);
+    }
+    if (treatment.keywordMatchEnabled) {
+      for (const alias of treatment.aliases ?? []) {
+        const normalizedAlias = sanitizeText(alias)
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .trim();
+        if (!normalizedAlias) continue;
+        aliasOwners.set(normalizedAlias, [
+          ...(aliasOwners.get(normalizedAlias) ?? []),
+          treatment,
+        ]);
+      }
+    }
+  }
+
+  for (const owners of pipelineOwners.values()) {
+    if (owners.length < 2) continue;
+    pushFinding(findings, {
+      id: `CFG-DUPLICATE-PIPELINE-${owners.map((owner) => owner.id).sort().join("-")}`,
+      severity: "P1",
+      category: "duplicate",
+      title: `${owners.length} tratamentos possuem uma cópia idêntica do mesmo pipeline`,
+      evidence: [
+        {
+          source: "db",
+          reference: "treatments.pipeline_steps",
+          value: owners.map((owner) => ({ id: owner.id, name: owner.name })),
+        },
+      ],
+      recommendation:
+        "Manter o pipeline em um tratamento canônico e apontar as variantes por pipeline_source_treatment_id.",
+      autoFixSafe: false,
+    });
+  }
+
+  for (const [alias, owners] of aliasOwners) {
+    const distinctOwners = [...new Map(
+      owners.map((owner) => [owner.id, owner]),
+    ).values()];
+    if (distinctOwners.length < 2) continue;
+    const pipelineBackedOwners = distinctOwners.filter(
+      (owner) => owner.pipelineSteps?.length || owner.pipelineSourceTreatmentId,
+    );
+    if (pipelineBackedOwners.length < 2) continue;
+    pushFinding(findings, {
+      id: `CFG-AMBIGUOUS-PIPELINE-ALIAS-${alias.replace(/[^a-z0-9]+/g, "-")}`,
+      severity: "P1",
+      category: "duplicate",
+      title: `Alias "${alias}" pode iniciar pipelines de tratamentos diferentes`,
+      evidence: [
+        {
+          source: "db",
+          reference: "treatments.aliases",
+          value: pipelineBackedOwners.map((owner) => ({
+            id: owner.id,
+            name: owner.name,
+          })),
+        },
+      ],
+      recommendation:
+        "Deixar o alias genérico somente no tratamento canônico; variantes devem manter apenas aliases específicos.",
+      autoFixSafe: false,
+    });
+  }
+
   for (const treatment of clinicTreatments) {
     if (treatment.pipelineSourceTreatmentId) {
       const source = treatmentById.get(treatment.pipelineSourceTreatmentId);

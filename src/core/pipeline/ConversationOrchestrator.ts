@@ -2176,18 +2176,15 @@ export function resolveInformationalTreatmentTarget(params: {
     treatmentName: params.identifiedTreatment ?? null,
   });
   if (classifiedTreatment) {
-    if (
-      directMentionTreatment &&
-      directMentionTreatment.id !== classifiedTreatment.id &&
-      directMentionTreatment.pipelineSteps?.length &&
-      !classifiedTreatment.pipelineSteps?.length
-    ) {
-      return directMentionTreatment;
-    }
+    // A mensagem atual é evidência determinística e tem precedência sobre o
+    // treatmentName probabilístico do classificador. Isso é especialmente
+    // importante quando variantes compartilham aliases: a LLM pode devolver
+    // registros diferentes entre execuções e fazer o pipeline iniciar somente
+    // em algumas delas, apesar de o texto do lead ser idêntico.
+    if (directMentionTreatment) return directMentionTreatment;
     if (
       pipelineMentionTreatment &&
-      pipelineMentionTreatment.id !== classifiedTreatment.id &&
-      !classifiedTreatment.pipelineSteps?.length
+      pipelineMentionTreatment.id !== classifiedTreatment.id
     ) {
       return pipelineMentionTreatment;
     }

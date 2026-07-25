@@ -162,6 +162,42 @@ describe("resolveInformationalTreatmentTarget", () => {
 
     expect(result?.name).toBe("Lentes de resina composta simplificada");
   });
+
+  it("não deixa o classificador trocar uma menção explícita entre variantes com o mesmo pipeline", () => {
+    const sharedPipeline = [
+      {
+        type: "content" as const,
+        label: "Apresentação",
+        blocks: [{ kind: "text" as const, content: "Explicação das técnicas." }],
+      },
+    ];
+    const estratificada = treatment("Lentes de resina composta estratificada", {
+      aliases: ["lentes", "resina", "lentes de resina", "estratificada"],
+      pipelineSteps: sharedPipeline,
+    });
+    const simplificada = treatment("Lentes de resina composta simplificada", {
+      aliases: ["lentes", "resina", "lentes de resina", "simplificada"],
+      pipelineSteps: sharedPipeline,
+    });
+    const canonical = treatment("Lentes em Resina Composta", {
+      keywordMatchEnabled: false,
+      pipelineSteps: sharedPipeline,
+    });
+
+    for (const identifiedTreatment of [
+      estratificada.name,
+      simplificada.name,
+      canonical.name,
+    ]) {
+      const result = resolveInformationalTreatmentTarget({
+        message: "Queria saber em relação das lentes de resina",
+        treatments: [estratificada, simplificada, canonical],
+        identifiedTreatment,
+      });
+
+      expect(result?.id).toBe(estratificada.id);
+    }
+  });
 });
 
 describe("resolvePipelineTreatmentMention", () => {

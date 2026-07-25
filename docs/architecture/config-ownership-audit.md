@@ -119,6 +119,12 @@ Legenda: ✅ dono único correto · ⚠️ sobreposição (mesmo fato, 2+ campos
    os outros dois.
 5. **`notes` como depósito** — texto cru no topo do prompt, sem bloqueio quando carrega
    fato com casa estruturada. → escalar o lint para bloquear no publish (§6).
+6. **Pipelines e aliases clonados entre variantes** — o replay da Ximendes encontrou
+   três cópias byte a byte do mesmo `pipelineSteps` e aliases genéricos compartilhados
+   por variantes. Isso permitia que o `identifiedTreatment` probabilístico escolhesse
+   donos diferentes para a mesma mensagem. → pipeline em um tratamento canônico,
+   variantes por `pipelineSourceTreatmentId` e aliases genéricos somente no canônico.
+   `scripts/audit-clinic-config.ts` agora emite achados P1 para as duas formas de drift.
 
 > Aparte não-drift mas relevante: a Ximendes está em `calendarMode = "internal"` com um
 > `googleCalendarId` preenchido e **ignorado**. Não causou os bugs recentes, mas é um
