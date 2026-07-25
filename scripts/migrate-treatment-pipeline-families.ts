@@ -10,7 +10,7 @@
  *   npx dotenv -e .env.local -- npx tsx scripts/migrate-treatment-pipeline-families.ts
  *
  * Aplicação em sandbox:
- *   ... --apply --entry=immediate
+ *   ... --apply --entry=immediate --presentation=text_then_media
  *
  * Rollback:
  *   ... --rollback
@@ -24,6 +24,7 @@ import postgres from "postgres";
 import { db } from "../src/infrastructure/db/client";
 import { organizations, treatments } from "../src/infrastructure/db/schema";
 import type {
+  ContentBlock,
   PipelineEntryBehavior,
   PipelineStep,
 } from "../src/domain/entities/treatment";
@@ -36,6 +37,9 @@ type FamilyPlan = {
   genericAliases: string[];
   canonicalOwnedGenericAliasesBefore: boolean;
   requiresCanonicalPipeline: boolean;
+  legacyPresentation?: "media_then_text";
+  introTextWhenMissing?: string;
+  variantAliases?: Record<string, string[]>;
 };
 
 const PLANS: FamilyPlan[] = [
@@ -61,6 +65,8 @@ const PLANS: FamilyPlan[] = [
     ],
     canonicalOwnedGenericAliasesBefore: false,
     requiresCanonicalPipeline: true,
+    legacyPresentation: "media_then_text",
+    introTextWhenMissing: "Vou te mostrar as duas técnicas para você comparar:",
   },
   {
     key: "vitalli",
@@ -86,6 +92,7 @@ const PLANS: FamilyPlan[] = [
     ],
     canonicalOwnedGenericAliasesBefore: true,
     requiresCanonicalPipeline: true,
+    legacyPresentation: "media_then_text",
   },
   {
     key: "nc-beauty",
@@ -99,6 +106,9 @@ const PLANS: FamilyPlan[] = [
     ],
     canonicalOwnedGenericAliasesBefore: true,
     requiresCanonicalPipeline: false,
+    variantAliases: {
+      "Extensão de cílios — Técnicas Gringas": ["fox", "cílios fox"],
+    },
   },
 ];
 
@@ -118,6 +128,12 @@ const entryBehavior: PipelineEntryBehavior | null =
       : (() => {
           throw new Error(`--entry inválido: ${entryRaw}`);
         })();
+const presentationRaw =
+  process.argv.find((argument) => argument.startsWith("--presentation="))?.split("=")[1] ??
+  "preserve";
+if (presentationRaw !== "preserve" && presentationRaw !== "text_then_media") {
+  throw new Error(`--presentation inválido: ${presentationRaw}`);
+}
 
 if (apply && rollback) {
   throw new Error("Use apenas --apply ou --rollback.");
@@ -157,6 +173,52 @@ function samePipeline(
   right: PipelineStep[] | null,
 ): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function reorderFirstContentPresentation(
+  pipelineSteps: PipelineStep[] | null,
+  order: "preserve" | "text_then_media" | "media_then_text",
+  introTextWhenMissing?: string,
+): PipelineStep[] | null {
+  if (!pipelineSteps?.length || order === "preserve") return pipelineSteps;
+  const firstContentIndex = pipelineSteps.findIndex(
+    (step) => step.type === "content" && step.blocks.length > 0,
+  );
+  if (firstContentIndex < 0) return pipelineSteps;
+
+  const firstContent = pipelineSteps[firstContentIndex]!;
+  if (firstContent.type !== "content") return pipelineSteps;
+  let textBlocks = firstContent.blocks.filter((block) => block.kind === "text");
+  const mediaBlocks = firstContent.blocks.filter((block) => block.kind === "media");
+  if (order === "text_then_media" && textBlocks.length === 0 && introTextWhenMissing) {
+    textBlocks = [{
+      kind: "text",
+      content: introTextWhenMissing,
+    } satisfies ContentBlock];
+  }
+  if (order === "media_then_text" && introTextWhenMissing) {
+    textBlocks = textBlocks.filter(
+      (block) => block.content !== introTextWhenMissing,
+    );
+  }
+  if (
+    mediaBlocks.length < 2 ||
+    (order === "text_then_media" && textBlocks.length === 0)
+  ) {
+    throw new Error(
+      "A apresentação inicial precisa conter texto e pelo menos duas mídias para ser reordenada.",
+    );
+  }
+
+  const reorderedBlocks = order === "text_then_media"
+    ? [...textBlocks, ...mediaBlocks]
+    : [...mediaBlocks, ...textBlocks];
+  const reordered = [...pipelineSteps];
+  reordered[firstContentIndex] = {
+    ...firstContent,
+    blocks: reorderedBlocks,
+  };
+  return reordered;
 }
 
 async function migratePlan(plan: FamilyPlan) {
@@ -205,6 +267,17 @@ async function migratePlan(plan: FamilyPlan) {
       );
     }
   }
+  const targetPresentation =
+    presentationRaw === "preserve"
+      ? "preserve"
+      : rollback
+        ? plan.legacyPresentation ?? "preserve"
+        : "text_then_media";
+  const targetCanonicalSteps = reorderFirstContentPresentation(
+    canonicalSteps,
+    targetPresentation,
+    plan.introTextWhenMissing,
+  );
 
   const changes = {
     clinic: clinic.name,
@@ -212,6 +285,7 @@ async function migratePlan(plan: FamilyPlan) {
     canonical: canonical.name,
     variants: variants.map((variant) => variant!.name),
     pipelineConsolidation: Boolean(canonicalSteps?.length),
+    presentation: targetPresentation,
     entryBehavior: rollback ? null : entryBehavior,
     genericAliases: plan.genericAliases,
   };
@@ -229,6 +303,7 @@ async function migratePlan(plan: FamilyPlan) {
       .update(treatments)
       .set({
         aliases: canonicalAliases,
+        pipelineSteps: targetCanonicalSteps,
         pipelineEntryBehavior: rollback ? null : entryBehavior,
         updatedAt: now,
       })
@@ -238,9 +313,17 @@ async function migratePlan(plan: FamilyPlan) {
       ));
 
     for (const variant of variants) {
+      const configuredVariantAliases =
+        plan.variantAliases?.[variant!.name] ?? [];
       const aliases = rollback
-        ? uniqueAliases([...variant!.aliases, ...plan.genericAliases])
-        : withoutAliases(variant!.aliases, plan.genericAliases);
+        ? uniqueAliases([
+            ...withoutAliases(variant!.aliases, configuredVariantAliases),
+            ...plan.genericAliases,
+          ])
+        : uniqueAliases([
+            ...withoutAliases(variant!.aliases, plan.genericAliases),
+            ...configuredVariantAliases,
+          ]);
       const hasCanonicalPipeline = Boolean(canonicalSteps?.length);
       await tx
         .update(treatments)
@@ -250,7 +333,7 @@ async function migratePlan(plan: FamilyPlan) {
             hasCanonicalPipeline && !rollback ? canonical.id : null,
           pipelineSteps:
             hasCanonicalPipeline
-              ? (rollback ? canonicalSteps : null)
+              ? (rollback ? targetCanonicalSteps : null)
               : variant!.pipelineSteps,
           pipelineEntryBehavior: rollback ? null : entryBehavior,
           updatedAt: now,
