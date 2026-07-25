@@ -59,6 +59,7 @@ describe("ReplayOutboundCapture", () => {
         sequence: 3,
         kind: "media",
         mediaType: "video",
+        mediaRef: expect.stringMatching(/^[a-f0-9]{24}$/),
         caption: "Legenda",
       }),
     ]);

@@ -175,13 +175,37 @@ Implementado:
 - resolvedor de calendário injetável no orquestrador;
 - trace de estado carregado, classificação, intenção final e estado antes/depois
   da entrega.
+- rota opt-in `/api/e2e/replay/scenario` para `closed_loop`, que valida
+  fingerprint, atravessa webhook e filas reais, devolve trace/efeitos/checks e
+  remove todos os registros sintéticos ao terminar.
+
+### Sandbox de execução
+
+A rota de cenário exige a autenticação E2E existente e também:
+
+```bash
+E2E_MODE=true
+E2E_REPLAY_MODE=true
+REPLAY_SANDBOX_DATABASE_HOST=<host-exato-do-branch-isolado>
+REPLAY_PRODUCTION_DATABASE_HOST=<host-exato-de-producao>
+```
+
+Ela não existe fora do modo E2E, recusa Vercel Production, exige que o host
+atual seja exatamente o sandbox declarado e diferente de produção, exige fila
+vazia no início e compara os fingerprints do cenário com a clínica do banco.
+Cada cenário usa contato sintético e limpa lead, conversa, mensagens, estados,
+appointments, reservas, follow-ups, eventos, outbox, jobs e custos gerados.
+
+Clínicas com agenda interna usam a fotografia já presente no banco isolado.
+Clínicas em `google_calendar` podem executar conversas que não consultem agenda;
+qualquer leitura de disponibilidade falha com `calendar_snapshot_required` em
+vez de chamar o Google real.
 
 Ainda não implementado:
 
-- verificação da assinatura pelo consumidor OMNIQA;
 - fingerprint persistido no runtime do trace;
 - identificação individual de cada override determinístico no trace;
-- sandbox de banco e relógio, mais fotografia de leitura do calendário;
-- modos `historical_turn`, `closed_loop`, `counterfactual` e `concurrency`;
-- adapter SystemOps para OMNIQA;
+- provisionamento automatizado do branch de banco e relógio controlável;
+- fotografia assinada de disponibilidade para clínicas `google_calendar`;
+- modos `historical_turn`, `counterfactual` e `concurrency`;
 - baseline das clínicas e relatório comparativo.

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { OutboundDeliveryBoundary } from "@/application/jobs/send-message-job";
 import { OutboundDeliveryService } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 
@@ -14,7 +15,8 @@ export type ReplayOutboundEffect =
       kind: "media";
       to: string;
       mediaType: "image" | "video" | "audio" | "document";
-      mediaUrl: string;
+      /** Hash opaco permite detectar duplicação sem vazar URL/token do asset. */
+      mediaRef: string;
       caption: string | null;
       fileName: string | null;
       providerMessageId: string;
@@ -55,7 +57,7 @@ export class ReplayOutboundCapture {
         kind: "media",
         to,
         mediaType,
-        mediaUrl,
+        mediaRef: opaqueMediaRef(mediaUrl),
         caption: caption ?? null,
         fileName: fileName ?? null,
       }).providerMessageId,
@@ -72,7 +74,7 @@ export class ReplayOutboundCapture {
             kind: "media",
             to,
             mediaType,
-            mediaUrl,
+            mediaRef: opaqueMediaRef(mediaUrl),
             caption: caption ?? null,
             fileName: fileName ?? null,
           }).providerMessageId,
@@ -97,4 +99,8 @@ export class ReplayOutboundCapture {
     this.effects.push(captured);
     return captured;
   }
+}
+
+function opaqueMediaRef(mediaUrl: string): string {
+  return createHash("sha256").update(mediaUrl).digest("hex").slice(0, 24);
 }
