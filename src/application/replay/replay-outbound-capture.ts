@@ -20,7 +20,21 @@ export type ReplayOutboundEffect =
       caption: string | null;
       fileName: string | null;
       providerMessageId: string;
+    }
+  | {
+      sequence: number;
+      kind: "suppressed";
+      category: "conversation_reply" | "automation";
+      to: string;
+      content: string;
+      intent: string | null;
+      reason: "shadow_mode";
     };
+
+type ReplayProviderEffect = Exclude<
+  ReplayOutboundEffect,
+  { kind: "suppressed" }
+>;
 
 /**
  * Substitui somente a fronteira irreversível do canal. O sender real continua
@@ -85,6 +99,13 @@ export class ReplayOutboundCapture {
           deliveryTimeoutMs: 0,
           pollIntervalMs: 0,
         }),
+      recordSuppressedDelivery: async (input) => {
+        this.effects.push({
+          sequence: ++this.sequence,
+          kind: "suppressed",
+          ...input,
+        });
+      },
     };
   }
 
@@ -92,10 +113,10 @@ export class ReplayOutboundCapture {
     effect:
       | Omit<Extract<ReplayOutboundEffect, { kind: "text" | "voice" }>, "sequence" | "providerMessageId">
       | Omit<Extract<ReplayOutboundEffect, { kind: "media" }>, "sequence" | "providerMessageId">,
-  ): ReplayOutboundEffect {
+  ): ReplayProviderEffect {
     const sequence = ++this.sequence;
     const providerMessageId = `replay-capture-${sequence}`;
-    const captured = { ...effect, sequence, providerMessageId } as ReplayOutboundEffect;
+    const captured = { ...effect, sequence, providerMessageId } as ReplayProviderEffect;
     this.effects.push(captured);
     return captured;
   }

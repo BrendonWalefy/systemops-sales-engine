@@ -3655,7 +3655,7 @@ export class ConversationOrchestrator {
     // chegar (ação guiada do operador: "entrar no trilho do pipeline"). Pula
     // dedup, registro e debounce — a mensagem não é nova; só a resposta é.
     replayOfMessageDbId?: string;
-  }): Promise<{ replied: boolean }> {
+  }): Promise<{ replied: boolean; reason?: string }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
     const turnId = params.turnId ?? messageId;
     await recordDecisionTrace(this.decisionTraceSink, {
@@ -3688,7 +3688,7 @@ export class ConversationOrchestrator {
         .limit(1);
 
       if (alreadyProcessed.length > 0) {
-        return { replied: false };
+        return { replied: false, reason: "duplicate_provider_message" };
       }
 
       // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
@@ -4639,7 +4639,7 @@ export class ConversationOrchestrator {
             url: `/app/inbox/${conversation.id}`,
           })
           .catch((err) => console.error("[Orchestrator] Push falhou:", err));
-        return { replied: false };
+        return { replied: false, reason: "ai_paused" };
       }
     }
 

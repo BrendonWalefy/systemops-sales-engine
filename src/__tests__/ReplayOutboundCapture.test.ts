@@ -95,4 +95,29 @@ describe("ReplayOutboundCapture", () => {
     expect(sent).toEqual(["replay-capture-1"]);
     expect(capture.effects).toHaveLength(1);
   });
+
+  it("captura supressão por shadow mode como efeito explícito", async () => {
+    const capture = new ReplayOutboundCapture();
+    const boundary = capture.createBoundary();
+
+    await boundary.recordSuppressedDelivery!({
+      category: "conversation_reply",
+      to: "replay-contact",
+      content: "Resposta persistida, mas não enviada",
+      intent: "general_question",
+      reason: "shadow_mode",
+    });
+
+    expect(capture.effects).toEqual([
+      {
+        sequence: 1,
+        kind: "suppressed",
+        category: "conversation_reply",
+        to: "replay-contact",
+        content: "Resposta persistida, mas não enviada",
+        intent: "general_question",
+        reason: "shadow_mode",
+      },
+    ]);
+  });
 });

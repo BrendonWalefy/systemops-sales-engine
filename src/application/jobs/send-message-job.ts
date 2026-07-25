@@ -61,12 +61,20 @@ export type OutboundDeliveryBoundary = {
   sendVoiceOrText: typeof sendVoiceOrText;
   sendMediaMessage: typeof sendMediaMessage;
   createDeliveryService: () => OutboundDeliveryService;
+  recordSuppressedDelivery: (input: {
+    category: "conversation_reply" | "automation";
+    to: string;
+    content: string;
+    intent: string | null;
+    reason: "shadow_mode";
+  }) => void | Promise<void>;
 };
 
 const DEFAULT_OUTBOUND_BOUNDARY: OutboundDeliveryBoundary = {
   sendVoiceOrText,
   sendMediaMessage,
   createDeliveryService: () => new OutboundDeliveryService(),
+  recordSuppressedDelivery: () => {},
 };
 
 export type AutomationDispatchLifecycle = {
@@ -532,7 +540,7 @@ async function deliverConversationOutbound(input: {
   // Shadow mode: já compôs a resposta e avançou o pipeline normalmente — aqui
   // só suprimimos o envio real (Z-API/TTS), persistindo tudo como "simulated".
   if (clinic.shadowModeEnabled) {
-    return deliverShadowOutbound(input);
+    return deliverShadowOutbound(input, boundary);
   }
 
   const config = resolveChannelConfig(clinic);
@@ -699,6 +707,13 @@ async function deliverAutomationOutbound(input: {
   if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
 
   if (clinic.shadowModeEnabled) {
+    await boundary.recordSuppressedDelivery({
+      category: "automation",
+      to: input.payload.to,
+      content: input.payload.text,
+      intent: null,
+      reason: "shadow_mode",
+    });
     await db
       .update(messages)
       .set({ simulated: true, deliveryFormat: "text" })
@@ -792,7 +807,7 @@ async function deliverShadowOutbound(input: {
   payload: ConversationOutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   const conversationRepository = new DrizzleConversationRepository();
   const log = createLogger({
     scope: "SenderWorker",
@@ -801,6 +816,13 @@ async function deliverShadowOutbound(input: {
     conversationId: input.conversationId,
   });
   log.info("shadow_mode.delivery_suppressed", { intent: input.payload.intent });
+  await boundary.recordSuppressedDelivery({
+    category: "conversation_reply",
+    to: input.payload.to,
+    content: input.payload.replyText,
+    intent: input.payload.intent,
+    reason: "shadow_mode",
+  });
 
   await db
     .update(messages)

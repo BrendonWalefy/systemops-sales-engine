@@ -26,7 +26,7 @@ type ConversationHandler = {
     replyEnabled?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
-  }): Promise<{ replied: boolean }>;
+  }): Promise<{ replied: boolean; reason?: string }>;
 };
 
 export type JobResult = {
@@ -134,7 +134,7 @@ export class ProcessMessageJobHandler {
       },
     });
 
-    let handleResult: { replied: boolean };
+    let handleResult: { replied: boolean; reason?: string };
     try {
       handleResult = await this.deps.conversationHandler.handle({
         clinicId: event.clinicId,
@@ -172,6 +172,17 @@ export class ProcessMessageJobHandler {
       clinicId: event.clinicId,
       metadata: { replied: handleResult.replied },
     });
+    if (!handleResult.replied) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: {
+          reason: handleResult.reason ?? "orchestrator_no_reply",
+        },
+      });
+    }
     eventLog.info("job.processed", { durationMs: Date.now() - startedAt });
     return { outcome: "processed", inboundEventId: event.id };
   }

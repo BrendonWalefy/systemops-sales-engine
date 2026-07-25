@@ -218,4 +218,27 @@ describe("ProcessMessageJobHandler", () => {
       }),
     );
   });
+
+  it("registra silêncio intencional como terminal observável do turno", async () => {
+    const conversationHandler = {
+      handle: vi.fn().mockResolvedValue({
+        replied: false,
+        reason: "ai_paused",
+      }),
+    };
+    const { handler, decisionTraceSink } = makeHandler({ conversationHandler });
+
+    await handler.processJob(job);
+
+    expect(decisionTraceSink.getEvents("event-1").slice(-2)).toEqual([
+      expect.objectContaining({
+        stage: "orchestrator.completed",
+        metadata: { replied: false },
+      }),
+      expect.objectContaining({
+        stage: "turn.ignored",
+        metadata: { reason: "ai_paused" },
+      }),
+    ]);
+  });
 });

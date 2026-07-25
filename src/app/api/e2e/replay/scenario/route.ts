@@ -12,6 +12,7 @@ import type { ReplayScenarioV1 } from "@/application/replay/contracts";
 import { loadReplayClinicManifest } from "@/application/replay/load-replay-clinic-manifest";
 import { ReplayCalendarCapture } from "@/application/replay/replay-calendar-capture";
 import { ReplayOutboundCapture } from "@/application/replay/replay-outbound-capture";
+import { isReplayTurnTraceComplete } from "@/application/replay/replay-trace-contract";
 import { assertReplaySandboxEnvironment } from "@/application/replay/replay-sandbox-policy";
 import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
@@ -271,27 +272,14 @@ async function runClosedLoopScenario(
       passed: agentTurns.length > 0,
     },
     {
-      code: "delivery_captured",
+      code: "delivery_effect_observed",
       passed: outboundCapture.effects.length > 0,
     },
     {
       code: "trace_complete",
-      passed: turnRuns.every((run) => {
-        const stages = new Set(
-          traces
-            .filter((trace) => trace.turnId === run.turnId)
-            .map((trace) => trace.stage),
-        );
-        return [
-          "ingress.received",
-          "orchestrator.started",
-          "state.loaded",
-          "intent.classified",
-          "intent.resolved",
-          "outbound.enqueued",
-          "delivery.sent",
-        ].every((stage) => stages.has(stage as never));
-      }),
+      passed: turnRuns.every((run) =>
+        isReplayTurnTraceComplete(traces, run.turnId)
+      ),
     },
     ];
 
