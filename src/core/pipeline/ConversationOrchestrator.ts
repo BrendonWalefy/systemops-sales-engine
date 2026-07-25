@@ -3938,7 +3938,10 @@ export class ConversationOrchestrator {
           url: `/app/inbox/${conversation.id}`,
         })
         .catch((err) => console.error("[Orchestrator] Push falhou:", err));
-      return { replied: false };
+      return {
+        replied: false,
+        reason: `non_sales_conversation:${conversation.category}`,
+      };
     }
 
     // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
@@ -4482,7 +4485,7 @@ export class ConversationOrchestrator {
           url: `/app/inbox/${conversation.id}`,
         })
         .catch((err) => console.error("[Orchestrator] Push falhou:", err));
-      return { replied: false };
+      return { replied: false, reason: "automation_reply_disabled" };
     }
 
     // ── 3.7. Debounce — aguarda burst de mensagens do lead ──
