@@ -67,7 +67,10 @@ import {
 import { buildAddressAnswer, buildAddressLines, type ClinicAddress } from "@/core/conversation/AddressBlock";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
-import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
+import type {
+  FormattedSlot,
+  TreatmentPipelinePayload,
+} from "@/core/conversation/ConversationStateMachine";
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
@@ -8169,6 +8172,10 @@ export class ConversationOrchestrator {
     if (payload.turnId) {
       const stateBeforeDelivery =
         await this.stateMachine.getCurrentState(conversationId);
+      const pipelineTracePayload =
+        stateBeforeDelivery?.state === "treatment_pipeline_active"
+          ? stateBeforeDelivery.payload as TreatmentPipelinePayload
+          : null;
       if (deterministicTrace) {
         await recordDeterministicDecisionTraceCompletion(
           this.decisionTraceSink,
@@ -8190,6 +8197,12 @@ export class ConversationOrchestrator {
         metadata: {
           state: stateBeforeDelivery?.state ?? "none",
           pendingPipelineAdvance: payload.pipelineAdvance?.action ?? "none",
+          pipelineTreatmentId: pipelineTracePayload?.treatmentId ?? null,
+          selectedTreatmentId:
+            pipelineTracePayload?.selectedTreatmentId ??
+            pipelineTracePayload?.treatmentId ??
+            null,
+          pipelineStepIndex: pipelineTracePayload?.stepIndex ?? null,
         },
       });
       await recordDecisionTrace(this.decisionTraceSink, {
