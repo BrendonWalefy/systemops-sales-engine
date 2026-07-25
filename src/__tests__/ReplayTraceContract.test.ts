@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isReplayTurnTraceComplete } from "@/application/replay/replay-trace-contract";
+import {
+  isReplayTurnTraceComplete,
+  resolveReplayDrainNow,
+} from "@/application/replay/replay-trace-contract";
 
 const base = [
   { turnId: "turn-1", stage: "ingress.received" },
@@ -57,5 +60,10 @@ describe("ReplayTraceContract", () => {
       { turnId: "turn-1", stage: "turn.ignored" },
       { turnId: "turn-1", stage: "outbound.enqueued" },
     ], "turn-1")).toBe(false);
+  });
+
+  it("avança o drain além dos relógios virtual e real", () => {
+    expect(resolveReplayDrainNow(2_000, 1_000).getTime()).toBe(3_000);
+    expect(resolveReplayDrainNow(1_000, 2_000).getTime()).toBe(3_000);
   });
 });

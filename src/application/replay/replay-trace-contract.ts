@@ -40,3 +40,15 @@ export function isReplayTurnTraceComplete(
     "delivery.sent",
   ].every((stage) => stages.has(stage));
 }
+
+/**
+ * Jobs inbound podem carregar o timestamp virtual preservado do cenário.
+ * O drain precisa enxergar tanto jobs baseados nesse relógio quanto jobs
+ * outbound criados no relógio real durante o processamento.
+ */
+export function resolveReplayDrainNow(
+  virtualTurnTimestampMs: number,
+  observedNowMs = Date.now(),
+): Date {
+  return new Date(Math.max(virtualTurnTimestampMs, observedNowMs) + 1_000);
+}

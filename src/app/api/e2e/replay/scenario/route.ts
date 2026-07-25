@@ -12,7 +12,10 @@ import type { ReplayScenarioV1 } from "@/application/replay/contracts";
 import { loadReplayClinicManifest } from "@/application/replay/load-replay-clinic-manifest";
 import { ReplayCalendarCapture } from "@/application/replay/replay-calendar-capture";
 import { ReplayOutboundCapture } from "@/application/replay/replay-outbound-capture";
-import { isReplayTurnTraceComplete } from "@/application/replay/replay-trace-contract";
+import {
+  isReplayTurnTraceComplete,
+  resolveReplayDrainNow,
+} from "@/application/replay/replay-trace-contract";
 import { assertReplaySandboxEnvironment } from "@/application/replay/replay-sandbox-policy";
 import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
@@ -197,6 +200,7 @@ async function runClosedLoopScenario(
       handler: processHandler,
       workerId: `replay-process:${input.runId}:${turn.id}`,
       maxJobs: 1,
+      now: resolveReplayDrainNow(shiftedStart + turn.offsetMs),
     });
     const sendDrain = await drainMessageSendQueue({
       jobQueue,
@@ -209,6 +213,7 @@ async function runClosedLoopScenario(
       }),
       workerId: `replay-send:${input.runId}:${turn.id}`,
       maxJobs: 10,
+      now: resolveReplayDrainNow(shiftedStart + turn.offsetMs),
     });
     turnRuns.push({
       scenarioTurnId: turn.id,
