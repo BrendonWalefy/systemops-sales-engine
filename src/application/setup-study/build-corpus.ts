@@ -41,7 +41,13 @@ export function anonymizeText(text: string, leadName: string | null): string {
       .filter((p) => p.length >= 3 && !NAME_PARTICLES.has(p.toLowerCase()));
     for (const part of [fullName, ...parts]) {
       const safeName = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      result = result.replace(new RegExp(`\\b${safeName}\\b`, "gi"), "[PACIENTE]");
+      result = result.replace(
+        new RegExp(
+          `(?<![\\p{L}\\p{N}_])${safeName}(?![\\p{L}\\p{N}_])`,
+          "giu",
+        ),
+        "[PACIENTE]",
+      );
     }
   }
 

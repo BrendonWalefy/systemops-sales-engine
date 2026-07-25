@@ -110,6 +110,64 @@ describe("buildSanitizedReplayCorpus", () => {
     expect(dataset.scenarios).toEqual([]);
   });
 
+  it("valida o nome apenas dentro da conversa de origem", () => {
+    const dataset = buildSanitizedReplayCorpus({
+      datasetVersion: "baseline-1",
+      generatedAt: new Date("2026-07-24T12:00:00.000Z"),
+      clinicKey: "clinic-a",
+      timezone: "America/Sao_Paulo",
+      configFingerprint: "config",
+      playbookFingerprint: null,
+      sourceHashKey: HASH_KEY,
+      conversations: [
+        {
+          sourceId: "conversation-rosa",
+          leadName: "Rosa Lima",
+          messages: [
+            {
+              sourceId: "message-rosa-lead",
+              author: "lead",
+              body: "Olá",
+              mediaType: null,
+              sentAt: new Date("2026-07-20T12:00:00.000Z"),
+            },
+            {
+              sourceId: "message-rosa-agent",
+              author: "agent",
+              body: "Olá, Rosa",
+              mediaType: null,
+              sentAt: new Date("2026-07-20T12:00:01.000Z"),
+            },
+          ],
+        },
+        {
+          sourceId: "conversation-ana",
+          leadName: "Ana Lima",
+          messages: [
+            {
+              sourceId: "message-ana-lead",
+              author: "lead",
+              body: "Quero a opção rosa",
+              mediaType: null,
+              sentAt: new Date("2026-07-20T12:00:00.000Z"),
+            },
+            {
+              sourceId: "message-ana-agent",
+              author: "agent",
+              body: "Vou verificar",
+              mediaType: null,
+              sentAt: new Date("2026-07-20T12:00:01.000Z"),
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(dataset.scenarioCount).toBe(2);
+    expect(dataset.scenarios[0]?.turns[1]?.content.text).toBe("Olá, [PACIENTE]");
+    expect(dataset.scenarios[1]?.turns[0]?.content.text).toBe("Quero a opção rosa");
+  });
+
   it("recusa chave curta de pseudonimização", () => {
     expect(() =>
       buildSanitizedReplayCorpus({

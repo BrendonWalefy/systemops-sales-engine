@@ -129,6 +129,18 @@ O export:
 `needs_review` não pode ser entregue ao OMNIQA. Mesmo com detecção automática,
 texto livre pode conter um identificador não reconhecido.
 
+Gere uma visão Markdown privada para fazer a revisão cenário a cenário:
+
+```bash
+npm run replay:review -- \
+  --input /caminho/corpus/clinica.baseline.needs-review.json \
+  --output /caminho/corpus/clinica.baseline.review.md
+```
+
+O relatório inclui o checklist obrigatório e uma confirmação por cenário. Ele
+também fica fora de Git, é criado com permissão `0600` e nunca sobrescreve um
+arquivo existente.
+
 ### Aprovação assinada
 
 A aprovação não é uma edição manual do JSON. Gere uma vez o par Ed25519 em um

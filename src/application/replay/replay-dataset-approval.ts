@@ -106,7 +106,14 @@ export function verifyReplayDatasetApproval(
 
 export function replayApprovalPayload(dataset: ReplayDatasetV2): string {
   if (!dataset.approval) throw new Error("Replay dataset has no approval envelope");
-  const { signature: _signature, ...approval } = dataset.approval;
+  const approval: Omit<ReplayDatasetApprovalV1, "signature"> = {
+    algorithm: dataset.approval.algorithm,
+    checklistVersion: dataset.approval.checklistVersion,
+    approvedAt: dataset.approval.approvedAt,
+    approvedBy: dataset.approval.approvedBy,
+    keyId: dataset.approval.keyId,
+    sourceDigest: dataset.approval.sourceDigest,
+  };
   return stableSerialize({ ...dataset, approval });
 }
 

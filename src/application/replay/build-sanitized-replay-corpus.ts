@@ -82,6 +82,7 @@ export function buildSanitizedReplayCorpus(
         },
       };
     });
+    assertNoKnownLeadName(turns, conversation.leadName);
 
     const tags = ["historical"];
     if (ordered.some((message) => message.mediaType)) tags.push("has_media");
@@ -162,10 +163,6 @@ function assertNoKnownSourceIdentifiers(
   sources: ReplaySourceConversation[],
 ): void {
   const serialized = JSON.stringify(dataset).toLocaleLowerCase("pt-BR");
-  const transcript = dataset.scenarios
-    .flatMap((scenario) => scenario.turns.map((turn) => turn.content.text))
-    .join("\n")
-    .toLocaleLowerCase("pt-BR");
   for (const source of sources) {
     const sourceIds = [
       source.sourceId,
@@ -176,10 +173,23 @@ function assertNoKnownSourceIdentifiers(
         throw new Error("Replay sanitizer retained a known source identifier");
       }
     }
-    for (const value of nameTokens(source.leadName)) {
-      if (transcript.includes(value.toLocaleLowerCase("pt-BR"))) {
-        throw new Error("Replay sanitizer retained a known lead name");
-      }
+  }
+}
+
+function assertNoKnownLeadName(
+  turns: ReplayScenarioTurnV1[],
+  leadName: string | null,
+): void {
+  const transcript = turns.map((turn) => turn.content.text).join("\n");
+  for (const value of nameTokens(leadName)) {
+    const safeName = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (
+      new RegExp(
+        `(?<![\\p{L}\\p{N}_])${safeName}(?![\\p{L}\\p{N}_])`,
+        "iu",
+      ).test(transcript)
+    ) {
+      throw new Error("Replay sanitizer retained a known lead name");
     }
   }
 }
