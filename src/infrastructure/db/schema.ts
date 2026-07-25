@@ -504,6 +504,12 @@ export const treatments = pgTable(
     // jornada canônica de outro tratamento sem duplicar pipelineSteps. A
     // resolução valida mesma clínica e faz fallback seguro se o id ficar órfão.
     pipelineSourceTreatmentId: uuid("pipeline_source_treatment_id"),
+    // null preserva o comportamento legado. "immediate" entrega o primeiro
+    // content step no mesmo turno; "qualify_then_present" abre com qualificação
+    // e mantém o conteúdo posicionado para a próxima resposta do lead.
+    pipelineEntryBehavior: text("pipeline_entry_behavior").$type<
+      import("@/domain/entities/treatment").PipelineEntryBehavior
+    >(),
     priceCents: integer("price_cents"),
     minPriceCents: integer("min_price_cents"),
     maxPriceCents: integer("max_price_cents"),

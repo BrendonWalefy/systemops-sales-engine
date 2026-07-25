@@ -17,6 +17,8 @@ export type TreatmentRepository = {
         | "aliases"
         | "isAesthetic"
         | "pipelineSteps"
+        | "pipelineSourceTreatmentId"
+        | "pipelineEntryBehavior"
         | "priceCents"
         | "minPriceCents"
         | "maxPriceCents"
