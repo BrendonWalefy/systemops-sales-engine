@@ -24,7 +24,6 @@ import {
   resolveCalendarMode,
 } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { InternalCalendarGateway } from "@/infrastructure/adapters/calendar/internal/internal-calendar-gateway";
-import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
@@ -185,7 +184,9 @@ async function runClosedLoopScenario(
     };
     const processHandler = new ProcessMessageJobHandler({
       inboundEventStore,
-      automationPolicy: new DrizzleClinicAutomationPolicyReader(),
+      // O sandbox valida o comportamento que a clínica teria quando ativada.
+      // A segurança externa é garantida pelos adapters de captura abaixo.
+      automationPolicy: { getAutomationMode: async () => "live" as const },
       conversationHandler: new ConversationOrchestrator({
         decisionTraceSink: decisionTrace,
         calendarGatewayResolver,

@@ -54,7 +54,7 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
     markInboundEventProcessed: vi.fn().mockResolvedValue(undefined),
     markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
   };
-  const automationPolicy = { canSendAutomatedReply: vi.fn().mockResolvedValue(true) };
+  const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue("live") };
   const conversationHandler = { handle: vi.fn().mockResolvedValue({ replied: true }) };
   const resolveInboundContent = vi.fn().mockResolvedValue({ messageText: "Olá", shouldReply: true });
   const decisionTraceSink = new InMemoryDecisionTraceSink();
@@ -283,12 +283,30 @@ describe("ProcessMessageJobHandler", () => {
     expect(decisionTraceSink.getEvents("event-1").slice(-2)).toEqual([
       expect.objectContaining({
         stage: "orchestrator.completed",
-        metadata: { replied: false },
+        metadata: expect.objectContaining({ replied: false }),
       }),
       expect.objectContaining({
         stage: "turn.ignored",
         metadata: { reason: "ai_paused" },
       }),
     ]);
+  });
+
+  it("shadow registra a mensagem em modo observação sem autorizar efeitos da IA", async () => {
+    const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue("observe") };
+    const { handler, conversationHandler, resolveInboundContent } = makeHandler({
+      automationPolicy,
+    });
+
+    await handler.processJob(job);
+
+    expect(resolveInboundContent).toHaveBeenCalledWith(expect.objectContaining({
+      replyEnabled: false,
+      transcriptionEnabled: true,
+    }));
+    expect(conversationHandler.handle).toHaveBeenCalledWith(expect.objectContaining({
+      replyEnabled: false,
+      observationOnly: true,
+    }));
   });
 });

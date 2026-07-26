@@ -3756,6 +3756,9 @@ export class ConversationOrchestrator {
     senderPhoto?: string | null;
     timestamp: Date;
     replyEnabled?: boolean;
+    // Shadow seguro: registra inbound e encerra antes de qualquer decisão/efeito
+    // da IA. A resposta hipotética é calculada pelo replay em sandbox.
+    observationOnly?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
     // Reprocessa uma mensagem de lead JÁ REGISTRADA como se tivesse acabado de
@@ -3774,6 +3777,7 @@ export class ConversationOrchestrator {
         replay: Boolean(params.replayOfMessageDbId),
         mediaType: params.mediaType ?? "text",
         replyEnabled: params.replyEnabled ?? true,
+        observationOnly: params.observationOnly ?? false,
       },
     });
     const isReplay = !!params.replayOfMessageDbId;
@@ -4032,6 +4036,34 @@ export class ConversationOrchestrator {
     }
 
     try {
+
+    if (params.observationOnly) {
+      if (
+        params.mediaUrl &&
+        (params.mediaType === "image" || params.mediaType === "video" || params.mediaType === "document")
+      ) {
+        rehostLeadMedia(incomingMessage.id, params.mediaUrl, params.mediaType)
+          .catch(() => { /* já logado dentro da função */ });
+      }
+      await this.notifier
+        .execute(clinicId, {
+          title: lead.name ?? phone,
+          body: params.mediaType
+            ? `Nova mensagem com ${params.mediaType}`
+            : messageText.slice(0, 100),
+          url: `/app/inbox/${conversation.id}`,
+        })
+        .catch((err) => console.error("[Orchestrator] Push shadow falhou:", err));
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId: conversation.id,
+        metadata: { reason: "shadow_observation_only" },
+      });
+      return { replied: false, reason: "shadow_observation_only" };
+    }
 
     if (!isSalesConversationCategory(conversation.category)) {
       const displayName = lead.name ?? phone;
@@ -6190,33 +6222,28 @@ export class ConversationOrchestrator {
         // ── A7: Fluxo de sinal ──
         // Com sinal habilitado, NÃO agenda direto: faz uma reserva provisória, cobra o
         // sinal (texto determinístico) e aguarda o comprovante. O operador valida e
-        // confirma (a IA nunca valida comprovante). Em shadow mode pulamos a reserva
-        // real para não travar a agenda de verdade.
+        // confirma (a IA nunca valida comprovante). O modo observação encerra antes
+        // deste ponto; no replay, a reserva ocorre apenas no banco sandbox isolado.
         if (clinic.depositEnabled && clinic.depositAmountCents && clinic.depositPixKey) {
           const startsAt = new Date(chosenSlot.startsAt);
           const endsAt = new Date(chosenSlot.endsAt);
           const ttlHours = clinic.depositTtlHours ?? 24;
-          const shadow = clinicRows[0].shadowModeEnabled;
-
-          let reservationId: string | null = null;
-          if (!shadow) {
-            const held = await this.reservationService.reserve(
-              clinic.id, lead.id, startsAt, endsAt, ttlHours * 60,
+          const held = await this.reservationService.reserve(
+            clinic.id, lead.id, startsAt, endsAt, ttlHours * 60,
+          );
+          if (!held) {
+            // Slot tomado entre a oferta e a escolha → reoferta.
+            const { slots: newSlots } = await this.fetchAndOfferSlots(
+              conversation.id, clinic, calendarGateway, timezone, businessHours,
+              undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
             );
-            if (!held) {
-              // Slot tomado entre a oferta e a escolha → reoferta.
-              const { slots: newSlots } = await this.fetchAndOfferSlots(
-                conversation.id, clinic, calendarGateway, timezone, businessHours,
-                undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
-              );
-              replyText = newSlots.length > 0
-                ? await compose({ type: "slot_taken_reoffered", newSlots })
-                : await compose({ type: "no_slots_available" });
-              forceTextOnlyReply = true;
-              break;
-            }
-            reservationId = held.id;
+            replyText = newSlots.length > 0
+              ? await compose({ type: "slot_taken_reoffered", newSlots })
+              : await compose({ type: "no_slots_available" });
+            forceTextOnlyReply = true;
+            break;
           }
+          const reservationId = held.id;
 
           const holdExpiresAt = new Date(Date.now() + ttlHours * 3600_000).toISOString();
           await this.stateMachine.startDepositWait(

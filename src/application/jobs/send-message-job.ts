@@ -60,6 +60,8 @@ export type SendMessageJobDependencies = {
 };
 
 export type OutboundDeliveryBoundary = {
+  /** Somente replay E2E em banco isolado: executa o sender real contra adapters de captura. */
+  sandboxCaptureEnabled: boolean;
   sendVoiceOrText: typeof sendVoiceOrText;
   sendMediaMessage: typeof sendMediaMessage;
   createDeliveryService: () => OutboundDeliveryService;
@@ -73,11 +75,14 @@ export type OutboundDeliveryBoundary = {
 };
 
 const DEFAULT_OUTBOUND_BOUNDARY: OutboundDeliveryBoundary = {
+  sandboxCaptureEnabled: false,
   sendVoiceOrText,
   sendMediaMessage,
   createDeliveryService: () => new OutboundDeliveryService(),
   recordSuppressedDelivery: () => {},
 };
+
+export const SHADOW_DELIVERY_SUPPRESSED = "__shadow_delivery_suppressed__";
 
 export type AutomationDispatchLifecycle = {
   markDelivered(outbound: OutboundMessageForAutomationLifecycle, deliveredAt: Date): Promise<void>;
@@ -345,6 +350,17 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,
     });
+    if (providerMessageId === SHADOW_DELIVERY_SUPPRESSED) {
+      await this.deps.outboundMessageStore.markOutboundCancelled(
+        outbound.id,
+        "shadow_mode",
+      );
+      outboundLog.info("job.ignored", {
+        reason: "shadow_mode",
+        durationMs: Date.now() - startedAt,
+      });
+      return "ignored";
+    }
     if (turnId && isConversationOutboundPayload(outbound.payload)) {
       const stateAfterDelivery =
         await this.conversationStateReader.getCurrentState(
@@ -630,9 +646,9 @@ async function deliverConversationOutbound(input: {
     .limit(1);
   if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
 
-  // Shadow mode: já compôs a resposta e avançou o pipeline normalmente — aqui
-  // só suprimimos o envio real (Z-API/TTS), persistindo tudo como "simulated".
-  if (clinic.shadowModeEnabled) {
+  // Compatibilidade para uma outbox que tenha sido criada antes de a clínica
+  // entrar em observação. Replay sandbox usa adapters de captura e pode seguir.
+  if (clinic.shadowModeEnabled && !boundary.sandboxCaptureEnabled) {
     return deliverShadowOutbound(input, boundary);
   }
 
@@ -806,7 +822,7 @@ async function deliverAutomationOutbound(input: {
     .limit(1);
   if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
 
-  if (clinic.shadowModeEnabled) {
+  if (clinic.shadowModeEnabled && !boundary.sandboxCaptureEnabled) {
     await boundary.recordSuppressedDelivery({
       category: "automation",
       to: input.payload.to,
@@ -823,7 +839,7 @@ async function deliverAutomationOutbound(input: {
           eq(messages.conversationId, input.conversationId),
         ),
       );
-    return null;
+    return SHADOW_DELIVERY_SUPPRESSED;
   }
 
   const config = resolveChannelConfig(clinic);
@@ -898,8 +914,8 @@ async function deliverAutomationOutbound(input: {
 }
 
 /**
- * Shadow mode: persiste a resposta composta e avança o pipeline exatamente
- * como o fluxo real (deliverConversationOutbound), mas nunca chama Z-API/TTS.
+ * Compatibilidade para outboxes shadow criadas antes do modo observation-only:
+ * persiste a resposta composta, mas nunca chama Z-API/TTS nem aplica lifecycle.
  * Mensagens ficam marcadas simulated=true, externalId=null — a inbox exibe
  * um badge para deixar claro que nada chegou ao lead de verdade.
  */
@@ -962,24 +978,5 @@ async function deliverShadowOutbound(input: {
     }
   }
 
-  if (input.payload.pipelineAdvance) {
-    const stateMachine = new ConversationStateMachine();
-    if (input.payload.pipelineAdvance.action === "advance") {
-      await stateMachine.advancePipelineStep(
-        input.conversationId,
-        input.payload.pipelineAdvance.nextStepIndex,
-        {
-          treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
-          stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
-        },
-      );
-    } else {
-      await stateMachine.exitTreatmentPipeline(input.conversationId, {
-        treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
-        stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
-      });
-    }
-  }
-
-  return null;
+  return SHADOW_DELIVERY_SUPPRESSED;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
-import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
+import { SendMessageJobHandler, SHADOW_DELIVERY_SUPPRESSED } from "@/application/jobs/send-message-job";
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 
@@ -165,6 +165,28 @@ describe("SendMessageJobHandler", () => {
 
     await expect(handler.processJob({ payload: { outboundMessageId: "outbound-1" } })).resolves.toBe("ignored");
     expect(store.hasEarlierActiveMessage).not.toHaveBeenCalled();
+  });
+
+  it("cancela outbox shadow sem marcar entrega nem executar lifecycle", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue(automationOutbound({ category: "reply" }));
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery: vi.fn().mockResolvedValue(SHADOW_DELIVERY_SUPPRESSED),
+      automationDispatchLifecycle,
+      safetyContextReader: makeSafetyContextReader(),
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: "outbound-automation-1" },
+    })).resolves.toBe("ignored");
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
+      "outbound-automation-1",
+      "shadow_mode",
+    );
+    expect(store.markOutboundDelivered).not.toHaveBeenCalled();
+    expect(automationDispatchLifecycle.markDelivered).not.toHaveBeenCalled();
   });
 
   it("reconcilia lifecycle de automação quando a outbox já está sent", async () => {

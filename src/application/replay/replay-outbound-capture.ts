@@ -48,6 +48,7 @@ export class ReplayOutboundCapture {
 
   createBoundary(): Partial<OutboundDeliveryBoundary> {
     return {
+      sandboxCaptureEnabled: true,
       sendVoiceOrText: async (to, text, _config, voiceEnabled) => {
         const effect = this.append({
           kind: voiceEnabled ? "voice" : "text",

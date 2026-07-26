@@ -25,6 +25,7 @@ type ConversationHandler = {
     timestamp: Date;
     turnId?: string;
     replyEnabled?: boolean;
+    observationOnly?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
   }): Promise<{ replied: boolean; reason?: string }>;
@@ -42,6 +43,7 @@ export type ProcessMessageJobDependencies = {
   resolveInboundContent?: (params: {
     payload: ZApiInboundPayload;
     replyEnabled: boolean;
+    transcriptionEnabled?: boolean;
     transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
   }) => Promise<ResolvedLeadInboundContent>;
   transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
@@ -115,11 +117,13 @@ export class ProcessMessageJobHandler {
     }
 
     await this.deps.inboundEventStore.markInboundEventProcessing(event.id);
-    const replyEnabled = await this.deps.automationPolicy.canSendAutomatedReply(event.clinicId);
+    const automationMode = await this.deps.automationPolicy.getAutomationMode(event.clinicId);
+    const replyEnabled = automationMode === "live";
     const content = zapiPayload
       ? await this.resolveInboundContent({
           payload: zapiPayload,
           replyEnabled,
+          transcriptionEnabled: automationMode !== "disabled",
           transcribeAudio: this.deps.transcribeAudio,
         })
       : {
@@ -141,6 +145,7 @@ export class ProcessMessageJobHandler {
       metadata: {
         contentType: content.mediaType ?? "text",
         replyEnabled: content.shouldReply,
+        observationOnly: automationMode === "observe",
         hasText: content.messageText.trim().length > 0,
       },
     });
@@ -157,7 +162,8 @@ export class ProcessMessageJobHandler {
         senderName: zapiPayload?.senderName || metaPayload?.senderName || undefined,
         senderPhoto: zapiPayload?.senderPhoto ?? null,
         timestamp: event.receivedAt,
-        replyEnabled: content.shouldReply,
+        replyEnabled: automationMode === "live" && content.shouldReply,
+        observationOnly: automationMode === "observe",
         mediaUrl: content.mediaUrl,
         mediaType: content.mediaType,
       });
@@ -181,7 +187,7 @@ export class ProcessMessageJobHandler {
       stage: "orchestrator.completed",
       occurredAt: new Date().toISOString(),
       clinicId: event.clinicId,
-      metadata: { replied: handleResult.replied },
+      metadata: { replied: handleResult.replied, automationMode },
     });
     if (!handleResult.replied) {
       await recordDecisionTrace(this.deps.decisionTraceSink, {

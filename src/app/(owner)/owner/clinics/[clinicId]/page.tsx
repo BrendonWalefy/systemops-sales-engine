@@ -136,7 +136,7 @@ async function toggleClinicAutomation(clinicId: string, currentAutoReplyEnabled:
   redirect(`/owner/clinics/${clinicId}`);
 }
 
-/** Liga/desliga o shadow mode: IA compõe e simula, mas nunca envia de verdade. */
+/** Liga/desliga o modo de observação: coleta inbound, sem executar decisões da IA. */
 async function toggleShadowMode(clinicId: string, currentValue: boolean) {
   "use server";
   const clinic = await db.query.organizations.findFirst({
@@ -1332,7 +1332,7 @@ export default async function ClinicDetailPage({
                     <div>
                       <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: clinic.shadowModeEnabled ? "#c084fc" : "var(--text)" }}>Shadow mode {clinic.shadowModeEnabled ? "ligado" : "desligado"}</p>
                       <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                        IA classifica, responde e avança o funil normalmente, mas nada é enviado ao lead — use para validar comportamento em organizações com problemas ou em pré-onboarding.
+                        Registra mensagens reais para diagnóstico, mas não executa decisões da IA, agenda, follow-ups ou envios. Valide respostas no replay isolado antes do go-live.
                       </p>
                     </div>
                     {isArchived ? (

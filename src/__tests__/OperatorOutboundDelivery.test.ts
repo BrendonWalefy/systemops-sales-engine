@@ -27,6 +27,7 @@ function clinicQuery() {
 
 function boundary(): OutboundDeliveryBoundary {
   return {
+    sandboxCaptureEnabled: false,
     sendVoiceOrText: vi.fn().mockResolvedValue({
       msgId: "provider-text-1",
       deliveryFormat: "text",

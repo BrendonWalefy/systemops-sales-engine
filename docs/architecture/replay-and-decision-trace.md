@@ -208,6 +208,17 @@ vazia no início e compara os fingerprints do cenário com a clínica do banco.
 Cada cenário usa contato sintético e limpa lead, conversa, mensagens, estados,
 appointments, reservas, follow-ups, eventos, outbox, jobs e custos gerados.
 
+O runner força a política de automação para `live` somente dentro desse sandbox,
+inclusive quando o snapshot da clínica está em shadow/pausado. Isso testa o
+comportamento que seria ativado sem alterar a configuração copiada. A entrega
+continua atravessando o sender real, mas a boundary marcada como captura sandbox
+substitui os provedores e registra os efeitos. Essa exceção não existe no runtime
+online.
+
+No runtime online, shadow é estritamente `observation-only`: registra inbound e
+encerra antes de qualquer decisão ou efeito da IA. Áudios são transcritos para
+preservar o corpus, sem autorizar resposta.
+
 Clínicas com agenda interna usam a fotografia já presente no banco isolado.
 Clínicas em `google_calendar` podem executar conversas que não consultem agenda;
 qualquer leitura de disponibilidade falha com `calendar_snapshot_required` em

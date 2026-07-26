@@ -125,6 +125,20 @@ a mesma revisão; o sender mantém uma aplicação idempotente como reconciliaç
 - persistir `providerMessageId`;
 - aplicar retry sem recomputar a conversa inteira.
 
+## Modos de automação
+
+- `live`: a clínica está ativa, `autoReplyEnabled=true` e o motor pode decidir,
+  persistir estado e enfileirar respostas;
+- `observe`: `shadowModeEnabled=true`; o sistema registra a mensagem real e
+  notifica a equipe, mas encerra antes de classificação, mudança de funil,
+  agenda, follow-up ou resposta da IA;
+- `disabled`: não executa automação conversacional.
+
+O comportamento hipotético de uma clínica em observação é validado pelo replay
+em banco sandbox. Nesse ambiente, o fluxo completo de produção roda contra
+adapters de captura, sem WhatsApp, calendário externo ou storage real. Shadow
+online não é simulador e não deve ser usado como evidência de qualidade da IA.
+
 ## O que ainda é híbrido
 
 Respostas da IA, envio manual pelo inbox, follow-ups, campanhas de recuperação,
