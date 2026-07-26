@@ -222,7 +222,14 @@ describe("horário de atendimento determinístico", () => {
     // Ver BusinessHoursOutOfWindow.test.ts.
     const semSabado = buildBusinessHoursAnswer("Seg-Sex 09:00-18:00", "Vocês atendem aos sábados?");
     expect(semSabado).toContain("não consta na agenda padrão");
-    expect(semSabado).toContain("verificar com a equipe");
+    expect(semSabado).not.toContain("verificar com a equipe");
+
+    const comExcecao = buildBusinessHoursAnswer(
+      "Seg-Sex 09:00-18:00",
+      "Vocês atendem aos sábados?",
+      true,
+    );
+    expect(comExcecao).toContain("verificar com a equipe");
   });
 });
 

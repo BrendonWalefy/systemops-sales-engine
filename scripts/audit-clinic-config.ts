@@ -520,6 +520,7 @@ async function auditClinic(slug: string) {
       maxSlotsToOffer: organization.maxSlotsToOffer,
       slotLookaheadDays: organization.slotLookaheadDays,
       offerSlotsAfterPriceEnabled: organization.offerSlotsAfterPriceEnabled,
+      outsideHoursExceptionEnabled: organization.outsideHoursExceptionEnabled,
       rapidThrottleMs: organization.rapidThrottleMs,
       messageDebounceMs: organization.messageDebounceMs,
       defaultAppointmentDurationMinutes: organization.defaultAppointmentDurationMinutes,

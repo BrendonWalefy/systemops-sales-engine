@@ -913,34 +913,37 @@ export function isQuantityFollowupToPriceQuestion(params: {
   return isPriceRequestText(normalizeFreeText(previousLeadMessage.body));
 }
 
-export function requiresTeamCheckForHours(message: string, businessHoursRaw: string | null): boolean {
+export function requiresTeamCheckForHours(
+  message: string,
+  businessHoursRaw: string | null,
+  outsideHoursExceptionEnabled = false,
+): boolean {
+  if (!outsideHoursExceptionEnabled) return false;
   const boundary = extractRequestedTimeBoundary(message);
   if (!boundary) return false;
   return isRequestedTimeOutsideBusinessHours(boundary, parseBusinessHours(businessHoursRaw));
 }
 
-export function buildBusinessHoursAnswer(businessHoursRaw: string | null, message: string): string {
+export function buildBusinessHoursAnswer(
+  businessHoursRaw: string | null,
+  message: string,
+  outsideHoursExceptionEnabled = false,
+): string {
   const normalized = normalizeFreeText(message);
   const businessHours = parseBusinessHours(businessHoursRaw);
   const hoursText = businessHoursRaw?.trim() || "Segunda a sexta, das 8h às 18h";
   const asksSaturday = normalized.includes("sabado");
   const asksSunday = normalized.includes("domingo");
 
-  // Horário fora da janela NÃO é recusa — é caso de escalar.
-  //
-  // A clínica abre exceção: na Vitalli, lente é procedimento longo e o doutor
-  // atende após as 17h, terminando até as 21h. Uma IA que responde "fica fora da
-  // nossa agenda" mata uma venda que o humano fecharia. O sistema não conhece as
-  // exceções; quem conhece é a equipe.
-  //
-  // O que quebrava (caso real 19/07): "posso ir após as 18h na semana" respondido
-  // com "Seg-Sáb 8h-18h." — tecnicamente correto, comercialmente morto.
   const boundary = extractRequestedTimeBoundary(message);
   if (boundary && isRequestedTimeOutsideBusinessHours(boundary, businessHours)) {
     const limite = boundary.direction === "after"
       ? `Nosso horário padrão vai até ${businessHours.endHour}h`
       : `Nosso horário padrão começa às ${businessHours.startHour}h`;
-    return `${limite}, mas dependendo do procedimento conseguimos abrir exceção. Vou verificar com a equipe e já te retorno.`;
+    if (outsideHoursExceptionEnabled) {
+      return `${limite}. Esta clínica permite solicitar uma análise de exceção; vou verificar com a equipe e já te retorno.`;
+    }
+    return `${limite}. Posso te ajudar a encontrar uma opção dentro do nosso horário de atendimento: ${hoursText}.`;
   }
 
   // Sábado/domingo: responde pelo que está CADASTRADO. Não consulta a agenda real
@@ -950,14 +953,18 @@ export function buildBusinessHoursAnswer(businessHoursRaw: string | null, messag
     if (businessHours.days.includes(6)) {
       return `Sim, atendemos aos sábados. Horário cadastrado: ${hoursText}.`;
     }
-    return `Pelo horário cadastrado, atendemos ${hoursText}. Sábado não consta na agenda padrão, mas vou verificar com a equipe se há alguma possibilidade.`;
+    return outsideHoursExceptionEnabled
+      ? `Pelo horário cadastrado, atendemos ${hoursText}. Sábado não consta na agenda padrão; vou verificar com a equipe se existe uma exceção disponível.`
+      : `Pelo horário cadastrado, atendemos ${hoursText}. Sábado não consta na agenda padrão.`;
   }
 
   if (asksSunday) {
     if (businessHours.days.includes(0)) {
       return `Sim, atendemos aos domingos. Horário cadastrado: ${hoursText}.`;
     }
-    return `Pelo horário cadastrado, atendemos ${hoursText}. Domingo não consta na agenda padrão, mas vou verificar com a equipe se há alguma possibilidade.`;
+    return outsideHoursExceptionEnabled
+      ? `Pelo horário cadastrado, atendemos ${hoursText}. Domingo não consta na agenda padrão; vou verificar com a equipe se existe uma exceção disponível.`
+      : `Pelo horário cadastrado, atendemos ${hoursText}. Domingo não consta na agenda padrão.`;
   }
 
   return `Nosso horário de atendimento é: ${hoursText}.`;
@@ -2557,12 +2564,12 @@ function buildSocialProfileClinicContext(socialProfile: string | null): string {
   ].join("\n");
 }
 
-function buildMediaClarificationClinicContext(): string {
+export function buildMediaClarificationClinicContext(): string {
   return [
-    `Lead está perguntando qual foto/card corresponde à técnica Premium ou Estratificada.`,
-    `Interprete "prêmio" como "Premium" quando aparecer nesse contexto.`,
-    `Responda diretamente sem reenviar mídias: Premium é a técnica com uma única resina de alta qualidade e é a opção mais acessível; Estratificada combina duas resinas com bordas translúcidas para máxima naturalidade e resultado mais sofisticado.`,
-    `Use no máximo 2 frases e não envie áudio promocional, novos cards, menu ou convite de agendamento nessa resposta.`,
+    `O lead está pedindo esclarecimento sobre uma foto, card ou mídia enviada nesta conversa.`,
+    `Use somente fatos presentes no tratamento, no pipeline, nas legendas de mídia ou nas orientações editoriais desta clínica.`,
+    `Se não for possível identificar inequivocamente a mídia, peça que o lead diga o título, a ordem ou reenvie a referência.`,
+    `Não invente nomes de técnicas, materiais, preços ou comparações e não reenvie mídias nessa resposta.`,
   ].join("\n");
 }
 
@@ -2609,18 +2616,8 @@ ${rows.join("\n")}
 Se o lead pedir faixa não listada, indique a mais próxima. NUNCA diga "+ taxa" — a taxa já está nos valores acima.`;
 }
 
-// Keywords padrão para segmentos de saúde/estética onde enviar uma foto ajuda a personalizar a resposta.
-// Clínicas de outros segmentos podem sobrescrever via Treatment.isAesthetic = true (campo no banco).
-const DEFAULT_AESTHETIC_TREATMENT_KEYWORDS = [
-  "lente", "faceta", "clareamento", "harmonização", "harmonizacao",
-  "gengivoplastia", "botox", "sorriso",
-  "coloracao", "coloração", "mechas", "penteado",
-];
-
-export function isAestheticTreatment(treatmentName: string, extraKeywords?: string[]): boolean {
-  const normalized = treatmentName.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const keywords = extraKeywords?.length ? extraKeywords : DEFAULT_AESTHETIC_TREATMENT_KEYWORDS;
-  return keywords.some((kw) => normalized.includes(kw));
+export function isAestheticTreatment(isAesthetic: boolean | null | undefined): boolean {
+  return isAesthetic === true;
 }
 
 // Instrução de convite à foto — posicionada como benefício ao cliente, nunca obrigatória.
@@ -2630,7 +2627,7 @@ function buildPhotoInviteInstruction(): string {
 }
 
 export function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
-  const shouldDelayScheduling = experience === "concierge" && isAestheticTreatment(item.name);
+  const shouldDelayScheduling = experience === "concierge" && isAestheticTreatment(item.isAesthetic);
   const nextStep = shouldDelayScheduling
     ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver entendendo o tratamento, prefira encerrar com uma pergunta consultiva sobre a técnica ou a dúvida dele. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
     : item.requiresEvaluationFirst
@@ -2644,7 +2641,7 @@ export function buildSelectedTreatmentContext(item: ProcedureListItem, commercia
       ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
       : "Explique o procedimento com naturalidade.",
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
-    experience === "concierge" && isAestheticTreatment(item.name) ? buildPhotoInviteInstruction() : null,
+    experience === "concierge" && isAestheticTreatment(item.isAesthetic) ? buildPhotoInviteInstruction() : null,
     nextStep,
     experience !== "concierge" ? "Mencione que o lead pode digitar *menu* a qualquer momento para ver outras opções." : null,
   ].filter(Boolean);
@@ -2659,7 +2656,7 @@ export function buildSelectedTreatmentContext(item: ProcedureListItem, commercia
 export function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
   const shouldDelayScheduling =
     experience === "concierge" &&
-    (treatment.isAesthetic || isAestheticTreatment(treatment.name));
+    isAestheticTreatment(treatment.isAesthetic);
   const nextStep = shouldDelayScheduling
     ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver conhecendo o tratamento, prefira encerrar com uma pergunta consultiva sobre técnicas, resultado ou expectativas. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
     : treatment.requiresEvaluationFirst
@@ -2675,7 +2672,7 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
     "MÍDIA: se houver vídeo ou imagem na BIBLIOTECA DE MÍDIA com título relacionado a este tratamento, inclua [MEDIA:id] ao final da resposta conforme a regra da biblioteca.",
-    experience === "concierge" && (treatment.isAesthetic || isAestheticTreatment(treatment.name)) ? buildPhotoInviteInstruction() : null,
+    experience === "concierge" && isAestheticTreatment(treatment.isAesthetic) ? buildPhotoInviteInstruction() : null,
     nextStep,
   ].filter(Boolean);
 
@@ -2721,6 +2718,7 @@ function buildOrganization(row: ClinicRow): Organization {
     maxSlotsToOffer: row.maxSlotsToOffer,
     slotLookaheadDays: row.slotLookaheadDays,
     offerSlotsAfterPriceEnabled: row.offerSlotsAfterPriceEnabled,
+    outsideHoursExceptionEnabled: row.outsideHoursExceptionEnabled,
     depositEnabled: row.depositEnabled,
     depositAmountCents: row.depositAmountCents ?? null,
     depositPixKey: row.depositPixKey ?? null,
@@ -3592,14 +3590,24 @@ export function isClinicalTreatmentPlanJudgmentRequest(message: string): boolean
   return asksCaseSpecificScope || combinesProcedures;
 }
 
-export function buildEvaluationDepositClarification(depositAmountCents: number): string {
+export function buildEvaluationDepositClarification(
+  depositAmountCents: number,
+  evaluation?: { priceCents: number | null; priceQuotableInChat: boolean } | null,
+): string {
   const amount = formatBrl(depositAmountCents);
+  const evaluationLine = evaluation?.priceQuotableInChat
+    ? evaluation.priceCents === 0
+      ? "A avaliação não tem custo."
+      : evaluation.priceCents != null
+        ? `A avaliação custa ${formatBrl(evaluation.priceCents)}.`
+        : "O valor da avaliação precisa ser confirmado pela equipe."
+    : "O valor da avaliação precisa ser confirmado pela equipe.";
   return [
-    "A avaliação não tem custo.",
+    evaluationLine,
     "",
     `Para reservar o horário da avaliação, a clínica pede um sinal de ${amount}.`,
     "",
-    "Esse valor não é uma cobrança pela avaliação: ele garante a reserva e é abatido do tratamento se você avançar.",
+    "O sinal é separado do valor da avaliação: ele garante a reserva e é abatido do tratamento se você avançar.",
     "",
     "Posso te mostrar os horários disponíveis agora?",
   ].join("\n");
@@ -5906,7 +5914,11 @@ export class ConversationOrchestrator {
         replyText = await compose({ type: "acknowledgment" });
       }
     } else if (businessHoursQuestion) {
-      const businessHoursAnswer = buildBusinessHoursAnswer(clinic.businessHours, messageText);
+      const businessHoursAnswer = buildBusinessHoursAnswer(
+        clinic.businessHours,
+        messageText,
+        clinic.outsideHoursExceptionEnabled,
+      );
       // W4.3b (caso Paula): duas perguntas de horário no mesmo burst geravam a
       // MESMA resposta determinística duas vezes (o debounce nem sempre funde o
       // burst). Não reenvia se a última resposta do agente foi idêntica há < 2min.
@@ -5932,7 +5944,11 @@ export class ConversationOrchestrator {
       if (
         isSaturdayQuestionForOperatingClinic(messageText, businessHours) &&
         !hasPendingOffer &&
-        !requiresTeamCheckForHours(messageText, clinic.businessHours)
+        !requiresTeamCheckForHours(
+          messageText,
+          clinic.businessHours,
+          clinic.outsideHoursExceptionEnabled,
+        )
       ) {
         const { slots: saturdaySlots, preferredDayEmpty: saturdayFull } = await this.fetchAndOfferSlots(
           conversation.id,
@@ -5946,11 +5962,15 @@ export class ConversationOrchestrator {
           replyText = buildSaturdayAvailabilityAnswer({ slots: saturdaySlots, dayIsFull: saturdayFull });
         }
       }
-      // A resposta promete "vou verificar com a equipe" quando o horário pedido sai
-      // da janela padrão — a clínica abre exceção (na Vitalli, lente é procedimento
-      // longo e o doutor atende após as 17h, terminando até as 21h). Prometer sem
-      // avisar ninguém é pior do que recusar: sinaliza para a equipe ver de fato.
-      if (requiresTeamCheckForHours(messageText, clinic.businessHours)) {
+      // Somente tenants com opt-in explícito prometem análise de exceção e geram
+      // atenção humana. Incidentes de uma clínica não viram política global.
+      if (
+        requiresTeamCheckForHours(
+          messageText,
+          clinic.businessHours,
+          clinic.outsideHoursExceptionEnabled,
+        )
+      ) {
         await db
           .update(conversationsTable)
           .set({
@@ -6749,7 +6769,21 @@ export class ConversationOrchestrator {
           clinic.depositEnabled &&
           clinic.depositAmountCents
         ) {
-          replyText = buildEvaluationDepositClarification(clinic.depositAmountCents);
+          const evaluationTreatment = clinicTreatments.find((treatment) => {
+            const searchable = [treatment.name, ...treatment.aliases]
+              .map((value) => normalizeFreeText(value))
+              .join(" ");
+            return /\bavaliacao\b/.test(searchable);
+          }) ?? null;
+          replyText = buildEvaluationDepositClarification(
+            clinic.depositAmountCents,
+            evaluationTreatment
+              ? {
+                  priceCents: evaluationTreatment.priceCents ?? evaluationTreatment.minPriceCents,
+                  priceQuotableInChat: evaluationTreatment.priceQuotableInChat,
+                }
+              : null,
+          );
           forceTextOnlyReply = true;
           break;
         }

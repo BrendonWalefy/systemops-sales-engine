@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "outside_hours_exception_enabled" boolean DEFAULT false NOT NULL;

@@ -65,6 +65,7 @@ export async function loadReplayClinicManifest(clinicKey: string) {
       maxSlotsToOffer: resolvedClinic.maxSlotsToOffer,
       slotLookaheadDays: resolvedClinic.slotLookaheadDays,
       offerSlotsAfterPriceEnabled: resolvedClinic.offerSlotsAfterPriceEnabled,
+      outsideHoursExceptionEnabled: resolvedClinic.outsideHoursExceptionEnabled,
       rapidThrottleMs: resolvedClinic.rapidThrottleMs,
       messageDebounceMs: resolvedClinic.messageDebounceMs,
     },

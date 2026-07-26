@@ -254,6 +254,7 @@ Cada clínica tem configuração própria no banco:
 - Modo de calendário (`internal` ou `google_calendar`)
 - Timezone explícito
 - Horários comerciais
+- Política explícita para solicitar exceções fora do expediente
 - Profissionais e seus recursos de agenda
 - Tratamentos com duração, pipeline e flag de mídia
 - Playbook ativo com versão publicada

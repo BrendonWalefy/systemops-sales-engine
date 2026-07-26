@@ -165,6 +165,7 @@ Cada clínica possui sua própria configuração no banco:
 - tratamentos;
 - playbook;
 - parâmetros operacionais e limites;
+- política explícita de exceção fora do expediente;
 - nomenclatura de domínio (`specialty`, `segment`, `serviceNoun`).
 
 Resolução de tenant depende do contexto:

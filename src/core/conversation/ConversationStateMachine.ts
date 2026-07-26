@@ -42,6 +42,8 @@ export type ProcedureListItem = {
   description: string | null;
   durationMinutes: number;
   requiresEvaluationFirst: boolean;
+  // Dado estruturado do tratamento. Nunca inferir no runtime pelo nome.
+  isAesthetic?: boolean;
 };
 
 export type ProcedureListPayload = {
@@ -264,6 +266,7 @@ export class ConversationStateMachine {
       description: t.description,
       durationMinutes: t.durationMinutes,
       requiresEvaluationFirst: t.requiresEvaluationFirst,
+      isAesthetic: t.isAesthetic,
     }));
 
     await db.insert(conversationStates).values({

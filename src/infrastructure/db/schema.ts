@@ -407,6 +407,11 @@ export const organizations = pgTable("organizations", {
   offerSlotsAfterPriceEnabled: boolean("offer_slots_after_price_enabled")
     .notNull()
     .default(false),
+  // Política operacional por tenant. Incidentes de uma clínica não podem virar
+  // promessa global de atendimento fora do expediente.
+  outsideHoursExceptionEnabled: boolean("outside_hours_exception_enabled")
+    .notNull()
+    .default(false),
   // Espelha o resumo diário do staff (agenda de amanhã + pendentes de
   // confirmação) no WhatsApp pessoal do responsável (receptionist_phone),
   // além do push. Diferente dos avisos event-driven que já usam

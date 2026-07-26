@@ -47,6 +47,7 @@ Campos centrais lidos em runtime:
 | `businessHours` | `SlotEngine` | Disponibilidade |
 | `defaultAppointmentDurationMinutes` | `ConversationOrchestrator` | Duração padrão |
 | `postAppointmentBufferMinutes` | `SlotEngine` | Buffer pós-atendimento |
+| `outsideHoursExceptionEnabled` | orquestrador / handoff | Opt-in para solicitar análise humana fora do expediente |
 | `takeoverTtlHours` | orquestrador / rotas inbox | Retomada após handoff |
 | `menuItems` | orquestrador / simulate | Menu conversacional |
 | `greetingMessage` | menu / playbook / simulate | Saudação base |
