@@ -1260,6 +1260,9 @@ export const playbookVersions = pgTable(
       table.clinicId,
       table.status,
     ),
+    oneActivePerClinicIdx: uniqueIndex("playbook_versions_one_active_per_org_idx")
+      .on(table.clinicId)
+      .where(sql`${table.status} = 'active'`),
   }),
 );
 

@@ -1,6 +1,6 @@
 # Arquitetura Atual
 
-Este documento descreve a arquitetura viva do SystemOps Core em 2026-06-28.
+Este documento descreve a arquitetura viva do SystemOps Core em 2026-07-26.
 Histórico, prompts de implementação e planos antigos não devem ser usados como
 fonte de verdade.
 
@@ -29,6 +29,11 @@ plataforma ainda não unificou todos os fluxos assíncronos sob o mesmo pipeline
 
 Playbook, tom de voz e mídia influenciam comunicação. Eles não podem alterar
 regras de agenda, reserva, disponibilidade, tenant ou segurança.
+
+Uma clínica pode ter no máximo um `playbook_versions.status = active`. A troca
+de versão é atômica e protegida no banco; a publicação também impede que
+comandos de workflow sejam plantados em `notes`, pois fluxo e mídia pertencem
+ao pipeline estruturado do tratamento.
 
 ## Fluxo principal de mensagem
 

@@ -40,6 +40,25 @@ describe("blockingPlaybookNotesIssues — gate de publish", () => {
     expect(blockingPlaybookNotesIssues("   ")).toEqual([]);
   });
 
+  it.each([
+    'Se o lead perguntar sobre cor, envie a imagem "Cores BL".',
+    "Inicie o pipeline de lentes quando houver interesse.",
+    "TRIGGER DE LENTES: quando mencionar facetas.",
+    "Aguarde o lead escolher antes de informar a próxima etapa.",
+  ])("BLOQUEIA comando de workflow em notes: %s", (notes) => {
+    expect(blockingPlaybookNotesIssues(notes)).toEqual([
+      expect.stringMatching(/pipeline estruturado/),
+    ]);
+  });
+
+  it.each([
+    "A clínica possui vídeos de antes e depois autorizados.",
+    "Se o lead enviar uma foto, não faça diagnóstico por mensagem.",
+    "Explique que cada etapa depende da avaliação presencial.",
+  ])("NÃO bloqueia mera referência factual ou comportamental: %s", (notes) => {
+    expect(blockingPlaybookNotesIssues(notes)).toEqual([]);
+  });
+
   it("o bloqueio é subconjunto do aviso — preço concreto também aparece no lint", () => {
     const notes = "informe R$2.500";
     expect(blockingPlaybookNotesIssues(notes).length).toBe(1);

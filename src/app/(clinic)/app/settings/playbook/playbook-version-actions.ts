@@ -10,6 +10,7 @@ import type { MenuItem } from "@/domain/entities/clinic";
 import { publishablePlaybookSchema, blockingPlaybookNotesIssues, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "@/application/config/editorial-config";
 import { preserveVoiceOutputEnabled, type VoiceTtsConfig, type VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import type { VoiceMode } from "@/domain/entities/voice-mode";
+import { activateExistingPlaybookVersion } from "@/application/config/playbook-publication";
 
 
 type PlaybookVersionData = {
@@ -31,38 +32,6 @@ type PlaybookVersionData = {
   // autoriza a IA a enviar. A biblioteca é gerenciada em /app/settings/biblioteca.
   mediaAssetIds?: string[];
 };
-
-function compileToClinicFields(data: PlaybookVersionData) {
-  const parts: string[] = [];
-
-  if (data.specialty) {
-    parts.push(`ESPECIALIDADE: ${data.specialty}`);
-  }
-  if (data.differentials && data.differentials.length > 0) {
-    parts.push(
-      `\nDIFERENCIAIS DO NEGÓCIO:\n${data.differentials.map((d) => `- ${d}`).join("\n")}`,
-    );
-  }
-  if (data.objections && data.objections.length > 0) {
-    const objText = data.objections
-      .map((o) => `Objeção: ${o.objection}\nResposta: ${o.response}`)
-      .join("\n\n");
-    parts.push(`\nOBJEÇÕES E RESPOSTAS:\n${objText}`);
-  }
-
-  const toneMap: Record<string, string> = {
-    acolhedor: "Acolhedor e empático",
-    tecnico: "Técnico e informativo",
-    persuasivo: "Persuasivo e orientado a resultados",
-    luxo: "Premium e exclusivo",
-  };
-
-  return {
-    playbook: parts.join("\n") || null,
-    commercialPolicy: data.commercialPolicy || null,
-    toneOfVoice: toneMap[data.toneOfVoice ?? "acolhedor"] ?? data.toneOfVoice ?? null,
-  };
-}
 
 export async function createPlaybookVersion(name: string) {
   const CLINIC_ID = await requireSessionClinicId();
@@ -136,34 +105,7 @@ export async function activatePlaybookVersion(id: string) {
     throw new Error(`Playbook inválido para ativação: ${descIssues.join("; ")}`);
   }
 
-  await db
-    .update(playbookVersions)
-    .set({ status: "historical", updatedAt: new Date() })
-    .where(
-      and(
-        eq(playbookVersions.clinicId, CLINIC_ID),
-        ne(playbookVersions.id, id),
-        ne(playbookVersions.status, "draft"),
-      ),
-    );
-
-  await db
-    .update(playbookVersions)
-    .set({ status: "active", updatedAt: new Date() })
-    .where(eq(playbookVersions.id, id));
-
-  const clinicFields = compileToClinicFields({
-    specialty: version.specialty,
-    toneOfVoice: version.toneOfVoice,
-    differentials: version.differentials,
-    commercialPolicy: version.commercialPolicy,
-    objections: version.objections,
-  });
-
-  await db
-    .update(organizations)
-    .set({ ...clinicFields, updatedAt: new Date() })
-    .where(eq(organizations.id, CLINIC_ID));
+  await activateExistingPlaybookVersion({ clinicId: CLINIC_ID, versionId: id });
 
   revalidatePath("/app/settings/playbook");
 }
@@ -368,7 +310,11 @@ export async function deletePlaybookVersion(id: string) {
 
   await db
     .delete(playbookVersions)
-    .where(and(eq(playbookVersions.id, id), eq(playbookVersions.clinicId, CLINIC_ID)));
+    .where(and(
+      eq(playbookVersions.id, id),
+      eq(playbookVersions.clinicId, CLINIC_ID),
+      ne(playbookVersions.status, "active"),
+    ));
 
   revalidatePath("/app/settings/playbook");
 }
