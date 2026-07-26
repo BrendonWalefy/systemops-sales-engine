@@ -8,6 +8,7 @@ import {
   outboundMessageDeliveryKindEnum,
   outboundMessages,
   outboundMessageStatusEnum,
+  conversationStates,
 } from "@/infrastructure/db/schema";
 
 describe("event-driven modernization schema contract", () => {
@@ -61,5 +62,6 @@ describe("event-driven modernization schema contract", () => {
     expect(outboundMessages.deliveryKind.name).toBe("delivery_kind");
     expect(outboundMessages.sequence.name).toBe("sequence");
     expect(outboundMessages.providerMessageId.name).toBe("provider_message_id");
+    expect(conversationStates.supersedesStateId.name).toBe("supersedes_state_id");
   });
 });

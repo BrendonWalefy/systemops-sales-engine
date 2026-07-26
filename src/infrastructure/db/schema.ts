@@ -1153,6 +1153,9 @@ export const conversationStates = pgTable(
     // idle | slots_offered | awaiting_confirmation | booking_pending | menu_offered | procedure_list_offered
     state: text("state").notNull(),
     payload: jsonb("payload"),
+    // CAS aditivo: uma revisão de estado pode ser consumida no máximo uma vez.
+    // Nullable preserva estados legados e transições ainda não revisionadas.
+    supersedesStateId: uuid("supersedes_state_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1162,6 +1165,9 @@ export const conversationStates = pgTable(
     conversationCreatedAtIdx: index(
       "conversation_states_conversation_created_at_idx",
     ).on(table.conversationId, table.createdAt),
+    supersedesStateIdIdx: uniqueIndex(
+      "conversation_states_supersedes_state_id_idx",
+    ).on(table.supersedesStateId),
   }),
 );
 

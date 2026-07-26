@@ -128,6 +128,8 @@ Regra:
 - retry operacional pertence à fila (`jobs`);
 - retry de entrega não deve recomputar a conversa; por isso o dono é a outbox
   (`outbound_messages`).
+- avanço de pipeline pertence ao commit do turno; a entrega apenas reconcilia a
+  mesma expectativa de estado de forma idempotente.
 
 ## 7. Comportamento universal do LLM
 

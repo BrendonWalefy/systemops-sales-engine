@@ -1,0 +1,2 @@
+ALTER TABLE "conversation_states" ADD COLUMN "supersedes_state_id" uuid;--> statement-breakpoint
+CREATE UNIQUE INDEX "conversation_states_supersedes_state_id_idx" ON "conversation_states" USING btree ("supersedes_state_id");

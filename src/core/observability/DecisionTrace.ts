@@ -20,6 +20,7 @@ export type DecisionTraceStage =
   | "state.before_delivery"
   | "outbound.planned"
   | "outbound.enqueued"
+  | "state.pipeline_committed"
   | "orchestrator.completed"
   | "delivery.started"
   | "state.after_delivery"

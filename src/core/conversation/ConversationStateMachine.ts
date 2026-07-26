@@ -92,12 +92,27 @@ export type ConversationStateRow = {
   conversationId: string;
   state: ConversationStateType;
   payload: StatePayload | null;
+  supersedesStateId: string | null;
   createdAt: Date;
   expiresAt: Date | null;
 };
 
 // Quanto tempo uma oferta de slots fica válida
 export const SLOT_OFFER_TTL_MINUTES = 15;
+
+export type PipelineAdvanceExpectation = {
+  treatmentId?: string;
+  stepIndex?: number;
+};
+
+export function matchesPipelineAdvanceExpectation(
+  current: TreatmentPipelinePayload,
+  expected?: PipelineAdvanceExpectation,
+): boolean {
+  if (expected?.treatmentId && current.treatmentId !== expected.treatmentId) return false;
+  if (expected?.stepIndex != null && current.stepIndex !== expected.stepIndex) return false;
+  return true;
+}
 
 export class ConversationStateMachine {
   // Estado atual não-expirado da conversa
@@ -131,6 +146,7 @@ export class ConversationStateMachine {
       conversationId: row.conversationId,
       state: row.state as ConversationStateType,
       payload: row.payload as StatePayload | null,
+      supersedesStateId: row.supersedesStateId,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
     };
@@ -404,16 +420,27 @@ export class ConversationStateMachine {
   }
 
   // Avança o pipeline para o próximo passo, preservando TTL original.
-  async advancePipelineStep(conversationId: string, nextStepIndex: number): Promise<void> {
+  async advancePipelineStep(
+    conversationId: string,
+    nextStepIndex: number,
+    expected?: PipelineAdvanceExpectation,
+  ): Promise<boolean> {
     const state = await this.getCurrentState(conversationId);
-    if (!state || state.state !== "treatment_pipeline_active") return;
+    if (!state || state.state !== "treatment_pipeline_active") return false;
     const current = state.payload as TreatmentPipelinePayload;
-    await db.insert(conversationStates).values({
-      conversationId,
-      state: "treatment_pipeline_active",
-      payload: { ...current, stepIndex: nextStepIndex, qaTurns: 0 } satisfies TreatmentPipelinePayload,
-      expiresAt: state.expiresAt,
-    });
+    if (!matchesPipelineAdvanceExpectation(current, expected)) return false;
+    const inserted = await db
+      .insert(conversationStates)
+      .values({
+        conversationId,
+        state: "treatment_pipeline_active",
+        payload: { ...current, stepIndex: nextStepIndex, qaTurns: 0 } satisfies TreatmentPipelinePayload,
+        supersedesStateId: state.id,
+        expiresAt: state.expiresAt,
+      })
+      .onConflictDoNothing({ target: conversationStates.supersedesStateId })
+      .returning({ id: conversationStates.id });
+    return inserted.length > 0;
   }
 
   // Incrementa o contador de turnos Q&A sem mudar de passo.
@@ -445,8 +472,26 @@ export class ConversationStateMachine {
   }
 
   // Encerra o pipeline. O fluxo reativo normal assume a partir daqui.
-  async exitTreatmentPipeline(conversationId: string): Promise<void> {
-    await this.invalidate(conversationId);
+  async exitTreatmentPipeline(
+    conversationId: string,
+    expected?: PipelineAdvanceExpectation,
+  ): Promise<boolean> {
+    const state = await this.getCurrentState(conversationId);
+    if (!state || state.state !== "treatment_pipeline_active") return false;
+    const current = state.payload as TreatmentPipelinePayload;
+    if (!matchesPipelineAdvanceExpectation(current, expected)) return false;
+    const inserted = await db
+      .insert(conversationStates)
+      .values({
+        conversationId,
+        state: "idle",
+        payload: null,
+        supersedesStateId: state.id,
+        expiresAt: null,
+      })
+      .onConflictDoNothing({ target: conversationStates.supersedesStateId })
+      .returning({ id: conversationStates.id });
+    return inserted.length > 0;
   }
 
   // ─── Confirmação de presença pelo lead (resposta ao lembrete D-1) ────────────

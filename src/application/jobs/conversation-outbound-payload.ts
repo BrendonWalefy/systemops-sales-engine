@@ -13,8 +13,17 @@ export type OutboundDeliveryPart =
     };
 
 export type PipelineAdvance =
-  | { action: "advance"; nextStepIndex: number }
-  | { action: "exit" };
+  | {
+      action: "advance";
+      nextStepIndex: number;
+      expectedTreatmentId?: string;
+      expectedStepIndex?: number;
+    }
+  | {
+      action: "exit";
+      expectedTreatmentId?: string;
+      expectedStepIndex?: number;
+    };
 
 export type ConversationOutboundPayload = {
   version: 1;

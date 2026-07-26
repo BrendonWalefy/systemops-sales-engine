@@ -8051,6 +8051,10 @@ export class ConversationOrchestrator {
             activeTreatmentId,
           )
         : [];
+    const durablePipelineAdvance = await this.bindPipelineAdvanceExpectation(
+      conversation.id,
+      pendingPipelineAdvance,
+    );
     await this.enqueueConversationReply(clinicId, conversation.id, {
       version: 1,
       kind: "conversation_reply",
@@ -8064,8 +8068,27 @@ export class ConversationOrchestrator {
       interleavedParts: hasInterleavedMedia ? outboundParts : [],
       mediaParts,
       leadId: lead.id,
-      pipelineAdvance: pendingPipelineAdvance,
+      pipelineAdvance: durablePipelineAdvance,
     });
+    if (durablePipelineAdvance) {
+      const applied = await this.applyDurablePipelineAdvance(
+        conversation.id,
+        durablePipelineAdvance,
+      );
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId,
+        stage: "state.pipeline_committed",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId: conversation.id,
+        metadata: {
+          action: durablePipelineAdvance.action,
+          applied,
+          expectedTreatmentId: durablePipelineAdvance.expectedTreatmentId ?? null,
+          expectedStepIndex: durablePipelineAdvance.expectedStepIndex ?? null,
+        },
+      });
+    }
 
     // ── 9.4 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;
@@ -8364,6 +8387,37 @@ export class ConversationOrchestrator {
         },
       });
     }
+  }
+
+  private async bindPipelineAdvanceExpectation(
+    conversationId: string,
+    advance: PipelineAdvance | null,
+  ): Promise<PipelineAdvance | null> {
+    if (!advance) return null;
+    const current = await this.stateMachine.getTreatmentPipelineState(conversationId);
+    if (!current) return advance;
+    return {
+      ...advance,
+      expectedTreatmentId: current.treatmentId,
+      expectedStepIndex: current.stepIndex,
+    };
+  }
+
+  private async applyDurablePipelineAdvance(
+    conversationId: string,
+    advance: PipelineAdvance,
+  ): Promise<boolean> {
+    const expected = {
+      treatmentId: advance.expectedTreatmentId,
+      stepIndex: advance.expectedStepIndex,
+    };
+    return advance.action === "advance"
+      ? this.stateMachine.advancePipelineStep(
+          conversationId,
+          advance.nextStepIndex,
+          expected,
+        )
+      : this.stateMachine.exitTreatmentPipeline(conversationId, expected);
   }
 
   // ── Claim de processamento por conversa (CAS single-statement) ──────────────

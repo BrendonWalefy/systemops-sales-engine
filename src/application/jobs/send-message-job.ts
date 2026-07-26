@@ -685,9 +685,16 @@ async function deliverConversationOutbound(input: {
       await stateMachine.advancePipelineStep(
         input.conversationId,
         input.payload.pipelineAdvance.nextStepIndex,
+        {
+          treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
+          stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
+        },
       );
     } else {
-      await stateMachine.exitTreatmentPipeline(input.conversationId);
+      await stateMachine.exitTreatmentPipeline(input.conversationId, {
+        treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
+        stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
+      });
     }
   }
 
@@ -868,9 +875,16 @@ async function deliverShadowOutbound(input: {
       await stateMachine.advancePipelineStep(
         input.conversationId,
         input.payload.pipelineAdvance.nextStepIndex,
+        {
+          treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
+          stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
+        },
       );
     } else {
-      await stateMachine.exitTreatmentPipeline(input.conversationId);
+      await stateMachine.exitTreatmentPipeline(input.conversationId, {
+        treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
+        stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
+      });
     }
   }
 

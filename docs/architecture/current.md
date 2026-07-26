@@ -106,6 +106,11 @@ O `ConversationOrchestrator` não envia mais diretamente a resposta principal do
 lead. Ele grava a intenção de envio em `outbound_messages` e enfileira
 `message.send`.
 
+Quando a resposta consome um passo de pipeline, o avanço é revisionado e
+registrado logo após a outbox durável, antes de liberar o claim da conversa. A
+coluna `conversation_states.supersedes_state_id` impede dois workers de consumir
+a mesma revisão; o sender mantém uma aplicação idempotente como reconciliação.
+
 `/api/cron/sender-worker` é responsável por:
 
 - respeitar ordem por conversa;
