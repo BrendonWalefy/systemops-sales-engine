@@ -146,6 +146,56 @@ describe("ProcessMessageJobHandler", () => {
     expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
   });
 
+  it("processa evento Meta persistido pelo mesmo worker sem passar pelo normalizador Z-API", async () => {
+    const metaEvent: InboundEvent = {
+      ...event,
+      provider: "meta_cloud_api",
+      providerMessageId: "wamid.meta-1",
+      dedupeKey: "meta:phone-number-1:wamid.meta-1",
+      payload: {
+        entry: [{
+          changes: [{
+            value: {
+              metadata: { phone_number_id: "phone-number-1" },
+              contacts: [{ profile: { name: "Lead Meta" } }],
+              messages: [{
+                id: "wamid.meta-1",
+                from: "5511888888888",
+                timestamp: "1785067200",
+                type: "text",
+                text: { body: "Olá pelo Meta" },
+              }],
+            },
+          }],
+        }],
+      },
+    };
+    const inboundEventStore = {
+      findInboundEvent: vi.fn().mockResolvedValue(metaEvent),
+      markInboundEventProcessing: vi.fn().mockResolvedValue(undefined),
+      markInboundEventProcessed: vi.fn().mockResolvedValue(undefined),
+      markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
+    };
+    const resolveInboundContent = vi.fn();
+    const { handler, conversationHandler } = makeHandler({
+      inboundEventStore: inboundEventStore as never,
+      resolveInboundContent,
+    });
+
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "processed",
+      inboundEventId: "event-1",
+    });
+    expect(resolveInboundContent).not.toHaveBeenCalled();
+    expect(conversationHandler.handle).toHaveBeenCalledWith(expect.objectContaining({
+      clinicId: "clinic-1",
+      phone: "5511888888888",
+      messageId: "wamid.meta-1",
+      messageText: "Olá pelo Meta",
+      senderName: "Lead Meta",
+    }));
+  });
+
   it("continua ignorando payload fromMe serializado como string", async () => {
     const inboundEventStore = {
       findInboundEvent: vi.fn().mockResolvedValue({

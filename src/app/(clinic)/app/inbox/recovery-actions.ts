@@ -1,20 +1,21 @@
 "use server";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
-import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
-import { deliverRecoveryMessage } from "@/application/conversations/recovery-delivery";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import OpenAI from "openai";
+import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { validateManualRecoveryRecipient } from "@/application/conversations/manual-recovery-policy";
 
 export async function composeRecoveryMessageAction(
   convId: string,
@@ -109,14 +110,19 @@ Responda APENAS com o texto da mensagem, sem aspas.`,
 export async function sendRecoveryMessageAction(
   convId: string,
   message: string,
+  operationId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const clinicId = await requireSessionClinicId();
+
+  if (!UUID_PATTERN.test(operationId)) {
+    return { ok: false, error: "Identificador de envio inválido" };
+  }
 
   const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return { ok: false, error: "Clínica não encontrada" };
 
   const conv = await db.query.conversations.findFirst({
-    where: eq(conversations.id, convId),
+    where: and(eq(conversations.id, convId), eq(conversations.clinicId, clinicId)),
   });
   if (!conv) return { ok: false, error: "Conversa não encontrada" };
 
@@ -125,18 +131,10 @@ export async function sendRecoveryMessageAction(
   });
   if (!lead) return { ok: false, error: "Lead não encontrado" };
 
-  // Opt-out vale mesmo em envio manual. Este caminho entrega direto pelo
-  // provider, sem passar pelo Safety Gate (que é quem barra consentimento
-  // revogado nos envios automáticos) — sem esta checagem, um clique no botão
-  // "Enviar retomada" alcançaria quem pediu explicitamente para não receber
-  // mais mensagens. É a única regra que a decisão humana não pode atropelar:
-  // as outras (caps, quiet hours) protegem o número; esta protege a pessoa.
-  if (lead.contactConsentRevokedAt) {
-    return {
-      ok: false,
-      error: "Este contato pediu para não receber mais mensagens. Envio bloqueado.",
-    };
-  }
+  // A action bloqueia cedo para feedback imediato; o sender repete o gate no
+  // instante da entrega, cobrindo revogação ocorrida depois do clique.
+  const recipientPolicy = validateManualRecoveryRecipient(lead);
+  if (!recipientPolicy.ok) return recipientPolicy;
 
   const channelAddress = resolveWhatsAppChannelAddress({
     phone: lead.phone,
@@ -144,44 +142,54 @@ export async function sendRecoveryMessageAction(
   });
   if (!channelAddress) return { ok: false, error: "Sem endereço WhatsApp válido" };
 
-  const channelConfig = resolveChannelConfig(clinic);
   const now = new Date();
+  const [inserted] = await db
+    .insert(messages)
+    .values({
+      id: operationId,
+      conversationId: convId,
+      author: "agent",
+      body: message,
+      sentAt: now,
+      externalId: null,
+      intent: "reengagement" as const,
+      deliveryFormat: null,
+    })
+    .onConflictDoNothing({ target: messages.id })
+    .returning({ id: messages.id });
+  if (!inserted) {
+    const existing = await db.query.messages.findFirst({
+      where: and(eq(messages.id, operationId), eq(messages.conversationId, convId)),
+    });
+    if (!existing || existing.body !== message) {
+      return { ok: false, error: "Identificador de envio já utilizado" };
+    }
+  }
 
-  const result = await deliverRecoveryMessage({
-    send: () => sendTextMessage(channelAddress, message, channelConfig),
-    persistMessage: async (providerMessageId) => {
-      await db.insert(messages).values({
-        id: randomUUID(),
-        conversationId: convId,
-        author: "agent",
-        body: message,
-        sentAt: now,
-        externalId: providerMessageId,
-        intent: "reengagement" as const,
-        deliveryFormat: "text",
-      }).onConflictDoNothing();
+  await enqueueOutboundMessage({
+    clinicId,
+    conversationId: convId,
+    channel: "whatsapp",
+    deliveryKind: "text",
+    category: "recovery",
+    dedupeKey: `manual-recovery:${operationId}`,
+    payload: {
+      version: 1,
+      kind: "automation",
+      to: channelAddress,
+      text: message,
+      leadId: lead.id,
+      conversationId: convId,
+      agentMessageId: operationId,
+      useVoice: false,
     },
-    resumeConversation: async () => {
-      if (!conv.aiPaused) return;
-
-      await db
-        .update(conversations)
-        .set({ aiPaused: false, takeoverExpiresAt: null, updatedAt: now })
-        .where(eq(conversations.id, convId));
-    },
-    markRecoveryComplete: async () => {
-      // Idempotência: próxima execução do cron ignora esse lead por 24h
-      await db.execute(sql`
-        INSERT INTO follow_ups (id, clinic_id, lead_id, due_at, status, reason, completed_at, created_at, updated_at)
-        VALUES (gen_random_uuid(), ${clinicId}, ${lead.id}, NOW(), 'done', 'recovery_campaign', NOW(), NOW(), NOW())
-        ON CONFLICT DO NOTHING
-      `);
-    },
-    onBookkeepingError: (stage, error) => {
-      console.error(`[Recovery] ${stage} failed after message delivery`, error);
-    },
+  }, {
+    outboundMessageStore: new DrizzleOutboundMessageStore(),
+    jobQueue: new DrizzleJobQueue(),
   });
 
-  if (result.ok) revalidatePath("/app/inbox");
-  return result;
+  revalidatePath("/app/inbox");
+  return { ok: true };
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

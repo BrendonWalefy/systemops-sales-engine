@@ -6,6 +6,7 @@ import {
   type ResolvedLeadInboundContent,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { parseMetaInboundTextMessage } from "@/infrastructure/adapters/channels/whatsapp/meta-webhook-content";
 import { createLogger } from "@/infrastructure/logging/logger";
 import {
   recordDecisionTrace,
@@ -96,13 +97,18 @@ export class ProcessMessageJobHandler {
       },
     });
 
-    const payload = event.provider === "z_api" ? normalizeZApiInboundPayload(event.payload) : null;
-    if (!payload) {
+    const zapiPayload = event.provider === "z_api"
+      ? normalizeZApiInboundPayload(event.payload)
+      : null;
+    const metaPayload = event.provider === "meta_cloud_api"
+      ? parseMetaInboundTextMessage(event.payload)
+      : null;
+    if (!zapiPayload && !metaPayload) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
       eventLog.warn("job.ignored", { reason: "unsupported_provider_payload", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
-    if (payload.fromMe || payload.isGroupMsg || payload.isStatusReply) {
+    if (zapiPayload && (zapiPayload.fromMe || zapiPayload.isGroupMsg || zapiPayload.isStatusReply)) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
       eventLog.info("job.ignored", { reason: "non_lead_message", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
@@ -110,11 +116,16 @@ export class ProcessMessageJobHandler {
 
     await this.deps.inboundEventStore.markInboundEventProcessing(event.id);
     const replyEnabled = await this.deps.automationPolicy.canSendAutomatedReply(event.clinicId);
-    const content = await this.resolveInboundContent({
-      payload,
-      replyEnabled,
-      transcribeAudio: this.deps.transcribeAudio,
-    });
+    const content = zapiPayload
+      ? await this.resolveInboundContent({
+          payload: zapiPayload,
+          replyEnabled,
+          transcribeAudio: this.deps.transcribeAudio,
+        })
+      : {
+          messageText: metaPayload!.messageText,
+          shouldReply: replyEnabled,
+        } satisfies ResolvedLeadInboundContent;
 
     if (!content) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
@@ -138,13 +149,13 @@ export class ProcessMessageJobHandler {
     try {
       handleResult = await this.deps.conversationHandler.handle({
         clinicId: event.clinicId,
-        phone: payload.phone,
-        whatsappLid: payload.chatLid ?? null,
+        phone: zapiPayload?.phone ?? metaPayload!.phone,
+        whatsappLid: zapiPayload?.chatLid ?? null,
         messageText: content.messageText,
-        messageId: payload.messageId,
+        messageId: zapiPayload?.messageId ?? metaPayload!.messageId,
         turnId: inboundEventId,
-        senderName: payload.senderName || undefined,
-        senderPhoto: payload.senderPhoto ?? null,
+        senderName: zapiPayload?.senderName || metaPayload?.senderName || undefined,
+        senderPhoto: zapiPayload?.senderPhoto ?? null,
         timestamp: event.receivedAt,
         replyEnabled: content.shouldReply,
         mediaUrl: content.mediaUrl,

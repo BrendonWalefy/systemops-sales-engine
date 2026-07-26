@@ -12,8 +12,9 @@ Hoje o SystemOps é um **monólito modular em Next.js** com execução
 - entrada de mensagens já é **event-driven**;
 - processamento conversacional principal roda em **workers lógicos** via cron;
 - entrega de saída usa **outbox + sender worker**;
-- algumas automações de cron ainda fazem **envio direto** e não usam a mesma
-  outbox.
+- respostas e automações destinadas ao lead usam a mesma **outbox durável**;
+- notificações internas ao responsável ainda usam um caminho operacional
+  separado.
 
 Em uma frase: o webhook deixou de ser o lugar onde tudo acontece, mas a
 plataforma ainda não unificou todos os fluxos assíncronos sob o mesmo pipeline.
@@ -79,7 +80,8 @@ O endpoint antigo de exportação bruta de conversas reais está desativado e n�
 é parte da arquitetura suportada.
 
 O endpoint Meta Cloud API (`/api/whatsapp/webhook`) existe como compatibilidade,
-mas a produção atual usa Z-API como canal principal.
+mas a produção atual usa Z-API como canal principal. Mensagens de texto da Meta
+também são persistidas em `inbound_events` antes de entrar no mesmo worker.
 
 ## O que já está assíncrono
 
@@ -125,16 +127,14 @@ a mesma revisão; o sender mantém uma aplicação idempotente como reconciliaç
 
 ## O que ainda é híbrido
 
-Nem toda automação usa o mesmo pipeline de outbox:
+Respostas da IA, envio manual pelo inbox, follow-ups, campanhas de recuperação,
+lembretes ao lead, pós-atendimento e confirmação de sinal passam por
+`outbound_messages` + `message.send`.
 
-- `appointment-reminder` envia direto via `sendVoiceOrText()`;
-- `follow-up-dispatcher` envia direto via `sendVoiceOrText()`;
-- `recovery-campaign` envia direto via `sendTextMessage()`.
-
-Esses fluxos já são multi-tenant e persistem mensagens no banco, mas ainda não
-passam por `outbound_messages` + `message.send`. Para a 2.0, isso é uma
-fronteira importante: o runtime conversacional principal já foi desacoplado; as
-automações auxiliares ainda não foram totalmente unificadas.
+Notificações internas para o WhatsApp do responsável (alerta de foto, pedido de
+revisão humana e resumo de agenda) ainda chamam o adapter do canal diretamente.
+Elas não são respostas ao lead e não devem ser forçadas a uma conversa falsa;
+o destino futuro é uma outbox operacional própria, com retry e idempotência.
 
 ## Camadas
 

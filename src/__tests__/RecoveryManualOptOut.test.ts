@@ -1,30 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-
-/**
- * O botão "Enviar retomada" do inbox entrega direto pelo provider, sem passar
- * pelo Safety Gate — que é quem barra consentimento revogado nos envios
- * automáticos. Sem a checagem na própria action, um clique alcançaria quem
- * pediu para não receber mais mensagens.
- *
- * Testa a regra isolada, sem subir a action inteira (que depende de sessão,
- * banco e provider). O que importa fixar é a decisão: opt-out vence o clique.
- */
-function podeEnviarRetomadaManual(lead: {
-  contactConsentRevokedAt: Date | null;
-  phone: string | null;
-  whatsappLid: string | null;
-}): { ok: boolean; error?: string } {
-  if (lead.contactConsentRevokedAt) {
-    return {
-      ok: false,
-      error: "Este contato pediu para não receber mais mensagens. Envio bloqueado.",
-    };
-  }
-  if (!lead.phone && !lead.whatsappLid) {
-    return { ok: false, error: "Sem endereço WhatsApp válido" };
-  }
-  return { ok: true };
-}
+import { validateManualRecoveryRecipient } from "@/application/conversations/manual-recovery-policy";
 
 const contato = {
   contactConsentRevokedAt: null as Date | null,
@@ -34,7 +9,7 @@ const contato = {
 
 describe("Retomada manual do inbox — opt-out vence o clique", () => {
   it("bloqueia quem revogou consentimento", () => {
-    const r = podeEnviarRetomadaManual({
+    const r = validateManualRecoveryRecipient({
       ...contato,
       contactConsentRevokedAt: new Date("2026-07-01"),
     });
@@ -43,13 +18,13 @@ describe("Retomada manual do inbox — opt-out vence o clique", () => {
   });
 
   it("libera quem nunca revogou", () => {
-    expect(podeEnviarRetomadaManual(contato).ok).toBe(true);
+    expect(validateManualRecoveryRecipient(contato).ok).toBe(true);
   });
 
   it("opt-out tem prioridade sobre a falta de endereço", () => {
     // A mensagem de erro precisa ser a do consentimento: dizer "sem telefone"
     // sugeriria que cadastrar o número resolve.
-    const r = podeEnviarRetomadaManual({
+    const r = validateManualRecoveryRecipient({
       contactConsentRevokedAt: new Date("2026-07-01"),
       phone: null,
       whatsappLid: null,
@@ -58,7 +33,7 @@ describe("Retomada manual do inbox — opt-out vence o clique", () => {
   });
 
   it("ainda bloqueia sem endereço quando há consentimento", () => {
-    const r = podeEnviarRetomadaManual({
+    const r = validateManualRecoveryRecipient({
       contactConsentRevokedAt: null,
       phone: null,
       whatsappLid: null,
@@ -69,7 +44,7 @@ describe("Retomada manual do inbox — opt-out vence o clique", () => {
 
   it("aceita contato identificado só por whatsapp_lid", () => {
     expect(
-      podeEnviarRetomadaManual({
+      validateManualRecoveryRecipient({
         contactConsentRevokedAt: null,
         phone: null,
         whatsappLid: "123456789@lid",

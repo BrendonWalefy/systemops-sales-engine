@@ -1,17 +1,14 @@
-// Thin adapter: normaliza payload Meta Cloud API e delega ao ConversationOrchestrator.
+// Thin adapter: valida o envelope Meta, persiste o payload bruto e enfileira o processamento.
 import { resolveClinicByMetaPhoneNumberId } from "@/application/tenancy/resolve-clinic";
 // GET: verificação do webhook Meta. POST: mensagens recebidas.
 
 import { NextRequest, NextResponse } from "next/server";
-import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
+import { parseMetaInboundTextMessage } from "@/infrastructure/adapters/channels/whatsapp/meta-webhook-content";
+import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
+import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 
 export const dynamic = "force-dynamic";
-
-let orchestrator: ConversationOrchestrator | null = null;
-function getOrchestrator() {
-  if (!orchestrator) orchestrator = new ConversationOrchestrator();
-  return orchestrator;
-}
 
 // Meta webhook verification
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -32,41 +29,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json().catch(() => null);
   if (!body) return new NextResponse("Bad Request", { status: 400 });
 
-  const messageObj = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-
-  // Ignora não-texto e status updates
-  if (!messageObj || messageObj.type !== "text") {
+  const message = parseMetaInboundTextMessage(body);
+  // Status updates e tipos ainda não suportados não entram na jornada.
+  if (!message) {
     return new NextResponse("OK", { status: 200 });
   }
 
-  const phoneNumberId: string | undefined =
-    body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-  const clinicId = await resolveClinicByMetaPhoneNumberId(phoneNumberId);
+  const clinicId = await resolveClinicByMetaPhoneNumberId(message.phoneNumberId);
   if (!clinicId) {
-    console.error("[Meta] nenhuma clínica para phone_number_id", phoneNumberId);
-    return new NextResponse("OK", { status: 200 });
+    console.error("[Meta] nenhuma clínica para phone_number_id", message.phoneNumberId);
+    return new NextResponse("Internal Server Error", { status: 500 });
   }
-
-  const from: string = messageObj.from;
-  const messageText: string = messageObj.text?.body ?? "";
-  const messageId: string = messageObj.id;
-  const contactName: string | undefined =
-    body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name ?? undefined;
-  const receivedAt = new Date(Number(messageObj.timestamp) * 1000);
 
   try {
-    await getOrchestrator().handle({
+    await persistInboundEventAndEnqueue({
       clinicId,
-      phone: from,
-      messageText,
-      messageId,
-      senderName: contactName,
-      timestamp: receivedAt,
+      provider: "meta_cloud_api",
+      providerMessageId: message.messageId,
+      conversationKey: message.phone,
+      payload: body,
+      normalizedText: message.messageText,
+      mediaType: null,
+      dedupeKey: `meta:${message.phoneNumberId}:${message.messageId}`,
+      receivedAt: message.receivedAt,
+    }, {
+      inboundEventStore: new DrizzleInboundEventStore(),
+      jobQueue: new DrizzleJobQueue(),
     });
 
     return new NextResponse("OK", { status: 200 });
   } catch (error) {
-    console.error("[Meta] Webhook error:", error);
+    // Meta repete o webhook; insert e enqueue são idempotentes.
+    console.error("[Meta] Webhook enqueue error:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

@@ -58,7 +58,23 @@ export type AutomationOutboundPayload = {
   mediaParts?: OutboundDeliveryPart[];
 };
 
-export type OutboundPayload = ConversationOutboundPayload | AutomationOutboundPayload;
+export type OperatorOutboundPayload = {
+  version: 1;
+  kind: "operator_message";
+  to: string;
+  operatorMessageId: string;
+  text: string;
+  attachment?: {
+    url: string;
+    mediaType: "image" | "video" | "audio" | "document";
+    fileName: string;
+  };
+};
+
+export type OutboundPayload =
+  | ConversationOutboundPayload
+  | AutomationOutboundPayload
+  | OperatorOutboundPayload;
 
 export function isConversationOutboundPayload(
   payload: unknown,
@@ -95,6 +111,32 @@ export function isAutomationOutboundPayload(
   );
 }
 
+export function isOperatorOutboundPayload(
+  payload: unknown,
+): payload is OperatorOutboundPayload {
+  if (!payload || typeof payload !== "object") return false;
+  const value = payload as Record<string, unknown>;
+  if (
+    value.version !== 1 ||
+    value.kind !== "operator_message" ||
+    typeof value.to !== "string" ||
+    typeof value.operatorMessageId !== "string" ||
+    typeof value.text !== "string"
+  ) {
+    return false;
+  }
+  if (value.attachment === undefined) return true;
+  if (!value.attachment || typeof value.attachment !== "object") return false;
+  const attachment = value.attachment as Record<string, unknown>;
+  return (
+    typeof attachment.url === "string" &&
+    typeof attachment.fileName === "string" &&
+    ["image", "video", "audio", "document"].includes(String(attachment.mediaType))
+  );
+}
+
 export function isOutboundPayload(payload: unknown): payload is OutboundPayload {
-  return isConversationOutboundPayload(payload) || isAutomationOutboundPayload(payload);
+  return isConversationOutboundPayload(payload)
+    || isAutomationOutboundPayload(payload)
+    || isOperatorOutboundPayload(payload);
 }

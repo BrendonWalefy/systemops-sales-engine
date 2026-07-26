@@ -13,9 +13,11 @@ import type {
 import {
   isAutomationOutboundPayload,
   isConversationOutboundPayload,
+  isOperatorOutboundPayload,
   isOutboundPayload,
   type AutomationOutboundPayload,
   type ConversationOutboundPayload,
+  type OperatorOutboundPayload,
   type OutboundPayload,
 } from "@/application/jobs/conversation-outbound-payload";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -38,7 +40,7 @@ import {
   type DecisionTraceSink,
 } from "@/core/observability/DecisionTrace";
 import { db } from "@/infrastructure/db/client";
-import { organizations, messages, followUps, leads } from "@/infrastructure/db/schema";
+import { organizations, messages, followUps, leads, conversations } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 
 export type SendMessageJobDependencies = {
@@ -226,6 +228,17 @@ export class SendMessageJobHandler {
     }
 
     if (isOutboundSafetyGatedCategory(outbound.category)) {
+      if (!isAutomationOutboundPayload(outbound.payload)) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(
+          outbound.id,
+          "invalid_automation_context",
+        );
+        outboundLog.warn("job.ignored", {
+          reason: "invalid_automation_context",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
       const context = safetyContext ?? await this.safetyContextReader.getContext({
         clinicId: outbound.clinicId,
         leadId: outbound.payload.leadId,
@@ -418,6 +431,29 @@ const drizzleAutomationDispatchLifecycle: AutomationDispatchLifecycle = {
         .set({ status: "in_conversation", updatedAt: deliveredAt })
         .where(and(eq(leads.id, outbound.payload.leadId), eq(leads.clinicId, outbound.clinicId)));
     }
+    if (outbound.category === "recovery" && outbound.dedupeKey?.startsWith("manual-recovery:")) {
+      await db
+        .update(conversations)
+        .set({ aiPaused: false, takeoverExpiresAt: null, updatedAt: deliveredAt })
+        .where(and(
+          eq(conversations.id, outbound.payload.conversationId),
+          eq(conversations.clinicId, outbound.clinicId),
+        ));
+      await db
+        .insert(followUps)
+        .values({
+          clinicId: outbound.clinicId,
+          leadId: outbound.payload.leadId,
+          dueAt: deliveredAt,
+          status: "done",
+          reason: "recovery_campaign",
+          completedAt: deliveredAt,
+          updatedAt: deliveredAt,
+        })
+        .onConflictDoNothing({
+          target: [followUps.clinicId, followUps.leadId, followUps.reason, followUps.dueAt],
+        });
+    }
   },
 
   async markCancelled(outbound, reason, cancelledAt) {
@@ -522,7 +558,64 @@ async function deliverOutboundPayload(input: {
       conversationId: input.conversationId,
     }, boundary);
   }
+  if (isOperatorOutboundPayload(input.payload)) {
+    return deliverOperatorOutbound({
+      payload: input.payload,
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+    }, boundary);
+  }
   throw new Error("Unsupported outbound payload");
+}
+
+export async function deliverOperatorOutbound(input: {
+  payload: OperatorOutboundPayload;
+  clinicId: string;
+  conversationId: string;
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+  const [clinic] = await db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, input.clinicId))
+    .limit(1);
+  if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
+
+  // Shadow mode restringe automação; uma ação humana explícita no inbox continua
+  // sendo entregue, preservando o comportamento operacional anterior.
+  const config = resolveChannelConfig(clinic);
+  let providerMessageId: string | null;
+  let deliveryFormat: "text" | "audio" = "text";
+  if (input.payload.attachment) {
+    providerMessageId = await boundary.sendMediaMessage(
+      input.payload.to,
+      input.payload.attachment.url,
+      input.payload.attachment.mediaType,
+      config,
+      input.payload.text || undefined,
+      input.payload.attachment.fileName,
+    );
+  } else {
+    const result = await boundary.sendVoiceOrText(
+      input.payload.to,
+      input.payload.text,
+      config,
+      false,
+    );
+    providerMessageId = result.msgId;
+    deliveryFormat = result.deliveryFormat;
+  }
+
+  await db
+    .update(messages)
+    .set({
+      ...(providerMessageId ? { externalId: providerMessageId } : {}),
+      deliveryFormat,
+    })
+    .where(and(
+      eq(messages.id, input.payload.operatorMessageId),
+      eq(messages.conversationId, input.conversationId),
+    ));
+  return providerMessageId;
 }
 
 async function deliverConversationOutbound(input: {

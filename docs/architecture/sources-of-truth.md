@@ -140,6 +140,10 @@ Regra:
   (`outbound_messages`).
 - avanço de pipeline pertence ao commit do turno; a entrega apenas reconcilia a
   mesma expectativa de estado de forma idempotente.
+- mensagens Meta e Z-API destinadas à jornada são persistidas antes de o worker
+  processá-las;
+- ação manual do inbox usa UUID do cliente + dedupe da outbox, portanto retry da
+  requisição não duplica o envio ao lead.
 
 ## 7. Comportamento universal do LLM
 
