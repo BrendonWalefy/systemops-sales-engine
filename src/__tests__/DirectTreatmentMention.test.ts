@@ -374,6 +374,31 @@ describe("especificidade de variantes", () => {
       })?.id,
     ).toBe(international.id);
   });
+
+  it("preço de lentes estratificadas resolve a variante plural antes do pai", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      aliases: ["lentes", "lentes de resina", "resina"],
+    });
+    const estratificada = treatment("Lentes de resina composta estratificada", {
+      id: "estratificada",
+      aliases: [
+        "estratificada",
+        "estratificadas",
+        "técnica estratificada",
+        "lentes de resina estratificadas",
+      ],
+      pipelineSourceTreatmentId: canonical.id,
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "Tenho interesse em lentes de resina estratificadas na cor BL2",
+        treatments: [canonical, estratificada],
+        identifiedTreatment: canonical.name,
+      })?.id,
+    ).toBe(estratificada.id);
+  });
 });
 
 describe("resolveSchedulingTreatmentTarget", () => {

@@ -9,8 +9,8 @@
  * Dry-run:
  *   npx dotenv -e .env.local -- npx tsx scripts/migrate-treatment-pipeline-families.ts
  *
- * Aplicação em sandbox:
- *   ... --apply --entry=immediate --presentation=text_then_media
+ * Aplicação em sandbox preservando a ordem editorial cadastrada:
+ *   ... --apply --entry=immediate --presentation=preserve
  *
  * Rollback:
  *   ... --rollback
@@ -23,8 +23,11 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { db } from "../src/infrastructure/db/client";
 import { organizations, treatments } from "../src/infrastructure/db/schema";
+import {
+  pipelineDigest,
+  transformFirstContentPresentation,
+} from "../src/application/config/pipeline-family-migration";
 import type {
-  ContentBlock,
   PipelineEntryBehavior,
   PipelineStep,
 } from "../src/domain/entities/treatment";
@@ -67,6 +70,26 @@ const PLANS: FamilyPlan[] = [
     requiresCanonicalPipeline: true,
     legacyPresentation: "media_then_text",
     introTextWhenMissing: "Vou te mostrar as duas técnicas para você comparar:",
+    variantAliases: {
+      "Lentes de resina composta simplificada": [
+        "simplificada",
+        "simplificadas",
+        "técnica simplificada",
+        "técnicas simplificadas",
+        "lentes simplificadas",
+        "lentes de resina simplificadas",
+        "lentes de resina composta simplificadas",
+      ],
+      "Lentes de resina composta estratificada": [
+        "estratificada",
+        "estratificadas",
+        "técnica estratificada",
+        "técnicas estratificadas",
+        "lentes estratificadas",
+        "lentes de resina estratificadas",
+        "lentes de resina composta estratificadas",
+      ],
+    },
   },
   {
     key: "vitalli",
@@ -175,52 +198,6 @@ function samePipeline(
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
-function reorderFirstContentPresentation(
-  pipelineSteps: PipelineStep[] | null,
-  order: "preserve" | "text_then_media" | "media_then_text",
-  introTextWhenMissing?: string,
-): PipelineStep[] | null {
-  if (!pipelineSteps?.length || order === "preserve") return pipelineSteps;
-  const firstContentIndex = pipelineSteps.findIndex(
-    (step) => step.type === "content" && step.blocks.length > 0,
-  );
-  if (firstContentIndex < 0) return pipelineSteps;
-
-  const firstContent = pipelineSteps[firstContentIndex]!;
-  if (firstContent.type !== "content") return pipelineSteps;
-  let textBlocks = firstContent.blocks.filter((block) => block.kind === "text");
-  const mediaBlocks = firstContent.blocks.filter((block) => block.kind === "media");
-  if (order === "text_then_media" && textBlocks.length === 0 && introTextWhenMissing) {
-    textBlocks = [{
-      kind: "text",
-      content: introTextWhenMissing,
-    } satisfies ContentBlock];
-  }
-  if (order === "media_then_text" && introTextWhenMissing) {
-    textBlocks = textBlocks.filter(
-      (block) => block.content !== introTextWhenMissing,
-    );
-  }
-  if (
-    mediaBlocks.length < 2 ||
-    (order === "text_then_media" && textBlocks.length === 0)
-  ) {
-    throw new Error(
-      "A apresentação inicial precisa conter texto e pelo menos duas mídias para ser reordenada.",
-    );
-  }
-
-  const reorderedBlocks = order === "text_then_media"
-    ? [...textBlocks, ...mediaBlocks]
-    : [...mediaBlocks, ...textBlocks];
-  const reordered = [...pipelineSteps];
-  reordered[firstContentIndex] = {
-    ...firstContent,
-    blocks: reorderedBlocks,
-  };
-  return reordered;
-}
-
 async function migratePlan(plan: FamilyPlan) {
   const [clinic] = await db
     .select({ id: organizations.id, name: organizations.name })
@@ -273,11 +250,21 @@ async function migratePlan(plan: FamilyPlan) {
       : rollback
         ? plan.legacyPresentation ?? "preserve"
         : "text_then_media";
-  const targetCanonicalSteps = reorderFirstContentPresentation(
+  const targetCanonicalSteps = transformFirstContentPresentation(
     canonicalSteps,
     targetPresentation,
     plan.introTextWhenMissing,
   );
+  const sourcePipelineDigest = pipelineDigest(canonicalSteps);
+  const targetPipelineDigest = pipelineDigest(targetCanonicalSteps);
+  if (
+    targetPresentation === "preserve" &&
+    sourcePipelineDigest !== targetPipelineDigest
+  ) {
+    throw new Error(
+      `[${plan.key}] modo preserve alterou o pipeline; abortando.`,
+    );
+  }
 
   const changes = {
     clinic: clinic.name,
@@ -286,6 +273,9 @@ async function migratePlan(plan: FamilyPlan) {
     variants: variants.map((variant) => variant!.name),
     pipelineConsolidation: Boolean(canonicalSteps?.length),
     presentation: targetPresentation,
+    sourcePipelineDigest,
+    targetPipelineDigest,
+    pipelineContentPreserved: sourcePipelineDigest === targetPipelineDigest,
     entryBehavior: rollback ? null : entryBehavior,
     genericAliases: plan.genericAliases,
   };
