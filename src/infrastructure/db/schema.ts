@@ -456,6 +456,9 @@ export const organizations = pgTable("organizations", {
   zapiClientToken: text("zapi_client_token"),
   metaPhoneNumberId: text("meta_phone_number_id"),
   metaAccessToken: text("meta_access_token"),
+  // App Secret usado para autenticar x-hub-signature-256 no webhook inbound.
+  // Segredo criptografado pelo credential vault, assim como o access token.
+  metaAppSecret: text("meta_app_secret"),
   // Momento em que a instância Z-API foi conectada com sucesso pela primeira vez
   // via o fluxo de pareamento dentro do nosso portal (P0.5). Nullable: clínicas
   // existentes e as que conectaram pelo painel Z-API têm null.
@@ -480,7 +483,14 @@ export const organizations = pgTable("organizations", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("organizations_zapi_instance_unique")
+    .on(table.zapiInstanceId)
+    .where(sql`${table.zapiInstanceId} is not null and btrim(${table.zapiInstanceId}) <> ''`),
+  uniqueIndex("organizations_meta_phone_number_unique")
+    .on(table.metaPhoneNumberId)
+    .where(sql`${table.metaPhoneNumberId} is not null and btrim(${table.metaPhoneNumberId}) <> ''`),
+]);
 
 export const treatments = pgTable(
   "treatments",
