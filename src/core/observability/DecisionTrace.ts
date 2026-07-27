@@ -65,7 +65,7 @@ export type DeterministicDecisionTraceCompletion = {
 
 export const noopDecisionTraceSink: DecisionTraceSink = {
   record() {
-    // Produção não captura traces por padrão.
+    // Destino explícito para contextos que não devem capturar traces.
   },
 };
 

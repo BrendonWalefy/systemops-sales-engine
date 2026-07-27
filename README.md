@@ -418,7 +418,7 @@ Env é para infraestrutura compartilhada. Configuração de clínica fica no ban
 | `RESEND_API_KEY` | Emails transacionais e digest |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account GCal (só modo `google_calendar`) |
 | `GOOGLE_PRIVATE_KEY` | Chave privada GCal (só modo `google_calendar`) |
-| `DECISION_TRACE_MODE` | Opcional: `structured_log` para metadados de trace; omitido = desligado |
+| `DECISION_TRACE_MODE` | Opcional: omitido = banco sanitizado por 30 dias; `off` desliga; `structured_log` usa logs efêmeros |
 | `REPLAY_EXPORT_ALLOWED_CLINICS` | Allowlist local de slugs autorizados para export do corpus |
 | `REPLAY_EXPORT_HASH_KEY` | Chave local de 32+ caracteres para pseudonimizar IDs do corpus |
 

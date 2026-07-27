@@ -155,6 +155,26 @@ describe("SendMessageJobHandler", () => {
     ]);
   });
 
+  it("registra a fase da falha quando o provider rejeita a entrega", async () => {
+    const store = makeStore();
+    const decisionTraceSink = new InMemoryDecisionTraceSink();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery: vi.fn().mockRejectedValue(new Error("provider unavailable")),
+      decisionTraceSink,
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
+    })).rejects.toThrow("provider unavailable");
+    expect(decisionTraceSink.getEvents("turn-1").map((entry) => entry.stage))
+      .toEqual(["delivery.started", "turn.failed"]);
+    expect(decisionTraceSink.getEvents("turn-1").at(-1)?.metadata).toEqual({
+      phase: "delivery",
+      errorName: "Error",
+    });
+  });
+
   it("não reenfileira uma saída já entregue", async () => {
     const store = makeStore();
     store.findOutboundMessage.mockResolvedValue({ ...outbound, status: "sent" });

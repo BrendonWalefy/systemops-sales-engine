@@ -3871,6 +3871,8 @@ export class ConversationOrchestrator {
       occurredAt: new Date().toISOString(),
       clinicId,
       metadata: {
+        clinicConfigUpdatedAt: clinicRows[0].updatedAt.toISOString(),
+        playbookVersionId: editorial?.versionId ?? null,
         timezone: clinic.timezone,
         segment: clinic.segment ?? "unknown",
         hasActiveEditorial: editorial !== null,

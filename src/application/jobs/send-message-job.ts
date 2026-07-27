@@ -345,11 +345,29 @@ export class SendMessageJobHandler {
         },
       });
     }
-    const providerMessageId = await this.delivery({
-      payload: outbound.payload,
-      clinicId: outbound.clinicId,
-      conversationId: outbound.conversationId,
-    });
+    let providerMessageId: string | null;
+    try {
+      providerMessageId = await this.delivery({
+        payload: outbound.payload,
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+      });
+    } catch (error) {
+      if (turnId) {
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "turn.failed",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: {
+            phase: "delivery",
+            errorName: error instanceof Error ? error.name : "unknown",
+          },
+        });
+      }
+      throw error;
+    }
     if (providerMessageId === SHADOW_DELIVERY_SUPPRESSED) {
       await this.deps.outboundMessageStore.markOutboundCancelled(
         outbound.id,

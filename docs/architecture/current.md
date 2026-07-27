@@ -68,10 +68,10 @@ WhatsApp (Z-API hoje, Meta como compatibilidade)
 ### Correlação e Decision Trace
 
 O fluxo principal propaga um `turnId` do `inboundEventId` até a outbox e o
-sender. A captura detalhada é injetável e permanece desligada por padrão; o
-runtime pode emitir metadados estruturados com
-`DECISION_TRACE_MODE=structured_log`, sem corpo de mensagem, prompt, telefone
-ou nome.
+sender. O runtime agrega e persiste por 30 dias somente metadados sanitizados
+dos estágios; nunca corpo de mensagem, prompt, resposta, telefone, nome ou URL.
+`DECISION_TRACE_MODE=structured_log` troca a persistência por logs efêmeros e
+`DECISION_TRACE_MODE=off` desliga a captura.
 
 Os contratos, limites de privacidade e o estado incremental da implementação
 estão em

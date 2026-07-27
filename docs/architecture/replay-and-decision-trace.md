@@ -66,19 +66,28 @@ ID operacional anterior como fallback de log.
 
 ## Captura
 
-O sink padrão é `noop`. Para diagnóstico controlado:
+O runtime agrega os eventos do turno em memória e persiste lotes sanitizados em
+`decision_traces`. Isso acrescenta uma escrita ao fim do processamento e outra
+ao fim da entrega, em vez de uma escrita por estágio. A retenção é de 30 dias e
+o cron diário `/api/cron/decision-trace-cleanup` remove os lotes vencidos.
+
+O estágio `tenant.config_loaded` registra a versão ativa do playbook e o
+`updatedAt` da configuração operacional usada naquele turno. O endpoint autenticado e tenant-scoped
+`GET /api/conversations/:conversationId/decision-trace` permite inspecionar o
+caminho de uma conversa sem expor corpo, prompt, resposta, telefone, nome ou URL.
+Metadados fora da allowlist do sink são descartados antes da persistência.
+
+Para usar apenas logs efêmeros:
 
 ```bash
 DECISION_TRACE_MODE=structured_log
 ```
 
-Esse modo registra somente metadados explicitamente fornecidos pelos call sites.
-Não registrar corpo da mensagem, prompt, resposta, telefone ou nome em eventos
-de trace.
+Para desligar completamente, use `DECISION_TRACE_MODE=off`. Falha de
+observabilidade nunca altera a decisão nem interrompe o atendimento.
 
-O `InMemoryDecisionTraceSink` é o destino para testes e para o futuro runner de
-replay. Falha de observabilidade nunca altera a decisão ou interrompe o
-atendimento.
+O `InMemoryDecisionTraceSink` continua sendo o destino do replay isolado e dos
+testes; dados sintéticos do replay não são gravados na trilha operacional.
 
 ## Privacidade
 
@@ -176,7 +185,7 @@ Implementado:
 
 - contratos de cenário/resultado `v1` e dataset assinado `v2`;
 - `turnId` entre ingresso, orquestrador, outbox e sender;
-- sink noop, em memória e log estruturado opt-in;
+- sink em memória, persistência sanitizada agregada e log estruturado opt-in;
 - estágios iniciais de ingresso, configuração, planejamento, enqueue e entrega;
 - bloqueio da exportação bruta;
 - exportador read-only com allowlist, pseudonimização, sanitização e saída fora
@@ -232,7 +241,8 @@ vez de chamar o Google real.
 
 Ainda não implementado:
 
-- fingerprint persistido no runtime do trace;
+- fingerprint criptográfico completo persistido no runtime do trace (o trace já
+  guarda a versão do playbook e a revisão da configuração operacional);
 - identificação individual de cada override determinístico no trace;
 - provisionamento automatizado do branch de banco e relógio controlável;
 - fotografia assinada de disponibilidade para clínicas `google_calendar`;

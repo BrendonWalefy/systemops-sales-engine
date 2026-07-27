@@ -16,6 +16,7 @@ import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
+import type { DecisionTraceRecord } from "@/core/observability/DecisionTrace";
 import { sql } from "drizzle-orm";
 
 export const channelEnum = pgEnum("channel", [
@@ -812,6 +813,45 @@ export const jobs = pgTable(
       table.queue,
       table.dedupeKey,
     ),
+  }),
+);
+
+// Trilha operacional sanitizada por turno. Um único row agrega os eventos para
+// evitar uma escrita de banco a cada decisão do orquestrador. Nunca armazena
+// mensagem, prompt, resposta, telefone, nome ou URL; o sink aplica allowlist.
+export const decisionTraces = pgTable(
+  "decision_traces",
+  {
+    turnId: text("turn_id").primaryKey(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(
+      () => conversations.id,
+      { onDelete: "cascade" },
+    ),
+    events: jsonb("events").$type<DecisionTraceRecord[]>().notNull(),
+    firstOccurredAt: timestamp("first_occurred_at", { withTimezone: true })
+      .notNull(),
+    lastOccurredAt: timestamp("last_occurred_at", { withTimezone: true })
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicUpdatedAtIdx: index("decision_traces_org_updated_at_idx").on(
+      table.clinicId,
+      table.updatedAt,
+    ),
+    conversationUpdatedAtIdx: index(
+      "decision_traces_conversation_updated_at_idx",
+    ).on(table.conversationId, table.updatedAt),
+    expiresAtIdx: index("decision_traces_expires_at_idx").on(table.expiresAt),
   }),
 );
 
