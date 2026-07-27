@@ -326,7 +326,7 @@ async function auditClinic(slug: string) {
     if ((playbook.mediaLibrary?.length ?? 0) > 0) {
       pushFinding(findings, {
         id: `CFG-LEGACY-MEDIA-${playbook.id}`,
-        severity: "P2",
+        severity: playbook.status === "active" ? "P2" : "P3",
         category: "migration",
         title: `Playbook "${playbook.name}" ainda possui media_library legado`,
         evidence: [
@@ -344,7 +344,7 @@ async function auditClinic(slug: string) {
     if (/R\s*\$/i.test(playbook.commercialPolicy ?? "")) {
       pushFinding(findings, {
         id: `CFG-PRICE-IN-COMMERCIAL-POLICY-${playbook.id}`,
-        severity: "P1",
+        severity: playbook.status === "active" ? "P1" : "P3",
         category: "duplicate",
         title: `Playbook "${playbook.name}" contém preço digitado na política comercial`,
         evidence: [{ source: "db", reference: `playbook_versions.commercial_policy:${playbook.id}` }],
@@ -356,7 +356,7 @@ async function auditClinic(slug: string) {
     if (/(^|\n)\s*trigger\b/i.test(playbook.notes ?? "")) {
       pushFinding(findings, {
         id: `CFG-LEGACY-TRIGGER-NOTES-${playbook.id}`,
-        severity: "P1",
+        severity: playbook.status === "active" ? "P1" : "P3",
         category: "duplicate",
         title: `Playbook "${playbook.name}" contém trigger legado em notes`,
         evidence: [{ source: "db", reference: `playbook_versions.notes:${playbook.id}` }],
@@ -372,7 +372,7 @@ async function auditClinic(slug: string) {
     if (missingIds.length > 0) {
       pushFinding(findings, {
         id: `CFG-MISSING-MEDIA-${playbook.id}`,
-        severity: "P1",
+        severity: playbook.status === "active" ? "P1" : "P3",
         category: "orphan",
         title: `Playbook "${playbook.name}" referencia mídias inexistentes`,
         evidence: [

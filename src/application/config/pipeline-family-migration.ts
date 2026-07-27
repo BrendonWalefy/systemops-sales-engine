@@ -122,3 +122,28 @@ export function removeLegacyXimendesPipelineInstructions(
   const clinicConduct = notes.slice(end).trimStart();
   return `${identity}\n\n${clinicConduct}`.trim();
 }
+
+/**
+ * Remove somente os fatos de preço redigitados da política ativa da Ximendes.
+ * Os mesmos valores já pertencem a treatments.priceCents/priceUnit e entram no
+ * prompt por composePriceSection. O texto de preço depois dos vídeos continua
+ * no ContentBlock do pipeline e não é alterado aqui.
+ */
+export function removeLegacyXimendesCommercialPriceFacts(
+  policy: string | null,
+): string | null {
+  if (!policy?.trim()) return policy;
+  const paragraphs = policy.split(/\n{2,}/).map((paragraph) => paragraph.trim());
+  return paragraphs
+    .map((paragraph) => {
+      if (/^A avaliação inicial com o Dr\. Gregorie custa R\$/i.test(paragraph)) {
+        return "Ao falar da avaliação inicial com o Dr. Gregorie, mencione o abatimento integral informado pelo sistema, mas somente na etapa de agendamento ou quando o lead perguntar sobre o custo da avaliação.";
+      }
+      if (/^Para lentes de resina, único procedimento com valor autorizado por mensagem:/i.test(paragraph)) {
+        return "Para lentes de resina, informe somente os valores fornecidos pelo sistema. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade.";
+      }
+      return paragraph;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}

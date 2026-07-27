@@ -440,6 +440,7 @@ Detalhes em [docs/operations/migrations-baseline.md](docs/operations/migrations-
 - [Replay e Decision Trace](docs/architecture/replay-and-decision-trace.md)
 - [Contrato de fidelidade do replay](docs/architecture/replay-fidelity-contract.md)
 - [Matriz de limpeza dos testes de conversa](docs/operations/replay-test-cleanup.md)
+- [Rollout de estabilização conversacional](docs/operations/conversation-stabilization-rollout.md)
 - [Diagramas de arquitetura](docs/architecture/diagrams/README.md)
 - [Arquitetura alvo 2.0](docs/architecture/target-architecture.md)
 - [Infraestrutura de mídia](docs/architecture/media-infrastructure.md)

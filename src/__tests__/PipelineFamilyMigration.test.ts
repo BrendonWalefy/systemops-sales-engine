@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   pipelineDigest,
   removeLegacyXimendesPipelineInstructions,
+  removeLegacyXimendesCommercialPriceFacts,
   transformFirstContentPresentation,
 } from "@/application/config/pipeline-family-migration";
 import type { PipelineStep } from "@/domain/entities/treatment";
@@ -101,5 +102,26 @@ Só ofereça agendamento quando houver interesse real.`,
   it("é idempotente quando o trigger legado já foi removido", () => {
     const notes = "ESPECIALIDADE\n\nCONDUTA ESPECÍFICA DA CLÍNICA:\nTexto";
     expect(removeLegacyXimendesPipelineInstructions(notes)).toBe(notes);
+  });
+});
+
+describe("removeLegacyXimendesCommercialPriceFacts", () => {
+  it("preserva a conduta e remove somente os preços duplicados", () => {
+    const policy = [
+      "A avaliação inicial com o Dr. Gregorie custa R$ 100 e esse valor é integralmente abatido do tratamento se o paciente decidir avançar. Sempre mencione esse abatimento ao falar da avaliação. mas só mencione quanto estiver na etapa de agendamento, ou se o lead perguntar sobre custo de avaliação",
+      "Para lentes de resina, único procedimento com valor autorizado por mensagem: Técnica Simplificada a partir de R$ 2.000 para vinte elementos, e Técnica Estratificada a partir de R$ 4.000 para vinte elementos. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade.",
+      "Parcelamento em até 12 vezes.",
+    ].join("\n\n");
+
+    const migrated = removeLegacyXimendesCommercialPriceFacts(policy);
+    expect(migrated).not.toContain("R$");
+    expect(migrated).toContain("abatimento integral informado pelo sistema");
+    expect(migrated).toContain("informe somente os valores fornecidos pelo sistema");
+    expect(migrated).toContain("Parcelamento em até 12 vezes.");
+  });
+
+  it("não altera uma política que já está sem fatos duplicados", () => {
+    const policy = "Parcelamento em até 12 vezes.";
+    expect(removeLegacyXimendesCommercialPriceFacts(policy)).toBe(policy);
   });
 });

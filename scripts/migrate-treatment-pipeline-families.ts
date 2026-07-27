@@ -33,7 +33,7 @@ import type {
 } from "../src/domain/entities/treatment";
 
 type FamilyPlan = {
-  key: "ximendes" | "vitalli" | "nc-beauty";
+  key: "ximendes" | "vitalli" | "vitalli-removal" | "nc-beauty";
   clinicNames: string[];
   canonicalName: string;
   variantNames: string[];
@@ -116,6 +116,15 @@ const PLANS: FamilyPlan[] = [
     canonicalOwnedGenericAliasesBefore: true,
     requiresCanonicalPipeline: true,
     legacyPresentation: "media_then_text",
+  },
+  {
+    key: "vitalli-removal",
+    clinicNames: ["Clínica Vitalli", "Clinica Vitalli"],
+    canonicalName: "Remoção de lentes",
+    variantNames: ["Substituição de lente (un)"],
+    genericAliases: [],
+    canonicalOwnedGenericAliasesBefore: true,
+    requiresCanonicalPipeline: true,
   },
   {
     key: "nc-beauty",
