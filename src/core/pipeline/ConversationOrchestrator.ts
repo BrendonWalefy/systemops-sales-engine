@@ -122,6 +122,10 @@ import {
   type DeterministicDecisionTraceCompletion,
   type DecisionTraceSink,
 } from "@/core/observability/DecisionTrace";
+import {
+  fingerprintRuntimeConfig,
+  RUNTIME_CONFIG_FINGERPRINT_SCHEMA,
+} from "@/application/config/runtime-config-fingerprint";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -4018,6 +4022,11 @@ export class ConversationOrchestrator {
       resolveActiveEditorialConfig(clinicId),
       getClinicModules(clinicId),
     ]);
+    const runtimeConfigFingerprint = fingerprintRuntimeConfig({
+      clinic: clinicRows[0] as Record<string, unknown>,
+      editorial,
+      modules: activeModules,
+    });
     await recordDecisionTrace(this.decisionTraceSink, {
       turnId,
       stage: "tenant.config_loaded",
@@ -4032,6 +4041,9 @@ export class ConversationOrchestrator {
         activeModuleCount: activeModules.length,
         procedureCount: editorial?.procedures.length ?? 0,
         mediaAssetCount: editorial?.mediaLibrary.length ?? 0,
+        configFingerprint: runtimeConfigFingerprint.fingerprint,
+        configFingerprintSchema: RUNTIME_CONFIG_FINGERPRINT_SCHEMA,
+        configFieldCount: runtimeConfigFingerprint.fieldCount,
       },
     });
     const channelConfig = resolveChannelConfig(clinicRows[0]);
