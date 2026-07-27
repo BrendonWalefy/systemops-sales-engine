@@ -7,7 +7,7 @@ import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests, slotReservations } from "@/infrastructure/db/schema";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
-import { eq, and, or, count, gt, gte, lt, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, count, gt, gte, lt, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
   resolveWhatsAppChannelAddress,
@@ -99,6 +99,8 @@ import type {
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
+import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
+import { ConversationTurnCoordinator } from "@/core/pipeline/ConversationTurnCoordinator";
 import { buildForwardedMediaFileName } from "@/application/conversations/forwarded-media-file-name";
 import {
   buildHumanReviewButtons,
@@ -3701,6 +3703,7 @@ export class ConversationOrchestrator {
   private readonly onAuxiliaryExternalEffect?: (
     effect: ConversationAuxiliaryExternalEffect,
   ) => void;
+  private readonly turnCoordinator: ConversationTurnCoordinator;
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
@@ -3724,6 +3727,7 @@ export class ConversationOrchestrator {
     onAuxiliaryExternalEffect?: (
       effect: ConversationAuxiliaryExternalEffect,
     ) => void;
+    turnCoordinator?: ConversationTurnCoordinator;
   } = {}) {
     this.decisionTraceSink = deps.decisionTraceSink ?? noopDecisionTraceSink;
     this.calendarGatewayResolver =
@@ -3731,6 +3735,17 @@ export class ConversationOrchestrator {
     this.suppressAuxiliaryExternalEffects =
       deps.suppressAuxiliaryExternalEffects ?? false;
     this.onAuxiliaryExternalEffect = deps.onAuxiliaryExternalEffect;
+    this.turnCoordinator = deps.turnCoordinator ?? new ConversationTurnCoordinator(
+      new DrizzleConversationTurnLeaseStore(),
+      {
+        onReleaseError: (conversationId, error) => {
+          console.warn(
+            `[Orchestrator] Falha ao liberar claim de ${conversationId}:`,
+            error,
+          );
+        },
+      },
+    );
   }
 
   private captureAuxiliaryExternalEffect(
@@ -4148,13 +4163,10 @@ export class ConversationOrchestrator {
     // processam em paralelo e as respostas saem intercaladas/duplicadas (o check
     // de debounce sozinho tem janela TOCTOU). CAS via UPDATE condicional — único
     // statement, atômico no Postgres mesmo com o driver neon-http.
-    const claimed = await this.acquireConversationClaim(conversation.id);
+    const claimed = await this.turnCoordinator.acquire(conversation.id);
     if (!claimed) {
-      const acquired = await this.waitForConversationClaim(conversation.id);
-      if (!acquired) {
-        console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
-        return { replied: false, reason: "conversation_claim_timeout" };
-      }
+      console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
+      return { replied: false, reason: "conversation_claim_timeout" };
     }
 
     // ── 3.3. Batching / Debounce de burst de mensagens ──
@@ -4170,7 +4182,7 @@ export class ConversationOrchestrator {
         console.log(
           `[Orchestrator] Batching/Debounce: Mensagem mais recente detectada para conv=${conversation.id}. Abortando msg=${incomingMessage.id}`
         );
-        await this.releaseConversationClaim(conversation.id);
+        await this.turnCoordinator.release(conversation.id);
         return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
@@ -8335,7 +8347,7 @@ export class ConversationOrchestrator {
     }
 
     } finally {
-      await this.releaseConversationClaim(conversation.id);
+      await this.turnCoordinator.release(conversation.id);
     }
   }
 
@@ -8601,52 +8613,6 @@ export class ConversationOrchestrator {
           expected,
         )
       : this.stateMachine.exitTreatmentPipeline(conversationId, expected);
-  }
-
-  // ── Claim de processamento por conversa (CAS single-statement) ──────────────
-
-  private async acquireConversationClaim(conversationId: string, ttlMs = 90_000): Promise<boolean> {
-    const now = new Date();
-    const rows = await db
-      .update(conversationsTable)
-      .set({ processingUntil: new Date(now.getTime() + ttlMs) })
-      .where(
-        and(
-          eq(conversationsTable.id, conversationId),
-          or(
-            isNull(conversationsTable.processingUntil),
-            lt(conversationsTable.processingUntil, now),
-          ),
-        ),
-      )
-      .returning({ id: conversationsTable.id });
-    return rows.length > 0;
-  }
-
-  // Espera o detentor atual liberar (ou o TTL de 90s expirar em caso de crash).
-  private async waitForConversationClaim(
-    conversationId: string,
-    maxWaitMs = 45_000,
-    pollMs = 2_000,
-  ): Promise<boolean> {
-    const deadline = Date.now() + maxWaitMs;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, pollMs));
-      if (await this.acquireConversationClaim(conversationId)) return true;
-    }
-    return false;
-  }
-
-  private async releaseConversationClaim(conversationId: string): Promise<void> {
-    try {
-      await db
-        .update(conversationsTable)
-        .set({ processingUntil: null })
-        .where(eq(conversationsTable.id, conversationId));
-    } catch (err) {
-      // Não-crítico: o TTL de 90s expira o claim sozinho.
-      console.warn(`[Orchestrator] Falha ao liberar claim de ${conversationId}:`, err);
-    }
   }
 
   // Snapa para a próxima hora cheia com antecedência mínima de 2h.
