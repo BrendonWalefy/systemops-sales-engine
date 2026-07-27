@@ -12,6 +12,7 @@ import {
   replayPiiDetectors,
   sanitizeReplayText,
 } from "@/application/replay/sanitize-replay-text";
+import { REPLAY_BURST_WINDOW_MS } from "@/application/replay/replay-execution-plan";
 
 export type ReplaySourceMessage = {
   sourceId: string;
@@ -50,7 +51,12 @@ export function buildSanitizedReplayCorpus(
       (a, b) => a.sentAt.getTime() - b.sentAt.getTime(),
     );
     if (!ordered.some((message) => message.author === "lead")) return [];
-    if (!ordered.some((message) => message.author === "agent" || message.author === "operator")) {
+    if (
+      !ordered.some(
+        (message) =>
+          message.author === "agent" || message.author === "operator",
+      )
+    ) {
       return [];
     }
 
@@ -62,7 +68,10 @@ export function buildSanitizedReplayCorpus(
     ]);
     const turns: ReplayScenarioTurnV1[] = ordered.map((message, index) => {
       const contentType = message.mediaType ?? "text";
-      const sanitizedBody = sanitizeReplayText(message.body, conversation.leadName);
+      const sanitizedBody = sanitizeReplayText(
+        message.body,
+        conversation.leadName,
+      );
       const mediaPlaceholder =
         contentType === "text" ? "" : `[MIDIA:${contentType.toUpperCase()}]`;
       const text = [mediaPlaceholder, sanitizedBody].filter(Boolean).join(" ");
@@ -86,12 +95,17 @@ export function buildSanitizedReplayCorpus(
 
     const tags = ["historical"];
     if (ordered.some((message) => message.mediaType)) tags.push("has_media");
-    if (ordered.some((message) => message.author === "operator")) tags.push("has_operator");
+    if (ordered.some((message) => message.author === "operator"))
+      tags.push("has_operator");
     const hasBurst = ordered.some((message, index) => {
       const previous = ordered[index - 1];
-      return previous
-        ? message.sentAt.getTime() - previous.sentAt.getTime() <= 5_000
-        : false;
+      return Boolean(
+        previous &&
+        previous.author === "lead" &&
+        message.author === "lead" &&
+        message.sentAt.getTime() - previous.sentAt.getTime() <=
+          REPLAY_BURST_WINDOW_MS,
+      );
     });
     if (hasBurst) tags.push("burst");
 
@@ -101,28 +115,30 @@ export function buildSanitizedReplayCorpus(
       ...(hasBurst ? (["concurrency"] as const) : []),
     ];
 
-    return [{
-      schemaVersion: REPLAY_SCENARIO_SCHEMA_VERSION,
-      id: `historical-${sourceRef}`,
-      datasetVersion: input.datasetVersion,
-      source: {
-        kind: "historical" as const,
-        sourceRef,
-        sanitized: true as const,
+    return [
+      {
+        schemaVersion: REPLAY_SCENARIO_SCHEMA_VERSION,
+        id: `historical-${sourceRef}`,
+        datasetVersion: input.datasetVersion,
+        source: {
+          kind: "historical" as const,
+          sourceRef,
+          sanitized: true as const,
+        },
+        clinic: {
+          clinicKey: input.clinicKey,
+          configFingerprint: input.configFingerprint,
+          playbookFingerprint: input.playbookFingerprint,
+        },
+        compatibleModes,
+        clock: {
+          startedAt: ordered[0]!.sentAt.toISOString(),
+          timezone: input.timezone,
+        },
+        tags,
+        turns,
       },
-      clinic: {
-        clinicKey: input.clinicKey,
-        configFingerprint: input.configFingerprint,
-        playbookFingerprint: input.playbookFingerprint,
-      },
-      compatibleModes,
-      clock: {
-        startedAt: ordered[0]!.sentAt.toISOString(),
-        timezone: input.timezone,
-      },
-      tags,
-      turns,
-    }];
+    ];
   });
 
   const dataset: ReplayDatasetV2 = {
@@ -211,5 +227,9 @@ function nameTokens(name: string | null): string[] {
   return name
     .trim()
     .split(/\s+/)
-    .filter((token) => token.length >= 3 && !["das", "dos", "para"].includes(token.toLowerCase()));
+    .filter(
+      (token) =>
+        token.length >= 3 &&
+        !["das", "dos", "para"].includes(token.toLowerCase()),
+    );
 }

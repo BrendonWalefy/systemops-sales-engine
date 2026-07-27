@@ -63,13 +63,20 @@ describe("buildSanitizedReplayCorpus", () => {
     expect(serialized).not.toContain("98765-4321");
     expect(serialized).not.toContain("joao@example.com");
     expect(serialized).not.toContain("4f73a495-8169-4d69-9b9c-cf797f6dfc75");
-    expect(scenario.turns.map((turn) => turn.offsetMs)).toEqual([0, 3_000, 10_000]);
+    expect(scenario.turns.map((turn) => turn.offsetMs)).toEqual([
+      0, 3_000, 10_000,
+    ]);
     expect(scenario.turns[1]?.content).toEqual({
       type: "image",
       text: expect.stringContaining("[MIDIA:IMAGE]"),
     });
     expect(scenario.tags).toEqual(
-      expect.arrayContaining(["historical", "has_media", "has_operator", "burst"]),
+      expect.arrayContaining([
+        "historical",
+        "has_media",
+        "has_operator",
+        "burst",
+      ]),
     );
     expect(scenario.compatibleModes).toContain("concurrency");
   });
@@ -84,6 +91,43 @@ describe("buildSanitizedReplayCorpus", () => {
     expect(first.scenarios).toEqual(second.scenarios);
   });
 
+  it("não chama resposta rápida do agente de rajada do lead", () => {
+    const dataset = buildSanitizedReplayCorpus({
+      datasetVersion: "baseline-1",
+      generatedAt: new Date("2026-07-24T12:00:00.000Z"),
+      clinicKey: "clinic-a",
+      timezone: "America/Sao_Paulo",
+      configFingerprint: "config",
+      playbookFingerprint: null,
+      sourceHashKey: HASH_KEY,
+      conversations: [
+        {
+          sourceId: "conversation-1",
+          leadName: null,
+          messages: [
+            {
+              sourceId: "lead-1",
+              author: "lead",
+              body: "Olá",
+              mediaType: null,
+              sentAt: new Date("2026-07-20T12:00:00.000Z"),
+            },
+            {
+              sourceId: "agent-1",
+              author: "agent",
+              body: "Olá, como posso ajudar?",
+              mediaType: null,
+              sentAt: new Date("2026-07-20T12:00:01.000Z"),
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(dataset.scenarios[0]?.tags).not.toContain("burst");
+    expect(dataset.scenarios[0]?.compatibleModes).not.toContain("concurrency");
+  });
+
   it("exclui conversas sem resposta da IA ou operador", () => {
     const dataset = buildSanitizedReplayCorpus({
       datasetVersion: "baseline-1",
@@ -93,17 +137,21 @@ describe("buildSanitizedReplayCorpus", () => {
       configFingerprint: "config",
       playbookFingerprint: null,
       sourceHashKey: HASH_KEY,
-      conversations: [{
-        sourceId: "conversation-1",
-        leadName: null,
-        messages: [{
-          sourceId: "message-1",
-          author: "lead",
-          body: "Olá",
-          mediaType: null,
-          sentAt: new Date("2026-07-20T12:00:00.000Z"),
-        }],
-      }],
+      conversations: [
+        {
+          sourceId: "conversation-1",
+          leadName: null,
+          messages: [
+            {
+              sourceId: "message-1",
+              author: "lead",
+              body: "Olá",
+              mediaType: null,
+              sentAt: new Date("2026-07-20T12:00:00.000Z"),
+            },
+          ],
+        },
+      ],
     });
 
     expect(dataset.scenarioCount).toBe(0);
@@ -164,8 +212,12 @@ describe("buildSanitizedReplayCorpus", () => {
     });
 
     expect(dataset.scenarioCount).toBe(2);
-    expect(dataset.scenarios[0]?.turns[1]?.content.text).toBe("Olá, [PACIENTE]");
-    expect(dataset.scenarios[1]?.turns[0]?.content.text).toBe("Quero a opção rosa");
+    expect(dataset.scenarios[0]?.turns[1]?.content.text).toBe(
+      "Olá, [PACIENTE]",
+    );
+    expect(dataset.scenarios[1]?.turns[0]?.content.text).toBe(
+      "Quero a opção rosa",
+    );
   });
 
   it("recusa chave curta de pseudonimização", () => {

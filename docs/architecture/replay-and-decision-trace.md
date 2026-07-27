@@ -187,9 +187,12 @@ Implementado:
 - resolvedor de calendário injetável no orquestrador;
 - trace de estado carregado, classificação, intenção final e estado antes/depois
   da entrega.
-- rota opt-in `/api/e2e/replay/scenario` para `closed_loop`, que valida
+- rota opt-in `/api/e2e/replay/scenario` para `closed_loop` e `concurrency`, que valida
   fingerprint, atravessa webhook e filas reais, devolve trace/efeitos/checks e
   remove todos os registros sintéticos ao terminar.
+- plano de execução que mantém turnos comuns sequenciais e reivindica em lote
+  somente rajadas consecutivas do lead dentro da janela de 5 segundos. Resposta
+  histórica de agente/operador encerra a rajada e nunca é reenviada como input.
 - reconciliação automática dos estreitos intervalos entre persistir inbound/
   outbox e enfileirar seus jobs, com contadores expostos no resultado dos
   workers.
@@ -233,5 +236,5 @@ Ainda não implementado:
 - identificação individual de cada override determinístico no trace;
 - provisionamento automatizado do branch de banco e relógio controlável;
 - fotografia assinada de disponibilidade para clínicas `google_calendar`;
-- modos `historical_turn`, `counterfactual` e `concurrency`;
+- modos `historical_turn` e `counterfactual`;
 - baseline das clínicas e relatório comparativo.

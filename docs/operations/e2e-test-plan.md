@@ -49,7 +49,10 @@ shadow para tentar simular produção.
 compõe respostas, não avança funil, não cria reservas/agendamentos e não dispara
 follow-ups. O golden path obrigatório agora é o replay `closed_loop`, que atravessa
 webhook, filas, orquestrador, outbox e sender reais dentro de um banco sandbox, com
-adapters de captura para qualquer efeito externo.
+adapters de captura para qualquer efeito externo. Cenários aprovados que contenham
+rajadas consecutivas do lead também devem rodar no modo `concurrency`; mensagens
+isoladas permanecem sequenciais e só a rajada disputa os mesmos claims e filas de
+produção.
 
 **5. `scripts/e2e-webhook-test.ts` precisa de `E2E_WAIT_MS` bem maior que o default
 (12000ms) ao rodar contra produção real** — latência de composição de IA + fila real

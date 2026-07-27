@@ -12,6 +12,11 @@ import type { ReplayScenarioV1 } from "@/application/replay/contracts";
 import { loadReplayClinicManifest } from "@/application/replay/load-replay-clinic-manifest";
 import { ReplayCalendarCapture } from "@/application/replay/replay-calendar-capture";
 import { ReplayOutboundCapture } from "@/application/replay/replay-outbound-capture";
+import { buildReplayExecutionGroups } from "@/application/replay/replay-execution-plan";
+import {
+  assertReplayScenarioRequest,
+  type ReplayScenarioRequest,
+} from "@/application/replay/replay-scenario-request";
 import {
   isReplayTurnTraceComplete,
   resolveReplayDrainNow,
@@ -52,19 +57,13 @@ import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/what
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-type ReplayScenarioRequest = {
-  runId: string;
-  mode: "closed_loop";
-  scenario: ReplayScenarioV1;
-};
-
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const blocked = e2eGuard(request);
   if (blocked) return blocked;
 
   try {
     assertReplaySandboxEnvironment(process.env);
-    const input = assertRequest(await request.json());
+    const input = assertReplayScenarioRequest(await request.json());
     if (!E2E_CLINIC_ID) throw new Error("E2E_CLINIC_ID is required");
 
     const manifest = await loadReplayClinicManifest(
@@ -77,15 +76,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       manifest.configFingerprint !== input.scenario.clinic.configFingerprint ||
       manifest.playbookFingerprint !== input.scenario.clinic.playbookFingerprint
     ) {
-      return NextResponse.json({
-        error: "clinic_fingerprint_mismatch",
-        expected: input.scenario.clinic,
-        observed: {
-          clinicKey: manifest.clinic.slug,
-          configFingerprint: manifest.configFingerprint,
-          playbookFingerprint: manifest.playbookFingerprint,
+      return NextResponse.json(
+        {
+          error: "clinic_fingerprint_mismatch",
+          expected: input.scenario.clinic,
+          observed: {
+            clinicKey: manifest.clinic.slug,
+            configFingerprint: manifest.configFingerprint,
+            playbookFingerprint: manifest.playbookFingerprint,
+          },
         },
-      }, { status: 409 });
+        { status: 409 },
+      );
     }
 
     const nonTerminalJobs = await db
@@ -93,25 +95,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .from(jobs)
       .where(inArray(jobs.status, ["pending", "processing"]));
     if (nonTerminalJobs.length > 0) {
-      return NextResponse.json({
-        error: "sandbox_queue_not_empty",
-        jobs: nonTerminalJobs.slice(0, 20),
-      }, { status: 409 });
+      return NextResponse.json(
+        {
+          error: "sandbox_queue_not_empty",
+          jobs: nonTerminalJobs.slice(0, 20),
+        },
+        { status: 409 },
+      );
     }
 
-    const result = await runClosedLoopScenario(input, manifest.clinic);
+    const result = await runReplayScenario(input, manifest.clinic);
     return NextResponse.json(result, {
       status: result.checks.every((check) => check.passed) ? 200 : 422,
     });
   } catch (error) {
-    return NextResponse.json({
-      error: "replay_scenario_failed",
-      message: error instanceof Error ? error.message : String(error),
-    }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: "replay_scenario_failed",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 400 },
+    );
   }
 }
 
-async function runClosedLoopScenario(
+async function runReplayScenario(
   input: ReplayScenarioRequest,
   clinic: Awaited<ReturnType<typeof loadReplayClinicManifest>>["clinic"],
 ) {
@@ -124,9 +132,9 @@ async function runClosedLoopScenario(
   const outboundMessageStore = new DrizzleOutboundMessageStore();
   const phone = replayPhone(input.runId, input.scenario.id);
   const shiftedStart = Date.now();
-  const turnRuns: Array<{
-    scenarioTurnId: string;
-    turnId: string;
+  const executionRuns: Array<{
+    scenarioTurnIds: string[];
+    turnIds: string[];
     process: Awaited<ReturnType<typeof drainMessageProcessQueue>>;
     send: Awaited<ReturnType<typeof drainMessageSendQueue>>;
   }> = [];
@@ -134,38 +142,14 @@ async function runClosedLoopScenario(
   let replayConversationId: string | null = null;
 
   try {
-    for (const turn of input.scenario.turns) {
-    if (turn.author !== "lead") continue;
-    const payload = buildReplayZApiPayload({
-      phone,
-      runId: input.runId,
-      turn,
-      timestamp: new Date(shiftedStart + turn.offsetMs),
-    });
-    const webhookUrl = new URL(
-      "http://replay.local/api/whatsapp/zapi",
+    const leadTurns = input.scenario.turns.filter(
+      (turn) => turn.author === "lead",
     );
+    const webhookUrl = new URL("http://replay.local/api/whatsapp/zapi");
     webhookUrl.searchParams.set("clinicId", clinic.id);
     if (process.env.ZAPI_WEBHOOK_SECRET) {
       webhookUrl.searchParams.set("secret", process.env.ZAPI_WEBHOOK_SECRET);
     }
-    const webhookResponse = await receiveZApiWebhook(new NextRequest(webhookUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    }));
-    if (!webhookResponse.ok) {
-      throw new Error(`Webhook rejected replay turn ${turn.id}: ${webhookResponse.status}`);
-    }
-    const [inboundEvent] = await db
-      .select({ id: inboundEvents.id })
-      .from(inboundEvents)
-      .where(eq(inboundEvents.providerMessageId, payload.messageId))
-      .limit(1);
-    if (!inboundEvent) {
-      throw new Error(`Webhook did not persist replay turn ${turn.id}`);
-    }
-
     const calendarGatewayResolver: typeof resolveCalendarGateway = (
       calendarInput,
     ) => {
@@ -191,126 +175,188 @@ async function runClosedLoopScenario(
         decisionTraceSink: decisionTrace,
         calendarGatewayResolver,
       }),
-      transcribeAudio: async () =>
-        turn.content.text.replace(/^\[MIDIA:AUDIO\]\s*/i, ""),
+      transcribeAudio: async (audioUrl) => {
+        const audioTurn = leadTurns.find(
+          (turn) =>
+            turn.content.type === "audio" &&
+            audioUrl.endsWith(`/${turn.id}.ogg`),
+        );
+        if (!audioTurn) {
+          throw new Error("Replay audio does not match a scenario turn");
+        }
+        return audioTurn.content.text.replace(/^\[MIDIA:AUDIO\]\s*/i, "");
+      },
       decisionTraceSink: decisionTrace,
     });
-    const processDrain = await drainMessageProcessQueue({
-      jobQueue,
-      inboundEventStore,
-      handler: processHandler,
-      workerId: `replay-process:${input.runId}:${turn.id}`,
-      maxJobs: 1,
-      now: resolveReplayDrainNow(shiftedStart + turn.offsetMs),
-    });
-    const sendDrain = await drainMessageSendQueue({
-      jobQueue,
+    const sendHandler = new SendMessageJobHandler({
       outboundMessageStore,
-      handler: new SendMessageJobHandler({
+      safetyContextReader: new DrizzleOutboundSafetyContextReader(),
+      decisionTraceSink: decisionTrace,
+      outboundBoundary: outboundCapture.createBoundary(),
+    });
+
+    const injectTurn = async (turn: ReplayScenarioV1["turns"][number]) => {
+      const payload = buildReplayZApiPayload({
+        phone,
+        runId: input.runId,
+        turn,
+        timestamp: new Date(shiftedStart + turn.offsetMs),
+      });
+      const webhookResponse = await receiveZApiWebhook(
+        new NextRequest(webhookUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      );
+      if (!webhookResponse.ok) {
+        throw new Error(
+          `Webhook rejected replay turn ${turn.id}: ${webhookResponse.status}`,
+        );
+      }
+      const [inboundEvent] = await db
+        .select({ id: inboundEvents.id })
+        .from(inboundEvents)
+        .where(eq(inboundEvents.providerMessageId, payload.messageId))
+        .limit(1);
+      if (!inboundEvent) {
+        throw new Error(`Webhook did not persist replay turn ${turn.id}`);
+      }
+      return { scenarioTurnId: turn.id, turnId: inboundEvent.id };
+    };
+
+    const drain = async (turns: typeof leadTurns, concurrent: boolean) => {
+      const injected = concurrent
+        ? await Promise.all(turns.map(injectTurn))
+        : [await injectTurn(turns[0]!)];
+      const virtualNow = Math.max(
+        ...turns.map((turn) => shiftedStart + turn.offsetMs),
+      );
+      const processDrain = await drainMessageProcessQueue({
+        jobQueue,
+        inboundEventStore,
+        handler: processHandler,
+        workerId: `replay-process:${input.runId}:${input.mode}:${executionRuns.length}`,
+        maxJobs: injected.length,
+        now: resolveReplayDrainNow(virtualNow),
+      });
+      const sendDrain = await drainMessageSendQueue({
+        jobQueue,
         outboundMessageStore,
-        safetyContextReader: new DrizzleOutboundSafetyContextReader(),
-        decisionTraceSink: decisionTrace,
-        outboundBoundary: outboundCapture.createBoundary(),
-      }),
-      workerId: `replay-send:${input.runId}:${turn.id}`,
-      maxJobs: 10,
-      now: resolveReplayDrainNow(shiftedStart + turn.offsetMs),
-    });
-    turnRuns.push({
-      scenarioTurnId: turn.id,
-      turnId: inboundEvent.id,
-      process: processDrain,
-      send: sendDrain,
-    });
+        handler: sendHandler,
+        workerId: `replay-send:${input.runId}:${input.mode}:${executionRuns.length}`,
+        maxJobs: Math.max(20, injected.length * 20),
+        now: resolveReplayDrainNow(virtualNow),
+      });
+      executionRuns.push({
+        scenarioTurnIds: injected.map((turn) => turn.scenarioTurnId),
+        turnIds: injected.map((turn) => turn.turnId),
+        process: processDrain,
+        send: sendDrain,
+      });
+    };
+
+    const executionGroups = buildReplayExecutionGroups(
+      input.scenario,
+      input.mode,
+    );
+    for (const group of executionGroups) {
+      await drain(group, input.mode === "concurrency" && group.length > 1);
     }
 
     const [lead] = await db
-    .select({ id: leads.id })
-    .from(leads)
-    .where(eq(leads.phone, phone))
-    .limit(1);
+      .select({ id: leads.id })
+      .from(leads)
+      .where(and(eq(leads.clinicId, clinic.id), eq(leads.phone, phone)))
+      .limit(1);
     replayLeadId = lead?.id ?? null;
     const [conversation] = lead
-    ? await db
-        .select()
-        .from(conversations)
-        .where(eq(conversations.leadId, lead.id))
-        .limit(1)
-    : [];
+      ? await db
+          .select()
+          .from(conversations)
+          .where(eq(conversations.leadId, lead.id))
+          .limit(1)
+      : [];
     replayConversationId = conversation?.id ?? null;
     const transcript = conversation
-    ? await db
-        .select({
-          author: messages.author,
-          body: messages.body,
-          mediaType: messages.mediaType,
-          intent: messages.intent,
-          sentAt: messages.sentAt,
-        })
-        .from(messages)
-        .where(eq(messages.conversationId, conversation.id))
-        .orderBy(asc(messages.sentAt))
-    : [];
+      ? await db
+          .select({
+            author: messages.author,
+            body: messages.body,
+            mediaType: messages.mediaType,
+            intent: messages.intent,
+            sentAt: messages.sentAt,
+          })
+          .from(messages)
+          .where(eq(messages.conversationId, conversation.id))
+          .orderBy(asc(messages.sentAt))
+      : [];
     const expectedLeadTurns = input.scenario.turns.filter(
-    (turn) => turn.author === "lead",
-  ).length;
-    const agentTurns = transcript.filter((message) => message.author === "agent");
+      (turn) => turn.author === "lead",
+    ).length;
+    const agentTurns = transcript.filter(
+      (message) => message.author === "agent",
+    );
     const traces = decisionTrace.getEvents();
     const checks = [
-    {
-      code: "all_lead_turns_processed",
-      passed:
-        turnRuns.length === expectedLeadTurns &&
-        turnRuns.every((run) => run.process.processed === 1),
-    },
-    {
-      code: "no_dead_or_retried_jobs",
-      passed: turnRuns.every(
-        (run) =>
-          run.process.dead === 0 &&
-          run.process.retried === 0 &&
-          run.send.dead === 0 &&
-          run.send.retried === 0,
-      ),
-    },
-    {
-      code: "agent_replied",
-      passed: agentTurns.length > 0,
-    },
-    {
-      code: "delivery_effect_observed",
-      passed: outboundCapture.effects.length > 0,
-    },
-    {
-      code: "trace_complete",
-      passed: turnRuns.every((run) =>
-        isReplayTurnTraceComplete(traces, run.turnId)
-      ),
-    },
+      {
+        code: "all_lead_turns_processed",
+        passed:
+          executionRuns.reduce((sum, run) => sum + run.turnIds.length, 0) ===
+            expectedLeadTurns &&
+          executionRuns.reduce((sum, run) => sum + run.process.processed, 0) ===
+            expectedLeadTurns,
+      },
+      {
+        code: "no_dead_or_retried_jobs",
+        passed: executionRuns.every(
+          (run) =>
+            run.process.dead === 0 &&
+            run.process.retried === 0 &&
+            run.send.dead === 0 &&
+            run.send.retried === 0,
+        ),
+      },
+      {
+        code: "agent_replied",
+        passed: agentTurns.length > 0,
+      },
+      {
+        code: "delivery_effect_observed",
+        passed: outboundCapture.effects.length > 0,
+      },
+      {
+        code: "trace_complete",
+        passed: executionRuns.every((run) =>
+          run.turnIds.every((turnId) =>
+            isReplayTurnTraceComplete(traces, turnId),
+          ),
+        ),
+      },
     ];
 
     return {
-    schemaVersion: "replay-scenario-run.v1",
-    runId: input.runId,
-    scenarioId: input.scenario.id,
-    mode: input.mode,
-    clockMode: "current_shifted_preserving_offsets",
-    clinic: input.scenario.clinic,
-    transcript,
-    trace: traces,
-    effects: {
-      outbound: outboundCapture.effects,
-      calendar: calendarCaptures.flatMap((capture) => capture.effects),
-    },
-    turnRuns,
-    checks,
+      schemaVersion: "replay-scenario-run.v1",
+      runId: input.runId,
+      scenarioId: input.scenario.id,
+      mode: input.mode,
+      clockMode: "current_shifted_preserving_offsets",
+      clinic: input.scenario.clinic,
+      transcript,
+      trace: traces,
+      effects: {
+        outbound: outboundCapture.effects,
+        calendar: calendarCaptures.flatMap((capture) => capture.effects),
+      },
+      executionRuns,
+      checks,
     };
   } finally {
     if (!replayLeadId) {
       const [lead] = await db
         .select({ id: leads.id })
         .from(leads)
-        .where(eq(leads.phone, phone))
+        .where(and(eq(leads.clinicId, clinic.id), eq(leads.phone, phone)))
         .limit(1);
       replayLeadId = lead?.id ?? null;
     }
@@ -330,23 +376,6 @@ async function runClosedLoopScenario(
       executionStartedAt,
     });
   }
-}
-
-function assertRequest(value: unknown): ReplayScenarioRequest {
-  if (!value || typeof value !== "object") throw new Error("Invalid replay request");
-  const input = value as Partial<ReplayScenarioRequest>;
-  if (
-    typeof input.runId !== "string" ||
-    !/^[a-zA-Z0-9._:-]{4,160}$/.test(input.runId) ||
-    input.mode !== "closed_loop" ||
-    !input.scenario ||
-    input.scenario.schemaVersion !== "replay-scenario.v1" ||
-    !Array.isArray(input.scenario.turns) ||
-    input.scenario.turns.length === 0
-  ) {
-    throw new Error("Invalid closed-loop replay scenario request");
-  }
-  return input as ReplayScenarioRequest;
 }
 
 function replayPhone(runId: string, scenarioId: string): string {
@@ -457,7 +486,9 @@ async function cleanupReplayScenario(input: {
       .where(eq(humanReviewRequests.conversationId, input.conversationId));
     await db
       .delete(reactivationCampaignTargets)
-      .where(eq(reactivationCampaignTargets.conversationId, input.conversationId));
+      .where(
+        eq(reactivationCampaignTargets.conversationId, input.conversationId),
+      );
     await db
       .delete(agentRecommendations)
       .where(eq(agentRecommendations.conversationId, input.conversationId));
@@ -475,9 +506,7 @@ async function cleanupReplayScenario(input: {
     await db
       .delete(slotReservations)
       .where(eq(slotReservations.leadId, input.leadId));
-    await db
-      .delete(appointments)
-      .where(eq(appointments.leadId, input.leadId));
+    await db.delete(appointments).where(eq(appointments.leadId, input.leadId));
     await db.delete(followUps).where(eq(followUps.leadId, input.leadId));
     await db.delete(leadOutcomes).where(eq(leadOutcomes.leadId, input.leadId));
   }
@@ -505,7 +534,5 @@ async function cleanupReplayScenario(input: {
         gte(aiUsageCosts.createdAt, input.executionStartedAt),
       ),
     );
-  await db
-    .delete(jobs)
-    .where(gte(jobs.createdAt, input.executionStartedAt));
+  await db.delete(jobs).where(gte(jobs.createdAt, input.executionStartedAt));
 }
