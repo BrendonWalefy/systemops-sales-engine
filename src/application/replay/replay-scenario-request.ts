@@ -1,6 +1,7 @@
 import type {
   ReplayScenarioMode,
   ReplayScenarioV1,
+  ReplayCalendarSnapshotV1,
 } from "@/application/replay/contracts";
 import { buildReplayExecutionGroups } from "@/application/replay/replay-execution-plan";
 
@@ -13,6 +14,7 @@ export type ReplayScenarioRequest = {
   runId: string;
   mode: ExecutableReplayScenarioMode;
   scenario: ReplayScenarioV1;
+  calendarSnapshot?: ReplayCalendarSnapshotV1;
 };
 
 export function assertReplayScenarioRequest(

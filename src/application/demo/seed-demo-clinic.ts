@@ -427,7 +427,8 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   }
 
   // Mídia: prioriza a biblioteca PRÓPRIA da demo (manifest gerado por
-  // scripts/upload-demo-media.ts). Fallback: reusa os vídeos da Ximendes.
+  // scripts/upload-demo-media.ts). Fallback: clona os assets da Ximendes para
+  // o tenant demo; nunca compartilha ids/ownership entre clínicas.
   // O voiceId B-WAVE ainda vem da Ximendes — é só um identificador de voz.
   // Se nada existir (ex.: banco local), segue sem mídia/voz — degrada limpo.
   type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
@@ -440,13 +441,19 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   let ximendesMedia: MediaItem[] = [];
   let ximendesVoiceId = "";
   if (ximendes) {
-    const pv = await db
-      .select({ media: playbookVersions.mediaLibrary })
-      .from(playbookVersions)
-      .where(and(eq(playbookVersions.clinicId, ximendes.id), eq(playbookVersions.status, "active")))
-      .limit(1)
-      .then((r) => r[0] ?? null);
-    ximendesMedia = (pv?.media as MediaItem[] | null) ?? [];
+    ximendesMedia = await db
+      .select({
+        id: mediaAssets.id,
+        title: mediaAssets.title,
+        url: mediaAssets.url,
+        type: mediaAssets.type,
+      })
+      .from(mediaAssets)
+      .where(eq(mediaAssets.clinicId, ximendes.id))
+      .then((rows) => rows
+        .filter((item): item is typeof item & { type: "video" | "image" } =>
+          item.type === "video" || item.type === "image",
+        ));
     const vm = await db
       .select({ config: clinicModules.config })
       .from(clinicModules)
@@ -455,7 +462,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       .then((r) => r[0] ?? null);
     ximendesVoiceId = ((vm?.config as { voiceId?: string } | null)?.voiceId ?? "").trim();
   }
-  const demoMediaLibrary: MediaItem[] = DEMO_MEDIA_MANIFEST.length > 0 ? DEMO_MEDIA_MANIFEST : ximendesMedia;
+  const demoMediaLibrary: MediaItem[] = (
+    DEMO_MEDIA_MANIFEST.length > 0 ? DEMO_MEDIA_MANIFEST : ximendesMedia
+  ).map((item) => ({
+    ...item,
+    id: DEMO_MEDIA_MANIFEST.length > 0 ? item.id : randomUUID(),
+  }));
   assertDemoMediaLibraryReady(demoMediaLibrary);
 
   function findMedia(type: "video" | "image", query?: string): MediaItem | null {
@@ -689,6 +701,20 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     await db.insert(treatments).values({ ...def, id });
   }
 
+  if (demoMediaLibrary.length > 0) {
+    await db.insert(mediaAssets).values(
+      demoMediaLibrary.map((item) => ({
+        id: item.id,
+        clinicId,
+        treatmentId: null,
+        title: item.title,
+        url: item.url,
+        type: item.type,
+        folder: "demo",
+      })),
+    );
+  }
+
   // 5) playbook ativo
   await db.insert(playbookVersions).values({
     clinicId,
@@ -711,7 +737,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       { objection: "Está caro", response: "Entendo! Conseguimos parcelar e o plano é montado conforme sua prioridade na avaliação." },
       { objection: "Vou pensar", response: "Claro! Posso deixar uma avaliação pré-reservada pra você sem compromisso?" },
     ],
-    mediaLibrary: demoMediaLibrary, // vídeos de procedimento reusados da Ximendes
+    mediaAssetIds: demoMediaLibrary.map((item) => item.id),
   });
 
   // ── CONVERSAS CURADAS a partir dos roteiros completos ──────────────────────

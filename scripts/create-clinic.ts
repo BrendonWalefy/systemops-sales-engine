@@ -55,7 +55,6 @@ type NewClinicConfig = {
   };
   playbook: {
     commercialPolicy: string;
-    procedureDescription?: string;
     toneOfVoice?: string;
     differentials?: string[];
     objections?: { objection: string; response: string }[];
@@ -181,7 +180,6 @@ async function main() {
     name: `Onboarding — ${now.toLocaleDateString("pt-BR")}`,
     status: "active",
     specialty: cfg.specialty ?? "odontology",
-    procedureDescription: cfg.playbook.procedureDescription ?? "",
     toneOfVoice: cfg.playbook.toneOfVoice ?? "acolhedor",
     commercialPolicy: cfg.playbook.commercialPolicy,
     notes: cfg.playbook.notes ?? null,

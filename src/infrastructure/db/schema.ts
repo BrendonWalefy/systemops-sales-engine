@@ -446,6 +446,11 @@ export const organizations = pgTable("organizations", {
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
   messageDebounceMs: integer("message_debounce_ms"),
+  // Uma única janela efetiva alimenta classificador e compositor. Nullable para
+  // preservar o default seguro do código e permitir calibração isolada por tenant.
+  aiContextWindowMessages: integer("ai_context_window_messages"),
+  // Fallback por clínica para etapas Q&A sem maxTurns próprio no pipeline.
+  pipelineQaDefaultMaxTurns: integer("pipeline_qa_default_max_turns"),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──
@@ -506,6 +511,8 @@ export const treatments = pgTable(
     requiresEvaluationFirst: boolean("requires_evaluation_first")
       .notNull()
       .default(false),
+    // @deprecated Inerte desde 2026-07-27. Mantido fisicamente por uma janela
+    // expand-contract para rollback de instâncias antigas; nenhum runtime lê.
     triggerTemplate: text("trigger_template"),
     keywordMatchEnabled: boolean("keyword_match_enabled")
       .notNull()
@@ -792,6 +799,16 @@ export const jobs = pgTable(
     lockedAt: timestamp("locked_at", { withTimezone: true }),
     lockedBy: text("locked_by"),
     lastError: text("last_error"),
+    // Dead letters resolvidas permanecem consultáveis, mas deixam de degradar
+    // a saúde da fila. Reprocessar limpa estes campos e cria uma nova tentativa.
+    deadLetterDisposition: text("dead_letter_disposition").$type<
+      "acknowledged" | "discarded"
+    >(),
+    deadLetterResolvedAt: timestamp("dead_letter_resolved_at", {
+      withTimezone: true,
+    }),
+    deadLetterResolvedBy: text("dead_letter_resolved_by"),
+    deadLetterResolutionReason: text("dead_letter_resolution_reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -812,6 +829,35 @@ export const jobs = pgTable(
     queueDedupeKeyIdx: uniqueIndex("jobs_queue_dedupe_key_idx").on(
       table.queue,
       table.dedupeKey,
+    ),
+  }),
+);
+
+// Auditoria imutável de cada decisão humana sobre um job morto. A tabela de
+// jobs guarda o estado atual; esta tabela preserva todo o histórico.
+export const jobDeadLetterActions = pgTable(
+  "job_dead_letter_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    action: text("action")
+      .$type<"acknowledge" | "discard" | "reprocess">()
+      .notNull(),
+    actorEmail: text("actor_email").notNull(),
+    reason: text("reason").notNull(),
+    allowedLateDelivery: boolean("allowed_late_delivery").notNull().default(false),
+    jobAttempts: integer("job_attempts").notNull(),
+    jobLastError: text("job_last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    jobCreatedAtIdx: index("job_dead_letter_actions_job_created_at_idx").on(
+      table.jobId,
+      table.createdAt,
     ),
   }),
 );
@@ -1255,6 +1301,8 @@ export const playbookVersions = pgTable(
     name: text("name").notNull(),
     status: playbookVersionStatusEnum("status").notNull().default("draft"),
     specialty: text("specialty"),
+    // @deprecated Inerte desde 2026-07-27; treatments.description é o dono.
+    // Remover fisicamente somente após a janela expand-contract do release.
     procedureDescription: text("procedure_description"),
     toneOfVoice: text("tone_of_voice").notNull().default("acolhedor"),
     differentials: jsonb("differentials")
@@ -1282,9 +1330,8 @@ export const playbookVersions = pgTable(
       tiers: { periodMonths: number; covers: string }[];
       conditions: string | null;
     }>(),
-    // DEPRECATED (biblioteca de mídia): substituída por media_assets +
-    // mediaAssetIds abaixo. Mantida só como fallback de leitura até a Fase 4
-    // (contração) da migração — não escrever mais aqui.
+    // @deprecated Inerte desde 2026-07-27; media_assets + mediaAssetIds são os
+    // únicos donos. Mantido por uma janela expand-contract para rollback seguro.
     mediaLibrary: jsonb("media_library")
       .$type<
         { id: string; title: string; url: string; type: "video" | "image" }[]

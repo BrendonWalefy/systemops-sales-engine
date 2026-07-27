@@ -197,6 +197,12 @@ Implementado:
 - resolvedor de calendário injetável no orquestrador;
 - trace de estado carregado, classificação, intenção final e estado antes/depois
   da entrega.
+- relógio lógico controlado por `scenario.clock.startedAt`, propagado pela cadeia
+  assíncrona sem alterar o relógio global do processo;
+- fotografia de calendário `replay-calendar-snapshot.v1`, assinada com Ed25519,
+  vinculada à clínica e ao fingerprint e recusada se a consulta sair da faixa;
+- runner `npm run replay:run` que verifica a assinatura do dataset antes de
+  executar cenários/repetições e grava relatório privado fora de repositórios;
 - rota opt-in `/api/e2e/replay/scenario` para `closed_loop` e `concurrency`, que valida
   fingerprint, atravessa webhook e filas reais, devolve trace/efeitos/checks e
   remove todos os registros sintéticos ao terminar.
@@ -241,12 +247,23 @@ Clínicas em `google_calendar` podem executar conversas que não consultem agend
 qualquer leitura de disponibilidade falha com `calendar_snapshot_required` em
 vez de chamar o Google real.
 
+O branch isolado pode ser criado com expiração automática de 24 horas:
+
+```bash
+NEON_API_KEY=... \
+NEON_PROJECT_ID=... \
+NEON_REPLAY_PARENT_BRANCH_ID=... \
+npm run replay:sandbox -- --output /caminho/privado/replay-sandbox.json
+```
+
+O manifesto privado contém a URL do banco e nunca é impresso no terminal. Para
+remoção antecipada, a confirmação precisa repetir o ID exato:
+
+```bash
+npm run replay:sandbox -- --delete-branch br-... --confirm br-...
+```
+
 Ainda não implementado:
 
-- fingerprint criptográfico completo persistido no runtime do trace (o trace já
-  guarda a versão do playbook e a revisão da configuração operacional);
-- identificação individual de cada override determinístico no trace;
-- provisionamento automatizado do branch de banco e relógio controlável;
-- fotografia assinada de disponibilidade para clínicas `google_calendar`;
 - modos `historical_turn` e `counterfactual`;
 - baseline das clínicas e relatório comparativo.

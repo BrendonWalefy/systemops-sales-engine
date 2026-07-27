@@ -50,6 +50,12 @@ export type CreateOutboundMessageResult = {
   isNew: boolean;
 };
 
+export type CreateOutboundMessageAndEnqueueResult = {
+  outboundMessageId: string;
+  messageWasNew: boolean;
+  jobWasNew: boolean;
+};
+
 export type MarkOutboundDeliveredInput = {
   id: string;
   providerMessageId: string | null;
@@ -58,6 +64,11 @@ export type MarkOutboundDeliveredInput = {
 
 export type OutboundMessageStore = {
   createOutboundMessage(input: CreateOutboundMessageInput): Promise<CreateOutboundMessageResult>;
+  /** Atomic outbox + message.send job creation for durable implementations. */
+  createOutboundMessageAndEnqueue?(
+    input: CreateOutboundMessageInput,
+    options?: { turnId?: string | null },
+  ): Promise<CreateOutboundMessageAndEnqueueResult>;
   findOutboundMessage(id: string): Promise<OutboundMessage | null>;
   hasEarlierActiveMessage(message: OutboundMessage): Promise<boolean>;
   markOutboundProcessing(id: string): Promise<boolean>;

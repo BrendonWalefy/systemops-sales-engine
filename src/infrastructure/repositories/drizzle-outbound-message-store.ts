@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { and, count, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type {
   CreateOutboundMessageInput,
+  CreateOutboundMessageAndEnqueueResult,
   CreateOutboundMessageResult,
   MarkOutboundDeliveredInput,
   OutboundMessage,
@@ -10,6 +12,84 @@ import { db } from "@/infrastructure/db/client";
 import { conversations, outboundMessages } from "@/infrastructure/db/schema";
 
 export class DrizzleOutboundMessageStore implements OutboundMessageStore {
+  async createOutboundMessageAndEnqueue(
+    input: CreateOutboundMessageInput,
+    options?: { turnId?: string | null },
+  ): Promise<CreateOutboundMessageAndEnqueueResult> {
+    const outboundMessageId = randomUUID();
+    const jobId = randomUUID();
+    const jobPayload = {
+      outboundMessageId,
+      ...(options?.turnId ? { turnId: options.turnId } : {}),
+    };
+    const result = await db.execute<{
+      outbound_message_id: string;
+      message_was_new: boolean;
+      job_was_new: boolean;
+    }>(sql`
+      with reserved_sequence as (
+        update conversations
+        set next_outbound_sequence = next_outbound_sequence + 1
+        where id = ${input.conversationId}::uuid
+        returning next_outbound_sequence
+      ), persisted_message as (
+        insert into outbound_messages (
+          id,
+          organization_id,
+          conversation_id,
+          channel,
+          payload,
+          delivery_kind,
+          category,
+          sequence,
+          dedupe_key
+        )
+        select
+          ${outboundMessageId}::uuid,
+          ${input.clinicId}::uuid,
+          ${input.conversationId}::uuid,
+          ${input.channel},
+          ${JSON.stringify(input.payload)}::jsonb,
+          ${input.deliveryKind},
+          ${input.category ?? "reply"},
+          reserved_sequence.next_outbound_sequence,
+          ${input.dedupeKey ?? null}
+        from reserved_sequence
+        on conflict (conversation_id, dedupe_key) do update
+          set dedupe_key = excluded.dedupe_key
+        returning id
+      ), persisted_job as (
+        insert into jobs (id, queue, payload, dedupe_key)
+        select
+          ${jobId}::uuid,
+          'message.send',
+          ${JSON.stringify(jobPayload)}::jsonb ||
+            jsonb_build_object('outboundMessageId', persisted_message.id::text),
+          'outbound-message:' || persisted_message.id::text
+        from persisted_message
+        on conflict (queue, dedupe_key) do update
+          set dedupe_key = excluded.dedupe_key
+        returning id
+      )
+      select
+        persisted_message.id::text as outbound_message_id,
+        persisted_message.id = ${outboundMessageId}::uuid as message_was_new,
+        persisted_job.id = ${jobId}::uuid as job_was_new
+      from persisted_message
+      cross join persisted_job
+    `);
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error(`Conversation not found for outbound message: ${input.conversationId}`);
+    }
+
+    return {
+      outboundMessageId: row.outbound_message_id,
+      messageWasNew: row.message_was_new,
+      jobWasNew: row.job_was_new,
+    };
+  }
+
   async createOutboundMessage(
     input: CreateOutboundMessageInput,
   ): Promise<CreateOutboundMessageResult> {

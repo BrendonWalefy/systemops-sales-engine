@@ -91,7 +91,7 @@ reservado aguardando sinal.
 
 1. Revisar e aprovar o diff, incluindo a migration `0075`.
 2. Publicar a aplicação e aplicar a migration que adiciona a origem de pipeline.
-3. Executar `scripts/fix-vitalli-conversation-pendencies.ts --apply` uma única vez.
+3. A correção pontual foi aplicada uma única vez; o script foi removido depois da execução.
 4. Reexecutar o script em dry-run e confirmar que nenhuma alteração permanece.
 5. Fazer replay controlado e validar uma mensagem real de decisão do doutor.
 6. Monitorar lembretes manuais, criação de casos A2 e respostas de disponibilidade.

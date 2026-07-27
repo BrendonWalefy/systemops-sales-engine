@@ -20,17 +20,19 @@ Nesta promoção, aplique configuração **somente para a Ximendes**. Vitalli es
 cancelada e NC Beauty ainda será configurada em uma rodada própria; portanto,
 não execute planos de configuração dessas clínicas em produção.
 
-Execute primeiro sem `--apply`, confira os digests e só depois aplique no banco
+Execute primeiro sem `--apply`, confira o digest e só depois aplique no banco
 isolado:
 
 ```bash
 tsx scripts/migrate-treatment-pipeline-families.ts --clinic=ximendes --entry=legacy --presentation=preserve
-tsx scripts/migrate-ximendes-playbook-pipeline-ownership.ts
 ```
 
-As mesmas chamadas com `--apply` consolidam os pipelines, preservam byte a byte
-o bloco de apresentação da Ximendes (`vídeo`, `vídeo`, `preços`) e removem
+O mesmo comando com `--apply` consolida os pipelines, preserva byte a byte
+o bloco de apresentação da Ximendes (`vídeo`, `vídeo`, `preços`) e remove
 trigger, preço e apresentação/persona redundantes das instruções secundárias.
+
+A migração pontual de ownership do playbook já foi concluída e seu script foi
+removido na contração arquitetural; não há segundo comando operacional.
 
 Depois, rode o auditor para a Ximendes. Ela não pode manter achados ativos
 P0/P1/P2. As demais clínicas permanecem inalteradas e fora deste go-live.

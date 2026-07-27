@@ -24,6 +24,9 @@
     "replay:review": "tsx scripts/render-replay-review.ts",
     "replay:keys": "tsx scripts/generate-replay-approval-keypair.ts",
     "replay:approve": "tsx scripts/approve-replay-dataset.ts",
+    "replay:run": "tsx scripts/run-approved-replay-dataset.ts",
+    "replay:calendar": "dotenv -e .env.local -- tsx scripts/capture-replay-calendar-snapshot.ts",
+    "replay:sandbox": "tsx scripts/manage-replay-sandbox.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
     "dev:workers": "dotenv -e .env.local -- ./scripts/dev-workers.sh"
   },

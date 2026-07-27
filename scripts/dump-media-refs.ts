@@ -1,18 +1,13 @@
 #!/usr/bin/env tsx
 /**
- * Checklist de segurança da migração da Biblioteca de Mídia — captura um
- * snapshot determinístico das referências de mídia de uma clínica (por
- * padrão, Ximendes) para comparar ANTES e DEPOIS do deploy da migração 0059.
+ * Auditor canônico das referências de mídia de uma clínica (por padrão,
+ * Ximendes). Verifica pipelines e seleções de playbook contra `media_assets`.
  *
  * O que compara: cada `mediaId` usado em pipeline_steps deve continuar
  * resolvendo para a MESMA url, antes e depois. Isso é o que garante que
  * nenhum vídeo em produção passa a ser omitido silenciosamente ao lead.
  *
- * Run:
- *   npx dotenv -e .env.local -- tsx scripts/dump-media-refs.ts > /tmp/pre.json
- *   ...deploy...
- *   npx dotenv -e .env.local -- tsx scripts/dump-media-refs.ts > /tmp/post.json
- *   diff /tmp/pre.json /tmp/post.json   # deve ser vazio (ou só timestamp)
+ * Run: npx dotenv -e .env.local -- tsx scripts/dump-media-refs.ts ximendes
  *
  * Argumento opcional: slug da clínica (default: ximendes).
  */
@@ -51,45 +46,28 @@ async function main() {
     }
   }
 
-  // Roda antes E depois da migração 0059 — detecta qual schema está no ar.
-  const hasMediaAssetsTable = await sql`
-    SELECT 1 FROM information_schema.tables WHERE table_name = 'media_assets'
-  `;
-  const migrated = hasMediaAssetsTable.length > 0;
-
   // 2. Seleção de mídia de toda versão de playbook (o que a curadoria escolhe).
-  //    Pré-migração: media_library (jsonb embutido). Pós: media_asset_ids (ponteiros).
-  const versionRows = migrated
-    ? await sql`SELECT id, name, status, media_asset_ids FROM playbook_versions WHERE organization_id = ${clinicId}`
-    : await sql`SELECT id, name, status, media_library FROM playbook_versions WHERE organization_id = ${clinicId}`;
+  const versionRows = await sql`
+    SELECT id, name, status, media_asset_ids
+    FROM playbook_versions
+    WHERE organization_id = ${clinicId}
+  `;
   const selectedIds = new Set<string>();
   for (const v of versionRows) {
-    const ids = migrated
-      ? ((v.media_asset_ids as string[] | null) ?? [])
-      : ((v.media_library as { id: string }[] | null) ?? []).map((m) => m.id);
+    const ids = (v.media_asset_ids as string[] | null) ?? [];
     for (const id of ids) selectedIds.add(id);
   }
 
-  // 3. Resolve TODOS os ids referenciados (pipeline + seleção) contra a fonte
-  //    de verdade atual — media_assets pós-migração, media_library antes dela.
+  // 3. Resolve TODOS os ids referenciados contra a única fonte canônica.
   const allIds = Array.from(new Set([...pipelineMediaIds, ...selectedIds])).sort();
-  let assetById: Map<string, Record<string, unknown>>;
-  if (migrated) {
-    const assets =
-      allIds.length > 0
-        ? await sql`SELECT id, title, type, url, treatment_id FROM media_assets WHERE id = ANY(${allIds})`
-        : [];
-    assetById = new Map(assets.map((a) => [a.id as string, a]));
-  } else {
-    // Legado: junta o media_library de TODAS as versões (o mesmo id pode
-    // aparecer em mais de uma versão com o mesmo conteúdo).
-    assetById = new Map();
-    for (const v of versionRows) {
-      for (const m of (v.media_library as { id: string; title: string; url: string; type: string }[] | null) ?? []) {
-        if (!assetById.has(m.id)) assetById.set(m.id, { id: m.id, title: m.title, type: m.type, url: m.url });
-      }
-    }
-  }
+  const assets = allIds.length > 0
+    ? await sql`
+        SELECT id, title, type, url, treatment_id
+        FROM media_assets
+        WHERE organization_id = ${clinicId} AND id = ANY(${allIds})
+      `
+    : [];
+  const assetById = new Map(assets.map((asset) => [asset.id as string, asset]));
 
   const resolved = allIds.map((id) => {
     const a = assetById.get(id);
@@ -107,13 +85,11 @@ async function main() {
 
   const snapshot = {
     clinic: { id: clinicId, slug, name: clinicRows[0].name },
-    schema: migrated ? "post-migration (media_assets)" : "pre-migration (media_library legado)",
+    schema: "media_assets",
     pipelineRefs: pipelineRefs.sort((a, b) => a.mediaId.localeCompare(b.mediaId)),
     playbookVersions: versionRows
       .map((v) => {
-        const ids = migrated
-          ? ((v.media_asset_ids as string[] | null) ?? [])
-          : ((v.media_library as { id: string }[] | null) ?? []).map((m) => m.id);
+        const ids = (v.media_asset_ids as string[] | null) ?? [];
         return { id: v.id, name: v.name, status: v.status, mediaIds: ids.slice().sort() };
       })
       .sort((a, b) => (a.id as string).localeCompare(b.id as string)),

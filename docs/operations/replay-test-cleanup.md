@@ -33,6 +33,9 @@ satisfazem esse contrato.
 | `check-rate.ts`, `check-rate.mts` | Diagnósticos duplicados; uma cópia usava schema obsoleto e ambas expunham telefone | Métricas agregadas e Safety Gate testado |
 | `check-vitalli-treatments.ts`, `dump-all-vitalli-pipelines.ts`, `dump-vitalli-estado.ts`, `dump-vitalli-treatments.ts` | Consultas pontuais com tenant fixo, sem asserção nem sanitização | Auditor genérico de configuração e fingerprints do replay |
 | `delete-e2e-leads.ts` | Limpeza destrutiva criada quando E2E ainda vazava para o banco compartilhado | Sandbox descartável com limpeza transacional por cenário |
+| Scripts one-off `apply/enable/fix/set/verify-vitalli-*` | Configurações pontuais já aplicadas, com IDs e hipóteses históricas que não representam o runtime atual | Auditor genérico + migrations/configuração estruturada + replay assinado |
+| Scripts one-off de playbook/pipeline Ximendes e mídia legada | Migrações já consumidas e writers de campos aposentados (`triggerTemplate`, `procedureDescription`, `media_library`) | `migrate-treatment-pipeline-families.ts`, `media_assets` e auditor canônico |
+| `qa-e2e-clinic.json` | Fixture sem consumidor, com credenciais fake versionadas e contrato de playbook obsoleto | Sandbox efêmero criado a partir do snapshot corrente |
 
 O `.gitignore` bloqueia novos arquivos `vitalli-last-*.json`. A exclusão acima
 remove os dados do estado atual da branch, mas não reescreve o histórico Git.

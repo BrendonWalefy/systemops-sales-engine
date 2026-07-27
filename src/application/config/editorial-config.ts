@@ -3,7 +3,6 @@ import { z } from "zod";
 import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
-import { createLogger } from "@/infrastructure/logging/logger";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "./price-campaigns";
 export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues, lintPersonaCoherence } from "./playbook-lint";
 
@@ -162,18 +161,14 @@ export type MediaLibraryItem = {
 /**
  * FONTE ÚNICA de leitura da biblioteca de mídia de uma versão de playbook.
  * Lê `media_asset_ids` (ponteiros para a tabela clinic-level `media_assets`,
- * que é a dona real do arquivo). Se vier vazio mas o jsonb legado
- * `media_library` tiver itens — versão anterior à migração que promoveu a
- * biblioteca para tabela própria — cai no legado e loga warn (sinal de que o
- * backfill não cobriu essa versão; nunca deve acontecer em produção pós-deploy,
- * mas evita omitir mídia ao lead silenciosamente enquanto investiga).
+ * que é a dona real do arquivo). Não existe fallback editorial: seleção vazia
+ * significa biblioteca vazia para aquela versão.
  */
 export async function resolveMediaLibraryForVersion(
   clinicId: string,
   version: {
     id: string;
     mediaAssetIds?: string[] | null;
-    mediaLibrary?: unknown;
   },
 ): Promise<MediaLibraryItem[]> {
   const assetIds = version.mediaAssetIds ?? [];
@@ -188,18 +183,6 @@ export async function resolveMediaLibraryForVersion(
       type: a.type as "video" | "image",
       treatmentId: a.treatmentId,
     }));
-  }
-
-  const legacy = (version.mediaLibrary as
-    | { id: string; title: string; url: string; type: "video" | "image" }[]
-    | null
-    | undefined) ?? [];
-  if (legacy.length > 0) {
-    createLogger({ scope: "EditorialConfig", clinicId }).warn(
-      "playbook version com media_library legado não migrado para media_asset_ids",
-      { playbookVersionId: version.id, legacyCount: legacy.length },
-    );
-    return legacy.map((m) => ({ ...m, treatmentId: null }));
   }
 
   return [];

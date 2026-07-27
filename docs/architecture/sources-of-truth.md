@@ -63,6 +63,8 @@ Campos centrais lidos em runtime:
 | `greetingMessage` | menu / playbook / simulate | Saudação base |
 | `autoReplyEnabled` | policy de automação | Liga/desliga a IA |
 | `calendarMode` | `resolveCalendarGateway()` | Fonte de verdade da agenda |
+| `aiContextWindowMessages` | `IntentClassifier` + `ResponseComposer` | Janela única de histórico para decisão e redação; `null` usa o default do código |
+| `pipelineQaDefaultMaxTurns` | `ConversationOrchestrator` | Limite padrão de Q&A quando a etapa do tratamento não declara `maxTurns` |
 | `googleCalendarId` | gateway Google | Integração opt-in |
 | `zapi*`, `meta*` | channel adapters / auth de webhook | Credenciais do canal por clínica; `metaAppSecret` autentica o corpo bruto |
 | `specialty` | prompts e UI | Contexto humano do negócio |
@@ -183,8 +185,9 @@ Nunca:
 
 ## 9. Invariantes importantes
 
-- `IntentClassifier` e `ResponseComposer` devem usar a mesma janela recente de
-  histórico.
+- `IntentClassifier` e `ResponseComposer` usam
+  `takeRecentConversationHistory()` com o mesmo `aiContextWindowMessages` da
+  clínica; não declare cortes locais com `slice(-N)`.
 - `Reservation TTL` não pode ser menor que o TTL da oferta de slot.
 - regras editoriais e regras operacionais não podem viver na mesma prosa livre.
 - uma capability opcional deve ter um único gate de leitura.

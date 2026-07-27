@@ -12,6 +12,7 @@ import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { formatReferencedPrice } from "@/core/intelligence/price-reference";
 import type { ConciergeVerbosity, ConciergeDrive } from "@/application/modules/module-configs";
 import { DEFAULT_CONCIERGE_DRIVE } from "@/application/modules/module-configs";
+import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
 
 type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
@@ -113,12 +114,10 @@ export function resolveComposerModel(plan?: ComposerPlan | null): string {
   switch (plan) {
     case "growth":
       return envModel("OPENAI_COMPOSER_MODEL_GROWTH")
-        ?? envModel("OPENAI_COMPOSER_MODEL_GROWTH")
         ?? envModel("OPENAI_COMPOSER_MODEL_DEFAULT")
         ?? STANDARD_COMPOSER_MODEL;
     case "scale":
       return envModel("OPENAI_COMPOSER_MODEL_SCALE")
-        ?? envModel("OPENAI_COMPOSER_MODEL_SCALE")
         ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
         ?? PREMIUM_COMPOSER_MODEL;
     case "enterprise":
@@ -128,7 +127,6 @@ export function resolveComposerModel(plan?: ComposerPlan | null): string {
     case "start":
     default:
       return envModel("OPENAI_COMPOSER_MODEL_START")
-        ?? envModel("OPENAI_COMPOSER_MODEL_START")
         ?? envModel("OPENAI_COMPOSER_MODEL_DEFAULT")
         ?? STANDARD_COMPOSER_MODEL;
   }
@@ -198,6 +196,7 @@ export type ComposerInput = {
   // lead não reagiu — este turno responde sem repetir o convite.
   suppressNextStepCta?: boolean;
   conversationHistory: Message[];
+  historyWindowMessages?: number | null;
   clinic: {
     name: string;
     plan?: ComposerPlan | null;
@@ -1072,12 +1071,14 @@ export class ResponseComposer {
       input.conciergeDrive,
     );
 
-    // Histórico recente — filtra mensagens de sistema (marcadores internos como __appointment_confirmed__)
-    // para evitar que o LLM use dados de agendamentos anteriores como referência de horários.
-    // Manter em sincronia com IntentClassifier.ts (também usa 8).
-    const recentHistory = input.conversationHistory
-      .filter((m) => m.author !== "system" && !m.body.startsWith("__"))
-      .slice(-8);
+    // A mesma janela efetiva alimenta classificação e composição. Marcadores
+    // internos continuam fora do prompt, pois não são falas da conversa.
+    const recentHistory = takeRecentConversationHistory(
+      input.conversationHistory.filter(
+        (m) => m.author !== "system" && !m.body.startsWith("__"),
+      ),
+      input.historyWindowMessages,
+    );
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
       ...recentHistory.map((m): OpenAI.Chat.ChatCompletionMessageParam => ({

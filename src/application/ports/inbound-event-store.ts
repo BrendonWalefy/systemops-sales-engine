@@ -39,8 +39,21 @@ export type RecordInboundEventResult = {
   isNew: boolean;
 };
 
+export type RecordInboundEventAndEnqueueResult = {
+  inboundEventId: string;
+  eventWasNew: boolean;
+  jobWasNew: boolean;
+};
+
 export type InboundEventStore = {
   recordInboundEvent(input: RecordInboundEventInput): Promise<RecordInboundEventResult>;
+  /**
+   * Optional atomic fast path implemented by durable stores. In-memory test
+   * doubles may omit it and use the compatible two-call fallback.
+   */
+  recordInboundEventAndEnqueue?(
+    input: RecordInboundEventInput,
+  ): Promise<RecordInboundEventAndEnqueueResult>;
   findInboundEvent(id: string): Promise<InboundEvent | null>;
   markInboundEventProcessing(id: string): Promise<void>;
   markInboundEventPending(id: string): Promise<void>;

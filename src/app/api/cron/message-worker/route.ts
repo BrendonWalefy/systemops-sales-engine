@@ -17,13 +17,22 @@ import { createLogger } from "@/infrastructure/logging/logger";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
 import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
+import {
+  DEFAULT_MESSAGE_PROCESS_BATCH_SIZE,
+  MAX_MESSAGE_PROCESS_BATCH_SIZE,
+  resolveWorkerBatchSize,
+} from "@/application/jobs/worker-capacity";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // Sequential by design: ConversationOrchestrator still owns per-conversation
 // ordering and can call external providers. The next invocation claims more work.
-const MAX_JOBS_PER_RUN = 3;
+const MAX_JOBS_PER_RUN = resolveWorkerBatchSize(
+  process.env.MESSAGE_PROCESS_BATCH_SIZE,
+  DEFAULT_MESSAGE_PROCESS_BATCH_SIZE,
+  MAX_MESSAGE_PROCESS_BATCH_SIZE,
+);
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireCronAuthorization(request);

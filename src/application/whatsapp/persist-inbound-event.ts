@@ -18,6 +18,10 @@ export async function persistInboundEventAndEnqueue(
   input: RecordInboundEventInput,
   deps: { inboundEventStore: InboundEventStore; jobQueue: JobQueue },
 ): Promise<PersistInboundEventResult> {
+  if (deps.inboundEventStore.recordInboundEventAndEnqueue) {
+    return deps.inboundEventStore.recordInboundEventAndEnqueue(input);
+  }
+
   const recorded = await deps.inboundEventStore.recordInboundEvent(input);
   const enqueued = await deps.jobQueue.enqueueJob({
     queue: "message.process",

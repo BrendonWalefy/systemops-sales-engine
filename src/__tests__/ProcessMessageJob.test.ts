@@ -292,6 +292,39 @@ describe("ProcessMessageJobHandler", () => {
     ]);
   });
 
+  it("registra falha técnica tratada como failed, não como silêncio intencional", async () => {
+    const conversationHandler = {
+      handle: vi.fn().mockResolvedValue({
+        replied: false,
+        reason: "technical_error_handoff",
+      }),
+    };
+    const { handler, decisionTraceSink, inboundEventStore } = makeHandler({
+      conversationHandler,
+    });
+
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "processed",
+      inboundEventId: "event-1",
+    });
+
+    expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
+    expect(decisionTraceSink.getEvents("event-1").at(-1)).toEqual(
+      expect.objectContaining({
+        stage: "turn.failed",
+        metadata: {
+          phase: "orchestrator_handled_failure",
+          errorName: "HandledTechnicalError",
+        },
+      }),
+    );
+    expect(
+      decisionTraceSink
+        .getEvents("event-1")
+        .some((event) => event.stage === "turn.ignored"),
+    ).toBe(false);
+  });
+
   it("shadow registra a mensagem em modo observação sem autorizar efeitos da IA", async () => {
     const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue("observe") };
     const { handler, conversationHandler, resolveInboundContent } = makeHandler({
