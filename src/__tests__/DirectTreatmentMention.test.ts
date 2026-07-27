@@ -363,7 +363,7 @@ describe("especificidade de variantes", () => {
     });
     const international = treatment("Extensão de cílios — Técnicas Gringas", {
       id: "international",
-      aliases: ["fox eyes", "técnica gringa", "cílios fox"],
+      aliases: ["fox", "fox eyes", "técnica gringa", "cílios fox"],
     });
 
     expect(
@@ -373,6 +373,60 @@ describe("especificidade de variantes", () => {
         identifiedTreatment: common.name,
       })?.id,
     ).toBe(international.id);
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "Qual o valor do fox?",
+        treatments: [common, international],
+        identifiedTreatment: common.name,
+      })?.id,
+    ).toBe(international.id);
+  });
+
+  it("preserva a variante ativa quando a pergunta de preço não menciona outro tratamento", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      aliases: ["lentes", "lentes de resina"],
+    });
+    const stratified = treatment("Lente em Resina Estratificada", {
+      id: "stratified",
+      aliases: ["estratificada", "técnica estratificada"],
+      pipelineSourceTreatmentId: canonical.id,
+    });
+    const restoration = treatment("Restauração Estética", {
+      id: "restoration",
+      aliases: ["restauração"],
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "E este valor é da técnica refinada?",
+        treatments: [canonical, stratified, restoration],
+        identifiedTreatment: restoration.name,
+        activePipelineTreatmentId: canonical.id,
+        activeSelectedTreatmentId: stratified.id,
+      })?.id,
+    ).toBe(stratified.id);
+  });
+
+  it("menção explícita vence a variante ativa em uma troca real de assunto", () => {
+    const lashes = treatment("Extensão de cílios", {
+      id: "lashes",
+      aliases: ["cílios"],
+    });
+    const botox = treatment("Botox", {
+      id: "botox",
+      aliases: ["botox"],
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "E quanto custa botox?",
+        treatments: [lashes, botox],
+        identifiedTreatment: lashes.name,
+        activePipelineTreatmentId: lashes.id,
+      })?.id,
+    ).toBe(botox.id);
   });
 
   it("preço de lentes estratificadas resolve a variante plural antes do pai", () => {

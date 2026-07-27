@@ -467,6 +467,22 @@ export function buildConciergeStarter(
   return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?`;
 }
 
+export function isRepeatedConversationalReply(
+  previous: string | null | undefined,
+  candidate: string,
+): boolean {
+  if (!previous?.trim() || !candidate.trim()) return false;
+  return normalizeFreeText(previous) === normalizeFreeText(candidate);
+}
+
+export function buildConversationReentryAcknowledgment(message: string): string {
+  const normalized = normalizeFreeText(message);
+  if (normalized.startsWith("bom dia")) return "Bom dia! 😊";
+  if (normalized.startsWith("boa tarde")) return "Boa tarde! 😊";
+  if (normalized.startsWith("boa noite")) return "Boa noite! 😊";
+  return "Oi! 😊";
+}
+
 // Remove uma saudação redundante que a própria LLM tenha aberto no texto (apesar da
 // instrução em ResponseComposer.ts para não fazer isso quando isFirstMessage=true) —
 // defesa de profundidade: não depender só do prompt, mesmo que ele já peça pra LLM
@@ -550,7 +566,17 @@ export function prependPipelineIntroGreeting(
   const greetingPrefix = `${salutation}${nameGreeting}. Tudo bem?\n${intro}\n\n`;
 
   const firstTextIdx = parts.findIndex((p) => p.type === "text");
-  if (firstTextIdx === -1) return parts;
+  // Se a apresentação começa por mídia, prefixar o primeiro texto sem
+  // reposicioná-lo fazia o lead receber vídeos antes de qualquer contexto. Em
+  // rajadas, a saudação anterior é corretamente descartada pelo debounce e
+  // esse bug ficava visível. A introdução é um part próprio antes da mídia;
+  // o bloco canônico vídeo→vídeo→preços permanece intacto em seguida.
+  if (firstTextIdx !== 0) {
+    return [
+      { type: "text", content: greetingPrefix.trimEnd() },
+      ...parts,
+    ];
+  }
   return parts.map((part, i) =>
     i === firstTextIdx && part.type === "text"
       ? { type: "text", content: greetingPrefix + stripLeadingGreeting(part.content) }
@@ -1201,7 +1227,8 @@ function matchTreatmentByNormalizedMessage(
     if (treatmentName.length >= 4 && normalized.includes(treatmentName)) {
       result = Math.max(result, 2_000 + treatmentName.length);
     }
-    const matchingTokens = tokens.filter((token) => treatmentName.includes(token));
+    const treatmentNameTokens = new Set(treatmentName.split(/\s+/));
+    const matchingTokens = tokens.filter((token) => treatmentNameTokens.has(token));
     if (matchingTokens.length > 0) {
       result = Math.max(
         result,
@@ -1214,7 +1241,10 @@ function matchTreatmentByNormalizedMessage(
       const normalizedAlias = normalizeFreeText(alias);
       if (normalizedAlias === normalized) {
         result = Math.max(result, 3_500 + normalizedAlias.length);
-      } else if (normalizedAlias.length >= 4 && normalized.includes(normalizedAlias)) {
+      } else if (
+        normalizedAlias.length > 0 &&
+        ` ${normalized} `.includes(` ${normalizedAlias} `)
+      ) {
         result = Math.max(result, 1_500 + normalizedAlias.length);
       }
     }
@@ -2314,6 +2344,8 @@ export function resolvePriceTreatmentTarget(params: {
   message: string;
   treatments: Treatment[];
   identifiedTreatment?: string | null;
+  activePipelineTreatmentId?: string | null;
+  activeSelectedTreatmentId?: string | null;
 }): Treatment | null {
   const directEvidence = matchTreatmentByNormalizedMessage(
     normalizeFreeText(params.message),
@@ -2321,6 +2353,20 @@ export function resolvePriceTreatmentTarget(params: {
     TREATMENT_MENTION_STOPWORDS,
   );
   if (directEvidence) return directEvidence;
+
+  // Sem evidência textual nova, a variante preservada no estado é mais
+  // confiável que um palpite probabilístico do classificador. Isso impede que
+  // perguntas contextuais como "este valor é da técnica refinada?" saltem de
+  // lentes para outro tratamento do catálogo. Uma menção explícita na
+  // mensagem atual continua vencendo o contexto acima.
+  const activeContext = findTreatmentByIdOrName(params.treatments, {
+    treatmentId:
+      params.activeSelectedTreatmentId ??
+      params.activePipelineTreatmentId ??
+      null,
+  });
+  if (activeContext) return activeContext;
+
   return findTreatmentByIdOrName(params.treatments, {
     treatmentName: params.identifiedTreatment ?? null,
   });
@@ -6039,7 +6085,15 @@ export class ConversationOrchestrator {
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "stale", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else if (isStaleConversation) {
-        replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
+        const starter = buildConciergeStarter(
+          clinic,
+          timezone,
+          lead.name,
+          editorial?.receptionistName,
+        );
+        replyText = isRepeatedConversationalReply(lastAgentMessage?.body, starter)
+          ? buildConversationReentryAcknowledgment(messageText)
+          : starter;
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
@@ -6839,6 +6893,8 @@ export class ConversationOrchestrator {
             message: messageText,
             treatments: clinicTreatments,
             identifiedTreatment: priceIdentifiedTreatment,
+            activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
+            activeSelectedTreatmentId: pipelineState?.selectedTreatmentId ?? null,
           }) ?? undefined;
         if (priceIdentifiedTreatment && !matchedPriceTreatment) {
             maybeLogTreatmentGap(

@@ -142,6 +142,31 @@ describe("P0.7 (pipeline) — saudação ÚNICA quando pipeline de conteúdo dis
     expect(mediaIds).toEqual(["5ffd33e9", "0c771e1b"]);
   });
 
+  it("rajada com pipeline media-first envia a introdução antes dos vídeos", () => {
+    const mediaFirst: ResponsePart[] = [
+      { type: "media", id: "simplificada" },
+      { type: "media", id: "estratificada" },
+      { type: "text", content: "Valores das duas técnicas" },
+    ];
+    const parts = prependPipelineIntroGreeting(
+      mediaFirst,
+      SAO_PAULO,
+      "Ximendes Odontologia",
+      "Lead",
+      "Marina",
+    );
+
+    expect(parts.map((part) => part.type)).toEqual([
+      "text",
+      "media",
+      "media",
+      "text",
+    ]);
+    expect(parts.slice(1)).toEqual(mediaFirst);
+    expect((parts[0] as Extract<ResponsePart, { type: "text" }>).content)
+      .toContain("Sou a Marina, da Ximendes Odontologia");
+  });
+
   it("defensivo: se o primeiro bloco já abrir com saudação, ainda assim NÃO duplica", () => {
     const blocksComSaudacao: ResponsePart[] = [
       { type: "text", content: "Boa noite, RR! Nós somos especialistas em lentes." },
