@@ -1,95 +1,116 @@
-// Pipeline photo intercept: when a lead sends a photo or video while the pipeline
-// is waiting on a "photo" step, or still in Q&A with a photo step ahead, the
-// system creates a human review case without forcing a manual takeover.
+import { describe, expect, it } from "vitest";
+import {
+  matchesHumanReviewPipelineContext,
+  resolvePipelineMediaRoute,
+} from "@/core/pipeline/PipelineMediaRouter";
+import type { Treatment } from "@/domain/entities/treatment";
 
-import { describe, it, expect } from "vitest";
-import type { PipelineStep } from "@/domain/entities/treatment";
+const pipeline = {
+  id: "pipeline-lentes",
+  name: "Lentes",
+  pipelineSourceTreatmentId: null,
+  pipelineSteps: [
+    { type: "content", label: "Apresentar", blocks: [] },
+    { type: "qa", label: "Dúvidas", maxTurns: 10 },
+    { type: "photo", label: "Foto", message: "Envie uma foto", required: false },
+    { type: "ask_availability", label: "Disponibilidade" },
+  ],
+} as Treatment;
+const variation = {
+  ...pipeline,
+  id: "lentes-estratificadas",
+  name: "Lentes Estratificadas",
+  pipelineSteps: null,
+  pipelineSourceTreatmentId: pipeline.id,
+} as Treatment;
 
-// ─── Pure model of the intercept decision ─────────────────────────────────────
-
-type PipelineState = {
-  treatmentId: string;
-  stepIndex: number;
-  photoReceived: boolean;
-};
-
-type Treatment = {
-  id: string;
-  pipelineSteps: PipelineStep[] | null;
-};
-
-function shouldCreateHumanReview(
-  inboundMediaType: string,
-  pipelineState: PipelineState | null,
-  treatments: Treatment[],
-): boolean {
-  if (inboundMediaType !== "image" && inboundMediaType !== "video") return false;
-  if (!pipelineState) return false;
-  const treatment = treatments.find(t => t.id === pipelineState.treatmentId);
-  const currentStep = treatment?.pipelineSteps?.[pipelineState.stepIndex];
-  const hasPhotoStepAhead = treatment?.pipelineSteps?.some(
-    (step, idx) => idx > pipelineState.stepIndex && step.type === "photo",
-  ) ?? false;
-  return currentStep?.type === "photo" || (currentStep?.type === "qa" && hasPhotoStepAhead);
-}
-
-function shouldPauseAiForPipelinePhotoReview(conversationAlreadyPaused: boolean): boolean {
-  return conversationAlreadyPaused;
-}
-
-// ─── Fixtures ─────────────────────────────────────────────────────────────────
-
-const LENTES_PIPELINE: PipelineStep[] = [
-  { type: "content", label: "Apresentar técnicas", blocks: [] },
-  { type: "qa", label: "Tirar dúvidas", maxTurns: 10 },
-  { type: "photo", label: "Convidar foto", message: "Se quiser, mande uma foto.", required: false },
-  { type: "ask_availability", label: "Perguntar disponibilidade" },
-  { type: "offer_slots", label: "Mostrar horários" },
-  { type: "book", label: "Confirmar agendamento" },
-];
-
-const TREATMENT: Treatment = { id: "treatment-lentes", pipelineSteps: LENTES_PIPELINE };
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-describe("Pipeline photo intercept — revisão humana determinística", () => {
-  it("cria revisão humana quando foto chega e step atual é 'photo'", () => {
-    const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 2, photoReceived: false };
-    expect(shouldCreateHumanReview("image", state, [TREATMENT])).toBe(true);
+describe("PipelineMediaRouter", () => {
+  it("vincula a foto à variação escolhida, preservando o pipeline pai", () => {
+    const route = resolvePipelineMediaRoute({
+      mediaType: "image",
+      state: {
+        treatmentId: pipeline.id,
+        treatmentName: pipeline.name,
+        selectedTreatmentId: variation.id,
+        selectedTreatmentName: variation.name,
+        stepIndex: 2,
+        qaTurns: 0,
+        photoReceived: false,
+      },
+      treatments: [pipeline, variation],
+    });
+    expect(route).toMatchObject({
+      kind: "human_review",
+      pipelineTreatment: { id: pipeline.id },
+      targetTreatment: { id: variation.id },
+      sourceStepType: "photo",
+    });
   });
 
-  it("cria revisão humana quando vídeo chega e step atual é 'photo'", () => {
-    const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 2, photoReceived: false };
-    expect(shouldCreateHumanReview("video", state, [TREATMENT])).toBe(true);
+  it("aceita foto ainda no Q&A quando há etapa de foto adiante", () => {
+    const route = resolvePipelineMediaRoute({
+      mediaType: "video",
+      state: {
+        treatmentId: pipeline.id,
+        treatmentName: pipeline.name,
+        stepIndex: 1,
+        qaTurns: 2,
+        photoReceived: false,
+      },
+      treatments: [pipeline],
+    });
+    expect(route).toMatchObject({ kind: "human_review", sourceStepType: "qa" });
   });
 
-  it("NÃO cria revisão se mídia é documento", () => {
-    const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 2, photoReceived: false };
-    expect(shouldCreateHumanReview("document", state, [TREATMENT])).toBe(false);
+  it("não deixa mídia ou estado incompatível escolher tratamento errado", () => {
+    expect(resolvePipelineMediaRoute({
+      mediaType: "document",
+      state: null,
+      treatments: [pipeline],
+    })).toEqual({ kind: "outside_pipeline" });
+
+    const unrelated = {
+      ...variation,
+      id: "outro",
+      pipelineSourceTreatmentId: "pipeline-outro",
+    } as Treatment;
+    expect(resolvePipelineMediaRoute({
+      mediaType: "image",
+      state: {
+        treatmentId: pipeline.id,
+        treatmentName: pipeline.name,
+        selectedTreatmentId: unrelated.id,
+        selectedTreatmentName: unrelated.name,
+        stepIndex: 2,
+        qaTurns: 0,
+        photoReceived: false,
+      },
+      treatments: [pipeline, unrelated],
+    })).toEqual({
+      kind: "invalid_pipeline_target",
+      reason: "selected_treatment_does_not_belong_to_pipeline_family",
+    });
   });
 
-  it("NÃO cria revisão se não há pipeline ativo", () => {
-    expect(shouldCreateHumanReview("image", null, [TREATMENT])).toBe(false);
-  });
-
-  it("cria revisão se está em Q&A com step de foto adiante", () => {
-    const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 1, photoReceived: false };
-    expect(shouldCreateHumanReview("image", state, [TREATMENT])).toBe(true);
-  });
-
-  it("NÃO cria revisão se treatment não encontrado", () => {
-    const state: PipelineState = { treatmentId: "treatment-outro", stepIndex: 2, photoReceived: false };
-    expect(shouldCreateHumanReview("image", state, [TREATMENT])).toBe(false);
-  });
-
-  it("NÃO cria revisão se treatment não tem pipelineSteps", () => {
-    const treatment: Treatment = { id: "treatment-lentes", pipelineSteps: null };
-    const state: PipelineState = { treatmentId: "treatment-lentes", stepIndex: 2, photoReceived: false };
-    expect(shouldCreateHumanReview("image", state, [treatment])).toBe(false);
-  });
-
-  it("não pausa IA por padrão quando a foto pertence ao pipeline ativo", () => {
-    expect(shouldPauseAiForPipelinePhotoReview(false)).toBe(false);
-    expect(shouldPauseAiForPipelinePhotoReview(true)).toBe(true);
+  it("só retoma uma revisão que ainda corresponde ao pipeline e à variação", () => {
+    const state = {
+      treatmentId: pipeline.id,
+      treatmentName: pipeline.name,
+      selectedTreatmentId: variation.id,
+      selectedTreatmentName: variation.name,
+      stepIndex: 2,
+      qaTurns: 0,
+      photoReceived: true,
+    };
+    expect(matchesHumanReviewPipelineContext({
+      state,
+      pipelineTreatmentId: pipeline.id,
+      targetTreatmentId: variation.id,
+    })).toBe(true);
+    expect(matchesHumanReviewPipelineContext({
+      state,
+      pipelineTreatmentId: pipeline.id,
+      targetTreatmentId: "outra-variacao",
+    })).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import { conversationStates } from "@/infrastructure/db/schema";
 import { and, eq, desc, lte } from "drizzle-orm";
 import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { Treatment } from "@/domain/entities/treatment";
+import { runtimeNow } from "@/core/time/RuntimeClock";
 
 export type ConversationStateType =
   | "idle"
@@ -135,10 +136,10 @@ export class ConversationStateMachine {
 
     const row = rows[0];
     // Verifica expiração explícita
-    if (row.expiresAt && row.expiresAt < new Date()) return null;
+    if (row.expiresAt && row.expiresAt < runtimeNow()) return null;
     // slots_offered sem expiresAt (rows criadas antes do TTL ser implementado) expiram pelo createdAt
     if (!row.expiresAt && row.state === "slots_offered") {
-      if (Date.now() - row.createdAt.getTime() > SLOT_OFFER_TTL_MINUTES * 60_000) return null;
+      if (runtimeNow().getTime() - row.createdAt.getTime() > SLOT_OFFER_TTL_MINUTES * 60_000) return null;
     }
 
     return {
@@ -160,7 +161,7 @@ export class ConversationStateMachine {
     ttlMinutes?: number,
   ): Promise<void> {
     const expiresAt = ttlMinutes
-      ? new Date(Date.now() + ttlMinutes * 60_000)
+      ? new Date(runtimeNow().getTime() + ttlMinutes * 60_000)
       : null;
 
     await db.insert(conversationStates).values({
@@ -189,8 +190,8 @@ export class ConversationStateMachine {
     await db.insert(conversationStates).values({
       conversationId,
       state: "idle",
-      payload: { lastResetAt: new Date().toISOString() },
-      expiresAt: new Date(Date.now() + 2 * 3600_000),
+      payload: { lastResetAt: runtimeNow().toISOString() },
+      expiresAt: new Date(runtimeNow().getTime() + 2 * 3600_000),
     });
   }
 
@@ -203,7 +204,7 @@ export class ConversationStateMachine {
       .limit(20);
 
     for (const row of rows) {
-      if (row.expiresAt && row.expiresAt < new Date()) continue;
+      if (row.expiresAt && row.expiresAt < runtimeNow()) continue;
       const payload = row.payload as { lastResetAt?: string } | null;
       if (!payload?.lastResetAt) continue;
       return new Date(payload.lastResetAt);
@@ -239,7 +240,7 @@ export class ConversationStateMachine {
       label: voiceEnabled ? timezone.formatForVoice(s.startsAt) : timezone.formatForHuman(s.startsAt),
     }));
 
-    const expiresAt = new Date(Date.now() + (ttlMinutes ?? SLOT_OFFER_TTL_MINUTES) * 60_000);
+    const expiresAt = new Date(runtimeNow().getTime() + (ttlMinutes ?? SLOT_OFFER_TTL_MINUTES) * 60_000);
     const payload: SlotsOfferedPayload = {
       slots: formatted,
       expiresAt: expiresAt.toISOString(),
@@ -263,7 +264,7 @@ export class ConversationStateMachine {
       conversationId,
       state: "menu_offered",
       payload: null,
-      expiresAt: new Date(Date.now() + 30 * 60_000),
+      expiresAt: new Date(runtimeNow().getTime() + 30 * 60_000),
     });
   }
 
@@ -289,7 +290,7 @@ export class ConversationStateMachine {
       conversationId,
       state: "procedure_list_offered",
       payload: { treatments: items },
-      expiresAt: new Date(Date.now() + 30 * 60_000),
+      expiresAt: new Date(runtimeNow().getTime() + 30 * 60_000),
     });
 
     return items;
@@ -367,7 +368,7 @@ export class ConversationStateMachine {
       .limit(1);
     if (!row || row.state !== "slots_offered") return null;
 
-    const now = new Date();
+    const now = runtimeNow();
     const effectiveExpiry = row.expiresAt ?? new Date(row.createdAt.getTime() + SLOT_OFFER_TTL_MINUTES * 60_000);
     if (effectiveExpiry >= now) return null;
     if (now.getTime() - effectiveExpiry.getTime() > maxAgeHours * 60 * 60_000) return null;
@@ -408,7 +409,7 @@ export class ConversationStateMachine {
       conversationId,
       state: "treatment_pipeline_active",
       payload,
-      expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+      expiresAt: new Date(runtimeNow().getTime() + ttlMinutes * 60_000),
     });
   }
 
@@ -508,7 +509,7 @@ export class ConversationStateMachine {
       conversationId,
       state: "awaiting_appointment_confirmation",
       payload,
-      expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+      expiresAt: new Date(runtimeNow().getTime() + ttlMinutes * 60_000),
     });
   }
 
@@ -532,7 +533,7 @@ export class ConversationStateMachine {
       conversationId,
       state: "awaiting_deposit_proof",
       payload,
-      expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+      expiresAt: new Date(runtimeNow().getTime() + ttlMinutes * 60_000),
     });
   }
 
@@ -548,10 +549,10 @@ export class ConversationStateMachine {
       payload: {
         ...current,
         proofMessageId,
-        proofReceivedAt: new Date().toISOString(),
+        proofReceivedAt: runtimeNow().toISOString(),
         ...(proofReviewCode ? { proofReviewCode } : {}),
       } satisfies DepositFlowPayload,
-      expiresAt: new Date(Date.now() + 7 * 24 * 3600_000),
+      expiresAt: new Date(runtimeNow().getTime() + 7 * 24 * 3600_000),
     });
   }
 

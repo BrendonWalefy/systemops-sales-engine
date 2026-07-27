@@ -5,6 +5,7 @@ import type {
   HumanReviewDecision,
   HumanReviewDecisionSource,
 } from "@/domain/entities/human-review";
+import { runtimeNow } from "@/core/time/RuntimeClock";
 
 export type HumanReviewRequestRecord = typeof humanReviewRequests.$inferSelect;
 
@@ -92,7 +93,7 @@ export class DrizzleHumanReviewRequestRepository {
     reviewNotes?: string | null;
     now?: Date;
   }): Promise<HumanReviewRequestRecord | null> {
-    const now = params.now ?? new Date();
+    const now = params.now ?? runtimeNow();
     const [updated] = await db
       .update(humanReviewRequests)
       .set({
@@ -119,7 +120,7 @@ export class DrizzleHumanReviewRequestRepository {
     context: string;
     now?: Date;
   }): Promise<HumanReviewRequestRecord | null> {
-    const now = params.now ?? new Date();
+    const now = params.now ?? runtimeNow();
     const line = `[${now.toISOString()}] ${params.context.trim()}`;
     const [updated] = await db
       .update(humanReviewRequests)

@@ -128,6 +128,10 @@ import {
 } from "@/application/config/runtime-config-fingerprint";
 import { NamedDecisionOverrideTracker } from "@/core/observability/NamedDecisionOverride";
 import { runtimeNow } from "@/core/time/RuntimeClock";
+import {
+  matchesHumanReviewPipelineContext,
+  resolvePipelineMediaRoute,
+} from "@/core/pipeline/PipelineMediaRouter";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -4422,17 +4426,22 @@ export class ConversationOrchestrator {
       } | null = null;
       if (inboundMediaType === "image" || inboundMediaType === "video") {
         const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
-        if (activePipelineState) {
-          const pipelineTreatments = await this.treatmentRepo.listByClinic(clinicId);
-          const pipelineTreatment = pipelineTreatments.find(t => t.id === activePipelineState.treatmentId);
-          const currentStep = pipelineTreatment?.pipelineSteps?.[activePipelineState.stepIndex];
-          const hasPhotoStepAhead = pipelineTreatment?.pipelineSteps?.some(
-            (step, idx) => idx > activePipelineState.stepIndex && step.type === "photo",
-          ) ?? false;
-          const isPhotoContext = currentStep?.type === "photo" ||
-            (currentStep?.type === "qa" && hasPhotoStepAhead);
-
-          if (pipelineTreatment && isPhotoContext) {
+        const pipelineTreatments = activePipelineState
+          ? await this.treatmentRepo.listByClinic(clinicId)
+          : [];
+        const mediaRoute = resolvePipelineMediaRoute({
+          mediaType: inboundMediaType,
+          state: activePipelineState,
+          treatments: pipelineTreatments,
+        });
+        if (mediaRoute.kind === "invalid_pipeline_target") {
+          console.error("[PipelineMediaRouter] Contexto inconsistente; mídia ficará em revisão manual", {
+            clinicId,
+            conversationId: conversation.id,
+            reason: mediaRoute.reason,
+          });
+        }
+        if (mediaRoute.kind === "human_review") {
             const existingReview = await this.humanReviewRepo.findPendingByConversation({
               clinicId,
               conversationId: conversation.id,
@@ -4442,18 +4451,17 @@ export class ConversationOrchestrator {
               conversationId: conversation.id,
               leadId: lead.id,
               sourceMessageId: incomingMessage.id,
-              treatmentId: pipelineTreatment.id,
-              targetTreatmentId: pipelineTreatment.id,
+              treatmentId: mediaRoute.pipelineTreatment.id,
+              targetTreatmentId: mediaRoute.targetTreatment.id,
               sourceMediaType: inboundMediaType,
               sourceMediaUrl: params.mediaUrl ?? null,
               expiresAt: new Date(runtimeNow().getTime() + 24 * 3600_000),
             });
             humanReviewContext = {
               reviewCode: review.reviewCode,
-              treatmentName: pipelineTreatment.name,
+              treatmentName: mediaRoute.targetTreatment.name,
             };
             await this.stateMachine.markPipelinePhotoReceived(conversation.id, review.expiresAt);
-          }
         }
       }
 
@@ -4606,97 +4614,6 @@ export class ConversationOrchestrator {
           replied: false,
           reason: !replyEnabled ? "automation_reply_disabled" : "ai_paused",
         };
-      }
-
-      // Pipeline photo intercept: foto ou vídeo enviado enquanto pipeline aguarda step "photo"
-      // OU enquanto está em Q&A com step de foto adiante (convite já foi feito no Q&A) →
-      // retoma automaticamente sem pausar a IA. Doutor já foi notificado acima.
-      if (inboundMediaType === "image" || inboundMediaType === "video") {
-        const activePipelineState = await this.stateMachine.getTreatmentPipelineState(conversation.id);
-        if (activePipelineState) {
-          const pipelineTreatments = await this.treatmentRepo.listByClinic(clinicId);
-          const pipelineTreatment = pipelineTreatments.find(t => t.id === activePipelineState.treatmentId);
-          const currentStep = pipelineTreatment?.pipelineSteps?.[activePipelineState.stepIndex];
-          const hasPhotoStepAhead = pipelineTreatment?.pipelineSteps?.some(
-            (step, idx) => idx > activePipelineState.stepIndex && step.type === "photo",
-          ) ?? false;
-          const isPhotoContext = currentStep?.type === "photo" ||
-            (currentStep?.type === "qa" && hasPhotoStepAhead);
-          if (isPhotoContext) {
-            await this.stateMachine.markPipelinePhotoReceived(conversation.id);
-            // Se veio de Q&A, pula o photo step (foto já recebida antes de chegar lá)
-            const next = nextActivePipelineStep(
-              pipelineTreatment!.pipelineSteps!,
-              activePipelineState.stepIndex + 1,
-              { skipOptionalPhoto: currentStep?.type === "qa" },
-            );
-            if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
-              return { replied: false, reason: "superseded_by_newer_message" };
-            }
-            const photoHistory = await this.conversationRepo.listMessages(conversation.id);
-            const photoComposed = await this.responseComposer.compose({
-              actionResult: { type: "pipeline_photo_received" },
-              conversationHistory: photoHistory,
-              clinic: {
-                name: clinic.name,
-                plan: clinic.plan,
-                specialty: editorial?.specialty ?? clinic.specialty,
-                toneOfVoice: editorial?.toneOfVoice ?? null,
-                playbook: editorial?.playbookText ?? null,
-                commercialPolicy: editorial?.commercialPolicy ?? null,
-                installmentTable: null,
-                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-              },
-              leadName: extractFirstName(lead.name),
-              timezone,
-              isFirstMessage: false,
-              conversationExperience: clinicExperience,
-              conciergeVerbosity: conciergeConfig?.verbosity,
-              conciergeDrive: conciergeConfig?.drive,
-              resumedFromHumanTakeover: false,
-            });
-            const photoNow = runtimeNow();
-            const photoAgentId = randomUUID();
-            await this.conversationRepo.appendMessage({
-              id: photoAgentId,
-              conversationId: conversation.id,
-              author: "agent",
-              body: photoComposed.text,
-              sentAt: photoNow,
-              externalId: null,
-              intent: "check_availability",
-              deliveryFormat: null,
-            });
-            await this.enqueueConversationReply(clinicId, conversation.id, {
-              version: 1,
-              kind: "conversation_reply",
-              turnId,
-              to: outboundAddress,
-              agentMessageId: photoAgentId,
-              replyText: photoComposed.text,
-              intent: "check_availability",
-              useVoice: resolveVoiceForReply("check_availability", photoComposed.text),
-              ttsConfig: ttsConf,
-              interleavedParts: [],
-              mediaParts: [],
-              leadId: lead.id,
-              pipelineAdvance: next
-                ? { action: "advance", nextStepIndex: next.index }
-                : { action: "exit" },
-            }, {
-              source: "pipeline_photo",
-              classifiedIntent: "check_availability",
-              finalIntent: "check_availability",
-              confidence: 1,
-              missingStages: [
-                "state.loaded",
-                "intent.classified",
-                "intent.resolved",
-              ],
-            });
-            return { replied: true };
-          }
-        }
       }
 
       // IA ativa: foto/vídeo/documento fora de pipeline → responde e pausa para o doutor avaliar
@@ -8429,6 +8346,25 @@ export class ConversationOrchestrator {
     });
 
     const treatments = await this.treatmentRepo.listByClinic(params.clinicId);
+    const activePipelineState = await this.stateMachine.getTreatmentPipelineState(
+      conversation.id,
+    );
+    if (!matchesHumanReviewPipelineContext({
+      state: activePipelineState,
+      pipelineTreatmentId: review.treatmentId,
+      targetTreatmentId: review.targetTreatmentId,
+    })) {
+      await db
+        .update(conversationsTable)
+        .set({
+          aiPaused: true,
+          needsAttention: true,
+          attentionReason: "Revisão humana não corresponde mais ao pipeline ativo",
+          updatedAt: runtimeNow(),
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+      return { replied: false, reason: "human_review_pipeline_context_mismatch" };
+    }
     const treatment = params.decision === "approved_direct_booking"
       ? treatments.find((t) => t.id === (review.targetTreatmentId ?? review.treatmentId))
       : treatments.find((t) => /avalia[cç][aã]o/i.test(t.name));
@@ -8519,6 +8455,12 @@ export class ConversationOrchestrator {
       mediaParts: [],
       leadId: lead.id,
       pipelineAdvance: null,
+    }, {
+      source: "human_review_decision",
+      classifiedIntent: "check_availability",
+      finalIntent: slots.length > 0 ? "check_availability" : "needs_human",
+      confidence: 1,
+      missingStages: ["state.loaded", "intent.classified", "intent.resolved"],
     });
 
     return { replied: true };
