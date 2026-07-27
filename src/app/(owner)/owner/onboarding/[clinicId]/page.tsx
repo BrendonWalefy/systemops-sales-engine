@@ -10,7 +10,6 @@ import {
 } from "@/infrastructure/db/schema";
 import { OnboardingWizardClient } from "./onboarding-wizard-client";
 import type { PipelineStep } from "@/domain/entities/treatment";
-import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
@@ -50,6 +49,7 @@ export default async function OnboardingWizardPage({
         zapiClientToken: true,
         metaPhoneNumberId: true,
         metaAccessToken: true,
+        metaAppSecret: true,
         defaultAppointmentDurationMinutes: true,
         postAppointmentBufferMinutes: true,
         takeoverTtlHours: true,
@@ -117,10 +117,16 @@ export default async function OnboardingWizardPage({
         channel: {
           provider: clinic.channelProvider ?? "z_api",
           zapiInstanceId: clinic.zapiInstanceId ?? "",
-          zapiToken: decryptCredentialNullable(clinic.zapiToken) ?? "",
-          zapiClientToken: decryptCredentialNullable(clinic.zapiClientToken) ?? "",
+          // Segredos nunca são enviados ao browser; vazio significa preservar.
+          zapiToken: "",
+          zapiClientToken: "",
           metaPhoneNumberId: clinic.metaPhoneNumberId ?? "",
-          metaAccessToken: decryptCredentialNullable(clinic.metaAccessToken) ?? "",
+          metaAccessToken: "",
+          metaAppSecret: "",
+          zapiCredentialsConfigured: Boolean(clinic.zapiToken),
+          metaCredentialsConfigured: Boolean(
+            clinic.metaAccessToken && clinic.metaAppSecret,
+          ),
         },
         treatments: existingTreatments.map((t) => ({
           id: t.id,

@@ -71,6 +71,9 @@ export type Organization = {
   // Opt-in por clínica: oferta horário real direto após cotar preço, em vez de
   // só perguntar "posso ver os horários?". Ver ConversationOrchestrator.ts.
   offerSlotsAfterPriceEnabled?: boolean;
+  // Opt-in explícito: permite escalar pedidos fora do expediente para análise
+  // humana. Sem esta flag, a IA apenas informa o horário cadastrado.
+  outsideHoursExceptionEnabled?: boolean;
   // Fluxo de sinal (depósito Pix). Opcionais: ausência = fluxo desabilitado. Ver
   // DepositTemplates e o branch de confirm_slot no Orchestrator.
   depositEnabled?: boolean;

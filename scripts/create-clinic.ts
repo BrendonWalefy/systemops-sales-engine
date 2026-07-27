@@ -51,7 +51,7 @@ type NewClinicConfig = {
   channel: {
     provider: "z_api" | "meta_cloud_api";
     zapi?: { instanceId: string; token: string; clientToken?: string };
-    meta?: { phoneNumberId: string; accessToken: string };
+    meta?: { phoneNumberId: string; accessToken: string; appSecret: string };
   };
   playbook: {
     commercialPolicy: string;
@@ -143,6 +143,7 @@ async function main() {
     zapiClientToken: encryptCredentialNullable(cfg.channel.zapi?.clientToken),
     metaPhoneNumberId: cfg.channel.meta?.phoneNumberId ?? null,
     metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
+    metaAppSecret: encryptCredentialNullable(cfg.channel.meta?.appSecret),
     agentRole: segmentVocab.agentRole,
     bookingNoun: segmentVocab.bookingNoun,
     contactNoun: segmentVocab.contactNoun,

@@ -1,0 +1,1 @@
+ALTER TABLE "treatments" ADD COLUMN "pipeline_entry_behavior" text;

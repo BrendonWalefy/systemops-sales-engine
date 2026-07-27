@@ -5,8 +5,10 @@
 import { describe, expect, it } from "vitest";
 import {
   canAppendQaFollowUpContent,
+  buildConversationReentryAcknowledgment,
   collectPreviousAgentTurnBodies,
   isGenericTreatmentInterestMessage,
+  isRepeatedConversationalReply,
   shouldSuppressNextStepCta,
 } from "@/core/pipeline/ConversationOrchestrator";
 import { buildActionContext, rescueMarkdownMediaSyntax } from "@/core/intelligence/ResponseComposer";
@@ -38,6 +40,31 @@ function treatment(name: string, overrides: Partial<Treatment> = {}): Treatment 
 }
 
 const lenses = treatment("Lentes de resina composta", { aliases: ["lentes", "resina"] });
+
+describe("reinício de conversa sem resposta duplicada", () => {
+  it("detecta o mesmo starter apesar de espaçamento e pontuação", () => {
+    expect(
+      isRepeatedConversationalReply(
+        "Boa noite, Lead! Tudo bem?",
+        "  Boa noite Lead. Tudo bem?  ",
+      ),
+    ).toBe(true);
+  });
+
+  it("permite uma nova abertura quando o conteúdo realmente mudou", () => {
+    expect(
+      isRepeatedConversationalReply(
+        "Boa noite, Lead! Tudo bem?",
+        "Oi! Que bom falar com você novamente.",
+      ),
+    ).toBe(false);
+  });
+
+  it("responde uma saudação de retorno sem reiniciar o atendimento", () => {
+    expect(buildConversationReentryAcknowledgment("Olá, Gleice")).toBe("Oi! 😊");
+    expect(buildConversationReentryAcknowledgment("Boa tarde")).toBe("Boa tarde! 😊");
+  });
+});
 
 describe("N1 — isGenericTreatmentInterestMessage", () => {
   it("caso Nathan: interesse genérico com typo e 'valores' é genérico", () => {

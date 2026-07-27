@@ -16,7 +16,7 @@ import type { Treatment } from "@/domain/entities/treatment";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-function makeTreatment(name: string, requiresEval = false): Treatment {
+function makeTreatment(name: string, requiresEval = false, isAesthetic = false): Treatment {
   return {
     id: name.toLowerCase().replace(/\s+/g, "-"),
     clinicId: "ximendes",
@@ -26,7 +26,7 @@ function makeTreatment(name: string, requiresEval = false): Treatment {
     requiresEvaluationFirst: requiresEval,
     keywordMatchEnabled: true,
     aliases: [],
-    isAesthetic: false,
+    isAesthetic,
     pipelineSteps: null,
     priceCents: null,
     minPriceCents: null,
@@ -40,7 +40,7 @@ function makeTreatment(name: string, requiresEval = false): Treatment {
   };
 }
 
-function makeProcedureItem(name: string, requiresEval = false) {
+function makeProcedureItem(name: string, requiresEval = false, isAesthetic = false) {
   return {
     index: 1,
     treatmentId: name.toLowerCase().replace(/\s+/g, "-"),
@@ -48,55 +48,25 @@ function makeProcedureItem(name: string, requiresEval = false) {
     durationMinutes: 60,
     description: null,
     requiresEvaluationFirst: requiresEval,
+    isAesthetic,
   };
 }
 
 // ─── 1. isAestheticTreatment ──────────────────────────────────────────────────
 
 describe("isAestheticTreatment", () => {
-  const aesthetic = [
-    "Lentes de resina composta",
-    "Lentes de porcelana",
-    "Facetas de porcelana",
-    "Clareamento dental",
-    "Harmonização orofacial",
-    "Gengivoplastia",
-    "Botox odontológico",
-    "Design do sorriso",
-  ];
-
-  const nonAesthetic = [
-    "Tratamento de canal",
-    "Implante dentário",
-    "Limpeza dental",
-    "Exodontia",
-    "Restauração em resina",
-    "Avaliação",
-    "Prótese dentária",
-  ];
-
-  it.each(aesthetic)("'%s' é estético → true", (name) => {
-    expect(isAestheticTreatment(name)).toBe(true);
-  });
-
-  it.each(nonAesthetic)("'%s' não é estético → false", (name) => {
-    expect(isAestheticTreatment(name)).toBe(false);
-  });
-
-  it("normaliza acentos — 'harmonizacao' (sem acento) detecta 'Harmonização'", () => {
-    expect(isAestheticTreatment("harmonizacao")).toBe(true);
-  });
-
-  it("não é case-sensitive", () => {
-    expect(isAestheticTreatment("LENTES DE RESINA")).toBe(true);
-    expect(isAestheticTreatment("clareamento")).toBe(true);
+  it("usa somente o campo estruturado", () => {
+    expect(isAestheticTreatment(true)).toBe(true);
+    expect(isAestheticTreatment(false)).toBe(false);
+    expect(isAestheticTreatment(null)).toBe(false);
+    expect(isAestheticTreatment(undefined)).toBe(false);
   });
 });
 
 // ─── 2. Photo hook em buildSelectedTreatmentContext ───────────────────────────
 
 describe("buildSelectedTreatmentContext — photo hook (concierge + estético)", () => {
-  const lentes = makeProcedureItem("Lentes de resina composta", true);
+  const lentes = makeProcedureItem("Lentes de resina composta", true, true);
   const canal = makeProcedureItem("Tratamento de canal");
   const policy = "Lentes a partir de R$2.500 para 20 elementos.";
 
@@ -152,7 +122,7 @@ describe("buildSelectedTreatmentContext — photo hook (concierge + estético)",
 // ─── 3. Photo hook em buildDirectTreatmentContext ─────────────────────────────
 
 describe("buildDirectTreatmentContext — photo hook (concierge + estético)", () => {
-  const clareamento = makeTreatment("Clareamento dental");
+  const clareamento = makeTreatment("Clareamento dental", false, true);
   const implante = makeTreatment("Implante dentário", true);
 
   it("inclui convite à foto para tratamento estético direto em concierge", () => {

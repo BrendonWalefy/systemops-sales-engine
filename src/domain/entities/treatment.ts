@@ -75,6 +75,13 @@ export type PipelineStep =
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Controla somente a apresentação inicial de um pipeline. `null` mantém o
+// comportamento legado da experiência da clínica, permitindo rollout sem
+// alterar tratamentos não migrados.
+export type PipelineEntryBehavior =
+  | "immediate"
+  | "qualify_then_present";
+
 // Preço por quantidade fechada (ex.: pacotes de lentes: 10 = R$1.500, 20 = R$1.800).
 // Existe porque clínicas vendem "pacotes" cujo preço NÃO é proporcional à quantidade
 // — a IA não pode extrapolar (10 não é metade de 20). `scope` distingue a arcada quando
@@ -110,6 +117,7 @@ export type Treatment = {
   isAesthetic: boolean;
   pipelineSteps: PipelineStep[] | null;
   pipelineSourceTreatmentId?: string | null;
+  pipelineEntryBehavior?: PipelineEntryBehavior | null;
   priceCents: number | null;
   minPriceCents: number | null;
   maxPriceCents: number | null;

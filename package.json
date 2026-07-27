@@ -20,14 +20,15 @@
     "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
     "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
     "demo:roteiro": "dotenv -e .env.local -- tsx scripts/demo-roteiro.ts",
-    "replay:conversas": "dotenv -e .env.local -- tsx scripts/replay-conversas.ts",
-    "replay:regressao": "dotenv -e .env.local -- tsx scripts/replay-regression.ts",
+    "replay:export": "dotenv -e .env.local -- tsx scripts/export-sanitized-replay-corpus.ts",
+    "replay:review": "tsx scripts/render-replay-review.ts",
+    "replay:keys": "tsx scripts/generate-replay-approval-keypair.ts",
+    "replay:approve": "tsx scripts/approve-replay-dataset.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
     "dev:workers": "dotenv -e .env.local -- ./scripts/dev-workers.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
-    "@auth/core": "^0.40.0",
     "@fal-ai/client": "^1.10.1",
     "@neondatabase/serverless": "^1.1.0",
     "@schedule-x/calendar": "^4.6.0",
@@ -37,11 +38,11 @@
     "@schedule-x/resize": "^3.7.3",
     "@schedule-x/scroll-controller": "^4.6.0",
     "@schedule-x/theme-default": "^4.6.0",
-    "@sentry/nextjs": "^10.63.0",
-    "@vercel/blob": "^2.4.0",
+    "@sentry/nextjs": "^10.68.0",
+    "@vercel/blob": "^2.6.1",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.16.0",
-    "next": "^16.2.6",
+    "next": "^16.2.12",
     "openai": "^6.39.0",
     "postgres": "^3.4.0",
     "react": "^19.2.6",
@@ -58,10 +59,20 @@
     "dotenv": "^17.4.2",
     "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.31.10",
-    "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.6",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.12",
     "tsx": "^4.22.3",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.16"
+    },
+    "minimatch@10.2.5": {
+      "brace-expansion": "5.0.8"
+    },
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
   }
 }

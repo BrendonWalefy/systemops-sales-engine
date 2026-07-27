@@ -142,9 +142,17 @@ Para Meta Cloud API em vez de Z-API, troque o bloco `channel`:
 ```json
 "channel": {
   "provider": "meta_cloud_api",
-  "meta": { "phoneNumberId": "PHONE_NUMBER_ID", "accessToken": "TOKEN" }
+  "meta": {
+    "phoneNumberId": "PHONE_NUMBER_ID",
+    "accessToken": "TOKEN",
+    "appSecret": "META_APP_SECRET"
+  }
 }
 ```
+
+O `appSecret` é obrigatório: o endpoint valida `x-hub-signature-256` antes de
+aceitar mensagens ou status. Access Token e App Secret são criptografados em
+repouso e nunca são hidratados de volta no browser do onboarding.
 
 ## 2. Rode o onboarding
 

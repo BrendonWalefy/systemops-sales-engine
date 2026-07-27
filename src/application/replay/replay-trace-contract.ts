@@ -1,0 +1,57 @@
+type ReplayTraceRecord = {
+  turnId: string;
+  stage: string;
+  metadata?: Readonly<Record<string, string | number | boolean | null>>;
+};
+
+/**
+ * Um turno completo termina em exatamente um dos caminhos:
+ * resposta enfileirada/entregue ou silêncio intencional explicado.
+ */
+export function isReplayTurnTraceComplete(
+  traces: ReplayTraceRecord[],
+  turnId: string,
+): boolean {
+  const turnTraces = traces.filter((trace) => trace.turnId === turnId);
+  const stages = new Set(turnTraces.map((trace) => trace.stage));
+  const baseStages = [
+    "ingress.received",
+    "orchestrator.started",
+    "orchestrator.completed",
+  ];
+  if (!baseStages.every((stage) => stages.has(stage))) return false;
+
+  const completion = turnTraces.find(
+    (trace) => trace.stage === "orchestrator.completed",
+  );
+  if (completion?.metadata?.replied === false) {
+    return (
+      stages.has("turn.ignored") &&
+      !stages.has("outbound.enqueued") &&
+      !stages.has("delivery.sent")
+    );
+  }
+
+  return [
+    "state.loaded",
+    "intent.classified",
+    "intent.resolved",
+    "outbound.enqueued",
+    "delivery.sent",
+  ].every((stage) => stages.has(stage));
+}
+
+/**
+ * Jobs inbound podem carregar o timestamp virtual preservado do cenário.
+ * O drain precisa enxergar tanto jobs baseados nesse relógio quanto jobs
+ * outbound criados no relógio real durante o processamento.
+ */
+export function resolveReplayDrainNow(
+  virtualTurnTimestampMs: number,
+  observedNowMs = Date.now(),
+): Date {
+  // Neon and the application process do not necessarily share an identical
+  // wall clock. A newly inserted job uses the database clock by default, so a
+  // one-second allowance can leave it pending until the following replay turn.
+  return new Date(Math.max(virtualTurnTimestampMs, observedNowMs) + 10_000);
+}

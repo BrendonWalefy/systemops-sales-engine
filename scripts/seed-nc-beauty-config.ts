@@ -202,7 +202,7 @@ const TREATMENTS: TreatmentSeed[] = [
     durationMinutes: 120,
     description:
       "Extensão de cílios nas técnicas Fox Eyes, Wispy, Efeito Rímel, Anime e CostaLash, técnica exclusiva da casa. Olhar mais marcado, moderno e sofisticado.",
-    aliases: ["cílios", "extensão de cílios", "alongamento de cílios", "fox eyes", "wispy", "costalash", "anime", "efeito rímel", "técnica gringa"],
+    aliases: ["fox", "cílios fox", "fox eyes", "wispy", "costalash", "anime", "efeito rímel", "técnica gringa"],
     priceCents: 18000,
   },
   {

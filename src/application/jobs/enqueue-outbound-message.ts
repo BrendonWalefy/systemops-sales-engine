@@ -9,9 +9,13 @@ export async function enqueueOutboundMessage(
   deps: { outboundMessageStore: OutboundMessageStore; jobQueue: JobQueue },
 ): Promise<{ outboundMessageId: string; messageWasNew: boolean; jobWasNew: boolean }> {
   const created = await deps.outboundMessageStore.createOutboundMessage(input);
+  const turnId = getTurnId(input.payload);
   const enqueued = await deps.jobQueue.enqueueJob({
     queue: "message.send",
-    payload: { outboundMessageId: created.message.id },
+    payload: {
+      outboundMessageId: created.message.id,
+      ...(turnId ? { turnId } : {}),
+    },
     dedupeKey: `outbound-message:${created.message.id}`,
   });
 
@@ -20,4 +24,10 @@ export async function enqueueOutboundMessage(
     messageWasNew: created.isNew,
     jobWasNew: enqueued.isNew,
   };
+}
+
+function getTurnId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>).turnId;
+  return typeof value === "string" && value.trim() ? value : null;
 }

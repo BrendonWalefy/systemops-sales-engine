@@ -62,9 +62,15 @@ export function resolveUnsupportedInboundPlaceholder(
 export async function resolveLeadInboundContent(params: {
   payload: ZApiInboundPayload;
   replyEnabled: boolean;
+  transcriptionEnabled?: boolean;
   transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
 }): Promise<ResolvedLeadInboundContent> {
-  const { payload, replyEnabled, transcribeAudio } = params;
+  const {
+    payload,
+    replyEnabled,
+    transcriptionEnabled = replyEnabled,
+    transcribeAudio,
+  } = params;
 
   const textMessage = trimmedOrNull(payload.text?.message);
   if (textMessage) {
@@ -72,7 +78,7 @@ export async function resolveLeadInboundContent(params: {
   }
 
   if (payload.audio?.audioUrl) {
-    if (!replyEnabled) {
+    if (!transcriptionEnabled) {
       return {
         messageText: "[áudio recebido]",
         mediaUrl: payload.audio.audioUrl,
@@ -90,7 +96,7 @@ export async function resolveLeadInboundContent(params: {
         messageText: `[áudio] ${transcription}`,
         mediaUrl: payload.audio.audioUrl,
         mediaType: "audio",
-        shouldReply: true,
+        shouldReply: replyEnabled,
       };
     } catch (err) {
       console.error("[ZApi] Falha ao transcrever áudio:", err);
@@ -99,7 +105,7 @@ export async function resolveLeadInboundContent(params: {
           "[áudio] Transcrição automática indisponível. O lead enviou um áudio, mas não foi possível baixar ou transcrever. Peça para ele escrever a mensagem.",
         mediaUrl: payload.audio.audioUrl,
         mediaType: "audio",
-        shouldReply: true,
+        shouldReply: replyEnabled,
       };
     }
   }

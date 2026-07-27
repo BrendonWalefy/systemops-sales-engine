@@ -77,6 +77,7 @@ type ClinicRow = {
   zapiClientToken: string | null;
   metaPhoneNumberId: string | null;
   metaAccessToken: string | null;
+  metaAppSecret: string | null;
 };
 
 async function fetchAllClinics(): Promise<ClinicRow[]> {
@@ -105,6 +106,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
         zapiClientToken: organizations.zapiClientToken,
         metaPhoneNumberId: organizations.metaPhoneNumberId,
         metaAccessToken: organizations.metaAccessToken,
+        metaAppSecret: organizations.metaAppSecret,
       })
       .from(organizations)
       .orderBy(organizations.name),
@@ -189,6 +191,7 @@ async function fetchAllClinics(): Promise<ClinicRow[]> {
       zapiClientToken: clinic.zapiClientToken,
       metaPhoneNumberId: clinic.metaPhoneNumberId,
       metaAccessToken: clinic.metaAccessToken,
+      metaAppSecret: clinic.metaAppSecret,
     };
   });
 
@@ -258,6 +261,7 @@ async function fetchOperationalAlertReport(clinicRows: ClinicRow[]) {
         zapiClientToken: clinic.zapiClientToken,
         metaPhoneNumberId: clinic.metaPhoneNumberId,
         metaAccessToken: clinic.metaAccessToken,
+        metaAppSecret: clinic.metaAppSecret,
         hasActivePlaybook: playbookClinicIds.has(clinic.id),
         latestMetricAt: latestMetric?.createdAt ?? null,
         channelStatus: await probeClinicChannelHealth({

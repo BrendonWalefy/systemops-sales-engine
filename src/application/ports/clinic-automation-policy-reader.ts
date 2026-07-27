@@ -1,3 +1,5 @@
+import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
+
 export type ClinicAutomationPolicyReader = {
-  canSendAutomatedReply(clinicId: string): Promise<boolean>;
+  getAutomationMode(clinicId: string): Promise<ClinicAutomationMode>;
 };

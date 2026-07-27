@@ -104,9 +104,12 @@ WhatsApp webhooks:
 - media/audio fallback paths
 - idempotency and retry-safe behavior
 
-For regressions observed in real WhatsApp conversations, replay the lead
-messages in a controlled production-safe clinic flow before enabling the change
-for production leads.
+For regressions observed in real WhatsApp conversations, use only a sanitized,
+human-reviewed and signed dataset against an isolated replay database. The
+scenario must enter through the real webhook and traverse the durable queues,
+orchestrator, state machine and sender capture described in
+[`replay-fidelity-contract.md`](../architecture/replay-fidelity-contract.md).
+Partial classifier/composer harnesses do not satisfy this gate.
 
 Conversation and AI:
 

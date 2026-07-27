@@ -16,6 +16,7 @@ import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
+import type { DecisionTraceRecord } from "@/core/observability/DecisionTrace";
 import { sql } from "drizzle-orm";
 
 export const channelEnum = pgEnum("channel", [
@@ -407,6 +408,11 @@ export const organizations = pgTable("organizations", {
   offerSlotsAfterPriceEnabled: boolean("offer_slots_after_price_enabled")
     .notNull()
     .default(false),
+  // Política operacional por tenant. Incidentes de uma clínica não podem virar
+  // promessa global de atendimento fora do expediente.
+  outsideHoursExceptionEnabled: boolean("outside_hours_exception_enabled")
+    .notNull()
+    .default(false),
   // Espelha o resumo diário do staff (agenda de amanhã + pendentes de
   // confirmação) no WhatsApp pessoal do responsável (receptionist_phone),
   // além do push. Diferente dos avisos event-driven que já usam
@@ -451,6 +457,9 @@ export const organizations = pgTable("organizations", {
   zapiClientToken: text("zapi_client_token"),
   metaPhoneNumberId: text("meta_phone_number_id"),
   metaAccessToken: text("meta_access_token"),
+  // App Secret usado para autenticar x-hub-signature-256 no webhook inbound.
+  // Segredo criptografado pelo credential vault, assim como o access token.
+  metaAppSecret: text("meta_app_secret"),
   // Momento em que a instância Z-API foi conectada com sucesso pela primeira vez
   // via o fluxo de pareamento dentro do nosso portal (P0.5). Nullable: clínicas
   // existentes e as que conectaram pelo painel Z-API têm null.
@@ -475,7 +484,14 @@ export const organizations = pgTable("organizations", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("organizations_zapi_instance_unique")
+    .on(table.zapiInstanceId)
+    .where(sql`${table.zapiInstanceId} is not null and btrim(${table.zapiInstanceId}) <> ''`),
+  uniqueIndex("organizations_meta_phone_number_unique")
+    .on(table.metaPhoneNumberId)
+    .where(sql`${table.metaPhoneNumberId} is not null and btrim(${table.metaPhoneNumberId}) <> ''`),
+]);
 
 export const treatments = pgTable(
   "treatments",
@@ -504,6 +520,12 @@ export const treatments = pgTable(
     // jornada canônica de outro tratamento sem duplicar pipelineSteps. A
     // resolução valida mesma clínica e faz fallback seguro se o id ficar órfão.
     pipelineSourceTreatmentId: uuid("pipeline_source_treatment_id"),
+    // null preserva o comportamento legado. "immediate" entrega o primeiro
+    // content step no mesmo turno; "qualify_then_present" abre com qualificação
+    // e mantém o conteúdo posicionado para a próxima resposta do lead.
+    pipelineEntryBehavior: text("pipeline_entry_behavior").$type<
+      import("@/domain/entities/treatment").PipelineEntryBehavior
+    >(),
     priceCents: integer("price_cents"),
     minPriceCents: integer("min_price_cents"),
     maxPriceCents: integer("max_price_cents"),
@@ -791,6 +813,45 @@ export const jobs = pgTable(
       table.queue,
       table.dedupeKey,
     ),
+  }),
+);
+
+// Trilha operacional sanitizada por turno. Um único row agrega os eventos para
+// evitar uma escrita de banco a cada decisão do orquestrador. Nunca armazena
+// mensagem, prompt, resposta, telefone, nome ou URL; o sink aplica allowlist.
+export const decisionTraces = pgTable(
+  "decision_traces",
+  {
+    turnId: text("turn_id").primaryKey(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(
+      () => conversations.id,
+      { onDelete: "cascade" },
+    ),
+    events: jsonb("events").$type<DecisionTraceRecord[]>().notNull(),
+    firstOccurredAt: timestamp("first_occurred_at", { withTimezone: true })
+      .notNull(),
+    lastOccurredAt: timestamp("last_occurred_at", { withTimezone: true })
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicUpdatedAtIdx: index("decision_traces_org_updated_at_idx").on(
+      table.clinicId,
+      table.updatedAt,
+    ),
+    conversationUpdatedAtIdx: index(
+      "decision_traces_conversation_updated_at_idx",
+    ).on(table.conversationId, table.updatedAt),
+    expiresAtIdx: index("decision_traces_expires_at_idx").on(table.expiresAt),
   }),
 );
 
@@ -1142,6 +1203,9 @@ export const conversationStates = pgTable(
     // idle | slots_offered | awaiting_confirmation | booking_pending | menu_offered | procedure_list_offered
     state: text("state").notNull(),
     payload: jsonb("payload"),
+    // CAS aditivo: uma revisão de estado pode ser consumida no máximo uma vez.
+    // Nullable preserva estados legados e transições ainda não revisionadas.
+    supersedesStateId: uuid("supersedes_state_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1151,6 +1215,9 @@ export const conversationStates = pgTable(
     conversationCreatedAtIdx: index(
       "conversation_states_conversation_created_at_idx",
     ).on(table.conversationId, table.createdAt),
+    supersedesStateIdIdx: uniqueIndex(
+      "conversation_states_supersedes_state_id_idx",
+    ).on(table.supersedesStateId),
   }),
 );
 
@@ -1243,6 +1310,9 @@ export const playbookVersions = pgTable(
       table.clinicId,
       table.status,
     ),
+    oneActivePerClinicIdx: uniqueIndex("playbook_versions_one_active_per_org_idx")
+      .on(table.clinicId)
+      .where(sql`${table.status} = 'active'`),
   }),
 );
 

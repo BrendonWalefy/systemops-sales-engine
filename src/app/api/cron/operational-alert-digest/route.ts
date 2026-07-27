@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       zapiClientToken: organizations.zapiClientToken,
       metaPhoneNumberId: organizations.metaPhoneNumberId,
       metaAccessToken: organizations.metaAccessToken,
+      metaAppSecret: organizations.metaAppSecret,
     })
     .from(organizations)
     .where(

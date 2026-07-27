@@ -6,7 +6,12 @@ import {
   type ResolvedLeadInboundContent,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
 import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { parseMetaInboundTextMessage } from "@/infrastructure/adapters/channels/whatsapp/meta-webhook-content";
 import { createLogger } from "@/infrastructure/logging/logger";
+import {
+  recordDecisionTrace,
+  type DecisionTraceSink,
+} from "@/core/observability/DecisionTrace";
 
 type ConversationHandler = {
   handle(input: {
@@ -18,10 +23,12 @@ type ConversationHandler = {
     senderName?: string;
     senderPhoto?: string | null;
     timestamp: Date;
+    turnId?: string;
     replyEnabled?: boolean;
+    observationOnly?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
-  }): Promise<{ replied: boolean }>;
+  }): Promise<{ replied: boolean; reason?: string }>;
 };
 
 export type JobResult = {
@@ -36,9 +43,11 @@ export type ProcessMessageJobDependencies = {
   resolveInboundContent?: (params: {
     payload: ZApiInboundPayload;
     replyEnabled: boolean;
+    transcriptionEnabled?: boolean;
     transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
   }) => Promise<ResolvedLeadInboundContent>;
   transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
+  decisionTraceSink?: DecisionTraceSink;
 };
 
 export class ProcessMessageJobHandler {
@@ -78,26 +87,49 @@ export class ProcessMessageJobHandler {
       clinicId: event.clinicId,
       correlationId: event.providerMessageId,
     });
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "ingress.received",
+      occurredAt: event.receivedAt.toISOString(),
+      clinicId: event.clinicId,
+      metadata: {
+        provider: event.provider,
+        queue: job.queue,
+        attempt: job.attempts,
+      },
+    });
 
-    const payload = event.provider === "z_api" ? normalizeZApiInboundPayload(event.payload) : null;
-    if (!payload) {
+    const zapiPayload = event.provider === "z_api"
+      ? normalizeZApiInboundPayload(event.payload)
+      : null;
+    const metaPayload = event.provider === "meta_cloud_api"
+      ? parseMetaInboundTextMessage(event.payload)
+      : null;
+    if (!zapiPayload && !metaPayload) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
       eventLog.warn("job.ignored", { reason: "unsupported_provider_payload", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
-    if (payload.fromMe || payload.isGroupMsg || payload.isStatusReply) {
+    if (zapiPayload && (zapiPayload.fromMe || zapiPayload.isGroupMsg || zapiPayload.isStatusReply)) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
       eventLog.info("job.ignored", { reason: "non_lead_message", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
 
     await this.deps.inboundEventStore.markInboundEventProcessing(event.id);
-    const replyEnabled = await this.deps.automationPolicy.canSendAutomatedReply(event.clinicId);
-    const content = await this.resolveInboundContent({
-      payload,
-      replyEnabled,
-      transcribeAudio: this.deps.transcribeAudio,
-    });
+    const automationMode = await this.deps.automationPolicy.getAutomationMode(event.clinicId);
+    const replyEnabled = automationMode === "live";
+    const content = zapiPayload
+      ? await this.resolveInboundContent({
+          payload: zapiPayload,
+          replyEnabled,
+          transcriptionEnabled: automationMode !== "disabled",
+          transcribeAudio: this.deps.transcribeAudio,
+        })
+      : {
+          messageText: metaPayload!.messageText,
+          shouldReply: replyEnabled,
+        } satisfies ResolvedLeadInboundContent;
 
     if (!content) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
@@ -105,21 +137,69 @@ export class ProcessMessageJobHandler {
       return { outcome: "ignored", inboundEventId: event.id };
     }
 
-    await this.deps.conversationHandler.handle({
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "ingress.content_resolved",
+      occurredAt: new Date().toISOString(),
       clinicId: event.clinicId,
-      phone: payload.phone,
-      whatsappLid: payload.chatLid ?? null,
-      messageText: content.messageText,
-      messageId: payload.messageId,
-      senderName: payload.senderName || undefined,
-      senderPhoto: payload.senderPhoto ?? null,
-      timestamp: event.receivedAt,
-      replyEnabled: content.shouldReply,
-      mediaUrl: content.mediaUrl,
-      mediaType: content.mediaType,
+      metadata: {
+        contentType: content.mediaType ?? "text",
+        replyEnabled: content.shouldReply,
+        observationOnly: automationMode === "observe",
+        hasText: content.messageText.trim().length > 0,
+      },
     });
 
-    await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
+    let handleResult: { replied: boolean; reason?: string };
+    try {
+      handleResult = await this.deps.conversationHandler.handle({
+        clinicId: event.clinicId,
+        phone: zapiPayload?.phone ?? metaPayload!.phone,
+        whatsappLid: zapiPayload?.chatLid ?? null,
+        messageText: content.messageText,
+        messageId: zapiPayload?.messageId ?? metaPayload!.messageId,
+        turnId: inboundEventId,
+        senderName: zapiPayload?.senderName || metaPayload?.senderName || undefined,
+        senderPhoto: zapiPayload?.senderPhoto ?? null,
+        timestamp: event.receivedAt,
+        replyEnabled: automationMode === "live" && content.shouldReply,
+        observationOnly: automationMode === "observe",
+        mediaUrl: content.mediaUrl,
+        mediaType: content.mediaType,
+      });
+      await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
+    } catch (error) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.failed",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: {
+          phase: "orchestrator_or_acknowledgement",
+          errorName: error instanceof Error ? error.name : "unknown",
+        },
+      });
+      throw error;
+    }
+
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "orchestrator.completed",
+      occurredAt: new Date().toISOString(),
+      clinicId: event.clinicId,
+      metadata: { replied: handleResult.replied, automationMode },
+    });
+    if (!handleResult.replied) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: {
+          reason: handleResult.reason ?? "orchestrator_no_reply",
+        },
+      });
+    }
     eventLog.info("job.processed", { durationMs: Date.now() - startedAt });
     return { outcome: "processed", inboundEventId: event.id };
   }

@@ -33,6 +33,7 @@ async function main() {
       zapiToken: organizations.zapiToken,
       zapiClientToken: organizations.zapiClientToken,
       metaAccessToken: organizations.metaAccessToken,
+      metaAppSecret: organizations.metaAppSecret,
     })
     .from(organizations)
     .where(
@@ -40,6 +41,7 @@ async function main() {
         isNotNull(organizations.zapiToken),
         isNotNull(organizations.zapiClientToken),
         isNotNull(organizations.metaAccessToken),
+        isNotNull(organizations.metaAppSecret),
       ),
     );
 
@@ -56,6 +58,9 @@ async function main() {
     }
     if (row.metaAccessToken && !row.metaAccessToken.startsWith("enc:v1:")) {
       updates.metaAccessToken = encryptCredential(row.metaAccessToken);
+    }
+    if (row.metaAppSecret && !row.metaAppSecret.startsWith("enc:v1:")) {
+      updates.metaAppSecret = encryptCredential(row.metaAppSecret);
     }
 
     if (Object.keys(updates).length === 0) {

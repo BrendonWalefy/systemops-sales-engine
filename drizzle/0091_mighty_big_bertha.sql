@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "organizations_zapi_instance_unique" ON "organizations" USING btree ("zapi_instance_id") WHERE "organizations"."zapi_instance_id" is not null and btrim("organizations"."zapi_instance_id") <> '';--> statement-breakpoint
+CREATE UNIQUE INDEX "organizations_meta_phone_number_unique" ON "organizations" USING btree ("meta_phone_number_id") WHERE "organizations"."meta_phone_number_id" is not null and btrim("organizations"."meta_phone_number_id") <> '';

@@ -11,6 +11,12 @@ Use este documento como roteiro de execução, não como substituto dos testes
 automatizados — testes automatizados provam a regra de negócio isolada; este plano prova
 o comportamento do sistema como um todo, com dados e canais reais/simulados.
 
+> **Privacidade:** não use nem reative
+> `/api/e2e/production-conversations`. A rota de exportação bruta está
+> deliberadamente desativada. Conversas reais só poderão entrar no novo replay
+> pelo exportador anonimizado descrito em
+> [`docs/architecture/replay-and-decision-trace.md`](../architecture/replay-and-decision-trace.md).
+
 ---
 
 ## Achados da primeira execução (jul/2026) — ler antes de rodar de novo
@@ -32,21 +38,21 @@ manualmente. Isso é uma trava de segurança intencional (evita a IA responder a
 onboarding terminar), não um bug — mas **precisa entrar explicitamente no checklist de
 go-live de cada cliente novo**, senão o cliente entra em produção com a IA muda.
 
-**3. `autoReplyEnabled = true` sozinho não é suficiente para clínicas `isTest = true`.**
-O gate real é `shouldSendAutomatedClinicOutbound()`
-(`src/application/automation/clinic-automation-policy.ts`): exige
-`operationalStatus === "active"` OU `shadowModeEnabled = true`. Clínicas de teste
-resolvem para status `"test"`, não `"active"` — então, sem shadow mode, a IA nunca
-compõe resposta nenhuma para uma clínica de teste, mesmo com `autoReplyEnabled = true`.
-**Para clientes reais (não-teste) prestes a ir ao ar, confirmar que o toggle de "ativar
-IA" na UI realmente move `operationalStatus` para `"active"`** — é isso que efetivamente
-liga o atendimento automático, não só o `autoReplyEnabled` isolado.
+**3. `autoReplyEnabled = true` sozinho não é suficiente.** O gate real
+(`src/application/automation/clinic-automation-policy.ts`) só resolve `live` quando
+`operationalStatus === "active"` e `autoReplyEnabled = true`. Shadow resolve
+`observe`: registra o inbound e encerra antes das decisões da IA. Clínicas de teste
+devem validar o fluxo completo pela rota de replay em banco isolado, nunca ligando
+shadow para tentar simular produção.
 
-**4. Golden path confirmado funcionando de ponta a ponta** com shadow mode ativo: webhook
-→ `inbound_events` (`processed`) → job `message.process` (`done`, ~2s de latência real
-observada) → lead + conversa criados → IA compõe resposta correta e coerente (testado
-com pergunta sobre tratamento e preço) → `outbound_messages` criado → job `message.send`
-processa e marca `sent` (simulado, sem envio real, confirmado por `shadowModeEnabled`).
+**4. O golden path antigo de shadow foi descontinuado por segurança.** Shadow não
+compõe respostas, não avança funil, não cria reservas/agendamentos e não dispara
+follow-ups. O golden path obrigatório agora é o replay `closed_loop`, que atravessa
+webhook, filas, orquestrador, outbox e sender reais dentro de um banco sandbox, com
+adapters de captura para qualquer efeito externo. Cenários aprovados que contenham
+rajadas consecutivas do lead também devem rodar no modo `concurrency`; mensagens
+isoladas permanecem sequenciais e só a rajada disputa os mesmos claims e filas de
+produção.
 
 **5. `scripts/e2e-webhook-test.ts` precisa de `E2E_WAIT_MS` bem maior que o default
 (12000ms) ao rodar contra produção real** — latência de composição de IA + fila real
@@ -68,10 +74,10 @@ o `phoneA` gerado e comparar contra o que realmente chegou no banco.
 ## 0. Preparação do ambiente de teste
 
 - [ ] Rodar `npm run verify` limpo antes de começar (lint, typecheck, db:check, testes)
-- [ ] Confirmar `DISABLE_REAL_WHATSAPP_SEND` e `DISABLE_REAL_OPENAI` como esperado para
-  o ambiente (produção = false, QA = true) — ver `docs/product/cost-control.md`
-- [ ] Criar clínica de teste isolada via `scripts/create-clinic.ts` (nunca reaproveitar
-  Ximendes/demo para não contaminar dado real de cliente pagante)
+- [ ] Confirmar as travas do replay (`E2E_MODE`, `E2E_REPLAY_MODE` e hosts sandbox/
+  produção distintos); não usar flags genéricas como substituto do banco isolado
+- [ ] Provisionar banco/branch isolado e carregar o snapshot versionado da clínica
+  avaliada (nunca executar replay no banco ativo)
 - [ ] Confirmar Z-API de teste conectado e webhook validado (`POST /api/whatsapp/zapi`)
 - [ ] Confirmar plano da clínica de teste (`essencial` ou `avancado`) e que
   `clinic_modules` reflete a matriz esperada (ver seção 8)

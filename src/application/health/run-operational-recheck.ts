@@ -15,6 +15,7 @@ type RecheckClinicRow = {
   zapiClientToken: string | null;
   metaPhoneNumberId: string | null;
   metaAccessToken: string | null;
+  metaAppSecret: string | null;
 };
 
 export type OperationalRecheckItem = {
@@ -49,6 +50,7 @@ async function loadTargetClinics(
       zapiClientToken: organizations.zapiClientToken,
       metaPhoneNumberId: organizations.metaPhoneNumberId,
       metaAccessToken: organizations.metaAccessToken,
+      metaAppSecret: organizations.metaAppSecret,
     })
     .from(organizations)
     .where(clinicId ? eq(organizations.id, clinicId) : eq(organizations.operationalStatus, "active"));

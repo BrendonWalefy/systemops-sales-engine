@@ -12,6 +12,7 @@ export type ClinicHealthInput = {
   zapiToken?: string | null;
   metaPhoneNumberId?: string | null;
   metaAccessToken?: string | null;
+  metaAppSecret?: string | null;
   hasActivePlaybook: boolean;
   latestMetricAt?: Date | null;
   channelStatus?: {
@@ -58,7 +59,9 @@ export function hasCompleteChannelConfig(clinic: ClinicHealthInput): boolean {
 
   if (clinic.channelProvider === "meta_cloud_api") {
     return Boolean(
-      normalize(clinic.metaPhoneNumberId) && normalize(clinic.metaAccessToken),
+      normalize(clinic.metaPhoneNumberId) &&
+        normalize(clinic.metaAccessToken) &&
+        normalize(clinic.metaAppSecret),
     );
   }
 

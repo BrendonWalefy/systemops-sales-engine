@@ -265,6 +265,7 @@ export function composeWarrantySection(policy: WarrantyPolicy | null | undefined
 }
 
 export type EditorialConfig = {
+  versionId: string;
   specialty: string | null;
   toneOfVoice: string | null;
   commercialPolicy: string | null;
@@ -437,6 +438,7 @@ export async function resolveActiveEditorialConfig(
   const mediaLibrary = await resolveMediaLibraryForVersion(clinicId, activeVersion);
 
   return {
+    versionId: activeVersion.id,
     specialty: activeVersion.specialty,
     toneOfVoice: activeVersion.toneOfVoice,
     commercialPolicy,

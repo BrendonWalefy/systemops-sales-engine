@@ -92,6 +92,26 @@ describe("zapi-webhook-content", () => {
     expect(transcribeAudio).not.toHaveBeenCalled();
   });
 
+  it("áudio em observação é transcrito sem autorizar resposta", async () => {
+    const transcribeAudio = vi.fn().mockResolvedValue("Quero conhecer as lentes");
+    const result = await resolveLeadInboundContent({
+      payload: {
+        ...basePayload(),
+        audio: { audioUrl: "https://cdn.z-api.io/audio.ogg", mimeType: "audio/ogg" },
+      },
+      replyEnabled: false,
+      transcriptionEnabled: true,
+      transcribeAudio,
+    });
+
+    expect(result).toEqual({
+      messageText: "[áudio] Quero conhecer as lentes",
+      mediaUrl: "https://cdn.z-api.io/audio.ogg",
+      mediaType: "audio",
+      shouldReply: false,
+    });
+  });
+
   it("placeholder do operador usa texto distinto", () => {
     const result = resolveUnsupportedInboundPlaceholder(
       {

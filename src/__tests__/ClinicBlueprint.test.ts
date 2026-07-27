@@ -70,6 +70,7 @@ describe("buildClinicBlueprint", () => {
         channelProvider: "meta_cloud_api",
         metaPhoneNumberId: "123",
         metaAccessToken: "token",
+        metaAppSecret: "app-secret",
         hasTtsConfig: true,
       },
       playbook: {
@@ -112,6 +113,7 @@ describe("buildClinicBlueprint", () => {
         channelProvider: "meta_cloud_api",
         metaPhoneNumberId: "123",
         metaAccessToken: "token",
+        metaAppSecret: "app-secret",
         hasTtsConfig: false,
         hasElevenLabsTts: true,
         elevenLabsNeedsVoiceId: false,

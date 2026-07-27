@@ -12,10 +12,11 @@ import { buildDepositConfirmationMessage } from "@/core/conversation/DepositTemp
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
-import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
-import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import type { DepositProofDecision } from "@/application/conversations/deposit-proof-review";
+import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 
 export type ConfirmDepositDecisionResult =
   | { ok: true; action: DepositProofDecision; leadName: string | null }
@@ -184,15 +185,27 @@ export async function confirmDepositDecision(params: {
     externalId: null,
   });
   if (channelAddress) {
-    try {
-      const channelConfig = resolveChannelConfig(clinic);
-      const zapiMessageId = await sendTextMessage(channelAddress, confirmationText, channelConfig);
-      if (zapiMessageId) {
-        await db.update(messages).set({ externalId: zapiMessageId }).where(eq(messages.id, msgId));
-      }
-    } catch (err) {
-      console.error("[ConfirmDeposit] WhatsApp send failed:", err);
-    }
+    await enqueueOutboundMessage({
+      clinicId: params.clinicId,
+      conversationId: params.conversationId,
+      channel: "whatsapp",
+      deliveryKind: "text",
+      category: "reply",
+      dedupeKey: `deposit-confirmation:${payload.reservationId ?? payload.slotStartsAt}`,
+      payload: {
+        version: 1,
+        kind: "automation",
+        to: channelAddress,
+        text: confirmationText,
+        leadId: lead.id,
+        conversationId: params.conversationId,
+        agentMessageId: msgId,
+        useVoice: false,
+      },
+    }, {
+      outboundMessageStore: new DrizzleOutboundMessageStore(),
+      jobQueue: new DrizzleJobQueue(),
+    });
   }
 
   return { ok: true, action: "confirm", leadName: lead.name };

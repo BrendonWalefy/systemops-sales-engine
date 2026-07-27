@@ -31,4 +31,31 @@ describe("enqueueOutboundMessage", () => {
     });
     expect(result).toEqual({ outboundMessageId: "outbound-1", messageWasNew: false, jobWasNew: true });
   });
+
+  it("propaga o turnId para o job de entrega sem alterar a outbox", async () => {
+    const createOutboundMessage = vi.fn().mockResolvedValue({
+      message: { id: "outbound-1" },
+      isNew: true,
+    });
+    const enqueueJob = vi.fn().mockResolvedValue({ isNew: true });
+    const input = {
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      channel: "whatsapp" as const,
+      payload: { turnId: "turn-1" },
+      deliveryKind: "text" as const,
+    };
+
+    await enqueueOutboundMessage(input, {
+      outboundMessageStore: { createOutboundMessage } as never,
+      jobQueue: { enqueueJob } as never,
+    });
+
+    expect(createOutboundMessage).toHaveBeenCalledWith(input);
+    expect(enqueueJob).toHaveBeenCalledWith({
+      queue: "message.send",
+      payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
+      dedupeKey: "outbound-message:outbound-1",
+    });
+  });
 });

@@ -23,6 +23,8 @@ export type ClinicBlueprintInput = {
     zapiToken?: string | null;
     metaPhoneNumberId?: string | null;
     metaAccessToken?: string | null;
+    metaAppSecret?: string | null;
+    metaAppSecretConfigured?: boolean;
     hasTtsConfig?: boolean;
     hasElevenLabsTts?: boolean;
     elevenLabsNeedsVoiceId?: boolean;
@@ -92,7 +94,9 @@ export function buildClinicBlueprint(
     normalize(clinic.zapiInstanceId) && normalize(clinic.zapiToken),
   );
   const hasMeta = Boolean(
-    normalize(clinic.metaPhoneNumberId) && normalize(clinic.metaAccessToken),
+    normalize(clinic.metaPhoneNumberId) &&
+      normalize(clinic.metaAccessToken) &&
+      (normalize(clinic.metaAppSecret) || clinic.metaAppSecretConfigured),
   );
   const hasChannel =
     clinic.channelProvider === "z_api"

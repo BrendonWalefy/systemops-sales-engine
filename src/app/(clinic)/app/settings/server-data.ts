@@ -76,6 +76,8 @@ export async function getCachedPipelineTreatments(clinicId: string) {
           id: treatments.id,
           name: treatments.name,
           pipelineSteps: treatments.pipelineSteps,
+          pipelineSourceTreatmentId: treatments.pipelineSourceTreatmentId,
+          pipelineEntryBehavior: treatments.pipelineEntryBehavior,
         })
         .from(treatments)
         .where(eq(treatments.clinicId, clinicId))

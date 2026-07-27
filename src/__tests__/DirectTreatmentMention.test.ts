@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   resolveDirectTreatmentMention,
   resolveInformationalTreatmentTarget,
+  resolveMediaScopeTreatmentId,
   resolvePipelineTreatmentMention,
+  resolvePriceTreatmentTarget,
   resolveSchedulingTreatmentTarget,
+  shouldBypassPendingPipelineContent,
 } from "@/core/pipeline/ConversationOrchestrator";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 import type { Treatment } from "@/domain/entities/treatment";
@@ -69,6 +72,42 @@ describe("resolveDirectTreatmentMention", () => {
     expect(result).toBeNull();
   });
 
+  it("não confunde 'aonde fica' com o sufixo de 'estratificada'", () => {
+    const estratificada = treatment("Lente em Resina Estratificada", {
+      aliases: ["estratificada"],
+      pipelineSteps: [{
+        type: "content",
+        label: "Apresentação",
+        once: true,
+        blocks: [{ kind: "text", content: "Conteúdo" }],
+      }],
+    });
+
+    expect(
+      resolveDirectTreatmentMention("Aonde fica", [estratificada]),
+    ).toBeNull();
+    expect(
+      resolveInformationalTreatmentTarget({
+        message: "Aonde fica",
+        treatments: [estratificada],
+        identifiedTreatment: estratificada.name,
+      }),
+    ).toBeNull();
+    expect(
+      resolveDirectTreatmentMention(
+        "Esse valor faz na estratificada? Pois quero bem natural",
+        [estratificada],
+      ),
+    ).toBeNull();
+    expect(
+      resolveInformationalTreatmentTarget({
+        message: "Quero uma lente estratificada bem natural",
+        treatments: [estratificada],
+        identifiedTreatment: estratificada.name,
+      })?.id,
+    ).toBe(estratificada.id);
+  });
+
   it("não intercepta resposta ao agente quando ele acabou de perguntar o procedimento", () => {
     const result = resolveDirectTreatmentMention(
       "Avaliação",
@@ -90,6 +129,17 @@ describe("resolveDirectTreatmentMention", () => {
   it("detecta tratamento em saudação composta de várias palavras", () => {
     const result = resolveDirectTreatmentMention("boa tarde, gostaria de saber sobre lentes", treatments);
     expect(result?.name).toBe("Lentes de resina composta");
+  });
+});
+
+describe("guarda de localização", () => {
+  it("usa palavras inteiras para não tratar estratificada como 'fica'", () => {
+    expect(
+      shouldBypassPendingPipelineContent(
+        "Quero uma lente estratificada bem natural",
+      ),
+    ).toBe(false);
+    expect(shouldBypassPendingPipelineContent("Aonde fica?")).toBe(true);
   });
 });
 
@@ -162,6 +212,42 @@ describe("resolveInformationalTreatmentTarget", () => {
 
     expect(result?.name).toBe("Lentes de resina composta simplificada");
   });
+
+  it("não deixa o classificador trocar uma menção explícita entre variantes com o mesmo pipeline", () => {
+    const sharedPipeline = [
+      {
+        type: "content" as const,
+        label: "Apresentação",
+        blocks: [{ kind: "text" as const, content: "Explicação das técnicas." }],
+      },
+    ];
+    const estratificada = treatment("Lentes de resina composta estratificada", {
+      aliases: ["lentes", "resina", "lentes de resina", "estratificada"],
+      pipelineSteps: sharedPipeline,
+    });
+    const simplificada = treatment("Lentes de resina composta simplificada", {
+      aliases: ["lentes", "resina", "lentes de resina", "simplificada"],
+      pipelineSteps: sharedPipeline,
+    });
+    const canonical = treatment("Lentes em Resina Composta", {
+      keywordMatchEnabled: false,
+      pipelineSteps: sharedPipeline,
+    });
+
+    for (const identifiedTreatment of [
+      estratificada.name,
+      simplificada.name,
+      canonical.name,
+    ]) {
+      const result = resolveInformationalTreatmentTarget({
+        message: "Queria saber em relação das lentes de resina",
+        treatments: [estratificada, simplificada, canonical],
+        identifiedTreatment,
+      });
+
+      expect(result?.id).toBe(estratificada.id);
+    }
+  });
 });
 
 describe("resolvePipelineTreatmentMention", () => {
@@ -203,6 +289,169 @@ describe("resolvePipelineTreatmentMention", () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  it("reconhece variante específica que herda o pipeline canônico", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      aliases: ["lentes", "lentes de resina"],
+      pipelineSteps: [
+        { type: "content", label: "Comparação", blocks: [] },
+      ],
+    });
+    const premium = treatment("Lente em Resina Premium", {
+      id: "premium",
+      aliases: ["premium", "lente premium"],
+      pipelineSourceTreatmentId: canonical.id,
+    });
+
+    expect(
+      resolvePipelineTreatmentMention(
+        "Quero conhecer a lente premium",
+        [canonical, premium],
+      )?.id,
+    ).toBe(premium.id);
+  });
+});
+
+describe("especificidade de variantes", () => {
+  it("a técnica explícita vence o alias genérico independentemente da ordem", () => {
+    const common = treatment("Extensão de cílios — Técnicas Comuns", {
+      aliases: ["cílios", "extensão de cílios", "clássico"],
+    });
+    const international = treatment("Extensão de cílios — Técnicas Gringas", {
+      aliases: ["cílios", "extensão de cílios", "fox eyes", "técnica gringa"],
+    });
+
+    for (const ordered of [
+      [common, international],
+      [international, common],
+    ]) {
+      expect(
+        resolveDirectTreatmentMention("Quero fox eyes", ordered)?.id,
+      ).toBe(international.id);
+    }
+  });
+
+  it("usa o tratamento canônico como escopo de mídia da variante", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      pipelineSteps: [{
+        type: "content",
+        label: "Apresentação",
+        once: true,
+        blocks: [{ kind: "text", content: "Conteúdo" }],
+      }],
+    });
+    const estratificada = treatment("Lente em Resina Estratificada", {
+      id: "variant",
+      pipelineSourceTreatmentId: canonical.id,
+    });
+
+    expect(
+      resolveMediaScopeTreatmentId({
+        classifiedTreatment: estratificada,
+        treatments: [estratificada, canonical],
+      }),
+    ).toBe(canonical.id);
+  });
+
+  it("preço de fox eyes resolve a técnica gringa por evidência textual", () => {
+    const common = treatment("Extensão de cílios — Técnicas Comuns", {
+      id: "common",
+      aliases: ["cílios", "extensão de cílios"],
+    });
+    const international = treatment("Extensão de cílios — Técnicas Gringas", {
+      id: "international",
+      aliases: ["fox", "fox eyes", "técnica gringa", "cílios fox"],
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "Olá, quanto está a aplicação do cílios fox?",
+        treatments: [common, international],
+        identifiedTreatment: common.name,
+      })?.id,
+    ).toBe(international.id);
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "Qual o valor do fox?",
+        treatments: [common, international],
+        identifiedTreatment: common.name,
+      })?.id,
+    ).toBe(international.id);
+  });
+
+  it("preserva a variante ativa quando a pergunta de preço não menciona outro tratamento", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      aliases: ["lentes", "lentes de resina"],
+    });
+    const stratified = treatment("Lente em Resina Estratificada", {
+      id: "stratified",
+      aliases: ["estratificada", "técnica estratificada"],
+      pipelineSourceTreatmentId: canonical.id,
+    });
+    const restoration = treatment("Restauração Estética", {
+      id: "restoration",
+      aliases: ["restauração"],
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "E este valor é da técnica refinada?",
+        treatments: [canonical, stratified, restoration],
+        identifiedTreatment: restoration.name,
+        activePipelineTreatmentId: canonical.id,
+        activeSelectedTreatmentId: stratified.id,
+      })?.id,
+    ).toBe(stratified.id);
+  });
+
+  it("menção explícita vence a variante ativa em uma troca real de assunto", () => {
+    const lashes = treatment("Extensão de cílios", {
+      id: "lashes",
+      aliases: ["cílios"],
+    });
+    const botox = treatment("Botox", {
+      id: "botox",
+      aliases: ["botox"],
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "E quanto custa botox?",
+        treatments: [lashes, botox],
+        identifiedTreatment: lashes.name,
+        activePipelineTreatmentId: lashes.id,
+      })?.id,
+    ).toBe(botox.id);
+  });
+
+  it("preço de lentes estratificadas resolve a variante plural antes do pai", () => {
+    const canonical = treatment("Lentes em Resina Composta", {
+      id: "canonical",
+      aliases: ["lentes", "lentes de resina", "resina"],
+    });
+    const estratificada = treatment("Lentes de resina composta estratificada", {
+      id: "estratificada",
+      aliases: [
+        "estratificada",
+        "estratificadas",
+        "técnica estratificada",
+        "lentes de resina estratificadas",
+      ],
+      pipelineSourceTreatmentId: canonical.id,
+    });
+
+    expect(
+      resolvePriceTreatmentTarget({
+        message: "Tenho interesse em lentes de resina estratificadas na cor BL2",
+        treatments: [canonical, estratificada],
+        identifiedTreatment: canonical.name,
+      })?.id,
+    ).toBe(estratificada.id);
   });
 });
 

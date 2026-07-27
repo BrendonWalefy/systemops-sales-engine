@@ -1,6 +1,6 @@
 # Arquitetura Atual
 
-Este documento descreve a arquitetura viva do SystemOps Core em 2026-06-28.
+Este documento descreve a arquitetura viva do SystemOps Core em 2026-07-26.
 Histórico, prompts de implementação e planos antigos não devem ser usados como
 fonte de verdade.
 
@@ -12,8 +12,9 @@ Hoje o SystemOps é um **monólito modular em Next.js** com execução
 - entrada de mensagens já é **event-driven**;
 - processamento conversacional principal roda em **workers lógicos** via cron;
 - entrega de saída usa **outbox + sender worker**;
-- algumas automações de cron ainda fazem **envio direto** e não usam a mesma
-  outbox.
+- respostas e automações destinadas ao lead usam a mesma **outbox durável**;
+- notificações internas ao responsável ainda usam um caminho operacional
+  separado.
 
 Em uma frase: o webhook deixou de ser o lugar onde tudo acontece, mas a
 plataforma ainda não unificou todos os fluxos assíncronos sob o mesmo pipeline.
@@ -29,6 +30,11 @@ plataforma ainda não unificou todos os fluxos assíncronos sob o mesmo pipeline
 
 Playbook, tom de voz e mídia influenciam comunicação. Eles não podem alterar
 regras de agenda, reserva, disponibilidade, tenant ou segurança.
+
+Uma clínica pode ter no máximo um `playbook_versions.status = active`. A troca
+de versão é atômica e protegida no banco; a publicação também impede que
+comandos de workflow sejam plantados em `notes`, pois fluxo e mídia pertencem
+ao pipeline estruturado do tratamento.
 
 ## Fluxo principal de mensagem
 
@@ -59,8 +65,26 @@ WhatsApp (Z-API hoje, Meta como compatibilidade)
   -> Z-API envia texto, mídia ou áudio
 ```
 
+### Correlação e Decision Trace
+
+O fluxo principal propaga um `turnId` do `inboundEventId` até a outbox e o
+sender. O runtime agrega e persiste por 30 dias somente metadados sanitizados
+dos estágios; nunca corpo de mensagem, prompt, resposta, telefone, nome ou URL.
+`DECISION_TRACE_MODE=structured_log` troca a persistência por logs efêmeros e
+`DECISION_TRACE_MODE=off` desliga a captura.
+
+Os contratos, limites de privacidade e o estado incremental da implementação
+estão em
+[`docs/architecture/replay-and-decision-trace.md`](replay-and-decision-trace.md).
+O endpoint antigo de exportação bruta de conversas reais está desativado e não
+é parte da arquitetura suportada.
+
 O endpoint Meta Cloud API (`/api/whatsapp/webhook`) existe como compatibilidade,
-mas a produção atual usa Z-API como canal principal.
+mas a produção atual usa Z-API como canal principal. Mensagens de texto da Meta
+também são persistidas em `inbound_events` antes de entrar no mesmo worker. Todo
+POST da Meta é autenticado sobre o corpo bruto com `x-hub-signature-256` e o
+`metaAppSecret` criptografado da clínica; segredo ausente ou assinatura inválida
+falham fechado antes de qualquer persistência.
 
 ## O que já está assíncrono
 
@@ -92,6 +116,11 @@ O `ConversationOrchestrator` não envia mais diretamente a resposta principal do
 lead. Ele grava a intenção de envio em `outbound_messages` e enfileira
 `message.send`.
 
+Quando a resposta consome um passo de pipeline, o avanço é revisionado e
+registrado logo após a outbox durável, antes de liberar o claim da conversa. A
+coluna `conversation_states.supersedes_state_id` impede dois workers de consumir
+a mesma revisão; o sender mantém uma aplicação idempotente como reconciliação.
+
 `/api/cron/sender-worker` é responsável por:
 
 - respeitar ordem por conversa;
@@ -99,18 +128,30 @@ lead. Ele grava a intenção de envio em `outbound_messages` e enfileira
 - persistir `providerMessageId`;
 - aplicar retry sem recomputar a conversa inteira.
 
+## Modos de automação
+
+- `live`: a clínica está ativa, `autoReplyEnabled=true` e o motor pode decidir,
+  persistir estado e enfileirar respostas;
+- `observe`: `shadowModeEnabled=true`; o sistema registra a mensagem real e
+  notifica a equipe, mas encerra antes de classificação, mudança de funil,
+  agenda, follow-up ou resposta da IA;
+- `disabled`: não executa automação conversacional.
+
+O comportamento hipotético de uma clínica em observação é validado pelo replay
+em banco sandbox. Nesse ambiente, o fluxo completo de produção roda contra
+adapters de captura, sem WhatsApp, calendário externo ou storage real. Shadow
+online não é simulador e não deve ser usado como evidência de qualidade da IA.
+
 ## O que ainda é híbrido
 
-Nem toda automação usa o mesmo pipeline de outbox:
+Respostas da IA, envio manual pelo inbox, follow-ups, campanhas de recuperação,
+lembretes ao lead, pós-atendimento e confirmação de sinal passam por
+`outbound_messages` + `message.send`.
 
-- `appointment-reminder` envia direto via `sendVoiceOrText()`;
-- `follow-up-dispatcher` envia direto via `sendVoiceOrText()`;
-- `recovery-campaign` envia direto via `sendTextMessage()`.
-
-Esses fluxos já são multi-tenant e persistem mensagens no banco, mas ainda não
-passam por `outbound_messages` + `message.send`. Para a 2.0, isso é uma
-fronteira importante: o runtime conversacional principal já foi desacoplado; as
-automações auxiliares ainda não foram totalmente unificadas.
+Notificações internas para o WhatsApp do responsável (alerta de foto, pedido de
+revisão humana e resumo de agenda) ainda chamam o adapter do canal diretamente.
+Elas não são respostas ao lead e não devem ser forçadas a uma conversa falsa;
+o destino futuro é uma outbox operacional própria, com retry e idempotência.
 
 ## Camadas
 
@@ -139,6 +180,12 @@ Tabelas centrais para o runtime atual:
 - `appointments` e `calendar_blocks`: agenda interna;
 - `playbook_versions`: editorial ativo por clínica.
 
+Persistência e enqueue são idempotentes, mas não formam uma transação única.
+Por isso, os workers reconciliam registros `pending` com mais de um minuto que
+não tenham o job correspondente: `inbound_events` recria `message.process` e
+`outbound_messages` recria `message.send`. A chave de dedupe da fila torna a
+reparação segura mesmo se a requisição original ainda concluir em paralelo.
+
 ## Multi-tenancy
 
 Cada clínica possui sua própria configuração no banco:
@@ -151,6 +198,7 @@ Cada clínica possui sua própria configuração no banco:
 - tratamentos;
 - playbook;
 - parâmetros operacionais e limites;
+- política explícita de exceção fora do expediente;
 - nomenclatura de domínio (`specialty`, `segment`, `serviceNoun`).
 
 Resolução de tenant depende do contexto:
