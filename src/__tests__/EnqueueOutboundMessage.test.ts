@@ -2,6 +2,41 @@ import { describe, expect, it, vi } from "vitest";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 
 describe("enqueueOutboundMessage", () => {
+  it("prefere a criação atômica de outbox e job quando disponível", async () => {
+    const createOutboundMessageAndEnqueue = vi.fn().mockResolvedValue({
+      outboundMessageId: "outbound-atomic",
+      messageWasNew: true,
+      jobWasNew: true,
+    });
+    const createOutboundMessage = vi.fn();
+    const enqueueJob = vi.fn();
+
+    const result = await enqueueOutboundMessage(
+      {
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        channel: "whatsapp",
+        payload: { turnId: "turn-atomic" },
+        deliveryKind: "text",
+      },
+      {
+        outboundMessageStore: {
+          createOutboundMessageAndEnqueue,
+          createOutboundMessage,
+        } as never,
+        jobQueue: { enqueueJob } as never,
+      },
+    );
+
+    expect(createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.any(Object),
+      { turnId: "turn-atomic" },
+    );
+    expect(result.outboundMessageId).toBe("outbound-atomic");
+    expect(createOutboundMessage).not.toHaveBeenCalled();
+    expect(enqueueJob).not.toHaveBeenCalled();
+  });
+
   it("recria o job idempotente quando uma outbox já persistida é reencontrada", async () => {
     const createOutboundMessage = vi.fn().mockResolvedValue({
       message: { id: "outbound-1" },

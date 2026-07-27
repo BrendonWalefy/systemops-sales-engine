@@ -21,6 +21,35 @@ function payload(overrides: Partial<ZApiInboundPayload> = {}): ZApiInboundPayloa
 }
 
 describe("persistInboundEventAndEnqueue", () => {
+  it("prefere a persistência atômica quando o store durável a oferece", async () => {
+    const recordInboundEventAndEnqueue = vi.fn().mockResolvedValue({
+      inboundEventId: "event-atomic",
+      eventWasNew: true,
+      jobWasNew: true,
+    });
+    const recordInboundEvent = vi.fn();
+    const enqueueJob = vi.fn();
+
+    const result = await persistInboundEventAndEnqueue(
+      buildZApiInboundEvent({ clinicId: "clinic-1", payload: payload() }),
+      {
+        inboundEventStore: {
+          recordInboundEventAndEnqueue,
+          recordInboundEvent,
+        } as never,
+        jobQueue: { enqueueJob } as never,
+      },
+    );
+
+    expect(result).toEqual({
+      inboundEventId: "event-atomic",
+      eventWasNew: true,
+      jobWasNew: true,
+    });
+    expect(recordInboundEvent).not.toHaveBeenCalled();
+    expect(enqueueJob).not.toHaveBeenCalled();
+  });
+
   it("enfileira message.process para um inbound novo", async () => {
     const recordInboundEvent = vi.fn().mockResolvedValue({
       event: { id: "event-1" },
