@@ -557,7 +557,7 @@ type LastInboxMessage = { body: string; author: string; sentAt?: Date | null; si
 function cardBorderClass(row: ConvRow, lastMsg: LastInboxMessage, autoReplyEnabled: boolean): string {
   if (row.needsAttention) return "card-border-attention";
   if (!isSalesConversationCategory(row.conversationCategory)) return "card-border-default";
-  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastMsg.author });
+  const appointmentState = resolveAppointmentLifecycleState(row);
   if (appointmentState === "no_show") return "card-border-attention";
   if (appointmentState === "cancelled") return "card-border-paused";
   if (appointmentState === "scheduled" || appointmentState === "confirmed") return "card-border-scheduled";
@@ -598,7 +598,7 @@ function convStatusBadge(
       variant: row.pendingAction === "deposit_proof" ? "warm" : "hot",
     };
   }
-  const appointmentState = resolveAppointmentLifecycleState(row, { author: lastMsg.author });
+  const appointmentState = resolveAppointmentLifecycleState(row);
   if (row.needsAttention) return { label: "Requer humano", variant: "hot" };
   if (appointmentState === "confirmed") return { label: "Consulta confirmada", variant: "accent" };
   if (appointmentState === "scheduled") return { label: "Consulta marcada", variant: "accent" };
@@ -649,7 +649,7 @@ function InboxCard({
     lastMessageAt: row.lastMessageAt,
     lastReadAt: row.lastReadAt,
   });
-  const pipeStep = resolvePipelineIndex(row, { author: lastMsg.author });
+  const pipeStep = resolvePipelineIndex(row);
   const badge = convStatusBadge(row, lastMsg, autoReplyEnabled);
   const borderClass = cardBorderClass(row, lastMsg, autoReplyEnabled);
   const treatment =

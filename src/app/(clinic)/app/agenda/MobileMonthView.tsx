@@ -105,7 +105,6 @@ export function MobileMonthView({
   events,
   timezone = "America/Sao_Paulo",
   onEventClick,
-  onSlotClick: _onSlotClick,
   onNewAppointment,
 }: Props) {
   const today = useMemo(() => localTodayStr(), []);

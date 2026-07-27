@@ -110,6 +110,12 @@ para `ProcessMessageJobHandler`, que:
 - transcreve áudio quando necessário;
 - chama `ConversationOrchestrator`.
 
+Cada invocação reivindica até 10 entradas e as processa concorrentemente, uma
+por tenant/conversa, preservando o lease exclusivo por conversa. O limite pode
+ser reduzido ou elevado com `MESSAGE_PROCESS_BATCH_SIZE` (faixa segura 1–25)
+sem alterar regra de clínica. O gate automatizado mantém cobertura explícita de
+dez tenants distintos no mesmo lote.
+
 ### Outbox de saída
 
 O `ConversationOrchestrator` não envia mais diretamente a resposta principal do
@@ -127,6 +133,11 @@ a mesma revisão; o sender mantém uma aplicação idempotente como reconciliaç
 - entregar texto, mídia e áudio;
 - persistir `providerMessageId`;
 - aplicar retry sem recomputar a conversa inteira.
+
+O sender drena 20 saídas por invocação por padrão
+(`MESSAGE_SEND_BATCH_SIZE`, faixa 1–50). O message worker também tenta drenar a
+outbox recém-criada na mesma invocação, reduzindo o fluxo normal de dois ticks
+de cron para um; o sender separado permanece como rede de segurança.
 
 ## Modos de automação
 

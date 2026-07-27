@@ -80,11 +80,11 @@ horário imediatamente — e os padrões reais documentados em `XimendesConversa
 (compra para terceiro, comparação com concorrente, especificação técnica não cadastrada) nunca
 validaram esse fechamento mais agressivo. **Virou opt-in por clínica**:
 `organizations.offerSlotsAfterPriceEnabled` (migration 0071, default false, mesmo padrão do
-`depositEnabled`). Script gated `scripts/enable-vitalli-offer-slots-after-price.ts` liga só para a
-Vitalli — Ximendes, NC Beauty e demais mantêm o comportamento atual até validação própria.
+`depositEnabled`). O enable pontual foi aplicado somente na Vitalli; o script one-off foi
+removido após a aplicação. Ximendes, NC Beauty e demais mantêm o comportamento atual até validação própria.
 `npm run verify` verde (1363 testes) nas duas rodadas. **Sem teste de integração dedicado** —
-validar com tráfego shadow real da Vitalli antes de confiar 100%. **Rodar o script de enable SÓ
-depois que a migration 0071 subir em prod (merge → deploy Vercel).**
+validar com tráfego shadow real da Vitalli antes de confiar 100%. A migration 0071 e o enable já
+foram aplicados; este trecho permanece apenas como histórico da decisão.
 
 ---
 

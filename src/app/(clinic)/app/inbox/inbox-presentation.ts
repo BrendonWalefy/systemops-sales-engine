@@ -26,7 +26,6 @@ const RECOVERY_WAIT_HOURS = 2;
 
 export function resolveAppointmentLifecycleState(
   row: InboxPresentationRow,
-  lastMsg?: InboxLastMessage,
 ): AppointmentLifecycleState {
   const status = row.latestAppointmentStatus;
   if (
@@ -54,11 +53,8 @@ export function resolveAppointmentLifecycleState(
   return leadRepliedAfterOutcome ? "none" : status;
 }
 
-export function resolvePipelineIndex(
-  row: InboxPresentationRow,
-  lastMsg?: InboxLastMessage,
-): number {
-  const appointmentState = resolveAppointmentLifecycleState(row, lastMsg);
+export function resolvePipelineIndex(row: InboxPresentationRow): number {
+  const appointmentState = resolveAppointmentLifecycleState(row);
 
   if (
     appointmentState === "scheduled" ||
@@ -82,7 +78,7 @@ export function isRecoveryCandidate(
   row: InboxPresentationRow,
   lastMsg?: InboxLastMessage,
 ): boolean {
-  const appointmentState = resolveAppointmentLifecycleState(row, lastMsg);
+  const appointmentState = resolveAppointmentLifecycleState(row);
   if (row.leadStatus === "lost" || row.leadStatus === "won") return false;
   if (appointmentState === "cancelled" || appointmentState === "no_show") return true;
   if (row.leadStatus === "follow_up_due") return lastMsg?.author !== "lead";

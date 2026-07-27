@@ -30,9 +30,9 @@ describe("inbox presentation rules", () => {
       lastMessageAt: new Date("2026-06-20T12:00:00.000Z"),
     });
 
-    expect(resolveAppointmentLifecycleState(row, { author: "agent" })).toBe("no_show");
+    expect(resolveAppointmentLifecycleState(row)).toBe("no_show");
     expect(isRecoveryCandidate(row, { author: "agent" })).toBe(true);
-    expect(resolvePipelineIndex(row, { author: "agent" })).toBe(3);
+    expect(resolvePipelineIndex(row)).toBe(3);
   });
 
   it("remove o estado de cancelado quando o lead volta a falar depois do cancelamento", () => {
@@ -42,7 +42,7 @@ describe("inbox presentation rules", () => {
       lastMessageAt: new Date("2026-06-20T12:00:00.000Z"),
     });
 
-    expect(resolveAppointmentLifecycleState(row, { author: "lead" })).toBe("none");
+    expect(resolveAppointmentLifecycleState(row)).toBe("none");
     expect(isRecoveryCandidate(row, { author: "lead" })).toBe(false);
   });
 
@@ -63,6 +63,6 @@ describe("inbox presentation rules", () => {
       latestAppointmentUpdatedAt: new Date("2026-06-20T11:00:00.000Z"),
     });
 
-    expect(resolvePipelineIndex(row, { author: "agent" })).toBe(4);
+    expect(resolvePipelineIndex(row)).toBe(4);
   });
 });

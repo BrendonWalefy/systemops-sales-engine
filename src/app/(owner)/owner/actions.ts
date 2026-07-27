@@ -22,9 +22,11 @@ export type LoadDemoState = {
 };
 
 export async function loadDemoClinic(
-  _prev: LoadDemoState,
-  _formData: FormData,
+  previousState: LoadDemoState,
+  formData: FormData,
 ): Promise<LoadDemoState> {
+  void previousState;
+  void formData;
   if (!(await requireOwner())) {
     return { ok: false, message: "Apenas o owner pode carregar a organização demo." };
   }
