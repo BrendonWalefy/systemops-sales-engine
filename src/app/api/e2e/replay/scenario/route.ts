@@ -259,6 +259,9 @@ async function runReplayScenario(
         handler: sendHandler,
         workerId: `replay-send:${input.runId}:${input.mode}:${executionRuns.length}`,
         maxJobs: Math.max(20, injected.length * 20),
+        // Processing preserves the real clinic debounce and can take several
+        // seconds. Re-read the wall clock so jobs produced by that processing
+        // are claimable in this same execution group.
         now: resolveReplayDrainNow(virtualNow),
       });
       executionRuns.push({

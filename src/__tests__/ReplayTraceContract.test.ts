@@ -63,7 +63,7 @@ describe("ReplayTraceContract", () => {
   });
 
   it("avança o drain além dos relógios virtual e real", () => {
-    expect(resolveReplayDrainNow(2_000, 1_000).getTime()).toBe(3_000);
-    expect(resolveReplayDrainNow(1_000, 2_000).getTime()).toBe(3_000);
+    expect(resolveReplayDrainNow(2_000, 1_000).getTime()).toBe(12_000);
+    expect(resolveReplayDrainNow(1_000, 2_000).getTime()).toBe(12_000);
   });
 });

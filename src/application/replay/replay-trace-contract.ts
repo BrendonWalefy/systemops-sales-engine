@@ -50,5 +50,8 @@ export function resolveReplayDrainNow(
   virtualTurnTimestampMs: number,
   observedNowMs = Date.now(),
 ): Date {
-  return new Date(Math.max(virtualTurnTimestampMs, observedNowMs) + 1_000);
+  // Neon and the application process do not necessarily share an identical
+  // wall clock. A newly inserted job uses the database clock by default, so a
+  // one-second allowance can leave it pending until the following replay turn.
+  return new Date(Math.max(virtualTurnTimestampMs, observedNowMs) + 10_000);
 }
