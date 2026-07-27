@@ -320,6 +320,43 @@ async function auditClinic(slug: string) {
         autoFixSafe: false,
       });
     }
+
+    for (const [stepIndex, step] of (treatment.pipelineSteps ?? []).entries()) {
+      if (step.type !== "qa" || !step.instruction?.trim()) continue;
+      if (/R\s*\$/i.test(step.instruction)) {
+        pushFinding(findings, {
+          id: `CFG-PRICE-IN-PIPELINE-QA-${treatment.id}-${stepIndex}`,
+          severity: "P1",
+          category: "duplicate",
+          title: `QA de "${treatment.name}" contém preço em prosa livre`,
+          evidence: [{
+            source: "db",
+            reference: `treatments.pipeline_steps:${treatment.id}:${stepIndex}:instruction`,
+          }],
+          recommendation:
+            "Remover o preço da instrução; o runtime deve derivá-lo dos campos estruturados do tratamento/campanha.",
+          autoFixSafe: false,
+        });
+      }
+      if (
+        /sempre se apresentando|aqui é a .+assistente virtual|cumprimente o lead/i
+          .test(step.instruction)
+      ) {
+        pushFinding(findings, {
+          id: `CFG-PERSONA-IN-PIPELINE-QA-${treatment.id}-${stepIndex}`,
+          severity: "P1",
+          category: "ownership",
+          title: `QA de "${treatment.name}" redefine abertura ou persona`,
+          evidence: [{
+            source: "db",
+            reference: `treatments.pipeline_steps:${treatment.id}:${stepIndex}:instruction`,
+          }],
+          recommendation:
+            "Manter identidade e abertura no editorial ativo; o QA deve conter somente orientação específica da etapa.",
+          autoFixSafe: false,
+        });
+      }
+    }
   }
 
   for (const playbook of playbooks) {

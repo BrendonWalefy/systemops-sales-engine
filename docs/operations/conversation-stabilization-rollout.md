@@ -14,29 +14,30 @@ receber as etapas abaixo fora desta ordem.
 
 ## Migrações de configuração
 
+### Escopo desta promoção
+
+Nesta promoção, aplique configuração **somente para a Ximendes**. Vitalli está
+cancelada e NC Beauty ainda será configurada em uma rodada própria; portanto,
+não execute planos de configuração dessas clínicas em produção.
+
 Execute primeiro sem `--apply`, confira os digests e só depois aplique no banco
 isolado:
 
 ```bash
 tsx scripts/migrate-treatment-pipeline-families.ts --clinic=ximendes --entry=legacy --presentation=preserve
-tsx scripts/migrate-treatment-pipeline-families.ts --clinic=vitalli --entry=legacy --presentation=preserve
-tsx scripts/migrate-treatment-pipeline-families.ts --clinic=vitalli-removal --entry=legacy --presentation=preserve
-tsx scripts/migrate-treatment-pipeline-families.ts --clinic=nc-beauty --entry=legacy --presentation=preserve
 tsx scripts/migrate-ximendes-playbook-pipeline-ownership.ts
-tsx scripts/migrate-active-playbook-orphan-media.ts --slug=clinica-vitalli
 ```
 
 As mesmas chamadas com `--apply` consolidam os pipelines, preservam byte a byte
-o bloco de apresentação da Ximendes (`vídeo`, `vídeo`, `preços`), removem o
-trigger/preço redundante do playbook e retiram somente IDs de mídia inexistentes.
+o bloco de apresentação da Ximendes (`vídeo`, `vídeo`, `preços`) e removem
+trigger, preço e apresentação/persona redundantes das instruções secundárias.
 
-Depois, rode o auditor para as quatro configurações. Vitalli e Ximendes não
-podem manter achados ativos P0/P1. NC Beauty permanece em `test`/observação e
-Maycon em `prospect`; esse estado é uma trava deliberada, não um go-live.
+Depois, rode o auditor para a Ximendes. Ela não pode manter achados ativos
+P0/P1/P2. As demais clínicas permanecem inalteradas e fora deste go-live.
 
 ## Gate de replay
 
-Para cada tenant, gere novo fingerprint, reemita o dataset preservando o digest
+Para a Ximendes, gere novo fingerprint, reemita o dataset preservando o digest
 das conversas e assine-o novamente. Rode:
 
 - corpus distribuído completo em `closed_loop`;

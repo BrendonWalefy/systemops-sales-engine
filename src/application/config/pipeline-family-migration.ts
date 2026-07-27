@@ -147,3 +147,37 @@ export function removeLegacyXimendesCommercialPriceFacts(
     .filter(Boolean)
     .join("\n\n");
 }
+
+/**
+ * Remove do QA de lentes somente responsabilidades que já possuem outro dono:
+ * abertura/persona vêm do editorial ativo e preços vêm dos campos estruturados.
+ * Orientações próprias do passo (tom, fotos e tonalidades) são preservadas.
+ */
+export function removeLegacyXimendesQaOwnershipDuplication(
+  pipelineSteps: PipelineStep[] | null,
+): PipelineStep[] | null {
+  if (!pipelineSteps?.length) return pipelineSteps;
+
+  let changed = false;
+  const migrated = pipelineSteps.map((step): PipelineStep => {
+    if (step.type !== "qa" || !step.instruction?.trim()) return step;
+
+    const paragraphs = step.instruction
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean);
+    const kept = paragraphs.filter((paragraph) =>
+      !/^Cumprimente o lead\b/i.test(paragraph) &&
+      !/^Exemplo:\s*$/i.test(paragraph) &&
+      !/Aqui é a Marina, assistente virtual da Ximendes Odontologia/i.test(paragraph) &&
+      !/^Ao explicar a avaliação, utilize:/i.test(paragraph) &&
+      !/^A avaliação clínica inicial tem o valor de R\$/i.test(paragraph)
+    );
+    const instruction = kept.join("\n\n");
+    if (instruction === step.instruction.trim()) return step;
+    changed = true;
+    return { ...step, instruction: instruction || undefined };
+  });
+
+  return changed ? migrated : pipelineSteps;
+}

@@ -25,6 +25,7 @@ import { db } from "../src/infrastructure/db/client";
 import { organizations, treatments } from "../src/infrastructure/db/schema";
 import {
   pipelineDigest,
+  removeLegacyXimendesQaOwnershipDuplication,
   transformFirstContentPresentation,
 } from "../src/application/config/pipeline-family-migration";
 import type {
@@ -259,21 +260,26 @@ async function migratePlan(plan: FamilyPlan) {
       : rollback
         ? plan.legacyPresentation ?? "preserve"
         : "text_then_media";
-  const targetCanonicalSteps = transformFirstContentPresentation(
+  const presentationSteps = transformFirstContentPresentation(
     canonicalSteps,
     targetPresentation,
     plan.introTextWhenMissing,
   );
   const sourcePipelineDigest = pipelineDigest(canonicalSteps);
-  const targetPipelineDigest = pipelineDigest(targetCanonicalSteps);
+  const presentationPipelineDigest = pipelineDigest(presentationSteps);
   if (
     targetPresentation === "preserve" &&
-    sourcePipelineDigest !== targetPipelineDigest
+    sourcePipelineDigest !== presentationPipelineDigest
   ) {
     throw new Error(
       `[${plan.key}] modo preserve alterou o pipeline; abortando.`,
     );
   }
+  const targetCanonicalSteps =
+    plan.key === "ximendes" && !rollback
+      ? removeLegacyXimendesQaOwnershipDuplication(presentationSteps)
+      : presentationSteps;
+  const targetPipelineDigest = pipelineDigest(targetCanonicalSteps);
 
   const changes = {
     clinic: clinic.name,
@@ -285,6 +291,8 @@ async function migratePlan(plan: FamilyPlan) {
     sourcePipelineDigest,
     targetPipelineDigest,
     pipelineContentPreserved: sourcePipelineDigest === targetPipelineDigest,
+    qaOwnershipCleanup:
+      presentationPipelineDigest !== targetPipelineDigest,
     entryBehavior: rollback ? null : entryBehavior,
     genericAliases: plan.genericAliases,
   };

@@ -3,6 +3,7 @@ import {
   pipelineDigest,
   removeLegacyXimendesPipelineInstructions,
   removeLegacyXimendesCommercialPriceFacts,
+  removeLegacyXimendesQaOwnershipDuplication,
   transformFirstContentPresentation,
 } from "@/application/config/pipeline-family-migration";
 import type { PipelineStep } from "@/domain/entities/treatment";
@@ -123,5 +124,43 @@ describe("removeLegacyXimendesCommercialPriceFacts", () => {
   it("não altera uma política que já está sem fatos duplicados", () => {
     const policy = "Parcelamento em até 12 vezes.";
     expect(removeLegacyXimendesCommercialPriceFacts(policy)).toBe(policy);
+  });
+});
+
+describe("removeLegacyXimendesQaOwnershipDuplication", () => {
+  it("remove apresentação e preço, preservando orientação específica do QA", () => {
+    const source: PipelineStep[] = [{
+      type: "qa",
+      label: "Dúvidas e objeções",
+      instruction: [
+        "Cumprimente o lead de forma calorosa e personalizada, sempre se apresentando como Marina, assistente virtual da Ximendes Odontologia.",
+        "Use mensagens curtas, com quebras de linha e tom receptivo.",
+        "Exemplo:",
+        "Oi, João! Tudo bem? 😊\nAqui é a Marina, assistente virtual da Ximendes Odontologia.",
+        "Responda dúvidas sobre valores e tratamentos de forma direta, mas acolhedora.",
+        "Ao explicar a avaliação, utilize:",
+        "A avaliação clínica inicial tem o valor de R$ 100. Caso realize o tratamento, o valor é abatido.",
+        "Quando o lead demonstrar interesse, avance para a solicitação das fotos.",
+        "Se o lead perguntar sobre cores ou tonalidades, explique as opções disponíveis.",
+      ].join("\n\n"),
+    }];
+
+    const migrated = removeLegacyXimendesQaOwnershipDuplication(source);
+    const instruction = (migrated?.[0] as Extract<PipelineStep, { type: "qa" }>).instruction;
+
+    expect(instruction).not.toContain("Marina");
+    expect(instruction).not.toContain("R$ 100");
+    expect(instruction).toContain("mensagens curtas");
+    expect(instruction).toContain("solicitação das fotos");
+    expect(instruction).toContain("cores ou tonalidades");
+  });
+
+  it("é idempotente quando o QA já respeita os donos canônicos", () => {
+    const source: PipelineStep[] = [{
+      type: "qa",
+      label: "Dúvidas",
+      instruction: "Responda dúvidas com clareza e avance para fotos quando houver interesse.",
+    }];
+    expect(removeLegacyXimendesQaOwnershipDuplication(source)).toBe(source);
   });
 });
