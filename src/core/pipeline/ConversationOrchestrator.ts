@@ -3634,9 +3634,27 @@ export function contextualizeReplyWhileAwaitingDeposit(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type ConversationAuxiliaryExternalEffect =
+  | { kind: "lead_photo_lookup" }
+  | {
+      kind: "media_rehost";
+      mediaType: "image" | "video" | "document" | "audio";
+    }
+  | { kind: "operator_push" }
+  | { kind: "operator_whatsapp_text" }
+  | {
+      kind: "operator_whatsapp_media";
+      mediaType: Parameters<typeof sendMediaMessage>[2];
+    }
+  | { kind: "operator_whatsapp_buttons" };
+
 export class ConversationOrchestrator {
   private readonly decisionTraceSink: DecisionTraceSink;
   private readonly calendarGatewayResolver: typeof resolveCalendarGateway;
+  private readonly suppressAuxiliaryExternalEffects: boolean;
+  private readonly onAuxiliaryExternalEffect?: (
+    effect: ConversationAuxiliaryExternalEffect,
+  ) => void;
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
@@ -3656,10 +3674,84 @@ export class ConversationOrchestrator {
   constructor(deps: {
     decisionTraceSink?: DecisionTraceSink;
     calendarGatewayResolver?: typeof resolveCalendarGateway;
+    suppressAuxiliaryExternalEffects?: boolean;
+    onAuxiliaryExternalEffect?: (
+      effect: ConversationAuxiliaryExternalEffect,
+    ) => void;
   } = {}) {
     this.decisionTraceSink = deps.decisionTraceSink ?? noopDecisionTraceSink;
     this.calendarGatewayResolver =
       deps.calendarGatewayResolver ?? resolveCalendarGateway;
+    this.suppressAuxiliaryExternalEffects =
+      deps.suppressAuxiliaryExternalEffects ?? false;
+    this.onAuxiliaryExternalEffect = deps.onAuxiliaryExternalEffect;
+  }
+
+  private captureAuxiliaryExternalEffect(
+    effect: ConversationAuxiliaryExternalEffect,
+  ): boolean {
+    if (!this.suppressAuxiliaryExternalEffects) return false;
+    this.onAuxiliaryExternalEffect?.(effect);
+    return true;
+  }
+
+  private async rehostInboundMedia(
+    messageId: string,
+    originalUrl: string,
+    mediaType: "image" | "video" | "document" | "audio",
+  ): Promise<void> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "media_rehost",
+      mediaType,
+    })) return;
+    await rehostLeadMedia(messageId, originalUrl, mediaType);
+  }
+
+  private async persistLeadPhoto(
+    leadId: string,
+    phone: string,
+    credentials: Parameters<typeof fetchAndPersistLeadPhoto>[2],
+  ): Promise<void> {
+    if (this.captureAuxiliaryExternalEffect({ kind: "lead_photo_lookup" })) return;
+    await fetchAndPersistLeadPhoto(leadId, phone, credentials);
+  }
+
+  private async notifyOperators(
+    clinicId: string,
+    payload: Parameters<NotifyClinicOperators["execute"]>[1],
+  ): Promise<void> {
+    if (this.captureAuxiliaryExternalEffect({ kind: "operator_push" })) return;
+    await this.notifier.execute(clinicId, payload);
+  }
+
+  private async sendAuxiliaryTextMessage(
+    to: string,
+    text: string,
+    channelConfig: ClinicChannelConfig,
+  ): Promise<string | null> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "operator_whatsapp_text",
+    })) return "replay-auxiliary-capture";
+    return sendTextMessage(to, text, channelConfig);
+  }
+
+  private async sendAuxiliaryMediaMessage(
+    ...args: Parameters<typeof sendMediaMessage>
+  ): Promise<string | null> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "operator_whatsapp_media",
+      mediaType: args[2],
+    })) return "replay-auxiliary-capture";
+    return sendMediaMessage(...args);
+  }
+
+  private async sendAuxiliaryButtonListMessage(
+    ...args: Parameters<typeof sendButtonListMessage>
+  ): Promise<string | null> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "operator_whatsapp_buttons",
+    })) return "replay-auxiliary-capture";
+    return sendButtonListMessage(...args);
   }
 
   // Carrega mensagem/conversa/lead existentes para o modo replay do handle()
@@ -3840,7 +3932,7 @@ export class ConversationOrchestrator {
 
       if (contentDupe) {
         console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
-        return { replied: false };
+        return { replied: false, reason: "duplicate_content" };
       }
     }
 
@@ -3853,7 +3945,7 @@ export class ConversationOrchestrator {
 
     if (clinicRows.length === 0) {
       console.error(`[Orchestrator] Clinic not found: ${clinicId}`);
-      return { replied: false };
+      return { replied: false, reason: "clinic_not_found" };
     }
 
     const clinic = buildOrganization(clinicRows[0]);
@@ -3950,7 +4042,7 @@ export class ConversationOrchestrator {
         console.warn(
           `[Orchestrator] Replay abortado — mensagem ${params.replayOfMessageDbId} não encontrada/não é de lead (clinic=${clinicId})`,
         );
-        return { replied: false };
+        return { replied: false, reason: "replay_context_missing" };
       }
       ({ lead, conversation, incomingMessage } = replayContext);
       messageText = incomingMessage.body;
@@ -3993,7 +4085,7 @@ export class ConversationOrchestrator {
     // Z-API não envia senderPhoto no webhook — buscamos sob demanda via /profile-picture
     // e re-hospedamos no Vercel Blob para evitar expiração de 48h das URLs do WhatsApp.
     if (!lead.profilePicUrl && lead.phone && channelConfig.zapi) {
-      void fetchAndPersistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
+      void this.persistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
     }
 
     // ── 3.1b. Rehost de áudio (fire-and-forget) ──
@@ -4001,7 +4093,7 @@ export class ConversationOrchestrator {
     // arquivo original no Blob em paralelo, para o player do Inbox não quebrar
     // quando a URL da Z-API expirar.
     if (params.mediaType === "audio" && params.mediaUrl) {
-      rehostLeadMedia(incomingMessage.id, params.mediaUrl, "audio")
+      this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, "audio")
         .catch(() => { /* já logado dentro da função */ });
     }
 
@@ -4015,7 +4107,7 @@ export class ConversationOrchestrator {
       const acquired = await this.waitForConversationClaim(conversation.id);
       if (!acquired) {
         console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
-        return { replied: false };
+        return { replied: false, reason: "conversation_claim_timeout" };
       }
     }
 
@@ -4033,7 +4125,7 @@ export class ConversationOrchestrator {
           `[Orchestrator] Batching/Debounce: Mensagem mais recente detectada para conv=${conversation.id}. Abortando msg=${incomingMessage.id}`
         );
         await this.releaseConversationClaim(conversation.id);
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
 
@@ -4044,11 +4136,10 @@ export class ConversationOrchestrator {
         params.mediaUrl &&
         (params.mediaType === "image" || params.mediaType === "video" || params.mediaType === "document")
       ) {
-        rehostLeadMedia(incomingMessage.id, params.mediaUrl, params.mediaType)
+        this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, params.mediaType)
           .catch(() => { /* já logado dentro da função */ });
       }
-      await this.notifier
-        .execute(clinicId, {
+      await this.notifyOperators(clinicId, {
           title: lead.name ?? phone,
           body: params.mediaType
             ? `Nova mensagem com ${params.mediaType}`
@@ -4072,8 +4163,7 @@ export class ConversationOrchestrator {
       const preview = params.mediaType
         ? `Nova mensagem ${params.mediaType === "image" ? "com imagem" : `com ${params.mediaType}`}`
         : messageText.slice(0, 100);
-      await this.notifier
-        .execute(clinicId, {
+      await this.notifyOperators(clinicId, {
           title: displayName,
           body: preview,
           url: `/app/inbox/${conversation.id}`,
@@ -4100,7 +4190,7 @@ export class ConversationOrchestrator {
         const depositState = await this.stateMachine.getDepositState(conversation.id);
         if (depositState?.state === "awaiting_deposit_proof") {
           if (params.mediaUrl) {
-            rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType).catch(() => {});
+            this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, inboundMediaType).catch(() => {});
           }
           const proofReviewCode = await nextAvailableDepositProofReviewCode(clinicId);
           const receptionistPhone = clinic.receptionistPhone;
@@ -4117,7 +4207,7 @@ export class ConversationOrchestrator {
               // interativa falhar, reenvia como texto puro — o mesmo conteúdo já
               // traz o código e as opções, então a decisão continua possível.
               try {
-                await sendButtonListMessage(
+                await this.sendAuxiliaryButtonListMessage(
                   receptionistPhone,
                   proofReviewMessage,
                   buildDepositProofButtons(proofReviewCode),
@@ -4125,12 +4215,12 @@ export class ConversationOrchestrator {
                 );
               } catch (err) {
                 console.warn("[DepositReview] botões falharam; caindo para texto:", err);
-                await sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig)
+                await this.sendAuxiliaryTextMessage(receptionistPhone, proofReviewMessage, channelConfig)
                   .catch((textErr) => console.warn("[DepositReview] texto de validação falhou:", textErr));
               }
 
               if (params.mediaUrl) {
-                await sendMediaMessage(
+                await this.sendAuxiliaryMediaMessage(
                   receptionistPhone,
                   params.mediaUrl,
                   inboundMediaType,
@@ -4145,7 +4235,7 @@ export class ConversationOrchestrator {
               }
             })();
           }
-          await this.notifier.execute(clinicId, {
+          await this.notifyOperators(clinicId, {
             title: lead.name ?? phone,
             body: "Enviou o comprovante do sinal — validar e confirmar",
             url: `/app/inbox/${conversation.id}`,
@@ -4250,7 +4340,7 @@ export class ConversationOrchestrator {
 
       // Rehospeda de forma assíncrona: Z-API URLs expiram em horas
       if (params.mediaUrl) {
-        rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType)
+        this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, inboundMediaType)
           .catch(() => { /* já logado dentro da função */ });
       }
 
@@ -4315,7 +4405,7 @@ export class ConversationOrchestrator {
           // interativa falhar, o mesmo texto vai puro — ele já carrega Axx e as
           // opções 1..4, então a decisão continua possível.
           try {
-            await sendButtonListMessage(
+            await this.sendAuxiliaryButtonListMessage(
               receptionistPhone,
               contextMsg,
               buildHumanReviewButtons(humanReviewContext.reviewCode),
@@ -4324,7 +4414,7 @@ export class ConversationOrchestrator {
           } catch (err) {
             console.warn("[HumanReview] botões falharam; caindo para texto:", err);
             try {
-              await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+              await this.sendAuxiliaryTextMessage(receptionistPhone, contextMsg, channelConfig);
               operatorNotificationIssue = "Botões de avaliação falharam; decisão textual Axx continua disponível";
             } catch (textErr) {
               console.warn("[HumanReview] contexto textual falhou:", textErr);
@@ -4333,7 +4423,7 @@ export class ConversationOrchestrator {
           }
         } else {
           try {
-            await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+            await this.sendAuxiliaryTextMessage(receptionistPhone, contextMsg, channelConfig);
           } catch (err) {
             console.warn("[MediaForward] contexto falhou:", err);
             operatorNotificationIssue = "Falha ao avisar o doutor sobre mídia recebida";
@@ -4341,7 +4431,7 @@ export class ConversationOrchestrator {
         }
         if (params.mediaUrl) {
           try {
-            await sendMediaMessage(
+            await this.sendAuxiliaryMediaMessage(
               receptionistPhone,
               params.mediaUrl,
               inboundMediaType,
@@ -4363,7 +4453,7 @@ export class ConversationOrchestrator {
       }
 
       // Notifica operadores via push
-      await this.notifier.execute(clinicId, {
+      await this.notifyOperators(clinicId, {
         title: lead.name ?? phone,
         body: `Enviou ${inboundMediaType === "image" ? "uma foto" : "um " + inboundMediaType} para avaliação`,
         url: `/app/inbox/${conversation.id}`,
@@ -4384,11 +4474,14 @@ export class ConversationOrchestrator {
         }).where(eq(conversationsTable.id, conversation.id));
 
         if (!replyEnabled || conversation.aiPaused) {
-          return { replied: false };
+          return {
+            replied: false,
+            reason: !replyEnabled ? "automation_reply_disabled" : "ai_paused",
+          };
         }
 
         if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
-          return { replied: false };
+          return { replied: false, reason: "superseded_by_newer_message" };
         }
 
         const pendingReviewText = shouldSendShortReviewAck(
@@ -4437,7 +4530,10 @@ export class ConversationOrchestrator {
 
       // Se IA está pausada ou auto-reply desligado, o doutor já está no controle — sem resposta automática
       if (!replyEnabled || conversation.aiPaused) {
-        return { replied: false };
+        return {
+          replied: false,
+          reason: !replyEnabled ? "automation_reply_disabled" : "ai_paused",
+        };
       }
 
       // Pipeline photo intercept: foto ou vídeo enviado enquanto pipeline aguarda step "photo"
@@ -4463,7 +4559,7 @@ export class ConversationOrchestrator {
               { skipOptionalPhoto: currentStep?.type === "qa" },
             );
             if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
-              return { replied: false };
+              return { replied: false, reason: "superseded_by_newer_message" };
             }
             const photoHistory = await this.conversationRepo.listMessages(conversation.id);
             const photoComposed = await this.responseComposer.compose({
@@ -4573,7 +4669,7 @@ export class ConversationOrchestrator {
       // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
       // suprimida quando outra mensagem do lead chegou na janela de burst.
       if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
 
       const mediaAgentId = randomUUID();
@@ -4619,8 +4715,7 @@ export class ConversationOrchestrator {
 
     if (!replyEnabled) {
       const leadDisplayName = lead.name ?? channelAddress;
-      await this.notifier
-        .execute(clinicId, {
+      await this.notifyOperators(clinicId, {
           title: leadDisplayName,
           body: messageText.slice(0, 100),
           url: `/app/inbox/${conversation.id}`,
@@ -4644,7 +4739,7 @@ export class ConversationOrchestrator {
           ` — msg mais recente: ${latest.id} (body="${latest.body?.slice(0, 60)}")` +
           ` conv=${conversation.id} lead=${lead.id}`,
         );
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
       console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} é a mais recente — prosseguindo (conv=${conversation.id})`);
     }
@@ -4679,7 +4774,7 @@ export class ConversationOrchestrator {
         .where(eq(conversationsTable.id, conversation.id));
 
       if (clinic.receptionistPhone && leadContext) {
-        await sendTextMessage(
+        await this.sendAuxiliaryTextMessage(
           clinic.receptionistPhone,
           buildHumanReviewContextUpdateMessage({
             reviewCode: pendingHumanReview.reviewCode,
@@ -4690,7 +4785,7 @@ export class ConversationOrchestrator {
         ).catch((err) => console.warn("[HumanReview] atualização de contexto falhou:", err));
       }
 
-      await this.notifier.execute(clinicId, {
+      await this.notifyOperators(clinicId, {
         title: lead.name ?? phone,
         body: `Nova informação para a avaliação A${pendingHumanReview.reviewCode}`,
         url: `/app/inbox/${conversation.id}`,
@@ -4776,8 +4871,7 @@ export class ConversationOrchestrator {
         console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
         // Notifica operador que lead respondeu enquanto atendimento estava em pausa manual
         const displayName = lead.name ?? phone;
-        await this.notifier
-          .execute(clinicId, {
+        await this.notifyOperators(clinicId, {
             title: displayName,
             body: messageText.slice(0, 100),
             url: `/app/inbox/${conversation.id}`,
@@ -4803,7 +4897,7 @@ export class ConversationOrchestrator {
     const msgCount = Number(rateRows[0]?.total ?? 0);
     if (msgCount >= clinic.rateLimitPerHour) {
       console.warn(`[Orchestrator] Rate limit: ${phone} atingiu ${msgCount} msgs/h na conversa ${conversation.id}`);
-      return { replied: false };
+      return { replied: false, reason: "inbound_rate_limited" };
     }
 
     // ── 7. Carrega histórico de mensagens ──
@@ -5082,7 +5176,7 @@ export class ConversationOrchestrator {
       })
     ) {
       console.log(`[Orchestrator] Mensagem rápida de baixa informação para ${phone} — resposta suprimida`);
-      return { replied: false };
+      return { replied: false, reason: "rapid_low_information_throttled" };
     }
 
     // Comando de reset (testes): zera estado e reinicia conversa com saudação completa
@@ -5276,7 +5370,7 @@ export class ConversationOrchestrator {
         console.log(
           `[Orchestrator] Rajada pós-classificação: msg ${incomingMessage.id} superada por ${latestAfterClassify.id} — descartando resposta (conv=${conversation.id})`,
         );
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
 
@@ -5289,7 +5383,9 @@ export class ConversationOrchestrator {
     // então esta confirmação sai normalmente.
     if (intent === "stop_contact") {
       const decision = stopContactDecision;
-      if (!decision) return { replied: false };
+      if (!decision) {
+        return { replied: false, reason: "stop_contact_decision_missing" };
+      }
       const optOutNow = decision.revokedAt;
       await db
         .update(leadsTable)
@@ -5962,7 +6058,10 @@ export class ConversationOrchestrator {
         Date.now() - lastAgentMessage.sentAt.getTime() < 2 * 60 * 1000
       ) {
         // Claim liberado pelo finally do processamento principal.
-        return { replied: false };
+        return {
+          replied: false,
+          reason: "duplicate_deterministic_reply_suppressed",
+        };
       }
       replyText = businessHoursAnswer;
       forceTextOnlyReply = true;
@@ -8052,7 +8151,7 @@ export class ConversationOrchestrator {
           `[Orchestrator] Rajada pós-composição: abertura de ${incomingMessage.id} descartada — ` +
           `lead falou de novo (${latestBeforeSend.id}); o turno mais recente responde (conv=${conversation.id})`,
         );
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
 
@@ -8121,8 +8220,7 @@ export class ConversationOrchestrator {
 
     // ── 9.4 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;
-    await this.notifier
-      .execute(clinicId, {
+    await this.notifyOperators(clinicId, {
         title: leadDisplayName,
         body: messageText.slice(0, 100),
         url: `/app/inbox/${conversation.id}`,
@@ -8177,7 +8275,7 @@ export class ConversationOrchestrator {
       } catch (handoffErr) {
         console.error("[Orchestrator] Falha ao registrar handoff de erro:", handoffErr);
       }
-      return { replied: false };
+      return { replied: false, reason: "technical_error_handoff" };
     }
 
     } finally {
@@ -8774,7 +8872,7 @@ export class ConversationOrchestrator {
     const receptPhone = clinic.receptionistPhone;
     if (receptPhone) {
       try {
-        await sendTextMessage(
+        await this.sendAuxiliaryTextMessage(
           receptPhone,
           `⚠️ *${displayName} precisa de você*\n\n${reason}\n\nAcesse o Inbox para responder.`,
           channelConfig,
@@ -8785,8 +8883,7 @@ export class ConversationOrchestrator {
     }
 
     // Push notification para todos os operadores com app instalado
-    await this.notifier
-      .execute(clinic.id, {
+    await this.notifyOperators(clinic.id, {
         title: `${displayName} precisa de você`,
         body: reason,
         url: "/app/inbox",

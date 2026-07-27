@@ -191,8 +191,9 @@ Implementado:
 - exportador read-only com allowlist, pseudonimização, sanitização e saída fora
   de Git em estado `needs_review`.
 - geração local de chaves Ed25519 e aprovação humana assinada, sem sobrescrita.
-- captura injetável de WhatsApp, TTS, storage e escritas de calendário, mantendo
-  sender, persistência multiparte, follow-ups e avanço de pipeline reais;
+- captura injetável de WhatsApp, TTS, storage, notificações de operador,
+  consulta de foto e escritas de calendário, mantendo sender, persistência
+  multiparte, follow-ups e avanço de pipeline reais;
 - resolvedor de calendário injetável no orquestrador;
 - trace de estado carregado, classificação, intenção final e estado antes/depois
   da entrega.
@@ -227,8 +228,9 @@ O runner força a política de automação para `live` somente dentro desse sand
 inclusive quando o snapshot da clínica está em shadow/pausado. Isso testa o
 comportamento que seria ativado sem alterar a configuração copiada. A entrega
 continua atravessando o sender real, mas a boundary marcada como captura sandbox
-substitui os provedores e registra os efeitos. Essa exceção não existe no runtime
-online.
+substitui os provedores e registra os efeitos. O orquestrador também captura as
+fronteiras auxiliares (rehost, foto do lead, push e WhatsApp do operador), sem
+acessar rede ou storage. Essa exceção não existe no runtime online.
 
 No runtime online, shadow é estritamente `observation-only`: registra inbound e
 encerra antes de qualquer decisão ou efeito da IA. Áudios são transcritos para

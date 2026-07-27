@@ -22,7 +22,10 @@ import {
   resolveReplayDrainNow,
 } from "@/application/replay/replay-trace-contract";
 import { assertReplaySandboxEnvironment } from "@/application/replay/replay-sandbox-policy";
-import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
+import {
+  ConversationOrchestrator,
+  type ConversationAuxiliaryExternalEffect,
+} from "@/core/pipeline/ConversationOrchestrator";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import {
   resolveCalendarGateway,
@@ -126,6 +129,9 @@ async function runReplayScenario(
   const decisionTrace = new InMemoryDecisionTraceSink();
   const executionStartedAt = new Date();
   const outboundCapture = new ReplayOutboundCapture();
+  const auxiliaryEffects: Array<
+    ConversationAuxiliaryExternalEffect & { sequence: number }
+  > = [];
   const calendarCaptures: ReplayCalendarCapture[] = [];
   const jobQueue = new DrizzleJobQueue();
   const inboundEventStore = new DrizzleInboundEventStore();
@@ -174,6 +180,13 @@ async function runReplayScenario(
       conversationHandler: new ConversationOrchestrator({
         decisionTraceSink: decisionTrace,
         calendarGatewayResolver,
+        suppressAuxiliaryExternalEffects: true,
+        onAuxiliaryExternalEffect: (effect) => {
+          auxiliaryEffects.push({
+            sequence: auxiliaryEffects.length + 1,
+            ...effect,
+          });
+        },
       }),
       transcribeAudio: async (audioUrl) => {
         const audioTurn = leadTurns.find(
@@ -347,6 +360,7 @@ async function runReplayScenario(
       effects: {
         outbound: outboundCapture.effects,
         calendar: calendarCaptures.flatMap((capture) => capture.effects),
+        auxiliary: auxiliaryEffects,
       },
       executionRuns,
       checks,
