@@ -144,6 +144,7 @@ export default async function BlueprintPage({ params }: { params: Params }) {
       zapiToken: organizations.zapiToken,
       metaPhoneNumberId: organizations.metaPhoneNumberId,
       metaAccessToken: organizations.metaAccessToken,
+      metaAppSecret: organizations.metaAppSecret,
     })
     .from(organizations)
     .where(eq(organizations.id, clinicId))

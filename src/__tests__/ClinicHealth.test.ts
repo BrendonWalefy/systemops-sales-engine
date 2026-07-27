@@ -105,6 +105,7 @@ describe("clinic health", () => {
           channelProvider: "meta_cloud_api",
           metaPhoneNumberId: "123",
           metaAccessToken: "token",
+          metaAppSecret: "app-secret",
           hasActivePlaybook: true,
           latestMetricAt: new Date("2026-06-12T00:00:00.000Z"),
         },

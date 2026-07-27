@@ -81,7 +81,10 @@ O endpoint antigo de exportação bruta de conversas reais está desativado e n�
 
 O endpoint Meta Cloud API (`/api/whatsapp/webhook`) existe como compatibilidade,
 mas a produção atual usa Z-API como canal principal. Mensagens de texto da Meta
-também são persistidas em `inbound_events` antes de entrar no mesmo worker.
+também são persistidas em `inbound_events` antes de entrar no mesmo worker. Todo
+POST da Meta é autenticado sobre o corpo bruto com `x-hub-signature-256` e o
+`metaAppSecret` criptografado da clínica; segredo ausente ou assinatura inválida
+falham fechado antes de qualquer persistência.
 
 ## O que já está assíncrono
 

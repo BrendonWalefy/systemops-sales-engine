@@ -99,6 +99,7 @@ export async function onboardClinic(
               phoneNumberId:
                 (formData.get("metaPhoneNumberId") as string) || "",
               accessToken: (formData.get("metaAccessToken") as string) || "",
+              appSecret: (formData.get("metaAppSecret") as string) || "",
             }
           : undefined,
     },
@@ -177,6 +178,7 @@ export async function onboardClinic(
       zapiClientToken: encryptCredentialNullable(cfg.channel.zapi?.clientToken),
       metaPhoneNumberId: cfg.channel.meta?.phoneNumberId ?? null,
       metaAccessToken: encryptCredentialNullable(cfg.channel.meta?.accessToken),
+      metaAppSecret: encryptCredentialNullable(cfg.channel.meta?.appSecret),
       segment: cfg.segment,
       serviceNoun: cfg.serviceNoun,
       ...resolveSegmentVocab(cfg.segment),

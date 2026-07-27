@@ -148,7 +148,11 @@ export default function NewClinicPage() {
             </label>
             <label>
               Meta: Access Token
-              <input name="metaAccessToken" />
+              <input name="metaAccessToken" type="password" autoComplete="new-password" />
+            </label>
+            <label>
+              Meta: App Secret (validação do webhook)
+              <input name="metaAppSecret" type="password" autoComplete="new-password" />
             </label>
             {errorFor("channel.zapi") && (
               <small style={{ color: "var(--danger,#b00020)" }}>{errorFor("channel.zapi")}</small>

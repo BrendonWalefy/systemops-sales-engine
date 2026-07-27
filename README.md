@@ -127,10 +127,10 @@ Uma nova clínica de qualquer segmento é onboardada via painel do owner, sem al
 
 ### Segurança e Infraestrutura
 
-- **Criptografia AES-256-GCM** — tokens Z-API, Z-API Client e Meta Access Token encriptados em repouso. Chave gerenciada via `CREDENTIAL_ENCRYPTION_KEY` no Vercel.
+- **Criptografia AES-256-GCM** — tokens Z-API, Z-API Client, Meta Access Token e Meta App Secret encriptados em repouso. Chave gerenciada via `CREDENTIAL_ENCRYPTION_KEY` no Vercel.
 - **Rate limiting por clínica** — proteção contra uso abusivo da API de IA.
 - **Multi-tenant por design** — cada clínica é isolada por `clinicId`. Nenhum dado vaza entre tenants.
-- **E2E em produção** — `scripts/e2e-webhook-test.ts` dispara o webhook real e valida estado no banco; integrado ao GitHub Actions.
+- **Replay E2E isolado** — cenários sanitizados atravessam webhook, filas, orquestrador e sender em banco sandbox, com captura dos efeitos externos.
 
 ---
 

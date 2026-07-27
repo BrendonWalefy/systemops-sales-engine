@@ -83,6 +83,7 @@ describe("operational alerts", () => {
           channelProvider: "meta_cloud_api",
           metaPhoneNumberId: "phone",
           metaAccessToken: "token",
+          metaAppSecret: "app-secret",
           hasActivePlaybook: true,
           latestMetricAt: new Date("2026-06-14T10:00:00.000Z"),
           latestMetricData: {

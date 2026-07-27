@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
-  resolveClinicByMetaPhoneNumberId: vi.fn(),
+  resolveMetaWebhookTenant: vi.fn(),
   persistInboundEventAndEnqueue: vi.fn(),
 }));
 
 vi.mock("@/application/tenancy/resolve-clinic", () => ({
-  resolveClinicByMetaPhoneNumberId: mocks.resolveClinicByMetaPhoneNumberId,
+  resolveMetaWebhookTenant: mocks.resolveMetaWebhookTenant,
 }));
 vi.mock("@/application/whatsapp/persist-inbound-event", () => ({
   persistInboundEventAndEnqueue: mocks.persistInboundEventAndEnqueue,
@@ -15,11 +16,20 @@ vi.mock("@/application/whatsapp/persist-inbound-event", () => ({
 
 import { POST } from "@/app/api/whatsapp/webhook/route";
 
-function request(body: unknown) {
+const META_APP_SECRET = "test-meta-app-secret";
+
+function request(body: unknown, options?: { signature?: string | null }) {
+  const rawBody = JSON.stringify(body);
+  const signature = options?.signature === undefined
+    ? `sha256=${createHmac("sha256", META_APP_SECRET).update(rawBody).digest("hex")}`
+    : options.signature;
   return new NextRequest("http://systemops.test/api/whatsapp/webhook", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+      ...(signature ? { "x-hub-signature-256": signature } : {}),
+    },
+    body: rawBody,
   });
 }
 
@@ -46,7 +56,10 @@ function metaTextPayload() {
 describe("Meta webhook durable ingestion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveClinicByMetaPhoneNumberId.mockResolvedValue("clinic-1");
+    mocks.resolveMetaWebhookTenant.mockResolvedValue({
+      clinicId: "clinic-1",
+      encryptedAppSecret: META_APP_SECRET,
+    });
     mocks.persistInboundEventAndEnqueue.mockResolvedValue({
       inboundEventId: "event-1",
       eventWasNew: true,
@@ -75,7 +88,10 @@ describe("Meta webhook durable ingestion", () => {
 
   it("ignora status update sem criar trabalho", async () => {
     const response = await POST(request({
-      entry: [{ changes: [{ value: { statuses: [{ id: "wamid.status" }] } }] }],
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: "phone-number-1" },
+        statuses: [{ id: "wamid.status" }],
+      } }] }],
     }));
 
     expect(response.status).toBe(200);
@@ -83,11 +99,32 @@ describe("Meta webhook durable ingestion", () => {
   });
 
   it("retorna erro para a Meta retentar quando o tenant não é resolvido", async () => {
-    mocks.resolveClinicByMetaPhoneNumberId.mockResolvedValue(null);
+    mocks.resolveMetaWebhookTenant.mockResolvedValue(null);
 
     const response = await POST(request(metaTextPayload()));
 
     expect(response.status).toBe(500);
+    expect(mocks.persistInboundEventAndEnqueue).not.toHaveBeenCalled();
+  });
+
+  it("rejeita assinatura ausente ou inválida antes de persistir", async () => {
+    const missing = await POST(request(metaTextPayload(), { signature: null }));
+    const invalid = await POST(request(metaTextPayload(), { signature: `sha256=${"0".repeat(64)}` }));
+
+    expect(missing.status).toBe(401);
+    expect(invalid.status).toBe(401);
+    expect(mocks.persistInboundEventAndEnqueue).not.toHaveBeenCalled();
+  });
+
+  it("falha fechado quando o tenant Meta não possui App Secret", async () => {
+    mocks.resolveMetaWebhookTenant.mockResolvedValue({
+      clinicId: "clinic-1",
+      encryptedAppSecret: null,
+    });
+
+    const response = await POST(request(metaTextPayload()));
+
+    expect(response.status).toBe(503);
     expect(mocks.persistInboundEventAndEnqueue).not.toHaveBeenCalled();
   });
 });

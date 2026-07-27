@@ -39,6 +39,7 @@ const channelSchema = z
       .object({
         phoneNumberId: z.string().trim().min(1),
         accessToken: z.string().trim().min(1),
+        appSecret: z.string().trim().min(1),
       })
       .optional(),
   })

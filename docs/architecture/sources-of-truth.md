@@ -64,7 +64,7 @@ Campos centrais lidos em runtime:
 | `autoReplyEnabled` | policy de automação | Liga/desliga a IA |
 | `calendarMode` | `resolveCalendarGateway()` | Fonte de verdade da agenda |
 | `googleCalendarId` | gateway Google | Integração opt-in |
-| `zapi*`, `meta*` | channel adapters | Credenciais do canal |
+| `zapi*`, `meta*` | channel adapters / auth de webhook | Credenciais do canal por clínica; `metaAppSecret` autentica o corpo bruto |
 | `specialty` | prompts e UI | Contexto humano do negócio |
 | `segment` | onboarding / expansão | Tipo de operação |
 | `serviceNoun` | UI / playbook | Terminologia por segmento |

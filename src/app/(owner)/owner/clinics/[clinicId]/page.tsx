@@ -272,6 +272,7 @@ async function activateClinicGoLive(clinicId: string) {
       zapiToken: true,
       metaPhoneNumberId: true,
       metaAccessToken: true,
+      metaAppSecret: true,
       operationalStatus: true,
     },
   });
@@ -388,6 +389,7 @@ export default async function ClinicDetailPage({
       zapiToken: organizations.zapiToken,
       metaPhoneNumberId: organizations.metaPhoneNumberId,
       metaAccessToken: organizations.metaAccessToken,
+      metaAppSecret: organizations.metaAppSecret,
       outboundHourlyCap: organizations.outboundHourlyCap,
       outboundDailyCap: organizations.outboundDailyCap,
       automatedReengagementPaused: organizations.automatedReengagementPaused,
