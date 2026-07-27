@@ -132,6 +132,7 @@ import {
   matchesHumanReviewPipelineContext,
   resolvePipelineMediaRoute,
 } from "@/core/pipeline/PipelineMediaRouter";
+import { resolvePipelineQaMaxTurns } from "@/core/pipeline/PipelineLimits";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -2788,6 +2789,8 @@ function buildOrganization(row: ClinicRow): Organization {
     mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
     rapidThrottleMs: row.rapidThrottleMs,
     messageDebounceMs: row.messageDebounceMs ?? null,
+    aiContextWindowMessages: row.aiContextWindowMessages ?? null,
+    pipelineQaDefaultMaxTurns: row.pipelineQaDefaultMaxTurns ?? null,
     serviceNoun: row.serviceNoun,
     bookingNoun: row.bookingNoun,
     contactNoun: row.contactNoun,
@@ -4621,6 +4624,7 @@ export class ConversationOrchestrator {
       const mediaComposed = await this.responseComposer.compose({
         actionResult: { type: "media_received", mediaType: inboundMediaType },
         conversationHistory: mediaHistory,
+        historyWindowMessages: clinic.aiContextWindowMessages,
         clinic: {
           name: clinic.name,
           plan: clinic.plan,
@@ -5050,7 +5054,8 @@ export class ConversationOrchestrator {
             }
             confirmReplyText = await this.responseComposer.compose({
               actionResult: { type: "appointment_confirmation_accepted", appointmentLabel: confirmPayload.appointmentLabel },
-              conversationHistory: allMessages.slice(-4),
+              conversationHistory: allMessages,
+              historyWindowMessages: clinic.aiContextWindowMessages,
               clinic: {
                 name: clinic.name,
                 plan: clinic.plan,
@@ -5074,7 +5079,8 @@ export class ConversationOrchestrator {
               .where(eq(conversationsTable.id, conversation.id));
             confirmReplyText = await this.responseComposer.compose({
               actionResult: { type: "appointment_confirmation_rejected" },
-              conversationHistory: allMessages.slice(-4),
+              conversationHistory: allMessages,
+              historyWindowMessages: clinic.aiContextWindowMessages,
               clinic: {
                 name: clinic.name,
                 plan: clinic.plan,
@@ -5293,6 +5299,7 @@ export class ConversationOrchestrator {
           hasPendingOffer,
           clinicTreatments.map((t) => ({ name: t.name, aliases: t.aliases ?? [] })),
           promptContext,
+          clinic.aiContextWindowMessages,
         );
     await recordDecisionTrace(this.decisionTraceSink, {
       turnId,
@@ -5786,6 +5793,7 @@ export class ConversationOrchestrator {
           conversationHistory: options?.extraHistory
             ? [...allMessagesForContext, ...options.extraHistory]
             : allMessagesForContext,
+          historyWindowMessages: clinic.aiContextWindowMessages,
           clinic: {
             name: clinic.name,
             plan: clinic.plan,
@@ -7554,7 +7562,8 @@ export class ConversationOrchestrator {
             !directSocialRequested &&
             !directMediaClarificationRequested
           ) {
-            const maxTurns = currentStep.maxTurns ?? 10;
+            const maxTurns = currentStep.maxTurns
+              ?? resolvePipelineQaMaxTurns(clinic.pipelineQaDefaultMaxTurns);
             const nextContent = nextUnsentPipelineContentStep(
               pipelineTreatment.pipelineSteps!,
               pipelineState.stepIndex + 1,

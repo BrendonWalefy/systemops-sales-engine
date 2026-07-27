@@ -68,6 +68,8 @@ export async function loadReplayClinicManifest(clinicKey: string) {
       outsideHoursExceptionEnabled: resolvedClinic.outsideHoursExceptionEnabled,
       rapidThrottleMs: resolvedClinic.rapidThrottleMs,
       messageDebounceMs: resolvedClinic.messageDebounceMs,
+      aiContextWindowMessages: resolvedClinic.aiContextWindowMessages,
+      pipelineQaDefaultMaxTurns: resolvedClinic.pipelineQaDefaultMaxTurns,
     },
     treatments: clinicTreatments.map((treatment) => ({
       name: treatment.name,

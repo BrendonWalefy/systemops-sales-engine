@@ -446,6 +446,11 @@ export const organizations = pgTable("organizations", {
   mediaTakeoverTtlHours: integer("media_takeover_ttl_hours"),
   rapidThrottleMs: integer("rapid_throttle_ms").notNull().default(4000),
   messageDebounceMs: integer("message_debounce_ms"),
+  // Uma única janela efetiva alimenta classificador e compositor. Nullable para
+  // preservar o default seguro do código e permitir calibração isolada por tenant.
+  aiContextWindowMessages: integer("ai_context_window_messages"),
+  // Fallback por clínica para etapas Q&A sem maxTurns próprio no pipeline.
+  pipelineQaDefaultMaxTurns: integer("pipeline_qa_default_max_turns"),
   calendarChannelId: text("calendar_channel_id"),
   calendarSyncToken: text("calendar_sync_token"),
   // ── Credenciais de canal POR CLÍNICA (multi-tenant) ──

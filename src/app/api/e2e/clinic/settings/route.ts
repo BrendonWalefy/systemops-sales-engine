@@ -10,6 +10,8 @@ const SETTINGS_COLUMNS = {
   businessHours: organizations.businessHours,
   takeoverTtlHours: organizations.takeoverTtlHours,
   postAppointmentBufferMinutes: organizations.postAppointmentBufferMinutes,
+  aiContextWindowMessages: organizations.aiContextWindowMessages,
+  pipelineQaDefaultMaxTurns: organizations.pipelineQaDefaultMaxTurns,
 } as const;
 
 // GET /api/e2e/clinic/settings
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH /api/e2e/clinic/settings
-// Body: Partial<{ greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, conversationRestartHours, slotLookaheadDays, mediaTakeoverTtlHours }>
+// Body: Partial<{ greetingMessage, menuItems, businessHours, takeoverTtlHours, postAppointmentBufferMinutes, staleConversationHours, conversationRestartHours, slotLookaheadDays, mediaTakeoverTtlHours, aiContextWindowMessages, pipelineQaDefaultMaxTurns }>
 export async function PATCH(req: NextRequest) {
   const guard = e2eGuard(req);
   if (guard) return guard;
@@ -56,6 +58,8 @@ export async function PATCH(req: NextRequest) {
     "conversationRestartHours",
     "slotLookaheadDays",
     "mediaTakeoverTtlHours",
+    "aiContextWindowMessages",
+    "pipelineQaDefaultMaxTurns",
   ];
   const patch = Object.fromEntries(
     Object.entries(body).filter(([k]) => allowed.includes(k)),
