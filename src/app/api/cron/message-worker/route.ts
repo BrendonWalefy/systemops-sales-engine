@@ -14,6 +14,9 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { createLogger } from "@/infrastructure/logging/logger";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
+import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,14 +41,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const inboundEventStore = new DrizzleInboundEventStore();
   const jobQueue = new DrizzleJobQueue();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
+  const decisionTraceSink = createRuntimeDecisionTraceSink();
   const handler = new ProcessMessageJobHandler({
     inboundEventStore,
     automationPolicy: new DrizzleClinicAutomationPolicyReader(),
-    conversationHandler: new ConversationOrchestrator(),
+    conversationHandler: new ConversationOrchestrator({ decisionTraceSink }),
     transcribeAudio: audioTranscriber.transcribe.bind(audioTranscriber),
+    decisionTraceSink,
   });
 
   try {
+    const orphanReconciliation = await reconcileMessageJobOrphans({
+      reader: new DrizzleMessageJobOrphanReader(),
+      jobQueue,
+      queues: ["message.process", "message.send"],
+    });
     const result = await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
@@ -75,6 +85,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           handler: new SendMessageJobHandler({
             outboundMessageStore,
             safetyContextReader: new DrizzleOutboundSafetyContextReader(),
+            decisionTraceSink,
           }),
           workerId: `${workerId}:send`,
           maxJobs: MAX_JOBS_PER_RUN,
@@ -84,8 +95,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    log.info("worker.run.completed", { ...result, sendDrain, durationMs: Date.now() - startedAt });
-    return NextResponse.json({ ...result, sendDrain });
+    log.info("worker.run.completed", {
+      ...result,
+      orphanReconciliation,
+      sendDrain,
+      durationMs: Date.now() - startedAt,
+    });
+    return NextResponse.json({ ...result, orphanReconciliation, sendDrain });
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
     return NextResponse.json({ error: "message_worker_failed" }, { status: 500 });

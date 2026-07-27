@@ -30,18 +30,26 @@ export async function resolveClinicByZapiInstance(
   return row?.id ?? null;
 }
 
-/** Inbound Meta: o phone_number_id do payload identifica a clínica. */
-export async function resolveClinicByMetaPhoneNumberId(
+export type MetaWebhookTenant = {
+  clinicId: string;
+  encryptedAppSecret: string | null;
+};
+
+/** Tenant + segredo por número; usado antes de aceitar qualquer POST da Meta. */
+export async function resolveMetaWebhookTenant(
   phoneNumberId: string | null | undefined,
-): Promise<string | null> {
+): Promise<MetaWebhookTenant | null> {
   if (!phoneNumberId) return null;
   const row = await db
-    .select({ id: organizations.id })
+    .select({
+      clinicId: organizations.id,
+      encryptedAppSecret: organizations.metaAppSecret,
+    })
     .from(organizations)
     .where(eq(organizations.metaPhoneNumberId, phoneNumberId))
     .limit(1)
-    .then((r) => r[0] ?? null);
-  return row?.id ?? null;
+    .then((rows) => rows[0] ?? null);
+  return row ?? null;
 }
 
 /** Crons: lista todas as clínicas para iterar uma a uma. */

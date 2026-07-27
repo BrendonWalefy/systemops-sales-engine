@@ -69,6 +69,43 @@ export function deduplicateGreetings(text: string): string {
   return processed.filter((p) => p.trim().length > 0).join("\n\n").trim();
 }
 
+function responseFingerprint(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function isRepeatedAssistantResponse(
+  candidate: string,
+  history: Pick<Message, "author" | "body">[],
+): boolean {
+  const candidateFingerprint = responseFingerprint(candidate);
+  if (!candidateFingerprint) return false;
+  return history.some(
+    (message) =>
+      message.author !== "lead" &&
+      responseFingerprint(message.body) === candidateFingerprint,
+  );
+}
+
+function safeAcknowledgmentFallback(
+  history: Pick<Message, "author" | "body">[],
+): string {
+  const leadMessage = [...history]
+    .reverse()
+    .find((message) => message.author === "lead")?.body ?? "";
+  const normalized = responseFingerprint(leadMessage);
+  if (normalized.startsWith("bom dia")) return "Bom dia! 😊";
+  if (normalized.startsWith("boa tarde")) return "Boa tarde! 😊";
+  if (normalized.startsWith("boa noite")) return "Boa noite! 😊";
+  if (/^(oi|ola|e ai|ei|hey)\b/.test(normalized)) return "Oi! 😊";
+  return "Certo 😊";
+}
+
 export function resolveComposerModel(plan?: ComposerPlan | null): string {
   const globalOverride = envModel("OPENAI_COMPOSER_MODEL");
   if (globalOverride) return globalOverride;
@@ -1075,6 +1112,49 @@ export class ResponseComposer {
       throw lastError instanceof Error
         ? lastError
         : new Error("[ResponseComposer] Resposta vazia da API após retry");
+    }
+
+    // Uma saudação ou confirmação curta no meio da conversa não pode
+    // fazer o modelo reiniciar o atendimento repetindo literalmente uma fala
+    // anterior. Tentamos uma nova verbalização com instrução explícita; se o
+    // modelo insistir ou falhar, usamos um ack universal curto e seguro.
+    if (
+      (input.actionResult.type === "greeting" ||
+        input.actionResult.type === "acknowledgment") &&
+      isRepeatedAssistantResponse(raw, recentHistory)
+    ) {
+      const retryContext = `${actionContext}\n\nCORREÇÃO OBRIGATÓRIA: sua primeira proposta repetiu literalmente uma mensagem que o lead já recebeu. Não reinicie a conversa, não repita apresentação nem pergunta anterior. Responda somente à última mensagem do lead em uma frase curta e natural.`;
+      try {
+        const retry = shouldUseResponsesApi(model)
+          ? await this.createWithResponsesApi(model, systemPrompt, recentHistory, retryContext)
+          : await this.createWithChatCompletions(model, [
+              { role: "system", content: systemPrompt },
+              ...recentHistory.map((message): OpenAI.Chat.ChatCompletionMessageParam => ({
+                role: message.author === "lead" ? "user" : "assistant",
+                content: message.body,
+              })),
+              {
+                role: "user",
+                content: `[INSTRUÇÃO INTERNA — NÃO VISÍVEL AO LEAD]\n${retryContext}\n\nEscreva a resposta corrigida agora:`,
+              },
+            ]);
+        invocation = {
+          raw: retry.raw,
+          inputTokens: invocation.inputTokens + retry.inputTokens,
+          outputTokens: invocation.outputTokens + retry.outputTokens,
+        };
+        raw = retry.raw.trim();
+      } catch (error) {
+        console.warn(
+          "[ResponseComposer] Retry de resposta repetida falhou:",
+          error instanceof Error ? error.message : error,
+        );
+      }
+
+      if (!raw || isRepeatedAssistantResponse(raw, recentHistory)) {
+        raw = safeAcknowledgmentFallback(recentHistory);
+        invocation = { ...invocation, raw };
+      }
     }
 
     const clinicProofContent = [

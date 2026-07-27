@@ -27,6 +27,7 @@ export async function GET() {
         zapiClientToken: organizations.zapiClientToken,
         metaPhoneNumberId: organizations.metaPhoneNumberId,
         metaAccessToken: organizations.metaAccessToken,
+        metaAppSecret: organizations.metaAppSecret,
       })
       .from(organizations)
       .where(

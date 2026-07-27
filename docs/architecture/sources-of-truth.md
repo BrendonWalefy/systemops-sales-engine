@@ -1,6 +1,6 @@
 # Sources of Truth — Mapa de Donos
 
-Atualizado em 2026-06-28.
+Atualizado em 2026-07-26.
 
 > Este doc mapeia **qual tabela** é dona de **qual categoria**. Para a camada mais
 > fina — onde o **mesmo fato** ainda vive em mais de um campo hoje, e a fórmula de 3
@@ -35,6 +35,16 @@ Aqui vivem:
 O código injeta esse conteúdo em runtime. O prompt **não** deve reescrever como
 texto fixo a política comercial, o tom ou a identidade da clínica.
 
+Invariantes de publicação:
+
+- cada clínica possui no máximo uma versão `active`, garantida por índice único;
+- a troca de versão arquiva e ativa atomicamente;
+- `notes` aceita nuance editorial, mas publicação bloqueia preço concreto e
+  comandos de mídia, gatilho ou sequenciamento que pertencem a campos
+  estruturados/pipeline;
+- publicar não replica conteúdo editorial para `organizations`: produção e
+  simulador resolvem a mesma versão ativa.
+
 ## 2. Configuração operacional do tenant
 
 **Dono:** `clinics`
@@ -47,13 +57,14 @@ Campos centrais lidos em runtime:
 | `businessHours` | `SlotEngine` | Disponibilidade |
 | `defaultAppointmentDurationMinutes` | `ConversationOrchestrator` | Duração padrão |
 | `postAppointmentBufferMinutes` | `SlotEngine` | Buffer pós-atendimento |
+| `outsideHoursExceptionEnabled` | orquestrador / handoff | Opt-in para solicitar análise humana fora do expediente |
 | `takeoverTtlHours` | orquestrador / rotas inbox | Retomada após handoff |
 | `menuItems` | orquestrador / simulate | Menu conversacional |
 | `greetingMessage` | menu / playbook / simulate | Saudação base |
 | `autoReplyEnabled` | policy de automação | Liga/desliga a IA |
 | `calendarMode` | `resolveCalendarGateway()` | Fonte de verdade da agenda |
 | `googleCalendarId` | gateway Google | Integração opt-in |
-| `zapi*`, `meta*` | channel adapters | Credenciais do canal |
+| `zapi*`, `meta*` | channel adapters / auth de webhook | Credenciais do canal por clínica; `metaAppSecret` autentica o corpo bruto |
 | `specialty` | prompts e UI | Contexto humano do negócio |
 | `segment` | onboarding / expansão | Tipo de operação |
 | `serviceNoun` | UI / playbook | Terminologia por segmento |
@@ -127,6 +138,12 @@ Regra:
 - retry operacional pertence à fila (`jobs`);
 - retry de entrega não deve recomputar a conversa; por isso o dono é a outbox
   (`outbound_messages`).
+- avanço de pipeline pertence ao commit do turno; a entrega apenas reconcilia a
+  mesma expectativa de estado de forma idempotente.
+- mensagens Meta e Z-API destinadas à jornada são persistidas antes de o worker
+  processá-las;
+- ação manual do inbox usa UUID do cliente + dedupe da outbox, portanto retry da
+  requisição não duplica o envio ao lead.
 
 ## 7. Comportamento universal do LLM
 

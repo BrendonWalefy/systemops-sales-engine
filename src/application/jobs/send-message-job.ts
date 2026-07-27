@@ -13,9 +13,11 @@ import type {
 import {
   isAutomationOutboundPayload,
   isConversationOutboundPayload,
+  isOperatorOutboundPayload,
   isOutboundPayload,
   type AutomationOutboundPayload,
   type ConversationOutboundPayload,
+  type OperatorOutboundPayload,
   type OutboundPayload,
 } from "@/application/jobs/conversation-outbound-payload";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -33,8 +35,12 @@ import { DrizzleConversationRepository } from "@/infrastructure/repositories/dri
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { areEquivalentWhatsAppPhones } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createLogger } from "@/infrastructure/logging/logger";
+import {
+  recordDecisionTrace,
+  type DecisionTraceSink,
+} from "@/core/observability/DecisionTrace";
 import { db } from "@/infrastructure/db/client";
-import { organizations, messages, followUps, leads } from "@/infrastructure/db/schema";
+import { organizations, messages, followUps, leads, conversations } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 
 export type SendMessageJobDependencies = {
@@ -43,12 +49,40 @@ export type SendMessageJobDependencies = {
   automationDispatchLifecycle?: AutomationDispatchLifecycle;
   now?: () => Date;
   capJitterMs?: () => number;
+  decisionTraceSink?: DecisionTraceSink;
+  conversationStateReader?: Pick<ConversationStateMachine, "getCurrentState">;
+  outboundBoundary?: Partial<OutboundDeliveryBoundary>;
   delivery?: (input: {
     payload: OutboundPayload;
     clinicId: string;
     conversationId: string;
   }) => Promise<string | null>;
 };
+
+export type OutboundDeliveryBoundary = {
+  /** Somente replay E2E em banco isolado: executa o sender real contra adapters de captura. */
+  sandboxCaptureEnabled: boolean;
+  sendVoiceOrText: typeof sendVoiceOrText;
+  sendMediaMessage: typeof sendMediaMessage;
+  createDeliveryService: () => OutboundDeliveryService;
+  recordSuppressedDelivery: (input: {
+    category: "conversation_reply" | "automation";
+    to: string;
+    content: string;
+    intent: string | null;
+    reason: "shadow_mode";
+  }) => void | Promise<void>;
+};
+
+const DEFAULT_OUTBOUND_BOUNDARY: OutboundDeliveryBoundary = {
+  sandboxCaptureEnabled: false,
+  sendVoiceOrText,
+  sendMediaMessage,
+  createDeliveryService: () => new OutboundDeliveryService(),
+  recordSuppressedDelivery: () => {},
+};
+
+export const SHADOW_DELIVERY_SUPPRESSED = "__shadow_delivery_suppressed__";
 
 export type AutomationDispatchLifecycle = {
   markDelivered(outbound: OutboundMessageForAutomationLifecycle, deliveredAt: Date): Promise<void>;
@@ -74,24 +108,37 @@ export class SendMessageJobHandler {
   private readonly automationDispatchLifecycle: AutomationDispatchLifecycle;
   private readonly now: () => Date;
   private readonly capJitterMs: () => number;
+  private readonly conversationStateReader: Pick<
+    ConversationStateMachine,
+    "getCurrentState"
+  >;
 
   constructor(private readonly deps: SendMessageJobDependencies) {
-    this.delivery = deps.delivery ?? deliverOutboundPayload;
+    const outboundBoundary = {
+      ...DEFAULT_OUTBOUND_BOUNDARY,
+      ...deps.outboundBoundary,
+    };
+    this.delivery =
+      deps.delivery ??
+      ((input) => deliverOutboundPayload(input, outboundBoundary));
     this.safetyContextReader = deps.safetyContextReader ?? new DrizzleOutboundSafetyContextReader();
     this.automationDispatchLifecycle = deps.automationDispatchLifecycle ?? drizzleAutomationDispatchLifecycle;
     this.now = deps.now ?? (() => new Date());
     this.capJitterMs = deps.capJitterMs ?? (() => Math.floor(Math.random() * 30 * 60_000));
+    this.conversationStateReader =
+      deps.conversationStateReader ?? new ConversationStateMachine();
   }
 
   async processJob(job: { id?: string; payload: unknown }): Promise<SendMessageJobProcessResult> {
     const outboundMessageId = getOutboundMessageId(job.payload);
     if (!outboundMessageId) throw new Error("message.send job has no outboundMessageId");
+    const jobTurnId = getTurnId(job.payload);
 
     const log = createLogger({
       scope: "SendMessageJob",
       jobId: job.id,
       queue: "message.send",
-      traceId: outboundMessageId,
+      traceId: jobTurnId ?? outboundMessageId,
     });
     const startedAt = Date.now();
 
@@ -105,6 +152,7 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,
     });
+    const turnId = jobTurnId ?? getTurnId(outbound.payload);
     if (await this.deps.outboundMessageStore.hasEarlierActiveMessage(outbound)) {
       outboundLog.info("job.deferred", { reason: "earlier_message_active", durationMs: Date.now() - startedAt });
       return "deferred";
@@ -185,6 +233,17 @@ export class SendMessageJobHandler {
     }
 
     if (isOutboundSafetyGatedCategory(outbound.category)) {
+      if (!isAutomationOutboundPayload(outbound.payload)) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(
+          outbound.id,
+          "invalid_automation_context",
+        );
+        outboundLog.warn("job.ignored", {
+          reason: "invalid_automation_context",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
       const context = safetyContext ?? await this.safetyContextReader.getContext({
         clinicId: outbound.clinicId,
         leadId: outbound.payload.leadId,
@@ -272,16 +331,90 @@ export class SendMessageJobHandler {
       }
     }
 
-    const providerMessageId = await this.delivery({
-      payload: outbound.payload,
-      clinicId: outbound.clinicId,
-      conversationId: outbound.conversationId,
-    });
+    if (turnId) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId,
+        stage: "delivery.started",
+        occurredAt: this.now().toISOString(),
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+        metadata: {
+          outboundMessageId: outbound.id,
+          attempt: outbound.attempts,
+          category: outbound.category,
+        },
+      });
+    }
+    let providerMessageId: string | null;
+    try {
+      providerMessageId = await this.delivery({
+        payload: outbound.payload,
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+      });
+    } catch (error) {
+      if (turnId) {
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "turn.failed",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: {
+            phase: "delivery",
+            errorName: error instanceof Error ? error.name : "unknown",
+          },
+        });
+      }
+      throw error;
+    }
+    if (providerMessageId === SHADOW_DELIVERY_SUPPRESSED) {
+      await this.deps.outboundMessageStore.markOutboundCancelled(
+        outbound.id,
+        "shadow_mode",
+      );
+      outboundLog.info("job.ignored", {
+        reason: "shadow_mode",
+        durationMs: Date.now() - startedAt,
+      });
+      return "ignored";
+    }
+    if (turnId && isConversationOutboundPayload(outbound.payload)) {
+      const stateAfterDelivery =
+        await this.conversationStateReader.getCurrentState(
+          outbound.conversationId,
+        );
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId,
+        stage: "state.after_delivery",
+        occurredAt: this.now().toISOString(),
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+        metadata: {
+          state: stateAfterDelivery?.state ?? "none",
+          pipelineAdvanceApplied:
+            outbound.payload.pipelineAdvance?.action ?? "none",
+        },
+      });
+    }
     await this.deps.outboundMessageStore.markOutboundDelivered({
       id: outbound.id,
       providerMessageId,
     });
     await this.automationDispatchLifecycle.markDelivered(outboundForLifecycle, this.now());
+    if (turnId) {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId,
+        stage: "delivery.sent",
+        occurredAt: this.now().toISOString(),
+        clinicId: outbound.clinicId,
+        conversationId: outbound.conversationId,
+        metadata: {
+          outboundMessageId: outbound.id,
+          providerAccepted: providerMessageId !== null,
+        },
+      });
+    }
     outboundLog.info("job.sent", { durationMs: Date.now() - startedAt, providerMessageId });
     return "sent";
   }
@@ -331,6 +464,29 @@ const drizzleAutomationDispatchLifecycle: AutomationDispatchLifecycle = {
         .update(leads)
         .set({ status: "in_conversation", updatedAt: deliveredAt })
         .where(and(eq(leads.id, outbound.payload.leadId), eq(leads.clinicId, outbound.clinicId)));
+    }
+    if (outbound.category === "recovery" && outbound.dedupeKey?.startsWith("manual-recovery:")) {
+      await db
+        .update(conversations)
+        .set({ aiPaused: false, takeoverExpiresAt: null, updatedAt: deliveredAt })
+        .where(and(
+          eq(conversations.id, outbound.payload.conversationId),
+          eq(conversations.clinicId, outbound.clinicId),
+        ));
+      await db
+        .insert(followUps)
+        .values({
+          clinicId: outbound.clinicId,
+          leadId: outbound.payload.leadId,
+          dueAt: deliveredAt,
+          status: "done",
+          reason: "recovery_campaign",
+          completedAt: deliveredAt,
+          updatedAt: deliveredAt,
+        })
+        .onConflictDoNothing({
+          target: [followUps.clinicId, followUps.leadId, followUps.reason, followUps.dueAt],
+        });
     }
   },
 
@@ -411,33 +567,46 @@ function getOutboundMessageId(payload: unknown): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
+function getTurnId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>).turnId;
+  return typeof value === "string" && value ? value : null;
+}
+
 async function deliverOutboundPayload(input: {
   payload: OutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   if (isConversationOutboundPayload(input.payload)) {
     return deliverConversationOutbound({
       payload: input.payload,
       clinicId: input.clinicId,
       conversationId: input.conversationId,
-    });
+    }, boundary);
   }
   if (isAutomationOutboundPayload(input.payload)) {
     return deliverAutomationOutbound({
       payload: input.payload,
       clinicId: input.clinicId,
       conversationId: input.conversationId,
-    });
+    }, boundary);
+  }
+  if (isOperatorOutboundPayload(input.payload)) {
+    return deliverOperatorOutbound({
+      payload: input.payload,
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+    }, boundary);
   }
   throw new Error("Unsupported outbound payload");
 }
 
-async function deliverConversationOutbound(input: {
-  payload: ConversationOutboundPayload;
+export async function deliverOperatorOutbound(input: {
+  payload: OperatorOutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -445,17 +614,67 @@ async function deliverConversationOutbound(input: {
     .limit(1);
   if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
 
-  // Shadow mode: já compôs a resposta e avançou o pipeline normalmente — aqui
-  // só suprimimos o envio real (Z-API/TTS), persistindo tudo como "simulated".
-  if (clinic.shadowModeEnabled) {
-    return deliverShadowOutbound(input);
+  // Shadow mode restringe automação; uma ação humana explícita no inbox continua
+  // sendo entregue, preservando o comportamento operacional anterior.
+  const config = resolveChannelConfig(clinic);
+  let providerMessageId: string | null;
+  let deliveryFormat: "text" | "audio" = "text";
+  if (input.payload.attachment) {
+    providerMessageId = await boundary.sendMediaMessage(
+      input.payload.to,
+      input.payload.attachment.url,
+      input.payload.attachment.mediaType,
+      config,
+      input.payload.text || undefined,
+      input.payload.attachment.fileName,
+    );
+  } else {
+    const result = await boundary.sendVoiceOrText(
+      input.payload.to,
+      input.payload.text,
+      config,
+      false,
+    );
+    providerMessageId = result.msgId;
+    deliveryFormat = result.deliveryFormat;
+  }
+
+  await db
+    .update(messages)
+    .set({
+      ...(providerMessageId ? { externalId: providerMessageId } : {}),
+      deliveryFormat,
+    })
+    .where(and(
+      eq(messages.id, input.payload.operatorMessageId),
+      eq(messages.conversationId, input.conversationId),
+    ));
+  return providerMessageId;
+}
+
+async function deliverConversationOutbound(input: {
+  payload: ConversationOutboundPayload;
+  clinicId: string;
+  conversationId: string;
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+  const [clinic] = await db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, input.clinicId))
+    .limit(1);
+  if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
+
+  // Compatibilidade para uma outbox que tenha sido criada antes de a clínica
+  // entrar em observação. Replay sandbox usa adapters de captura e pode seguir.
+  if (clinic.shadowModeEnabled && !boundary.sandboxCaptureEnabled) {
+    return deliverShadowOutbound(input, boundary);
   }
 
   const config = resolveChannelConfig(clinic);
   const conversationRepository = new DrizzleConversationRepository();
   const appointmentRepository = new DrizzleAppointmentRepository();
   const followUpRepository = new DrizzleFollowUpRepository();
-  const delivery = new OutboundDeliveryService();
+  const delivery = boundary.createDeliveryService();
   const log = createLogger({
     scope: "SenderWorker",
     correlationId: input.payload.agentMessageId,
@@ -517,7 +736,7 @@ async function deliverConversationOutbound(input: {
       config,
       log,
       sendText: async (content) => {
-        const result = await sendVoiceOrText(
+        const result = await boundary.sendVoiceOrText(
           input.payload.to,
           content,
           config,
@@ -556,7 +775,7 @@ async function deliverConversationOutbound(input: {
       onMediaSent: persistMedia,
     });
   } else {
-    const result = await sendVoiceOrText(
+    const result = await boundary.sendVoiceOrText(
       input.payload.to,
       input.payload.replyText,
       config,
@@ -593,9 +812,16 @@ async function deliverConversationOutbound(input: {
       await stateMachine.advancePipelineStep(
         input.conversationId,
         input.payload.pipelineAdvance.nextStepIndex,
+        {
+          treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
+          stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
+        },
       );
     } else {
-      await stateMachine.exitTreatmentPipeline(input.conversationId);
+      await stateMachine.exitTreatmentPipeline(input.conversationId, {
+        treatmentId: input.payload.pipelineAdvance.expectedTreatmentId,
+        stepIndex: input.payload.pipelineAdvance.expectedStepIndex,
+      });
     }
   }
 
@@ -606,7 +832,7 @@ async function deliverAutomationOutbound(input: {
   payload: AutomationOutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -614,7 +840,14 @@ async function deliverAutomationOutbound(input: {
     .limit(1);
   if (!clinic) throw new Error(`Clinic not found for outbound delivery: ${input.clinicId}`);
 
-  if (clinic.shadowModeEnabled) {
+  if (clinic.shadowModeEnabled && !boundary.sandboxCaptureEnabled) {
+    await boundary.recordSuppressedDelivery({
+      category: "automation",
+      to: input.payload.to,
+      content: input.payload.text,
+      intent: null,
+      reason: "shadow_mode",
+    });
     await db
       .update(messages)
       .set({ simulated: true, deliveryFormat: "text" })
@@ -624,11 +857,11 @@ async function deliverAutomationOutbound(input: {
           eq(messages.conversationId, input.conversationId),
         ),
       );
-    return null;
+    return SHADOW_DELIVERY_SUPPRESSED;
   }
 
   const config = resolveChannelConfig(clinic);
-  const result = await sendVoiceOrText(
+  const result = await boundary.sendVoiceOrText(
     input.payload.to,
     input.payload.text,
     config,
@@ -667,7 +900,7 @@ async function deliverAutomationOutbound(input: {
     for (const part of mediaParts) {
       if (part.type !== "media") continue;
       try {
-        const mediaMsgId = await sendMediaMessage(
+        const mediaMsgId = await boundary.sendMediaMessage(
           input.payload.to,
           part.url,
           part.mediaType,
@@ -699,8 +932,8 @@ async function deliverAutomationOutbound(input: {
 }
 
 /**
- * Shadow mode: persiste a resposta composta e avança o pipeline exatamente
- * como o fluxo real (deliverConversationOutbound), mas nunca chama Z-API/TTS.
+ * Compatibilidade para outboxes shadow criadas antes do modo observation-only:
+ * persiste a resposta composta, mas nunca chama Z-API/TTS nem aplica lifecycle.
  * Mensagens ficam marcadas simulated=true, externalId=null — a inbox exibe
  * um badge para deixar claro que nada chegou ao lead de verdade.
  */
@@ -708,7 +941,7 @@ async function deliverShadowOutbound(input: {
   payload: ConversationOutboundPayload;
   clinicId: string;
   conversationId: string;
-}): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   const conversationRepository = new DrizzleConversationRepository();
   const log = createLogger({
     scope: "SenderWorker",
@@ -717,6 +950,13 @@ async function deliverShadowOutbound(input: {
     conversationId: input.conversationId,
   });
   log.info("shadow_mode.delivery_suppressed", { intent: input.payload.intent });
+  await boundary.recordSuppressedDelivery({
+    category: "conversation_reply",
+    to: input.payload.to,
+    content: input.payload.replyText,
+    intent: input.payload.intent,
+    reason: "shadow_mode",
+  });
 
   await db
     .update(messages)
@@ -756,17 +996,5 @@ async function deliverShadowOutbound(input: {
     }
   }
 
-  if (input.payload.pipelineAdvance) {
-    const stateMachine = new ConversationStateMachine();
-    if (input.payload.pipelineAdvance.action === "advance") {
-      await stateMachine.advancePipelineStep(
-        input.conversationId,
-        input.payload.pipelineAdvance.nextStepIndex,
-      );
-    } else {
-      await stateMachine.exitTreatmentPipeline(input.conversationId);
-    }
-  }
-
-  return null;
+  return SHADOW_DELIVERY_SUPPRESSED;
 }

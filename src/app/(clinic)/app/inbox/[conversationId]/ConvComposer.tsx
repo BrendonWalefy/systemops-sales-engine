@@ -114,6 +114,7 @@ export function ConvComposer({
   const [isScheduling, startSchedule] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const retryMessageIdRef = useRef<string | null>(null);
   const router = useRouter();
   const isSalesConversation = isSalesConversationCategory(conversationCategory);
 
@@ -135,6 +136,7 @@ export function ConvComposer({
   const clearAttachment = useCallback(() => {
     setAttachment(null);
     setAttachmentPreviewUrl(null);
+    retryMessageIdRef.current = null;
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -146,6 +148,7 @@ export function ConvComposer({
       return;
     }
     setError(null);
+    retryMessageIdRef.current = null;
     setAttachment(file);
     setAttachmentPreviewUrl(
       inspection.value.mediaType === "image" ? URL.createObjectURL(file) : null,
@@ -200,7 +203,11 @@ export function ConvComposer({
         const res = await fetch(`/api/conversations/${conversationId}/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed, attachment: uploadedAttachment }),
+          body: JSON.stringify({
+            message: trimmed,
+            attachment: uploadedAttachment,
+            clientMessageId: retryMessageIdRef.current ??= crypto.randomUUID(),
+          }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -208,6 +215,7 @@ export function ConvComposer({
           return;
         }
         setText("");
+        retryMessageIdRef.current = null;
         clearAttachment();
         router.refresh();
       } catch {
@@ -799,7 +807,10 @@ export function ConvComposer({
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            retryMessageIdRef.current = null;
+          }}
           onKeyDown={handleKeyDown}
           placeholder={attachment ? "Adicionar uma legenda…" : "Responder como operador…"}
           rows={1}

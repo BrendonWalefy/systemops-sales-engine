@@ -4,15 +4,15 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   getSessionClinicId: vi.fn(),
   head: vi.fn(),
-  sendTextMessage: vi.fn(),
-  sendMediaMessage: vi.fn(),
-  resolveChannelConfig: vi.fn(),
+  enqueueOutboundMessage: vi.fn(),
   db: {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
   },
   insertValues: vi.fn(),
+  insertOnConflict: vi.fn(),
+  insertReturning: vi.fn(),
   updateSet: vi.fn(),
   updateWhere: vi.fn(),
 }));
@@ -22,12 +22,8 @@ vi.mock("@/application/tenancy/resolve-clinic", () => ({
 }));
 vi.mock("@vercel/blob", () => ({ head: mocks.head }));
 vi.mock("@/infrastructure/db/client", () => ({ db: mocks.db }));
-vi.mock("@/infrastructure/adapters/channels/whatsapp/whatsapp-sender", () => ({
-  sendTextMessage: mocks.sendTextMessage,
-  sendMediaMessage: mocks.sendMediaMessage,
-}));
-vi.mock("@/infrastructure/adapters/channels/whatsapp/channel-config", () => ({
-  resolveChannelConfig: mocks.resolveChannelConfig,
+vi.mock("@/application/jobs/enqueue-outbound-message", () => ({
+  enqueueOutboundMessage: mocks.enqueueOutboundMessage,
 }));
 
 import { POST } from "@/app/api/conversations/[conversationId]/send/route";
@@ -48,28 +44,33 @@ function jsonRequest(message: string, attachment?: { url: string; fileName: stri
   return new NextRequest("http://systemops.test/api/conversations/conversation-1/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, attachment }),
+    body: JSON.stringify({
+      message,
+      attachment,
+      clientMessageId: "10000000-0000-4000-8000-000000000001",
+    }),
   });
 }
 
 describe("operator send route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.db.select.mockReset();
     mocks.getSessionClinicId.mockResolvedValue("clinic-1");
-    mocks.resolveChannelConfig.mockReturnValue({
-      provider: "z_api",
-      zapi: { instanceId: "instance-1", token: "token-1" },
-      meta: null,
-    });
     mocks.head.mockResolvedValue({
       url: "https://blob.example/proposta.pdf",
       pathname: "media/inbox/conversation-1/proposta-random.pdf",
       contentType: "application/pdf",
       size: 3,
     });
-    mocks.sendTextMessage.mockResolvedValue("text-message-1");
-    mocks.sendMediaMessage.mockResolvedValue("media-message-1");
-    mocks.insertValues.mockResolvedValue(undefined);
+    mocks.enqueueOutboundMessage.mockResolvedValue({
+      outboundMessageId: "outbound-1",
+      messageWasNew: true,
+      jobWasNew: true,
+    });
+    mocks.insertReturning.mockResolvedValue([{ id: "10000000-0000-4000-8000-000000000001" }]);
+    mocks.insertOnConflict.mockReturnValue({ returning: mocks.insertReturning });
+    mocks.insertValues.mockReturnValue({ onConflictDoNothing: mocks.insertOnConflict });
     mocks.updateWhere.mockResolvedValue(undefined);
     mocks.updateSet.mockReturnValue({ where: mocks.updateWhere });
     mocks.db.insert.mockReturnValue({ values: mocks.insertValues });
@@ -82,15 +83,7 @@ describe("operator send route", () => {
         externalThreadId: null,
       }]))
       .mockReturnValueOnce(query([{ takeoverTtlHours: 4 }]))
-      .mockReturnValueOnce(query([{ phone: "5511999999999", whatsappLid: null }]))
-      .mockReturnValueOnce(query([{
-        channelProvider: "z_api",
-        zapiInstanceId: "instance-1",
-        zapiToken: "token-1",
-        zapiClientToken: null,
-        metaPhoneNumberId: null,
-        metaAccessToken: null,
-      }]));
+      .mockReturnValueOnce(query([{ phone: "5511999999999", whatsappLid: null }]));
   });
 
   it("bloqueia envio sem sessão antes de consultar dados", async () => {
@@ -116,7 +109,7 @@ describe("operator send route", () => {
     }), context());
 
     expect(response.status).toBe(422);
-    expect(mocks.sendMediaMessage).not.toHaveBeenCalled();
+    expect(mocks.enqueueOutboundMessage).not.toHaveBeenCalled();
   });
 
   it("não permite anexar em conversa de outra clínica", async () => {
@@ -128,7 +121,7 @@ describe("operator send route", () => {
 
     expect(response.status).toBe(404);
     expect(mocks.head).not.toHaveBeenCalled();
-    expect(mocks.sendMediaMessage).not.toHaveBeenCalled();
+    expect(mocks.enqueueOutboundMessage).not.toHaveBeenCalled();
   });
 
   it("faz upload, envia a mídia e persiste seus metadados no histórico", async () => {
@@ -138,7 +131,12 @@ describe("operator send route", () => {
     }), context());
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, mediaType: "document" });
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      queued: true,
+      outboundMessageId: "outbound-1",
+      mediaType: "document",
+    });
     expect(mocks.head).toHaveBeenCalledWith("https://blob.example/proposta.pdf");
     expect(mocks.insertValues).toHaveBeenCalledWith(expect.objectContaining({
       conversationId: "conversation-1",
@@ -147,15 +145,17 @@ describe("operator send route", () => {
       mediaUrl: "https://blob.example/proposta.pdf",
       mediaType: "document",
     }));
-    expect(mocks.sendMediaMessage).toHaveBeenCalledWith(
-      "5511999999999",
-      "https://blob.example/proposta.pdf",
-      "document",
-      expect.objectContaining({ provider: "z_api" }),
-      "Segue a proposta",
-      "Proposta Comercial.pdf",
+    expect(mocks.enqueueOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conversation-1",
+        dedupeKey: "operator:10000000-0000-4000-8000-000000000001",
+        payload: expect.objectContaining({
+          kind: "operator_message",
+          attachment: expect.objectContaining({ mediaType: "document" }),
+        }),
+      }),
+      expect.any(Object),
     );
-    expect(mocks.updateSet).toHaveBeenCalledWith({ externalId: "media-message-1" });
     expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({
       aiPaused: true,
       needsAttention: false,
@@ -168,11 +168,46 @@ describe("operator send route", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.head).not.toHaveBeenCalled();
-    expect(mocks.sendMediaMessage).not.toHaveBeenCalled();
-    expect(mocks.sendTextMessage).toHaveBeenCalledWith(
-      "5511999999999",
-      "Oi, tudo bem?",
-      expect.objectContaining({ provider: "z_api" }),
+    expect(mocks.enqueueOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryKind: "text",
+        payload: expect.objectContaining({
+          kind: "operator_message",
+          text: "Oi, tudo bem?",
+        }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("repara o enqueue sem duplicar a mensagem quando o cliente repete o mesmo UUID", async () => {
+    mocks.insertReturning.mockResolvedValueOnce([]);
+    mocks.db.select
+      .mockReset()
+      .mockReturnValueOnce(query([{
+        id: "conversation-1",
+        clinicId: "clinic-1",
+        leadId: "lead-1",
+        externalThreadId: null,
+      }]))
+      .mockReturnValueOnce(query([{ takeoverTtlHours: 4 }]))
+      .mockReturnValueOnce(query([{ phone: "5511999999999", whatsappLid: null }]))
+      .mockReturnValueOnce(query([{
+        conversationId: "conversation-1",
+        body: "Oi novamente",
+        mediaUrl: null,
+        mediaType: null,
+      }]));
+
+    const response = await POST(jsonRequest("Oi novamente"), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.enqueueOutboundMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueueOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dedupeKey: "operator:10000000-0000-4000-8000-000000000001",
+      }),
+      expect.any(Object),
     );
   });
 });

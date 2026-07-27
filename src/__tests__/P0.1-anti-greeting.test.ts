@@ -251,12 +251,30 @@ describe("P0.1 — Guard Anti-Saudação-Genérica", () => {
     });
 
     it("responde R$30 como sinal de reserva, não como preço da consulta", () => {
-      const reply = buildEvaluationDepositClarification(3000);
+      const reply = buildEvaluationDepositClarification(3000, {
+        priceCents: 0,
+        priceQuotableInChat: true,
+      });
       expect(reply).toContain("A avaliação não tem custo");
       expect(reply).toContain("sinal de R$ 30");
       expect(reply).toContain("garante a reserva");
-      expect(reply).toContain("não é uma cobrança pela avaliação");
+      expect(reply).toContain("separado do valor da avaliação");
       expect(reply).not.toContain("custa");
+    });
+
+    it("não infere avaliação gratuita apenas porque existe sinal", () => {
+      const reply = buildEvaluationDepositClarification(3000);
+      expect(reply).toContain("precisa ser confirmado pela equipe");
+      expect(reply).not.toContain("não tem custo");
+    });
+
+    it("usa o preço estruturado de uma avaliação paga", () => {
+      const reply = buildEvaluationDepositClarification(3000, {
+        priceCents: 10000,
+        priceQuotableInChat: true,
+      });
+      expect(reply).toContain("A avaliação custa R$ 100");
+      expect(reply).not.toContain("não tem custo");
     });
   });
 

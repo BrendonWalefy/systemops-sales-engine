@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "meta_app_secret" text;

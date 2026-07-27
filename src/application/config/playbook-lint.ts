@@ -16,6 +16,11 @@ export function lintPlaybookNotes(notes: string | null | undefined): string[] {
   if (/\bobjeç[aã]o\b|desconto|(?:muito )?caro|barato/i.test(notes)) {
     warnings.push('Menciona objeções ou preço relativo. Use o campo Objeções para isso.');
   }
+  if (PLAYBOOK_FLOW_PATTERNS.some((pattern) => pattern.test(notes))) {
+    warnings.push(
+      'Contém comando de fluxo, mídia ou sequenciamento. Esse comportamento pertence ao pipeline do procedimento.',
+    );
+  }
   return warnings;
 }
 
@@ -23,15 +28,25 @@ export function lintPlaybookNotes(notes: string | null | undefined): string[] {
 // dígito. Não casa "R$" solto nem "R$ para" — só um valor de fato.
 const CONCRETE_PRICE_PATTERN = /R\$\s*\d[\d.,]*/;
 
+// `notes` pode orientar tom e conduta, mas não é um motor de workflow. Estes
+// padrões são intencionalmente estreitos: procuram comandos explícitos, não
+// simples menções a vídeo, foto, etapa ou agendamento.
+const PLAYBOOK_FLOW_PATTERNS = [
+  /\b(?:envie|mande|mostre|apresente|compartilhe|dispare)\b[^.!?\n]{0,120}\b(?:vídeo|video|vídeos|videos|mídia|midia|mídias|midias|imagem|imagens|foto|fotos|áudio|audio|áudios|audios)\b/i,
+  /\b(?:inicie|comece|avance|retome|reinicie)\b[^.!?\n]{0,100}\b(?:pipeline|fluxo|etapa|passo)\b/i,
+  /\b(?:trigger|gatilho)\s+(?:de|do|da|para)\b/i,
+  /\b(?:aguarde|espere)\b[^.!?\n]{0,120}\b(?:antes de|até que|ate que)\b/i,
+];
+
 /**
  * Subconjunto BLOQUEANTE do lint de `notes`: padrões que carregam um FATO com
  * casa estruturada e portanto não devem publicar. Diferente de `lintPlaybookNotes`
  * (avisos, nunca bloqueiam), estes TRAVAM a ativação do playbook.
  *
- * Mantido deliberadamente ESTREITO — só valor de preço concreto (R$ 2.500), cuja
- * casa é `commercialPolicy` / `treatments.priceCents`. Padrões mais fuzzy
- * (palavra "parcelamento", "desconto") continuam apenas como aviso, para não
- * bloquear orientação comportamental legítima que só menciona esses termos.
+ * Mantido deliberadamente ESTREITO: fatos com casa estruturada e comandos
+ * explícitos de workflow. Padrões fuzzy (palavra "parcelamento", "desconto" ou
+ * mera menção a mídia) continuam apenas como aviso, para não bloquear orientação
+ * comportamental legítima.
  */
 export function blockingPlaybookNotesIssues(notes: string | null | undefined): string[] {
   if (!notes?.trim()) return [];
@@ -39,6 +54,11 @@ export function blockingPlaybookNotesIssues(notes: string | null | undefined): s
   if (CONCRETE_PRICE_PATTERN.test(notes)) {
     issues.push(
       'O campo de conduta (notes) contém um valor em R$. Preço pertence ao valor do procedimento (cadastro do tratamento) — a IA fala o preço a partir dele. Remova o valor daqui antes de publicar.',
+    );
+  }
+  if (PLAYBOOK_FLOW_PATTERNS.some((pattern) => pattern.test(notes))) {
+    issues.push(
+      'O campo de conduta (notes) contém comando de fluxo, envio de mídia ou sequenciamento. Esse comportamento pertence ao pipeline estruturado do procedimento. Remova o comando daqui antes de publicar.',
     );
   }
   return issues;

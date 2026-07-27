@@ -102,6 +102,9 @@ type WizardInitial = {
     zapiClientToken: string;
     metaPhoneNumberId: string;
     metaAccessToken: string;
+    metaAppSecret: string;
+    zapiCredentialsConfigured: boolean;
+    metaCredentialsConfigured: boolean;
   };
   treatments: WizardTreatment[];
   policy: {
@@ -540,7 +543,10 @@ function StepIdentidade({
 
   const startPairing = async (mode: "qr" | "phone") => {
     setPairingError(null);
-    if (!channel.zapiInstanceId || !channel.zapiToken) {
+    if (
+      !channel.zapiInstanceId ||
+      (!channel.zapiToken && !channel.zapiCredentialsConfigured)
+    ) {
       setPairingPhase("error");
       setPairingError("Preencha Z-API Instance ID e Z-API Token para conectar.");
       return;
@@ -556,6 +562,7 @@ function StepIdentidade({
       zapiClientToken: channel.zapiClientToken,
       metaPhoneNumberId: channel.metaPhoneNumberId,
       metaAccessToken: channel.metaAccessToken,
+      metaAppSecret: channel.metaAppSecret,
     });
 
     if (!saveResult.success) {
@@ -804,6 +811,8 @@ function StepIdentidade({
               <div>
                 <FieldLabel>Z-API Token</FieldLabel>
                 <input
+                  type="password"
+                  autoComplete="new-password"
                   value={channel.zapiToken}
                   onChange={(e) =>
                     onChannelChange({ ...channel, zapiToken: e.target.value })
@@ -819,6 +828,8 @@ function StepIdentidade({
               <div>
                 <FieldLabel>Z-API Client Token</FieldLabel>
                 <input
+                  type="password"
+                  autoComplete="new-password"
                   value={channel.zapiClientToken}
                   onChange={(e) =>
                     onChannelChange({
@@ -1118,6 +1129,8 @@ function StepIdentidade({
               <div>
                 <FieldLabel>Meta Access Token</FieldLabel>
                 <input
+                  type="password"
+                  autoComplete="new-password"
                   value={channel.metaAccessToken}
                   onChange={(e) =>
                     onChannelChange({
@@ -1126,6 +1139,22 @@ function StepIdentidade({
                     })
                   }
                   placeholder="Token de acesso"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <FieldLabel>Meta App Secret</FieldLabel>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={channel.metaAppSecret}
+                  onChange={(e) =>
+                    onChannelChange({
+                      ...channel,
+                      metaAppSecret: e.target.value,
+                    })
+                  }
+                  placeholder="Deixe vazio para preservar o segredo salvo"
                   style={inputStyle}
                 />
               </div>
@@ -2272,8 +2301,11 @@ function StepRevisao({
       value: channel.provider === "z_api" ? "Z-API" : "Meta Cloud API",
       ok:
         channel.provider === "z_api"
-          ? !!channel.zapiInstanceId && !!channel.zapiToken
-          : !!channel.metaPhoneNumberId && !!channel.metaAccessToken,
+          ? !!channel.zapiInstanceId &&
+            (!!channel.zapiToken || channel.zapiCredentialsConfigured)
+          : !!channel.metaPhoneNumberId &&
+            ((!!channel.metaAccessToken && !!channel.metaAppSecret) ||
+              channel.metaCredentialsConfigured),
     },
     {
       label: "Boas-vindas",
@@ -2545,6 +2577,8 @@ export function OnboardingWizardClient({
       zapiToken: channel.zapiToken,
       metaPhoneNumberId: channel.metaPhoneNumberId,
       metaAccessToken: channel.metaAccessToken,
+      metaAppSecret: channel.metaAppSecret,
+      metaAppSecretConfigured: channel.metaCredentialsConfigured,
     },
     playbook: {
       toneOfVoice: receptionist.toneOfVoice,
@@ -2591,6 +2625,7 @@ export function OnboardingWizardClient({
               zapiClientToken: channel.zapiClientToken,
               metaPhoneNumberId: channel.metaPhoneNumberId,
               metaAccessToken: channel.metaAccessToken,
+              metaAppSecret: channel.metaAppSecret,
             });
             break;
           case 2:

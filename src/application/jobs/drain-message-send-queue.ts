@@ -60,7 +60,10 @@ export async function drainMessageSendQueue(params: {
     });
     if (!job) break;
     result.claimed++;
-    const jobLog = log.child({ jobId: job.id, traceId: getOutboundMessageId(job.payload) ?? undefined });
+    const jobLog = log.child({
+      jobId: job.id,
+      traceId: getTurnId(job.payload) ?? getOutboundMessageId(job.payload) ?? undefined,
+    });
     const startedAt = Date.now();
     jobLog.info("job.claimed", { attempt: job.attempts });
 
@@ -136,5 +139,11 @@ function isDeferredOutcome(
 export function getOutboundMessageId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const value = (payload as Record<string, unknown>).outboundMessageId;
+  return typeof value === "string" && value ? value : null;
+}
+
+export function getTurnId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>).turnId;
   return typeof value === "string" && value ? value : null;
 }

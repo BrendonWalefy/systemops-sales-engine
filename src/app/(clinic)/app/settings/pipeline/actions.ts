@@ -10,10 +10,49 @@ const repo = new DrizzleTreatmentRepository();
 export async function savePipelineSteps(
   treatmentId: string,
   steps: PipelineStep[],
+  configuration?: {
+    pipelineSourceTreatmentId: string | null;
+    pipelineEntryBehavior: "immediate" | "qualify_then_present" | null;
+  },
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const clinicId = await requireSessionClinicId();
-    await repo.update(treatmentId, { pipelineSteps: steps.length > 0 ? steps : null });
+    const clinicTreatments = await repo.listByClinic(clinicId);
+    const treatment = clinicTreatments.find((candidate) => candidate.id === treatmentId);
+    if (!treatment) {
+      return { success: false, error: "Tratamento não encontrado nesta clínica." };
+    }
+
+    const sourceId = configuration
+      ? configuration.pipelineSourceTreatmentId
+      : treatment.pipelineSourceTreatmentId ?? null;
+    const source = sourceId
+      ? clinicTreatments.find((candidate) => candidate.id === sourceId)
+      : null;
+    if (sourceId && (!source || source.id === treatment.id)) {
+      return { success: false, error: "Pipeline canônico inválido." };
+    }
+    if (source?.pipelineSourceTreatmentId) {
+      return {
+        success: false,
+        error: "A fonte precisa ser um tratamento canônico, não outra variante.",
+      };
+    }
+    if (source && !(source.pipelineSteps?.length)) {
+      return {
+        success: false,
+        error: "Configure etapas no tratamento canônico antes de vinculá-lo.",
+      };
+    }
+
+    await repo.update(treatmentId, {
+      // Uma variante nunca mantém uma segunda cópia da jornada.
+      pipelineSteps: source ? null : (steps.length > 0 ? steps : null),
+      pipelineSourceTreatmentId: source?.id ?? null,
+      pipelineEntryBehavior: configuration
+        ? configuration.pipelineEntryBehavior
+        : treatment.pipelineEntryBehavior ?? null,
+    });
     revalidatePath("/app/settings/pipeline");
     revalidatePath(`/app/settings/pipeline/${treatmentId}`);
     revalidateTag(clinicTreatmentsTag(clinicId), "max");

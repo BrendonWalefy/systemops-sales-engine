@@ -57,6 +57,7 @@ async function main() {
     zapiToken: organizations.zapiToken,
     zapiClientToken: organizations.zapiClientToken,
     metaAccessToken: organizations.metaAccessToken,
+    metaAppSecret: organizations.metaAppSecret,
   }).from(organizations);
 
   let fixed = 0;
@@ -69,11 +70,13 @@ async function main() {
     const nextZapiToken = normalizeStoredCredential(row.zapiToken);
     const nextZapiClientToken = normalizeStoredCredential(row.zapiClientToken);
     const nextMetaAccessToken = normalizeStoredCredential(row.metaAccessToken);
+    const nextMetaAppSecret = normalizeStoredCredential(row.metaAppSecret);
 
     const changed =
       nextZapiToken !== row.zapiToken ||
       nextZapiClientToken !== row.zapiClientToken ||
-      nextMetaAccessToken !== row.metaAccessToken;
+      nextMetaAccessToken !== row.metaAccessToken ||
+      nextMetaAppSecret !== row.metaAppSecret;
 
     if (!changed) continue;
 
@@ -81,6 +84,7 @@ async function main() {
       zapiToken: nextZapiToken,
       zapiClientToken: nextZapiClientToken,
       metaAccessToken: nextMetaAccessToken,
+      metaAppSecret: nextMetaAppSecret,
       updatedAt: new Date(),
     }).where(eq(organizations.id, row.id));
 

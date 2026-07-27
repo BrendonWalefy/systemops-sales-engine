@@ -14,6 +14,7 @@ export function MessageInput({ conversationId }: Props) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const retryMessageIdRef = useRef<string | null>(null);
 
   const prevPendingRef = useRef(false);
 
@@ -43,7 +44,10 @@ export function MessageInput({ conversationId }: Props) {
         const res = await fetch(`/api/conversations/${conversationId}/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed }),
+          body: JSON.stringify({
+            message: trimmed,
+            clientMessageId: retryMessageIdRef.current ??= crypto.randomUUID(),
+          }),
         });
 
         if (!res.ok) {
@@ -53,6 +57,7 @@ export function MessageInput({ conversationId }: Props) {
         }
 
         setText("");
+        retryMessageIdRef.current = null;
         router.refresh();
       } catch {
         setError("Falha na conexão. Tente novamente.");
@@ -98,7 +103,10 @@ export function MessageInput({ conversationId }: Props) {
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            retryMessageIdRef.current = null;
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Responder como operador…"
           rows={1}

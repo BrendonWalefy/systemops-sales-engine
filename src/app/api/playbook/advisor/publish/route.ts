@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { playbookVersions } from "@/infrastructure/db/schema";
-import { publishablePlaybookSchema } from "@/application/config/editorial-config";
+import { publishablePlaybookSchema, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues } from "@/application/config/editorial-config";
 import type { ProposedPlaybook } from "@/core/intelligence/PlaybookAdvisor";
+import { treatments } from "@/infrastructure/db/schema";
+import { eq } from "drizzle-orm";
+import { publishNewActivePlaybook } from "@/application/config/playbook-publication";
 
 export const dynamic = "force-dynamic";
 
@@ -51,25 +52,23 @@ export async function POST(req: NextRequest) {
     }
     const playbook = validation.data;
 
-    // Move a versão ativa ATUAL desta clínica para historical.
-    // BUG CORRIGIDO: antes era `eq(...) && eq(...)` — em JS o && avalia o primeiro
-    // eq como truthy e descarta-o, então o Drizzle recebia só a segunda condição.
-    // Isso arquivava versões ativas sem filtrar por clínica (vazamento multi-tenant).
-    await db
-      .update(playbookVersions)
-      .set({ status: "historical", updatedAt: new Date() })
-      .where(
-        and(
-          eq(playbookVersions.clinicId, body.clinicId),
-          eq(playbookVersions.status, "active"),
-        ),
+    const policyIssues = blockingCommercialPolicyIssues(playbook.commercialPolicy);
+    const clinicTreatments = await db
+      .select({ name: treatments.name, description: treatments.description })
+      .from(treatments)
+      .where(eq(treatments.clinicId, body.clinicId));
+    const descriptionIssues = blockingTreatmentDescriptionIssues(clinicTreatments);
+    const ownershipIssues = [...policyIssues, ...descriptionIssues];
+    if (ownershipIssues.length > 0) {
+      return NextResponse.json(
+        { error: "playbook não passou nas regras de propriedade", issues: ownershipIssues },
+        { status: 422 },
       );
+    }
 
-    // Insere nova versão como ativa
-    await db.insert(playbookVersions).values({
+    await publishNewActivePlaybook({
       clinicId: body.clinicId,
       name: `Sugestão do Advisor — ${new Date().toLocaleDateString("pt-BR")}`,
-      status: "active",
       specialty: playbook.specialty,
       toneOfVoice: playbook.toneOfVoice,
       receptionistName: playbook.receptionistName,

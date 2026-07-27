@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
-import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
+import { SendMessageJobHandler, SHADOW_DELIVERY_SUPPRESSED } from "@/application/jobs/send-message-job";
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
+import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 
 const outbound: OutboundMessage = {
   id: "outbound-1",
@@ -125,18 +126,52 @@ describe("SendMessageJobHandler", () => {
   it("envia somente após obter o claim da outbox e marca a entrega", async () => {
     const store = makeStore();
     const delivery = vi.fn().mockResolvedValue("zapi-message-1");
+    const decisionTraceSink = new InMemoryDecisionTraceSink();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       delivery,
+      decisionTraceSink,
+      conversationStateReader: {
+        getCurrentState: vi.fn().mockResolvedValue(null),
+      },
     });
 
-    await expect(handler.processJob({ payload: { outboundMessageId: "outbound-1" } })).resolves.toBe("sent");
+    await expect(
+      handler.processJob({
+        payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
+      }),
+    ).resolves.toBe("sent");
     expect(delivery).toHaveBeenCalledWith(
       expect.objectContaining({ clinicId: "clinic-1", conversationId: "conversation-1" }),
     );
     expect(store.markOutboundDelivered).toHaveBeenCalledWith({
       id: "outbound-1",
       providerMessageId: "zapi-message-1",
+    });
+    expect(decisionTraceSink.getEvents("turn-1").map((entry) => entry.stage)).toEqual([
+      "delivery.started",
+      "state.after_delivery",
+      "delivery.sent",
+    ]);
+  });
+
+  it("registra a fase da falha quando o provider rejeita a entrega", async () => {
+    const store = makeStore();
+    const decisionTraceSink = new InMemoryDecisionTraceSink();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery: vi.fn().mockRejectedValue(new Error("provider unavailable")),
+      decisionTraceSink,
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
+    })).rejects.toThrow("provider unavailable");
+    expect(decisionTraceSink.getEvents("turn-1").map((entry) => entry.stage))
+      .toEqual(["delivery.started", "turn.failed"]);
+    expect(decisionTraceSink.getEvents("turn-1").at(-1)?.metadata).toEqual({
+      phase: "delivery",
+      errorName: "Error",
     });
   });
 
@@ -150,6 +185,28 @@ describe("SendMessageJobHandler", () => {
 
     await expect(handler.processJob({ payload: { outboundMessageId: "outbound-1" } })).resolves.toBe("ignored");
     expect(store.hasEarlierActiveMessage).not.toHaveBeenCalled();
+  });
+
+  it("cancela outbox shadow sem marcar entrega nem executar lifecycle", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue(automationOutbound({ category: "reply" }));
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery: vi.fn().mockResolvedValue(SHADOW_DELIVERY_SUPPRESSED),
+      automationDispatchLifecycle,
+      safetyContextReader: makeSafetyContextReader(),
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: "outbound-automation-1" },
+    })).resolves.toBe("ignored");
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
+      "outbound-automation-1",
+      "shadow_mode",
+    );
+    expect(store.markOutboundDelivered).not.toHaveBeenCalled();
+    expect(automationDispatchLifecycle.markDelivered).not.toHaveBeenCalled();
   });
 
   it("reconcilia lifecycle de automação quando a outbox já está sent", async () => {

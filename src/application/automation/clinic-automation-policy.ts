@@ -6,22 +6,28 @@ type ClinicAutomationToggle = {
   shadowModeEnabled?: boolean | null;
 };
 
+export type ClinicAutomationMode = "live" | "observe" | "disabled";
+
 // Kill switch operacional da clínica: se a IA foi desligada, nenhum outbound
 // automatizado deve sair sem decisão explícita em contrário. Além disso,
 // apenas clínicas ativas entram no fluxo automático; prospect, test, paused e
 // cancelled ficam bloqueadas por policy única.
 //
-// Exceção: shadowModeEnabled força a composição da resposta independente do
-// status operacional (permite observar comportamento em pré-onboarding ou
-// clínicas pausadas). Clínicas arquivadas (cancelled) nunca compõem, nem em
-// shadow mode. O envio real ao WhatsApp é bloqueado à parte, em
-// send-message-job.ts — este flag NUNCA autoriza envio, só composição/log.
+// Shadow é coleta segura: registra o inbound real, mas a avaliação da IA roda
+// depois no replay isolado. Executar o orquestrador produtivo e suprimir apenas
+// o WhatsApp ainda criava estado, follow-up e agendamento hipotéticos no tenant.
+export function resolveClinicAutomationMode(
+  clinic: ClinicAutomationToggle,
+): ClinicAutomationMode {
+  if (clinic.operationalStatus === "cancelled") return "disabled";
+  if (clinic.shadowModeEnabled) return "observe";
+  return clinic.autoReplyEnabled !== false && clinic.operationalStatus === "active"
+    ? "live"
+    : "disabled";
+}
+
 export function shouldSendAutomatedClinicOutbound(
   clinic: ClinicAutomationToggle,
 ): boolean {
-  if (clinic.operationalStatus === "cancelled") return false;
-  if (clinic.shadowModeEnabled) return true;
-  return (
-    clinic.autoReplyEnabled !== false && clinic.operationalStatus === "active"
-  );
+  return resolveClinicAutomationMode(clinic) === "live";
 }

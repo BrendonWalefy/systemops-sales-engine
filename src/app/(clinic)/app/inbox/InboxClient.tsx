@@ -177,6 +177,7 @@ function RecoveryModal({
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [, startTransition] = useTransition();
+  const retryOperationIdRef = useRef<string | null>(null);
 
   const displayName = row.leadName ?? row.leadPhone ?? "Lead";
 
@@ -212,6 +213,7 @@ function RecoveryModal({
         setError(result.error);
       } else {
         setMessage(result.message ?? "");
+        retryOperationIdRef.current = null;
       }
     });
   }
@@ -221,7 +223,11 @@ function RecoveryModal({
     setSending(true);
     setError(null);
     startTransition(async () => {
-      const result = await sendRecoveryMessageAction(row.convId, message.trim());
+      const result = await sendRecoveryMessageAction(
+        row.convId,
+        message.trim(),
+        retryOperationIdRef.current ??= crypto.randomUUID(),
+      );
       setSending(false);
       if (result.error) {
         setError(result.error);
@@ -331,7 +337,10 @@ function RecoveryModal({
             </label>
             <textarea
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e) => {
+                setMessage(e.target.value);
+                retryOperationIdRef.current = null;
+              }}
               rows={4}
               style={{
                 background: "var(--surface-raised)",

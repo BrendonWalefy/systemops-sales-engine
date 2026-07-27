@@ -127,6 +127,58 @@ describe("ResponseComposer — retry e erro em resposta vazia", () => {
     expect(responsesCreateMock).toHaveBeenCalledTimes(1);
     expect(createMock).not.toHaveBeenCalled();
   });
+
+  it("recompõe um acknowledgment que repetiria literalmente uma fala anterior", async () => {
+    const repeated = "Boa noite! Sou da Clínica Teste. Como posso ajudar?";
+    createMock
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: repeated } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      })
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: "Oi! 😊" } }],
+        usage: { prompt_tokens: 12, completion_tokens: 3 },
+      });
+
+    const composer = new ResponseComposer();
+    const result = await composer.compose({
+      ...composerInput(),
+      actionResult: { type: "acknowledgment" },
+      isFirstMessage: false,
+      conversationHistory: [
+        { author: "lead", body: "Quero saber mais", sentAt: new Date("2026-01-01T10:00:00Z") },
+        { author: "agent", body: repeated, sentAt: new Date("2026-01-01T10:00:01Z") },
+        { author: "lead", body: "Olá, Gleice", sentAt: new Date("2026-01-01T10:00:02Z") },
+      ] as never,
+    });
+
+    expect(result.text).toBe("Oi! 😊");
+    expect(result.inputTokens).toBe(22);
+    expect(result.outputTokens).toBe(8);
+    expect(createMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("usa ack determinístico se o modelo insistir na mesma resposta", async () => {
+    const repeated = "Boa noite! Sou da Clínica Teste. Como posso ajudar?";
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: repeated } }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    });
+
+    const composer = new ResponseComposer();
+    const result = await composer.compose({
+      ...composerInput(),
+      actionResult: { type: "acknowledgment" },
+      isFirstMessage: false,
+      conversationHistory: [
+        { author: "agent", body: repeated, sentAt: new Date("2026-01-01T10:00:01Z") },
+        { author: "lead", body: "Olá, Gleice", sentAt: new Date("2026-01-01T10:00:02Z") },
+      ] as never,
+    });
+
+    expect(result.text).toBe("Oi! 😊");
+    expect(createMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("Orchestrator — guard de replyText vazio (modelo do invariante)", () => {

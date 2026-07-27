@@ -1,0 +1,128 @@
+import { createHash } from "node:crypto";
+import type { OutboundDeliveryBoundary } from "@/application/jobs/send-message-job";
+import { OutboundDeliveryService } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
+
+export type ReplayOutboundEffect =
+  | {
+      sequence: number;
+      kind: "text" | "voice";
+      to: string;
+      content: string;
+      providerMessageId: string;
+    }
+  | {
+      sequence: number;
+      kind: "media";
+      to: string;
+      mediaType: "image" | "video" | "audio" | "document";
+      /** Hash opaco permite detectar duplicação sem vazar URL/token do asset. */
+      mediaRef: string;
+      caption: string | null;
+      fileName: string | null;
+      providerMessageId: string;
+    }
+  | {
+      sequence: number;
+      kind: "suppressed";
+      category: "conversation_reply" | "automation";
+      to: string;
+      content: string;
+      intent: string | null;
+      reason: "shadow_mode";
+    };
+
+type ReplayProviderEffect = Exclude<
+  ReplayOutboundEffect,
+  { kind: "suppressed" }
+>;
+
+/**
+ * Substitui somente a fronteira irreversível do canal. O sender real continua
+ * persistindo partes, avançando pipeline e agendando follow-ups exatamente como
+ * em produção; chamadas ao WhatsApp/TTS/storage são transformadas em efeitos
+ * capturados e identificadores sintéticos.
+ */
+export class ReplayOutboundCapture {
+  readonly effects: ReplayOutboundEffect[] = [];
+  private sequence = 0;
+
+  createBoundary(): Partial<OutboundDeliveryBoundary> {
+    return {
+      sandboxCaptureEnabled: true,
+      sendVoiceOrText: async (to, text, _config, voiceEnabled) => {
+        const effect = this.append({
+          kind: voiceEnabled ? "voice" : "text",
+          to,
+          content: text,
+        });
+        return {
+          msgId: effect.providerMessageId,
+          deliveryFormat: voiceEnabled ? "audio" : "text",
+          blobUrl: null,
+        };
+      },
+      sendMediaMessage: async (
+        to,
+        mediaUrl,
+        mediaType,
+        _config,
+        caption,
+        fileName,
+      ) => this.append({
+        kind: "media",
+        to,
+        mediaType,
+        mediaRef: opaqueMediaRef(mediaUrl),
+        caption: caption ?? null,
+        fileName: fileName ?? null,
+      }).providerMessageId,
+      createDeliveryService: () =>
+        new OutboundDeliveryService({
+          sendMedia: async (
+            to,
+            mediaUrl,
+            mediaType,
+            _config,
+            caption,
+            fileName,
+          ) => this.append({
+            kind: "media",
+            to,
+            mediaType,
+            mediaRef: opaqueMediaRef(mediaUrl),
+            caption: caption ?? null,
+            fileName: fileName ?? null,
+          }).providerMessageId,
+          getDeliveryStatus: async () => "delivered",
+          sleep: async () => {},
+          now: () => this.sequence * 1_000,
+          minGapMs: 0,
+          deliveryTimeoutMs: 0,
+          pollIntervalMs: 0,
+        }),
+      recordSuppressedDelivery: async (input) => {
+        this.effects.push({
+          sequence: ++this.sequence,
+          kind: "suppressed",
+          ...input,
+        });
+      },
+    };
+  }
+
+  private append(
+    effect:
+      | Omit<Extract<ReplayOutboundEffect, { kind: "text" | "voice" }>, "sequence" | "providerMessageId">
+      | Omit<Extract<ReplayOutboundEffect, { kind: "media" }>, "sequence" | "providerMessageId">,
+  ): ReplayProviderEffect {
+    const sequence = ++this.sequence;
+    const providerMessageId = `replay-capture-${sequence}`;
+    const captured = { ...effect, sequence, providerMessageId } as ReplayProviderEffect;
+    this.effects.push(captured);
+    return captured;
+  }
+}
+
+function opaqueMediaRef(mediaUrl: string): string {
+  return createHash("sha256").update(mediaUrl).digest("hex").slice(0, 24);
+}

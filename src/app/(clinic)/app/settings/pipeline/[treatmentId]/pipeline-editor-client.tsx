@@ -29,7 +29,15 @@ import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 type MediaItem = { id: string; title: string; url: string; type: "video" | "image"; treatmentId: string | null };
 
 type Props = {
-  treatment: { id: string; name: string; pipelineSteps: PipelineStep[] | null };
+  treatment: {
+    id: string;
+    name: string;
+    pipelineSteps: PipelineStep[] | null;
+    ownPipelineSteps: PipelineStep[] | null;
+    pipelineSourceTreatmentId: string | null;
+    pipelineEntryBehavior: "immediate" | "qualify_then_present" | null;
+  };
+  pipelineSources: Array<{ id: string; name: string; pipelineSteps: PipelineStep[] }>;
   mediaLibrary: MediaItem[];
 };
 
@@ -546,11 +554,22 @@ function AddStepMenu({ onAdd }: { onAdd: (type: StepType) => void }) {
 
 // ─── Main editor ──────────────────────────────────────────────────────────────
 
-export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
-  const [steps, setSteps] = useState<PipelineStep[]>(treatment.pipelineSteps ?? []);
+export function PipelineEditorClient({ treatment, pipelineSources, mediaLibrary }: Props) {
+  const [steps, setSteps] = useState<PipelineStep[]>(treatment.ownPipelineSteps ?? []);
+  const [pipelineSourceTreatmentId, setPipelineSourceTreatmentId] = useState(
+    treatment.pipelineSourceTreatmentId ?? "",
+  );
+  const [pipelineEntryBehavior, setPipelineEntryBehavior] = useState(
+    treatment.pipelineEntryBehavior ?? "",
+  );
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const selectedSource = pipelineSources.find(
+    (candidate) => candidate.id === pipelineSourceTreatmentId,
+  );
+  const visibleSteps = selectedSource?.pipelineSteps ?? steps;
+  const isInherited = Boolean(selectedSource);
 
   function updateStep(index: number, step: PipelineStep) {
     setSaved(false);
@@ -579,14 +598,14 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
   }
 
   const { show: showMediaGapWarning, contentStepIndexes, treatmentSpecificMediaCount } = computeMediaGapWarning(
-    steps,
+    visibleSteps,
     mediaLibrary,
     treatment.id,
   );
 
   function addMediaToFirstContentStep() {
     const idx = contentStepIndexes[0];
-    const step = steps[idx];
+    const step = visibleSteps[idx];
     if (step.type !== "content") return;
     updateStep(idx, { ...step, blocks: [...step.blocks, { kind: "media", mediaId: "" }] });
   }
@@ -594,7 +613,14 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
   function handleSave() {
     setError(null);
     startTransition(async () => {
-      const result = await savePipelineSteps(treatment.id, steps);
+      const result = await savePipelineSteps(treatment.id, steps, {
+        pipelineSourceTreatmentId: pipelineSourceTreatmentId || null,
+        pipelineEntryBehavior:
+          pipelineEntryBehavior === "immediate" ||
+          pipelineEntryBehavior === "qualify_then_present"
+            ? pipelineEntryBehavior
+            : null,
+      });
       if (result.success) {
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
@@ -635,7 +661,7 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
               {treatment.name}
             </h1>
             <p style={{ fontSize: "12px", color: "var(--muted)", margin: "1px 0 0" }}>
-              {steps.length === 0 ? "Sem etapas configuradas" : `${steps.length} ${steps.length === 1 ? "etapa" : "etapas"}`}
+              {visibleSteps.length === 0 ? "Sem etapas configuradas" : `${visibleSteps.length} ${visibleSteps.length === 1 ? "etapa" : "etapas"}`}
             </p>
           </div>
         </div>
@@ -682,7 +708,60 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
         </div>
       )}
 
-      {showMediaGapWarning && (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(220px, 1fr) minmax(220px, 1fr)",
+          gap: "12px",
+          padding: "14px",
+          marginBottom: "16px",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "12px",
+          background: "rgba(255,255,255,0.03)",
+        }}
+      >
+        <label style={{ fontSize: "12px", color: "var(--muted)" }}>
+          <span style={labelStyle}>Jornada canônica</span>
+          <select
+            value={pipelineSourceTreatmentId}
+            onChange={(event) => {
+              setPipelineSourceTreatmentId(event.target.value);
+              setSaved(false);
+            }}
+            style={{ width: "100%", minHeight: "38px" }}
+          >
+            <option value="">Este tratamento possui a jornada</option>
+            {pipelineSources.map((source) => (
+              <option key={source.id} value={source.id}>
+                Herdar de {source.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: "12px", color: "var(--muted)" }}>
+          <span style={labelStyle}>Entrada na apresentação</span>
+          <select
+            value={pipelineEntryBehavior}
+            onChange={(event) => {
+              setPipelineEntryBehavior(event.target.value);
+              setSaved(false);
+            }}
+            style={{ width: "100%", minHeight: "38px" }}
+          >
+            <option value="">Padrão atual da clínica</option>
+            <option value="immediate">Imediata — conteúdo e mídias no primeiro turno</option>
+            <option value="qualify_then_present">Qualificar e apresentar na resposta seguinte</option>
+          </select>
+        </label>
+        {isInherited && (
+          <p style={{ gridColumn: "1 / -1", margin: 0, fontSize: "12px", color: "#a7f3d0" }}>
+            Esta é uma variante comercial. Preço e duração continuam próprios; as etapas abaixo vêm de{" "}
+            <strong>{selectedSource?.name}</strong> e não são duplicadas.
+          </p>
+        )}
+      </div>
+
+      {!isInherited && showMediaGapWarning && (
         <div
           style={{
             display: "flex",
@@ -728,7 +807,7 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
       )}
 
       {/* Empty state */}
-      {steps.length === 0 && (
+      {visibleSteps.length === 0 && (
         <div
           style={{
             padding: "32px 24px",
@@ -747,13 +826,22 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
       )}
 
       {/* Steps list */}
-      <div className="pipeline-steps-list" style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
-        {steps.map((step, i) => (
+      <div
+        className="pipeline-steps-list"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          marginBottom: "16px",
+          ...(isInherited ? { pointerEvents: "none", opacity: 0.72 } : {}),
+        }}
+      >
+        {visibleSteps.map((step, i) => (
           <StepCard
             key={i}
             step={step}
             index={i}
-            total={steps.length}
+            total={visibleSteps.length}
             mediaLibrary={mediaLibrary}
             onChange={(s) => updateStep(i, s)}
             onRemove={() => removeStep(i)}
@@ -763,7 +851,7 @@ export function PipelineEditorClient({ treatment, mediaLibrary }: Props) {
       </div>
 
       {/* Add step */}
-      <AddStepMenu onAdd={addStep} />
+      {!isInherited && <AddStepMenu onAdd={addStep} />}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

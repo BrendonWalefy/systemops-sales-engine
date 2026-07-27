@@ -34,6 +34,11 @@ describe("anonymizeText", () => {
     expect(anonymizeText("Oi Lu, tudo bem?", "Lu")).toBe("Oi [PACIENTE], tudo bem?");
   });
 
+  it("redige nomes iniciados por caractere acentuado", () => {
+    expect(anonymizeText("Olá, Ágata! Tudo bem?", "Ágata Souza"))
+      .toBe("Olá, [PACIENTE]! Tudo bem?");
+  });
+
   it("substitui números de telefone", () => {
     expect(anonymizeText("Meu número é 11987654321", null))
       .toBe("Meu número é [TELEFONE]");

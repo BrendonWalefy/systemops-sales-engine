@@ -34,6 +34,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
         isAesthetic: data.isAesthetic,
         pipelineSteps: data.pipelineSteps ?? null,
         pipelineSourceTreatmentId: data.pipelineSourceTreatmentId ?? null,
+        pipelineEntryBehavior: data.pipelineEntryBehavior ?? null,
         priceCents: data.priceCents ?? null,
         minPriceCents: data.minPriceCents ?? null,
         maxPriceCents: data.maxPriceCents ?? null,
@@ -50,7 +51,7 @@ export class DrizzleTreatmentRepository implements TreatmentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "pipelineSourceTreatmentId" | "priceCents" | "minPriceCents" | "maxPriceCents" | "priceQuotableInChat" | "priceKind" | "priceUnit" | "priceDeductible" | "quantityPrices" | "bookingWindows">>,
+    data: Partial<Pick<Treatment, "name" | "durationMinutes" | "description" | "requiresEvaluationFirst" | "keywordMatchEnabled" | "aliases" | "isAesthetic" | "pipelineSteps" | "pipelineSourceTreatmentId" | "pipelineEntryBehavior" | "priceCents" | "minPriceCents" | "maxPriceCents" | "priceQuotableInChat" | "priceKind" | "priceUnit" | "priceDeductible" | "quantityPrices" | "bookingWindows">>,
   ): Promise<Treatment> {
     const [row] = await db
       .update(treatments)
@@ -78,6 +79,7 @@ function mapRow(row: typeof treatments.$inferSelect): Treatment {
     isAesthetic: row.isAesthetic,
     pipelineSteps: (row.pipelineSteps as PipelineStep[] | null) ?? null,
     pipelineSourceTreatmentId: row.pipelineSourceTreatmentId ?? null,
+    pipelineEntryBehavior: row.pipelineEntryBehavior ?? null,
     priceCents: row.priceCents ?? null,
     minPriceCents: row.minPriceCents ?? null,
     maxPriceCents: row.maxPriceCents ?? null,

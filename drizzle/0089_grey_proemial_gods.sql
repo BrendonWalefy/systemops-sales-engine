@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "playbook_versions_one_active_per_org_idx" ON "playbook_versions" USING btree ("organization_id") WHERE "playbook_versions"."status" = 'active';

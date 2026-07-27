@@ -67,7 +67,10 @@ import {
 import { buildAddressAnswer, buildAddressLines, type ClinicAddress } from "@/core/conversation/AddressBlock";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
-import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
+import type {
+  FormattedSlot,
+  TreatmentPipelinePayload,
+} from "@/core/conversation/ConversationStateMachine";
 import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
@@ -110,6 +113,13 @@ import {
   buildDepositProofReviewRequestMessage,
   nextAvailableDepositProofReviewCode,
 } from "@/application/conversations/deposit-proof-review";
+import {
+  noopDecisionTraceSink,
+  recordDeterministicDecisionTraceCompletion,
+  recordDecisionTrace,
+  type DeterministicDecisionTraceCompletion,
+  type DecisionTraceSink,
+} from "@/core/observability/DecisionTrace";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -119,6 +129,11 @@ type MenuResolution =
   | { intent: "needs_human" }
   | { intent: "general_question"; subtype: "procedures"; treatmentKeyword?: string }
   | { intent: "general_question"; subtype: "location" };
+
+type ConversationDeterministicTraceCompletion = Omit<
+  DeterministicDecisionTraceCompletion,
+  "turnId" | "clinicId" | "conversationId" | "state"
+>;
 
 export function resolveVoiceOutputFlags(params: {
   hasElevenLabsModule: boolean;
@@ -452,6 +467,22 @@ export function buildConciergeStarter(
   return `${salutation}${nameGreeting}. Tudo bem?\n\n${intro} Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?`;
 }
 
+export function isRepeatedConversationalReply(
+  previous: string | null | undefined,
+  candidate: string,
+): boolean {
+  if (!previous?.trim() || !candidate.trim()) return false;
+  return normalizeFreeText(previous) === normalizeFreeText(candidate);
+}
+
+export function buildConversationReentryAcknowledgment(message: string): string {
+  const normalized = normalizeFreeText(message);
+  if (normalized.startsWith("bom dia")) return "Bom dia! 😊";
+  if (normalized.startsWith("boa tarde")) return "Boa tarde! 😊";
+  if (normalized.startsWith("boa noite")) return "Boa noite! 😊";
+  return "Oi! 😊";
+}
+
 // Remove uma saudação redundante que a própria LLM tenha aberto no texto (apesar da
 // instrução em ResponseComposer.ts para não fazer isso quando isFirstMessage=true) —
 // defesa de profundidade: não depender só do prompt, mesmo que ele já peça pra LLM
@@ -535,7 +566,17 @@ export function prependPipelineIntroGreeting(
   const greetingPrefix = `${salutation}${nameGreeting}. Tudo bem?\n${intro}\n\n`;
 
   const firstTextIdx = parts.findIndex((p) => p.type === "text");
-  if (firstTextIdx === -1) return parts;
+  // Se a apresentação começa por mídia, prefixar o primeiro texto sem
+  // reposicioná-lo fazia o lead receber vídeos antes de qualquer contexto. Em
+  // rajadas, a saudação anterior é corretamente descartada pelo debounce e
+  // esse bug ficava visível. A introdução é um part próprio antes da mídia;
+  // o bloco canônico vídeo→vídeo→preços permanece intacto em seguida.
+  if (firstTextIdx !== 0) {
+    return [
+      { type: "text", content: greetingPrefix.trimEnd() },
+      ...parts,
+    ];
+  }
   return parts.map((part, i) =>
     i === firstTextIdx && part.type === "text"
       ? { type: "text", content: greetingPrefix + stripLeadingGreeting(part.content) }
@@ -626,7 +667,7 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
     return { intent: "book_appointment" };
   if (n.includes("pagamento") || n.includes("valor") || n.includes("preco") || n.includes("parcela") || n.includes("forma"))
     return { intent: "price_inquiry" };
-  if (n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica"))
+  if (isLocationRequestText(n))
     return { intent: "general_question", subtype: "location" };
   if (n.includes("especialista") || n.includes("dentista") || n.includes("doutor") || n.includes("medico") || n.includes("medica") || n === "dr")
     return { intent: "needs_human" };
@@ -635,8 +676,7 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
 }
 
 function isLocationRequest(message: string): boolean {
-  const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
-  return n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica");
+  return isLocationRequestText(normalizeFreeText(message));
 }
 
 export function isSocialProfileRequest(message: string): boolean {
@@ -899,34 +939,37 @@ export function isQuantityFollowupToPriceQuestion(params: {
   return isPriceRequestText(normalizeFreeText(previousLeadMessage.body));
 }
 
-export function requiresTeamCheckForHours(message: string, businessHoursRaw: string | null): boolean {
+export function requiresTeamCheckForHours(
+  message: string,
+  businessHoursRaw: string | null,
+  outsideHoursExceptionEnabled = false,
+): boolean {
+  if (!outsideHoursExceptionEnabled) return false;
   const boundary = extractRequestedTimeBoundary(message);
   if (!boundary) return false;
   return isRequestedTimeOutsideBusinessHours(boundary, parseBusinessHours(businessHoursRaw));
 }
 
-export function buildBusinessHoursAnswer(businessHoursRaw: string | null, message: string): string {
+export function buildBusinessHoursAnswer(
+  businessHoursRaw: string | null,
+  message: string,
+  outsideHoursExceptionEnabled = false,
+): string {
   const normalized = normalizeFreeText(message);
   const businessHours = parseBusinessHours(businessHoursRaw);
   const hoursText = businessHoursRaw?.trim() || "Segunda a sexta, das 8h às 18h";
   const asksSaturday = normalized.includes("sabado");
   const asksSunday = normalized.includes("domingo");
 
-  // Horário fora da janela NÃO é recusa — é caso de escalar.
-  //
-  // A clínica abre exceção: na Vitalli, lente é procedimento longo e o doutor
-  // atende após as 17h, terminando até as 21h. Uma IA que responde "fica fora da
-  // nossa agenda" mata uma venda que o humano fecharia. O sistema não conhece as
-  // exceções; quem conhece é a equipe.
-  //
-  // O que quebrava (caso real 19/07): "posso ir após as 18h na semana" respondido
-  // com "Seg-Sáb 8h-18h." — tecnicamente correto, comercialmente morto.
   const boundary = extractRequestedTimeBoundary(message);
   if (boundary && isRequestedTimeOutsideBusinessHours(boundary, businessHours)) {
     const limite = boundary.direction === "after"
       ? `Nosso horário padrão vai até ${businessHours.endHour}h`
       : `Nosso horário padrão começa às ${businessHours.startHour}h`;
-    return `${limite}, mas dependendo do procedimento conseguimos abrir exceção. Vou verificar com a equipe e já te retorno.`;
+    if (outsideHoursExceptionEnabled) {
+      return `${limite}. Esta clínica permite solicitar uma análise de exceção; vou verificar com a equipe e já te retorno.`;
+    }
+    return `${limite}. Posso te ajudar a encontrar uma opção dentro do nosso horário de atendimento: ${hoursText}.`;
   }
 
   // Sábado/domingo: responde pelo que está CADASTRADO. Não consulta a agenda real
@@ -936,14 +979,18 @@ export function buildBusinessHoursAnswer(businessHoursRaw: string | null, messag
     if (businessHours.days.includes(6)) {
       return `Sim, atendemos aos sábados. Horário cadastrado: ${hoursText}.`;
     }
-    return `Pelo horário cadastrado, atendemos ${hoursText}. Sábado não consta na agenda padrão, mas vou verificar com a equipe se há alguma possibilidade.`;
+    return outsideHoursExceptionEnabled
+      ? `Pelo horário cadastrado, atendemos ${hoursText}. Sábado não consta na agenda padrão; vou verificar com a equipe se existe uma exceção disponível.`
+      : `Pelo horário cadastrado, atendemos ${hoursText}. Sábado não consta na agenda padrão.`;
   }
 
   if (asksSunday) {
     if (businessHours.days.includes(0)) {
       return `Sim, atendemos aos domingos. Horário cadastrado: ${hoursText}.`;
     }
-    return `Pelo horário cadastrado, atendemos ${hoursText}. Domingo não consta na agenda padrão, mas vou verificar com a equipe se há alguma possibilidade.`;
+    return outsideHoursExceptionEnabled
+      ? `Pelo horário cadastrado, atendemos ${hoursText}. Domingo não consta na agenda padrão; vou verificar com a equipe se existe uma exceção disponível.`
+      : `Pelo horário cadastrado, atendemos ${hoursText}. Domingo não consta na agenda padrão.`;
   }
 
   return `Nosso horário de atendimento é: ${hoursText}.`;
@@ -1013,7 +1060,8 @@ export function isDirectAddressQuestion(message: string): boolean {
   const n = normalizeFreeText(message);
   if (!n) return false;
   if (hasAnyKeyword(n, ["endereco", "localizacao", "como chego", "como chegar", "maps"])) return true;
-  return /\bonde\b/.test(n) && hasAnyKeyword(n, ["fica", "ficam", "clinica", "consultorio", "voces"]);
+  return /\b(?:onde|aonde)\b/.test(n) &&
+    /\b(?:fica|ficam|clinica|consultorio|voces)\b/.test(n);
 }
 
 // Perguntas factuais 100% seguras que podem ser respondidas por template mesmo
@@ -1035,7 +1083,7 @@ export function buildSafeReviewPauseAnswer(
 }
 
 function isLocationRequestText(normalized: string): boolean {
-  return hasAnyKeyword(normalized, ["localizacao", "endereco", "onde", "fica"]);
+  return /\b(?:localizacao|endereco|onde|aonde|fica|ficam)\b/.test(normalized);
 }
 
 function isProcedureCatalogRequestText(normalized: string): boolean {
@@ -1167,27 +1215,55 @@ function matchTreatmentByNormalizedMessage(
     .split(/\s+/)
     .filter((token) => token.length >= 4 && !stopwords.has(token));
 
-  const matches = (treatment: Treatment): boolean => {
-    if (!treatment.keywordMatchEnabled) return false;
+  const score = (treatment: Treatment): number => {
+    if (!treatment.keywordMatchEnabled) return -1;
 
     const treatmentName = normalizeFreeText(treatment.name);
-    if (treatmentName === normalized) return true;
-    if (normalized.length >= 4 && treatmentName.includes(normalized)) return true;
-    if (treatmentName.length >= 4 && normalized.includes(treatmentName)) return true;
-    if (tokens.some((token) => treatmentName.includes(token))) return true;
+    let result = -1;
+    if (treatmentName === normalized) result = Math.max(result, 4_000 + treatmentName.length);
+    if (normalized.length >= 4 && treatmentName.includes(normalized)) {
+      result = Math.max(result, 3_000 + normalized.length);
+    }
+    if (treatmentName.length >= 4 && normalized.includes(treatmentName)) {
+      result = Math.max(result, 2_000 + treatmentName.length);
+    }
+    const treatmentNameTokens = new Set(treatmentName.split(/\s+/));
+    const matchingTokens = tokens.filter((token) => treatmentNameTokens.has(token));
+    if (matchingTokens.length > 0) {
+      result = Math.max(
+        result,
+        100 + matchingTokens.reduce((total, token) => total + token.length, 0),
+      );
+    }
 
     const aliases = treatment.aliases ?? [];
-    return aliases.some((alias) => {
+    for (const alias of aliases) {
       const normalizedAlias = normalizeFreeText(alias);
-      return normalizedAlias.length >= 4 && normalized.includes(normalizedAlias);
-    });
+      if (normalizedAlias === normalized) {
+        result = Math.max(result, 3_500 + normalizedAlias.length);
+      } else if (
+        normalizedAlias.length > 0 &&
+        ` ${normalized} `.includes(` ${normalizedAlias} `)
+      ) {
+        result = Math.max(result, 1_500 + normalizedAlias.length);
+      }
+    }
+    return result;
   };
 
-  return (
-    treatments.find((t) => matches(t) && t.pipelineSteps !== null) ??
-    treatments.find((t) => matches(t)) ??
-    null
-  );
+  return treatments
+    .map((treatment, index) => ({
+      treatment,
+      index,
+      score: score(treatment),
+    }))
+    .filter((candidate) => candidate.score >= 0)
+    .sort((a, b) =>
+      b.score - a.score ||
+      Number(Boolean(b.treatment.pipelineSteps?.length)) -
+        Number(Boolean(a.treatment.pipelineSteps?.length)) ||
+      a.index - b.index,
+    )[0]?.treatment ?? null;
 }
 
 // Enquanto uma revisão clínica está pendente, toda mensagem do lead volta pelo
@@ -1309,7 +1385,13 @@ export function resolveDirectTreatmentMention(
   const normalized = normalizeFreeText(message);
   if (!normalized || /^\d+$/.test(normalized)) return null;
   if (normalized.split(/\s+/).length > 8) return null;
-  if (isSchedulingRequestText(normalized) || isPriceRequestText(normalized)) return null;
+  if (
+    isSchedulingRequestText(normalized) ||
+    isPriceRequestText(normalized) ||
+    isLocationRequestText(normalized)
+  ) {
+    return null;
+  }
   if (didAgentAskForProcedure(lastAgentMessage)) return null;
   return matchTreatmentByNormalizedMessage(normalized, treatments, TREATMENT_MENTION_STOPWORDS);
 }
@@ -1334,7 +1416,9 @@ export function resolvePipelineTreatmentMention(
     treatments,
     TREATMENT_MENTION_STOPWORDS,
   );
-  return matched?.pipelineSteps?.length ? matched : null;
+  return matched && resolvePipelineSourceTreatment(matched, treatments).pipelineSteps?.length
+    ? matched
+    : null;
 }
 
 // Frases fortes de chegada física à clínica. Deliberadamente específicas
@@ -2149,6 +2233,10 @@ export function resolveInformationalTreatmentTarget(params: {
       })
     : null;
   if (selectedTreatment) return selectedTreatment;
+  // Uma pergunta de endereço não pode virar tratamento por coincidência de
+  // substring ("fica" casava com "estratificada") nem por palpite do
+  // classificador. O ramo de localização é o único dono desse pedido.
+  if (isLocationRequestText(normalizeFreeText(params.message))) return null;
 
   const directMentionTreatment = resolveDirectTreatmentMention(
     params.message,
@@ -2164,18 +2252,15 @@ export function resolveInformationalTreatmentTarget(params: {
     treatmentName: params.identifiedTreatment ?? null,
   });
   if (classifiedTreatment) {
-    if (
-      directMentionTreatment &&
-      directMentionTreatment.id !== classifiedTreatment.id &&
-      directMentionTreatment.pipelineSteps?.length &&
-      !classifiedTreatment.pipelineSteps?.length
-    ) {
-      return directMentionTreatment;
-    }
+    // A mensagem atual é evidência determinística e tem precedência sobre o
+    // treatmentName probabilístico do classificador. Isso é especialmente
+    // importante quando variantes compartilham aliases: a LLM pode devolver
+    // registros diferentes entre execuções e fazer o pipeline iniciar somente
+    // em algumas delas, apesar de o texto do lead ser idêntico.
+    if (directMentionTreatment) return directMentionTreatment;
     if (
       pipelineMentionTreatment &&
-      pipelineMentionTreatment.id !== classifiedTreatment.id &&
-      !classifiedTreatment.pipelineSteps?.length
+      pipelineMentionTreatment.id !== classifiedTreatment.id
     ) {
       return pipelineMentionTreatment;
     }
@@ -2239,6 +2324,73 @@ export function resolvePipelineSourceTreatment(
       (candidate.pipelineSteps?.length ?? 0) > 0,
   );
   return source ?? treatment;
+}
+
+export function resolveMediaScopeTreatmentId(params: {
+  pipelineTreatmentId?: string | null;
+  classifiedTreatment?: Treatment | null;
+  treatments: Treatment[];
+}): string | null {
+  if (params.pipelineTreatmentId) return params.pipelineTreatmentId;
+  return params.classifiedTreatment
+    ? resolvePipelineSourceTreatment(
+        params.classifiedTreatment,
+        params.treatments,
+      ).id
+    : null;
+}
+
+export function resolvePriceTreatmentTarget(params: {
+  message: string;
+  treatments: Treatment[];
+  identifiedTreatment?: string | null;
+  activePipelineTreatmentId?: string | null;
+  activeSelectedTreatmentId?: string | null;
+}): Treatment | null {
+  const directEvidence = matchTreatmentByNormalizedMessage(
+    normalizeFreeText(params.message),
+    params.treatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+  if (directEvidence) return directEvidence;
+
+  // Sem evidência textual nova, a variante preservada no estado é mais
+  // confiável que um palpite probabilístico do classificador. Isso impede que
+  // perguntas contextuais como "este valor é da técnica refinada?" saltem de
+  // lentes para outro tratamento do catálogo. Uma menção explícita na
+  // mensagem atual continua vencendo o contexto acima.
+  const activeContext = findTreatmentByIdOrName(params.treatments, {
+    treatmentId:
+      params.activeSelectedTreatmentId ??
+      params.activePipelineTreatmentId ??
+      null,
+  });
+  if (activeContext) return activeContext;
+
+  return findTreatmentByIdOrName(params.treatments, {
+    treatmentName: params.identifiedTreatment ?? null,
+  });
+}
+
+export function resolvePipelineEntryBehavior(
+  treatment: Treatment,
+  treatments: Treatment[],
+): Treatment["pipelineEntryBehavior"] {
+  const source = resolvePipelineSourceTreatment(treatment, treatments);
+  return treatment.pipelineEntryBehavior ?? source.pipelineEntryBehavior ?? null;
+}
+
+export function shouldDeferTreatmentPipelineEntry(params: {
+  treatment: Treatment;
+  treatments: Treatment[];
+  isConversationOpening: boolean;
+  legacyShouldDefer: boolean;
+}): boolean {
+  if (!params.isConversationOpening) return false;
+  const behavior = resolvePipelineEntryBehavior(params.treatment, params.treatments);
+  if (behavior === "immediate") return false;
+  if (behavior === "qualify_then_present") return true;
+  return params.legacyShouldDefer;
 }
 
 // Infere o tratamento em discussão a partir da última mensagem do agente.
@@ -2458,12 +2610,12 @@ function buildSocialProfileClinicContext(socialProfile: string | null): string {
   ].join("\n");
 }
 
-function buildMediaClarificationClinicContext(): string {
+export function buildMediaClarificationClinicContext(): string {
   return [
-    `Lead está perguntando qual foto/card corresponde à técnica Premium ou Estratificada.`,
-    `Interprete "prêmio" como "Premium" quando aparecer nesse contexto.`,
-    `Responda diretamente sem reenviar mídias: Premium é a técnica com uma única resina de alta qualidade e é a opção mais acessível; Estratificada combina duas resinas com bordas translúcidas para máxima naturalidade e resultado mais sofisticado.`,
-    `Use no máximo 2 frases e não envie áudio promocional, novos cards, menu ou convite de agendamento nessa resposta.`,
+    `O lead está pedindo esclarecimento sobre uma foto, card ou mídia enviada nesta conversa.`,
+    `Use somente fatos presentes no tratamento, no pipeline, nas legendas de mídia ou nas orientações editoriais desta clínica.`,
+    `Se não for possível identificar inequivocamente a mídia, peça que o lead diga o título, a ordem ou reenvie a referência.`,
+    `Não invente nomes de técnicas, materiais, preços ou comparações e não reenvie mídias nessa resposta.`,
   ].join("\n");
 }
 
@@ -2510,18 +2662,8 @@ ${rows.join("\n")}
 Se o lead pedir faixa não listada, indique a mais próxima. NUNCA diga "+ taxa" — a taxa já está nos valores acima.`;
 }
 
-// Keywords padrão para segmentos de saúde/estética onde enviar uma foto ajuda a personalizar a resposta.
-// Clínicas de outros segmentos podem sobrescrever via Treatment.isAesthetic = true (campo no banco).
-const DEFAULT_AESTHETIC_TREATMENT_KEYWORDS = [
-  "lente", "faceta", "clareamento", "harmonização", "harmonizacao",
-  "gengivoplastia", "botox", "sorriso",
-  "coloracao", "coloração", "mechas", "penteado",
-];
-
-export function isAestheticTreatment(treatmentName: string, extraKeywords?: string[]): boolean {
-  const normalized = treatmentName.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const keywords = extraKeywords?.length ? extraKeywords : DEFAULT_AESTHETIC_TREATMENT_KEYWORDS;
-  return keywords.some((kw) => normalized.includes(kw));
+export function isAestheticTreatment(isAesthetic: boolean | null | undefined): boolean {
+  return isAesthetic === true;
 }
 
 // Instrução de convite à foto — posicionada como benefício ao cliente, nunca obrigatória.
@@ -2531,7 +2673,7 @@ function buildPhotoInviteInstruction(): string {
 }
 
 export function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
-  const shouldDelayScheduling = experience === "concierge" && isAestheticTreatment(item.name);
+  const shouldDelayScheduling = experience === "concierge" && isAestheticTreatment(item.isAesthetic);
   const nextStep = shouldDelayScheduling
     ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver entendendo o tratamento, prefira encerrar com uma pergunta consultiva sobre a técnica ou a dúvida dele. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
     : item.requiresEvaluationFirst
@@ -2545,7 +2687,7 @@ export function buildSelectedTreatmentContext(item: ProcedureListItem, commercia
       ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
       : "Explique o procedimento com naturalidade.",
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
-    experience === "concierge" && isAestheticTreatment(item.name) ? buildPhotoInviteInstruction() : null,
+    experience === "concierge" && isAestheticTreatment(item.isAesthetic) ? buildPhotoInviteInstruction() : null,
     nextStep,
     experience !== "concierge" ? "Mencione que o lead pode digitar *menu* a qualquer momento para ver outras opções." : null,
   ].filter(Boolean);
@@ -2560,7 +2702,7 @@ export function buildSelectedTreatmentContext(item: ProcedureListItem, commercia
 export function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
   const shouldDelayScheduling =
     experience === "concierge" &&
-    (treatment.isAesthetic || isAestheticTreatment(treatment.name));
+    isAestheticTreatment(treatment.isAesthetic);
   const nextStep = shouldDelayScheduling
     ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver conhecendo o tratamento, prefira encerrar com uma pergunta consultiva sobre técnicas, resultado ou expectativas. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
     : treatment.requiresEvaluationFirst
@@ -2576,7 +2718,7 @@ export function buildDirectTreatmentContext(treatment: Treatment, commercialPoli
     commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
     "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
     "MÍDIA: se houver vídeo ou imagem na BIBLIOTECA DE MÍDIA com título relacionado a este tratamento, inclua [MEDIA:id] ao final da resposta conforme a regra da biblioteca.",
-    experience === "concierge" && (treatment.isAesthetic || isAestheticTreatment(treatment.name)) ? buildPhotoInviteInstruction() : null,
+    experience === "concierge" && isAestheticTreatment(treatment.isAesthetic) ? buildPhotoInviteInstruction() : null,
     nextStep,
   ].filter(Boolean);
 
@@ -2622,6 +2764,7 @@ function buildOrganization(row: ClinicRow): Organization {
     maxSlotsToOffer: row.maxSlotsToOffer,
     slotLookaheadDays: row.slotLookaheadDays,
     offerSlotsAfterPriceEnabled: row.offerSlotsAfterPriceEnabled,
+    outsideHoursExceptionEnabled: row.outsideHoursExceptionEnabled,
     depositEnabled: row.depositEnabled,
     depositAmountCents: row.depositAmountCents ?? null,
     depositPixKey: row.depositPixKey ?? null,
@@ -3349,19 +3492,28 @@ export function findPipelineTreatmentContextForPriceRequest(params: {
   const byActivePipeline = findTreatmentByIdOrName(params.treatments, {
     treatmentId: params.activePipelineTreatmentId ?? null,
   });
-  if (byActivePipeline?.pipelineSteps?.length) return byActivePipeline;
+  if (byActivePipeline) {
+    const source = resolvePipelineSourceTreatment(byActivePipeline, params.treatments);
+    if (source.pipelineSteps?.length) return source;
+  }
 
   const byClassification = findTreatmentByIdOrName(params.treatments, {
     treatmentName: params.identifiedTreatment ?? null,
   });
-  if (byClassification?.pipelineSteps?.length) return byClassification;
+  if (byClassification) {
+    const source = resolvePipelineSourceTreatment(byClassification, params.treatments);
+    if (source.pipelineSteps?.length) return source;
+  }
 
   const currentMention = matchTreatmentByNormalizedMessage(
     normalizeFreeText(params.message),
     params.treatments,
     TREATMENT_MENTION_STOPWORDS,
   );
-  if (currentMention?.pipelineSteps?.length) return currentMention;
+  if (currentMention) {
+    const source = resolvePipelineSourceTreatment(currentMention, params.treatments);
+    if (source.pipelineSteps?.length) return source;
+  }
 
   const recent = [...(params.history ?? [])].reverse().slice(0, 8);
   for (const item of recent) {
@@ -3370,7 +3522,10 @@ export function findPipelineTreatmentContextForPriceRequest(params: {
       params.treatments,
       TREATMENT_MENTION_STOPWORDS,
     );
-    if (contextualMention?.pipelineSteps?.length) return contextualMention;
+    if (contextualMention) {
+      const source = resolvePipelineSourceTreatment(contextualMention, params.treatments);
+      if (source.pipelineSteps?.length) return source;
+    }
   }
 
   return null;
@@ -3481,14 +3636,24 @@ export function isClinicalTreatmentPlanJudgmentRequest(message: string): boolean
   return asksCaseSpecificScope || combinesProcedures;
 }
 
-export function buildEvaluationDepositClarification(depositAmountCents: number): string {
+export function buildEvaluationDepositClarification(
+  depositAmountCents: number,
+  evaluation?: { priceCents: number | null; priceQuotableInChat: boolean } | null,
+): string {
   const amount = formatBrl(depositAmountCents);
+  const evaluationLine = evaluation?.priceQuotableInChat
+    ? evaluation.priceCents === 0
+      ? "A avaliação não tem custo."
+      : evaluation.priceCents != null
+        ? `A avaliação custa ${formatBrl(evaluation.priceCents)}.`
+        : "O valor da avaliação precisa ser confirmado pela equipe."
+    : "O valor da avaliação precisa ser confirmado pela equipe.";
   return [
-    "A avaliação não tem custo.",
+    evaluationLine,
     "",
     `Para reservar o horário da avaliação, a clínica pede um sinal de ${amount}.`,
     "",
-    "Esse valor não é uma cobrança pela avaliação: ele garante a reserva e é abatido do tratamento se você avançar.",
+    "O sinal é separado do valor da avaliação: ele garante a reserva e é abatido do tratamento se você avançar.",
     "",
     "Posso te mostrar os horários disponíveis agora?",
   ].join("\n");
@@ -3515,7 +3680,27 @@ export function contextualizeReplyWhileAwaitingDeposit(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type ConversationAuxiliaryExternalEffect =
+  | { kind: "lead_photo_lookup" }
+  | {
+      kind: "media_rehost";
+      mediaType: "image" | "video" | "document" | "audio";
+    }
+  | { kind: "operator_push" }
+  | { kind: "operator_whatsapp_text" }
+  | {
+      kind: "operator_whatsapp_media";
+      mediaType: Parameters<typeof sendMediaMessage>[2];
+    }
+  | { kind: "operator_whatsapp_buttons" };
+
 export class ConversationOrchestrator {
+  private readonly decisionTraceSink: DecisionTraceSink;
+  private readonly calendarGatewayResolver: typeof resolveCalendarGateway;
+  private readonly suppressAuxiliaryExternalEffects: boolean;
+  private readonly onAuxiliaryExternalEffect?: (
+    effect: ConversationAuxiliaryExternalEffect,
+  ) => void;
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
@@ -3531,6 +3716,89 @@ export class ConversationOrchestrator {
     new DrizzlePushSubscriptionRepository(),
     new WebPushGateway(),
   );
+
+  constructor(deps: {
+    decisionTraceSink?: DecisionTraceSink;
+    calendarGatewayResolver?: typeof resolveCalendarGateway;
+    suppressAuxiliaryExternalEffects?: boolean;
+    onAuxiliaryExternalEffect?: (
+      effect: ConversationAuxiliaryExternalEffect,
+    ) => void;
+  } = {}) {
+    this.decisionTraceSink = deps.decisionTraceSink ?? noopDecisionTraceSink;
+    this.calendarGatewayResolver =
+      deps.calendarGatewayResolver ?? resolveCalendarGateway;
+    this.suppressAuxiliaryExternalEffects =
+      deps.suppressAuxiliaryExternalEffects ?? false;
+    this.onAuxiliaryExternalEffect = deps.onAuxiliaryExternalEffect;
+  }
+
+  private captureAuxiliaryExternalEffect(
+    effect: ConversationAuxiliaryExternalEffect,
+  ): boolean {
+    if (!this.suppressAuxiliaryExternalEffects) return false;
+    this.onAuxiliaryExternalEffect?.(effect);
+    return true;
+  }
+
+  private async rehostInboundMedia(
+    messageId: string,
+    originalUrl: string,
+    mediaType: "image" | "video" | "document" | "audio",
+  ): Promise<void> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "media_rehost",
+      mediaType,
+    })) return;
+    await rehostLeadMedia(messageId, originalUrl, mediaType);
+  }
+
+  private async persistLeadPhoto(
+    leadId: string,
+    phone: string,
+    credentials: Parameters<typeof fetchAndPersistLeadPhoto>[2],
+  ): Promise<void> {
+    if (this.captureAuxiliaryExternalEffect({ kind: "lead_photo_lookup" })) return;
+    await fetchAndPersistLeadPhoto(leadId, phone, credentials);
+  }
+
+  private async notifyOperators(
+    clinicId: string,
+    payload: Parameters<NotifyClinicOperators["execute"]>[1],
+  ): Promise<void> {
+    if (this.captureAuxiliaryExternalEffect({ kind: "operator_push" })) return;
+    await this.notifier.execute(clinicId, payload);
+  }
+
+  private async sendAuxiliaryTextMessage(
+    to: string,
+    text: string,
+    channelConfig: ClinicChannelConfig,
+  ): Promise<string | null> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "operator_whatsapp_text",
+    })) return "replay-auxiliary-capture";
+    return sendTextMessage(to, text, channelConfig);
+  }
+
+  private async sendAuxiliaryMediaMessage(
+    ...args: Parameters<typeof sendMediaMessage>
+  ): Promise<string | null> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "operator_whatsapp_media",
+      mediaType: args[2],
+    })) return "replay-auxiliary-capture";
+    return sendMediaMessage(...args);
+  }
+
+  private async sendAuxiliaryButtonListMessage(
+    ...args: Parameters<typeof sendButtonListMessage>
+  ): Promise<string | null> {
+    if (this.captureAuxiliaryExternalEffect({
+      kind: "operator_whatsapp_buttons",
+    })) return "replay-auxiliary-capture";
+    return sendButtonListMessage(...args);
+  }
 
   // Carrega mensagem/conversa/lead existentes para o modo replay do handle()
   // (ação guiada do operador). Retorna null se a mensagem não pertencer à
@@ -3621,18 +3889,35 @@ export class ConversationOrchestrator {
     whatsappLid?: string | null;
     messageText: string;
     messageId: string;
+    turnId?: string;
     senderName?: string;
     senderPhoto?: string | null;
     timestamp: Date;
     replyEnabled?: boolean;
+    // Shadow seguro: registra inbound e encerra antes de qualquer decisão/efeito
+    // da IA. A resposta hipotética é calculada pelo replay em sandbox.
+    observationOnly?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
     // Reprocessa uma mensagem de lead JÁ REGISTRADA como se tivesse acabado de
     // chegar (ação guiada do operador: "entrar no trilho do pipeline"). Pula
     // dedup, registro e debounce — a mensagem não é nova; só a resposta é.
     replayOfMessageDbId?: string;
-  }): Promise<{ replied: boolean }> {
+  }): Promise<{ replied: boolean; reason?: string }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
+    const turnId = params.turnId ?? messageId;
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "orchestrator.started",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      metadata: {
+        replay: Boolean(params.replayOfMessageDbId),
+        mediaType: params.mediaType ?? "text",
+        replyEnabled: params.replyEnabled ?? true,
+        observationOnly: params.observationOnly ?? false,
+      },
+    });
     const isReplay = !!params.replayOfMessageDbId;
     let messageText = params.messageText;
     const replyEnabled = params.replyEnabled ?? true;
@@ -3652,7 +3937,7 @@ export class ConversationOrchestrator {
         .limit(1);
 
       if (alreadyProcessed.length > 0) {
-        return { replied: false };
+        return { replied: false, reason: "duplicate_provider_message" };
       }
 
       // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
@@ -3693,7 +3978,7 @@ export class ConversationOrchestrator {
 
       if (contentDupe) {
         console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
-        return { replied: false };
+        return { replied: false, reason: "duplicate_content" };
       }
     }
 
@@ -3706,7 +3991,7 @@ export class ConversationOrchestrator {
 
     if (clinicRows.length === 0) {
       console.error(`[Orchestrator] Clinic not found: ${clinicId}`);
-      return { replied: false };
+      return { replied: false, reason: "clinic_not_found" };
     }
 
     const clinic = buildOrganization(clinicRows[0]);
@@ -3718,6 +4003,22 @@ export class ConversationOrchestrator {
       resolveActiveEditorialConfig(clinicId),
       getClinicModules(clinicId),
     ]);
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "tenant.config_loaded",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      metadata: {
+        clinicConfigUpdatedAt: clinicRows[0].updatedAt.toISOString(),
+        playbookVersionId: editorial?.versionId ?? null,
+        timezone: clinic.timezone,
+        segment: clinic.segment ?? "unknown",
+        hasActiveEditorial: editorial !== null,
+        activeModuleCount: activeModules.length,
+        procedureCount: editorial?.procedures.length ?? 0,
+        mediaAssetCount: editorial?.mediaLibrary.length ?? 0,
+      },
+    });
     const channelConfig = resolveChannelConfig(clinicRows[0]);
 
     // Derivados de módulos — usados em todo o método no lugar dos campos legados
@@ -3787,7 +4088,7 @@ export class ConversationOrchestrator {
         console.warn(
           `[Orchestrator] Replay abortado — mensagem ${params.replayOfMessageDbId} não encontrada/não é de lead (clinic=${clinicId})`,
         );
-        return { replied: false };
+        return { replied: false, reason: "replay_context_missing" };
       }
       ({ lead, conversation, incomingMessage } = replayContext);
       messageText = incomingMessage.body;
@@ -3830,7 +4131,7 @@ export class ConversationOrchestrator {
     // Z-API não envia senderPhoto no webhook — buscamos sob demanda via /profile-picture
     // e re-hospedamos no Vercel Blob para evitar expiração de 48h das URLs do WhatsApp.
     if (!lead.profilePicUrl && lead.phone && channelConfig.zapi) {
-      void fetchAndPersistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
+      void this.persistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
     }
 
     // ── 3.1b. Rehost de áudio (fire-and-forget) ──
@@ -3838,7 +4139,7 @@ export class ConversationOrchestrator {
     // arquivo original no Blob em paralelo, para o player do Inbox não quebrar
     // quando a URL da Z-API expirar.
     if (params.mediaType === "audio" && params.mediaUrl) {
-      rehostLeadMedia(incomingMessage.id, params.mediaUrl, "audio")
+      this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, "audio")
         .catch(() => { /* já logado dentro da função */ });
     }
 
@@ -3852,7 +4153,7 @@ export class ConversationOrchestrator {
       const acquired = await this.waitForConversationClaim(conversation.id);
       if (!acquired) {
         console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
-        return { replied: false };
+        return { replied: false, reason: "conversation_claim_timeout" };
       }
     }
 
@@ -3870,25 +4171,54 @@ export class ConversationOrchestrator {
           `[Orchestrator] Batching/Debounce: Mensagem mais recente detectada para conv=${conversation.id}. Abortando msg=${incomingMessage.id}`
         );
         await this.releaseConversationClaim(conversation.id);
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
 
     try {
+
+    if (params.observationOnly) {
+      if (
+        params.mediaUrl &&
+        (params.mediaType === "image" || params.mediaType === "video" || params.mediaType === "document")
+      ) {
+        this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, params.mediaType)
+          .catch(() => { /* já logado dentro da função */ });
+      }
+      await this.notifyOperators(clinicId, {
+          title: lead.name ?? phone,
+          body: params.mediaType
+            ? `Nova mensagem com ${params.mediaType}`
+            : messageText.slice(0, 100),
+          url: `/app/inbox/${conversation.id}`,
+        })
+        .catch((err) => console.error("[Orchestrator] Push shadow falhou:", err));
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId: conversation.id,
+        metadata: { reason: "shadow_observation_only" },
+      });
+      return { replied: false, reason: "shadow_observation_only" };
+    }
 
     if (!isSalesConversationCategory(conversation.category)) {
       const displayName = lead.name ?? phone;
       const preview = params.mediaType
         ? `Nova mensagem ${params.mediaType === "image" ? "com imagem" : `com ${params.mediaType}`}`
         : messageText.slice(0, 100);
-      await this.notifier
-        .execute(clinicId, {
+      await this.notifyOperators(clinicId, {
           title: displayName,
           body: preview,
           url: `/app/inbox/${conversation.id}`,
         })
         .catch((err) => console.error("[Orchestrator] Push falhou:", err));
-      return { replied: false };
+      return {
+        replied: false,
+        reason: `non_sales_conversation:${conversation.category}`,
+      };
     }
 
     // ── 3.5. Mídia visual inbound (foto/vídeo/documento) ──
@@ -3906,7 +4236,7 @@ export class ConversationOrchestrator {
         const depositState = await this.stateMachine.getDepositState(conversation.id);
         if (depositState?.state === "awaiting_deposit_proof") {
           if (params.mediaUrl) {
-            rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType).catch(() => {});
+            this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, inboundMediaType).catch(() => {});
           }
           const proofReviewCode = await nextAvailableDepositProofReviewCode(clinicId);
           const receptionistPhone = clinic.receptionistPhone;
@@ -3923,7 +4253,7 @@ export class ConversationOrchestrator {
               // interativa falhar, reenvia como texto puro — o mesmo conteúdo já
               // traz o código e as opções, então a decisão continua possível.
               try {
-                await sendButtonListMessage(
+                await this.sendAuxiliaryButtonListMessage(
                   receptionistPhone,
                   proofReviewMessage,
                   buildDepositProofButtons(proofReviewCode),
@@ -3931,12 +4261,12 @@ export class ConversationOrchestrator {
                 );
               } catch (err) {
                 console.warn("[DepositReview] botões falharam; caindo para texto:", err);
-                await sendTextMessage(receptionistPhone, proofReviewMessage, channelConfig)
+                await this.sendAuxiliaryTextMessage(receptionistPhone, proofReviewMessage, channelConfig)
                   .catch((textErr) => console.warn("[DepositReview] texto de validação falhou:", textErr));
               }
 
               if (params.mediaUrl) {
-                await sendMediaMessage(
+                await this.sendAuxiliaryMediaMessage(
                   receptionistPhone,
                   params.mediaUrl,
                   inboundMediaType,
@@ -3951,7 +4281,7 @@ export class ConversationOrchestrator {
               }
             })();
           }
-          await this.notifier.execute(clinicId, {
+          await this.notifyOperators(clinicId, {
             title: lead.name ?? phone,
             body: "Enviou o comprovante do sinal — validar e confirmar",
             url: `/app/inbox/${conversation.id}`,
@@ -3986,6 +4316,7 @@ export class ConversationOrchestrator {
             await this.enqueueConversationReply(clinicId, conversation.id, {
               version: 1,
               kind: "conversation_reply",
+              turnId,
               to: outboundAddress,
               agentMessageId: proofAgentId,
               replyText: proofText,
@@ -3996,6 +4327,16 @@ export class ConversationOrchestrator {
               mediaParts: [],
               leadId: lead.id,
               pipelineAdvance: null,
+            }, {
+              source: "deposit_proof_media",
+              classifiedIntent: "acknowledgment",
+              finalIntent: "acknowledgment",
+              confidence: 1,
+              missingStages: [
+                "state.loaded",
+                "intent.classified",
+                "intent.resolved",
+              ],
             });
           }
           return { replied: replyEnabled && !conversation.aiPaused };
@@ -4045,7 +4386,7 @@ export class ConversationOrchestrator {
 
       // Rehospeda de forma assíncrona: Z-API URLs expiram em horas
       if (params.mediaUrl) {
-        rehostLeadMedia(incomingMessage.id, params.mediaUrl, inboundMediaType)
+        this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, inboundMediaType)
           .catch(() => { /* já logado dentro da função */ });
       }
 
@@ -4110,7 +4451,7 @@ export class ConversationOrchestrator {
           // interativa falhar, o mesmo texto vai puro — ele já carrega Axx e as
           // opções 1..4, então a decisão continua possível.
           try {
-            await sendButtonListMessage(
+            await this.sendAuxiliaryButtonListMessage(
               receptionistPhone,
               contextMsg,
               buildHumanReviewButtons(humanReviewContext.reviewCode),
@@ -4119,7 +4460,7 @@ export class ConversationOrchestrator {
           } catch (err) {
             console.warn("[HumanReview] botões falharam; caindo para texto:", err);
             try {
-              await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+              await this.sendAuxiliaryTextMessage(receptionistPhone, contextMsg, channelConfig);
               operatorNotificationIssue = "Botões de avaliação falharam; decisão textual Axx continua disponível";
             } catch (textErr) {
               console.warn("[HumanReview] contexto textual falhou:", textErr);
@@ -4128,7 +4469,7 @@ export class ConversationOrchestrator {
           }
         } else {
           try {
-            await sendTextMessage(receptionistPhone, contextMsg, channelConfig);
+            await this.sendAuxiliaryTextMessage(receptionistPhone, contextMsg, channelConfig);
           } catch (err) {
             console.warn("[MediaForward] contexto falhou:", err);
             operatorNotificationIssue = "Falha ao avisar o doutor sobre mídia recebida";
@@ -4136,7 +4477,7 @@ export class ConversationOrchestrator {
         }
         if (params.mediaUrl) {
           try {
-            await sendMediaMessage(
+            await this.sendAuxiliaryMediaMessage(
               receptionistPhone,
               params.mediaUrl,
               inboundMediaType,
@@ -4158,7 +4499,7 @@ export class ConversationOrchestrator {
       }
 
       // Notifica operadores via push
-      await this.notifier.execute(clinicId, {
+      await this.notifyOperators(clinicId, {
         title: lead.name ?? phone,
         body: `Enviou ${inboundMediaType === "image" ? "uma foto" : "um " + inboundMediaType} para avaliação`,
         url: `/app/inbox/${conversation.id}`,
@@ -4179,11 +4520,14 @@ export class ConversationOrchestrator {
         }).where(eq(conversationsTable.id, conversation.id));
 
         if (!replyEnabled || conversation.aiPaused) {
-          return { replied: false };
+          return {
+            replied: false,
+            reason: !replyEnabled ? "automation_reply_disabled" : "ai_paused",
+          };
         }
 
         if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
-          return { replied: false };
+          return { replied: false, reason: "superseded_by_newer_message" };
         }
 
         const pendingReviewText = shouldSendShortReviewAck(
@@ -4205,6 +4549,7 @@ export class ConversationOrchestrator {
         await this.enqueueConversationReply(clinicId, conversation.id, {
           version: 1,
           kind: "conversation_reply",
+          turnId,
           to: outboundAddress,
           agentMessageId: photoAgentId,
           replyText: pendingReviewText,
@@ -4215,13 +4560,26 @@ export class ConversationOrchestrator {
           mediaParts: [],
           leadId: lead.id,
           pipelineAdvance: null,
+        }, {
+          source: "human_review_media",
+          classifiedIntent: "needs_human",
+          finalIntent: "needs_human",
+          confidence: 1,
+          missingStages: [
+            "state.loaded",
+            "intent.classified",
+            "intent.resolved",
+          ],
         });
         return { replied: true };
       }
 
       // Se IA está pausada ou auto-reply desligado, o doutor já está no controle — sem resposta automática
       if (!replyEnabled || conversation.aiPaused) {
-        return { replied: false };
+        return {
+          replied: false,
+          reason: !replyEnabled ? "automation_reply_disabled" : "ai_paused",
+        };
       }
 
       // Pipeline photo intercept: foto ou vídeo enviado enquanto pipeline aguarda step "photo"
@@ -4247,7 +4605,7 @@ export class ConversationOrchestrator {
               { skipOptionalPhoto: currentStep?.type === "qa" },
             );
             if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
-              return { replied: false };
+              return { replied: false, reason: "superseded_by_newer_message" };
             }
             const photoHistory = await this.conversationRepo.listMessages(conversation.id);
             const photoComposed = await this.responseComposer.compose({
@@ -4286,6 +4644,7 @@ export class ConversationOrchestrator {
             await this.enqueueConversationReply(clinicId, conversation.id, {
               version: 1,
               kind: "conversation_reply",
+              turnId,
               to: outboundAddress,
               agentMessageId: photoAgentId,
               replyText: photoComposed.text,
@@ -4298,6 +4657,16 @@ export class ConversationOrchestrator {
               pipelineAdvance: next
                 ? { action: "advance", nextStepIndex: next.index }
                 : { action: "exit" },
+            }, {
+              source: "pipeline_photo",
+              classifiedIntent: "check_availability",
+              finalIntent: "check_availability",
+              confidence: 1,
+              missingStages: [
+                "state.loaded",
+                "intent.classified",
+                "intent.resolved",
+              ],
             });
             return { replied: true };
           }
@@ -4346,7 +4715,7 @@ export class ConversationOrchestrator {
       // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
       // suprimida quando outra mensagem do lead chegou na janela de burst.
       if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
 
       const mediaAgentId = randomUUID();
@@ -4363,6 +4732,7 @@ export class ConversationOrchestrator {
       await this.enqueueConversationReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
+        turnId,
         to: outboundAddress,
         agentMessageId: mediaAgentId,
         replyText: mediaReplyText,
@@ -4373,6 +4743,16 @@ export class ConversationOrchestrator {
         mediaParts: [],
         leadId: lead.id,
         pipelineAdvance: null,
+      }, {
+        source: "media_received",
+        classifiedIntent: "needs_human",
+        finalIntent: "needs_human",
+        confidence: 1,
+        missingStages: [
+          "state.loaded",
+          "intent.classified",
+          "intent.resolved",
+        ],
       });
 
       return { replied: true };
@@ -4381,14 +4761,13 @@ export class ConversationOrchestrator {
 
     if (!replyEnabled) {
       const leadDisplayName = lead.name ?? channelAddress;
-      await this.notifier
-        .execute(clinicId, {
+      await this.notifyOperators(clinicId, {
           title: leadDisplayName,
           body: messageText.slice(0, 100),
           url: `/app/inbox/${conversation.id}`,
         })
         .catch((err) => console.error("[Orchestrator] Push falhou:", err));
-      return { replied: false };
+      return { replied: false, reason: "automation_reply_disabled" };
     }
 
     // ── 3.7. Debounce — aguarda burst de mensagens do lead ──
@@ -4406,7 +4785,7 @@ export class ConversationOrchestrator {
           ` — msg mais recente: ${latest.id} (body="${latest.body?.slice(0, 60)}")` +
           ` conv=${conversation.id} lead=${lead.id}`,
         );
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
       console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} é a mais recente — prosseguindo (conv=${conversation.id})`);
     }
@@ -4441,7 +4820,7 @@ export class ConversationOrchestrator {
         .where(eq(conversationsTable.id, conversation.id));
 
       if (clinic.receptionistPhone && leadContext) {
-        await sendTextMessage(
+        await this.sendAuxiliaryTextMessage(
           clinic.receptionistPhone,
           buildHumanReviewContextUpdateMessage({
             reviewCode: pendingHumanReview.reviewCode,
@@ -4452,7 +4831,7 @@ export class ConversationOrchestrator {
         ).catch((err) => console.warn("[HumanReview] atualização de contexto falhou:", err));
       }
 
-      await this.notifier.execute(clinicId, {
+      await this.notifyOperators(clinicId, {
         title: lead.name ?? phone,
         body: `Nova informação para a avaliação A${pendingHumanReview.reviewCode}`,
         url: `/app/inbox/${conversation.id}`,
@@ -4484,6 +4863,7 @@ export class ConversationOrchestrator {
       await this.enqueueConversationReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
+        turnId,
         to: outboundAddress,
         agentMessageId: pendingAgentId,
         replyText: pendingText,
@@ -4494,6 +4874,16 @@ export class ConversationOrchestrator {
         mediaParts: [],
         leadId: lead.id,
         pipelineAdvance: null,
+      }, {
+        source: "pending_human_review",
+        classifiedIntent: "needs_human",
+        finalIntent: "needs_human",
+        confidence: 1,
+        missingStages: [
+          "state.loaded",
+          "intent.classified",
+          "intent.resolved",
+        ],
       });
       return { replied: true };
     }
@@ -4527,14 +4917,13 @@ export class ConversationOrchestrator {
         console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
         // Notifica operador que lead respondeu enquanto atendimento estava em pausa manual
         const displayName = lead.name ?? phone;
-        await this.notifier
-          .execute(clinicId, {
+        await this.notifyOperators(clinicId, {
             title: displayName,
             body: messageText.slice(0, 100),
             url: `/app/inbox/${conversation.id}`,
           })
           .catch((err) => console.error("[Orchestrator] Push falhou:", err));
-        return { replied: false };
+        return { replied: false, reason: "ai_paused" };
       }
     }
 
@@ -4554,7 +4943,7 @@ export class ConversationOrchestrator {
     const msgCount = Number(rateRows[0]?.total ?? 0);
     if (msgCount >= clinic.rateLimitPerHour) {
       console.warn(`[Orchestrator] Rate limit: ${phone} atingiu ${msgCount} msgs/h na conversa ${conversation.id}`);
-      return { replied: false };
+      return { replied: false, reason: "inbound_rate_limited" };
     }
 
     // ── 7. Carrega histórico de mensagens ──
@@ -4582,6 +4971,19 @@ export class ConversationOrchestrator {
       this.stateMachine.getCurrentState(conversation.id, stateAsOf),
       this.stateMachine.getLastResetBoundary(conversation.id),
     ]);
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "state.loaded",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      conversationId: conversation.id,
+      metadata: {
+        state: currentConversationState?.state ?? "none",
+        hasResetBoundary: lastResetBoundary !== null,
+        leadMessageCount,
+        isConversationOpening,
+      },
+    });
 
     // Se houve reset recente, usa apenas mensagens pós-reset para LLM (classifier + composer),
     // evitando que o modelo reutilize mídias já enviadas na sessão anterior.
@@ -4660,6 +5062,7 @@ export class ConversationOrchestrator {
         await this.enqueueConversationReply(clinicId, conversation.id, {
           version: 1,
           kind: "conversation_reply",
+          turnId,
           to: outboundAddress,
           agentMessageId: nudgeAgentId,
           replyText: nudge,
@@ -4670,6 +5073,12 @@ export class ConversationOrchestrator {
           mediaParts: [],
           leadId: lead.id,
           pipelineAdvance: null,
+        }, {
+          source: "duplicate_lead_message",
+          classifiedIntent: "acknowledgment",
+          finalIntent: "acknowledgment",
+          confidence: 1,
+          missingStages: ["intent.classified", "intent.resolved"],
         });
         return { replied: true };
       }
@@ -4751,6 +5160,7 @@ export class ConversationOrchestrator {
           await this.enqueueConversationReply(clinicId, conversation.id, {
             version: 1,
             kind: "conversation_reply",
+            turnId,
             to: outboundAddress,
             agentMessageId: confirmAgentId,
             replyText: confirmReplyText,
@@ -4761,6 +5171,12 @@ export class ConversationOrchestrator {
             mediaParts: [],
             leadId: lead.id,
             pipelineAdvance: null,
+          }, {
+            source: "appointment_confirmation",
+            classifiedIntent: "acknowledgment",
+            finalIntent: null,
+            confidence: 1,
+            missingStages: ["intent.classified", "intent.resolved"],
           });
           return { replied: true };
         }
@@ -4806,7 +5222,7 @@ export class ConversationOrchestrator {
       })
     ) {
       console.log(`[Orchestrator] Mensagem rápida de baixa informação para ${phone} — resposta suprimida`);
-      return { replied: false };
+      return { replied: false, reason: "rapid_low_information_throttled" };
     }
 
     // Comando de reset (testes): zera estado e reinicia conversa com saudação completa
@@ -4935,6 +5351,31 @@ export class ConversationOrchestrator {
           clinicTreatments.map((t) => ({ name: t.name, aliases: t.aliases ?? [] })),
           promptContext,
         );
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "intent.classified",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      conversationId: conversation.id,
+      metadata: {
+        intent: classification.intent,
+        confidence: classification.confidence,
+        source:
+          expiredSlotSelection !== null
+            ? "expired_slot"
+            : rescheduleAfterReminder
+              ? "appointment_reminder"
+              : procedureSelection
+                ? "procedure_selection"
+                : menuResolution
+                  ? "menu"
+                  : skipLlm
+                    ? "deterministic_skip"
+                    : "llm",
+        hasPendingOffer,
+        pipelineActive: pipelineState !== null,
+      },
+    });
 
     const slotPreference = withDeterministicSlotPreferenceFallback(
       messageText,
@@ -4946,10 +5387,15 @@ export class ConversationOrchestrator {
     // MÍDIA do prompt e (b) bloquear no envio qualquer [MEDIA:id] cujo
     // treatmentId divirja deste (ver resolveOutboundParts). null = sem
     // isolamento aplicável nesta virada (comportamento de hoje, sem filtro).
-    const activeTreatmentId: string | null =
-      pipelineState?.treatmentId ??
-      findTreatmentByIdOrName(clinicTreatments, { treatmentName: slotPreference.identifiedTreatment })?.id ??
-      null;
+    const classifiedActiveTreatment = findTreatmentByIdOrName(
+      clinicTreatments,
+      { treatmentName: slotPreference.identifiedTreatment },
+    );
+    const activeTreatmentId = resolveMediaScopeTreatmentId({
+      pipelineTreatmentId: pipelineState?.treatmentId,
+      classifiedTreatment: classifiedActiveTreatment,
+      treatments: clinicTreatments,
+    });
     const stopContactDecision = resolveStopContactDecision({
       classifiedIntent: classification.intent,
       messageText,
@@ -4970,7 +5416,7 @@ export class ConversationOrchestrator {
         console.log(
           `[Orchestrator] Rajada pós-classificação: msg ${incomingMessage.id} superada por ${latestAfterClassify.id} — descartando resposta (conv=${conversation.id})`,
         );
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
 
@@ -4983,7 +5429,9 @@ export class ConversationOrchestrator {
     // então esta confirmação sai normalmente.
     if (intent === "stop_contact") {
       const decision = stopContactDecision;
-      if (!decision) return { replied: false };
+      if (!decision) {
+        return { replied: false, reason: "stop_contact_decision_missing" };
+      }
       const optOutNow = decision.revokedAt;
       await db
         .update(leadsTable)
@@ -5017,6 +5465,7 @@ export class ConversationOrchestrator {
       await this.enqueueConversationReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
+        turnId,
         to: outboundAddress,
         agentMessageId: optOutAgentId,
         replyText: optOutText,
@@ -5027,6 +5476,12 @@ export class ConversationOrchestrator {
         mediaParts: [],
         leadId: lead.id,
         pipelineAdvance: null,
+      }, {
+        source: "stop_contact_policy",
+        classifiedIntent: "stop_contact",
+        finalIntent: "stop_contact",
+        confidence: 1,
+        missingStages: ["intent.resolved"],
       });
       return { replied: true };
     }
@@ -5334,7 +5789,7 @@ export class ConversationOrchestrator {
     // nunca sintetizar áudio para essas respostas, independente do modo B-WAVE.
     let forceTextOnlyReply = false;
 
-    const calendarGateway = resolveCalendarGateway({
+    const calendarGateway = this.calendarGatewayResolver({
       clinicId: clinic.id,
       calendarMode: clinic.calendarMode,
       googleCalendarId: clinic.googleCalendarId,
@@ -5451,10 +5906,14 @@ export class ConversationOrchestrator {
         return false;
       }
 
-      const evaluationTreatment = pipelineTreatment?.requiresEvaluationFirst
+      const selectedTreatment = pipelineState.selectedTreatmentId
+        ? clinicTreatments.find((t) => t.id === pipelineState.selectedTreatmentId) ?? null
+        : null;
+      const commercialTreatment = selectedTreatment ?? pipelineTreatment;
+      const evaluationTreatment = commercialTreatment?.requiresEvaluationFirst
         ? clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name))
         : null;
-      const bookingTreatment = evaluationTreatment ?? pipelineTreatment;
+      const bookingTreatment = evaluationTreatment ?? commercialTreatment;
       if (!bookingTreatment) return false;
 
       const { slots } = await this.fetchAndOfferSlots(
@@ -5516,6 +5975,7 @@ export class ConversationOrchestrator {
           await this.enqueueConversationReply(clinicId, conversation.id, {
             version: 1,
             kind: "conversation_reply",
+            turnId,
             to: outboundAddress,
             agentMessageId: missingAgentId,
             replyText: missingText,
@@ -5570,6 +6030,23 @@ export class ConversationOrchestrator {
       effectiveIntent = "general_question";
     }
     const responseIntent: IntentType = commercialPauseDetected ? "farewell" : effectiveIntent;
+    await recordDecisionTrace(this.decisionTraceSink, {
+      turnId,
+      stage: "intent.resolved",
+      occurredAt: new Date().toISOString(),
+      clinicId,
+      conversationId: conversation.id,
+      metadata: {
+        classifiedIntent: classification.intent,
+        normalizedIntent: intent,
+        coercedIntent,
+        finalIntent: responseIntent,
+        classifierOverridden:
+          classification.intent !== responseIntent,
+        commercialPauseDetected,
+        skipLlm,
+      },
+    });
 
     // Abertura enlatada: única resposta que SUBSTITUI o conteúdo em vez de
     // responder a ele. Marcada aqui para a recheca de rajada logo antes do
@@ -5608,12 +6085,24 @@ export class ConversationOrchestrator {
         replyText = `${salutation}${nameGreeting}! ${buildMenuBody(clinic, "stale", experience)}`;
         await this.stateMachine.offerMenu(conversation.id);
       } else if (isStaleConversation) {
-        replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
+        const starter = buildConciergeStarter(
+          clinic,
+          timezone,
+          lead.name,
+          editorial?.receptionistName,
+        );
+        replyText = isRepeatedConversationalReply(lastAgentMessage?.body, starter)
+          ? buildConversationReentryAcknowledgment(messageText)
+          : starter;
       } else {
         replyText = await compose({ type: "acknowledgment" });
       }
     } else if (businessHoursQuestion) {
-      const businessHoursAnswer = buildBusinessHoursAnswer(clinic.businessHours, messageText);
+      const businessHoursAnswer = buildBusinessHoursAnswer(
+        clinic.businessHours,
+        messageText,
+        clinic.outsideHoursExceptionEnabled,
+      );
       // W4.3b (caso Paula): duas perguntas de horário no mesmo burst geravam a
       // MESMA resposta determinística duas vezes (o debounce nem sempre funde o
       // burst). Não reenvia se a última resposta do agente foi idêntica há < 2min.
@@ -5623,7 +6112,10 @@ export class ConversationOrchestrator {
         Date.now() - lastAgentMessage.sentAt.getTime() < 2 * 60 * 1000
       ) {
         // Claim liberado pelo finally do processamento principal.
-        return { replied: false };
+        return {
+          replied: false,
+          reason: "duplicate_deterministic_reply_suppressed",
+        };
       }
       replyText = businessHoursAnswer;
       forceTextOnlyReply = true;
@@ -5639,7 +6131,11 @@ export class ConversationOrchestrator {
       if (
         isSaturdayQuestionForOperatingClinic(messageText, businessHours) &&
         !hasPendingOffer &&
-        !requiresTeamCheckForHours(messageText, clinic.businessHours)
+        !requiresTeamCheckForHours(
+          messageText,
+          clinic.businessHours,
+          clinic.outsideHoursExceptionEnabled,
+        )
       ) {
         const { slots: saturdaySlots, preferredDayEmpty: saturdayFull } = await this.fetchAndOfferSlots(
           conversation.id,
@@ -5653,11 +6149,15 @@ export class ConversationOrchestrator {
           replyText = buildSaturdayAvailabilityAnswer({ slots: saturdaySlots, dayIsFull: saturdayFull });
         }
       }
-      // A resposta promete "vou verificar com a equipe" quando o horário pedido sai
-      // da janela padrão — a clínica abre exceção (na Vitalli, lente é procedimento
-      // longo e o doutor atende após as 17h, terminando até as 21h). Prometer sem
-      // avisar ninguém é pior do que recusar: sinaliza para a equipe ver de fato.
-      if (requiresTeamCheckForHours(messageText, clinic.businessHours)) {
+      // Somente tenants com opt-in explícito prometem análise de exceção e geram
+      // atenção humana. Incidentes de uma clínica não viram política global.
+      if (
+        requiresTeamCheckForHours(
+          messageText,
+          clinic.businessHours,
+          clinic.outsideHoursExceptionEnabled,
+        )
+      ) {
         await db
           .update(conversationsTable)
           .set({
@@ -5877,33 +6377,28 @@ export class ConversationOrchestrator {
         // ── A7: Fluxo de sinal ──
         // Com sinal habilitado, NÃO agenda direto: faz uma reserva provisória, cobra o
         // sinal (texto determinístico) e aguarda o comprovante. O operador valida e
-        // confirma (a IA nunca valida comprovante). Em shadow mode pulamos a reserva
-        // real para não travar a agenda de verdade.
+        // confirma (a IA nunca valida comprovante). O modo observação encerra antes
+        // deste ponto; no replay, a reserva ocorre apenas no banco sandbox isolado.
         if (clinic.depositEnabled && clinic.depositAmountCents && clinic.depositPixKey) {
           const startsAt = new Date(chosenSlot.startsAt);
           const endsAt = new Date(chosenSlot.endsAt);
           const ttlHours = clinic.depositTtlHours ?? 24;
-          const shadow = clinicRows[0].shadowModeEnabled;
-
-          let reservationId: string | null = null;
-          if (!shadow) {
-            const held = await this.reservationService.reserve(
-              clinic.id, lead.id, startsAt, endsAt, ttlHours * 60,
+          const held = await this.reservationService.reserve(
+            clinic.id, lead.id, startsAt, endsAt, ttlHours * 60,
+          );
+          if (!held) {
+            // Slot tomado entre a oferta e a escolha → reoferta.
+            const { slots: newSlots } = await this.fetchAndOfferSlots(
+              conversation.id, clinic, calendarGateway, timezone, businessHours,
+              undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
             );
-            if (!held) {
-              // Slot tomado entre a oferta e a escolha → reoferta.
-              const { slots: newSlots } = await this.fetchAndOfferSlots(
-                conversation.id, clinic, calendarGateway, timezone, businessHours,
-                undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
-              );
-              replyText = newSlots.length > 0
-                ? await compose({ type: "slot_taken_reoffered", newSlots })
-                : await compose({ type: "no_slots_available" });
-              forceTextOnlyReply = true;
-              break;
-            }
-            reservationId = held.id;
+            replyText = newSlots.length > 0
+              ? await compose({ type: "slot_taken_reoffered", newSlots })
+              : await compose({ type: "no_slots_available" });
+            forceTextOnlyReply = true;
+            break;
           }
+          const reservationId = held.id;
 
           const holdExpiresAt = new Date(Date.now() + ttlHours * 3600_000).toISOString();
           await this.stateMachine.startDepositWait(
@@ -6090,6 +6585,8 @@ export class ConversationOrchestrator {
           schedulingTreatment?.name ??
           slotPreference.identifiedTreatment ??
           clarificationTreatmentName ??
+          pipelineState?.selectedTreatmentName ??
+          pipelineState?.treatmentName ??
           lead.treatmentInterest ??
           null;
 
@@ -6391,13 +6888,15 @@ export class ConversationOrchestrator {
           ? null
           : classification.slotPreference.identifiedTreatment ?? null;
         // Gap: lead perguntou preço de tratamento não cadastrado
-        let matchedPriceTreatment: Treatment | undefined;
-        if (priceIdentifiedTreatment) {
-          matchedPriceTreatment = clinicTreatments.find(
-            (t) => t.name.toLowerCase() === priceIdentifiedTreatment.toLowerCase() ||
-              (t.aliases ?? []).some((a) => a.toLowerCase() === priceIdentifiedTreatment.toLowerCase()),
-          );
-          if (!matchedPriceTreatment) {
+        const matchedPriceTreatment =
+          resolvePriceTreatmentTarget({
+            message: messageText,
+            treatments: clinicTreatments,
+            identifiedTreatment: priceIdentifiedTreatment,
+            activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
+            activeSelectedTreatmentId: pipelineState?.selectedTreatmentId ?? null,
+          }) ?? undefined;
+        if (priceIdentifiedTreatment && !matchedPriceTreatment) {
             maybeLogTreatmentGap(
               clinicId,
               conversation.id,
@@ -6405,7 +6904,6 @@ export class ConversationOrchestrator {
               priceIdentifiedTreatment,
               messageText,
             ).catch((e) => console.warn("[TreatmentGap] Falhou ao salvar gap:", e));
-          }
         }
 
         // A4 — Bloqueio determinístico: sem pacote exato, não há cotação.
@@ -6455,7 +6953,21 @@ export class ConversationOrchestrator {
           clinic.depositEnabled &&
           clinic.depositAmountCents
         ) {
-          replyText = buildEvaluationDepositClarification(clinic.depositAmountCents);
+          const evaluationTreatment = clinicTreatments.find((treatment) => {
+            const searchable = [treatment.name, ...treatment.aliases]
+              .map((value) => normalizeFreeText(value))
+              .join(" ");
+            return /\bavaliacao\b/.test(searchable);
+          }) ?? null;
+          replyText = buildEvaluationDepositClarification(
+            clinic.depositAmountCents,
+            evaluationTreatment
+              ? {
+                  priceCents: evaluationTreatment.priceCents ?? evaluationTreatment.minPriceCents,
+                  priceQuotableInChat: evaluationTreatment.priceQuotableInChat,
+                }
+              : null,
+          );
           forceTextOnlyReply = true;
           break;
         }
@@ -6467,6 +6979,29 @@ export class ConversationOrchestrator {
           activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
           history: allMessagesForContext,
         });
+        const selectedPriceTreatment =
+          matchedPriceTreatment ?? pipelinePriceTreatment ?? null;
+        if (selectedPriceTreatment) {
+          const canonicalPriceTreatment = resolvePipelineSourceTreatment(
+            selectedPriceTreatment,
+            clinicTreatments,
+          );
+          await recordDecisionTrace(this.decisionTraceSink, {
+            turnId,
+            stage: "treatment.resolved",
+            occurredAt: new Date().toISOString(),
+            clinicId,
+            conversationId: conversation.id,
+            metadata: {
+              source: "price_inquiry",
+              selectedTreatmentId: selectedPriceTreatment.id,
+              selectedTreatmentName: selectedPriceTreatment.name,
+              canonicalTreatmentId: canonicalPriceTreatment.id,
+              canonicalTreatmentName: canonicalPriceTreatment.name,
+              hasPipeline: Boolean(canonicalPriceTreatment.pipelineSteps?.length),
+            },
+          });
+        }
         const pipelinePriceContent = pipelinePriceTreatment?.pipelineSteps
           ? nextActivePipelineStep(pipelinePriceTreatment.pipelineSteps, 0, {
               conversationHistory: allMessagesForContext,
@@ -6491,12 +7026,21 @@ export class ConversationOrchestrator {
           forceTextOnlyReply = true;
 
           if (!pipelineState) {
+            const selectedPriceTreatment =
+              matchedPriceTreatment &&
+              resolvePipelineSourceTreatment(matchedPriceTreatment, clinicTreatments).id ===
+                pipelinePriceTreatment.id
+                ? matchedPriceTreatment
+                : null;
             await this.stateMachine.startTreatmentPipeline(
               conversation.id,
               pipelinePriceTreatment.id,
               pipelinePriceTreatment.name,
               clinic.staleConversationHours * 60,
               pipelinePriceContent.index,
+              selectedPriceTreatment
+                ? { id: selectedPriceTreatment.id, name: selectedPriceTreatment.name }
+                : null,
             );
           }
           const next = nextActivePipelineStep(
@@ -6625,7 +7169,7 @@ export class ConversationOrchestrator {
           !isFirstMessage &&
           !pipelineState &&
           matchedPriceTreatment &&
-          !matchedPriceTreatment.pipelineSteps?.length &&
+          !resolvePipelineSourceTreatment(matchedPriceTreatment, clinicTreatments).pipelineSteps?.length &&
           (quantityPriceResolution == null || quantityPriceResolution.kind === "exact") &&
           !oldPriceObjectionDetected
         ) {
@@ -6693,8 +7237,14 @@ export class ConversationOrchestrator {
 
           // Se a saudação também menciona um tratamento com pipeline, inicia o
           // pipeline imediatamente e entrega saudação + primeiro step juntos.
-          const greetingTreatment = !pipelineState
-            ? resolveDirectTreatmentMention(messageText, clinicTreatments)
+          const greetingSelection = !pipelineState
+            ? (
+                resolveDirectTreatmentMention(messageText, clinicTreatments) ??
+                resolvePipelineTreatmentMention(messageText, clinicTreatments)
+              )
+            : null;
+          const greetingTreatment = greetingSelection
+            ? resolvePipelineSourceTreatment(greetingSelection, clinicTreatments)
             : null;
 
           if (greetingTreatment?.pipelineSteps?.length) {
@@ -6709,8 +7259,25 @@ export class ConversationOrchestrator {
                 greetingTreatment.name,
                 clinic.staleConversationHours * 60,
                 firstActive.index,
+                greetingSelection
+                  ? { id: greetingSelection.id, name: greetingSelection.name }
+                  : null,
               );
               if (firstActive.step.type === "content") {
+                if (
+                  greetingSelection &&
+                  shouldDeferTreatmentPipelineEntry({
+                    treatment: greetingSelection,
+                    treatments: clinicTreatments,
+                    isConversationOpening,
+                    // Preserva o comportamento anterior quando o campo novo é null:
+                    // o ramo greeting sempre apresentava imediatamente.
+                    legacyShouldDefer: false,
+                  })
+                ) {
+                  replyText = greetingText;
+                  break;
+                }
                 const pipelineParts = buildPipelineContentParts(firstActive.step.blocks);
                 const pipelineText = pipelineParts
                   .filter((p): p is { type: "text"; content: string } => p.type === "text")
@@ -6852,12 +7419,20 @@ export class ConversationOrchestrator {
               .join("\n\n");
             forceTextOnlyReply = true;
             if (!pipelineState) {
+              const combinedSelection = findTreatmentByIdOrName(clinicTreatments, {
+                treatmentName: classification.slotPreference.identifiedTreatment ?? null,
+              });
               await this.stateMachine.startTreatmentPipeline(
                 conversation.id,
                 combinedPriceTreatment.id,
                 combinedPriceTreatment.name,
                 clinic.staleConversationHours * 60,
                 combinedPriceContent.index,
+                combinedSelection &&
+                  resolvePipelineSourceTreatment(combinedSelection, clinicTreatments).id ===
+                    combinedPriceTreatment.id
+                  ? { id: combinedSelection.id, name: combinedSelection.name }
+                  : null,
               );
             }
             const next = nextActivePipelineStep(
@@ -6888,6 +7463,7 @@ export class ConversationOrchestrator {
           isShowcaseRequestText(messageText)
         ) {
           const showcaseTreatmentId =
+            pipelineState?.selectedTreatmentId ??
             pipelineState?.treatmentId ??
             inferTreatmentContextFromHistory({
               message: messageText,
@@ -7166,6 +7742,21 @@ export class ConversationOrchestrator {
             matchedTreatment,
             clinicTreatments,
           );
+          await recordDecisionTrace(this.decisionTraceSink, {
+            turnId,
+            stage: "treatment.resolved",
+            occurredAt: new Date().toISOString(),
+            clinicId,
+            conversationId: conversation.id,
+            metadata: {
+              source: "informational",
+              selectedTreatmentId: matchedTreatment.id,
+              selectedTreatmentName: matchedTreatment.name,
+              canonicalTreatmentId: pipelineTreatment.id,
+              canonicalTreatmentName: pipelineTreatment.name,
+              hasPipeline: Boolean(pipelineTreatment.pipelineSteps?.length),
+            },
+          });
           const selectedTreatment = procedureSelection
             ? findTreatmentByIdOrName(clinicTreatments, {
                 treatmentId: procedureSelection.treatmentId,
@@ -7194,13 +7785,22 @@ export class ConversationOrchestrator {
               // emiti-lo). A explicação + mídia dispara na continuação, quando o lead
               // responde — espelhando o ritmo da operadora humana (qualifica, depois
               // apresenta). Passos que começam com "qa" não têm mídia e seguem normais.
-              if (deferFirstContactPitch && firstActive.step.type === "content") {
+              if (
+                firstActive.step.type === "content" &&
+                shouldDeferTreatmentPipelineEntry({
+                  treatment: matchedTreatment,
+                  treatments: clinicTreatments,
+                  isConversationOpening,
+                  legacyShouldDefer: deferFirstContactPitch,
+                })
+              ) {
                 await this.stateMachine.startTreatmentPipeline(
                   conversation.id,
                   pipelineTreatment.id,
                   pipelineTreatment.name,
                   clinic.staleConversationHours * 60,
                   firstActive.index,
+                  { id: matchedTreatment.id, name: matchedTreatment.name },
                 );
                 replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
                 clinicContext = "";
@@ -7212,6 +7812,7 @@ export class ConversationOrchestrator {
                 pipelineTreatment.name,
                 clinic.staleConversationHours * 60,
                 firstActive.index,
+                { id: matchedTreatment.id, name: matchedTreatment.name },
               );
               if (firstActive.step.type === "content") {
                 // Blocos crus: a saudação da primeira mensagem é aplicada UMA vez
@@ -7310,18 +7911,24 @@ export class ConversationOrchestrator {
                 return tNorm.includes(keywordNorm) || keywordNorm.includes(tNorm) ||
                   (t.aliases ?? []).some((a) => normalizeFreeText(a).includes(keywordNorm));
               });
-              if (keywordTreatment?.pipelineSteps?.length) {
-                const firstActive = nextActivePipelineStep(keywordTreatment.pipelineSteps, 0, {
+              const keywordPipelineTreatment = keywordTreatment
+                ? resolvePipelineSourceTreatment(keywordTreatment, clinicTreatments)
+                : null;
+              if (keywordPipelineTreatment?.pipelineSteps?.length) {
+                const firstActive = nextActivePipelineStep(keywordPipelineTreatment.pipelineSteps, 0, {
                   conversationHistory: allMessagesForContext,
                   mediaTitleById: pipelineMediaTitleById,
                 });
                 if (firstActive) {
                   await this.stateMachine.startTreatmentPipeline(
                     conversation.id,
-                    keywordTreatment.id,
-                    keywordTreatment.name,
+                    keywordPipelineTreatment.id,
+                    keywordPipelineTreatment.name,
                     clinic.staleConversationHours * 60,
                     firstActive.index,
+                    keywordTreatment
+                      ? { id: keywordTreatment.id, name: keywordTreatment.name }
+                      : null,
                   );
                   if (firstActive.step.type === "content") {
                     // Blocos crus: saudação aplicada uma única vez pelo bloco
@@ -7332,7 +7939,7 @@ export class ConversationOrchestrator {
                     composedMediaIds = parts.filter((p): p is { type: "media"; id: string } => p.type === "media").map((p) => p.id);
                     replyText = parts.filter((p): p is { type: "text"; content: string } => p.type === "text").map((p) => p.content).join("\n\n");
                     clinicContext = "";
-                    const next = nextActivePipelineStep(keywordTreatment.pipelineSteps!, firstActive.index + 1, {
+                    const next = nextActivePipelineStep(keywordPipelineTreatment.pipelineSteps!, firstActive.index + 1, {
                       conversationHistory: allMessagesForContext,
                     });
                     pendingPipelineAdvance = next
@@ -7600,7 +8207,7 @@ export class ConversationOrchestrator {
           `[Orchestrator] Rajada pós-composição: abertura de ${incomingMessage.id} descartada — ` +
           `lead falou de novo (${latestBeforeSend.id}); o turno mais recente responde (conv=${conversation.id})`,
         );
-        return { replied: false };
+        return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
 
@@ -7628,9 +8235,14 @@ export class ConversationOrchestrator {
             activeTreatmentId,
           )
         : [];
+    const durablePipelineAdvance = await this.bindPipelineAdvanceExpectation(
+      conversation.id,
+      pendingPipelineAdvance,
+    );
     await this.enqueueConversationReply(clinicId, conversation.id, {
       version: 1,
       kind: "conversation_reply",
+      turnId,
       to: outboundAddress,
       agentMessageId,
       replyText,
@@ -7640,13 +8252,31 @@ export class ConversationOrchestrator {
       interleavedParts: hasInterleavedMedia ? outboundParts : [],
       mediaParts,
       leadId: lead.id,
-      pipelineAdvance: pendingPipelineAdvance,
+      pipelineAdvance: durablePipelineAdvance,
     });
+    if (durablePipelineAdvance) {
+      const applied = await this.applyDurablePipelineAdvance(
+        conversation.id,
+        durablePipelineAdvance,
+      );
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId,
+        stage: "state.pipeline_committed",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId: conversation.id,
+        metadata: {
+          action: durablePipelineAdvance.action,
+          applied,
+          expectedTreatmentId: durablePipelineAdvance.expectedTreatmentId ?? null,
+          expectedStepIndex: durablePipelineAdvance.expectedStepIndex ?? null,
+        },
+      });
+    }
 
     // ── 9.4 Push notification — avisa operadores que um lead enviou mensagem ──
     const leadDisplayName = lead.name ?? phone;
-    await this.notifier
-      .execute(clinicId, {
+    await this.notifyOperators(clinicId, {
         title: leadDisplayName,
         body: messageText.slice(0, 100),
         url: `/app/inbox/${conversation.id}`,
@@ -7701,7 +8331,7 @@ export class ConversationOrchestrator {
       } catch (handoffErr) {
         console.error("[Orchestrator] Falha ao registrar handoff de erro:", handoffErr);
       }
-      return { replied: false };
+      return { replied: false, reason: "technical_error_handoff" };
     }
 
     } finally {
@@ -7714,6 +8344,7 @@ export class ConversationOrchestrator {
     reviewRequestId: string;
     decision: HumanReviewDecision;
   }): Promise<{ replied: boolean; reason?: string }> {
+    const turnId = `human-review:${params.reviewRequestId}`;
     if (params.decision !== "approved_direct_booking" && params.decision !== "needs_evaluation") {
       return { replied: false, reason: "decision_does_not_resume_automation" };
     }
@@ -7749,7 +8380,7 @@ export class ConversationOrchestrator {
     const clinic = buildOrganization(clinicRow);
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
-    const calendarGateway = resolveCalendarGateway({
+    const calendarGateway = this.calendarGatewayResolver({
       clinicId: clinic.id,
       calendarMode: clinic.calendarMode,
       googleCalendarId: clinic.googleCalendarId,
@@ -7838,6 +8469,7 @@ export class ConversationOrchestrator {
     await this.enqueueConversationReply(params.clinicId, conversation.id, {
       version: 1,
       kind: "conversation_reply",
+      turnId,
       to: leadAddress,
       agentMessageId,
       replyText,
@@ -7857,8 +8489,60 @@ export class ConversationOrchestrator {
     clinicId: string,
     conversationId: string,
     payload: ConversationOutboundPayload,
+    deterministicTrace?: ConversationDeterministicTraceCompletion,
   ): Promise<void> {
-    await enqueueOutboundMessage(
+    if (payload.turnId) {
+      const stateBeforeDelivery =
+        await this.stateMachine.getCurrentState(conversationId);
+      const pipelineTracePayload =
+        stateBeforeDelivery?.state === "treatment_pipeline_active"
+          ? stateBeforeDelivery.payload as TreatmentPipelinePayload
+          : null;
+      if (deterministicTrace) {
+        await recordDeterministicDecisionTraceCompletion(
+          this.decisionTraceSink,
+          {
+            ...deterministicTrace,
+            turnId: payload.turnId,
+            clinicId,
+            conversationId,
+            state: stateBeforeDelivery?.state ?? "none",
+          },
+        );
+      }
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId: payload.turnId,
+        stage: "state.before_delivery",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId,
+        metadata: {
+          state: stateBeforeDelivery?.state ?? "none",
+          pendingPipelineAdvance: payload.pipelineAdvance?.action ?? "none",
+          pipelineTreatmentId: pipelineTracePayload?.treatmentId ?? null,
+          selectedTreatmentId:
+            pipelineTracePayload?.selectedTreatmentId ??
+            pipelineTracePayload?.treatmentId ??
+            null,
+          pipelineStepIndex: pipelineTracePayload?.stepIndex ?? null,
+        },
+      });
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId: payload.turnId,
+        stage: "outbound.planned",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId,
+        metadata: {
+          agentMessageId: payload.agentMessageId,
+          intent: payload.intent,
+          useVoice: payload.useVoice,
+          interleavedPartCount: payload.interleavedParts.length,
+          mediaPartCount: payload.mediaParts.length,
+        },
+      });
+    }
+    const enqueueResult = await enqueueOutboundMessage(
       {
         clinicId,
         conversationId,
@@ -7872,6 +8556,51 @@ export class ConversationOrchestrator {
         jobQueue: new DrizzleJobQueue(),
       },
     );
+    if (payload.turnId) {
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId: payload.turnId,
+        stage: "outbound.enqueued",
+        occurredAt: new Date().toISOString(),
+        clinicId,
+        conversationId,
+        metadata: {
+          outboundMessageId: enqueueResult.outboundMessageId,
+          messageWasNew: enqueueResult.messageWasNew,
+          jobWasNew: enqueueResult.jobWasNew,
+        },
+      });
+    }
+  }
+
+  private async bindPipelineAdvanceExpectation(
+    conversationId: string,
+    advance: PipelineAdvance | null,
+  ): Promise<PipelineAdvance | null> {
+    if (!advance) return null;
+    const current = await this.stateMachine.getTreatmentPipelineState(conversationId);
+    if (!current) return advance;
+    return {
+      ...advance,
+      expectedTreatmentId: current.treatmentId,
+      expectedStepIndex: current.stepIndex,
+    };
+  }
+
+  private async applyDurablePipelineAdvance(
+    conversationId: string,
+    advance: PipelineAdvance,
+  ): Promise<boolean> {
+    const expected = {
+      treatmentId: advance.expectedTreatmentId,
+      stepIndex: advance.expectedStepIndex,
+    };
+    return advance.action === "advance"
+      ? this.stateMachine.advancePipelineStep(
+          conversationId,
+          advance.nextStepIndex,
+          expected,
+        )
+      : this.stateMachine.exitTreatmentPipeline(conversationId, expected);
   }
 
   // ── Claim de processamento por conversa (CAS single-statement) ──────────────
@@ -8199,7 +8928,7 @@ export class ConversationOrchestrator {
     const receptPhone = clinic.receptionistPhone;
     if (receptPhone) {
       try {
-        await sendTextMessage(
+        await this.sendAuxiliaryTextMessage(
           receptPhone,
           `⚠️ *${displayName} precisa de você*\n\n${reason}\n\nAcesse o Inbox para responder.`,
           channelConfig,
@@ -8210,8 +8939,7 @@ export class ConversationOrchestrator {
     }
 
     // Push notification para todos os operadores com app instalado
-    await this.notifier
-      .execute(clinic.id, {
+    await this.notifyOperators(clinic.id, {
         title: `${displayName} precisa de você`,
         body: reason,
         url: "/app/inbox",

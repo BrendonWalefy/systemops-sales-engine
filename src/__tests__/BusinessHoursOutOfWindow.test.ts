@@ -52,30 +52,34 @@ describe("isRequestedTimeOutsideBusinessHours", () => {
   });
 });
 
-describe("buildBusinessHoursAnswer — nunca terminar sem próximo passo", () => {
+describe("buildBusinessHoursAnswer — política explícita por clínica", () => {
   const CASO_REAL = "Porque dependendo do horário que vocês atendem, posso ir após as 18h na semana";
 
-  it("o caso real de 19/07 escala em vez de recusar", () => {
+  it("não promete exceção quando a clínica não habilitou essa política", () => {
     const answer = buildBusinessHoursAnswer(HOURS, CASO_REAL);
-    // A clínica abre exceção (Vitalli: lente após as 17h, terminando até 21h).
-    // Recusar mataria uma venda que o humano fecharia.
-    expect(answer).toContain("exceção");
+    expect(answer).toContain("dentro do nosso horário");
+    expect(answer).not.toContain("exceção");
+    expect(answer).not.toContain("verificar com a equipe");
+  });
+
+  it("escala somente com opt-in explícito do tenant", () => {
+    const answer = buildBusinessHoursAnswer(HOURS, CASO_REAL, true);
+    expect(answer).toContain("permite solicitar uma análise de exceção");
     expect(answer).toContain("verificar com a equipe");
-    expect(answer).not.toContain("fora da nossa agenda");
-    // O que quebrava: responder só o expediente e parar.
-    expect(answer).not.toBe(`Nosso horário de atendimento é: ${HOURS}.`);
+    expect(requiresTeamCheckForHours(CASO_REAL, HOURS, true)).toBe(true);
+    expect(requiresTeamCheckForHours(CASO_REAL, HOURS, false)).toBe(false);
+    expect(requiresTeamCheckForHours("posso ir depois das 14h?", HOURS, true)).toBe(false);
   });
 
-  it("sinaliza o caso para a equipe — promessa sem escalação seria pior que recusa", () => {
-    expect(requiresTeamCheckForHours(CASO_REAL, HOURS)).toBe(true);
-    expect(requiresTeamCheckForHours("posso ir depois das 14h?", HOURS)).toBe(false);
-    expect(requiresTeamCheckForHours("qual o horário de funcionamento?", HOURS)).toBe(false);
-  });
-
-  it("sábado fora da agenda padrão escala em vez de negar de forma seca", () => {
+  it("sábado fora da agenda padrão não inventa possibilidade", () => {
     const answer = buildBusinessHoursAnswer("Seg-Sex 8h-18h", "vocês atendem sábado?");
+    expect(answer).toContain("não consta na agenda padrão");
+    expect(answer).not.toContain("verificar com a equipe");
+  });
+
+  it("sábado fora da agenda pode escalar quando o tenant habilita exceção", () => {
+    const answer = buildBusinessHoursAnswer("Seg-Sex 8h-18h", "vocês atendem sábado?", true);
     expect(answer).toContain("verificar com a equipe");
-    expect(answer).not.toBe("Nosso horário de atendimento é: Seg-Sex 8h-18h.");
   });
 
   it("sábado COM atendimento responde direto, sem escalar à toa", () => {
