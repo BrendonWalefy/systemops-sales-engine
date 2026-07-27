@@ -126,6 +126,7 @@ import {
   fingerprintRuntimeConfig,
   RUNTIME_CONFIG_FINGERPRINT_SCHEMA,
 } from "@/application/config/runtime-config-fingerprint";
+import { NamedDecisionOverrideTracker } from "@/core/observability/NamedDecisionOverride";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -5428,6 +5429,10 @@ export class ConversationOrchestrator {
       stopContactDecision?.intent ??
       (classification.intent === "stop_contact" ? "unclear" : classification.intent)
     ) as IntentType;
+    const intentOverrides = new NamedDecisionOverrideTracker<IntentType>(
+      classification.intent as IntentType,
+    );
+    intentOverrides.apply(intent, "stop_contact_normalization");
 
     // ── Guard: rajada durante a classificação ──
     // O debounce cobre a janela pré-classificação; o claim serializa handlers.
@@ -5523,6 +5528,7 @@ export class ConversationOrchestrator {
           isClinicSegment: promptContext.isClinicSegment,
           commercialPolicy: editorial?.commercialPolicy,
         });
+    intentOverrides.apply(coercedIntent, "business_intent_coercion");
 
     // ── Interceptor: resposta de tratamento após clarificação de agendamento ──
     // Quando a AI perguntou "qual procedimento você gostaria de realizar?" e o lead
@@ -5530,10 +5536,10 @@ export class ConversationOrchestrator {
     // como general_question porque a mensagem sozinha parece informativa. Aqui detectamos
     // esse padrão e redirecionamos para check_availability para buscar slots reais — sem
     // isso, o ResponseComposer alucinaria horários inventados.
-    let effectiveIntent = coercedIntent;
+    let effectiveIntent = intentOverrides.value;
     const commercialPauseDetected = detectCommercialPauseText(messageText);
     if (commercialPauseDetected) {
-      effectiveIntent = "farewell";
+      effectiveIntent = intentOverrides.apply("farewell", "commercial_pause");
       // Uma pausa comercial encerra qualquer jornada/oferta que ainda estivesse
       // aberta. A próxima mensagem da lead poderá retomar normalmente.
       if (pipelineState || hasPendingOffer) {
@@ -5543,10 +5549,10 @@ export class ConversationOrchestrator {
     const simplePaymentPolicyQuestion = isSimplePaymentPolicyQuestion(messageText);
     const businessHoursQuestion = isBusinessHoursQuestion(messageText);
     if (!commercialPauseDetected && simplePaymentPolicyQuestion && effectiveIntent === "needs_human") {
-      effectiveIntent = "price_inquiry";
+      effectiveIntent = intentOverrides.apply("price_inquiry", "payment_policy_question");
     }
     if (!commercialPauseDetected && businessHoursQuestion) {
-      effectiveIntent = "general_question";
+      effectiveIntent = intentOverrides.apply("general_question", "business_hours_question");
     }
     // Quantidade que continua a pergunta de preço anterior ("qual o valor?" →
     // "tenho 13 lentes"). Isolada, a segunda mensagem parece comentário genérico e
@@ -5561,7 +5567,7 @@ export class ConversationOrchestrator {
         history: allMessagesForContext,
       })
     ) {
-      effectiveIntent = "price_inquiry";
+      effectiveIntent = intentOverrides.apply("price_inquiry", "quantity_price_followup");
     }
     let clarificationTreatmentName: string | null = null;
     if (
@@ -5576,7 +5582,7 @@ export class ConversationOrchestrator {
         TREATMENT_SCHEDULING_STOPWORDS,
       );
       if (matchedFromClarification) {
-        effectiveIntent = "check_availability";
+        effectiveIntent = intentOverrides.apply("check_availability", "procedure_clarification");
         clarificationTreatmentName = matchedFromClarification.name;
       }
     }
@@ -5592,7 +5598,7 @@ export class ConversationOrchestrator {
     if (isPriceShapedIntent) {
       const maintenanceKeyword = detectUncataloguedMaintenanceInquiry(messageText, clinicTreatments);
       if (maintenanceKeyword) {
-        effectiveIntent = "needs_human";
+        effectiveIntent = intentOverrides.apply("needs_human", "uncatalogued_maintenance");
         maintenanceHandoffReason = `Preço de ${maintenanceKeyword} (manutenção) — requer equipe`;
         maybeLogTreatmentGap(
           clinicId,
@@ -5608,7 +5614,7 @@ export class ConversationOrchestrator {
       (effectiveIntent === "general_question" || effectiveIntent === "price_inquiry") &&
       isClinicalTreatmentPlanJudgmentRequest(messageText)
     ) {
-      effectiveIntent = "needs_human";
+      effectiveIntent = intentOverrides.apply("needs_human", "clinical_judgment_handoff");
       maintenanceHandoffReason = "Definição clínica de quantidade/combinação de procedimentos — avaliação do doutor necessária";
     }
 
@@ -5650,7 +5656,7 @@ export class ConversationOrchestrator {
           `Peça, se possível, uma radiografia recente e uma foto do sorriso atual, e explique que a partir disso a equipe ` +
           `orienta o melhor caminho e o orçamento certo para o caso. Conduza gentilmente para agendar a avaliação. ` +
           `Seja acolhedor e específico ao que o lead relatou.`;
-        effectiveIntent = "general_question";
+        effectiveIntent = intentOverrides.apply("general_question", "atypical_case_triage");
         await db
           .update(conversationsTable)
           .set({
@@ -5734,7 +5740,7 @@ export class ConversationOrchestrator {
             lastVisitTreatment,
             askedPrice,
           };
-          effectiveIntent = "needs_human";
+          effectiveIntent = intentOverrides.apply("needs_human", "existing_work_damage");
           maintenanceHandoffReason =
             relationship === "known_patient"
               ? `Relato de dano (${damage.label}) — paciente com consulta em ${lastVisitLabel}` +
@@ -5767,7 +5773,7 @@ export class ConversationOrchestrator {
       // contexto é consumido no topo daquele ramo, antes de qualquer resolução de
       // tratamento — a Vitalli cadastrou "garantia" como alias de "Manutenção
       // Preventiva de lentes" (R$400), e sem isso a pergunta viraria cotação.
-      effectiveIntent = "general_question";
+      effectiveIntent = intentOverrides.apply("general_question", "warranty_policy");
     }
 
     // P0.5: Detectar pergunta sobre nome antigo da clínica ou mudança de endereço
@@ -6025,21 +6031,27 @@ export class ConversationOrchestrator {
         // Pergunta geral durante a espera → responde normalmente, mantém o estado.
       } else if (depositTextState.state === "deposit_proof_received" && wantsChange) {
         // Comprovante já enviado (dinheiro em jogo) e lead quer mudar → operador decide.
-        effectiveIntent = "needs_human";
+        effectiveIntent = intentOverrides.apply("needs_human", "deposit_change_after_proof");
         maintenanceHandoffReason = "Lead pagou o sinal e pediu alteração — operador decide";
       }
     }
 
-    effectiveIntent = normalizeSchedulingIntentForMissingPendingOffer(
+    const normalizedSchedulingIntent = normalizeSchedulingIntentForMissingPendingOffer(
       effectiveIntent,
       slotPreference,
       messageText,
       hasPendingOffer,
       lastAgentMessage?.body ?? null,
     );
+    effectiveIntent = intentOverrides.apply(
+      normalizedSchedulingIntent,
+      "missing_pending_offer_normalization",
+    );
     // Nenhuma regra posterior pode transformar uma pausa comercial em uma nova
     // pergunta de negócio ou em uma confirmação de agenda.
-    if (commercialPauseDetected) effectiveIntent = "farewell";
+    if (commercialPauseDetected) {
+      effectiveIntent = intentOverrides.apply("farewell", "commercial_pause");
+    }
     // J2 — Aceite de oferta aberta: "Boa noite pode sim" respondendo a "posso te
     // ajudar com informações?" é aceite, não saudação/ack. Coage para
     // general_question para o fluxo ENTREGAR a oferta — em vez de cair na
@@ -6051,7 +6063,7 @@ export class ConversationOrchestrator {
       (effectiveIntent === "greeting" || effectiveIntent === "acknowledgment" || effectiveIntent === "unclear") &&
       isAffirmativeReplyToOpenOffer({ lastAgentMessage: lastAgentMessage?.body, message: messageText })
     ) {
-      effectiveIntent = "general_question";
+      effectiveIntent = intentOverrides.apply("general_question", "open_offer_acceptance");
     }
     const responseIntent: IntentType = commercialPauseDetected ? "farewell" : effectiveIntent;
     await recordDecisionTrace(this.decisionTraceSink, {
@@ -6067,6 +6079,8 @@ export class ConversationOrchestrator {
         finalIntent: responseIntent,
         classifierOverridden:
           classification.intent !== responseIntent,
+        overrideCount: intentOverrides.rules.length,
+        overrideRules: intentOverrides.rules.join("|"),
         commercialPauseDetected,
         skipLlm,
       },

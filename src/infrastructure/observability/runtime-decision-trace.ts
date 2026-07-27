@@ -27,6 +27,7 @@ const PERSISTED_METADATA_KEYS = new Set([
   "intent", "interleavedPartCount", "isConversationOpening", "jobWasNew",
   "leadMessageCount", "mediaAssetCount", "mediaPartCount", "mediaType",
   "messageWasNew", "normalizedIntent", "observationOnly", "outboundMessageId",
+  "overrideCount", "overrideRules",
   "pendingPipelineAdvance", "phase", "pipelineActive", "pipelineAdvanceApplied",
   "pipelineStepIndex", "pipelineTreatmentId", "playbookVersionId", "procedureCount", "provider",
   "providerAccepted", "queue", "reason", "replay", "replied", "replyEnabled",
