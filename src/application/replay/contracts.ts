@@ -4,6 +4,7 @@ export const REPLAY_SCENARIO_SCHEMA_VERSION = "replay-scenario.v1" as const;
 export const REPLAY_DATASET_SCHEMA_VERSION = "replay-dataset.v2" as const;
 export const REPLAY_RESULT_SCHEMA_VERSION = "replay-result.v1" as const;
 export const REPLAY_EVALUATION_SCHEMA_VERSION = "replay-evaluation.v1" as const;
+export const REPLAY_CALENDAR_SNAPSHOT_SCHEMA_VERSION = "replay-calendar-snapshot.v1" as const;
 
 export type ReplayScenarioMode =
   | "historical_turn"
@@ -124,4 +125,33 @@ export type ReplayEvaluationV1 = {
   scores: Record<string, number>;
   confidence: number;
   findings: ReplayBugV1[];
+};
+
+export type ReplayCalendarSnapshotV1 = {
+  schemaVersion: typeof REPLAY_CALENDAR_SNAPSHOT_SCHEMA_VERSION;
+  clinicKey: string;
+  configFingerprint: string;
+  capturedAt: string;
+  range: { from: string; to: string; timezone: string };
+  availability: Array<{
+    slotDurationMinutes: number;
+    professionalId: string | null;
+    slots: Array<{
+      startsAt: string;
+      endsAt: string;
+      professionalId: string | null;
+      source: "google_calendar" | "manual";
+    }>;
+  }>;
+  blocks: Array<{
+    calendarEventId: string;
+    startsAt: string;
+    endsAt: string;
+    reason: string;
+  }>;
+  approval: {
+    algorithm: "ed25519";
+    keyId: string;
+    signature: string;
+  };
 };

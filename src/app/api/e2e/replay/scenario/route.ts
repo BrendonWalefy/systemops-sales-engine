@@ -11,6 +11,10 @@ import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type { ReplayScenarioV1 } from "@/application/replay/contracts";
 import { loadReplayClinicManifest } from "@/application/replay/load-replay-clinic-manifest";
 import { ReplayCalendarCapture } from "@/application/replay/replay-calendar-capture";
+import {
+  ReplayCalendarSnapshotGateway,
+  verifyReplayCalendarSnapshot,
+} from "@/application/replay/replay-calendar-snapshot";
 import { ReplayOutboundCapture } from "@/application/replay/replay-outbound-capture";
 import { buildReplayExecutionGroups } from "@/application/replay/replay-execution-plan";
 import {
@@ -27,6 +31,7 @@ import {
   type ConversationAuxiliaryExternalEffect,
 } from "@/core/pipeline/ConversationOrchestrator";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
+import { runWithRuntimeClock } from "@/core/time/RuntimeClock";
 import {
   resolveCalendarGateway,
   resolveCalendarMode,
@@ -92,6 +97,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 409 },
       );
     }
+    if (resolveCalendarMode({
+      calendarMode: manifest.clinic.calendarMode,
+      googleCalendarId: manifest.clinic.googleCalendarId,
+    }) === "google_calendar") {
+      const publicKey = process.env.REPLAY_CALENDAR_PUBLIC_KEY_PEM;
+      if (!input.calendarSnapshot || !publicKey) {
+        throw new Error("signed_calendar_snapshot_required");
+      }
+      verifyReplayCalendarSnapshot(input.calendarSnapshot, publicKey, {
+        clinicKey: input.scenario.clinic.clinicKey,
+        configFingerprint: input.scenario.clinic.configFingerprint,
+      });
+    }
 
     const nonTerminalJobs = await db
       .select({ id: jobs.id, queue: jobs.queue, status: jobs.status })
@@ -137,7 +155,10 @@ async function runReplayScenario(
   const inboundEventStore = new DrizzleInboundEventStore();
   const outboundMessageStore = new DrizzleOutboundMessageStore();
   const phone = replayPhone(input.runId, input.scenario.id);
-  const shiftedStart = Date.now();
+  const controlledStart = Date.parse(input.scenario.clock.startedAt);
+  if (!Number.isFinite(controlledStart)) throw new Error("Invalid replay scenario clock");
+  let logicalNowMs = controlledStart;
+  const runtimeClock = { now: () => new Date(logicalNowMs) };
   const executionRuns: Array<{
     scenarioTurnIds: string[];
     turnIds: string[];
@@ -167,7 +188,9 @@ async function runReplayScenario(
               postAppointmentBufferMinutes:
                 calendarInput.postAppointmentBufferMinutes,
             })
-          : unavailableCalendarSnapshot();
+          : input.calendarSnapshot
+            ? new ReplayCalendarSnapshotGateway(input.calendarSnapshot)
+            : unavailableCalendarSnapshot();
       const capture = new ReplayCalendarCapture(readGateway);
       calendarCaptures.push(capture);
       return capture;
@@ -213,7 +236,7 @@ async function runReplayScenario(
         phone,
         runId: input.runId,
         turn,
-        timestamp: new Date(shiftedStart + turn.offsetMs),
+        timestamp: new Date(controlledStart + turn.offsetMs),
       });
       const webhookResponse = await receiveZApiWebhook(
         new NextRequest(webhookUrl, {
@@ -239,30 +262,35 @@ async function runReplayScenario(
     };
 
     const drain = async (turns: typeof leadTurns, concurrent: boolean) => {
-      const injected = concurrent
-        ? await Promise.all(turns.map(injectTurn))
-        : [await injectTurn(turns[0]!)];
-      const virtualNow = Math.max(
-        ...turns.map((turn) => shiftedStart + turn.offsetMs),
+      logicalNowMs = Math.max(...turns.map((turn) => controlledStart + turn.offsetMs));
+      const injected = await runWithRuntimeClock(runtimeClock, async () =>
+        concurrent
+          ? Promise.all(turns.map(injectTurn))
+          : [await injectTurn(turns[0]!)],
       );
-      const processDrain = await drainMessageProcessQueue({
-        jobQueue,
-        inboundEventStore,
-        handler: processHandler,
-        workerId: `replay-process:${input.runId}:${input.mode}:${executionRuns.length}`,
-        maxJobs: injected.length,
-        now: resolveReplayDrainNow(virtualNow),
-      });
-      const sendDrain = await drainMessageSendQueue({
-        jobQueue,
-        outboundMessageStore,
-        handler: sendHandler,
-        workerId: `replay-send:${input.runId}:${input.mode}:${executionRuns.length}`,
-        maxJobs: Math.max(20, injected.length * 20),
-        // Processing preserves the real clinic debounce and can take several
-        // seconds. Re-read the wall clock so jobs produced by that processing
-        // are claimable in this same execution group.
-        now: resolveReplayDrainNow(virtualNow),
+      const virtualNow = Math.max(
+        ...turns.map((turn) => controlledStart + turn.offsetMs),
+      );
+      const { processDrain, sendDrain } = await runWithRuntimeClock(runtimeClock, async () => {
+        const processDrain = await drainMessageProcessQueue({
+          jobQueue,
+          inboundEventStore,
+          handler: processHandler,
+          workerId: `replay-process:${input.runId}:${input.mode}:${executionRuns.length}`,
+          maxJobs: injected.length,
+          now: resolveReplayDrainNow(virtualNow),
+        });
+        const sendDrain = await drainMessageSendQueue({
+          jobQueue,
+          outboundMessageStore,
+          handler: sendHandler,
+          workerId: `replay-send:${input.runId}:${input.mode}:${executionRuns.length}`,
+          maxJobs: Math.max(20, injected.length * 20),
+          // O relógio lógico é fixo; este valor técnico só garante que jobs
+          // inseridos pelo relógio do banco possam ser reivindicados.
+          now: resolveReplayDrainNow(virtualNow),
+        });
+        return { processDrain, sendDrain };
       });
       executionRuns.push({
         scenarioTurnIds: injected.map((turn) => turn.scenarioTurnId),
@@ -356,7 +384,8 @@ async function runReplayScenario(
       runId: input.runId,
       scenarioId: input.scenario.id,
       mode: input.mode,
-      clockMode: "current_shifted_preserving_offsets",
+      clockMode: "scenario_controlled_preserving_offsets",
+      controlledStartedAt: new Date(controlledStart).toISOString(),
       clinic: input.scenario.clinic,
       transcript,
       trace: traces,
