@@ -76,7 +76,6 @@ export async function loadReplayClinicManifest(clinicKey: string) {
       durationMinutes: treatment.durationMinutes,
       description: treatment.description,
       requiresEvaluationFirst: treatment.requiresEvaluationFirst,
-      triggerTemplate: treatment.triggerTemplate,
       keywordMatchEnabled: treatment.keywordMatchEnabled,
       aliases: treatment.aliases,
       isAesthetic: treatment.isAesthetic,

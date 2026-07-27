@@ -291,24 +291,6 @@ async function auditClinic(slug: string) {
       }
     }
 
-    if (treatment.triggerTemplate?.trim() && (treatment.pipelineSteps?.length ?? 0) > 0) {
-      pushFinding(findings, {
-        id: `CFG-TRIGGER-PIPELINE-${treatment.id}`,
-        severity: "P2",
-        category: "duplicate",
-        title: `Tratamento "${treatment.name}" possui triggerTemplate e pipelineSteps`,
-        evidence: [
-          {
-            source: "db",
-            reference: `treatments:${treatment.id}`,
-            value: { hasTriggerTemplate: true, pipelineStepCount: treatment.pipelineSteps?.length ?? 0 },
-          },
-        ],
-        recommendation: "Confirmar qual mecanismo é consumido e migrar para um único dono.",
-        autoFixSafe: false,
-      });
-    }
-
     if (/R\s*\$/i.test(treatment.description ?? "")) {
       pushFinding(findings, {
         id: `CFG-PRICE-IN-DESCRIPTION-${treatment.id}`,
@@ -360,24 +342,6 @@ async function auditClinic(slug: string) {
   }
 
   for (const playbook of playbooks) {
-    if ((playbook.mediaLibrary?.length ?? 0) > 0) {
-      pushFinding(findings, {
-        id: `CFG-LEGACY-MEDIA-${playbook.id}`,
-        severity: playbook.status === "active" ? "P2" : "P3",
-        category: "migration",
-        title: `Playbook "${playbook.name}" ainda possui media_library legado`,
-        evidence: [
-          {
-            source: "db",
-            reference: `playbook_versions.media_library:${playbook.id}`,
-            value: { count: playbook.mediaLibrary.length },
-          },
-        ],
-        recommendation: "Confirmar backfill para media_assets/media_asset_ids antes de remover o fallback.",
-        autoFixSafe: false,
-      });
-    }
-
     if (/R\s*\$/i.test(playbook.commercialPolicy ?? "")) {
       pushFinding(findings, {
         id: `CFG-PRICE-IN-COMMERCIAL-POLICY-${playbook.id}`,
@@ -560,6 +524,8 @@ async function auditClinic(slug: string) {
       outsideHoursExceptionEnabled: organization.outsideHoursExceptionEnabled,
       rapidThrottleMs: organization.rapidThrottleMs,
       messageDebounceMs: organization.messageDebounceMs,
+      aiContextWindowMessages: organization.aiContextWindowMessages,
+      pipelineQaDefaultMaxTurns: organization.pipelineQaDefaultMaxTurns,
       defaultAppointmentDurationMinutes: organization.defaultAppointmentDurationMinutes,
       postAppointmentBufferMinutes: organization.postAppointmentBufferMinutes,
       depositEnabled: organization.depositEnabled,
@@ -592,7 +558,6 @@ async function auditClinic(slug: string) {
           warrantyPolicyConfigured: Boolean(activePlaybooks[0].warrantyPolicy),
           warrantyTierCount: activePlaybooks[0].warrantyPolicy?.tiers.length ?? 0,
           mediaAssetIds: activePlaybooks[0].mediaAssetIds,
-          legacyMediaCount: activePlaybooks[0].mediaLibrary.length,
           createdAt: activePlaybooks[0].createdAt,
           updatedAt: activePlaybooks[0].updatedAt,
         })
@@ -612,18 +577,11 @@ async function auditClinic(slug: string) {
         warrantyPolicyConfigured: Boolean(playbook.warrantyPolicy),
         warrantyTierCount: playbook.warrantyPolicy?.tiers.length ?? 0,
         mediaAssetIds: playbook.mediaAssetIds,
-        legacyMediaCount: playbook.mediaLibrary.length,
         createdAt: playbook.createdAt,
         updatedAt: playbook.updatedAt,
       }),
     ),
-    treatments: clinicTreatments.map((treatment) =>
-      sanitizeValue({
-        ...treatment,
-        triggerTemplateConfigured: Boolean(treatment.triggerTemplate?.trim()),
-        triggerTemplate: treatment.triggerTemplate,
-      }),
-    ),
+    treatments: clinicTreatments.map((treatment) => sanitizeValue(treatment)),
     resolvedPipelines,
     priceCampaigns: campaigns.map((campaign) => sanitizeValue(campaign)),
     effectivePrices: sanitizeValue(effectivePrices),

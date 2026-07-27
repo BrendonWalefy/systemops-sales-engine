@@ -5835,9 +5835,8 @@ export class ConversationOrchestrator {
         // Log em Sentry para monitoramento (sem alerta por mensagem)
         const errorContext = {
           clinicId: clinic.id,
-          clinicName: clinic.name,
           conversationId: conversation.id,
-          leadName: lead.name,
+          leadId: lead.id,
           actionResult: actionResult.type,
           errorMessage: err instanceof Error ? err.message : String(err),
           timestamp: runtimeNow().toISOString(),
@@ -5846,10 +5845,9 @@ export class ConversationOrchestrator {
         // TODO: Log estruturado em Sentry com agregação de erros
         // Se taxa de erro > 3% em organização, dispara alerta
 
-        // Aciona needs_human sem mensagem ao lead
-        effectiveIntent = "needs_human";
-        maintenanceHandoffReason = "IA indisponível (timeout/OpenAI) — operador intervém";
-        return ""; // Sem resposta ao lead
+        // Interrompe o ramo imediatamente. Devolver string vazia permitia que o
+        // switch continuasse e alterasse estado/agenda antes do catch externo.
+        throw err;
       }
     };
 
@@ -8275,7 +8273,6 @@ export class ConversationOrchestrator {
         clinicId,
         conversationId: conversation.id,
         leadId: lead.id,
-        leadName: lead.name,
         errorMessage: err instanceof Error ? err.message : String(err),
         timestamp: runtimeNow().toISOString(),
       };

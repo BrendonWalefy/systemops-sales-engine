@@ -182,6 +182,23 @@ export class ProcessMessageJobHandler {
       throw error;
     }
 
+    if (handleResult.reason === "technical_error_handoff") {
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.failed",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: {
+          phase: "orchestrator_handled_failure",
+          errorName: "HandledTechnicalError",
+        },
+      });
+      eventLog.error("job.handled_failure", new Error(handleResult.reason), {
+        durationMs: Date.now() - startedAt,
+      });
+      return { outcome: "processed", inboundEventId: event.id };
+    }
+
     await recordDecisionTrace(this.deps.decisionTraceSink, {
       turnId: inboundEventId,
       stage: "orchestrator.completed",

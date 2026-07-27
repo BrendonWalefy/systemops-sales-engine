@@ -2,6 +2,23 @@
 
 Criado em 2026-07-04.
 
+## Status da contração — 2026-07-27
+
+Os itens 1–5 do roadmap desta auditoria estão concluídos no runtime:
+
+- `commonObjections` não existe mais;
+- publicação bloqueia fatos e comandos com dono estruturado;
+- preços são derivados de tratamentos/campanhas;
+- descrições vêm somente de `treatments.description`;
+- pipelines são o único mecanismo de trigger e mídia usa somente
+  `media_assets` + `mediaAssetIds`.
+
+`trigger_template`, `procedure_description` e `media_library` permanecem como
+colunas físicas inertes durante uma janela expand–contract para permitir
+rollback de instâncias antigas no rolling deploy. Nenhum leitor ou writer atual
+as consome. A remoção física é uma contração operacional posterior, não uma
+pendência de comportamento.
+
 Companion operacional de [`sources-of-truth.md`](./sources-of-truth.md). Aquele doc
 diz **qual tabela** é dona de **qual categoria**. Este doc vai uma camada mais fundo:
 onde o **mesmo fato** está escrito em **mais de um campo** hoje (o risco real de erro),
@@ -196,24 +213,24 @@ feature: o hatch absorve o caso raro; o caso que vira recorrente é promovido a 
 
 ---
 
-## 8. Roadmap sequenciado (cada item = 1 PR isolado)
+## 8. Roadmap sequenciado (estado atual)
 
 Ordenado por risco/retorno. Cada um é pequeno, testável e reversível.
 
-1. **Remover `treatments.commonObjections` (💀).** Campo morto; migração dropando a coluna
+1. ✅ **Remover `treatments.commonObjections` (💀).** Campo morto; migração dropando a coluna
    + limpeza dos writes `[]`. Zero risco de runtime (ninguém lê). *Menor esforço, tira uma
    fonte falsa do mapa.*
-2. **Escalar `lintPlaybookNotes` para bloquear no publish** os padrões que têm casa
+2. ✅ **Escalar `lintPlaybookNotes` para bloquear no publish** os padrões que têm casa
    estruturada (preço/pagamento/objeção). Reusa o lint existente; só muda de warn→block no
    gate de publish.
-3. **Derivar a seção de preço da `commercialPolicy` a partir de `priceCents` + flags.**
+3. ✅ **Derivar a seção de preço da `commercialPolicy` a partir de `priceCents` + flags.**
    O maior ganho estrutural (§5). Requer flags novas no treatment (cotável, piso/fixo,
    abatimento) com defaults.
-4. **Colapsar `procedureDescription` em `treatments.description`.** Aposentar o fallback em
+4. ✅ **Colapsar `procedureDescription` em `treatments.description`.** Aposentar o fallback em
    `composePlaybookText`; migrar o conteúdo restante.
-5. **Unificar os 3 mecanismos de trigger** em `pipelineSteps`; migrar `triggerTemplate` e o
+5. ✅ **Unificar os 3 mecanismos de trigger** em `pipelineSteps`; migrar `triggerTemplate` e o
    TRIGGER-em-`notes`, depois deletar os dois caminhos legados (o código já pede isso).
-6. **Blueprint → wizard guiado por segmento** com progressive disclosure (§6A/B).
+6. ⏳ **Blueprint → wizard guiado por segmento** com progressive disclosure (§6A/B).
 
 ---
 

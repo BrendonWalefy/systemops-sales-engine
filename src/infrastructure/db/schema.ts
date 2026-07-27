@@ -511,6 +511,8 @@ export const treatments = pgTable(
     requiresEvaluationFirst: boolean("requires_evaluation_first")
       .notNull()
       .default(false),
+    // @deprecated Inerte desde 2026-07-27. Mantido fisicamente por uma janela
+    // expand-contract para rollback de instâncias antigas; nenhum runtime lê.
     triggerTemplate: text("trigger_template"),
     keywordMatchEnabled: boolean("keyword_match_enabled")
       .notNull()
@@ -1299,6 +1301,8 @@ export const playbookVersions = pgTable(
     name: text("name").notNull(),
     status: playbookVersionStatusEnum("status").notNull().default("draft"),
     specialty: text("specialty"),
+    // @deprecated Inerte desde 2026-07-27; treatments.description é o dono.
+    // Remover fisicamente somente após a janela expand-contract do release.
     procedureDescription: text("procedure_description"),
     toneOfVoice: text("tone_of_voice").notNull().default("acolhedor"),
     differentials: jsonb("differentials")
@@ -1326,9 +1330,8 @@ export const playbookVersions = pgTable(
       tiers: { periodMonths: number; covers: string }[];
       conditions: string | null;
     }>(),
-    // DEPRECATED (biblioteca de mídia): substituída por media_assets +
-    // mediaAssetIds abaixo. Mantida só como fallback de leitura até a Fase 4
-    // (contração) da migração — não escrever mais aqui.
+    // @deprecated Inerte desde 2026-07-27; media_assets + mediaAssetIds são os
+    // únicos donos. Mantido por uma janela expand-contract para rollback seguro.
     mediaLibrary: jsonb("media_library")
       .$type<
         { id: string; title: string; url: string; type: "video" | "image" }[]

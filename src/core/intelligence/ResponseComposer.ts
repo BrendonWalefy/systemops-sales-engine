@@ -114,12 +114,10 @@ export function resolveComposerModel(plan?: ComposerPlan | null): string {
   switch (plan) {
     case "growth":
       return envModel("OPENAI_COMPOSER_MODEL_GROWTH")
-        ?? envModel("OPENAI_COMPOSER_MODEL_GROWTH")
         ?? envModel("OPENAI_COMPOSER_MODEL_DEFAULT")
         ?? STANDARD_COMPOSER_MODEL;
     case "scale":
       return envModel("OPENAI_COMPOSER_MODEL_SCALE")
-        ?? envModel("OPENAI_COMPOSER_MODEL_SCALE")
         ?? envModel("OPENAI_COMPOSER_MODEL_PREMIUM")
         ?? PREMIUM_COMPOSER_MODEL;
     case "enterprise":
@@ -129,7 +127,6 @@ export function resolveComposerModel(plan?: ComposerPlan | null): string {
     case "start":
     default:
       return envModel("OPENAI_COMPOSER_MODEL_START")
-        ?? envModel("OPENAI_COMPOSER_MODEL_START")
         ?? envModel("OPENAI_COMPOSER_MODEL_DEFAULT")
         ?? STANDARD_COMPOSER_MODEL;
   }
