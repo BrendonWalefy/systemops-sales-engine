@@ -27,6 +27,12 @@ satisfazem esse contrato.
 | `replay-conversation-pendencies-19-07.ts` | Duplicava asserções já existentes em suítes Vitest | `ConversationWave2Guards`, `BusinessIntentCoercion`, `HumanReview`, `WhatsAppContactIdentity` e testes relacionados |
 | `extract-replay-cases.ts`, `extract-vitalli-last-30.ts`, `extract-vitalli-last-hours.ts`, `query-vitalli-conversations.ts`, `audit-quality-vitalli.ts` | Exportação/análise pontual com risco de PII e sem gate de revisão | `npm run replay:export`, sanitização, allowlist e aprovação Ed25519 |
 | `vitalli-last-30.json`, `vitalli-last-5h.json` | PII real versionada: nomes, telefones e mensagens | Datasets ficam fora do Git e só entram no OMNIQA depois da assinatura |
+| `dump-ximendes-transcripts.ts`, `analyze-inbox-leads.ts`, `find-unattended-leads.ts`, `check-last-messages.ts`, `check-conv-state.ts` | Imprimiam ou gravavam conteúdo, nomes e telefones reais fora do fluxo sanitizado; alguns continham pessoas ou clínica hardcoded | Export sanitizado + Decision Trace tenant-scoped + insights operacionais |
+| `test-orchestrator.ts` | Chamava o orquestrador com Vitalli fixa, gravava no banco configurado e não capturava a fronteira de entrega | Rota de replay isolada + OMNIQA |
+| `tmp-prod-smoke.ts` | Gerava cookie para e-mail hardcoded e não continha asserção | Smokes autenticados do OMNIQA |
+| `check-rate.ts`, `check-rate.mts` | Diagnósticos duplicados; uma cópia usava schema obsoleto e ambas expunham telefone | Métricas agregadas e Safety Gate testado |
+| `check-vitalli-treatments.ts`, `dump-all-vitalli-pipelines.ts`, `dump-vitalli-estado.ts`, `dump-vitalli-treatments.ts` | Consultas pontuais com tenant fixo, sem asserção nem sanitização | Auditor genérico de configuração e fingerprints do replay |
+| `delete-e2e-leads.ts` | Limpeza destrutiva criada quando E2E ainda vazava para o banco compartilhado | Sandbox descartável com limpeza transacional por cenário |
 
 O `.gitignore` bloqueia novos arquivos `vitalli-last-*.json`. A exclusão acima
 remove os dados do estado atual da branch, mas não reescreve o histórico Git.
