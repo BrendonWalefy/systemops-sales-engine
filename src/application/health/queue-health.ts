@@ -1,4 +1,4 @@
-import { and, count, eq, gte, isNotNull, lt, lte, min } from "drizzle-orm";
+import { and, count, eq, gte, isNotNull, isNull, lt, lte, min } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { jobs } from "@/infrastructure/db/schema";
 import type { JobQueueName } from "@/application/ports/job-queue";
@@ -86,7 +86,7 @@ export async function inspectQueueHealth(now = new Date()): Promise<QueueHealthR
     db
       .select({ queue: jobs.queue, count: count() })
       .from(jobs)
-      .where(eq(jobs.status, "dead"))
+      .where(and(eq(jobs.status, "dead"), isNull(jobs.deadLetterDisposition)))
       .groupBy(jobs.queue),
     db
       .select({ queue: jobs.queue, count: count(), oldestAt: min(jobs.runAt) })

@@ -792,6 +792,16 @@ export const jobs = pgTable(
     lockedAt: timestamp("locked_at", { withTimezone: true }),
     lockedBy: text("locked_by"),
     lastError: text("last_error"),
+    // Dead letters resolvidas permanecem consultáveis, mas deixam de degradar
+    // a saúde da fila. Reprocessar limpa estes campos e cria uma nova tentativa.
+    deadLetterDisposition: text("dead_letter_disposition").$type<
+      "acknowledged" | "discarded"
+    >(),
+    deadLetterResolvedAt: timestamp("dead_letter_resolved_at", {
+      withTimezone: true,
+    }),
+    deadLetterResolvedBy: text("dead_letter_resolved_by"),
+    deadLetterResolutionReason: text("dead_letter_resolution_reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -812,6 +822,35 @@ export const jobs = pgTable(
     queueDedupeKeyIdx: uniqueIndex("jobs_queue_dedupe_key_idx").on(
       table.queue,
       table.dedupeKey,
+    ),
+  }),
+);
+
+// Auditoria imutável de cada decisão humana sobre um job morto. A tabela de
+// jobs guarda o estado atual; esta tabela preserva todo o histórico.
+export const jobDeadLetterActions = pgTable(
+  "job_dead_letter_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    action: text("action")
+      .$type<"acknowledge" | "discard" | "reprocess">()
+      .notNull(),
+    actorEmail: text("actor_email").notNull(),
+    reason: text("reason").notNull(),
+    allowedLateDelivery: boolean("allowed_late_delivery").notNull().default(false),
+    jobAttempts: integer("job_attempts").notNull(),
+    jobLastError: text("job_last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    jobCreatedAtIdx: index("job_dead_letter_actions_job_created_at_idx").on(
+      table.jobId,
+      table.createdAt,
     ),
   }),
 );

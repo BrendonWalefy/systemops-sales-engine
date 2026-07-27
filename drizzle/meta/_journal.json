@@ -652,6 +652,13 @@
       "when": 1785113384044,
       "tag": "0092_clammy_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1785125652172,
+      "tag": "0093_closed_blob",
+      "breakpoints": true
     }
   ]
 }
