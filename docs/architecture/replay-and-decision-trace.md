@@ -190,6 +190,9 @@ Implementado:
 - rota opt-in `/api/e2e/replay/scenario` para `closed_loop`, que valida
   fingerprint, atravessa webhook e filas reais, devolve trace/efeitos/checks e
   remove todos os registros sintéticos ao terminar.
+- reconciliação automática dos estreitos intervalos entre persistir inbound/
+  outbox e enfileirar seus jobs, com contadores expostos no resultado dos
+  workers.
 
 ### Sandbox de execução
 

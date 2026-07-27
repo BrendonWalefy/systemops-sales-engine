@@ -180,6 +180,12 @@ Tabelas centrais para o runtime atual:
 - `appointments` e `calendar_blocks`: agenda interna;
 - `playbook_versions`: editorial ativo por clínica.
 
+Persistência e enqueue são idempotentes, mas não formam uma transação única.
+Por isso, os workers reconciliam registros `pending` com mais de um minuto que
+não tenham o job correspondente: `inbound_events` recria `message.process` e
+`outbound_messages` recria `message.send`. A chave de dedupe da fila torna a
+reparação segura mesmo se a requisição original ainda concluir em paralelo.
+
 ## Multi-tenancy
 
 Cada clínica possui sua própria configuração no banco:

@@ -8,6 +8,8 @@ import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizz
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
+import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -30,8 +32,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const safetyContextReader = new DrizzleOutboundSafetyContextReader();
   const decisionTraceSink = createRuntimeDecisionTraceSink();
   try {
+    const jobQueue = new DrizzleJobQueue();
+    const orphanReconciliation = await reconcileMessageJobOrphans({
+      reader: new DrizzleMessageJobOrphanReader(),
+      jobQueue,
+      queues: ["message.send"],
+    });
     const result = await drainMessageSendQueue({
-      jobQueue: new DrizzleJobQueue(),
+      jobQueue,
       outboundMessageStore,
       handler: new SendMessageJobHandler({
         outboundMessageStore,
@@ -41,8 +49,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       workerId,
       maxJobs: MAX_JOBS_PER_RUN,
     });
-    log.info("worker.run.completed", { ...result, durationMs: Date.now() - startedAt });
-    return NextResponse.json(result);
+    log.info("worker.run.completed", {
+      ...result,
+      orphanReconciliation,
+      durationMs: Date.now() - startedAt,
+    });
+    return NextResponse.json({ ...result, orphanReconciliation });
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
     return NextResponse.json({ error: "sender_worker_failed" }, { status: 500 });
