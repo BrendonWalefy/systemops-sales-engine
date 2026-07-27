@@ -2,6 +2,7 @@
 // NÃO compõe resposta. NÃO decide o que fazer. Apenas classifica.
 
 import OpenAI from "openai";
+import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
 import type { Message } from "@/domain/entities/conversation";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 
@@ -272,9 +273,12 @@ export class IntentClassifier {
       businessDescriptor: "clínica",
       isClinicSegment: true,
     },
+    historyWindowMessages?: number | null,
   ): Promise<IntentClassification> {
-    // Contexto resumido da conversa (últimas 8 mensagens para economizar tokens)
-    const recentHistory = conversationHistory.slice(-8);
+    const recentHistory = takeRecentConversationHistory(
+      conversationHistory,
+      historyWindowMessages,
+    );
     const historyText = recentHistory
       .map((m) => {
         const role = m.author === "lead" ? "Lead" : context.agentRole.charAt(0).toUpperCase() + context.agentRole.slice(1);

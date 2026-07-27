@@ -141,6 +141,10 @@ export class DrizzleJobQueue implements JobQueue {
         lockedAt: null,
         lockedBy: null,
         lastError: input.error,
+        deadLetterDisposition: null,
+        deadLetterResolvedAt: null,
+        deadLetterResolvedBy: null,
+        deadLetterResolutionReason: null,
         updatedAt: now,
       })
       .where(

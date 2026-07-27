@@ -1,82 +1,93 @@
-// Claim de processamento por conversa — serializa webhooks concorrentes.
-//
-// Antes do fix: dois webhooks da mesma conversa processavam em paralelo
-// (o debounce tem janela TOCTOU entre o check e a invocação do LLM), e as
-// respostas saíam intercaladas — ex.: texto de localização entregue entre
-// os dois vídeos de lentes.
-//
-// Depois do fix: o handler adquire um claim via UPDATE condicional em
-// conversations.processing_until (CAS de single-statement — atômico no
-// Postgres mesmo com neon-http, que não suporta transações interativas).
-// O perdedor espera; ao adquirir, só responde se sua mensagem ainda for a
-// mais recente do lead. TTL de 90s evita deadlock se o detentor morrer.
+import { describe, expect, it, vi } from "vitest";
+import type {
+  AcquireConversationTurnLeaseInput,
+  ConversationTurnLeaseStore,
+} from "@/application/ports/conversation-turn-lease-store";
+import {
+  CONVERSATION_TURN_LEASE_TTL_MS,
+  ConversationTurnCoordinator,
+} from "@/core/pipeline/ConversationTurnCoordinator";
 
-import { describe, it, expect } from "vitest";
+class MemoryLeaseStore implements ConversationTurnLeaseStore {
+  leaseUntil: Date | null = null;
 
-// ─── Modelo puro do CAS sobre processing_until ───────────────────────────────
+  async tryAcquire(input: AcquireConversationTurnLeaseInput): Promise<boolean> {
+    if (this.leaseUntil && this.leaseUntil >= input.now) return false;
+    this.leaseUntil = input.leaseUntil;
+    return true;
+  }
 
-type ConversationRow = { processingUntil: Date | null };
-
-const CLAIM_TTL_MS = 90_000;
-
-/** Mesma semântica do UPDATE ... WHERE (processing_until IS NULL OR processing_until < now()). */
-function tryAcquire(row: ConversationRow, now: Date): boolean {
-  const free = row.processingUntil === null || row.processingUntil < now;
-  if (!free) return false;
-  row.processingUntil = new Date(now.getTime() + CLAIM_TTL_MS);
-  return true;
+  async release(): Promise<void> {
+    this.leaseUntil = null;
+  }
 }
 
-function release(row: ConversationRow): void {
-  row.processingUntil = null;
-}
+describe("ConversationTurnCoordinator", () => {
+  it("concede somente um decisor ativo por conversa", async () => {
+    const store = new MemoryLeaseStore();
+    const now = () => new Date("2026-07-27T12:00:00.000Z");
+    const first = new ConversationTurnCoordinator(store, { now, maxWaitMs: 0 });
+    const second = new ConversationTurnCoordinator(store, { now, maxWaitMs: 0 });
 
-describe("Claim de processamento por conversa — invariantes do CAS", () => {
-  it("apenas um de dois webhooks concorrentes adquire o claim", () => {
-    const row: ConversationRow = { processingUntil: null };
-    const t0 = new Date("2026-06-11T17:28:00Z");
-
-    const winner = tryAcquire(row, t0);
-    const loser = tryAcquire(row, new Date(t0.getTime() + 5));
-
-    expect(winner).toBe(true);
-    expect(loser).toBe(false);
+    expect(await first.acquire("conversation-1")).toBe(true);
+    expect(await second.acquire("conversation-1")).toBe(false);
   });
 
-  it("perdedor adquire após o detentor liberar", () => {
-    const row: ConversationRow = { processingUntil: null };
-    const t0 = new Date("2026-06-11T17:28:00Z");
+  it("permite que o próximo turno continue depois da liberação", async () => {
+    const store = new MemoryLeaseStore();
+    const coordinator = new ConversationTurnCoordinator(store, { maxWaitMs: 0 });
 
-    expect(tryAcquire(row, t0)).toBe(true);
-    expect(tryAcquire(row, new Date(t0.getTime() + 2_000))).toBe(false);
-
-    release(row);
-    expect(tryAcquire(row, new Date(t0.getTime() + 4_000))).toBe(true);
+    expect(await coordinator.acquire("conversation-1")).toBe(true);
+    await coordinator.release("conversation-1");
+    expect(await coordinator.acquire("conversation-1")).toBe(true);
   });
 
-  it("TTL expirado permite roubo do claim (handler que morreu não trava a conversa)", () => {
-    const row: ConversationRow = { processingUntil: null };
-    const t0 = new Date("2026-06-11T17:28:00Z");
+  it("recupera conversa cujo lease expirou após crash", async () => {
+    const store = new MemoryLeaseStore();
+    let clock = Date.parse("2026-07-27T12:00:00.000Z");
+    const coordinator = new ConversationTurnCoordinator(store, {
+      now: () => new Date(clock),
+      maxWaitMs: 0,
+    });
 
-    expect(tryAcquire(row, t0)).toBe(true);
-    // Detentor morreu sem liberar. Antes do TTL: bloqueado.
-    expect(tryAcquire(row, new Date(t0.getTime() + CLAIM_TTL_MS - 1))).toBe(false);
-    // Após o TTL: livre.
-    expect(tryAcquire(row, new Date(t0.getTime() + CLAIM_TTL_MS + 1))).toBe(true);
+    expect(await coordinator.acquire("conversation-1")).toBe(true);
+    clock += CONVERSATION_TURN_LEASE_TTL_MS + 1;
+    expect(await coordinator.acquire("conversation-1")).toBe(true);
   });
 
-  it("documenta a regressão: sem claim, ambos os handlers processam (TOCTOU do debounce)", () => {
-    // Sem CAS, o "check do debounce" de cada handler vê a própria mensagem como
-    // a mais recente se a outra ainda não foi registrada — ambos respondem.
-    const handlerSawOwnMessageAsLatest = [true, true];
-    const bothReplied = handlerSawOwnMessageAsLatest.every(Boolean);
-    expect(bothReplied).toBe(true); // comportamento antigo (defeito)
+  it("espera de forma controlável e adquire assim que o detentor libera", async () => {
+    const store = new MemoryLeaseStore();
+    let clock = Date.parse("2026-07-27T12:00:00.000Z");
+    store.leaseUntil = new Date(clock + 60_000);
+    const sleep = vi.fn(async (durationMs: number) => {
+      clock += durationMs;
+      store.leaseUntil = null;
+    });
+    const coordinator = new ConversationTurnCoordinator(store, {
+      now: () => new Date(clock),
+      sleep,
+      pollMs: 2_000,
+      maxWaitMs: 10_000,
+    });
 
-    // Com o claim, o segundo handler só processa após o primeiro terminar e
-    // re-verifica qual é a mensagem mais recente antes de responder.
-    const row: ConversationRow = { processingUntil: null };
-    const now = new Date();
-    const concurrentAcquisitions = [tryAcquire(row, now), tryAcquire(row, now)];
-    expect(concurrentAcquisitions.filter(Boolean)).toHaveLength(1);
+    expect(await coordinator.acquire("conversation-1")).toBe(true);
+    expect(sleep).toHaveBeenCalledOnce();
+  });
+
+  it("não transforma falha de release em retry do turno já concluído", async () => {
+    const releaseError = new Error("database unavailable");
+    const onReleaseError = vi.fn();
+    const store: ConversationTurnLeaseStore = {
+      tryAcquire: async () => true,
+      release: async () => {
+        throw releaseError;
+      },
+    };
+    const coordinator = new ConversationTurnCoordinator(store, {
+      onReleaseError,
+    });
+
+    await expect(coordinator.release("conversation-1")).resolves.toBeUndefined();
+    expect(onReleaseError).toHaveBeenCalledWith("conversation-1", releaseError);
   });
 });

@@ -140,7 +140,6 @@ export async function createProspectClinic(
     notes: null,
     differentials: [],
     objections: [],
-    mediaLibrary: [],
   });
 
   const passwordHash = await hashPassword(adminPassword);

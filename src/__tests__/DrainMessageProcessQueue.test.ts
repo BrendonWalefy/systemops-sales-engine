@@ -34,6 +34,58 @@ function makeDeps() {
 }
 
 describe("drainMessageProcessQueue", () => {
+  it("processa dez tenants no mesmo lote sem cruzar seus eventos", async () => {
+    const tenantJobs = Array.from({ length: 10 }, (_, index): JobRecord => ({
+      ...job,
+      id: `job-${index + 1}`,
+      payload: {
+        inboundEventId: `event-${index + 1}`,
+        clinicId: `clinic-${index + 1}`,
+      },
+      dedupeKey: `inbound-event:event-${index + 1}`,
+    }));
+    const claimed = [...tenantJobs];
+    const processed: Array<{ eventId: string; clinicId: string }> = [];
+    const jobQueue = {
+      recoverStaleJobs: vi.fn().mockResolvedValue(0),
+      claimNextJob: vi.fn(async () => claimed.shift() ?? null),
+      completeJob: vi.fn().mockResolvedValue(true),
+      failJob: vi.fn(),
+    };
+
+    const result = await drainMessageProcessQueue({
+      jobQueue,
+      inboundEventStore: {
+        markInboundEventPending: vi.fn(),
+        markInboundEventFailed: vi.fn(),
+      },
+      handler: {
+        processJob: vi.fn(async (claimedJob: JobRecord) => {
+          const payload = claimedJob.payload as {
+            inboundEventId: string;
+            clinicId: string;
+          };
+          processed.push({
+            eventId: payload.inboundEventId,
+            clinicId: payload.clinicId,
+          });
+          return {
+            outcome: "processed" as const,
+            inboundEventId: payload.inboundEventId,
+          };
+        }),
+      },
+      workerId: "worker-ten-tenants",
+      maxJobs: 10,
+      now: new Date("2026-07-27T12:00:00.000Z"),
+    } as never);
+
+    expect(result).toMatchObject({ claimed: 10, processed: 10, dead: 0 });
+    expect(new Set(processed.map((item) => item.eventId)).size).toBe(10);
+    expect(new Set(processed.map((item) => item.clinicId)).size).toBe(10);
+    expect(jobQueue.completeJob).toHaveBeenCalledTimes(10);
+  });
+
   it("conclui o job após o handler processar o evento", async () => {
     const deps = makeDeps();
 

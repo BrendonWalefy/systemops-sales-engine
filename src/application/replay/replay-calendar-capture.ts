@@ -4,6 +4,7 @@ import type {
   CalendarGateway,
 } from "@/application/ports/calendar-gateway";
 import type { Appointment } from "@/domain/entities/calendar-slot";
+import { runtimeNow } from "@/core/time/RuntimeClock";
 
 export type ReplayCalendarEffect =
   | {
@@ -74,7 +75,7 @@ export class ReplayCalendarCapture implements CalendarGateway {
   async createAppointment(
     input: Parameters<CalendarGateway["createAppointment"]>[0],
   ): Promise<Appointment> {
-    const now = new Date();
+    const now = runtimeNow();
     const capturedEventId = `replay-calendar-${randomUUID()}`;
     this.effects.push({
       sequence: ++this.sequence,

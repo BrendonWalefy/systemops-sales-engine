@@ -87,6 +87,8 @@ export type Organization = {
   mediaTakeoverTtlHours: number | null;
   rapidThrottleMs: number;
   messageDebounceMs: number | null;
+  aiContextWindowMessages?: number | null;
+  pipelineQaDefaultMaxTurns?: number | null;
   // Vocabulário configurável por segmento
   serviceNoun: string;
   bookingNoun: string;

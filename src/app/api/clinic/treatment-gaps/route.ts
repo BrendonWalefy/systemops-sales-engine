@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // GET /api/clinic/treatment-gaps
 // Retorna resumo dos tratamentos não cadastrados mencionados por leads.
 // Agrupado por mentionedText para exibição como insight operacional no Inbox.
-export async function GET(_request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   const clinicId = await getSessionClinicId();
   if (!clinicId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

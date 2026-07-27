@@ -70,8 +70,9 @@ export type PublicConversationExcerpt = Omit<ConversationExcerpt, "sourceConvers
 
 /** Remove o campo de rastreabilidade interna antes de expor um trecho publicamente. */
 export function toPublicExcerpt(excerpt: ConversationExcerpt): PublicConversationExcerpt {
-  const { sourceConversationId: _sourceConversationId, ...publicExcerpt } = excerpt;
-  return publicExcerpt;
+  const publicExcerpt: Partial<ConversationExcerpt> = { ...excerpt };
+  delete publicExcerpt.sourceConversationId;
+  return publicExcerpt as PublicConversationExcerpt;
 }
 
 /** Status possíveis de uma rodada de revisão (enum próprio — sem "applied"). */

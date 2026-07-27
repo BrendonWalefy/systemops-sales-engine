@@ -1,7 +1,6 @@
 // resolveMediaLibraryForVersion é a FONTE ÚNICA de leitura da biblioteca de
 // mídia (ver docs/product/biblioteca-midia-plano.md): lê media_asset_ids da
-// tabela clinic-level media_assets, com fallback ao jsonb legado enquanto uma
-// versão não foi migrada. Cobre também o isolamento por tenant do repositório.
+// tabela clinic-level media_assets. Cobre também o isolamento por tenant.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -31,7 +30,6 @@ describe("resolveMediaLibraryForVersion", () => {
     const result = await resolveMediaLibraryForVersion(CLINIC_ID, {
       id: "version-1",
       mediaAssetIds: ["a1"],
-      mediaLibrary: [], // legado vazio — não deveria nem ser consultado
     });
 
     expect(result).toEqual([{ id: "a1", title: "Lentes", url: "https://blob/lentes.mp4", type: "video", treatmentId: null }]);
@@ -40,23 +38,13 @@ describe("resolveMediaLibraryForVersion", () => {
 
   it("passa o clinicId da SESSÃO para o repositório — nunca confia em id sozinho (isolamento por tenant)", async () => {
     mocks.findByIds.mockResolvedValue([]);
-    await resolveMediaLibraryForVersion("clinic-outra", { id: "v1", mediaAssetIds: ["asset-de-outra-clinica"], mediaLibrary: [] });
+    await resolveMediaLibraryForVersion("clinic-outra", { id: "v1", mediaAssetIds: ["asset-de-outra-clinica"] });
     expect(mocks.findByIds).toHaveBeenCalledWith("clinic-outra", ["asset-de-outra-clinica"]);
   });
 
-  it("cai no jsonb legado quando media_asset_ids está vazio mas media_library tem itens (versão não migrada)", async () => {
-    const result = await resolveMediaLibraryForVersion(CLINIC_ID, {
-      id: "version-antiga",
-      mediaAssetIds: [],
-      mediaLibrary: [{ id: "legacy-1", title: "Vídeo antigo", url: "https://blob/old.mp4", type: "video" }],
-    });
-
-    expect(result).toEqual([{ id: "legacy-1", title: "Vídeo antigo", url: "https://blob/old.mp4", type: "video", treatmentId: null }]);
-    expect(mocks.findByIds).not.toHaveBeenCalled();
-  });
-
-  it("retorna lista vazia quando não há mídia em nenhuma das duas fontes", async () => {
-    const result = await resolveMediaLibraryForVersion(CLINIC_ID, { id: "v-vazia", mediaAssetIds: [], mediaLibrary: [] });
+  it("retorna lista vazia quando a versão não seleciona mídia", async () => {
+    const result = await resolveMediaLibraryForVersion(CLINIC_ID, { id: "v-vazia", mediaAssetIds: [] });
     expect(result).toEqual([]);
+    expect(mocks.findByIds).not.toHaveBeenCalled();
   });
 });

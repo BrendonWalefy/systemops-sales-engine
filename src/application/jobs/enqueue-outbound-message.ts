@@ -8,8 +8,12 @@ export async function enqueueOutboundMessage(
   input: CreateOutboundMessageInput,
   deps: { outboundMessageStore: OutboundMessageStore; jobQueue: JobQueue },
 ): Promise<{ outboundMessageId: string; messageWasNew: boolean; jobWasNew: boolean }> {
-  const created = await deps.outboundMessageStore.createOutboundMessage(input);
   const turnId = getTurnId(input.payload);
+  if (deps.outboundMessageStore.createOutboundMessageAndEnqueue) {
+    return deps.outboundMessageStore.createOutboundMessageAndEnqueue(input, { turnId });
+  }
+
+  const created = await deps.outboundMessageStore.createOutboundMessage(input);
   const enqueued = await deps.jobQueue.enqueueJob({
     queue: "message.send",
     payload: {

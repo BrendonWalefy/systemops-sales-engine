@@ -18,7 +18,7 @@ export type OperationalInsight = {
 };
 
 // GET /api/clinic/operational-insights
-export async function GET(_request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   const clinicId = await getSessionClinicId();
   if (!clinicId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
