@@ -2232,6 +2232,41 @@ export function detectUncataloguedMaintenanceInquiry(
   return null;
 }
 
+// Aceite curto ("sim", "pode ser", "quero") a uma oferta que citou um
+// procedimento com jornada guiada é evidência determinística de que o lead quer
+// ENTRAR nessa jornada — a mensagem atual não repete o nome do tratamento, mas a
+// última fala do agente (a oferta) sim. O match é feito SÓ entre tratamentos com
+// pipeline de propósito: o opener costuma citar "valores/avaliação" no mesmo
+// texto, e o gatilho de funil deve resolver o procedimento oferecido, não o item
+// avulso. Assim "Sim" depois de "quer conhecer melhor nossas lentes?" entra no
+// pipeline de lentes (envia os vídeos das técnicas) em vez de cair num texto
+// informativo solto sem mídia. Genérico: vale para qualquer clínica/tratamento
+// com jornada configurada, sem depender do palpite do classificador.
+export function resolveOfferedPipelineTreatment(params: {
+  message: string;
+  treatments: Treatment[];
+  lastAgentMessage?: string | null;
+}): Treatment | null {
+  if (!params.lastAgentMessage) return null;
+  if (
+    !isAffirmativeReplyToOpenOffer({
+      lastAgentMessage: params.lastAgentMessage,
+      message: params.message,
+    })
+  ) {
+    return null;
+  }
+  const pipelineTreatments = params.treatments.filter(
+    (treatment) =>
+      resolvePipelineSourceTreatment(treatment, params.treatments).pipelineSteps?.length,
+  );
+  return matchTreatmentByNormalizedMessage(
+    normalizeFreeText(params.lastAgentMessage),
+    pipelineTreatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+}
+
 export function resolveInformationalTreatmentTarget(params: {
   message: string;
   treatments: Treatment[];
@@ -2264,6 +2299,20 @@ export function resolveInformationalTreatmentTarget(params: {
   const classifiedTreatment = findTreatmentByIdOrName(params.treatments, {
     treatmentName: params.identifiedTreatment ?? null,
   });
+
+  // Aceite de uma oferta que citou uma jornada guiada é evidência mais forte que
+  // um palpite do classificador sobre um "sim" seco (que não carrega o nome do
+  // tratamento). Só assume quando a mensagem atual não traz menção própria — se
+  // trouxer, direct/pipeline abaixo é que mandam.
+  const offeredPipelineTreatment = resolveOfferedPipelineTreatment({
+    message: params.message,
+    treatments: params.treatments,
+    lastAgentMessage: params.lastAgentMessage,
+  });
+  if (offeredPipelineTreatment && !directMentionTreatment && !pipelineMentionTreatment) {
+    return offeredPipelineTreatment;
+  }
+
   if (classifiedTreatment) {
     // A mensagem atual é evidência determinística e tem precedência sobre o
     // treatmentName probabilístico do classificador. Isso é especialmente
@@ -2280,7 +2329,7 @@ export function resolveInformationalTreatmentTarget(params: {
     return classifiedTreatment;
   }
 
-  return directMentionTreatment ?? pipelineMentionTreatment;
+  return directMentionTreatment ?? pipelineMentionTreatment ?? offeredPipelineTreatment;
 }
 
 // Um tratamento identificado apenas pelo contexto do histórico não é gatilho
@@ -2311,17 +2360,15 @@ export function hasExplicitPipelineTreatmentTrigger(params: {
   // J2: afirmativa curta aceitando uma oferta aberta que MENCIONA o tratamento
   // é gatilho explícito — o lead disse "sim" para esta oferta específica.
   // Identificação puramente contextual (sem oferta + aceite) continua bloqueada.
-  if (
-    params.lastAgentMessage &&
-    isAffirmativeReplyToOpenOffer({ lastAgentMessage: params.lastAgentMessage, message: params.message })
-  ) {
-    const offeredTreatment = matchTreatmentByNormalizedMessage(
-      normalizeFreeText(params.lastAgentMessage),
-      params.treatments,
-      TREATMENT_MENTION_STOPWORDS,
-    );
-    if (offeredTreatment?.id === params.treatment.id) return true;
-  }
+  // Usa a MESMA resolução do alvo informacional (só tratamentos com pipeline),
+  // para que o "sim" a um opener que oferece a jornada entre no funil de forma
+  // determinística, sem depender do classificador nem divergir entre variantes.
+  const offeredPipelineTreatment = resolveOfferedPipelineTreatment({
+    message: params.message,
+    treatments: params.treatments,
+    lastAgentMessage: params.lastAgentMessage,
+  });
+  if (offeredPipelineTreatment?.id === params.treatment.id) return true;
   return false;
 }
 
