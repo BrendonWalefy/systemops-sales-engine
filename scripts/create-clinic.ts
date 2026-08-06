@@ -70,7 +70,7 @@ type NewClinicConfig = {
     email: string;
     password: string;
     role?: "owner" | "org_admin";
-    // Nome amigável exibido na saudação do dashboard (ex.: "Dr. Gregorie").
+    // Nome amigável exibido na saudação do dashboard (ex.: "Dr. Silva").
     displayName?: string;
   }[];
 };

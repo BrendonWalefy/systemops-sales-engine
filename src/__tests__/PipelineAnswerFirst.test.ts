@@ -82,7 +82,7 @@ describe("Pipeline v2 Fase 1 — answer-first + once", () => {
     ).toBe(false);
   });
 
-  // Regressão do LOOP DE VÍDEOS (Ximendes 23/07): content step SÓ de mídia. O corpo
+  // Regressão do LOOP DE VÍDEOS (Horizonte 23/07): content step SÓ de mídia. O corpo
   // gravado da mídia é o TÍTULO do arquivo, não a legenda — sem o mapa id→título o
   // dedup nunca reconhecia o envio e o vídeo era reenviado a cada pergunta de preço.
   describe("content step só-de-mídia (loop de vídeos)", () => {

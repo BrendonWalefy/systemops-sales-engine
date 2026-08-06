@@ -189,10 +189,10 @@ describe("AgentResponseThrottle — integração com Orchestrator", () => {
     })).toBe(false);
   });
 
-  // REGRESSÃO real: Ximendes 23/07 — "quero ve-los / mande / pelo / menos /
+  // REGRESSÃO real: Horizonte 23/07 — "quero ve-los / mande / pelo / menos /
   // duas / midias" (6 msgs rápidas, deltas 2/2/1/2/1s). A regra antiga suprimia
   // a última ("midias", 1s após "duas") e a rajada inteira ficava sem resposta.
-  it("REGRESSÃO Ximendes: só as intermediárias são adiadas; a última responde", () => {
+  it("REGRESSÃO Horizonte: só as intermediárias são adiadas; a última responde", () => {
     const burst = [
       lead("quero", "quero ve-los", 0),
       lead("mande", "mande", 2_000),

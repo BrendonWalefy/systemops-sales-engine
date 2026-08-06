@@ -1,6 +1,6 @@
 // Pergunta de horário FORA do expediente não pode virar beco sem saída.
 //
-// Caso real (19/07, Ximendes): o lead escreveu "dependendo do horário que vocês
+// Caso real (19/07, Horizonte): o lead escreveu "dependendo do horário que vocês
 // atendem, posso ir após as 18h na semana" e recebeu "Nosso horário de atendimento
 // é: Seg-Sáb 8h-18h." — tecnicamente correto, comercialmente morto. A conversa
 // acabou ali.

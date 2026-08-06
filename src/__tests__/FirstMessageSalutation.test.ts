@@ -12,7 +12,7 @@ const saoPaulo = new ClinicTimezone("America/Sao_Paulo");
 // saudação, fazendo o pipeline de tratamento e a resposta da LLM saírem "secos",
 // direto para o conteúdo, sem "Bom dia/Boa tarde/Boa noite".
 describe("prependFirstMessageSalutation", () => {
-  it("prefixa a saudação no primeiro bloco de texto do step de pipeline (caso Vitalli/Davi)", () => {
+  it("prefixa a saudação no primeiro bloco de texto do step de pipeline (caso Aurora/Davi)", () => {
     const pipelineParts: ResponsePart[] = [
       {
         type: "text",
@@ -63,11 +63,11 @@ describe("prependFirstMessageSalutation", () => {
   });
 
   // Regressão: clínica em produção real (não-shadow) cujo pipeline JÁ tem mídia
-  // corretamente configurada em múltiplos pontos (Ximendes Odontologia — Dr. Gregorie).
+  // corretamente configurada em múltiplos pontos (Clínica Horizonte — Dr. Silva).
   // O fix só deve tocar o bloco[0]; os outros 4 blocos, incluindo as duas mídias em
   // posições específicas, têm que sair byte-a-byte idênticos.
-  it("não bagunça pipeline com mídia já configurada em múltiplos blocos (caso Ximendes)", () => {
-    const ximendesBlocks: ResponsePart[] = [
+  it("não bagunça pipeline com mídia já configurada em múltiplos blocos (caso Horizonte)", () => {
+    const horizonteBlocks: ResponsePart[] = [
       { type: "text", content: "Trabalhamos com duas técnicas de lentes em resina: a Simplificada e a Estratificada." },
       { type: "text", content: "A Técnica Simplificada usa resina de alta qualidade e entrega um sorriso natural." },
       { type: "media", id: "1cd64101-9a82-4891-b091-0283237cf46d" },
@@ -75,14 +75,14 @@ describe("prependFirstMessageSalutation", () => {
       { type: "media", id: "b220b903-fa8d-4c4b-a765-defd10246ec4" },
     ];
 
-    const result = prependFirstMessageSalutation(ximendesBlocks, saoPaulo, "Carla");
+    const result = prependFirstMessageSalutation(horizonteBlocks, saoPaulo, "Carla");
 
     expect(result).toHaveLength(5);
     expect((result[0] as { type: "text"; content: string }).content).toMatch(
       /^(Bom dia|Boa tarde|Boa noite), Carla! Trabalhamos com duas técnicas/,
     );
     // Blocos 1-4 idênticos aos originais — nenhuma mídia foi movida, removida ou duplicada.
-    expect(result.slice(1)).toEqual(ximendesBlocks.slice(1));
+    expect(result.slice(1)).toEqual(horizonteBlocks.slice(1));
   });
 
   // Defesa de profundidade: a instrução nova em ResponseComposer.ts pede pra LLM não

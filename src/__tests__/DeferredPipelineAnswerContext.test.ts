@@ -5,7 +5,7 @@ import {
   trimAnswerToBridge,
 } from "@/core/pipeline/ConversationOrchestrator";
 
-// Regressão do replay Vitalli 18/07: no answer-first, o composer respondia a
+// Regressão do replay Aurora 18/07: no answer-first, o composer respondia a
 // pergunta técnica por completo E o conteúdo do pipeline (enviado na mesma
 // resposta) explicava tudo de novo — duas respostas para a mesma dúvida.
 

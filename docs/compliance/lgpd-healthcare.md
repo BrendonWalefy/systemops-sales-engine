@@ -29,3 +29,10 @@ Decision Trace guarda metadados allowlisted, não mensagens, prompts, respostas,
 - credenciais, tokens e URLs privadas;
 - imagens, vídeos ou documentos enviados por clientes;
 - exportações de banco, mesmo marcadas como “sanitizadas”, sem processo formal de revisão.
+
+Fixtures, demos e testes devem usar somente organizações, pessoas, contatos,
+endereços e agendas fictícios. Scripts pontuais com dados de clientes não são
+artefatos de produto e devem permanecer fora do Git. Remover um arquivo da árvore
+atual não o elimina do histórico: qualquer incidente anterior exige rotação de
+credenciais e uma reescrita coordenada do histórico antes de compartilhar o
+repositório como data room.

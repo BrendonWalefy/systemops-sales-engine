@@ -88,7 +88,7 @@ export function lintCommercialPolicy(policy: string | null | undefined): string[
  * seguintes. Se o nome configurado não aparece na saudação, o lead conhece dois
  * personagens: abre com "sou a recepcionista virtual" e depois recebe "aqui é a Marina".
  *
- * Caso real (Ximendes, jul/2026): receptionistName="Marina" mas a saudação não a
+ * Caso real (Horizonte, jul/2026): receptionistName="Marina" mas a saudação não a
  * nomeava — 62 mensagens diziam "Marina" e 31 "recepcionista virtual" na mesma clínica.
  * Descobrimos lendo conversa; este lint pega o drift no editor.
  *

@@ -1,6 +1,6 @@
 // Testes de confiabilidade para o fluxo de envio de mídia.
 //
-// Cobre 4 bugs identificados nas conversas da Ximendes em 2026-06:
+// Cobre 4 bugs identificados nas conversas da Horizonte em 2026-06:
 //
 //   Bug A: LLM gerava "[VÍDEO] Título" em texto ao invés de "[MEDIA:id]"
 //          → texto literal chegava ao lead, nenhum vídeo era enviado.

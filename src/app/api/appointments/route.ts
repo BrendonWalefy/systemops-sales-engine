@@ -213,7 +213,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // O lembrete D-1 usa a outbox, que é ordenada por conversa. Agendamentos
     // criados manualmente antes não criavam conversa e o cron os pulava mesmo
-    // quando o telefone estava preenchido (caso Ximendes/Carla). A origem do
+    // quando o telefone estava preenchido (caso Horizonte/Carla). A origem do
     // lead continua "manual"; a conversa é WhatsApp porque será o canal usado.
     // Criamos a conversa antes do booking para que uma falha de persistência não
     // retorne erro depois de uma consulta já ter sido criada no calendário.

@@ -75,7 +75,7 @@ describe("ResolveWhatsAppLead", () => {
       id: "lead-1",
       clinicId: "clinic-1",
       name: "Karen",
-      phone: "5511979663668",
+      phone: "5511900000002",
       whatsappLid: null,
       email: null,
       channel: "whatsapp",
@@ -95,8 +95,8 @@ describe("ResolveWhatsAppLead", () => {
     const lead = await resolver.execute({
       clinicId: "clinic-1",
       identifiers: {
-        phone: "5511979663668",
-        whatsappLid: "271295921025045@lid",
+        phone: "5511900000002",
+        whatsappLid: "200000000000002@lid",
       },
       name: "Karen",
       channel: "whatsapp",
@@ -105,8 +105,8 @@ describe("ResolveWhatsAppLead", () => {
     });
 
     expect(lead.id).toBe("lead-1");
-    expect(lead.phone).toBe("5511979663668");
-    expect(lead.whatsappLid).toBe("271295921025045@lid");
+    expect(lead.phone).toBe("5511900000002");
+    expect(lead.whatsappLid).toBe("200000000000002@lid");
   });
 
   it("faz merge quando telefone e @lid apontam para leads diferentes", async () => {
@@ -115,7 +115,7 @@ describe("ResolveWhatsAppLead", () => {
       id: "phone-lead",
       clinicId: "clinic-1",
       name: "Karen",
-      phone: "5511979663668",
+      phone: "5511900000002",
       whatsappLid: null,
       email: null,
       channel: "whatsapp",
@@ -135,7 +135,7 @@ describe("ResolveWhatsAppLead", () => {
       clinicId: "clinic-1",
       name: "Karen",
       phone: null,
-      whatsappLid: "271295921025045@lid",
+      whatsappLid: "200000000000002@lid",
       email: null,
       channel: "whatsapp",
       campaignId: null,
@@ -154,8 +154,8 @@ describe("ResolveWhatsAppLead", () => {
     const lead = await resolver.execute({
       clinicId: "clinic-1",
       identifiers: {
-        phone: "5511979663668",
-        whatsappLid: "271295921025045@lid",
+        phone: "5511900000002",
+        whatsappLid: "200000000000002@lid",
       },
       channel: "whatsapp",
       now,
@@ -163,7 +163,7 @@ describe("ResolveWhatsAppLead", () => {
     });
 
     expect(lead.id).toBe("phone-lead");
-    expect(lead.whatsappLid).toBe("271295921025045@lid");
+    expect(lead.whatsappLid).toBe("200000000000002@lid");
     expect(await repo.findById("lid-lead")).toBeNull();
   });
 
@@ -201,7 +201,7 @@ describe("ResolveWhatsAppLead", () => {
       const resolver = new ResolveWhatsAppLead(repo);
       const lead = await resolver.execute({
         clinicId: "clinic-1",
-        identifiers: { phone: "5511960564731", whatsappLid: null },
+        identifiers: { phone: "5511900000003", whatsappLid: null },
         name: "🧜‍♂️🧚🏽‍♀️",
         channel: "whatsapp",
         now,
@@ -216,7 +216,7 @@ describe("ResolveWhatsAppLead", () => {
         id: "lead-1",
         clinicId: "clinic-1",
         name: "Rogger Tenorio",
-        phone: "5513997707530",
+        phone: "5513900000004",
         whatsappLid: null,
         email: null,
         channel: "whatsapp",
@@ -235,7 +235,7 @@ describe("ResolveWhatsAppLead", () => {
       const resolver = new ResolveWhatsAppLead(repo);
       const lead = await resolver.execute({
         clinicId: "clinic-1",
-        identifiers: { phone: "5513997707530", whatsappLid: null },
+        identifiers: { phone: "5513900000004", whatsappLid: null },
         name: "🔥🔥🔥",
         channel: "whatsapp",
         now,

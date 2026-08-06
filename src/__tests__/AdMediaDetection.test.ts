@@ -59,7 +59,7 @@ describe("detecção de criativo de anúncio no inbound", () => {
       totalConversationMessages: 3,
       history: [
         leadMessage("text-1", "Olá! Quero saber como posso transformar meu sorriso com as lentes de resina.", now - 20_000),
-        { id: "agent-2", author: "agent" as const, body: "Boa tarde! Me chamo Gleice, sou da Clínica Vitalli. Me conta, você quer entender melhor como funciona?", sentAt: new Date(now - 10_000) },
+        { id: "agent-2", author: "agent" as const, body: "Boa tarde! Me chamo Gleice, sou da Clínica Aurora. Me conta, você quer entender melhor como funciona?", sentAt: new Date(now - 10_000) },
         leadMessage("image-3", "[imagem recebida]", now),
       ],
       now,
@@ -135,7 +135,7 @@ describe("hasAgentRequestedPhoto", () => {
   it("saudação e conteúdo comercial não contam como pedido de foto", () => {
     expect(
       hasAgentRequestedPhoto([
-        { author: "agent", body: "Me chamo Gleice, sou da Clínica Vitalli. Quer entender melhor como funciona, ver valores ou já procurar um horário?" },
+        { author: "agent", body: "Me chamo Gleice, sou da Clínica Aurora. Quer entender melhor como funciona, ver valores ou já procurar um horário?" },
         { author: "lead", body: "Quero ver valores" },
       ]),
     ).toBe(false);

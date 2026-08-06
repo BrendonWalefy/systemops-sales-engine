@@ -1,7 +1,7 @@
 /**
  * Confirmação de atendimento realizado, pelo WhatsApp do doutor.
  *
- * O bloqueio medido: **nenhuma consulta da Vitalli chega a `completed`** — 43
+ * O bloqueio medido: **nenhuma consulta da Aurora chega a `completed`** — 43
  * `scheduled`, zero concluídas. Sem isso, a regra de feedback de 24h nunca
  * dispara e o painel não contabiliza faturamento. O lembrete de fim de dia já
  * existe e já é entregue (8 envios, último em 20/07), mas só lista os pendentes
@@ -30,7 +30,7 @@ const CONFIRM_ALL_BUTTON_ID = "appointment-done:all";
 const MISS_BUTTON_PREFIX = "appointment-miss:";
 
 // O WhatsApp renderizou 5 botões no teste de 21/07. Medido nas agendas reais:
-// em 37 dias com atendimento, nenhum passou de 5 consultas (Vitalli p50=2,
+// em 37 dias com atendimento, nenhum passou de 5 consultas (Aurora p50=2,
 // máx=5). Com "Todos compareceram" fixo sobram 4 nomes — cobre todos os dias
 // observados, e o excedente cai no código textual sem perder o toque único.
 const MAX_NAME_BUTTONS = 4;

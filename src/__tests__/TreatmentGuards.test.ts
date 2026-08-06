@@ -1,4 +1,4 @@
-// Guards determinísticos pós-classificação — casos reais da Ximendes (02/07/2026):
+// Guards determinísticos pós-classificação — casos reais da Horizonte (02/07/2026):
 // lead perguntou "qual valor pra fazer o polimento nas lentes de resina?" e a IA
 // (1) cotou o preço das lentes novas em vez de encaminhar a manutenção à equipe e
 // (2) apresentou apenas a Técnica Estratificada quando o termo cobria as duas variações.

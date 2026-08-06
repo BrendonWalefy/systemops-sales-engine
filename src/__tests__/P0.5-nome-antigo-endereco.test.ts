@@ -1,7 +1,7 @@
 /**
  * P0.5 — Nome antigo da clínica e mudança de endereço
  *
- * Auditoria pós-deploy P0.1-P0.6 (08/07/2026, conversas reais Vitalli em shadow
+ * Auditoria pós-deploy P0.1-P0.6 (08/07/2026, conversas reais Aurora em shadow
  * mode) encontrou o P0.5 completamente inoperante: 5+ leads mencionaram "Dental
  * Luxe" (nome antigo da clínica) e todos receberam a saudação genérica de
  * abertura, ignorando por completo a menção — exatamente o comportamento que
@@ -19,7 +19,7 @@
  *    nome antigo já estava mencionado diretamente na mensagem — "queria
  *    informações sobre a Dental Luxe" não contém nenhuma dessas palavras.
  *
- * Achado secundário: Rafaela Carvalho perguntou "Vcs trocaram de endereço?"
+ * Achado secundário: Renata Carvalho perguntou "Vcs trocaram de endereço?"
  * e a IA respondeu "sempre esteve localizada" — afirmação categórica que a
  * política não necessariamente sustenta. A causa era a mesma: "trocaram" não
  * estava na lista de keywords (só tinha "mudaram"/"mudou").
@@ -36,7 +36,7 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
 
   // Política comercial REAL em produção (após correção do endereço antigo —
   // a clínica mudou de bairro, não só de nome: Sabará/Interlagos → Santo Amaro).
-  const VITALLI_POLICY = `Éramos Dental Luxe, hoje somos Clínica Vitalli. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.`;
+  const AURORA_POLICY = `Éramos Dental Luxe, hoje somos Clínica Aurora. Antes ficávamos no bairro Sabará, próximo a Interlagos; hoje estamos na Avenida Adolfo Pinheiro, em Santo Amaro.`;
 
   describe("extractPreviousClinicInfo — endereço antigo vs. atual", () => {
     it("extrai o endereço ANTIGO (Sabará), não o atual (Adolfo Pinheiro)", () => {
@@ -45,7 +45,7 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
       // sem o padrão "ficávamos", isso capturava "Adolfo Pinheiro" como se
       // fosse o endereço anterior, quando na verdade a clínica ficava em
       // outro bairro (Sabará, próximo a Interlagos) antes da mudança.
-      const info = extractPreviousClinicInfo(VITALLI_POLICY);
+      const info = extractPreviousClinicInfo(AURORA_POLICY);
       expect(info.previousClinicName).toBe("Dental Luxe");
       expect(info.previousAddress).toContain("Sabará");
       expect(info.previousAddress).not.toContain("Adolfo Pinheiro");
@@ -79,7 +79,7 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
           intent: "greeting",
           treatments: mockTreatments,
           isClinicSegment: false,
-          commercialPolicy: VITALLI_POLICY,
+          commercialPolicy: AURORA_POLICY,
         });
         expect(result).toBe("general_question");
       });
@@ -91,20 +91,20 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
         intent: "acknowledgment",
         treatments: mockTreatments,
         isClinicSegment: false,
-        commercialPolicy: VITALLI_POLICY,
+        commercialPolicy: AURORA_POLICY,
       });
       expect(result).toBe("general_question");
     });
   });
 
   describe("Pergunta sobre mudança de endereço", () => {
-    it('converte "Vcs trocaram de endereço? Ou sempre foi esse mesmo?" (caso real Rafaela)', () => {
+    it('converte "Vcs trocaram de endereço? Ou sempre foi esse mesmo?"', () => {
       const result = coerceBusinessIntent({
         message: "Vcs trocaram de endereço? Ou sempre foi esse mesmo?",
         intent: "general_question",
         treatments: mockTreatments,
         isClinicSegment: false,
-        commercialPolicy: VITALLI_POLICY,
+        commercialPolicy: AURORA_POLICY,
       });
       // Já não era greeting/acknowledgment/unclear, então coerceBusinessIntent
       // não altera — o teste real de detecção fica em isClinicNameOrAddressChangeQuestion,
@@ -118,7 +118,7 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
         intent: "greeting",
         treatments: mockTreatments,
         isClinicSegment: false,
-        commercialPolicy: VITALLI_POLICY,
+        commercialPolicy: AURORA_POLICY,
       });
       expect(result).toBe("general_question");
     });
@@ -129,7 +129,7 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
         intent: "greeting",
         treatments: mockTreatments,
         isClinicSegment: false,
-        commercialPolicy: VITALLI_POLICY,
+        commercialPolicy: AURORA_POLICY,
       });
       expect(result).toBe("general_question");
     });
@@ -142,7 +142,7 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
         intent: "greeting",
         treatments: mockTreatments,
         isClinicSegment: false,
-        commercialPolicy: VITALLI_POLICY,
+        commercialPolicy: AURORA_POLICY,
       });
       expect(result).toBe("greeting");
     });
@@ -167,7 +167,7 @@ describe("P0.5 — Nome antigo da clínica / mudança de endereço", () => {
         intent: "greeting",
         treatments: mockTreatments,
         isClinicSegment: false,
-        commercialPolicy: VITALLI_POLICY,
+        commercialPolicy: AURORA_POLICY,
       });
       expect(result).toBe("greeting");
     });

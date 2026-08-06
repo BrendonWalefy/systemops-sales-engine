@@ -5,7 +5,8 @@
  * de `scripts/demo-media/` para o Vercel Blob (prefixo `demo-media/`, permanente —
  * o cron de limpeza só apaga o prefixo `tts/`) e reescreve a lista abaixo.
  *
- * Enquanto estiver vazio, o seed cai no fallback: reusa a biblioteca da Ximendes.
+ * O seed usa somente esta biblioteca fictícia. Ele nunca consulta ou copia mídia
+ * de uma organização real.
  *
  * Dica: nomeie os arquivos com a palavra-chave do procedimento (ex.: `lentes.mp4`,
  * `implante.mp4`, `porcelana-antes-depois.jpg`) — os roteiros selecionam o item

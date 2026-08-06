@@ -4,13 +4,13 @@ import { lintPersonaCoherence } from "@/application/config/playbook-lint";
 /**
  * O `greetingMessage` é o OPENER do primeiro contato (concierge); o `receptionistName`
  * é quem a LLM diz ser nas respostas seguintes. Quando divergem, o lead conhece dois
- * personagens. Caso real (Ximendes, jul/2026): 62 mensagens diziam "Marina" e 31
+ * personagens. Caso real (Horizonte, jul/2026): 62 mensagens diziam "Marina" e 31
  * "recepcionista virtual" — descoberto lendo conversa, não pelo produto.
  */
 describe("lintPersonaCoherence", () => {
-  it("avisa quando o nome configurado não aparece na saudação (caso Ximendes)", () => {
+  it("avisa quando o nome configurado não aparece na saudação (caso Horizonte)", () => {
     const w = lintPersonaCoherence(
-      "Olá! Sou a recepcionista virtual da Ximendes Odontologia. Como posso ajudar?",
+      "Olá! Sou a recepcionista virtual da Clínica Horizonte. Como posso ajudar?",
       "Marina",
     );
     expect(w).toHaveLength(1);
@@ -18,17 +18,17 @@ describe("lintPersonaCoherence", () => {
     expect(w[0]).toMatch(/dois personagens/i);
   });
 
-  it("não avisa quando a saudação nomeia a recepcionista (caso Vitalli)", () => {
+  it("não avisa quando a saudação nomeia a recepcionista (caso Aurora)", () => {
     const w = lintPersonaCoherence(
-      "Olá, tudo bem? Me chamo Gleice, sou da Clínica Vitalli. Vi que você se interessou pelas lentes.",
+      "Olá, tudo bem? Me chamo Gleice, sou da Clínica Aurora. Vi que você se interessou pelas lentes.",
       "Gleice",
     );
     expect(w).toEqual([]);
   });
 
-  it("não avisa após o conserto da Ximendes (saudação passou a nomear a Marina)", () => {
+  it("não avisa após o conserto da Horizonte (saudação passou a nomear a Marina)", () => {
     const w = lintPersonaCoherence(
-      "Olá! Me chamo Marina, sou a recepcionista da Ximendes Odontologia. Me conta o que você precisa: valores, agendamento ou tirar uma dúvida?",
+      "Olá! Me chamo Marina, sou a recepcionista da Clínica Horizonte. Me conta o que você precisa: valores, agendamento ou tirar uma dúvida?",
       "Marina",
     );
     expect(w).toEqual([]);

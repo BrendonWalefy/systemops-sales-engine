@@ -88,7 +88,7 @@ describe("Estágio do silêncio — perguntou preço e não foi respondida", () 
 });
 
 describe("Estágio do silêncio — preço entregue por imagem", () => {
-  // A Vitalli manda os valores em arte, por decisão do dentista. A imagem é
+  // A Aurora manda os valores em arte, por decisão do dentista. A imagem é
   // gravada como mensagem de texto com o TÍTULO da mídia no corpo — o valor
   // está dentro do arquivo. Sem tratar isso, quem recebeu a tabela completa
   // era contado como "perguntou e não foi respondida".

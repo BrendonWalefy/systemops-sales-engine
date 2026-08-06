@@ -1,7 +1,7 @@
 /**
  * Telefone do paciente a partir do texto livre do evento do Google Calendar.
  *
- * O bloqueio medido (Vitalli, 21/07): o import cria o lead com `phone: null`,
+ * O bloqueio medido (Aurora, 21/07): o import cria o lead com `phone: null`,
  * porque o evento da agenda não carrega contato. Resultado — das 6 próximas
  * consultas de lentes, **5 não têm telefone**. O cuidado pós-lente e o lembrete
  * de 24h existem, disparam, e não têm para onde ir.
@@ -41,7 +41,7 @@ const RUIDOS: RegExp[] = [
  *
  * Sticky de propósito: a varredura testa CADA posição do texto. Com busca
  * global, um candidato inválido é consumido e leva junto o número válido que
- * vinha logo depois ("2000 11921525494" casava "00 11921525" primeiro, com DDD
+ * vinha logo depois ("2000 11900000007" casava "00 11921525" primeiro, com DDD
  * "00", e o telefone real morria no resto). Reavaliar posição a posição custa
  * uma passada linear numa descrição curta.
  */

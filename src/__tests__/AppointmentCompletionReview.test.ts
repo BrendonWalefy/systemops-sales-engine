@@ -1,6 +1,6 @@
 // Confirmação de atendimento realizado pelo WhatsApp do doutor.
 //
-// Bloqueio medido em produção (Vitalli, 21/07): 43 consultas `scheduled`, ZERO
+// Bloqueio medido em produção (Aurora, 21/07): 43 consultas `scheduled`, ZERO
 // `completed`. A regra de feedback de 24h exige esse status e por isso nunca
 // disparou. O lembrete de fim de dia já é entregue há dias — só que ele lista os
 // pendentes e manda abrir o painel, e confirmar exige sair do WhatsApp.
@@ -130,8 +130,8 @@ describe("botões da confirmação", () => {
 
 describe("buildTomorrowAgendaMessage", () => {
   it("é informação pura, sem cobrar ação", () => {
-    const msg = buildTomorrowAgendaMessage({ clinicName: "Clínica Vitalli", tomorrow: AMANHA });
-    expect(msg).toContain("📅 *Amanhã · Clínica Vitalli* — 2 atendimentos");
+    const msg = buildTomorrowAgendaMessage({ clinicName: "Clínica Aurora", tomorrow: AMANHA });
+    expect(msg).toContain("📅 *Amanhã · Clínica Aurora* — 2 atendimentos");
     expect(msg).toContain("• 09:00 Mercia Araújo");
     expect(msg).not.toContain("Faltou");
     expect(msg).not.toContain("Confirmar");

@@ -17,7 +17,7 @@ const publicPem = keyPair.publicKey.export({ type: "spki", format: "pem" });
 function signedSnapshot(): ReplayCalendarSnapshotV1 {
   return signReplayCalendarSnapshot({
     schemaVersion: REPLAY_CALENDAR_SNAPSHOT_SCHEMA_VERSION,
-    clinicKey: "ximendes",
+    clinicKey: "horizonte",
     configFingerprint: "a".repeat(64),
     capturedAt: "2026-07-27T08:00:00.000Z",
     range: {
@@ -42,7 +42,7 @@ function signedSnapshot(): ReplayCalendarSnapshotV1 {
 describe("signed replay calendar snapshot", () => {
   it("verifica assinatura, clínica e fingerprint", () => {
     expect(() => verifyReplayCalendarSnapshot(signedSnapshot(), publicPem, {
-      clinicKey: "ximendes",
+      clinicKey: "horizonte",
       configFingerprint: "a".repeat(64),
     })).not.toThrow();
   });
@@ -51,7 +51,7 @@ describe("signed replay calendar snapshot", () => {
     const snapshot = signedSnapshot();
     snapshot.availability[0]!.slots[0]!.startsAt = "2026-07-28T13:00:00.000Z";
     expect(() => verifyReplayCalendarSnapshot(snapshot, publicPem, {
-      clinicKey: "ximendes",
+      clinicKey: "horizonte",
       configFingerprint: "a".repeat(64),
     })).toThrow("signature is invalid");
   });

@@ -56,7 +56,7 @@ function getTime(hour: number): string {
 export function DemoFlow() {
   const [leadName, setLeadName] = useState("Mariana Lima");
   const [phone, setPhone] = useState("+5511999990000");
-  const [clinicName, setClinicName] = useState("Ximendes Odontologia");
+  const [clinicName, setClinicName] = useState("Clínica Aurora");
   const [simulatedHour, setSimulatedHour] = useState<10 | 22>(22);
   const [selectedScenario, setSelectedScenario] = useState<DemoScenario>(demoScenarios[0]);
   const [draft, setDraft] = useState(demoScenarios[0]?.message ?? "");

@@ -236,7 +236,7 @@ export function extractFirstName(fullName: string | null | undefined): string | 
   // Palavras comuns / status de WhatsApp que não são nome próprio. O nome de exibição
   // do WhatsApp é livre — leads reais aparecem como "ocupado", "Seja Forte", "trabalho",
   // "2D". Saudar "Boa tarde, ocupado" soa robótico; melhor saudar sem nome. Casos reais
-  // do histórico Vitalli: "ocupado", "Seja Forte E Corajoso", "2D".
+  // do histórico Aurora: "ocupado", "Seja Forte E Corajoso", "2D".
   const COMMON_WORD_NAMES = new Set([
     "ocupado", "ocupada", "disponivel", "disponível", "trabalho", "trabalhando",
     "vida", "paz", "amor", "fe", "fé", "deus", "casa", "sim", "nao", "não",
@@ -288,8 +288,8 @@ const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
  * Janela de agrupamento de mensagens do lead, quando a clínica não define a sua.
  *
  * Rajada (2+ mensagens do lead em sequência) é comportamento do canal, não política
- * de clínica: o gap MEDIANO dentro de uma rajada é de 10s tanto na Vitalli quanto na
- * Ximendes, com distribuições quase idênticas (n=1.174). Por isso o default é da
+ * de clínica: o gap MEDIANO dentro de uma rajada é de 10s tanto na Aurora quanto na
+ * Horizonte, com distribuições quase idênticas (n=1.174). Por isso o default é da
  * plataforma; a coluna por clínica fica como exceção, não como regra.
  *
  * O valor 15s vem da cobertura medida em produção:
@@ -320,7 +320,7 @@ export const DEFAULT_CONVERSATION_RESTART_HOURS = 24;
  *
  * Usa `conversationRestartHours`, NUNCA `staleConversationHours`: aquele campo é o
  * TTL do pipeline de tratamento. Enquanto os dois eram o mesmo valor, a janela de
- * reinício herdava 4h (Vitalli) / 6h (Ximendes) e 17,2% das respostas de lead
+ * reinício herdava 4h (Aurora) / 6h (Horizonte) e 17,2% das respostas de lead
  * caíam como "conversa nova" — o lead recebia a saudação no meio do atendimento.
  */
 export function shouldRestartConversation(params: {
@@ -379,7 +379,7 @@ export function resolveAdMediaContext(params: {
 // Remove opener simples do greetingMessage ("Olá!", "Oi,", "Ei!") para evitar duplicação
 // com a saudação temporal que o Orchestrator prepende no primeiro contato.
 // Conservador: só remove openers de uma palavra — não toca frases compostas como
-// "Seja bem-vindo à Ximendes" ou saudações temporais ("Bom dia!").
+// "Seja bem-vindo à Horizonte" ou saudações temporais ("Bom dia!").
 function stripGreetingPrefix(text: string): string {
   const stripped = text.replace(/^(?:olá|ola|oi|ei|e\s+aí|e\s+ai|hey)[!.,]?\s+/i, "");
   if (stripped === text) return text;
@@ -1018,12 +1018,12 @@ export function buildBusinessHoursAnswer(
  * o caminho de agendamento — que consulta a agenda real. No plural ("Vocês
  * atendem aos sábados?") o `\bsabado\b` não casa com "sabados", a mensagem cai
  * no ramo institucional e morre em "Sim, atendemos aos sábados." Duas respostas
- * opostas para a mesma pergunta, medidas em produção na Vitalli com um dia de
+ * opostas para a mesma pergunta, medidas em produção na Aurora com um dia de
  * diferença (18/07 ofertou horários reais, 19/07 recitou o cadastro).
  *
  * **Só sábado, de propósito.** `parseBusinessHours` é o único juiz de quais dias
  * a clínica opera, e ele só decide o sábado: segunda a sexta é assumido sempre,
- * domingo nunca é representável. Na NC Beauty o cadastro diz "Terça a sexta" e o
+ * domingo nunca é representável. Na Estúdio Aurora o cadastro diz "Terça a sexta" e o
  * parser devolve [1..6] — afirmar "Sim, atendemos às segundas!" ali seria
  * inventar. Enquanto o parser não souber o resto da semana, o sistema não
  * afirma o que não sabe. Ver item #19 do plano de correção.
@@ -1041,7 +1041,7 @@ export function isSaturdayQuestionForOperatingClinic(
 }
 
 /**
- * Confirma o dia e emenda a disponibilidade REAL — o que o operador da Vitalli
+ * Confirma o dia e emenda a disponibilidade REAL — o que o operador da Aurora
  * faz à mão ("Próximo horário disponível no sábado seria 01.08 às 8:00 tudo
  * bem?"). Confirmar sem ofertar é beco sem saída: quem pergunta pelo sábado
  * quer vir no sábado.
@@ -1825,7 +1825,7 @@ const OBJECTION_GENERIC_DOMAIN_TOKENS = new Set([
 ]);
 
 // Plural simples do português. O lead escreve "Garantias" numa lista de dúvidas
-// (caso Adriano, Vitalli 10/07) e o gatilho cadastrado diz "garantia" — sem isso a
+// (caso Adriano, Aurora 10/07) e o gatilho cadastrado diz "garantia" — sem isso a
 // clínica tem a resposta cadastrada e o sistema conclui que não tem. Só para
 // tokens longos, onde cortar o "s" final não muda a palavra.
 function singularize(token: string): string {
@@ -1833,7 +1833,7 @@ function singularize(token: string): string {
 }
 
 // Termos do catálogo que não distinguem objeção: nome E apelidos. Só o nome não
-// bastava — o anúncio da Vitalli ("Quero saber como posso transformar meu sorriso
+// bastava — o anúncio da Aurora ("Quero saber como posso transformar meu sorriso
 // com facetas de resina?") casava com a objeção "Como funciona a troca de facetas
 // antigas por novas?" pela palavra "facetas", que é alias e não nome. Eram 106 dos
 // 218 casamentos da clínica no corpus.
@@ -1853,7 +1853,7 @@ export function treatmentTermsForObjectionMatch(
 // NÃO é um nome de produto do nicho (ex.: "lentes", "resina" — genéricos, aparecem
 // em tudo). Assim "…tem garantia?" casa pela palavra "garantia" (única da objeção
 // de garantia), mas "as lentes são boas?" não casa por "lentes". Gatilhos compostos
-// (a Vitalli cadastra "Quanto tempo dura? Tem garantia e como é a manutenção?" numa
+// (a Aurora cadastra "Quanto tempo dura? Tem garantia e como é a manutenção?" numa
 // linha só) funcionam porque o casamento é por token distintivo, não por proporção.
 export function matchRegisteredObjection(
   message: string,
@@ -1918,7 +1918,7 @@ function buildObjectionDirectiveContext(matched: { objection: string; response: 
 }
 
 // ── Garantia: a resposta é a que a clínica cadastrou ──
-// Bug medido: a objeção de garantia da Vitalli está cadastrada desde 07/07 22:04
+// Bug medido: a objeção de garantia da Aurora está cadastrada desde 07/07 22:04
 // ("2 anos caso a lente descole por completo; 30 dias contra pigmentação ou quebra
 // por descuido"). Em 18/07 a Giuliana perguntou "tempo de garantia" e recebeu uma
 // descrição das técnicas de lente — 11 dias depois de cadastrada. A causa: o
@@ -1931,9 +1931,9 @@ function buildObjectionDirectiveContext(matched: { objection: string; response: 
 // Sem nada cadastrado, a IA NÃO inventa: em 06/07 a Tatiana perguntou o tempo de
 // garantia e ouviu "depende do tipo de procedimento… o ideal é passar por uma
 // avaliação" — política inventada + pivô comercial. Passa a dizer que confirma com
-// a equipe. A Ximendes cai nesse caminho hoje: 11 objeções cadastradas, nenhuma
+// a equipe. A Horizonte cai nesse caminho hoje: 11 objeções cadastradas, nenhuma
 // sobre garantia.
-// A objeção continua valendo como FALLBACK: a Vitalli já tinha a política escrita
+// A objeção continua valendo como FALLBACK: a Aurora já tinha a política escrita
 // lá, e trocar a fonte não pode derrubar quem já estava configurado. Quando o campo
 // estruturado estiver preenchido, ele ganha — é ele que o painel mostra vazio para
 // quem ainda não preencheu.
@@ -2040,7 +2040,7 @@ function isClinicNameOrAddressChangeQuestion(normalized: string, policy: string 
 
   // Pergunta sobre endereço, essa sim, só faz sentido junto de uma keyword de
   // mudança — "qual o endereço" sozinho não indica que o lead desconfia de uma
-  // mudança. Lista inclui "trocaram/trocou" (bug real: Rafaela perguntou "Vcs
+  // mudança. Lista inclui "trocaram/trocou" (bug real: Renata perguntou "Vcs
   // trocaram de endereço?" e não batia com a lista antiga, que só tinha
   // "mudaram/mudou"). "endereco" sem cedilha porque normalized não tem acentos
   // (bug adicional: a checagem original comparava "endereço" com cedilha contra
@@ -2092,7 +2092,7 @@ export function findExpressedSlotIndex(params: {
 /**
  * O lead disse data E hora, e sobrou exatamente UM horário — que é o dele.
  *
- * Caso real (Vitalli, 18/07, conversa ff8fbb07): às 20:10 a IA ofertou 5 opções
+ * Caso real (Aurora, 18/07, conversa ff8fbb07): às 20:10 a IA ofertou 5 opções
  * numeradas, sendo a 5 "Ter 28/07 às 16h". Uma hora depois — já fora do TTL de
  * 15 min — o lead respondeu **"Dia 28/07 as 16h"**, escolhendo pelo nome em vez
  * do número. Sem oferta pendente, a mensagem virou nova busca, que devolveu o
@@ -2127,7 +2127,7 @@ export function resolveSingleExactSlot(params: {
 /**
  * Confirmação direta no lugar da lista de um item só.
  *
- * O operador da Vitalli responde nessa forma — *"Próximo horário disponível no
+ * O operador da Aurora responde nessa forma — *"Próximo horário disponível no
  * sábado seria 01.08 às 8:00 tudo bem?"*. Um "sim" já resolve para o único slot
  * pendente pelo caminho normal de `confirm_slot`, então a etapa numérica não
  * some do funil: ela deixa de existir.
@@ -2546,7 +2546,7 @@ export function shouldThrottleRapidLeadMessage(params: {
   // dela (mesma rajada) — aí a resposta sai da mensagem mais recente, com o
   // histórico completo. A mensagem TERMINAL do burst (nada mais novo dentro da
   // janela) SEMPRE responde; caso contrário a rajada inteira fica muda.
-  // Regressão real: Ximendes 23/07, "…mande pelo menos duas midias" quebrado em
+  // Regressão real: Horizonte 23/07, "…mande pelo menos duas midias" quebrado em
   // 6 mensagens rápidas — a última ("midias", 1s após "duas") era suprimida e
   // ninguém respondia, porque a regra antiga olhava a mensagem ANTERIOR (a
   // terminal sempre vem logo após outra) em vez de olhar se há uma mais nova.
@@ -2921,7 +2921,7 @@ function formatVisitDate(timezone: ClinicTimezone, date: Date): string {
 //     comprometido (caso clínico novo, tratado pela triagem atípica). Com vínculo
 //     é relato de dano — exceto quando vem dentro de uma pergunta de preço, que é
 //     alguém pedindo orçamento e mencionando um dente lascado de passagem
-//     (Ana Paula, Vitalli 18/07): sequestrar isso mata uma venda legítima.
+//     (Ana Paula, Aurora 18/07): sequestrar isso mata uma venda legítima.
 export function shouldEngageDamageRail(params: {
   target: "work" | "tooth";
   relationship: "known_patient" | "self_declared" | "unknown";
@@ -2935,7 +2935,7 @@ export function shouldEngageDamageRail(params: {
 
 // O preço da manutenção sai RESOLVIDO do catálogo para a resposta de handoff.
 // Antes, o template mandava a LLM "informar o valor conforme configurado" e ela
-// inventava: Ximendes, 16/07 — "manutenção sai a partir de R$ 100", quando o
+// inventava: Horizonte, 16/07 — "manutenção sai a partir de R$ 100", quando o
 // catálogo diz R$500 (manutenção) e R$200 (conserto); R$100 é o da Avaliação.
 // Só devolve os serviços que o lead citou, e só se a clínica autorizou cotar.
 export function resolveMaintenancePriceLabel(
@@ -3121,7 +3121,7 @@ export function hasPipelineContentStepBeenSent(
 
   // Mídia: o corpo gravado é o TÍTULO do arquivo (ver outbound-message-persistence),
   // nunca a legenda. Sem casar por título, um content step SÓ de mídia jamais era
-  // reconhecido como enviado e reenviava a cada virada — o loop de vídeos da Ximendes
+  // reconhecido como enviado e reenviava a cada virada — o loop de vídeos da Horizonte
   // (23/07). Casamento EXATO de propósito: um título curto ("Vídeo") por substring
   // deduplicaria conteúdo alheio. Requer o mapa id→título (opcional p/ compatibilidade
   // dos callers que ainda não o passam).
@@ -3162,7 +3162,7 @@ export function isPipelinePhotoInstructionContentStep(
 // o composer precisa VER o que o conteúdo já cobre para não respondê-lo de novo.
 // A instrução genérica ("não descreva o tratamento") não bastava — sem enxergar
 // o texto que vem a seguir, o LLM explicava tudo e os cards repetiam logo abaixo
-// (replay Vitalli 18/07).
+// (replay Aurora 18/07).
 export function buildDeferredPipelineAnswerContext(params: {
   treatmentName: string;
   contentBlocks: ContentBlock[];
@@ -4908,7 +4908,7 @@ export class ConversationOrchestrator {
     // mensagem do lead": quem mandava 4 mensagens sem resposta seguia sendo
     // "primeiro contato" e recebia a saudação genérica no lugar da resposta.
     // Medido em produção: 123 primeiras respostas saíram com o lead já tendo 2+
-    // mensagens; 69 (56%) abriram com apresentação. Um lead da Vitalli chegou a
+    // mensagens; 69 (56%) abriram com apresentação. Um lead da Aurora chegou a
     // 14 mensagens nessa condição.
     const leadMessageCount = allMessages.filter((m) => m.author === "lead").length;
     const isConversationOpening = isFirstMessage && leadMessageCount <= 1;
@@ -4942,7 +4942,7 @@ export class ConversationOrchestrator {
     // Mapa id→título da biblioteca de mídia. O dedup de content step de mídia
     // (hasPipelineContentStepBeenSent) casa pelo TÍTULO — que é o que fica gravado
     // no corpo da mensagem enviada — e não pela legenda. Sem ele, um content step
-    // só-de-mídia reenviava a cada virada (loop de vídeos da Ximendes, 23/07).
+    // só-de-mídia reenviava a cada virada (loop de vídeos da Horizonte, 23/07).
     //
     // Lê a biblioteca CHEIA da clínica (media_assets), não a seleção do playbook
     // (editorial.mediaLibrary): o pipeline determinístico entrega o vídeo por id
@@ -5696,7 +5696,7 @@ export class ConversationOrchestrator {
     if (warrantyAnswer) {
       // general_question porque a resposta é informativa e sai da config. O
       // contexto é consumido no topo daquele ramo, antes de qualquer resolução de
-      // tratamento — a Vitalli cadastrou "garantia" como alias de "Manutenção
+      // tratamento — a Aurora cadastrou "garantia" como alias de "Manutenção
       // Preventiva de lentes" (R$400), e sem isso a pergunta viraria cotação.
       effectiveIntent = intentOverrides.apply("general_question", "warranty_policy");
     }
@@ -7121,10 +7121,9 @@ export class ConversationOrchestrator {
         // (ex.: a apresentação de lentes) ficam de fora — o pipeline já conduz
         // até a oferta de horário no seu próprio ritmo, e isFirstMessage fica de
         // fora para não duplicar a saudação que o 2º compose() prependaria.
-        // OPT-IN por clínica (offerSlotsAfterPriceEnabled): pedido explícito da
-        // Vitalli — outras clínicas concierge (ex.: Ximendes) têm padrões reais
-        // de price_inquiry com objeção/terceiro/especificação técnica onde essa
-        // antecipação de horário não foi validada. Não generalizar sem opt-in.
+        // OPT-IN por organização (offerSlotsAfterPriceEnabled): operações podem
+        // ter padrões de price_inquiry com objeção/terceiro/especificação técnica
+        // onde essa antecipação de horário não foi validada.
         if (
           clinic.offerSlotsAfterPriceEnabled &&
           experience === "concierge" &&

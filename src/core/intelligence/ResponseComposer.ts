@@ -812,7 +812,7 @@ Responda com uma única mensagem breve, acolhedora e sem pressão. NÃO informe 
 
       if (handoffType === "maintenance") {
         // O preço vem RESOLVIDO do catálogo (ou não vem). Mandar a LLM "informar o
-        // valor conforme configurado" fazia ela inventar: Ximendes, 16/07 — "manutenção
+        // valor conforme configurado" fazia ela inventar: Horizonte, 16/07 — "manutenção
         // sai a partir de R$ 100" quando o catálogo diz R$500 (manutenção) e R$200
         // (conserto). R$100 é o preço da Avaliação. O sistema decide, a LLM verbaliza.
         const priceRule = result.maintenancePriceLabel

@@ -6,7 +6,7 @@ on:
       clinicId:
         description: "Clinic ID to test against"
         required: false
-        default: "c9137774-e783-4461-ac2b-e2f01be739a6"
+        default: ""
       mode:
         description: "Smoke validates durable webhook ingestion; full also exercises media and conversation flows"
         required: false
@@ -48,7 +48,11 @@ jobs:
           E2E_WEBHOOK_URL: ${{ secrets.E2E_WEBHOOK_URL }}
           E2E_WAIT_MS: ${{ github.event.inputs.waitMs || '90000' }}
         run: |
-          CLINIC_ID="${{ github.event.inputs.clinicId || 'c9137774-e783-4461-ac2b-e2f01be739a6' }}"
+          CLINIC_ID="${{ github.event.inputs.clinicId || secrets.E2E_CLINIC_ID }}"
+          if [[ -z "$CLINIC_ID" ]]; then
+            echo "Defina o input clinicId ou o secret E2E_CLINIC_ID."
+            exit 1
+          fi
           MODE="${{ github.event.inputs.mode || 'smoke' }}"
           if [[ "$MODE" == "smoke" ]]; then
             npx tsx scripts/e2e-webhook-test.ts --clinicId "$CLINIC_ID" --smoke

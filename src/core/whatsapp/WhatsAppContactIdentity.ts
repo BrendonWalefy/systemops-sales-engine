@@ -8,7 +8,7 @@
 export type WhatsAppContactIdentifiers = {
   /** Dígitos E.164, ex: 5511999999999 */
   phone: string | null;
-  /** Identificador privado do WhatsApp, ex: 271295921025045@lid */
+  /** Identificador privado do WhatsApp, ex: 200000000000002@lid */
   whatsappLid: string | null;
 };
 

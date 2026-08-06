@@ -16,7 +16,7 @@
  * Idempotente: cada execução APAGA e recria os dados da clínica (reset limpo),
  * datando os registros relativos ao momento da execução.
  */
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { hashPassword } from "@/lib/password";
@@ -50,8 +50,6 @@ import {
 // ── Identidade da demo ──────────────────────────────────────────────────
 export const DEMO_CLINIC_NAME = "Odonto Marques";
 export const DEMO_CLINIC_SLUG = "odonto-marques";
-export const DEMO_ADMIN_EMAIL = "helena@odontomarques.com.br";
-export const DEMO_ADMIN_PASSWORD = "OdontoMarques2026!";
 const PLAN = "growth" as const;
 
 export type DemoSeedResult = {
@@ -91,7 +89,7 @@ const FIRST_NAMES = [
   "Isabela", "Fernanda", "Gabriela", "Rodrigo", "Bruno", "Carolina",
   "Vanessa", "Daniela", "Marcela", "Leonardo", "Rafael", "Aline",
   "Bruna", "Letícia", "Amanda", "Eduardo", "Vinícius", "Tatiana",
-  "Priscila", "Natália", "Rafaela", "Henrique", "Otávio", "Bárbara",
+  "Priscila", "Natália", "Renata", "Henrique", "Otávio", "Bárbara",
   "Cristina", "Adriana", "Mateus", "Gustavo", "Yasmin", "Helena",
   "Clara", "Sofia", "Beatriz", "Lorena", "Diego", "André",
 ];
@@ -287,6 +285,9 @@ type StateRow = typeof conversationStates.$inferInsert;
  * NÃO checa a flag de habilitação — quem chama (server action) decide.
  */
 export async function seedDemoClinic(): Promise<DemoSeedResult> {
+  const demoAdminEmail = process.env.DEMO_ADMIN_EMAIL?.trim().toLowerCase() || "demo-admin@example.com";
+  const demoAdminPassword = process.env.DEMO_ADMIN_PASSWORD?.trim() || randomBytes(18).toString("base64url");
+  const demoVoiceId = process.env.DEMO_ELEVENLABS_VOICE_ID?.trim() || "";
   const now = new Date();
 
   /** Data com hora-de-parede no fuso de São Paulo (UTC-3). daysFromNow negativo = futuro. */
@@ -426,48 +427,11 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     return { leadId, convId };
   }
 
-  // Mídia: prioriza a biblioteca PRÓPRIA da demo (manifest gerado por
-  // scripts/upload-demo-media.ts). Fallback: clona os assets da Ximendes para
-  // o tenant demo; nunca compartilha ids/ownership entre clínicas.
-  // O voiceId B-WAVE ainda vem da Ximendes — é só um identificador de voz.
+  // Mídia e voz da demo são isoladas de organizações reais. O manifest é gerado
+  // por scripts/upload-demo-media.ts; a voz opcional vem exclusivamente da env.
   // Se nada existir (ex.: banco local), segue sem mídia/voz — degrada limpo.
   type MediaItem = { id: string; title: string; url: string; type: "video" | "image" };
-  const ximendes = await db
-    .select({ id: organizations.id })
-    .from(organizations)
-    .where(eq(organizations.slug, "ximendes"))
-    .limit(1)
-    .then((r) => r[0] ?? null);
-  let ximendesMedia: MediaItem[] = [];
-  let ximendesVoiceId = "";
-  if (ximendes) {
-    ximendesMedia = await db
-      .select({
-        id: mediaAssets.id,
-        title: mediaAssets.title,
-        url: mediaAssets.url,
-        type: mediaAssets.type,
-      })
-      .from(mediaAssets)
-      .where(eq(mediaAssets.clinicId, ximendes.id))
-      .then((rows) => rows
-        .filter((item): item is typeof item & { type: "video" | "image" } =>
-          item.type === "video" || item.type === "image",
-        ));
-    const vm = await db
-      .select({ config: clinicModules.config })
-      .from(clinicModules)
-      .where(and(eq(clinicModules.clinicId, ximendes.id), eq(clinicModules.moduleKey, "voice_elevenlabs")))
-      .limit(1)
-      .then((r) => r[0] ?? null);
-    ximendesVoiceId = ((vm?.config as { voiceId?: string } | null)?.voiceId ?? "").trim();
-  }
-  const demoMediaLibrary: MediaItem[] = (
-    DEMO_MEDIA_MANIFEST.length > 0 ? DEMO_MEDIA_MANIFEST : ximendesMedia
-  ).map((item) => ({
-    ...item,
-    id: DEMO_MEDIA_MANIFEST.length > 0 ? item.id : randomUUID(),
-  }));
+  const demoMediaLibrary: MediaItem[] = DEMO_MEDIA_MANIFEST.map((item) => ({ ...item }));
   assertDemoMediaLibraryReady(demoMediaLibrary);
 
   function findMedia(type: "video" | "image", query?: string): MediaItem | null {
@@ -484,7 +448,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   // para o prefixo permanente demo-media/ (o cron de limpeza só apaga tts/).
   // Sem chave/voz configurada, degrada para texto normal.
   const canSynthesizeVoice = Boolean(
-    process.env.ELEVENLABS_API_KEY && process.env.BLOB_READ_WRITE_TOKEN && ximendesVoiceId,
+    process.env.ELEVENLABS_API_KEY && process.env.BLOB_READ_WRITE_TOKEN && demoVoiceId,
   );
   async function synthesizeVoiceNote(text: string): Promise<string | null> {
     if (!canSynthesizeVoice) return null;
@@ -492,7 +456,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       const { gateway, format, contentType, speed } = createTtsProvider({
         provider: "elevenlabs",
         speed: 0.96,
-        elevenLabsVoiceId: ximendesVoiceId,
+        elevenLabsVoiceId: demoVoiceId,
         elevenLabsStability: 0.58,
         elevenLabsSimilarityBoost: 0.82,
       });
@@ -585,12 +549,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     // Login principal da demo (Dra. Helena → "Olá, Dra. Helena!" no dashboard)
     {
       clinicId,
-      email: DEMO_ADMIN_EMAIL,
+      email: demoAdminEmail,
       role: "org_admin",
       displayName: "Dra. Helena",
       professionalId: profHelena,
       avatarUrl: DEMO_STAFF_AVATAR_URLS.helena,
-      passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
+      passwordHash: await hashPassword(demoAdminPassword),
     },
     {
       clinicId,
@@ -615,14 +579,6 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       displayName: "Dr. André",
       professionalId: profAndre,
       avatarUrl: DEMO_STAFF_AVATAR_URLS.andre,
-    },
-    // Owner do sistema — acesso direto à visão de clínica sem trocar de conta
-    {
-      clinicId,
-      email: "brendonwalefyom@gmail.com",
-      role: "org_admin",
-      professionalId: null,
-      passwordHash: await hashPassword(DEMO_ADMIN_PASSWORD),
     },
   ]);
 
@@ -963,13 +919,13 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
 
   await syncModulesForPlan(clinicId, PLAN, "seed-demo");
 
-  // Reusa a voz B-WAVE da Ximendes na clínica demo (só o voiceId — não afeta a Ximendes).
-  // Assim, no simulador ao vivo / WhatsApp, a Marina já fala em B-WAVE sem config manual.
-  if (ximendesVoiceId) {
+  // A voz opcional da demo é configurada explicitamente, sem herdar dados de
+  // qualquer organização real.
+  if (demoVoiceId) {
     await db
       .update(clinicModules)
       .set({
-        config: { voiceId: ximendesVoiceId, stability: 0.58, similarityBoost: 0.82, speed: 0.96, mode: "impact" },
+        config: { voiceId: demoVoiceId, stability: 0.58, similarityBoost: 0.82, speed: 0.96, mode: "impact" },
       })
       .where(and(eq(clinicModules.clinicId, clinicId), eq(clinicModules.moduleKey, "voice_elevenlabs")));
   }
@@ -977,8 +933,8 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
   return {
     clinicId,
     slug: DEMO_CLINIC_SLUG,
-    adminEmail: DEMO_ADMIN_EMAIL,
-    adminPassword: DEMO_ADMIN_PASSWORD,
+    adminEmail: demoAdminEmail,
+    adminPassword: demoAdminPassword,
     counts: {
       leads: leadRows.length,
       conversations: convRows.length,

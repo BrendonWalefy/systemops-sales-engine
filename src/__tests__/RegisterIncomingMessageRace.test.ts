@@ -227,11 +227,11 @@ function makeFollowUpRepository(): FollowUpRepository {
 function makeMessage(body: string, externalMessageId: string, receivedAt: Date): IncomingChannelMessage {
   return {
     channel: "whatsapp",
-    externalContactId: "5511986905114",
+    externalContactId: "5511900000006",
     externalMessageId,
-    externalThreadId: "5511986905114",
+    externalThreadId: "5511900000006",
     body,
-    phone: "5511986905114",
+    phone: "5511900000006",
     whatsappLid: null,
     name: "Larissa Sales",
     email: null,
@@ -262,11 +262,11 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
 
     const [first, second] = await Promise.all([
       useCase.execute({
-        clinicId: "ximendes",
+        clinicId: "horizonte",
         message: makeMessage("Olá bom dia", "zapi-larissa-1", new Date("2026-06-04T10:41:05.000Z")),
       }),
       useCase.execute({
-        clinicId: "ximendes",
+        clinicId: "horizonte",
         message: makeMessage("Tenho interesse em lentes", "zapi-larissa-2", new Date("2026-06-04T10:41:07.000Z")),
       }),
     ]);
@@ -288,7 +288,7 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     const listPendingByLead = vi.fn(async () => [
       {
         id: "fu-video",
-        clinicId: "ximendes",
+        clinicId: "horizonte",
         leadId: "pending-lead-id",
         dueAt: new Date("2026-06-11T18:00:00.000Z"),
         status: "pending" as const,
@@ -300,7 +300,7 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
       },
       {
         id: "fu-routine",
-        clinicId: "ximendes",
+        clinicId: "horizonte",
         leadId: "pending-lead-id",
         dueAt: new Date("2026-12-11T18:00:00.000Z"),
         status: "pending" as const,
@@ -325,7 +325,7 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     });
 
     const result = await useCase.execute({
-      clinicId: "ximendes",
+      clinicId: "horizonte",
       message: makeMessage("Oi, vi o vídeo e quero agendar", "zapi-reengage-1", new Date("2026-06-11T11:59:00.000Z")),
     });
 
@@ -358,7 +358,7 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     });
 
     const result = await useCase.execute({
-      clinicId: "ximendes",
+      clinicId: "horizonte",
       message: makeMessage("Oi, quero falar com vocês", "zapi-inbound-2", new Date("2026-06-11T11:59:30.000Z")),
     });
 
@@ -371,9 +371,9 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     const conversationRepository = new SimpleConversationRepository();
     const existingLead: Lead = {
       id: "lead-recovery",
-      clinicId: "ximendes",
+      clinicId: "horizonte",
       name: "Larissa Sales",
-      phone: "5511986905114",
+      phone: "5511900000006",
       whatsappLid: null,
       email: null,
       channel: "whatsapp",
@@ -400,7 +400,7 @@ describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
     });
 
     const result = await useCase.execute({
-      clinicId: "ximendes",
+      clinicId: "horizonte",
       message: makeMessage("Quero remarcar", "zapi-recovery-1", new Date("2026-06-12T11:59:30.000Z")),
     });
 

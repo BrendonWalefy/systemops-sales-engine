@@ -4,7 +4,7 @@
  * Testa que quando um lead pergunta sobre algo de negócio (preço, agendamento, etc),
  * a IA não responde com saudação genérica ("me conta o que você gostaria de ver hoje").
  *
- * Casos reais da auditoria Vitalli (10 ocorrências de F1):
+ * Casos reais da auditoria Aurora (10 ocorrências de F1):
  * 1. "Olá! Posso ter mais informações sobre custo?" → intent=greeting, mas deve converter para price_inquiry
  * 2. "E qual seria os valores?" → intent=greeting, mas deve converter para price_inquiry
  * 3. "Posso ter mais informações sobre isso?" → vago, mas se tem "informações" = handoff

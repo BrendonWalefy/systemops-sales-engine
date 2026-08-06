@@ -12,13 +12,13 @@ export interface ImportResult {
 
 export interface ImportOptions {
   // Exportações reais do Google Calendar trazem TODO o histórico (a agenda
-  // real da Vitalli tinha 1488 eventos desde 2024 — importar tudo é lento
+  // real da Aurora tinha 1488 eventos desde 2024 — importar tudo é lento
   // (processamento sequencial, 1 req/evento) e polui o banco com consultas
   // já passadas sem valor operacional. Default: só a partir de agora.
   cutoffDate?: Date;
   // Profissional usado quando o SUMMARY não menciona nenhum profissional
-  // cadastrado (agenda real da Vitalli: só 3 de 24 eventos futuros mencionam
-  // "gregorie" no texto — os demais não indicam quem atende, então caem no
+  // cadastrado (agenda real da Aurora: só 3 de 24 eventos futuros mencionam
+  // "silva" no texto — os demais não indicam quem atende, então caem no
   // profissional padrão informado pelo chamador).
   defaultProfessionalId?: string;
 }
@@ -62,7 +62,7 @@ export async function importCalendarEvents(
       .map((l) => [normalizeWord(l.name as string), l.id]),
   );
   // Telefone é chave mais forte que nome: "Ana Julia" na agenda tem 10 leads
-  // candidatos na base da Vitalli, o número tem um. Casar por aqui primeiro
+  // candidatos na base da Aurora, o número tem um. Casar por aqui primeiro
   // reaproveita a conversa que o paciente já teve, em vez de criar um lead
   // paralelo e mudo.
   const leadByPhone = new Map(
@@ -280,8 +280,8 @@ export async function importCalendarEvents(
 }
 
 // Vocabulário de tratamento/contexto que aparece ANTES ou DEPOIS do nome no
-// SUMMARY real da Vitalli (ex: "Manutenção Fabio", "Isac paciente R$2.000").
-// Baseado nos 26 eventos futuros reais da agenda (Dental Luxe/Vitalli, export
+// SUMMARY real da Aurora (ex: "Manutenção Fabio", "Isac paciente R$2.000").
+// Baseado nos 26 eventos futuros reais da agenda (Dental Luxe/Aurora, export
 // de 09/07/2026) — não existe separador consistente (nem "-", nem ":"), o
 // nome do paciente é sempre a primeira sequência de palavra(s) capitalizada(s)
 // no início do texto, ou a próxima palavra capitalizada quando o SUMMARY abre
@@ -313,7 +313,7 @@ function normalizeEventText(text: string): string {
  * Até quando a consulta importada ocupa a agenda INTERNA.
  *
  * A clínica agenda no Google e, na pressa, erra o bloco: das 23 consultas
- * futuras da Vitalli, **9 estavam mais curtas que o procedimento exige** — duas
+ * futuras da Aurora, **9 estavam mais curtas que o procedimento exige** — duas
  * delas com 60 minutos para uma instalação de lentes de 5 horas. Como o motor de
  * horários lê a agenda interna, ele via a tarde livre e podia ofertá-la a outro
  * lead enquanto o doutor ainda estava atendendo.
@@ -367,7 +367,7 @@ export function resolveImportedEndsAt(params: {
  * Valor do atendimento escrito no texto do evento, em centavos.
  *
  * A home soma `valueCents` para mostrar faturamento potencial e realizado. Medido
- * em 21/07: **45 de 46** consultas da Vitalli tinham `valueCents` nulo e os dois
+ * em 21/07: **45 de 46** consultas da Aurora tinham `valueCents` nulo e os dois
  * números apareciam como R$ 0 — enquanto o valor estava escrito na agenda o tempo
  * todo ("Tatiana 20 lentes 2 mil", "Laís Manutenção R$400").
  *
@@ -421,7 +421,7 @@ export type ImportTreatmentMatch = {
  * (`summary.includes("Manutenção Preventiva de lentes")`). A agenda real não
  * escreve assim — escreve "Kevin Manutenção", "Ana Julia 20 lentes", "Keyla
  * remoção 20 lentes". Resultado medido: **0 de 44** eventos importados da
- * Vitalli tinham `treatmentId`, e as regras de pós-atendimento — que filtram por
+ * Aurora tinham `treatmentId`, e as regras de pós-atendimento — que filtram por
  * tratamento — nunca encontravam ninguém. Nenhuma mensagem de cuidados pós-lentes
  * jamais saiu.
  *
@@ -431,7 +431,7 @@ export type ImportTreatmentMatch = {
  *    resolve para Estratificada mesmo com as três casando o alias "lentes".
  * 2. **Guarda-chuva da família** — quando a especificidade empata, vence o
  *    tratamento que carrega o pipeline de conteúdo. Foi o caso de 21 dos 44
- *    eventos, todos na forma "N lentes": a Vitalli tem três tratamentos de lente
+ *    eventos, todos na forma "N lentes": a Aurora tem três tratamentos de lente
  *    e o texto não diz a técnica. A entrada com pipeline (Lentes em Resina
  *    Composta) é justamente a genérica — não cotável sozinha, existe para
  *    representar a família. Registrar ela não é palpite: é o que o texto diz.
@@ -484,14 +484,14 @@ export function matchImportedTreatment(
   return { treatmentId: null, ambiguousWith: winners.map((entry) => entry.candidate.name) };
 }
 
-// "Dr. Gregorie" → "gregorie" — o SUMMARY real menciona só o núcleo do nome
-// ("avaliação gregorie", "já pagou GREGORI"), nunca com o prefixo "Dr./Dra.".
+// "Dr. Silva" → "silva" — o SUMMARY real menciona só o núcleo do nome
+// ("avaliação silva", "já pagou GREGORI"), nunca com o prefixo "Dr./Dra.".
 function normalizeProfessionalName(name: string): string {
   return normalizeWord(name).replace(/^dra?\.?\s+/, "");
 }
 
 // Tolerância a variação de digitação real: "Polyane 20 lentes já pagou
-// GREGORI" (sem o "e" final) não bate com includes("gregorie") direto —
+// GREGORI" (sem o "e" final) não bate com includes("silva") direto —
 // checa também o nome sem a última letra.
 function matchesProfessionalMention(normalizedSummary: string, professionalCore: string): boolean {
   if (!professionalCore) return false;

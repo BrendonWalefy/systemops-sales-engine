@@ -63,7 +63,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
   });
 
   // Espelha os mesmos alertas no WhatsApp pessoal do responsável (receptionist_phone),
-  // além do push — é o canal que o doutor realmente acompanha (pedido Vitalli 17/07).
+  // além do push — é o canal que o doutor realmente acompanha (pedido Aurora 17/07).
 
   // ── Alerta 1: Agenda de amanhã ──
   const tomorrowAppts = await db

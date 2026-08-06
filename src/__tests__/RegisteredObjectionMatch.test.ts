@@ -6,13 +6,13 @@
 // resposta que a clínica JÁ cadastrou — de forma conservadora, sem sequestrar
 // casos legítimos que devem ir ao humano.
 //
-// As objeções abaixo são as REAIS da Vitalli (bundled numa linha só) — o caso que
-// o replay de produção validou. O gatilho de garantia junta 3 perguntas.
+// As objeções abaixo são uma amostra anonimizada de regressão. O gatilho de
+// garantia reúne três perguntas relacionadas.
 
 import { describe, it, expect } from "vitest";
 import { matchRegisteredObjection } from "@/core/pipeline/ConversationOrchestrator";
 
-// Amostra fiel do playbook ativo da Vitalli (jul/2026).
+// Amostra sintética equivalente à estrutura de um playbook ativo.
 const objections = [
   { objection: "Qual o valor do tratamento?", response: "O investimento varia conforme a técnica…" },
   { objection: "Precisa desgastar muito os dentes?", response: "A nossa abordagem é conservadora…" },
@@ -25,7 +25,7 @@ const objections = [
 const treatmentNames = ["Lentes em Resina Composta", "Lente em Resina Premium", "Avaliação Clínica Inicial"];
 
 describe("matchRegisteredObjection", () => {
-  it("casa a pergunta de garantia com a objeção COMPOSTA de garantia (caso real Vitalli)", () => {
+  it("casa a pergunta de garantia com a objeção composta de garantia", () => {
     const m = matchRegisteredObjection("as lentes têm garantia? e a manutenção?", objections, treatmentNames);
     expect(m?.objection).toBe("Quanto tempo dura? Tem garantia e como é a manutenção?");
   });

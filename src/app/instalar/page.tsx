@@ -8,7 +8,7 @@ import Image from "next/image";
  * enquanto o app não está nas lojas oficiais.
  *
  * Personalização por querystring, sem tocar no banco:
- *   /instalar?org=Vitalli            → "Acesse a operação da Vitalli"
+ *   /instalar?org=Clínica Aurora     → "Acesse a operação da Clínica Aurora"
  *   /instalar?org=NC%20Beauty&conector=da
  *   /instalar?org=Studio%20X&conector=do
  *

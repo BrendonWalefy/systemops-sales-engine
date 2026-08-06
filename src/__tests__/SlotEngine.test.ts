@@ -127,7 +127,7 @@ describe("SlotEngine", () => {
     expect(starts).toEqual(["10:00"]);
   });
 
-  // ── Cenários de tratamentos com duração variável + buffer (Ximendes Odontologia) ──
+  // ── Cenários de tratamentos com duração variável + buffer (Clínica Horizonte) ──
 
   it("20 Lentes (4h) + 60min buffer: próximo slot de 60min só aparece às 13h", () => {
     // Doutora agenda "20 Lentes" das 8h às 12h + 60min de intervalo
@@ -186,7 +186,7 @@ describe("SlotEngine", () => {
     expect(starts).toEqual(["08:00", "12:00"]);
   });
 
-  // ── Regressão: horários quebrados (Ximendes — Avaliação de 40min) ──
+  // ── Regressão: horários quebrados (Horizonte — Avaliação de 40min) ──
   // A grade antiga somava a duração num cursor contínuo a partir de `from`,
   // atravessando noites: com 40min os slots caíam em 8h20/12h20/14h20. Todo
   // início ofertado precisa estar em marca de :00 ou :30, em todos os dias.
@@ -295,7 +295,7 @@ describe("SlotEngine — Saturday short hours", () => {
   });
 });
 
-// ─── Grade própria de profissional (disponibilidade Victor/Gregorie) ─────────
+// ─── Grade própria de profissional (disponibilidade Silva/Silva) ─────────
 
 describe("SlotEngine — professionalSchedule", () => {
   // 05/Jan/2026 = segunda, 06/Jan/2026 = terça, 08/Jan/2026 = quinta

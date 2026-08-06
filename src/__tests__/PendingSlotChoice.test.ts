@@ -3,7 +3,7 @@ import { ClinicTimezone, type ParsedBusinessHours } from "@/core/scheduling/Clin
 import { resolvePendingSlotChoice } from "@/core/pipeline/ConversationOrchestrator";
 import type { SlotPreference } from "@/core/intelligence/IntentClassifier";
 
-// Regressão do replay Vitalli 18/07: lead respondeu "Segunda" à lista de slots
+// Regressão do replay Aurora 18/07: lead respondeu "Segunda" à lista de slots
 // (que tinha segunda nas opções 1 e 3) e o confirm_slot assumia a opção 1 — quando
 // a reserva falhava, saía o falso "seu horário ficou indisponível".
 

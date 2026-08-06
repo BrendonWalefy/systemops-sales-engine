@@ -1,5 +1,5 @@
 // #21 — relato de dano em trabalho existente. Mensagens reais das duas clínicas
-// (Ximendes 27/05→20/07, Vitalli 09/07→20/07): 22 relatos no corpus, 1 único com
+// (Horizonte 27/05→20/07, Aurora 09/07→20/07): 22 relatos no corpus, 1 único com
 // consulta anterior registrada — e é justamente o caso que falhou em produção.
 import { describe, expect, it } from "vitest";
 import {
@@ -39,7 +39,7 @@ function treatment(name: string, overrides: Partial<Treatment> = {}): Treatment 
 
 describe("detectExistingWorkProblem — dano sobre trabalho instalado", () => {
   it("dano com substantivo de trabalho é relato por si só, sem precisar de histórico", () => {
-    // Eduardo (Ximendes, 16/07) e Ewerson (Vitalli, 16/07)
+    // Eduardo (Horizonte, 16/07) e Ewerson (Aurora, 16/07)
     expect(detectExistingWorkProblem("Manutenção e uma lente quebrada")).toEqual({
       label: "lente quebrada",
       target: "work",
@@ -48,7 +48,7 @@ describe("detectExistingWorkProblem — dano sobre trabalho instalado", () => {
   });
 
   it("o dano se refere ao substantivo mais próximo, mesmo perdendo um caso legítimo", () => {
-    // Felipe (Ximendes, 14/07). O sujeito real de "quebrou" é a lente ("ela"), mas
+    // Felipe (Horizonte, 14/07). O sujeito real de "quebrou" é a lente ("ela"), mas
     // o substantivo mais próximo é "dente" — resolver o pronome exigiria análise
     // sintática. Fica como "tooth", o que só significa que ele segue pelo caminho
     // atual (a LLM classificou clinical_urgency e a IA escalou — comportamento
@@ -59,17 +59,17 @@ describe("detectExistingWorkProblem — dano sobre trabalho instalado", () => {
   });
 
   it("não sequestra pergunta de venda que cita lentes e dente quebrado juntos", () => {
-    // ST (Vitalli, 19/07): quer lentes, terá que remover dentes quebrados.
+    // ST (Aurora, 19/07): quer lentes, terá que remover dentes quebrados.
     expect(detectExistingWorkProblem("no momento eu só quero fazer as lentes , mas eu tá frente terei que remover 2 dentes quebrados")?.target)
       .toBe("tooth");
-    // Marta (Vitalli, 21/07): pergunta se as lentes resolvem o caso dela.
+    // Marta (Aurora, 21/07): pergunta se as lentes resolvem o caso dela.
     expect(detectExistingWorkProblem("Eu tenho retração e restaurações nesses dentes, alem de um quebrado. Por isso o desejo das lentes. Nesse caso, as lentes resolvem isso?")?.target)
       .toBe("tooth");
   });
 
-  it("caso Mô (Vitalli, 14/07): lentes de 9 meses quebrando", () => {
+  it("caso Mô (Aurora, 14/07): lentes de 9 meses quebrando", () => {
     const message =
-      "Continua sendo do dr Victor né? Eu troquei minhas lentes de resina com vcs lá na av Sabará tem " +
+      "Continua sendo do dr Silva né? Eu troquei minhas lentes de resina com vcs lá na av Sabará tem " +
       "aproximadamente 9 meses infelizmente a maioria das lentes estão quebrando";
     expect(detectExistingWorkProblem(message)?.target).toBe("work");
   });
@@ -79,7 +79,7 @@ describe("detectExistingWorkProblem — dano sobre trabalho instalado", () => {
     expect(detectExistingWorkProblem("duas facetas uma na frente um lateral q saiu")?.target).toBe("work");
   });
 
-  it("caso Carla (Ximendes, 16/07): só 'dente' é alvo ambíguo, não trabalho", () => {
+  it("caso Carla (Horizonte, 16/07): só 'dente' é alvo ambíguo, não trabalho", () => {
     // O intent da LLM foi reject_slots e a resposta foram 5 horários de segunda.
     // O alvo "tooth" só vira relato de dano quando há vínculo — quem decide isso
     // é o orquestrador, com o histórico de consultas na mão.
@@ -90,7 +90,7 @@ describe("detectExistingWorkProblem — dano sobre trabalho instalado", () => {
   });
 
   it("a janela de proximidade impede que 'resina' lá no início case com 'lascado' lá no fim", () => {
-    // Caso Ana Paula (Vitalli, 18/07): pergunta de preço legítima. Sem a janela,
+    // Caso Ana Paula (Aurora, 18/07): pergunta de preço legítima. Sem a janela,
     // "resina" + "lascado" casariam como trabalho danificado e a venda morreria na
     // primeira resposta. Sobra o alvo ambíguo "dentes lascado", que o trilho
     // descarta por ser pergunta de preço — ver shouldEngageDamageRail.
@@ -120,7 +120,7 @@ describe("detectSelfDeclaredPastWork — vínculo declarado pelo lead", () => {
   });
 
   it("responde à pergunta de origem: 'foi aí mesmo'", () => {
-    expect(detectSelfDeclaredPastWork("foi aí mesmo, com o Dr. Victor")).toBe(true);
+    expect(detectSelfDeclaredPastWork("foi aí mesmo, com o Dr. Silva")).toBe(true);
     expect(detectSelfDeclaredPastWork("fiz aqui sim")).toBe(true);
   });
 
@@ -185,9 +185,9 @@ describe("shouldEngageDamageRail — quando o trilho assume a resposta", () => {
 });
 
 describe("resolveMaintenancePriceLabel — preço da manutenção sai do catálogo", () => {
-  // Catálogo real da Ximendes. Em 16/07 a IA respondeu "manutenção sai a partir de
+  // Catálogo real da Horizonte. Em 16/07 a IA respondeu "manutenção sai a partir de
   // R$ 100" — R$100 é o preço da Avaliação. O template mandava a LLM buscar o valor.
-  const ximendes = [
+  const horizonte = [
     treatment("Manutenção periódicas lentes", { priceCents: 50000, priceKind: "from" }),
     treatment("Conserto lentes", { priceCents: 20000, priceKind: "from" }),
     treatment("Avaliação", { priceCents: 10000, priceKind: "fixed" }),
@@ -195,19 +195,19 @@ describe("resolveMaintenancePriceLabel — preço da manutenção sai do catálo
   ];
 
   it("devolve o valor do serviço que o lead citou", () => {
-    expect(resolveMaintenancePriceLabel("Manutenção e uma lente quebrada", ximendes)).toBe(
+    expect(resolveMaintenancePriceLabel("Manutenção e uma lente quebrada", horizonte)).toBe(
       "Manutenção periódicas lentes: a partir de R$ 500",
     );
   });
 
   it("nunca devolve o preço da avaliação nem do tratamento base", () => {
-    const label = resolveMaintenancePriceLabel("quanto fica a manutenção?", ximendes);
+    const label = resolveMaintenancePriceLabel("quanto fica a manutenção?", horizonte);
     expect(label).not.toContain("R$ 100");
     expect(label).not.toContain("R$ 4.000");
   });
 
   it("cada serviço citado devolve o seu próprio valor", () => {
-    expect(resolveMaintenancePriceLabel("quanto custa o conserto?", ximendes)).toBe(
+    expect(resolveMaintenancePriceLabel("quanto custa o conserto?", horizonte)).toBe(
       "Conserto lentes: a partir de R$ 200",
     );
   });
@@ -224,11 +224,11 @@ describe("resolveMaintenancePriceLabel — preço da manutenção sai do catálo
     expect(resolveMaintenancePriceLabel("quanto fica a manutenção?", naoCotavel)).toBeNull();
   });
 
-  it("preço fixo não vira 'a partir de' (caso Vitalli: manutenção R$400 fechado)", () => {
-    const vitalli = [
+  it("preço fixo não vira 'a partir de' (caso Aurora: manutenção R$400 fechado)", () => {
+    const aurora = [
       treatment("Manutenção Preventiva de lentes", { priceCents: 40000, priceKind: "fixed" }),
     ];
-    expect(resolveMaintenancePriceLabel("Quanto fica a manutenção?", vitalli)).toBe(
+    expect(resolveMaintenancePriceLabel("Quanto fica a manutenção?", aurora)).toBe(
       "Manutenção Preventiva de lentes: R$ 400",
     );
   });

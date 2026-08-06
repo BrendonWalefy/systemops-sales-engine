@@ -6,7 +6,7 @@
 // cada clínica preenche as próprias regras; vazio = nada dispara. Um único cron
 // genérico (post-appointment-followup) percorre as regras de todas as clínicas.
 //
-// Exemplos (Vitalli): cuidados pós-lentes 1h depois (texto + imagens + vídeo);
+// Exemplos (Aurora): cuidados pós-lentes 1h depois (texto + imagens + vídeo);
 // pedido de feedback 24h depois (só se a consulta foi marcada como concluída).
 
 export type PostAppointmentRuleCategory = "follow_up" | "operational";

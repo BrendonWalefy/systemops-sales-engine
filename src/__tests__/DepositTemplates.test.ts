@@ -8,12 +8,12 @@ import {
   type DepositClinic,
 } from "@/core/conversation/DepositTemplates";
 
-// Config real da Vitalli.
-const VITALLI: DepositClinic = {
+// Config real da Aurora.
+const AURORA: DepositClinic = {
   depositAmountCents: 3000,
   depositPixKey: "54659849000109",
   depositPixKeyType: "cnpj",
-  depositRecipientName: "Dr. Victor Cavalcante",
+  depositRecipientName: "Dr. Silva Cavalcante",
   depositTtlHours: 24,
   depositNotes: "O valor do sinal é abatido do procedimento.",
   depositConfirmationNotes: "• Chegue 10 minutos antes.\n• Reagende com 24h de antecedência.\n• Evite trazer acompanhante.",
@@ -22,7 +22,7 @@ const VITALLI: DepositClinic = {
 
 describe("DepositTemplates", () => {
   it("pedido de sinal traz valor, chave, titular, prazo e a regra de confirmação", () => {
-    const msg = buildDepositRequestMessage(VITALLI, "Seg 21/07 às 09h");
+    const msg = buildDepositRequestMessage(AURORA, "Seg 21/07 às 09h");
     expect(msg).toContain("Seg 21/07 às 09h");
     expect(msg).toContain("R$ 30");
     // O sinal é apresentado como garantia da RESERVA do horário (pedido do
@@ -30,7 +30,7 @@ describe("DepositTemplates", () => {
     expect(msg).toMatch(/reserva do seu horário/i);
     expect(msg).toContain("Chave Pix (CNPJ): 54659849000109");
     expect(msg.split("\n").slice(-2)).toEqual(["Chave Pix para copiar:", "54659849000109"]);
-    expect(msg).toContain("Nome: Dr. Victor Cavalcante");
+    expect(msg).toContain("Nome: Dr. Silva Cavalcante");
     expect(msg).toContain("O valor do sinal é abatido do procedimento.");
     expect(msg).toContain("24 horas");
     expect(msg).toMatch(/só é confirmado após a comprovação/i);
@@ -39,7 +39,7 @@ describe("DepositTemplates", () => {
   it("confirmação traz data, endereço e as orientações fixas da clínica", () => {
     // #22: data e horário passaram a sair em linhas rotuladas, como no template
     // que o operador manda à mão — antes era um `slotLabel` corrido numa linha só.
-    const msg = buildDepositConfirmationMessage(VITALLI, "Seg 21/07 às 09h");
+    const msg = buildDepositConfirmationMessage(AURORA, "Seg 21/07 às 09h");
     expect(msg).toContain("✅ Agendamento confirmado!");
     expect(msg).toContain("📅 Data: Seg 21/07");
     expect(msg).toContain("🕒 Horário: 09h");
@@ -54,7 +54,7 @@ describe("DepositTemplates", () => {
   });
 
   it("prazo em dias quando múltiplo de 24h", () => {
-    const msg = buildDepositRequestMessage({ ...VITALLI, depositTtlHours: 48 }, "Seg 21/07 às 09h");
+    const msg = buildDepositRequestMessage({ ...AURORA, depositTtlHours: 48 }, "Seg 21/07 às 09h");
     expect(msg).toContain("2 dias");
   });
 

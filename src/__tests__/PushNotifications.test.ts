@@ -305,7 +305,7 @@ describe("Formato do payload enviado ao service worker", () => {
   });
 
   it("payload de atenção contém prefixo de alerta no título", () => {
-    const clinicName = "Ximendes Odontologia";
+    const clinicName = "Clínica Horizonte";
     const payload: PushPayload = {
       title: `⚠️ Atenção — ${clinicName}`,
       body: "João (11999) : Urgência clínica relatada",

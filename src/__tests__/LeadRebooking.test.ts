@@ -1,6 +1,6 @@
 // Testes para lead que já tem appointment_scheduled e tenta agendar novamente.
 // Cobre: detecção de appointment ativo, fluxo de reagendamento vs. novo agendamento,
-// e o crash real observado no Gregorie (14/Jun/2026) onde "Avaliação" após
+// e o crash real observado no Silva (14/Jun/2026) onde "Avaliação" após
 // "qual procedimento?" gerou "Ops, tive um problema técnico".
 //
 // Causa raiz do crash: o Orchestrator chamou listAvailableSlots com um slot
@@ -85,7 +85,7 @@ function classifyRebookingIntent(
 
 const NOW = new Date("2026-06-04T13:13:00.000Z"); // 04/Jun/2026 às 13h13 (hora do bug real)
 
-// Appointment da consulta de Gregorie em 01/Jun/2026 às 11h (já passada em Jun/04)
+// Appointment da consulta de Silva em 01/Jun/2026 às 11h (já passada em Jun/04)
 const pastAppt: AppointmentSummary = {
   id: "appt-jun-01",
   startsAt: new Date("2026-06-01T14:00:00.000Z"), // horário UTC (11h BRT)
@@ -147,8 +147,8 @@ describe("LeadRebooking — classifyRebookingIntent", () => {
     }
   });
 
-  it("CENÁRIO GREGORIE: lead appointment_scheduled mas consulta já passou → offer_slots_past_appointment_expired", () => {
-    // Gregorie tinha appointment em 01/Jun, voltou em 04/Jun querendo remarcar.
+  it("CENÁRIO SILVA: lead appointment_scheduled mas consulta já passou → offer_slots_past_appointment_expired", () => {
+    // Silva tinha appointment em 01/Jun, voltou em 04/Jun querendo remarcar.
     // O sistema deveria detectar que a consulta já passou e oferecer novos slots.
     const decision = classifyRebookingIntent("appointment_scheduled", [pastAppt], NOW);
     expect(decision.action).toBe("offer_slots_past_appointment_expired");
@@ -168,14 +168,14 @@ describe("LeadRebooking — classifyRebookingIntent", () => {
 // ─── Testes: resolução de treatment quando lead tem appointment ativo ──────────
 
 describe("LeadRebooking — treatment resolution não deve crashar", () => {
-  // O crash do Gregorie aconteceu quando o sistema tentou processar "Avaliação"
+  // O crash do Silva aconteceu quando o sistema tentou processar "Avaliação"
   // como resposta ao "qual procedimento?", mas a lógica de offer_slots
   // falhou ao buscar slots no InternalCalendarGateway para um lead
   // com appointment_scheduled (status inconsistente com consulta passada).
 
   type Treatment = { name: string; durationMinutes: number };
 
-  const ximendesTreatments: Treatment[] = [
+  const horizonteTreatments: Treatment[] = [
     { name: "Avaliação", durationMinutes: 60 },
     { name: "Manutenção das lentes", durationMinutes: 60 },
     { name: "Limpeza", durationMinutes: 60 },
@@ -187,31 +187,31 @@ describe("LeadRebooking — treatment resolution não deve crashar", () => {
   }
 
   it('"Avaliação" → resolução encontra o tratamento correto (60min)', () => {
-    const found = findTreatmentByName("Avaliação", ximendesTreatments);
+    const found = findTreatmentByName("Avaliação", horizonteTreatments);
     expect(found).not.toBeNull();
     expect(found?.durationMinutes).toBe(60);
   });
 
   it('"avaliação" (minúsculo) → case-insensitive match', () => {
-    const found = findTreatmentByName("avaliação", ximendesTreatments);
+    const found = findTreatmentByName("avaliação", horizonteTreatments);
     expect(found).not.toBeNull();
     expect(found?.name).toBe("Avaliação");
   });
 
   it('"Avaliação" não é tratamento que exige avaliação prévia (não causa loop)', () => {
-    const avaliacao = findTreatmentByName("Avaliação", ximendesTreatments);
+    const avaliacao = findTreatmentByName("Avaliação", horizonteTreatments);
     // A regra "requiresEvaluationFirst" não deveria estar em "Avaliação" em si
     // — seria circular. Este teste documenta que a resolução deve ser direta.
     expect(avaliacao).not.toBeNull();
   });
 
   it('"20 Lentes" exige duração de 240min para o slot engine', () => {
-    const found = findTreatmentByName("20 Lentes", ximendesTreatments);
+    const found = findTreatmentByName("20 Lentes", horizonteTreatments);
     expect(found?.durationMinutes).toBe(240);
   });
 
   it('tratamento desconhecido → null (sem crash)', () => {
-    const found = findTreatmentByName("Clareamento Laser X-Pro", ximendesTreatments);
+    const found = findTreatmentByName("Clareamento Laser X-Pro", horizonteTreatments);
     expect(found).toBeNull();
     // O sistema deve fazer fallback para o default da clínica, não crashar
   });

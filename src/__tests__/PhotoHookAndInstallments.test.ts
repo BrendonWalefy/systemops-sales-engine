@@ -19,7 +19,7 @@ import type { Treatment } from "@/domain/entities/treatment";
 function makeTreatment(name: string, requiresEval = false, isAesthetic = false): Treatment {
   return {
     id: name.toLowerCase().replace(/\s+/g, "-"),
-    clinicId: "ximendes",
+    clinicId: "horizonte",
     name,
     durationMinutes: 60,
     description: null,

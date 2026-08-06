@@ -5,7 +5,7 @@ import type { TreatmentBookingWindow } from "@/domain/entities/treatment";
 
 const tz = new ClinicTimezone("America/Sao_Paulo");
 
-// Vitalli: Seg-Sáb 8h-18h
+// Aurora: Seg-Sáb 8h-18h
 const businessHours: ParsedBusinessHours = {
   startHour: 8,
   startMinute: 0,
@@ -38,7 +38,7 @@ describe("SlotEngine — janelas de início por tratamento (A7)", () => {
       from: local(2026, 6, 20, 0, 0), // seg 20/07
       to: local(2026, 6, 21, 0, 0), // ter 21/07 (um dia)
       slotDurationMinutes: 300, // lentes = 5h
-      clinicId: "vitalli",
+      clinicId: "aurora",
       allowedStartWindows: LENTES_WINDOWS,
     });
     expect(slots.map((s) => label(s.startsAt))).toEqual(["20 09:00", "20 16:00"]);
@@ -52,7 +52,7 @@ describe("SlotEngine — janelas de início por tratamento (A7)", () => {
       from: local(2026, 6, 20, 0, 0),
       to: local(2026, 6, 21, 0, 0),
       slotDurationMinutes: 300,
-      clinicId: "vitalli",
+      clinicId: "aurora",
       allowedStartWindows: LENTES_WINDOWS,
     });
     // 09:00 ocupado → só 16:00
@@ -67,7 +67,7 @@ describe("SlotEngine — janelas de início por tratamento (A7)", () => {
       from: local(2026, 6, 20, 0, 0),
       to: local(2026, 6, 21, 0, 0),
       slotDurationMinutes: 300, // 16:00 → 21:00, além das 18:00
-      clinicId: "vitalli",
+      clinicId: "aurora",
       allowedStartWindows: LENTES_WINDOWS,
     });
     const starts = slots.map((s) => label(s.startsAt));
@@ -83,7 +83,7 @@ describe("SlotEngine — janelas de início por tratamento (A7)", () => {
       from: local(2026, 6, 19, 0, 0), // domingo
       to: local(2026, 6, 21, 0, 0), // até terça 00:00
       slotDurationMinutes: 300,
-      clinicId: "vitalli",
+      clinicId: "aurora",
       allowedStartWindows: LENTES_WINDOWS,
     });
     const days = new Set(slots.map((s) => tz.toLocalParts(s.startsAt).weekday));
@@ -100,7 +100,7 @@ describe("SlotEngine — janelas de início por tratamento (A7)", () => {
       from: local(2026, 6, 20, 0, 0), // seg
       to: local(2026, 6, 27, 0, 0), // até seg seguinte (inclui sáb 25)
       slotDurationMinutes: 300,
-      clinicId: "vitalli",
+      clinicId: "aurora",
       allowedStartWindows: saturdayOnly,
     });
     const weekdays = new Set(slots.map((s) => tz.toLocalParts(s.startsAt).weekday));
@@ -115,7 +115,7 @@ describe("SlotEngine — janelas de início por tratamento (A7)", () => {
       from: local(2026, 6, 20, 10, 0), // seg 10:00 — já passou das 09:00
       to: local(2026, 6, 21, 0, 0),
       slotDurationMinutes: 300,
-      clinicId: "vitalli",
+      clinicId: "aurora",
       allowedStartWindows: LENTES_WINDOWS,
     });
     expect(slots.map((s) => label(s.startsAt))).toEqual(["20 16:00"]);
@@ -129,7 +129,7 @@ describe("SlotEngine — janelas de início por tratamento (A7)", () => {
       from: local(2026, 6, 20, 8, 0),
       to: local(2026, 6, 20, 12, 0),
       slotDurationMinutes: 60,
-      clinicId: "vitalli",
+      clinicId: "aurora",
       allowedStartWindows: null,
     });
     // grade de 60min: 08,09,10,11

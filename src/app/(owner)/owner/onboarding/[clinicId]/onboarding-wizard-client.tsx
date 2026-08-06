@@ -209,8 +209,8 @@ function initPipelineConfig(t: WizardTreatment): PipelineConfig {
 
 // ─── Step config ──────────────────────────────────────────────────────────────
 
-// Modelo da mensagem de localização. O texto real da Vitalli — escrito por quem o
-// Victor contratou — é melhor do que qualquer template que a gente inventaria:
+// Modelo da mensagem de localização. Preserva detalhes operacionais que um
+// endereço simples não representa:
 // traz o endereço ALTERNATIVO do estacionamento e as estações de metrô, dois fatos
 // que nenhum campo estruturado nosso teria previsto. Aqui fica a forma dele, para a
 // próxima clínica editar em vez de começar do zero. Ponto de partida, não formato

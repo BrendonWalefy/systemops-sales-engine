@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeMediaGapWarning } from "@/app/(clinic)/app/settings/pipeline/[treatmentId]/pipeline-editor-client";
 import type { PipelineStep } from "@/domain/entities/treatment";
 
-const TREATMENT_ID = "39b29140-f356-4a0c-aa36-be533aa58c8e"; // Lentes em Resina Composta (Vitalli)
+const TREATMENT_ID = "39b29140-f356-4a0c-aa36-be533aa58c8e";
 const VIDEO_ID = "0c771e1b-a1e2-45cb-8a3d-ecbd0b2f0c7c"; // Resultado Técnica Estratificada
 
 const contentStepWithoutMedia: PipelineStep = {
@@ -18,7 +18,7 @@ const contentStepWithoutMedia: PipelineStep = {
 const qaStep: PipelineStep = { type: "qa", label: "Tirar dúvidas", maxTurns: 10 };
 
 describe("computeMediaGapWarning", () => {
-  it("acende o aviso — caso real Vitalli antes do fix: mídia própria existe, mas nenhum step de conteúdo a usa", () => {
+  it("acende o aviso quando há mídia própria sem referência em nenhum step de conteúdo", () => {
     const mediaLibrary = [
       { id: VIDEO_ID, treatmentId: TREATMENT_ID },
       { id: "img-1", treatmentId: TREATMENT_ID },

@@ -5,7 +5,7 @@
  * lê as meta tags Open Graph e embute título/descrição/miniatura na mensagem. Quem
  * recebe só desenha o que veio pronto. A Z-API não faz esse passo — o `send-text`
  * não tem parâmetro de prévia — então o link saía pelado (medido em produção:
- * endereço da Ximendes enviado pelo sistema chegou sem card).
+ * endereço da Horizonte enviado pelo sistema chegou sem card).
  *
  * O `send-link` da Z-API aceita o card, mas exige que NÓS forneçamos title,
  * description e image. É isso que este módulo resolve.
@@ -92,7 +92,7 @@ export function isFetchableUrl(raw: string): boolean {
  * URL de IMAGEM do card. Não aplica o teto de comprimento: nós nunca buscamos
  * essa URL — só a repassamos ao WhatsApp para exibir — e a og:image do Google
  * embute a origem em base64, chegando a ~1300 caracteres (medido no link da
- * Ximendes). O teto de fetch derrubava a foto de qualquer link do Google.
+ * Horizonte). O teto de fetch derrubava a foto de qualquer link do Google.
  */
 export function isDisplayableImageUrl(raw: string): boolean {
   return isPublicHttpUrl(raw);
@@ -102,7 +102,7 @@ export function isDisplayableImageUrl(raw: string): boolean {
  * Entidades HTML, incluindo as NUMÉRICAS.
  *
  * As numéricas não são detalhe: o Instagram serve o título inteiro assim
- * (`v&#xed;deos`, `&#064;clinicavitalli`). Sem decodificar, o card chega ao lead
+ * (`v&#xed;deos`, `&#064;clinicaaurora`). Sem decodificar, o card chega ao lead
  * com `&#xed;` literal no meio da palavra — descoberto puxando o link de verdade,
  * não pelo teste com HTML que eu mesmo escrevi.
  */

@@ -45,7 +45,7 @@ describe("FactGuard — findUnsupportedNumbers", () => {
   });
 
   it("returns empty array when no numbers in proposedText", () => {
-    const proposed = "Atendimento exclusivo com o Dr. Gregorie.";
+    const proposed = "Atendimento exclusivo com o Dr. Silva.";
     const userInput = "atendimento personalizado";
     const result = findUnsupportedNumbers(proposed, userInput);
     expect(result).toHaveLength(0);

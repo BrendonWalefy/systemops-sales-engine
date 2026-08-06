@@ -45,7 +45,7 @@ const linhas = pendentes.rows as Array<{
 
 /**
  * Mídias de preço por clínica, em cache. Clínicas que mandam os valores em arte
- * (a Vitalli faz isso por decisão do dentista) gravam a imagem como mensagem de
+ * que enviam valores em arte por decisão comercial gravam a imagem como mensagem de
  * texto com o título no corpo — sem esta lista, o backfill marcaria como
  * "perguntou e não foi respondida" quem recebeu a tabela completa.
  */
