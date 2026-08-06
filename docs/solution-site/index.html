@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Arquitetura técnica, stack, técnicas de engenharia e features do SystemOps Core."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#071426" />
+    <title>SystemOps Core — Arquitetura da solução</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+
+    <header class="site-header" data-header>
+      <div class="container header-inner">
+        <a class="brand" href="#inicio" aria-label="SystemOps — início">
+          <img src="assets/systemops-wordmark-text.png" alt="SystemOps" />
+          <span>Architecture Hub</span>
+        </a>
+
+        <button
+          class="nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="site-nav"
+          data-nav-toggle
+        >
+          <span></span><span></span><span></span>
+          <span class="sr-only">Abrir navegação</span>
+        </button>
+
+        <nav id="site-nav" class="site-nav" aria-label="Navegação principal" data-nav>
+          <a href="#visao-geral">Visão geral</a>
+          <a href="#desenho">Diagramas</a>
+          <a href="#arquitetura">Arquitetura</a>
+          <a href="#stack">Stack</a>
+          <a href="#features">Features</a>
+          <a href="#glossario">Glossário</a>
+          <a class="nav-cta" href="downloads/systemops-current-architecture.drawio" download>
+            Baixar .drawio
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="conteudo">
+      <section id="inicio" class="hero">
+        <div class="hero-glow hero-glow-a"></div>
+        <div class="hero-glow hero-glow-b"></div>
+        <div class="container hero-grid">
+          <div class="hero-copy reveal">
+            <div class="eyebrow"><span></span> Documentação técnica · estado atual</div>
+            <h1>SystemOps Core: <em>arquitetura da solução</em></h1>
+            <p class="hero-lead">
+              SaaS multi-tenant que recebe leads pelo WhatsApp, conduz a conversa comercial,
+              consulta disponibilidade, agenda serviços e transfere casos sensíveis para a equipe
+              humana. Esta página explica os componentes, integrações, dados e responsabilidades.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#visao-geral">
+                Entender o sistema <span aria-hidden="true">↓</span>
+              </a>
+              <a class="button button-secondary" href="#desenho">Abrir diagramas</a>
+            </div>
+            <div class="hero-meta">
+              <span><i class="status-dot"></i> Produção estável</span>
+              <span>Atualizado em agosto de 2026</span>
+            </div>
+          </div>
+
+          <aside class="hero-panel reveal" aria-label="Resumo técnico">
+            <div class="panel-topline">
+              <span>systemops-core</span>
+              <span class="live-pill">CURRENT</span>
+            </div>
+            <div class="terminal-line"><span>runtime</span> Next.js 16 / Vercel</div>
+            <div class="terminal-line"><span>data</span> Neon PostgreSQL / Drizzle</div>
+            <div class="terminal-line"><span>channel</span> WhatsApp / Z-API</div>
+            <div class="terminal-line"><span>ai</span> OpenAI / Whisper / TTS</div>
+            <div class="terminal-line"><span>pattern</span> Inbox + Jobs + Outbox</div>
+            <div class="panel-rule"></div>
+            <blockquote>“O LLM entende e verbaliza. O sistema decide.”</blockquote>
+          </aside>
+        </div>
+
+        <div class="container stat-strip reveal" aria-label="Características principais">
+          <div><strong>WA</strong><span>canal principal: WhatsApp</span></div>
+          <div><strong>16</strong><span>categorias de intenção</span></div>
+          <div><strong>PG</strong><span>inbox, filas, dados e outbox</span></div>
+          <div><strong>CODE</strong><span>decisões de negócio determinísticas</span></div>
+        </div>
+      </section>
+
+      <section id="visao-geral" class="section overview-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Comece aqui</span>
+              <h2>Visão geral em 60 segundos</h2>
+            </div>
+            <p>
+              O SystemOps conecta o WhatsApp da clínica à inteligência conversacional, à agenda e
+              ao painel operacional. O banco centraliza configuração e estado por clínica.
+            </p>
+          </div>
+
+          <div class="system-summary">
+            <article class="summary-card reveal">
+              <span class="summary-label">O que é</span>
+              <h3>Recepcionista comercial com IA</h3>
+              <p>Atende, informa, qualifica e agenda. A equipe assume apenas quando há exceção ou necessidade de julgamento humano.</p>
+            </article>
+            <article class="summary-card reveal">
+              <span class="summary-label">Quem usa</span>
+              <h3>Lead, clínica e owner</h3>
+              <p>O lead conversa no WhatsApp; a equipe opera Inbox e Agenda; o owner acompanha configuração, qualidade, saúde e custos.</p>
+            </article>
+            <article class="summary-card reveal">
+              <span class="summary-label">Entrada principal</span>
+              <h3>Mensagens do WhatsApp</h3>
+              <p>Texto, áudio e mídia chegam por webhook. UI, crons e webhooks de calendário completam as entradas operacionais.</p>
+            </article>
+            <article class="summary-card reveal">
+              <span class="summary-label">Saídas principais</span>
+              <h3>Resposta, agenda e operação</h3>
+              <p>Mensagens, agendamentos, handoffs, follow-ups, campanhas, notificações, métricas e trilhas de decisão.</p>
+            </article>
+          </div>
+
+          <div class="context-flow reveal" aria-label="Resumo do fluxo principal">
+            <div><span>1</span><strong>Lead</strong><small>envia mensagem</small></div>
+            <i>→</i>
+            <div><span>2</span><strong>Canal</strong><small>Z-API / Meta</small></div>
+            <i>→</i>
+            <div><span>3</span><strong>Entrada durável</strong><small>webhook + inbox + job</small></div>
+            <i>→</i>
+            <div><span>4</span><strong>Core</strong><small>entende e decide</small></div>
+            <i>→</i>
+            <div><span>5</span><strong>Outbox</strong><small>persiste e ordena</small></div>
+            <i>→</i>
+            <div><span>6</span><strong>Entrega</strong><small>Safety Gate + WhatsApp</small></div>
+          </div>
+
+          <div class="scope-grid reveal">
+            <div class="scope-card scope-does">
+              <h3>O sistema faz</h3>
+              <ul>
+                <li>Entende intenção e contexto da conversa.</li>
+                <li>Aplica política comercial configurada.</li>
+                <li>Oferece slots reais e confirma agendamentos.</li>
+                <li>Registra estado, retry, métricas e auditoria.</li>
+              </ul>
+            </div>
+            <div class="scope-card scope-does-not">
+              <h3>O sistema não faz</h3>
+              <ul>
+                <li>Não permite que o LLM decida regras de negócio.</li>
+                <li>Não inventa horário, preço ou disponibilidade.</li>
+                <li>Não compartilha configuração entre clínicas.</li>
+                <li>Não envia automação sem validações de segurança.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="desenho" class="section architecture-viewer-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Visão navegável</span>
+              <h2>Desenho da solução</h2>
+            </div>
+            <p>
+              Quatro perspectivas complementares para entender a topologia, o runtime e as
+              features sem concentrar todas as relações em um único quadro.
+            </p>
+          </div>
+
+          <div class="diagram-shell reveal">
+            <div class="diagram-toolbar">
+              <div class="diagram-tabs" role="tablist" aria-label="Perspectivas da arquitetura">
+                <button
+                  id="tab-tech"
+                  class="diagram-tab is-active"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="diagram-panel"
+                  data-diagram="assets/architecture-01.svg"
+                  data-title="Arquitetura técnica e integrações"
+                  data-description="Plataforma, canais, workers, persistência e serviços externos."
+                >
+                  <span>01</span> Técnica
+                </button>
+                <button
+                  id="tab-conversation"
+                  class="diagram-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="diagram-panel"
+                  data-diagram="assets/architecture-02.svg"
+                  data-title="Conversa, LLMs e pipeline"
+                  data-description="O caminho micro de um turno, do webhook ao Safety Gate."
+                >
+                  <span>02</span> Conversa
+                </button>
+                <button
+                  id="tab-product"
+                  class="diagram-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="diagram-panel"
+                  data-diagram="assets/architecture-03.svg"
+                  data-title="Features e fontes de dados"
+                  data-description="Data lineage da Home e mapa das superfícies do produto."
+                >
+                  <span>03</span> Produto
+                </button>
+                <button
+                  id="tab-campaigns"
+                  class="diagram-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="diagram-panel"
+                  data-diagram="assets/architecture-04.svg"
+                  data-title="Campanhas e automações"
+                  data-description="Ofertas, reativação, aprovação humana, outbox e recorrências."
+                >
+                  <span>04</span> Campanhas
+                </button>
+              </div>
+              <button class="icon-button" type="button" data-open-diagram aria-label="Ampliar diagrama">
+                <span aria-hidden="true">⛶</span> Ampliar
+              </button>
+            </div>
+
+            <div id="diagram-panel" class="diagram-stage" role="tabpanel" aria-labelledby="tab-tech">
+              <div class="diagram-caption">
+                <div>
+                  <strong data-diagram-title>Arquitetura técnica e integrações</strong>
+                  <span data-diagram-description>
+                    Plataforma, canais, workers, persistência e serviços externos.
+                  </span>
+                </div>
+                <a data-open-svg href="assets/architecture-01.svg" target="_blank" rel="noreferrer">
+                  Abrir SVG <span aria-hidden="true">↗</span>
+                </a>
+              </div>
+              <div class="diagram-canvas">
+                <img
+                  data-diagram-image
+                  src="assets/architecture-01.svg"
+                  alt="Arquitetura técnica e integrações do SystemOps Core"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="diagram-legend reveal" aria-label="Legenda dos diagramas">
+            <strong>Legenda</strong>
+            <span><i class="legend-swatch legend-blue"></i> Aplicação e regras</span>
+            <span><i class="legend-swatch legend-purple"></i> Fila ou outbox</span>
+            <span><i class="legend-swatch legend-green"></i> Canal ou integração</span>
+            <span><i class="legend-swatch legend-orange"></i> Worker ou agendamento</span>
+            <span><i class="legend-cylinder"></i> Persistência</span>
+            <span><i class="legend-line legend-solid"></i> Chamada principal</span>
+            <span><i class="legend-line legend-dashed"></i> Dependência ou leitura</span>
+          </div>
+
+          <div class="diagram-guide reveal">
+            <div>
+              <span class="guide-number">1</span>
+              <p><strong>Leia da esquerda para a direita.</strong> Usuários e canais entram; processamento e dados ficam no centro; serviços externos ficam nas bordas.</p>
+            </div>
+            <div>
+              <span class="guide-number">2</span>
+              <p><strong>Use a numeração nas abas de fluxo.</strong> Ela representa a ordem real de execução e separa decisão, persistência e entrega.</p>
+            </div>
+            <div>
+              <span class="guide-number">3</span>
+              <p><strong>Linhas tracejadas não são o caminho principal.</strong> Elas indicam consulta, dependência ou integração opcional.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="arquitetura" class="section section-dark">
+        <div class="container">
+          <div class="section-heading heading-on-dark reveal">
+            <div>
+              <span class="section-kicker">Fundamentos</span>
+              <h2>Arquitetura atual</h2>
+            </div>
+            <p>
+              Um monólito modular com execução híbrida assíncrona: simples de operar como uma
+              aplicação, explícito nas fronteiras como um conjunto de serviços.
+            </p>
+          </div>
+
+          <div class="architecture-cards">
+            <article class="architecture-card reveal">
+              <span class="card-index">01</span>
+              <h3>Monólito modular</h3>
+              <p>Next.js hospeda UI, APIs e crons, enquanto Domain, Application, Core e Infrastructure mantêm responsabilidades separadas.</p>
+              <code>src/domain → application → core → infrastructure → app</code>
+            </article>
+            <article class="architecture-card reveal">
+              <span class="card-index">02</span>
+              <h3>Pipeline durável</h3>
+              <p>Webhooks persistem primeiro. Workers processam inbox e jobs; a entrega acontece pela outbox sem recomputar a conversa.</p>
+              <code>inbound_events → jobs → outbound_messages</code>
+            </article>
+            <article class="architecture-card reveal">
+              <span class="card-index">03</span>
+              <h3>Multi-tenant por design</h3>
+              <p>O tenant é resolvido pelo canal, sessão ou iteração explícita do cron antes de qualquer leitura ou escrita relevante.</p>
+              <code>clinicId em toda fronteira operacional</code>
+            </article>
+            <article class="architecture-card reveal">
+              <span class="card-index">04</span>
+              <h3>Decisão determinística</h3>
+              <p>Modelos classificam intenção e compõem linguagem. Agenda, reservas, handoff, retry e políticas são decididos por código testável.</p>
+              <code>LLM → entendimento | Core → ação</code>
+            </article>
+          </div>
+
+          <div class="layer-map reveal" aria-label="Camadas da aplicação">
+            <div class="layer-label">Fluxo de dependência</div>
+            <div class="layer layer-domain"><strong>Domain</strong><span>entidades, value objects, contratos</span></div>
+            <div class="layer-arrow">→</div>
+            <div class="layer layer-app"><strong>Application</strong><span>use cases, ports, jobs</span></div>
+            <div class="layer-arrow">→</div>
+            <div class="layer layer-core"><strong>Core</strong><span>conversa, IA, agenda</span></div>
+            <div class="layer-arrow">→</div>
+            <div class="layer layer-infra"><strong>Infrastructure</strong><span>DB, canais, gateways</span></div>
+            <div class="layer-arrow">→</div>
+            <div class="layer layer-ui"><strong>App</strong><span>UI, routes, crons</span></div>
+          </div>
+
+          <div class="responsibility-block reveal">
+            <div class="responsibility-title">
+              <span class="section-kicker">Responsabilidades</span>
+              <h3>Quem é responsável por quê</h3>
+            </div>
+            <div class="responsibility-table" role="table" aria-label="Responsabilidades dos componentes">
+              <div class="responsibility-row responsibility-head" role="row">
+                <span>Componente</span><span>Responsabilidade</span><span>Não é responsável por</span>
+              </div>
+              <div class="responsibility-row" role="row">
+                <code>App / Routes</code><span>Validar entrada, resolver contexto e delegar.</span><span>Regra conversacional ou acesso arbitrário ao banco.</span>
+              </div>
+              <div class="responsibility-row" role="row">
+                <code>ConversationOrchestrator</code><span>Coordenar o turno e aplicar decisões determinísticas.</span><span>Entregar mensagem diretamente ao provedor.</span>
+              </div>
+              <div class="responsibility-row" role="row">
+                <code>Intelligence</code><span>Classificar intenção e compor linguagem.</span><span>Reservar agenda, selecionar tenant ou autorizar handoff.</span>
+              </div>
+              <div class="responsibility-row" role="row">
+                <code>BookingService</code><span>Coordenar reserva, calendário e persistência.</span><span>Formatar resposta ou acessar Google Calendar fora do gateway.</span>
+              </div>
+              <div class="responsibility-row" role="row">
+                <code>Sender Worker</code><span>Ordenar, revalidar segurança, entregar e aplicar retry.</span><span>Recomputar a conversa ou alterar conteúdo editorial.</span>
+              </div>
+              <div class="responsibility-row" role="row">
+                <code>PostgreSQL</code><span>Estado do tenant, jornada, filas, outbox e métricas.</span><span>Substituir regras de domínio por triggers dispersos.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="fluxo" class="section flow-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Ponta a ponta</span>
+              <h2>Como uma mensagem atravessa o sistema</h2>
+            </div>
+            <p>O caminho crítico privilegia confirmação persistida, idempotência e separação entre decisão e entrega.</p>
+          </div>
+
+          <ol class="message-flow">
+            <li class="reveal"><span>01</span><div><strong>WhatsApp recebe</strong><p>Z-API é o canal principal; Meta Cloud API permanece como compatibilidade.</p></div></li>
+            <li class="reveal"><span>02</span><div><strong>Webhook resolve o tenant</strong><p>Autentica, elimina eco/grupo/status, persiste o evento e responde rápido.</p></div></li>
+            <li class="reveal"><span>03</span><div><strong>Worker reivindica o turno</strong><p>Normaliza mídia/áudio, aplica o modo de automação e obtém lease exclusivo da conversa.</p></div></li>
+            <li class="reveal"><span>04</span><div><strong>Orquestrador decide</strong><p>State Machine, IntentClassifier e regras determinísticas escolhem a ação real.</p></div></li>
+            <li class="reveal"><span>05</span><div><strong>Composer verbaliza</strong><p>O resultado permitido ganha tom editorial e pode ser combinado com mídia ou voz.</p></div></li>
+            <li class="reveal"><span>06</span><div><strong>Outbox confirma a intenção</strong><p>Conteúdo, ordem, dedupe e estado esperado são persistidos antes da entrega.</p></div></li>
+            <li class="reveal"><span>07</span><div><strong>Safety Gate entrega</strong><p>Sender revalida contexto, opt-out, caps e horário antes de chamar o canal.</p></div></li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="stack" class="section stack-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Tecnologias</span>
+              <h2>Stack da plataforma</h2>
+            </div>
+            <p>Escolhas orientadas a um produto SaaS multi-tenant, conversacional e operacionalmente enxuto.</p>
+          </div>
+
+          <div class="stack-grid">
+            <article class="stack-card reveal"><span class="stack-icon stack-black">N</span><div><small>Framework</small><h3>Next.js 16</h3><p>App Router, SSR, Route Handlers e Server Actions</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-blue">TS</span><div><small>Linguagem</small><h3>TypeScript 5.8</h3><p>Strict mode e contratos explícitos entre camadas</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-cyan">R</span><div><small>Interface</small><h3>React 19</h3><p>Server Components e experiências responsivas</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-green">PG</span><div><small>Dados</small><h3>Neon PostgreSQL</h3><p>Persistência serverless, filas e outbox duráveis</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-blue">D</span><div><small>ORM</small><h3>Drizzle ORM</h3><p>Schema tipado, queries e migrations reprodutíveis</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-teal">AI</span><div><small>Inteligência</small><h3>OpenAI</h3><p>Classificação, composição, Whisper e TTS</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-green">WA</span><div><small>Canal</small><h3>Z-API + Meta</h3><p>WhatsApp por clínica com adapter de canal</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-purple">V</span><div><small>Deploy</small><h3>Vercel</h3><p>Runtime, Blob, previews e agendamento de crons</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-blue">GC</span><div><small>Agenda</small><h3>Agenda interna + Google</h3><p>CalendarGateway selecionado por clínica</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-red">R</span><div><small>Email</small><h3>Resend</h3><p>Digests operacionais e alertas transacionais</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-purple">S</span><div><small>Observabilidade</small><h3>Sentry + traces</h3><p>Erros, logs estruturados e Decision Trace sanitizado</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-yellow">Vt</span><div><small>Qualidade</small><h3>Vitest</h3><p>Regras de negócio, contratos e replay isolado</p></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="tecnicas" class="section techniques-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Engenharia</span>
+              <h2>Técnicas utilizadas no desenvolvimento</h2>
+            </div>
+            <p>Práticas que reduzem acoplamento, protegem a operação e tornam mudanças auditáveis.</p>
+          </div>
+
+          <div class="techniques-grid">
+            <article class="technique reveal"><span>01</span><h3>Clean Architecture</h3><p>Domínio e aplicação dependem de contratos; adapters externos ficam nas bordas.</p></article>
+            <article class="technique reveal"><span>02</span><h3>Ports &amp; Adapters</h3><p>Canal, calendário, storage, TTS, push e IA são gateways substituíveis.</p></article>
+            <article class="technique reveal"><span>03</span><h3>Inbox / Outbox</h3><p>Eventos recebidos e intenções de envio têm trilha durável e retry independente.</p></article>
+            <article class="technique reveal"><span>04</span><h3>Idempotência</h3><p>Dedupe keys, claims, revisão de estado e reconciliação evitam efeitos duplicados.</p></article>
+            <article class="technique reveal"><span>05</span><h3>Config-first</h3><p>O que varia por clínica vive no banco; código mantém defaults e invariantes universais.</p></article>
+            <article class="technique reveal"><span>06</span><h3>State Machine</h3><p>Estado conversacional é persistido e nunca inferido por texto ou memória volátil.</p></article>
+            <article class="technique reveal"><span>07</span><h3>Saga de booking</h3><p>Reserva otimista, gateway de agenda e persistência coordenam o anti-double-booking.</p></article>
+            <article class="technique reveal"><span>08</span><h3>Safety by design</h3><p>Criptografia em repouso, isolamento de tenant, opt-out, caps e quiet hours.</p></article>
+            <article class="technique reveal"><span>09</span><h3>Replay sanitizado</h3><p>Cenários aprovados atravessam webhook, filas, orquestrador e sender em sandbox.</p></article>
+            <article class="technique reveal"><span>10</span><h3>Change control</h3><p>Branches focadas, commits pequenos, CI, preview e promoção develop → main.</p></article>
+          </div>
+
+          <div class="ownership-block reveal">
+            <div class="ownership-intro">
+              <span class="section-kicker">Single source of truth</span>
+              <h3>Cada dado tem um dono</h3>
+              <p>Se uma regra precisa ser alterada em mais de um lugar, a arquitetura está errada.</p>
+            </div>
+            <div class="ownership-table" role="table" aria-label="Fontes de verdade">
+              <div class="ownership-row ownership-head" role="row"><span>Informação</span><span>Dono canônico</span></div>
+              <div class="ownership-row" role="row"><span>Conteúdo editorial</span><code>playbook_versions</code></div>
+              <div class="ownership-row" role="row"><span>Operação do tenant</span><code>clinics</code></div>
+              <div class="ownership-row" role="row"><span>Capabilities e plano</span><code>clinic_modules</code></div>
+              <div class="ownership-row" role="row"><span>Serviço e pipeline</span><code>treatments</code></div>
+              <div class="ownership-row" role="row"><span>Tempo e timezone</span><code>ClinicTimezone</code></div>
+              <div class="ownership-row" role="row"><span>Agenda e reservas</span><code>BookingService + CalendarGateway</code></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="section features-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Produto</span>
+              <h2>Features existentes</h2>
+            </div>
+            <p>O conjunto de capacidades que liga aquisição, conversa, conversão e operação humana.</p>
+          </div>
+
+          <div class="feature-groups">
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>01</span><h3>Recepcionista com IA</h3></div>
+              <p class="feature-purpose">Transforma mensagens recebidas em atendimento comercial contextual.</p>
+              <ul><li>16 categorias de intenção</li><li>Debounce de mensagens</li><li>Temperatura de lead</li><li>Áudio via Whisper</li><li>Imagens, vídeos e documentos</li></ul>
+            </article>
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>02</span><h3>Agenda e booking</h3></div>
+              <p class="feature-purpose">Transforma interesse em agendamento validado e rastreável.</p>
+              <ul><li>Agenda interna própria</li><li>Google Calendar opt-in</li><li>Anti-double-booking</li><li>Reagendamento e cancelamento</li><li>Lembretes D-1</li></ul>
+            </article>
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>03</span><h3>Pipeline de conversão</h3></div>
+              <p class="feature-purpose">Define a sequência de conteúdo e qualificação por serviço.</p>
+              <ul><li>Etapas por tratamento</li><li>Vídeo e mídia educativa</li><li>Q&amp;A de qualificação</li><li>Captura de foto</li><li>Oferta de slots reais</li></ul>
+            </article>
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>04</span><h3>Inbox e handoff</h3></div>
+              <p class="feature-purpose">Permite supervisão e intervenção humana sem perder contexto.</p>
+              <ul><li>Atenção humana e IA ativa</li><li>Pausa e retomada manual</li><li>TTL de takeover</li><li>Push no navegador</li><li>Resposta manual pela outbox</li></ul>
+            </article>
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>05</span><h3>Campanhas</h3></div>
+              <p class="feature-purpose">Reativa uma audiência congelada após revisão humana obrigatória.</p>
+              <ul><li>Segmentação por não-fechamento</li><li>Rascunho por lead com IA</li><li>Revisão e aprovação humana</li><li>Modo ensaio</li><li>Caps e Safety Gate</li></ul>
+            </article>
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>06</span><h3>Follow-up e recuperação</h3></div>
+              <p class="feature-purpose">Retoma jornadas interrompidas por regras de tempo e status.</p>
+              <ul><li>Reengajamento automático</li><li>Recuperação de leads frios</li><li>Régua de cancelados</li><li>Pós-atendimento</li><li>Feedback de conversão</li></ul>
+            </article>
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>07</span><h3>Configuração e conteúdo</h3></div>
+              <p class="feature-purpose">Centraliza identidade, política, serviços, mídia e voz por clínica.</p>
+              <ul><li>Playbook versionado</li><li>Co-escritor e lint</li><li>Simulador Produção/Rascunho</li><li>Biblioteca no Vercel Blob</li><li>TTS multi-provider</li></ul>
+            </article>
+            <article class="feature-group reveal">
+              <div class="feature-group-header"><span>08</span><h3>Owner e operação</h3></div>
+              <p class="feature-purpose">Consolida onboarding, qualidade, saúde operacional e resultado financeiro.</p>
+              <ul><li>Clinic Blueprint</li><li>Qualidade da IA</li><li>Custos, planos e margem</li><li>Alertas operacionais</li><li>Digest diário por email</li></ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="glossario" class="section glossary-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Vocabulário</span>
+              <h2>Glossário do projeto</h2>
+            </div>
+            <p>Termos usados nos diagramas, no código e nas telas operacionais.</p>
+          </div>
+
+          <dl class="glossary-grid">
+            <div class="glossary-item reveal"><dt>Tenant / clínica</dt><dd>Unidade isolada de configuração e dados. No código atual, o identificador principal é <code>clinicId</code>.</dd></div>
+            <div class="glossary-item reveal"><dt>Lead</dt><dd>Pessoa que entra em contato pelo canal e percorre estados do funil comercial.</dd></div>
+            <div class="glossary-item reveal"><dt>Conversa</dt><dd>Histórico e contexto operacional associado a um lead, incluindo estado da IA e necessidade de atenção.</dd></div>
+            <div class="glossary-item reveal"><dt>Intent</dt><dd>Classificação estruturada do objetivo da mensagem, usada pelo código para escolher uma ação permitida.</dd></div>
+            <div class="glossary-item reveal"><dt>Pipeline</dt><dd>Sequência declarativa de conteúdo e qualificação configurada em um tratamento.</dd></div>
+            <div class="glossary-item reveal"><dt>Handoff / takeover</dt><dd>Transferência da conversa da IA para a equipe humana, manualmente ou por regra.</dd></div>
+            <div class="glossary-item reveal"><dt>Inbox event</dt><dd>Registro durável do evento bruto recebido antes de qualquer processamento conversacional.</dd></div>
+            <div class="glossary-item reveal"><dt>Job</dt><dd>Unidade de trabalho persistida no Postgres, reivindicada por um worker com retry controlado.</dd></div>
+            <div class="glossary-item reveal"><dt>Outbox</dt><dd>Registro da intenção de envio. Preserva conteúdo, ordem, dedupe e estado sem recomputar a conversa.</dd></div>
+            <div class="glossary-item reveal"><dt>Gateway</dt><dd>Contrato que isola um serviço externo ou uma implementação substituível, como calendário, canal ou storage.</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="section final-cta">
+        <div class="container final-cta-inner reveal">
+          <div>
+            <span class="section-kicker">Artefato editável</span>
+            <h2>Diagrama completo em formato editável</h2>
+            <p>O arquivo possui as quatro visões apresentadas nesta página e pode ser editado no diagrams.net ou Draw.io.</p>
+          </div>
+          <div class="final-actions">
+            <a class="button button-primary" href="downloads/systemops-current-architecture.drawio" download>Baixar .drawio</a>
+            <a class="button button-secondary" href="https://github.com/BrendonWalefy/systemops-sales-engine" target="_blank" rel="noreferrer">Abrir repositório ↗</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <div class="footer-brand">
+          <img src="assets/systemops-wordmark-text.png" alt="SystemOps" />
+          <span>Arquitetura da solução</span>
+        </div>
+        <p>Documentação técnica sanitizada · sem dados de clínicas ou credenciais.</p>
+      </div>
+    </footer>
+
+    <dialog class="diagram-dialog" data-diagram-dialog>
+      <div class="dialog-header">
+        <strong data-dialog-title>Arquitetura técnica e integrações</strong>
+        <button class="dialog-close" type="button" data-close-diagram aria-label="Fechar diagrama">×</button>
+      </div>
+      <div class="dialog-body">
+        <img data-dialog-image src="assets/architecture-01.svg" alt="Diagrama ampliado" />
+      </div>
+    </dialog>
+  </body>
+</html>

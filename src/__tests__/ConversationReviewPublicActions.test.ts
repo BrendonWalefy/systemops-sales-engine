@@ -35,7 +35,7 @@ function review(overrides: Record<string, unknown> = {}) {
   return {
     id: "review-1",
     status: "sent",
-    expiresAt: new Date("2026-08-01T00:00:00Z"),
+    expiresAt: new Date("2099-08-01T00:00:00Z"),
     excerpts: [baseExcerpt({ id: "exc-1" })],
     ...overrides,
   };
