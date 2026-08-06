@@ -1,12 +1,14 @@
 # SystemOps Core
 
-> Plataforma SaaS multi-tenant para atendimento comercial por WhatsApp, qualificação de leads, agenda, campanhas e operação humana assistida por IA.
+> Plataforma de inteligência comercial e operacional com IA que entende a demanda, organiza a operação, automatiza jornadas e otimiza conversão e receita.
 
 [Aplicação](https://app.systemops.com.br) · [Arquitetura navegável](https://brendonwalefy.github.io/systemops-sales-engine/) · [Diagrama editável](docs/architecture/diagrams/systemops-current-architecture.drawio)
 
 ## O que o produto faz
 
-O SystemOps recebe mensagens do WhatsApp, identifica a intenção do lead, aplica a configuração comercial da organização, consulta disponibilidade real e conduz a jornada até o agendamento. A equipe acompanha tudo pelo Inbox, assume casos sensíveis e usa a Home para acompanhar funil, agenda, receita e saúde operacional.
+O SystemOps conecta conversas, dados, agenda, campanhas e equipe em uma operação comercial única. A plataforma recebe mensagens do WhatsApp, identifica a intenção do lead, aplica a estratégia da organização, conduz a jornada até o agendamento e transforma cada interação em contexto operacional e oportunidade mensurável. A equipe supervisiona exceções pelo Inbox e usa a Home para acompanhar funil, agenda, receita e saúde da operação.
+
+O objetivo é dar às empresas capacidade para entender o que acontece na jornada comercial, organizar a execução, automatizar rotinas repetíveis e otimizar continuamente conversão, produtividade e crescimento de faturamento.
 
 Fluxo principal:
 
@@ -28,7 +30,7 @@ Modelos classificam intenção, transcrevem áudio e compõem texto. Código det
 
 ## Features atuais
 
-- Atendimento com IA: contexto persistido, classificação de intenção, texto, áudio e mídia.
+- Especialista comercial com IA: contexto persistido, classificação de intenção, qualificação e condução por texto, áudio e mídia.
 - Inbox e handoff: IA ativa/pausada, takeover humano, resposta manual e notificações.
 - Agenda: calendário interno, Google Calendar opt-in, bloqueios, reserva e prevenção de double booking.
 - Pipeline por serviço: conteúdo, vídeo, perguntas, coleta de foto e oferta de slots.
