@@ -10,7 +10,28 @@ Regenerar as imagens:
 python3 docs/architecture/diagrams/_gen_system_integrations.py
 python3 docs/architecture/diagrams/_gen_core_today.py
 python3 docs/architecture/diagrams/_gen_core_event_driven.py
+node docs/architecture/diagrams/_gen_systemops_current_drawio.mjs
 ```
+
+## Arquitetura atual editável no Draw.io
+
+[`systemops-current-architecture.drawio`](./systemops-current-architecture.drawio)
+é o desenho multipágina da arquitetura viva do produto. O arquivo possui quatro
+abas:
+
+1. arquitetura técnica e integrações internas/externas;
+2. microintegrações do runtime conversacional, LLMs e pipeline;
+3. features, fontes de verdade e data lineage da Home;
+4. campanhas de preço, reativação e automações recorrentes.
+
+O `.drawio` é gerado sem compressão para continuar versionável e pode ser
+editado diretamente no diagrams.net. Se o gerador for alterado, regenere o
+arquivo com o comando Node acima.
+
+A versão navegável para GitHub Pages vive em
+[`docs/solution-site`](../../solution-site/README.md). Ela apresenta as quatro
+abas como SVG, além dos princípios arquiteturais, stack, técnicas de engenharia
+e features do produto.
 
 ## 1. Integrações e tenancy atuais
 
