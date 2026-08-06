@@ -60,7 +60,7 @@ export class BookingService {
     heldReservationId?: string | null;
     // Obrigatório: sem isso não há como medir a conversão da IA — os 4 chamadores
     // deste serviço gravavam todos `source: "app"`, tornando a origem indistinguível.
-    // Ver docs/product/objetividade-conversacional-diagnostico.md §8.
+    // Ver docs/architecture/current.md (Agenda).
     origin: AppointmentOrigin;
   }): Promise<BookingResult> {
     const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null, heldReservationId = null, origin } = params;

@@ -8,7 +8,7 @@
 // Medição em produção (n=3.183 gaps entre mensagens consecutivas do mesmo lead):
 // mediana 0h, p75 1,1h, p90 17h. Com 4h, 17,2% das respostas de lead disparavam
 // "conversa nova"; com 24h, 5,9%.
-// Ver docs/product/plano-correcao-conversacional.md item #1.
+// Ver docs/architecture/current.md.
 
 import { describe, expect, it } from "vitest";
 import {

@@ -2,7 +2,7 @@
 
 /**
  * Card da Revisão de Conversas na página da clínica do owner
- * (docs/product/revisao-conversas-plano.md, seção 7). Padrão visual do
+ * (feature catalogada em docs/features.md). Padrão visual do
  * SetupStudyCard: rodada atual + status + respostas quando answered;
  * histórico compacto das rodadas anteriores. A curadoria acontece na
  * subpágina `revisao-conversas/[reviewId]`.

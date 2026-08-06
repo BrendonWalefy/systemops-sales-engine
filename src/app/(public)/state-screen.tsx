@@ -2,7 +2,7 @@
  * Tela de estado compartilhada das páginas públicas tokenizadas (expirado /
  * concluído / inválido). Nasceu na página de validação do estudo de setup
  * (ADR-002 Fase 2) e foi promovida para `(public)/` quando a Revisão de
- * Conversas clonou o padrão (docs/product/revisao-conversas-plano.md,
+ * Conversas reutiliza o padrão (feature catalogada em docs/features.md,
  * Apêndice B) — `validacao/[token]/state-screen.tsx` reexporta este módulo.
  */
 export function StateScreen({

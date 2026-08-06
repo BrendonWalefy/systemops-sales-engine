@@ -989,7 +989,7 @@ export default async function ClinicDetailPage({
                 )}
               </div>
 
-              {/* ── ZONA 1.6: REVISÃO DE CONVERSAS (docs/product/revisao-conversas-plano.md) ── */}
+              {/* ── ZONA 1.6: REVISÃO DE CONVERSAS (docs/features.md) ── */}
               <div style={{ display: "grid", gap: 16 }}>
                 {activeReview ? (
                   <ConversationReviewCard

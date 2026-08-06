@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * UI da página pública de revisão de conversas (docs/product/revisao-conversas-plano.md,
+ * UI da página pública de revisão de conversas (feature catalogada em docs/features.md,
  * seção 6 — copy final, não reescrever). Bolhas estilo WhatsApp, mobile-first,
  * mesmo dark theme/estilo inline de `validacao/[token]/validacao-ui.tsx`.
  */

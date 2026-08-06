@@ -8,7 +8,7 @@
 // default global de fato, mas duplicado e sem origem documentada. Este teste existe
 // para que a origem não se perca de novo.
 //
-// Ver docs/product/plano-correcao-conversacional.md.
+// Ver docs/architecture/current.md.
 
 import { describe, expect, it } from "vitest";
 import { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/ConversationOrchestrator";

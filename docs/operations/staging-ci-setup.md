@@ -1,61 +1,24 @@
-# Staging CI — Setup e Operação
+# Staging CI para migrations
 
-**Status:** Implementado — requer configuração de secrets e branch protection  
-**Criado em:** 2026-06-30  
-**Workflow:** `.github/workflows/migration-ci.yml`
+O workflow `.github/workflows/migration-ci.yml` valida toda alteração de schema em uma branch Neon descartável antes do merge.
 
----
+## Secrets necessários
 
-## O que o workflow faz
+| Secret | Origem |
+| --- | --- |
+| `NEON_PROJECT_ID` | Neon Project Settings |
+| `NEON_API_KEY` | Neon Account Settings |
+| `NEON_DB_USER` | Neon Connection Details |
 
-Em todo PR que toca `drizzle/*.sql` ou `src/infrastructure/db/schema.ts`:
+## Proteção de branch
 
-1. Cria branch Neon a partir do snapshot de produção
-2. Aplica a migration SQL no banco de staging
-3. Roda `npm run verify` (lint + typecheck + vitest) contra o banco de staging
-4. Destroi a branch Neon — mesmo se o job falhar (`if: always()`)
+Em `develop` e `main`, exija o check **Test migration on staging branch** para PRs que alterem schema/migrations. `develop` recebe integração; `main` recebe apenas promoção validada ou hotfix aprovado.
 
-PRs sem toque em schema não ativam o workflow (não há custo nem delay).
+## Operação
 
----
+- O branch Neon é temporário e deve ser removido mesmo quando a migration falha.
+- Dados do branch não podem ser exportados para logs ou artefatos públicos.
+- Falha no workflow bloqueia o merge; não contorne o check.
+- A branch de CI valida schema, mas não substitui QA do comportamento afetado.
 
-## Secrets necessários no GitHub
-
-Adicionar em **Settings → Secrets and variables → Actions**:
-
-| Secret | Como obter |
-|--------|------------|
-| `NEON_PROJECT_ID` | Neon dashboard → Project Settings → General → Project ID |
-| `NEON_API_KEY` | Neon dashboard → Account Settings → API Keys → Generate new key |
-| `NEON_DB_USER` | Neon dashboard → Connection Details → User (geralmente `neondb_owner`) |
-
-O `DATABASE_URL` já existe como secret (usado pelo workflow `run-migration.yml`) e não precisa ser alterado.
-
----
-
-## Branch protection (obrigatório para o status check bloquear merge)
-
-1. GitHub → Settings → Branches → Add rule para `main`
-2. Em **Require status checks to pass before merging**, adicionar:
-   - `Test migration on staging branch`
-3. Marcar **Require branches to be up to date before merging**
-
-Sem essa configuração, o workflow roda mas não bloqueia o merge.
-
----
-
-## Validação após configurar
-
-Para confirmar que está funcionando:
-
-1. Criar um PR que toca qualquer arquivo em `drizzle/` (pode ser um arquivo de teste)
-2. Verificar que o workflow `Migration CI` aparece nos checks do PR
-3. Confirmar que o branch Neon é criado e destruído no Neon dashboard
-
----
-
-## Referências
-
-- `docs/operations/backlog-staging-ci-migrations.md` — contexto e motivação
-- `docs/architecture/adr/adr-001-clinic-to-organization-rename.md` — caso de uso que desbloqueou esta demanda
-- Neon Branching Actions: https://neon.tech/docs/guides/branching-github-actions
+Referências: [Neon branching with GitHub Actions](https://neon.com/docs/guides/branching-github-actions) e [Migrations](migrations-baseline.md).

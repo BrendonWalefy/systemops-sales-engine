@@ -2,7 +2,7 @@
 
 /**
  * UI de curadoria da Revisão de Conversas (owner)
- * (docs/product/revisao-conversas-plano.md, seções 5 e 7).
+ * Feature catalogada em docs/features.md.
  *
  * V1 do picker: lista de conversas elegíveis → expande mensagens → seleciona
  * intervalo contíguo (clique no início e no fim) → "Adicionar trecho". Sem

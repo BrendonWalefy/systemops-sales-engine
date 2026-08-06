@@ -18,6 +18,10 @@ scripts/demo-media/
 
 # Transcripts de teste / exports de conversa com PII de leads — nunca versionar
 docs/testing/
+docs/private/
+docs/client-data/
+artifacts/config-audit/
+artifacts/conversation-engine-validation/
 # Mídia local de clínicas reais (sobe pro Blob via scripts/upload-nc-media.ts)
 scripts/nc-media/
 

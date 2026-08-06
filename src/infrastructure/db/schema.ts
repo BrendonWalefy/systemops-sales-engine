@@ -191,7 +191,7 @@ export const appointmentSourceEnum = pgEnum("appointment_source", [
 // agenda, fluxo de sinal), o que torna impossível medir a conversão da IA.
 // Nullable de propósito: linhas anteriores a esta coluna ficam null =
 // "origem desconhecida (histórico)" — não devem ser contadas como conversão
-// de nenhum caminho. Ver docs/product/objetividade-conversacional-diagnostico.md §8.
+// de nenhum caminho. Ver docs/architecture/current.md.
 export const appointmentOriginEnum = pgEnum("appointment_origin", [
   "ai_conversation",
   "operator_inbox",
@@ -219,7 +219,7 @@ export const setupStudyStatusEnum = pgEnum("setup_study_status", [
   "expired",   // Prazo de resposta esgotado sem ação
 ]);
 
-// Revisão de Conversas (docs/product/revisao-conversas-plano.md): estados do
+// Revisão de Conversas (feature catalogada em docs/features.md): estados do
 // ciclo de vida de uma rodada de curadoria de trechos do shadow mode enviada
 // ao responsável da clínica. Enum próprio — não reutiliza setupStudyStatusEnum
 // (não existe "applied" aqui; a aplicação do feedback é manual no playbook).
@@ -390,7 +390,7 @@ export const organizations = pgTable("organizations", {
   // mesmo lead é de 17h. Com o limite antigo (4h/6h), 17,2% das respostas de lead
   // disparavam "conversa nova" e recebiam a saudação de abertura no meio do
   // atendimento. Em 24h isso cai para 5,9%.
-  // Ver docs/product/plano-correcao-conversacional.md item #1.
+  // Ver docs/architecture/current.md.
   conversationRestartHours: integer("conversation_restart_hours")
     .notNull()
     .default(24),
@@ -1708,7 +1708,7 @@ export const setupStudies = pgTable(
   }),
 );
 
-// Revisão de Conversas (docs/product/revisao-conversas-plano.md): rodadas de
+// Revisão de Conversas (feature catalogada em docs/features.md): rodadas de
 // curadoria de trechos reais do shadow mode enviadas ao responsável da
 // clínica para feedback (👍 Ficou bom / ✏️ Eu ajustaria) antes do go-live.
 // Snapshot congelado: os trechos (jsonb) são cópias imutáveis das mensagens

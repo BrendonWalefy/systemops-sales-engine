@@ -4,7 +4,7 @@
  * A implementação foi extraída para o módulo compartilhado
  * `src/application/public-link/access-token.ts` quando a Revisão de Conversas
  * clonou o padrão de página pública tokenizada
- * (docs/product/revisao-conversas-plano.md, Apêndice A). Este arquivo é um
+ * (feature catalogada em docs/features.md). Este arquivo é um
  * re-export que preserva o contrato original — imports e testes existentes
  * continuam funcionando sem alteração; hash e formato do token não mudaram.
  */

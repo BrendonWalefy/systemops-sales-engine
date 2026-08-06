@@ -100,7 +100,7 @@ function graph(pageWidth = 1920, pageHeight = 1200) {
 
 function page1() {
   const g = graph(1920, 1200);
-  g.addVertex("p1-title", titleLabel("SYSTEMOPS CORE • ESTADO ATUAL", "01 — Arquitetura técnica e integrações", "Monólito modular Next.js em Vercel • pipeline híbrido assíncrono • multi-tenant no Neon/PostgreSQL • atualizado em 05/08/2026"), 40, 25, 1840, 75, STYLES.title);
+  g.addVertex("p1-title", titleLabel("SYSTEMOPS CORE • ESTADO ATUAL", "01 — Arquitetura técnica e integrações", "Monólito modular Next.js em Vercel • pipeline híbrido assíncrono • multi-tenant no Neon/PostgreSQL • atualizado em 06/08/2026"), 40, 25, 1840, 75, STYLES.title);
 
   g.addVertex("p1-vercel", "PLATAFORMA SYSTEMOPS • VERCEL", 260, 120, 1290, 990, STYLES.sectionBlue, "containers");
   g.addVertex("p1-runtime", "RUNTIME NEXT.JS 16 / TYPESCRIPT 5.8 / REACT 19", 300, 155, 1210, 190, STYLES.section, "containers");
@@ -130,7 +130,7 @@ function page1() {
   g.addVertex("p1-channel", label("Channel adapters", "Z-API principal • Meta compat.", "PORT"), 500, 580, 190, 85, STYLES.green);
 
   g.addVertex("p1-db", label("Neon PostgreSQL", "Drizzle ORM / Drizzle Kit", "DATABASE"), 335, 800, 260, 185, STYLES.datastore);
-  g.addVertex("p1-runtime-data", label("Jornada", "clinics • leads • conversations • messages • conversation_states"), 635, 790, 240, 100, STYLES.blue);
+  g.addVertex("p1-runtime-data", label("Jornada", "organizations • leads • conversations • messages • conversation_states"), 635, 790, 240, 100, STYLES.blue);
   g.addVertex("p1-config-data", label("Configuração", "playbook_versions • treatments • pipelineSteps • clinic_modules • professionals"), 905, 790, 260, 100, STYLES.teal);
   g.addVertex("p1-agenda-data", label("Agenda e conteúdo", "appointments • calendar_blocks • media_assets • price_campaigns"), 1195, 790, 260, 100, STYLES.green);
   g.addVertex("p1-ops-data", label("Operação durável", "inbound_events • jobs • outbound_messages • follow_ups • traces"), 635, 925, 350, 95, STYLES.purple);
@@ -138,7 +138,7 @@ function page1() {
 
   g.addVertex("p1-zapi", label("Z-API", "canal principal por clínica", "WHATSAPP"), 30, 540, 180, 75, STYLES.green);
   g.addVertex("p1-meta", label("Meta Cloud API", "compatibilidade + HMAC", "WHATSAPP"), 30, 645, 180, 75, STYLES.green);
-  g.addVertex("p1-openai", label("OpenAI", "classificação • composição • Whisper • TTS", "AI"), 1615, 180, 235, 95, STYLES.teal);
+  g.addVertex("p1-openai", label("OpenAI + Anthropic", "classificação • composição • análise • Whisper", "AI"), 1615, 180, 235, 95, STYLES.teal);
   g.addVertex("p1-tts", label("TTS Providers", "OpenAI • Google Neural2 • ElevenLabs • Fal/Kokoro", "VOICE"), 1615, 315, 235, 95, STYLES.purple);
   g.addVertex("p1-gcal", label("Google Calendar", "gateway opt-in + watch", "CALENDAR"), 1615, 450, 235, 85, STYLES.blue);
   g.addVertex("p1-blob", label("Vercel Blob", "mídia, uploads e áudio TTS", "STORAGE"), 1615, 575, 235, 85, STYLES.dark);
@@ -236,8 +236,8 @@ function page2() {
   g.addEdge("p2-domain", "p2-outcome", "efeitos", STYLES.edgeDashed);
   g.addEdge("p2-outbound", "p2-outcome", "outbox", STYLES.edgeDashed);
 
-  g.addVertex("p2-cfg", label("Config por clínica", "clinics • modules • active playbook • treatments", "NEON"), 75, 1120, 300, 85, STYLES.datastore);
-  g.addVertex("p2-ai", label("OpenAI", "IntentClassifier • ResponseComposer • Whisper", "AI"), 420, 1120, 300, 85, STYLES.teal);
+  g.addVertex("p2-cfg", label("Config por organização", "organizations • modules • active playbook • treatments", "NEON"), 75, 1120, 300, 85, STYLES.datastore);
+  g.addVertex("p2-ai", label("LLM providers", "OpenAI • Anthropic • Whisper", "AI"), 420, 1120, 300, 85, STYLES.teal);
   g.addVertex("p2-cal", label("CalendarGateway", "agenda interna ou Google Calendar opt-in", "CALENDAR"), 765, 1120, 300, 85, STYLES.blue);
   g.addVertex("p2-storage", label("Vercel Blob + TTS", "mídia de pipeline, uploads e voz", "MEDIA"), 1110, 1120, 300, 85, STYLES.purple);
   g.addVertex("p2-channel-out", label("Channel adapter", "Z-API principal / Meta compatibilidade", "WHATSAPP"), 1455, 1120, 300, 85, STYLES.green);
@@ -298,7 +298,7 @@ function page3() {
     ["inbox", "Inbox + handoff", "Inbox snapshot • manual send • ConversationStateMachine", "leads • conversations • messages • conversation_states • outbound_messages", "IA ativa / pausada • chat • Web Push", STYLES.red],
     ["agenda2", "Agenda", "BookingService • SlotReservationService • CalendarGateway • ClinicTimezone", "appointments • calendar_blocks • professionals • treatments", "agenda interna ou Google Calendar", STYLES.green],
     ["pipe", "Pipeline", "ConversationOrchestrator • PipelineMediaRouter • guided actions", "treatments.pipelineSteps • media_assets • playbook_versions", "vídeo → Q&A → foto → slots", STYLES.teal],
-    ["settings", "Configurações", "publicação atômica • lint • module gates • autosave", "clinics • clinic_modules • playbook_versions • treatments • professionals", "runtime configurado sem hardcode", STYLES.blue],
+    ["settings", "Configurações", "publicação atômica • lint • module gates • autosave", "organizations • clinic_modules • playbook_versions • treatments • professionals", "runtime configurado sem hardcode", STYLES.blue],
     ["owner2", "Owner / operação", "Blueprint • saúde • custos • qualidade • onboarding", "organizations • memberships • usage_costs • daily_metrics • snapshots", "go-live • alertas • margem • Sentry/Resend", STYLES.purple],
   ];
   rows.forEach(([id, surface, service, source, result, style], index) => {
@@ -379,14 +379,68 @@ function page4() {
   return g.toXml();
 }
 
+function page5() {
+  const g = graph(1920, 1220);
+  g.addVertex("p5-title", titleLabel("EVOLUÇÃO ORIENTADA POR MÉTRICAS", "05 — Arquitetura alvo e gatilhos de escala", "SQS antes de microsserviços • Strangler por bounded context • Kafka somente para streaming e replay em escala"), 40, 25, 1840, 75, STYLES.title);
+
+  g.addVertex("p5-now-sec", "HOJE • SIMPLES E DURÁVEL", 45, 125, 435, 885, STYLES.sectionBlue, "containers");
+  g.addVertex("p5-gates-sec", "GATES • MEDIR ANTES DE MIGRAR", 515, 125, 430, 885, STYLES.sectionOrange, "containers");
+  g.addVertex("p5-target-sec", "ALVO INCREMENTAL • NÃO É BIG BANG", 980, 125, 895, 885, STYLES.section, "containers");
+
+  g.addVertex("p5-vercel", label("Next.js / Vercel", "UI • APIs • crons", "MONOLITH"), 95, 200, 335, 90, STYLES.dark);
+  g.addVertex("p5-pg", label("Neon PostgreSQL", "dados + config + inbox + jobs + outbox", "SYSTEM OF RECORD"), 95, 350, 335, 135, STYLES.datastore);
+  g.addVertex("p5-workers", label("Workers lógicos", "message.process • message.send • automations", "CRON"), 95, 545, 335, 105, STYLES.orange);
+  g.addVertex("p5-patterns", label("Garantias existentes", "atomicidade • dedupe • leases • retry • DLQ", "KEEP"), 95, 710, 335, 105, STYLES.purple);
+  g.addEdge("p5-vercel", "p5-pg", "Drizzle", STYLES.edgeBlue);
+  g.addEdge("p5-pg", "p5-workers", "claim", STYLES.edgeBlue);
+  g.addEdge("p5-workers", "p5-patterns", "preserva");
+  g.addVertex("p5-now-note", `<b>Decisão atual</b><br>Sem Kafka e sem microsserviços. Um deploy e um banco reduzem custo, latência de coordenação e risco operacional.`, 95, 855, 335, 115, STYLES.note);
+
+  g.addVertex("p5-queue-gate", label("Gate 1 • Fila", "p95 > 30s • backlog > 5min • contenção no OLTP", "SQS"), 565, 205, 330, 115, STYLES.yellow);
+  g.addVertex("p5-worker-gate", label("Gate 2 • Runtime", "escala, SLO ou deploy independente", "WORKERS"), 565, 370, 330, 115, STYLES.orange);
+  g.addVertex("p5-service-gate", label("Gate 3 • Serviço", "owner + dados + contrato + rollback claros", "STRANGLER"), 565, 535, 330, 115, STYLES.blue);
+  g.addVertex("p5-kafka-gate", label("Gate 4 • Streaming", "100+ eventos/s • replay • 3–5 consumers", "KAFKA"), 565, 700, 330, 115, STYLES.red);
+  g.addVertex("p5-gate-note", `<b>Clientes não são o único sinal</b><br>Volume, lag, contenção, blast radius e ownership decidem. Dez tenants intensivos podem exigir evolução antes de cem tenants leves.`, 565, 855, 330, 115, STYLES.note);
+
+  g.addVertex("p5-api", label("Vercel Web / API", "auth • tenant • comandos", "EDGE"), 1030, 190, 230, 85, STYLES.dark);
+  g.addVertex("p5-process", label("SQS FIFO", "message.process + DLQ", "QUEUE"), 1320, 180, 210, 95, STYLES.queue);
+  g.addVertex("p5-conv", label("Conversation Worker", "core + LLM + booking", "SERVICE"), 1600, 180, 220, 95, STYLES.blue);
+
+  g.addVertex("p5-outbox", label("Transactional Outbox", "estado + evento confirmado", "POSTGRES"), 1030, 350, 230, 95, STYLES.datastore);
+  g.addVertex("p5-send", label("SQS FIFO", "message.send + DLQ", "QUEUE"), 1320, 350, 210, 95, STYLES.queue);
+  g.addVertex("p5-delivery", label("Delivery Worker", "safety + canal + TTS", "SERVICE"), 1600, 350, 220, 95, STYLES.green);
+
+  g.addVertex("p5-autoq", label("SQS Standard", "automations + DLQ", "QUEUE"), 1030, 535, 230, 95, STYLES.queue);
+  g.addVertex("p5-auto", label("Campaign Worker", "follow-up + campanhas", "SERVICE"), 1320, 535, 210, 95, STYLES.orange);
+  g.addVertex("p5-events", label("EventBridge / SNS", "eventos confirmados", "FAN-OUT"), 1600, 535, 220, 95, STYLES.purple);
+
+  g.addVertex("p5-data", label("Neon PostgreSQL", "system of record compartilhado no primeiro estágio", "DATA"), 1030, 720, 500, 105, STYLES.datastore);
+  g.addVertex("p5-consumers", label("Consumers independentes", "métricas • alertas • integrações", "ASYNC"), 1600, 720, 220, 105, STYLES.teal);
+
+  g.addEdge("p5-api", "p5-process", "command", STYLES.edgeBlue);
+  g.addEdge("p5-process", "p5-conv", "conversationId", STYLES.edgeBlue);
+  g.addEdge("p5-conv", "p5-outbox", "commit", STYLES.edgeBlue, [[1840, 300], [1000, 300], [1000, 395]]);
+  g.addEdge("p5-outbox", "p5-send", "publish", STYLES.edgeBlue);
+  g.addEdge("p5-send", "p5-delivery", "ordered", STYLES.edgeBlue);
+  g.addEdge("p5-autoq", "p5-auto", "jobs", STYLES.edgeBlue);
+  g.addEdge("p5-auto", "p5-events", "events", STYLES.edgeDashed);
+  g.addEdge("p5-events", "p5-consumers", "fan-out", STYLES.edgeDashed);
+  g.addEdge("p5-conv", "p5-data", "state", STYLES.edgeDashed);
+  g.addEdge("p5-auto", "p5-data", "targets", STYLES.edgeDashed);
+
+  g.addVertex("p5-target-note", `<b>Invariantes</b><br>Tenant antes de dados • inbox/outbox transacional • consumer idempotente • FIFO por conversa • DLQ auditada • LLM não decide ação final.`, 1030, 870, 790, 100, STYLES.note);
+  return g.toXml();
+}
+
 const pages = [
   ["systemops-tech", "01 • Arquitetura técnica", page1()],
   ["systemops-conversation", "02 • Conversa e LLMs", page2()],
   ["systemops-product", "03 • Features e dados", page3()],
   ["systemops-campaigns", "04 • Campanhas e automações", page4()],
+  ["systemops-target", "05 • Evolução e escala", page5()],
 ];
 
-const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="Electron" modified="2026-08-05T12:00:00.000Z" agent="SystemOps architecture generator" version="26.0.16" type="device" compressed="false" pages="${pages.length}">${pages.map(([id, name, body]) => `<diagram id="${id}" name="${escapeXml(name)}">${body}</diagram>`).join("")}</mxfile>\n`;
+const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="Electron" modified="2026-08-06T12:00:00.000Z" agent="SystemOps architecture generator" version="26.0.16" type="device" compressed="false" pages="${pages.length}">${pages.map(([id, name, body]) => `<diagram id="${id}" name="${escapeXml(name)}">${body}</diagram>`).join("")}</mxfile>\n`;
 
 writeFileSync(OUTPUT, xml, "utf8");
 console.log(`Generated ${OUTPUT}`);

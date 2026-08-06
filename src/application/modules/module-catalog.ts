@@ -40,7 +40,7 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     description: "IA responde em áudio usando voz sintética OpenAI — 3 modos configuráveis pela clínica",
     // Liberado já no Start: voz robotizada (OpenAI, mais barata) como diferencial
     // real do plano, configurável em 3 modos (impact/mix/full) pelo próprio painel
-    // da clínica, igual ao seletor do B-WAVE. Ver docs/product/pricing-strategy.md.
+    // da organização, igual ao seletor do B-WAVE.
     plans: ["start", "growth", "scale", "enterprise"],
   },
   {
@@ -49,14 +49,14 @@ export const MODULE_CATALOG: ModuleDefinition[] = [
     description: "Voz hiper-realista via ElevenLabs — atendimento que soa humano no WhatsApp",
     // avancado (Growth) inclui B-WAVE em "impact" — voz premium nos momentos de
     // conversão — ver GROWTH_VALIDATION_BWAVE_CONFIG em plan-presets.ts e
-    // docs/product/pricing-strategy.md §6.2. "full" fica como opt-in por clínica.
+    // "full" fica como opt-in por organização.
     plans: ["growth", "scale", "enterprise"],
   },
   {
     key: "revenue_pipeline",
     // Retirado do catálogo vendável: cálculo hoje é estático
     // (organizations.monthlyRevenueBrl), não receita em tempo real.
-    // Reativar comercialmente só após docs/operations/billing-roadmap.md Fase 5.
+    // Reativar comercialmente somente após billing e entitlements maduros.
     label: "Pipeline de Receita",
     description: "Dashboard financeiro com receita potencial e confirmada",
     plans: ["enterprise"],

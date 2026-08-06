@@ -13,7 +13,7 @@
 //
 // O operador humano — o modelo que estamos automatizando — responde
 // "Próximo horário disponível no sábado seria 01.08 às 8:00 tudo bem ?".
-// Ver docs/product/plano-correcao-conversacional.md item #18.
+// Ver docs/architecture/current.md (Agenda).
 
 import { describe, expect, it } from "vitest";
 import {
