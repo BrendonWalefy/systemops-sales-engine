@@ -14,7 +14,7 @@
 // A oferta das 20:10 já tinha vencido (TTL de 15 min, o lead voltou 59 min
 // depois), então a mensagem virou nova busca — que devolveu exatamente um
 // horário e mesmo assim pediu um número. Frequência medida: 1 de 19 ofertas
-// numéricas do corpus. Ver docs/product/plano-correcao-conversacional.md #6.
+// numéricas do corpus. Ver docs/architecture/current.md.
 
 import { describe, expect, it } from "vitest";
 import {

@@ -1,53 +1,36 @@
-# SystemOps Docs
+# Documentação do SystemOps
 
-Esta pasta contém apenas documentação que ainda deve orientar manutenção,
-operação, arquitetura ou produto. Históricos de execução, prompts entregues a
-agentes e planos já implementados não devem voltar a ser tratados como fonte de
-verdade.
+Este diretório contém somente documentação que orienta o produto, a arquitetura e a operação atuais. O código e o schema prevalecem quando houver divergência.
 
-## Arquitetura
+## Comece aqui
 
-- [Arquitetura atual](architecture/current.md)
-- [Diagramas de arquitetura](architecture/diagrams/README.md)
-- [Arquitetura alvo 2.0](architecture/target-architecture.md)
-- [Infraestrutura de mídia](architecture/media-infrastructure.md)
-- [Fontes de verdade por tipo de dado](architecture/sources-of-truth.md)
+| Documento | Responde a |
+| --- | --- |
+| [Features](features.md) | O que o produto já entrega? |
+| [Arquitetura atual](architecture/current.md) | Como o sistema funciona hoje? |
+| [Arquitetura alvo](architecture/target-architecture.md) | Quais patterns existem e quando evoluir? |
+| [Diagramas](architecture/diagrams/README.md) | Como visualizar e editar a solução? |
+| [GitHub Pages](solution-site/README.md) | Como gerar e publicar o portal visual? |
 
-### ADRs
+## Engenharia
 
-- [ADR-001: Renomear domínio Clinic → Organization](architecture/adr/adr-001-clinic-to-organization-rename.md)
+- [Fontes de verdade](architecture/sources-of-truth.md): dono de cada categoria de dado e regra.
+- [Replay e Decision Trace](architecture/replay-and-decision-trace.md): validação E2E, privacidade e observabilidade de decisões.
+- [Contrato de fidelidade do replay](architecture/replay-fidelity-contract.md): critérios para uma execução representar produção.
+- [Change control](operations/change-control.md): branches, testes, deploy e rollback.
+- [Migrations](operations/migrations-baseline.md): baseline e fluxo seguro de schema.
+- [Staging CI](operations/staging-ci-setup.md): teste de migrations em branch Neon descartável.
+- [Controle de spend Vercel](operations/vercel-pro-spend-control.md): limites e alertas da plataforma.
 
 ## Operação
 
-- [Change control e deploy safety](operations/change-control.md)
-- [Onboarding de clínica](operations/onboarding-clinica.md)
-- [Baseline de migrations](operations/migrations-baseline.md)
-- [Controle de spend Vercel Pro](operations/vercel-pro-spend-control.md)
-- [Backlog: Staging com CI para migrations](operations/backlog-staging-ci-migrations.md)
+- [Onboarding de organização](operations/onboarding-clinica.md): criação, canal, validação e ativação.
+- [LGPD e dados de saúde](compliance/lgpd-healthcare.md): requisitos mínimos de privacidade.
 
-## Produto e Expansão
+## Política de manutenção
 
-- [Estratégia de calendário](product/calendar-strategy.md)
-- [Prontidão multi-segmento](product/multi-segment.md)
-- [Posicionamento](product/positioning.md)
-- [Controle de custos](product/cost-control.md)
-- [Playbook comercial](product/sales-playbook.md)
-
-## Compliance
-
-- [LGPD e saúde](compliance/lgpd-healthcare.md)
-
-## Guias para agentes
-
-- [Template de mapeamento por clínica](agent-guides/clinic-playbook-template.md)
-- [SaaS UX Strategy](agent-guides/saas-ux-strategy.md)
-
-## O que não deve voltar
-
-- Prompts soltos de implementação que descrevem uma entrega já feita
-- Handoffs antigos com checklist concluído
-- Roadmaps de piloto que contradizem a produção atual
-- Exec logs, TODOs de sprint e checklists já consumidos
-- Diagramas XML antigos quando a fonte viva já está em Markdown ou scripts
-- Configuração de clínica por env
-- Worktrees ou caches locais de ferramentas de IA
+- Estado atual fica nos documentos acima, nunca em handoff, prompt ou relatório pontual.
+- Planos concluídos e auditorias temporárias devem virar código, teste ou decisão resumida; depois são removidos.
+- Conteúdo, mídia, snapshots e conversas de clientes nunca são versionados.
+- Estimativas de custo registram data, região, premissas e links oficiais.
+- Toda mudança estrutural atualiza `README.md`, `architecture/current.md`, o diagrama e o GitHub Pages no mesmo PR.

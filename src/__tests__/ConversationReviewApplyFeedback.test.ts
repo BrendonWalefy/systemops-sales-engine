@@ -1,6 +1,6 @@
 /**
  * Testes do núcleo puro de aplicação de feedback da Revisão de Conversas
- * (docs/product/revisao-conversas-plano.md, seções 6 e 8 — PR 2). Mesmo
+ * (feature catalogada em docs/features.md). Mesmo
  * padrão de `ConversationReviewBuildExcerpt.test.ts`: builder puro testado
  * sem tocar o banco.
  */

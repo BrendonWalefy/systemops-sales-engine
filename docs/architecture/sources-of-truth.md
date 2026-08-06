@@ -1,204 +1,75 @@
-# Sources of Truth — Mapa de Donos
+# Fontes de verdade
 
-Atualizado em 2026-07-26.
+Atualizado em 2026-08-06.
 
-> Este doc mapeia **qual tabela** é dona de **qual categoria**. Para a camada mais
-> fina — onde o **mesmo fato** ainda vive em mais de um campo hoje, e a fórmula de 3
-> camadas para onboarding com mínimo de erro — veja
-> [`config-ownership-audit.md`](./config-ownership-audit.md).
+> Se um fato precisa ser alterado em mais de um lugar, o ownership está errado.
 
-## Regra central
+## Mapa de donos
 
-**Se você precisar mudar uma regra em mais de um lugar, a arquitetura está errada.**
-
-Cada tipo de informação tem um único dono. A duplicação mais perigosa é entre:
-
-- código determinístico e prompt;
-- `clinics` e `playbook_versions`;
-- `clinic_modules` e flags soltas em outros lugares.
-
-## 1. Conteúdo editorial
-
-**Dono:** `playbook_versions`  
-**Porta de acesso:** `resolveActiveEditorialConfig(clinicId)`
-
-Aqui vivem:
-
-- tom de voz;
-- especialidade apresentada ao lead;
-- política comercial;
-- objeções;
-- playbook livre;
-- biblioteca de mídia;
-- procedimentos expostos ao LLM.
-
-O código injeta esse conteúdo em runtime. O prompt **não** deve reescrever como
-texto fixo a política comercial, o tom ou a identidade da clínica.
-
-Invariantes de publicação:
-
-- cada clínica possui no máximo uma versão `active`, garantida por índice único;
-- a troca de versão arquiva e ativa atomicamente;
-- `notes` aceita nuance editorial, mas publicação bloqueia preço concreto e
-  comandos de mídia, gatilho ou sequenciamento que pertencem a campos
-  estruturados/pipeline;
-- publicar não replica conteúdo editorial para `organizations`: produção e
-  simulador resolvem a mesma versão ativa.
-
-## 2. Configuração operacional do tenant
-
-**Dono:** `clinics`
-
-Campos centrais lidos em runtime:
-
-| Campo | Consumidor principal | Papel |
+| Categoria | Dono canônico | Acesso principal |
 | --- | --- | --- |
-| `timezone` | `ClinicTimezone` | Conversão local e saudação |
-| `businessHours` | `SlotEngine` | Disponibilidade |
-| `defaultAppointmentDurationMinutes` | `ConversationOrchestrator` | Duração padrão |
-| `postAppointmentBufferMinutes` | `SlotEngine` | Buffer pós-atendimento |
-| `outsideHoursExceptionEnabled` | orquestrador / handoff | Opt-in para solicitar análise humana fora do expediente |
-| `takeoverTtlHours` | orquestrador / rotas inbox | Retomada após handoff |
-| `menuItems` | orquestrador / simulate | Menu conversacional |
-| `greetingMessage` | menu / playbook / simulate | Saudação base |
-| `autoReplyEnabled` | policy de automação | Liga/desliga a IA |
-| `calendarMode` | `resolveCalendarGateway()` | Fonte de verdade da agenda |
-| `aiContextWindowMessages` | `IntentClassifier` + `ResponseComposer` | Janela única de histórico para decisão e redação; `null` usa o default do código |
-| `pipelineQaDefaultMaxTurns` | `ConversationOrchestrator` | Limite padrão de Q&A quando a etapa do tratamento não declara `maxTurns` |
-| `googleCalendarId` | gateway Google | Integração opt-in |
-| `zapi*`, `meta*` | channel adapters / auth de webhook | Credenciais do canal por clínica; `metaAppSecret` autentica o corpo bruto |
-| `specialty` | prompts e UI | Contexto humano do negócio |
-| `segment` | onboarding / expansão | Tipo de operação |
-| `serviceNoun` | UI / playbook | Terminologia por segmento |
-| `monthlyRevenueBrl`, `billingStartedAt`, `plan` | owner finance / blueprint | Estado comercial |
-| `calendarChannelId`, `calendarSyncToken` | Google webhook / renew cron | Sync com Google |
+| Tenant e operação | `organizations` | entidade `Clinic`/repositório, enquanto a nomenclatura interna é compatível |
+| Capabilities e voz | `clinic_modules` | `module-gate` e resolver de voz |
+| Conteúdo editorial | `playbook_versions` ativo | `resolveActiveEditorialConfig(clinicId)` |
+| Serviço e jornada | `treatments` + `pipelineSteps` | repositório de tratamentos e orquestrador |
+| Ofertas | `price_campaigns` | `resolveEffectivePrice` |
+| Agenda | `appointments`, `calendar_blocks`, `slot_reservations` | `BookingService` + `CalendarGateway` |
+| Conversa | `leads`, `conversations`, `messages`, `conversation_states` | use cases e state machine |
+| Evento recebido | `inbound_events` | inbound event store |
+| Trabalho pendente | `jobs` | job queue |
+| Intenção de envio | `outbound_messages` | outbound message store |
+| Campanha de reativação | `reactivation_campaigns` + targets | serviços de reativação |
+| Tempo local | `ClinicTimezone` | nunca offset manual |
+| Comportamento universal da IA | `src/core/intelligence/` | classifier/composer/advisor |
 
-## 3. Capability flags e módulos
+## Regras por categoria
 
-**Dono:** `clinic_modules`  
-**Porta de acesso:** `src/application/modules/module-gate.ts`
+### Conteúdo editorial
 
-Aqui vivem capacidades opcionais por tenant, por exemplo:
+Tom, política comercial, objeções e identidade verbal vivem na versão ativa do playbook. Publicação é atômica e há no máximo uma versão ativa por organização.
 
-- `concierge_mode`
-- `voice_tts`
-- `voice_elevenlabs`
-- `revenue_pipeline`
+Não coloque preço, sequência de mídia ou trigger de pipeline em `notes`; esses dados possuem campos estruturados próprios.
 
-Regra: se uma feature depende de plano ou ativação por tenant, o dono é
-`clinic_modules`, não `clinics`.
+### Configuração operacional
 
-### Casos importantes
+Tudo que varia por organização fica no banco: timezone, horário, limites, canal, agenda, políticas, plano, status e nomenclatura do segmento. Variáveis de ambiente são reservadas a infraestrutura compartilhada e segredos da plataforma.
 
-- modo de conversa (`menu_first` vs `concierge`) deriva do módulo
-  `concierge_mode`;
-- saída por voz deriva dos módulos `voice_tts` e `voice_elevenlabs`;
-- config de voz vive em `clinic_modules.config`, não em colunas soltas na
-  clínica.
+### Capability
 
-## 4. Catálogo comercial e fluxo por serviço
+Ativação por plano/tenant vive em `clinic_modules`. O delivery não deve decidir qual conteúdo enviar com base em flags; conteúdo é resolvido antes e delivery apenas executa.
 
-**Dono:** `treatments`
+### Catálogo e pipeline
 
-Aqui vivem:
+Nome, aliases, duração, preço, exigência de avaliação, mídia e `pipelineSteps` pertencem ao serviço/tratamento. Regra que varia por serviço não deve ser duplicada no prompt ou em condicionais do orquestrador.
 
-- nome do serviço;
-- duração;
-- descrição;
-- aliases;
-- preço ou faixa de preço;
-- `requiresEvaluationFirst`;
-- `isAesthetic`;
-- `pipelineSteps`;
-- `triggerTemplate`.
+### Agenda
 
-Se a regra varia por serviço, ela não pertence ao playbook geral nem ao
-orquestrador.
+- disponibilidade passa por `SlotEngine`/`CalendarGateway`;
+- criação, cancelamento e reagendamento passam por `BookingService`;
+- fuso passa por `ClinicTimezone`;
+- UI e LLM nunca inventam slot.
 
-## 5. Agenda
+### Mensageria
 
-**Dono de agendamentos:** `appointments`  
-**Dono de bloqueios:** `calendar_blocks`  
-**Porta de acesso:** `BookingService` + `CalendarGateway`
+- payload recebido pertence a `inbound_events`;
+- retry, lease e DLQ pertencem a `jobs`;
+- conteúdo final e ordem pertencem a `outbound_messages`;
+- histórico humano pertence a `messages`;
+- retry de entrega não recomputa a conversa.
 
-Regras:
+### LLM
 
-- disponibilidade nunca é inferida direto da UI;
-- criação/cancelamento/reagendamento passam por `BookingService`;
-- timezone sempre passa por `ClinicTimezone`.
+O LLM pode classificar, transcrever, verbalizar e sugerir. Não é dono de tenant, auth, disponibilidade, booking, handoff final, retry, opt-out ou limites.
 
-## 6. Pipeline de mensagens
+Classifier e composer usam a mesma janela de histórico por meio de `takeRecentConversationHistory()` e `aiContextWindowMessages`.
 
-**Dono do que entrou:** `inbound_events`  
-**Dono do trabalho pendente:** `jobs`  
-**Dono da intenção de envio:** `outbound_messages`  
-**Dono do histórico humano da conversa:** `messages`
+## Checklist para regra nova
 
-Regra:
+1. Varia por organização, módulo ou serviço?
+2. É conteúdo editorial ou regra operacional?
+3. Já existe um dono na tabela acima?
+4. A UI está apenas exibindo/chamando ou passou a decidir negócio?
+5. O mesmo fato aparece em código e prompt?
+6. Há teste determinístico para a decisão?
 
-- payload bruto do canal pertence ao inbox (`inbound_events`);
-- retry operacional pertence à fila (`jobs`);
-- retry de entrega não deve recomputar a conversa; por isso o dono é a outbox
-  (`outbound_messages`).
-- avanço de pipeline pertence ao commit do turno; a entrega apenas reconcilia a
-  mesma expectativa de estado de forma idempotente.
-- mensagens Meta e Z-API destinadas à jornada são persistidas antes de o worker
-  processá-las;
-- ação manual do inbox usa UUID do cliente + dedupe da outbox, portanto retry da
-  requisição não duplica o envio ao lead.
-
-## 7. Comportamento universal do LLM
-
-**Dono:** `src/core/intelligence/`
-
-Arquivos centrais:
-
-- `IntentClassifier.ts`
-- `ResponseComposer.ts`
-- `PlaybookAdvisor.ts`
-
-O LLM pode:
-
-- classificar intenção;
-- verbalizar um resultado já decidido;
-- sugerir melhorias editoriais.
-
-O LLM não é dono de:
-
-- booking;
-- handoff;
-- disponibilidade;
-- tenant resolution;
-- auth;
-- retry;
-- policy de automação.
-
-## 8. Tempo e timezone
-
-**Dono:** `src/core/scheduling/ClinicTimezone.ts`
-
-Nunca:
-
-- usar offset manual (`UTC-3`, `-3`);
-- duplicar saudação temporal em prompt;
-- usar `new Date().getHours()` como regra de negócio local da clínica.
-
-## 9. Invariantes importantes
-
-- `IntentClassifier` e `ResponseComposer` usam
-  `takeRecentConversationHistory()` com o mesmo `aiContextWindowMessages` da
-  clínica; não declare cortes locais com `slice(-N)`.
-- `Reservation TTL` não pode ser menor que o TTL da oferta de slot.
-- regras editoriais e regras operacionais não podem viver na mesma prosa livre.
-- uma capability opcional deve ter um único gate de leitura.
-
-## Checklist antes de criar regra nova
-
-1. Isso varia por tenant?
-2. Isso varia por serviço?
-3. Isso é conteúdo editorial ou política operacional?
-4. Isso já existe em `clinics`, `clinic_modules`, `treatments` ou
-   `playbook_versions`?
-5. O valor está sendo declarado em código e prompt ao mesmo tempo?
-
-Se a resposta para 5 for sim, a modelagem está errada.
+Resposta “sim” ao item 5 exige remodelar antes do merge.

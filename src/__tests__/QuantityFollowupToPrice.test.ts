@@ -6,7 +6,7 @@
 //
 // Medido em produção (Vitalli + Ximendes): 3 de 6 continuações de quantidade após
 // pergunta de preço caíam fora de price_inquiry. As frases abaixo são reais.
-// Ver docs/product/plano-correcao-conversacional.md item #7.
+// Ver docs/architecture/current.md.
 
 import { describe, expect, it } from "vitest";
 import { isQuantityFollowupToPriceQuestion } from "@/core/pipeline/ConversationOrchestrator";

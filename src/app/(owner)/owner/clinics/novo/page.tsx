@@ -44,7 +44,7 @@ import {
 } from "@/application/onboarding/commercial-diagnostic";
 
 // Catálogo canônico — espelha a landing (Start/Growth/Scale). Fonte:
-// systemops-landing/components/systemops/pricing.tsx + docs/product/pricing-strategy.md
+// Fonte comercial: systemops-landing/components/systemops/pricing.tsx.
 const PLANS: {
   key: OrgPlanKey;
   label: string;

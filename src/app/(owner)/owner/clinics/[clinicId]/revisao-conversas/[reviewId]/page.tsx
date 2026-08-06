@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Subpágina de curadoria de uma rodada de Revisão de Conversas
- * (docs/product/revisao-conversas-plano.md, seções 5 e 7).
+ * Feature catalogada em docs/features.md.
  *
  * Rascunho: picker de conversas do shadow (mensagens `simulated` nos últimos
  * 21 dias, máx. 30 conversas) + lista de trechos com reordenação ▲▼.

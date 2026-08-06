@@ -10,7 +10,7 @@
 // Medido em produção (Vitalli, 21/07): **0 de 44** eventos importados tinham
 // `treatmentId`. Como as regras de pós-atendimento filtram por tratamento, elas
 // nunca encontravam ninguém — nenhuma mensagem de cuidados pós-lentes jamais
-// saiu. Ver docs/product/plano-correcao-conversacional.md item #20.
+// saiu. Ver docs/architecture/current.md.
 //
 // As descrições e os tratamentos abaixo são os reais do banco.
 

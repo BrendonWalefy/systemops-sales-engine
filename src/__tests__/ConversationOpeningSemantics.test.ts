@@ -13,7 +13,7 @@
 // rica, nome da clínica dito uma vez) — quem nunca foi atendido merece isso na
 // 1ª ou na 4ª mensagem. `isConversationOpening` governa a ABERTURA enlatada
 // (menu inicial / starter concierge), que substitui o conteúdo em vez de
-// responder a ele. Ver docs/product/plano-correcao-conversacional.md item #2.
+// responder a ele. Ver docs/architecture/current.md.
 
 import { describe, expect, it } from "vitest";
 import {

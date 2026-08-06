@@ -3,7 +3,7 @@ import { composePlaybookText } from "@/application/config/editorial-config";
 
 /**
  * Caracterização de `composePlaybookText` — trava o comportamento CORRETO atual
- * antes da iniciativa de "um fato, um dono" (docs/architecture/config-ownership-audit.md).
+ * antes da regra de "um fato, um dono" (docs/architecture/sources-of-truth.md).
  *
  * Qualquer refactor de config (derivar preço na commercialPolicy, colapsar
  * procedureDescription, unificar triggers) DEVE manter estes contratos. Se um

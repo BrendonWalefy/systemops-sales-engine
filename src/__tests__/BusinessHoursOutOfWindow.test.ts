@@ -7,7 +7,7 @@
 //
 // O operador humano nunca faz isso: informa o limite e emenda a alternativa
 // ("Vou te encaminhar os dias disponíveis"). Ver
-// docs/product/plano-correcao-conversacional.md item #5.
+// Contrato atual documentado em docs/architecture/current.md.
 
 import { describe, expect, it } from "vitest";
 import {

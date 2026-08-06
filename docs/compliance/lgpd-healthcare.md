@@ -1,26 +1,31 @@
-# LGPD e Saude
+# LGPD e dados de saúde
 
-## Principios Para o MVP
+Requisitos mínimos para produto e operação; validação jurídica formal continua necessária.
 
-- Coletar apenas dados necessarios para atendimento comercial.
-- Evitar diagnostico, prescricao ou orientacao clinica individualizada por IA.
-- Registrar consentimento quando aplicavel.
-- Guardar historico de recomendacoes e decisoes humanas.
-- Permitir auditoria de mensagens, agente, prompt e resultado.
-- Separar dados por clinica.
+## Princípios
 
-## Guardrails do Agente
+- coletar somente dados necessários ao atendimento;
+- resolver tenant e autorização antes de acessar dados;
+- criptografar credenciais em repouso e nunca enviá-las ao browser;
+- evitar diagnóstico, prescrição ou orientação clínica individualizada por IA;
+- registrar base legal/consentimento quando aplicável;
+- aplicar retenção e exclusão por finalidade;
+- manter auditoria de ações sem copiar conteúdo sensível para logs;
+- usar apenas datasets sanitizados, revisados e armazenados fora do Git;
+- oferecer purge por organização e testar cobertura de novas FKs.
 
-O agente deve sinalizar handoff quando o lead:
+## Handoff obrigatório
 
-- relata dor, inchaco, emergencia ou sintoma sensivel;
-- pede diagnostico;
-- pede prescricao;
-- solicita orientacao clinica especifica;
-- demonstra irritacao ou risco reputacional;
-- deseja falar diretamente com profissional.
+O sistema encaminha para humano quando há sintoma, urgência, pedido de diagnóstico/prescrição, orientação clínica individual, reclamação sensível, negociação fora da política ou solicitação explícita de profissional.
 
-## Decisao de Produto
+## Observabilidade
 
-No MVP, a IA recomenda. A equipe humana aprova ou edita.
+Decision Trace guarda metadados allowlisted, não mensagens, prompts, respostas, nomes, telefones ou URLs. Sentry e logs devem receber somente contexto sanitizado.
 
+## Conteúdo proibido no repositório
+
+- conversas, telefones, nomes e emails de leads;
+- snapshots de configuração de clientes;
+- credenciais, tokens e URLs privadas;
+- imagens, vídeos ou documentos enviados por clientes;
+- exportações de banco, mesmo marcadas como “sanitizadas”, sem processo formal de revisão.

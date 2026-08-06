@@ -18,7 +18,7 @@
  *   objections[]           → objeções reais (henna que não pega, sinal, só com a Naty)
  *   professionals          → Natália, Juliana, Daniela com grade ter–sáb
  *
- * Pendências conhecidas (ver docs/product/todos-nc-beauty.md):
+ * Pendências conhecidas da configuração:
  *   • durações são ESTIMATIVAS — confirmar com a Natália antes do go-live
  *   • chave Pix do sinal não coletada (ficha bloco D4)
  *   • parser de business_hours não sabe "ter–sáb" (segunda entra errada no SlotEngine)

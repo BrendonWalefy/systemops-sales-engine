@@ -1,6 +1,6 @@
 /**
  * Testes das server actions públicas da revisão de conversas
- * (docs/product/revisao-conversas-plano.md, seções 6 e 8 — PR 2). Mesmo
+ * (feature catalogada em docs/features.md). Mesmo
  * padrão de mock de `SaveWizardIdentity.test.ts` / `ChannelProvisionRoute.test.ts`
  * (db.query.findFirst + db.update().set().where() mockados).
  *

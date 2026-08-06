@@ -1,254 +1,102 @@
-# Onboarding de novo cliente (receita de bolo)
+# Onboarding de organização
 
-Este guia adiciona qualquer tenant ao ambiente multi-tenant — clínica, ateliê,
-loja de cortinas, estética etc. Cada tenant tem suas próprias credenciais de
-canal (WhatsApp), seu próprio playbook ativo e seus próprios admins. Nenhum
-dado de um tenant é visível para outro.
+Guia operacional para criar e ativar um tenant sem expor dados ou permitir respostas antes da validação.
 
-> **Aviso de segurança operacional:** se o cliente começar a enviar mensagens
-> pelo WhatsApp ANTES do onboarding ser concluído, o sistema vai retornar
-> `clinic_not_resolved` e logar um erro 500 para cada mensagem. O webhook é
-> ativado automaticamente quando a instância Z-API aponta para a URL — então
-> **finalize o onboarding antes de configurar o webhook no painel Z-API**.
+## Pré-requisitos
 
-## Pré-requisitos (uma vez por ambiente)
+- `main` e migrations de produção estão saudáveis;
+- responsável, segmento, timezone, horário, serviços e política comercial foram validados;
+- número/canal está disponível, mas o webhook ainda não foi apontado para produção;
+- credenciais serão inseridas pelo fluxo seguro, nunca em documento ou commit.
 
-Garanta que `main` esteja deployada e que `npm run db:migrate` já tenha sido
-rodado no ambiente. O histórico de migrations atual parte de
-`drizzle/0000_baseline.sql`.
+## 1. Criar a organização
 
-## 1. Monte o JSON do tenant
+Use o fluxo do owner (`/owner/clinics/novo` ou onboarding associado) como caminho padrão. O script `npm run create-clinic` existe para operação controlada e exige arquivo local ignorado pelo Git.
 
-O campo `segment` determina o vocabulário que a IA usa. Escolha o template
-correto abaixo e salve como `novo-cliente.json`.
+Campos mínimos:
 
-### Clínica ou estética
+- nome, slug, segmento, especialidade e timezone;
+- horário comercial e nomenclatura do atendimento;
+- admin da organização;
+- modo de calendário;
+- canal escolhido;
+- serviços/tratamentos iniciais;
+- playbook editorial.
 
-```json
-{
-  "name": "Clínica Exemplo",
-  "slug": "clinica-exemplo",
-  "segment": "dental",
-  "specialty": "odontologia",
-  "timezone": "America/Sao_Paulo",
-  "businessHours": "Seg-Sex 09:00-18:00",
-  "greetingMessage": "Olá! Seja bem-vindo à Clínica Exemplo.",
-  "channel": {
-    "provider": "z_api",
-    "zapi": {
-      "instanceId": "INSTANCIA_Z_API",
-      "token": "TOKEN_DA_INSTANCIA",
-      "clientToken": "CLIENT_TOKEN_OPCIONAL"
-    }
-  },
-  "playbook": {
-    "commercialPolicy": "Aceitamos PIX, débito e crédito em até 12x.",
-    "toneOfVoice": "acolhedor e profissional",
-    "differentials": ["Atendimento humanizado", "Equipamentos de ponta"],
-    "objections": [
-      { "objection": "Está caro", "response": "Temos parcelamento em até 12x." }
-    ],
-    "notes": "Confirmar o procedimento antes de oferecer horário."
-  },
-  "procedures": [
-    { "name": "Limpeza", "durationMinutes": 60, "requiresEvaluationFirst": true }
-  ],
-  "admins": [
-    { "email": "dono@clinicaexemplo.com.br", "password": "senha-inicial-forte", "role": "clinic_admin" }
-  ]
-}
-```
+A organização deve nascer com `autoReplyEnabled=false` e status não produtivo.
 
-### Ateliê de costura / bordado / uniformes
+## 2. Configurar os donos corretos
 
-A IA vai se apresentar como "atendente virtual", usar "pedido" e "entrega" em
-vez de "consulta", e não vai acionar regras de urgência clínica (dor, sangramento etc.).
+| Informação | Onde configurar |
+| --- | --- |
+| Operação, canal, timezone e limites | `organizations` via owner/onboarding |
+| Módulos e voz | `clinic_modules` |
+| Conteúdo e política comercial | versão de `playbook_versions` |
+| Serviços, duração, aliases, preço e jornada | `treatments` + `pipelineSteps` |
+| Profissionais e recursos | `professionals` |
+| Usuários e papéis | `clinic_members` |
 
-```json
-{
-  "name": "Ateliê Exemplo",
-  "slug": "atelie-exemplo",
-  "segment": "atelier",
-  "specialty": "uniformes e bordados",
-  "timezone": "America/Sao_Paulo",
-  "businessHours": "Seg-Sex 09:00-18:00",
-  "greetingMessage": "Olá! Seja bem-vindo ao Ateliê Exemplo. Como posso ajudar?",
-  "channel": {
-    "provider": "z_api",
-    "zapi": {
-      "instanceId": "INSTANCIA_Z_API",
-      "token": "TOKEN_DA_INSTANCIA",
-      "clientToken": "CLIENT_TOKEN_OPCIONAL"
-    }
-  },
-  "playbook": {
-    "commercialPolicy": "Trabalhamos com pedido mínimo de 10 peças. Aceitamos PIX e transferência.",
-    "toneOfVoice": "atencioso e objetivo",
-    "differentials": ["Bordado computadorizado", "Entrega em até 15 dias úteis"],
-    "objections": [
-      { "objection": "Prazo muito longo", "response": "Para pedidos urgentes, temos modalidade express com acréscimo de 30%." }
-    ],
-    "notes": "Sempre perguntar: tipo de peça, quantidade, arte/logo disponível e prazo desejado."
-  },
-  "procedures": [
-    { "name": "Uniforme bordado", "durationMinutes": 0, "description": "Camisa, calça ou jaleco com bordado" },
-    { "name": "Camiseta personalizada", "durationMinutes": 0, "description": "Sublimação ou serigrafia" }
-  ],
-  "admins": [
-    { "email": "dono@atelieexemplo.com.br", "password": "senha-inicial-forte", "role": "clinic_admin" }
-  ]
-}
-```
+Não copie política comercial para `notes`, prompt ou script de deploy.
 
-### Loja de cortinas / persianas
+## 3. Conectar o canal
 
-```json
-{
-  "name": "Loja Exemplo",
-  "slug": "loja-cortinas-exemplo",
-  "segment": "cortinas",
-  "specialty": "cortinas e persianas",
-  "timezone": "America/Sao_Paulo",
-  "businessHours": "Seg-Sex 09:00-18:00, Sab 09:00-13:00",
-  "greetingMessage": "Olá! Seja bem-vindo à Loja Exemplo.",
-  "channel": {
-    "provider": "z_api",
-    "zapi": {
-      "instanceId": "INSTANCIA_Z_API",
-      "token": "TOKEN_DA_INSTANCIA",
-      "clientToken": "CLIENT_TOKEN_OPCIONAL"
-    }
-  },
-  "playbook": {
-    "commercialPolicy": "Orçamento gratuito com visita técnica. Instalação inclusa no preço.",
-    "toneOfVoice": "consultivo e sofisticado",
-    "differentials": ["Medição e instalação inclusa", "Mais de 300 tecidos disponíveis"],
-    "objections": [
-      { "objection": "Muito caro", "response": "Temos opções em vários preços. Posso agendar uma visita para mostrar as opções?" }
-    ],
-    "notes": "Perguntar: ambiente (sala, quarto, escritório), metragem aproximada, preferência de tecido ou persiana."
-  },
-  "procedures": [
-    { "name": "Visita de orçamento", "durationMinutes": 60, "description": "Medição e apresentação de opções no local" }
-  ],
-  "admins": [
-    { "email": "dono@lojaexemplo.com.br", "password": "senha-inicial-forte", "role": "clinic_admin" }
-  ]
-}
-```
+### Z-API
 
-Para Meta Cloud API em vez de Z-API, troque o bloco `channel`:
+- provisionar/parear pelo owner quando disponível;
+- confirmar `instanceId`, token e client token criptografados;
+- configurar o webhook em `https://SEU_DOMINIO/api/whatsapp/zapi`;
+- validar que o identificador resolve somente a organização esperada.
 
-```json
-"channel": {
-  "provider": "meta_cloud_api",
-  "meta": {
-    "phoneNumberId": "PHONE_NUMBER_ID",
-    "accessToken": "TOKEN",
-    "appSecret": "META_APP_SECRET"
-  }
-}
-```
+### Meta Cloud API
 
-O `appSecret` é obrigatório: o endpoint valida `x-hub-signature-256` antes de
-aceitar mensagens ou status. Access Token e App Secret são criptografados em
-repouso e nunca são hidratados de volta no browser do onboarding.
+- configurar `phoneNumberId`, access token e app secret;
+- apontar para `https://SEU_DOMINIO/api/whatsapp/webhook`;
+- validar challenge e assinatura `x-hub-signature-256`;
+- falhar fechado se o segredo estiver ausente ou inválido.
 
-## 2. Rode o onboarding
+## 4. Configurar agenda
 
-```bash
-npx dotenv -e .env.local -- npx tsx scripts/create-clinic.ts ./clinic-nova.json
-```
+- `internal`: `appointments` e `calendar_blocks` são a fonte de verdade.
+- `google_calendar`: validar calendário, service account, watch e sincronização.
 
-O script é idempotente pelo `slug`: rodar de novo atualiza a clínica e
-republica o playbook em vez de duplicar. Ele imprime o `clinicId` ao final.
+Confirme timezone, horários, duração, buffer, lookahead, profissionais e bloqueios antes de liberar slots. Qualquer importação inicial do Google Calendar ocorre antes do go-live.
 
-## 3. Aponte o canal para o ambiente
+## 5. Validar em ambiente seguro
 
-- **Z-API**: no painel da instância da clínica, configure o webhook de
-  mensagens recebidas para `https://SEU_DOMINIO/api/whatsapp/zapi`. O
-  roteamento usa o `instanceId` do payload para achar a clínica.
-- **Meta**: configure o webhook para `https://SEU_DOMINIO/api/whatsapp/webhook`.
-  O roteamento usa o `phone_number_id` do payload.
+Checklist mínimo:
 
-## 4. Ative a IA (passo que falta por padrão)
+- [ ] tenant do webhook resolve corretamente;
+- [ ] texto, áudio e mídia entram no Inbox;
+- [ ] duplicata de webhook não duplica lead, mensagem ou resposta;
+- [ ] playbook ativo e catálogo estão corretos;
+- [ ] agenda oferece somente slots válidos;
+- [ ] booking, cancelamento e remarcação funcionam;
+- [ ] handoff pausa a IA e notifica a equipe;
+- [ ] resposta sai pela outbox e aparece no histórico;
+- [ ] opt-out, quiet hours e caps bloqueiam quando esperado;
+- [ ] membros veem apenas a própria organização;
+- [ ] replay sanitizado e revisão humana foram aprovados.
 
-`create-clinic.ts` sempre cria a clínica com `autoReplyEnabled = false` — é uma trava de
-segurança proposital, mas **se você não completar este passo, o cliente entra em
-produção com a IA muda**. Ligue a IA pela UI (`/app/settings/playbook`, toggle de
-resposta automática) como org_admin da clínica nova — isso também move
-`operationalStatus` para `active`, que é o gate real que libera resposta automática
-(ver `src/application/automation/clinic-automation-policy.ts`). Confirme os dois campos
-antes de considerar a clínica pronta:
+Use shadow/observe para capturar operação humana, mas use replay isolado para validar o comportamento completo da IA.
 
-- [ ] `organizations.autoReplyEnabled = true`
-- [ ] `organizations.operationalStatus = "active"` (clínicas com `isTest = true` nunca
-      chegam em `active` — isso é esperado só para piloto/QA, não para cliente pagante)
+## 6. Go-live
 
-## 5. Checklist de teste (faça ANTES de liberar para o cliente)
+1. publicar o playbook aprovado;
+2. confirmar organização `active`;
+3. habilitar `autoReplyEnabled`;
+4. enviar um smoke controlado de inbound e outbound;
+5. acompanhar queue lag, errors, retries, dead letters e channel health;
+6. manter responsável disponível durante a janela de observação.
 
-Roteamento e isolamento são o que não pode falhar com duas clínicas:
+## Rollback
 
-- [ ] Login como o admin da clínica nova → vê só os dados dela (inbox, agenda,
-      dashboard, settings).
-- [ ] Login como admin de outra clínica → continua vendo só os dados dela.
-- [ ] Mande uma mensagem para o WhatsApp da clínica NOVA → a conversa aparece
-      na clínica nova, e a resposta sai pelo número da clínica nova.
-- [ ] Mande uma mensagem para o WhatsApp de outra clínica → idem, sem
-      vazamento entre as duas.
-- [ ] Publique uma alteração no playbook da clínica nova → o WhatsApp dela
-      reflete; o da outra clínica não muda.
-- [ ] Tente publicar um playbook com política comercial vazia → a publicação
-      deve FALHAR (gate de validação).
-- [ ] Rode o cron de lembrete manualmente → o retorno traz `perClinic` com as
-      duas clínicas.
+Em comportamento incorreto:
 
-## Diagnóstico: erro `clinic_not_resolved` (500 no webhook)
+1. desligar `autoReplyEnabled` para o tenant afetado;
+2. manter inbound sendo persistido;
+3. pausar campanhas/reengajamento se necessário;
+4. preservar traces e IDs operacionais sem copiar conteúdo sensível;
+5. reverter configuração/playbook ou o menor commit possível;
+6. revalidar antes de reativar.
 
-Se os logs da Vercel mostrarem erros 500 em `POST /api/whatsapp/zapi` com a
-mensagem `clinic_not_resolved`, significa que mensagens estão chegando de uma
-instância Z-API que não está cadastrada no banco.
-
-Os logs agora mostram o `instanceId` que chegou. Para resolver:
-
-**1. Confirme qual instância está batendo:**
-
-Nos logs da Vercel, procure o campo `instanceId` no erro. Ex:
-```
-"instanceId": "3B4C9D1E2F..."
-```
-
-**2. Verifique se o tenant já existe no banco:**
-```sql
-SELECT id, name, zapi_instance_id FROM clinics WHERE zapi_instance_id = '3B4C9D1E2F...';
-```
-
-**3a. Se o tenant não existe** — onboarding não foi feito. Monte o JSON e rode:
-```bash
-npx dotenv -e .env.local -- npx tsx scripts/create-clinic.ts ./novo-cliente.json
-```
-
-**3b. Se o tenant existe mas com instanceId diferente** — o webhook está
-configurado com a instância errada no painel Z-API, ou o JSON de onboarding
-usou o `instanceId` incorreto. Corrija o campo `zapi_instance_id` no banco:
-```sql
-UPDATE clinics SET zapi_instance_id = '3B4C9D1E2F...' WHERE slug = 'slug-do-cliente';
-```
-
-**O que aconteceu com Maycon Bordados (2026-06-30):** o cliente foi conectado
-ao Z-API e começou a receber/enviar mensagens antes do onboarding estar
-registrado no banco. Cada mensagem gerou um erro 500. Nenhuma resposta da IA
-chegou ao cliente. Correção: rodar o script de onboarding com o JSON do ateliê.
-
----
-
-## Pontos conhecidos a endurecer antes de escala maior
-
-- **As credenciais já são criptografadas em repouso**, mas continuam sendo
-  operadas pela aplicação. Se o volume de tenants crescer muito, vale avaliar
-  vault dedicado para governança operacional.
-- **Owner ainda é por env** (`OWNER_EMAIL`/`OWNER_PASSWORD`). Admins de clínica
-  já vivem em `clinic_members.password_hash`.
-- **Módulos por plano** são sincronizados automaticamente no onboarding. Se o
-  plano for `custom`, revise manualmente `/owner/clinics/[clinicId]/modules`
-  antes do go-live.
+Nunca corrija produção com script one-off versionado contendo nome, telefone, credencial ou ID fixo de cliente.
