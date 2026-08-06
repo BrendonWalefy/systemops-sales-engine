@@ -116,7 +116,7 @@ describe("voice output controls", () => {
       shouldForceTextOnlyForActionResult({
         type: "appointment_confirmed",
         slot,
-        clinicName: "Ximendes Odontologia",
+        clinicName: "Clínica Horizonte",
       }),
     ).toBe(false);
   });

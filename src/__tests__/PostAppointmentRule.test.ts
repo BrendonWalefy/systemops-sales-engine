@@ -12,9 +12,9 @@ describe("renderPostAppointmentMessage", () => {
   it("substitui {nome} pelo primeiro nome e {clinica}", () => {
     const out = renderPostAppointmentMessage("Oi {nome}, aqui é da {clinica}!", {
       leadName: "Maria Silva Souza",
-      clinicName: "Clínica Vitalli",
+      clinicName: "Clínica Aurora",
     });
-    expect(out).toBe("Oi Maria, aqui é da Clínica Vitalli!");
+    expect(out).toBe("Oi Maria, aqui é da Clínica Aurora!");
   });
 
   it("sem nome, limpa a pontuação órfã", () => {

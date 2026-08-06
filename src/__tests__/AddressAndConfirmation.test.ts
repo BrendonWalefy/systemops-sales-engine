@@ -1,5 +1,5 @@
 // Itens #22 e #23 do plano de correção. Referência: o print do template que o
-// operador da Vitalli manda à mão (21/07) — data e horário em linhas rotuladas,
+// operador da Aurora manda à mão (21/07) — data e horário em linhas rotuladas,
 // complemento do endereço em linha própria e link do Maps, que o WhatsApp
 // renderiza com foto do prédio.
 import { describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ import {
 } from "@/core/conversation/DepositTemplates";
 import { buildLocationClinicContext } from "@/core/pipeline/ConversationOrchestrator";
 
-const VITALLI = {
+const AURORA = {
   address: "Av. Adolfo Pinheiro, 1.029 - Santo Amaro",
   addressComplement: "Helbor Offices Torre Sul, Sala 124, Andar 12",
   mapsUrl: "https://maps.app.goo.gl/exemplo",
@@ -19,7 +19,7 @@ const VITALLI = {
 
 describe("bloco de endereço (#23)", () => {
   it("complemento e link saem em linhas próprias", () => {
-    expect(buildAddressLines(VITALLI)).toEqual([
+    expect(buildAddressLines(AURORA)).toEqual([
       "📍 Av. Adolfo Pinheiro, 1.029 - Santo Amaro",
       "Helbor Offices Torre Sul, Sala 124, Andar 12",
       "https://maps.app.goo.gl/exemplo",
@@ -27,8 +27,8 @@ describe("bloco de endereço (#23)", () => {
   });
 
   it("o link fica sozinho na linha — grudado em texto o WhatsApp não pré-visualiza", () => {
-    const linhas = buildAddressLines(VITALLI);
-    expect(linhas[linhas.length - 1]).toBe(VITALLI.mapsUrl);
+    const linhas = buildAddressLines(AURORA);
+    expect(linhas[linhas.length - 1]).toBe(AURORA.mapsUrl);
   });
 
   it("campo não preenchido não vira linha vazia nem texto inventado", () => {
@@ -46,7 +46,7 @@ describe("bloco de endereço (#23)", () => {
   });
 
   it("resposta direta mantém a frase e ganha as linhas novas", () => {
-    expect(buildAddressAnswer(VITALLI)).toBe(
+    expect(buildAddressAnswer(AURORA)).toBe(
       "📍 Estamos na Av. Adolfo Pinheiro, 1.029 - Santo Amaro.\n" +
         "Helbor Offices Torre Sul, Sala 124, Andar 12\n" +
         "https://maps.app.goo.gl/exemplo",
@@ -54,7 +54,7 @@ describe("bloco de endereço (#23)", () => {
   });
 
   it("contexto de localização leva complemento e link para a LLM", () => {
-    const ctx = buildLocationClinicContext(VITALLI);
+    const ctx = buildLocationClinicContext(AURORA);
     expect(ctx).toContain("Sala 124");
     expect(ctx).toContain("https://maps.app.goo.gl/exemplo");
     // compatibilidade com as chamadas antigas que passavam só a string
@@ -65,7 +65,7 @@ describe("bloco de endereço (#23)", () => {
 describe("confirmação de agendamento (#22)", () => {
   it("separa data e horário em linhas rotuladas", () => {
     const texto = buildAppointmentConfirmationMessage({
-      clinic: { ...VITALLI, depositConfirmationNotes: null },
+      clinic: { ...AURORA, depositConfirmationNotes: null },
       slotLabel: "Ter 28/07 às 16h",
     });
     expect(texto).toContain("📅 Data: Ter 28/07");
@@ -78,7 +78,7 @@ describe("confirmação de agendamento (#22)", () => {
   it("as orientações da clínica saem em bloco próprio, como cadastradas", () => {
     const texto = buildAppointmentConfirmationMessage({
       clinic: {
-        ...VITALLI,
+        ...AURORA,
         depositConfirmationNotes: "Chegar 10 minutos antes.\n⚠️ *EVITAR LEVAR ACOMPANHANTE*",
       },
       slotLabel: "Ter 28/07 às 16h",
@@ -88,7 +88,7 @@ describe("confirmação de agendamento (#22)", () => {
   });
 
   it("o caminho com sinal usa exatamente o mesmo template", () => {
-    const clinic = { ...VITALLI, depositConfirmationNotes: "Chegar 10 minutos antes." };
+    const clinic = { ...AURORA, depositConfirmationNotes: "Chegar 10 minutos antes." };
     expect(buildDepositConfirmationMessage(clinic, "Ter 28/07 às 16h")).toBe(
       buildAppointmentConfirmationMessage({ clinic, slotLabel: "Ter 28/07 às 16h" }),
     );
@@ -96,7 +96,7 @@ describe("confirmação de agendamento (#22)", () => {
 
   it("procedimento entra quando o sistema sabe qual é", () => {
     const texto = buildAppointmentConfirmationMessage({
-      clinic: VITALLI,
+      clinic: AURORA,
       slotLabel: "Ter 28/07 às 16h",
       treatmentName: "Lentes em Resina Composta",
     });
@@ -116,7 +116,7 @@ describe("confirmação de agendamento (#22)", () => {
     // Se algum formatador mudar, cai no rótulo único em vez de inventar horário.
     expect(splitSlotLabel("amanhã de manhã")).toEqual({ date: "amanhã de manhã", time: null });
     const texto = buildAppointmentConfirmationMessage({
-      clinic: VITALLI,
+      clinic: AURORA,
       slotLabel: "amanhã de manhã",
     });
     expect(texto).toContain("📅 amanhã de manhã");

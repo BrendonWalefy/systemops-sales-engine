@@ -11,7 +11,7 @@ import { composePriceSection, type TreatmentPriceFact } from "@/application/conf
  *
  * Invariante de rollout seguro: quando NENHUM tratamento é cotável por mensagem, a
  * função retorna "" — então a commercialPolicy humana (clínicas ainda não migradas,
- * ex. Ximendes) segue 100% intacta. Zero regressão ao publicar a derivação.
+ * ex. Horizonte) segue 100% intacta. Zero regressão ao publicar a derivação.
  */
 function fact(overrides: Partial<TreatmentPriceFact> & { name: string }): TreatmentPriceFact {
   return {
@@ -205,7 +205,7 @@ describe("composePriceSection — derivação de preço", () => {
     expect(text).toContain("o valor exato é definido na avaliação");
   });
 
-  it("shape Ximendes: avaliação abatida + 2 técnicas de lentes + demais na avaliação", () => {
+  it("shape Horizonte: avaliação abatida + 2 técnicas de lentes + demais na avaliação", () => {
     const text = composePriceSection([
       fact({ name: "Avaliação", priceCents: 10000, priceQuotableInChat: true, priceKind: "fixed", priceDeductible: true }),
       fact({ name: "Lentes de resina (Simplificada)", minPriceCents: 250000, priceUnit: "20 elementos", priceQuotableInChat: true, priceKind: "from" }),

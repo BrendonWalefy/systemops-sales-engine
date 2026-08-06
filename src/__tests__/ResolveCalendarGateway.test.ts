@@ -53,11 +53,11 @@ describe("resolveCalendarGateway", () => {
     expect(g).toBeInstanceOf(GoogleCalendarGateway);
   });
 
-  it("Ximendes (calendarMode 'internal') usa o interno mesmo com googleCalendarId setado", () => {
+  it("Horizonte (calendarMode 'internal') usa o interno mesmo com googleCalendarId setado", () => {
     const g = resolveCalendarGateway({
-      clinicId: "ximendes",
+      clinicId: "horizonte",
       calendarMode: "internal",
-      googleCalendarId: "ximendes@group.calendar.google.com",
+      googleCalendarId: "horizonte@group.calendar.google.com",
       timezone: tz,
       businessHours: null,
     });

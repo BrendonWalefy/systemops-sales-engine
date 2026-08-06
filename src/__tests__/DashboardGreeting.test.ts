@@ -19,7 +19,7 @@ describe("emailToFirstName", () => {
 describe("greetingFromProfessionalName", () => {
   it("mantém o título e o primeiro nome", () => {
     expect(greetingFromProfessionalName("Dra. Helena Marques")).toBe("Dra. Helena");
-    expect(greetingFromProfessionalName("Dr. Gregorie Ximendes")).toBe("Dr. Gregorie");
+    expect(greetingFromProfessionalName("Dr. Silva Horizonte")).toBe("Dr. Silva");
   });
 
   it("usa só o primeiro nome quando não há título", () => {
@@ -31,11 +31,11 @@ describe("resolveGreetingName", () => {
   it("prioriza o display_name explícito do membro", () => {
     expect(
       resolveGreetingName({
-        displayName: "Dr. Gregorie",
+        displayName: "Dr. Silva",
         professionalName: "Dra. Helena Marques",
-        email: "ximendesodonto@gmail.com",
+        email: "horizonteodonto@gmail.com",
       }),
-    ).toBe("Dr. Gregorie");
+    ).toBe("Dr. Silva");
   });
 
   it("cai para o profissional vinculado quando não há display_name", () => {
@@ -53,9 +53,9 @@ describe("resolveGreetingName", () => {
       resolveGreetingName({
         displayName: "   ",
         professionalName: null,
-        email: "ximendesodonto@gmail.com",
+        email: "horizonteodonto@gmail.com",
       }),
-    ).toBe("Ximendesodonto");
+    ).toBe("Horizonteodonto");
   });
 
   it("retorna 'você' sem nenhuma fonte de nome", () => {

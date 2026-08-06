@@ -50,7 +50,7 @@ export function buildAddressLines(clinic: ClinicAddress, options?: { withPin?: b
  *
  * O texto da clínica ganha quando existe — e ganha INTEIRO, sem a gente costurar
  * linha nenhuma em volta. Quem escreve o bloco costuma escrever melhor que o nosso
- * template: o da Vitalli traz o endereço alternativo do estacionamento e as estações
+ * template: o da Aurora traz o endereço alternativo do estacionamento e as estações
  * de metrô, dois fatos que nenhum campo nosso teria.
  *
  * Vazio quando não há nem bloco nem endereço cadastrado.

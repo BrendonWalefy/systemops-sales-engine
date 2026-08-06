@@ -2,11 +2,11 @@
 // Transforma campos de configuração do tenant em termos prontos para uso em prompts.
 // Nunca derive vocabulário de prompt em outro lugar — sempre passe PromptContext.
 
-import type { Organization } from "@/domain/entities/clinic";
+import { normalizeAgentRole, type Organization } from "@/domain/entities/clinic";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 
 export type PromptContext = {
-  agentRole: string;          // ex: "recepcionista virtual" | "atendente virtual"
+  agentRole: string;          // ex: "especialista comercial com IA"
   serviceNoun: string;        // ex: "tratamento" | "pedido"
   bookingNoun: string;        // ex: "consulta" | "entrega"
   contactNoun: string;        // ex: "paciente" | "cliente"
@@ -23,7 +23,7 @@ export function buildPromptContext(
   >,
 ): PromptContext {
   return {
-    agentRole: clinic.agentRole,
+    agentRole: normalizeAgentRole(clinic.agentRole),
     serviceNoun: clinic.serviceNoun,
     bookingNoun: clinic.bookingNoun,
     contactNoun: clinic.contactNoun,

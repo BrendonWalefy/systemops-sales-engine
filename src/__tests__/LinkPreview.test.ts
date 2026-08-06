@@ -9,7 +9,7 @@ import {
   parseLinkPreviewHtml,
 } from "@/application/messaging/link-preview";
 
-// Trecho fiel do que o Google devolveu para o link do operador da Vitalli quando
+// Trecho fiel do que o Google devolveu para o link do operador da Aurora quando
 // puxado com user-agent de bot de pré-visualização. Repare na ORDEM: `content`
 // vem ANTES de `property` — um parser que só cobrisse a ordem canônica não
 // acharia nada exatamente no caso real.
@@ -53,12 +53,12 @@ describe("parseLinkPreviewHtml", () => {
 
   it("decodifica entidades NUMÉRICAS — o Instagram serve o título inteiro assim", () => {
     // Achado puxando o link de verdade: sem isto o card chega ao lead com
-    // "v&#xed;deos" e "&#064;clinicavitalli" literais no texto.
+    // "v&#xed;deos" e "&#064;clinicaaurora" literais no texto.
     const html =
-      `<meta content="Cl&#xed;nica (&#064;clinicavitalli) &#x2022; Fotos e v&#xed;deos" property="og:title">` +
+      `<meta content="Cl&#xed;nica (&#064;clinicaaurora) &#x2022; Fotos e v&#xed;deos" property="og:title">` +
       `<meta content="23 seguidores &#8212; veja" property="og:description">`;
     const preview = parseLinkPreviewHtml(html, "https://instagram.com/x");
-    expect(preview.title).toBe("Clínica (@clinicavitalli) • Fotos e vídeos");
+    expect(preview.title).toBe("Clínica (@clinicaaurora) • Fotos e vídeos");
     expect(preview.description).toBe("23 seguidores — veja");
   });
 
@@ -84,11 +84,11 @@ describe("parseLinkPreviewHtml", () => {
   });
 
   it("mantém og:image longa — a do Google embute a origem em base64 (~1300 chars)", () => {
-    // Bug real: a og:image do link da Ximendes tinha 1290 caracteres e o teto de
+    // Bug real: a og:image do link da Horizonte tinha 1290 caracteres e o teto de
     // 1000 (feito para a URL que BUSCAMOS) derrubava a foto de todo link do Google.
     // A imagem nós só repassamos ao WhatsApp, nunca buscamos — comprimento não vale.
     const longImg = "https://dimg-pa.googleapis.com/ic/" + "A".repeat(1300);
-    const html = `<meta content="Dr Gregorie" property="og:title"><meta content="${longImg}" property="og:image">`;
+    const html = `<meta content="Dr Silva" property="og:title"><meta content="${longImg}" property="og:image">`;
     const preview = parseLinkPreviewHtml(html, "https://share.google/x");
     expect(preview.imageUrl).toBe(longImg);
   });

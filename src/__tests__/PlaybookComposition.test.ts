@@ -136,11 +136,11 @@ describe("composePlaybookText — contratos de composição", () => {
     expect(text).not.toContain("null");
   });
 
-  it("compõe um playbook realista completo (shape Ximendes) sem lixo", () => {
+  it("compõe um playbook realista completo (shape Horizonte) sem lixo", () => {
     const text = composePlaybookText({
       notes: "COMO CONDUZIR A CONVERSA:\n- Nunca pressionar.\n- Só oferecer agendamento com interesse claro.",
       procedures: [
-        { name: "Avaliação", description: "Consulta inicial com o Dr. Gregorie: análise do sorriso e plano personalizado." },
+        { name: "Avaliação", description: "Consulta inicial com o Dr. Silva: análise do sorriso e plano personalizado." },
         { name: "Lentes de resina composta", description: "Facetas em resina, técnicas Simplificada e Estratificada." },
       ],
       differentials: ["Foco em lentes em resina", "Laboratório próprio"],

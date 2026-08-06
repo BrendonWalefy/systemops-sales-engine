@@ -14,7 +14,7 @@ const offer = {
 };
 
 const base: ReactivationMessageInput = {
-  clinicName: "Clínica Vitalli",
+  clinicName: "Clínica Aurora",
   receptionistName: "Marina",
   specialty: "odontologia estética",
   leadName: "Ana",

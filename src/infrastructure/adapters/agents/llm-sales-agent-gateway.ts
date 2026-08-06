@@ -8,7 +8,7 @@ import type {
 const PROMPT_VERSION = "v3";
 const MODEL = "gpt-4o-mini";
 
-const BASE_RULES = `Você é a recepcionista virtual de uma clínica. Responda leads no WhatsApp de forma natural, humana e consultiva — nunca robotizada.
+const BASE_RULES = `Você é a especialista comercial com IA de uma clínica. Responda leads no WhatsApp de forma natural, humana e consultiva — nunca robotizada.
 
 Regras gerais:
 - Português brasileiro informal mas respeitoso.
@@ -143,7 +143,7 @@ function buildConversationContext(input: SalesAgentInput): string {
   ];
 
   for (const msg of input.messages) {
-    const author = msg.author === "lead" ? leadName : "Recepcionista";
+    const author = msg.author === "lead" ? leadName : "Especialista comercial";
     lines.push(`${author}: ${msg.body}`);
   }
 

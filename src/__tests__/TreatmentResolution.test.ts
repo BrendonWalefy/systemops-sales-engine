@@ -102,8 +102,8 @@ describe("resolveTreatmentDuration", () => {
     });
   });
 
-  describe("procedimentos da Ximendes", () => {
-    const ximendesTreatments = [
+  describe("procedimentos da Horizonte", () => {
+    const horizonteTreatments = [
       makeTreatment("Avaliação", 60),
       makeTreatment("Manutenção das lentes", 60),
       makeTreatment("Limpeza", 60),
@@ -111,17 +111,17 @@ describe("resolveTreatmentDuration", () => {
     ];
 
     it("'20 Lentes' → 240 minutos (4h de slot)", () => {
-      const result = resolveTreatmentDuration("20 Lentes", ximendesTreatments, 60, false);
+      const result = resolveTreatmentDuration("20 Lentes", horizonteTreatments, 60, false);
       expect(result).toEqual({ kind: "matched", treatmentName: "20 Lentes", durationMinutes: 240 });
     });
 
     it("'quero marcar' sem especificar → ask_clarification (20 Lentes tem duração diferente)", () => {
-      const result = resolveTreatmentDuration(null, ximendesTreatments, 60, true);
+      const result = resolveTreatmentDuration(null, horizonteTreatments, 60, true);
       expect(result).toEqual({ kind: "ask_clarification", durationMinutes: 60 });
     });
 
     it("'Manutenção das lentes' → 60 minutos", () => {
-      const result = resolveTreatmentDuration("Manutenção das lentes", ximendesTreatments, 60, false);
+      const result = resolveTreatmentDuration("Manutenção das lentes", horizonteTreatments, 60, false);
       expect(result).toEqual({ kind: "matched", treatmentName: "Manutenção das lentes", durationMinutes: 60 });
     });
   });

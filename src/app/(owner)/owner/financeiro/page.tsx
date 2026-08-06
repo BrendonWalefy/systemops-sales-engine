@@ -1078,7 +1078,7 @@ export default async function FinanceiroPage() {
           >
             <Activity size={13} style={{ color: "var(--accent-strong)" }} />
             <p className="eyebrow" style={{ margin: 0 }}>
-              Benchmark do piloto — Ximendes Odontologia (jun/2026)
+              Benchmark agregado do piloto inicial
             </p>
           </div>
           <div

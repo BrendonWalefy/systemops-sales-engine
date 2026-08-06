@@ -1,8 +1,8 @@
 // Default de plataforma para a janela de agrupamento de rajadas.
 //
 // Rajada (2+ mensagens do lead em sequência) é comportamento do canal, não política
-// de clínica: o gap mediano dentro de uma rajada é 10s tanto na Vitalli quanto na
-// Ximendes, com distribuições quase idênticas (n=1.174 pares, produção).
+// de clínica: o gap mediano dentro de uma rajada é 10s tanto na Aurora quanto na
+// Horizonte, com distribuições quase idênticas (n=1.174 pares, produção).
 //
 // Antes o valor era `?? 5000` repetido em 4 pontos do ConversationOrchestrator —
 // default global de fato, mas duplicado e sem origem documentada. Este teste existe
@@ -19,7 +19,7 @@ const MEDIAN_BURST_GAP_MS = 10_000;
 describe("default de plataforma do debounce de mensagens", () => {
   it("cobre o gap mediano real da rajada", () => {
     // Abaixo disso o agrupamento perde mais da metade dos pares — era o caso do
-    // valor antigo (5s) e do override da Vitalli (7s), que cobriam ~40%.
+    // valor antigo (5s) e do override da Aurora (7s), que cobriam ~40%.
     expect(DEFAULT_MESSAGE_DEBOUNCE_MS).toBeGreaterThanOrEqual(MEDIAN_BURST_GAP_MS);
   });
 

@@ -1,7 +1,7 @@
 // Lead deu data E hora, sobrou o horário dele sozinho — não pedir "responda
 // apenas com o número" para uma lista de um item.
 //
-// Caso real reconstruído do banco (Vitalli, 18/07, conversa ff8fbb07):
+// Caso real reconstruído do banco (Aurora, 18/07, conversa ff8fbb07):
 //
 //   20:10  agente  "não temos horários no sábado. Posso oferecer:
 //                    1. Seg 20/07 às 9h … 5. Ter 28/07 às 16h"

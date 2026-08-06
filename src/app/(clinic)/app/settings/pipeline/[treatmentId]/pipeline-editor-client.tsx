@@ -58,7 +58,7 @@ type StepType = (typeof STEP_TYPES)[number]["type"];
 // com este tratamento — mídia geral fica de fora para não gerar ruído, já que
 // legitimamente nunca aparece em um step de conteúdo), mas nenhum step de Conteúdo
 // do pipeline a referencia. Sinal de que o vídeo/imagem foi esquecido na apresentação
-// inicial — o mesmo gap que deixou a Vitalli sem vídeo na primeira resposta sobre
+// inicial — o mesmo gap que pode omitir vídeo na primeira resposta sobre
 // lentes (o Q&A livre da IA continua tendo acesso à mídia normalmente).
 export function computeMediaGapWarning(
   steps: PipelineStep[],

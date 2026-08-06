@@ -31,7 +31,7 @@ function treatment(overrides: Partial<Treatment> & { name: string }): Treatment 
   };
 }
 
-const VITALLI_TREATMENTS: Treatment[] = [
+const AURORA_TREATMENTS: Treatment[] = [
   treatment({
     name: "Técnica Simplificada",
     quantityPrices: [
@@ -71,7 +71,7 @@ describe("detectScope", () => {
 
 describe("resolveQuantityPriceQuery", () => {
   it("quantidade EXATA da tabela → retorna os valores exatos (10 lentes)", () => {
-    const r = resolveQuantityPriceQuery("qual valor de 10 lentes?", VITALLI_TREATMENTS);
+    const r = resolveQuantityPriceQuery("qual valor de 10 lentes?", AURORA_TREATMENTS);
     expect(r?.kind).toBe("exact");
     if (r?.kind === "exact") {
       expect(r.lines).toContain("Técnica Simplificada: R$ 1.500");
@@ -80,7 +80,7 @@ describe("resolveQuantityPriceQuery", () => {
   });
 
   it("caso Kevyn: 16 lentes NÃO está na tabela → unknown com pacotes disponíveis (nunca chuta R$2.000)", () => {
-    const r = resolveQuantityPriceQuery("Queria saber qual seria o valor de 16 lentes", VITALLI_TREATMENTS);
+    const r = resolveQuantityPriceQuery("Queria saber qual seria o valor de 16 lentes", AURORA_TREATMENTS);
     expect(r?.kind).toBe("unknown");
     if (r?.kind === "unknown") {
       expect(r.quantity).toBe(16);
@@ -89,7 +89,7 @@ describe("resolveQuantityPriceQuery", () => {
   });
 
   it("sem quantidade na mensagem → null (fluxo de preço normal assume)", () => {
-    expect(resolveQuantityPriceQuery("qual o valor das lentes?", VITALLI_TREATMENTS)).toBeNull();
+    expect(resolveQuantityPriceQuery("qual o valor das lentes?", AURORA_TREATMENTS)).toBeNull();
   });
 
   it("clínica sem tabela de pacotes → null (comportamento atual)", () => {

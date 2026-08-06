@@ -4,6 +4,7 @@ out
 dist
 .site-build/
 coverage
+test-results/
 .env*
 !.env.example
 *.log
@@ -30,6 +31,7 @@ scripts/nc-media/
 public/*.ical.zip
 public/*.ics
 *.ics
+!src/__tests__/fixtures/*.ics
 
 # Artefatos de scratch do harness de replay/regressão (mensagens reais de leads
 # = PII) — gerados por scripts/extract-replay-cases.ts e afins. Nunca versionar.

@@ -38,7 +38,7 @@ describe("shouldShorten", () => {
 
   it("não encurta link que já é curto — trocaria legível por opaco", () => {
     expect(shouldShorten("https://share.google/NRzU7M2A74cL1gsev")).toBe(false);
-    expect(shouldShorten("https://instagram.com/clinicavitalli")).toBe(false);
+    expect(shouldShorten("https://instagram.com/clinicaaurora")).toBe(false);
   });
 
   it("não encurta o que não é buscável", () => {

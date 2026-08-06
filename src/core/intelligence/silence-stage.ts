@@ -51,7 +51,7 @@ export type StageMessage = {
  * Títulos das mídias que entregam preço na clínica (ex.: "Valores Lente em
  * Resina Premium").
  *
- * A Vitalli manda os valores em arte — decisão do dentista, não falha. Mas a
+ * A Aurora manda os valores em arte — decisão do dentista, não falha. Mas a
  * imagem é gravada em `messages` com `delivery_format = 'text'` e o **título da
  * mídia no corpo**; o valor está dentro do arquivo. Procurar "R$" no texto,
  * portanto, não vê o preço que o paciente de fato recebeu.

@@ -1,4 +1,4 @@
-// Replay com leads reais da Vitalli (18/07): a oferta exibia horários que já
+// Replay com leads reais da Aurora (18/07): a oferta exibia horários que já
 // tinham reserva ativa (hold de sinal de outro lead). O lead escolhia, o
 // reserve() batia no hold e saía o falso "seu horário ficou indisponível" —
 // justamente no momento de maior intenção da conversa.

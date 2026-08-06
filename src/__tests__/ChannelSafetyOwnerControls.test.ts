@@ -55,22 +55,22 @@ describe("Política de pausa de reengajamento — regras de negócio", () => {
   });
 });
 
-// ─── Cenário de pausa ativada para a Vitalli ──────────────────────────────────
+// ─── Cenário de pausa ativada para a Aurora ──────────────────────────────────
 
-describe("Preset Vitalli — modo reply-only", () => {
-  const vitalliClinic = {
+describe("Preset Aurora — modo reply-only", () => {
+  const auroraClinic = {
     automatedReengagementPaused: true,
     outboundHourlyCap: 15,
     outboundDailyCap: 60,
   };
 
-  it("follow-up é bloqueado com preset Vitalli", () => {
-    expect(isReengagementPaused(vitalliClinic)).toBe(true);
+  it("follow-up é bloqueado com preset Aurora", () => {
+    expect(isReengagementPaused(auroraClinic)).toBe(true);
   });
 
   it("após desativar a pausa, reengajamento é liberado", () => {
-    const vitalliUnpaused = { ...vitalliClinic, automatedReengagementPaused: false };
-    expect(isReengagementPaused(vitalliUnpaused)).toBe(false);
+    const auroraUnpaused = { ...auroraClinic, automatedReengagementPaused: false };
+    expect(isReengagementPaused(auroraUnpaused)).toBe(false);
   });
 });
 

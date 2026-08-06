@@ -1,5 +1,5 @@
-// Testes derivados de conversas reais da clínica Ximendes Odontologia.
-// Cada describe identifica a conversa original e o padrão que motivou o teste.
+// Testes anonimizados derivados de padrões observados em conversas de produção.
+// Cada describe identifica o comportamento que motivou o teste.
 // Objetivo: garantir que o sistema trata corretamente os padrões observados
 // em produção (05-08/06/2026), quando a IA estava desativada e o operador
 // respondia manualmente.
@@ -15,7 +15,7 @@ import type { Treatment } from "@/domain/entities/treatment";
 function makeTreatment(name: string, requiresEvaluation = false): Treatment {
   return {
     id: name.toLowerCase().replace(/\s+/g, "-"),
-    clinicId: "ximendes",
+    clinicId: "horizonte",
     name,
     durationMinutes: 60,
     description: null,
@@ -36,7 +36,7 @@ function makeTreatment(name: string, requiresEvaluation = false): Treatment {
   };
 }
 
-const ximendesTreatments = [
+const horizonteTreatments = [
   makeTreatment("Avaliação"),
   makeTreatment("Lentes de resina composta", true),
   makeTreatment("Lentes de porcelana", true),
@@ -87,7 +87,7 @@ describe("patient_arrived — paciente chegando ou se atrasando", () => {
   });
 });
 
-// ─── 2. Gregorie — sub-menu de procedimentos (03-04/06) ──────────────────────
+// ─── 2. Silva — sub-menu de procedimentos (03-04/06) ──────────────────────
 // Bug: selecionar "Avaliação" quando a IA havia acabado de perguntar o procedimento
 // gerava "problema técnico". A regra crítica: resolveDirectTreatmentMention deve
 // retornar null quando a IA acabou de perguntar explicitamente o procedimento.
@@ -96,28 +96,28 @@ describe("resolveDirectTreatmentMention — resposta ao agente que pediu procedi
   const agentQuestion = "Qual procedimento você gostaria de realizar?";
 
   it("'Avaliação' como resposta à pergunta do agente não é interceptada como menção direta", () => {
-    const result = resolveDirectTreatmentMention("Avaliação", ximendesTreatments, agentQuestion);
+    const result = resolveDirectTreatmentMention("Avaliação", horizonteTreatments, agentQuestion);
     expect(result).toBeNull();
   });
 
   it("'lentes' como resposta à pergunta do agente não é interceptada como menção direta", () => {
-    const result = resolveDirectTreatmentMention("lentes", ximendesTreatments, agentQuestion);
+    const result = resolveDirectTreatmentMention("lentes", horizonteTreatments, agentQuestion);
     expect(result).toBeNull();
   });
 
   it("'limpeza das lentes' fora de contexto de pergunta é interceptada como menção direta", () => {
-    const result = resolveDirectTreatmentMention("limpeza das lentes", ximendesTreatments, null);
+    const result = resolveDirectTreatmentMention("limpeza das lentes", horizonteTreatments, null);
     expect(result).not.toBeNull();
   });
 
   it("número isolado ('9') nunca é interceptado como menção direta", () => {
-    expect(resolveDirectTreatmentMention("9", ximendesTreatments, null)).toBeNull();
-    expect(resolveDirectTreatmentMention("9", ximendesTreatments, "Menu ativo")).toBeNull();
+    expect(resolveDirectTreatmentMention("9", horizonteTreatments, null)).toBeNull();
+    expect(resolveDirectTreatmentMention("9", horizonteTreatments, "Menu ativo")).toBeNull();
   });
 
   it("pergunta de preço com especificação técnica ('lentes BL2 quanto custa') não é menção direta", () => {
     // Pergunta de preço → deve ir para IntentClassifier como price_inquiry, não interceptar
-    expect(resolveDirectTreatmentMention("lentes BL2 quanto custa", ximendesTreatments, null)).toBeNull();
+    expect(resolveDirectTreatmentMention("lentes BL2 quanto custa", horizonteTreatments, null)).toBeNull();
   });
 });
 
@@ -253,14 +253,14 @@ describe("price_inquiry — especificação técnica (cenário Larissa Sales)", 
 
 describe("resolveDirectTreatmentMention — paciente retornando com necessidade específica", () => {
   it("'manutenção das lentes' mapeia para tratamento de lentes", () => {
-    const result = resolveDirectTreatmentMention("manutenção das lentes", ximendesTreatments, null);
+    const result = resolveDirectTreatmentMention("manutenção das lentes", horizonteTreatments, null);
     expect(result?.name).toContain("Lentes");
   });
 
   it("'quero agendar limpeza das lentes' não intercepta (pedido explícito de agendamento)", () => {
     const result = resolveDirectTreatmentMention(
       "quero agendar limpeza das lentes",
-      ximendesTreatments,
+      horizonteTreatments,
       null,
     );
     expect(result).toBeNull();
@@ -268,27 +268,27 @@ describe("resolveDirectTreatmentMention — paciente retornando com necessidade 
 });
 
 // ─── 9. Spec: cenários que requerem handoff (documentação para IntentClassifier) ─
-// Padrões observados nas conversas da Ximendes que devem ser tratados como needs_human.
+// Padrões observados nas conversas da Horizonte que devem ser tratados como needs_human.
 
-describe("needs_human — cobertura de cenários reais Ximendes (especificação)", () => {
-  const realXimendesNeedsHuman = [
-    "Falar com atendente",           // Gregorie (29/05)
+describe("needs_human — cobertura de cenários reais Horizonte (especificação)", () => {
+  const realHorizonteNeedsHuman = [
+    "Falar com atendente",           // Silva (29/05)
     "falar com um especialista",     // item 5 do menu
     "me manda as fotos",             // EMERSON — pediu fotos do procedimento
     "pode me ligar",                 // padrão de contato humano
-    "quero falar com o Gregorie",    // pedir falar com dentista pelo nome
+    "quero falar com o Silva",    // pedir falar com dentista pelo nome
     "tenho interesse em condição especial",
   ];
 
-  it("todos os padrões de needs_human da Ximendes são strings válidas para o classifier", () => {
-    realXimendesNeedsHuman.forEach((msg) => {
+  it("todos os padrões de needs_human da Horizonte são strings válidas para o classifier", () => {
+    realHorizonteNeedsHuman.forEach((msg) => {
       expect(typeof msg).toBe("string");
       expect(msg.length).toBeGreaterThan(5);
     });
   });
 
   it("total de cenários de handoff documentados é suficiente", () => {
-    expect(realXimendesNeedsHuman.length).toBeGreaterThanOrEqual(6);
+    expect(realHorizonteNeedsHuman.length).toBeGreaterThanOrEqual(6);
   });
 });
 

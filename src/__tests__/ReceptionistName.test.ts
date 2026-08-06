@@ -5,7 +5,7 @@ describe("inferReceptionistNameFromGreeting", () => {
   it("extrai o nome após 'Sou a'", () => {
     expect(
       inferReceptionistNameFromGreeting(
-        "Seja bem-vindo à Ximendes Odontologia. Sou a Marina, assistente do Dr. Gregorie.",
+        "Seja bem-vindo à Clínica Horizonte. Sou a Marina, assistente do Dr. Silva.",
       ),
     ).toBe("Marina");
   });
@@ -16,10 +16,10 @@ describe("inferReceptionistNameFromGreeting", () => {
     ).toBe("Clara");
   });
 
-  it("extrai o nome após 'Me chamo' (opener da Vitalli)", () => {
+  it("extrai o nome após 'Me chamo' (opener da Aurora)", () => {
     expect(
       inferReceptionistNameFromGreeting(
-        "Olá, tudo bem? Me chamo Gleice, sou da Clínica Vitalli. Vi que você se interessou pelas lentes.",
+        "Olá, tudo bem? Me chamo Gleice, sou da Clínica Aurora. Vi que você se interessou pelas lentes.",
       ),
     ).toBe("Gleice");
   });

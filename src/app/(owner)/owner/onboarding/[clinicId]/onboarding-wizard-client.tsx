@@ -209,8 +209,8 @@ function initPipelineConfig(t: WizardTreatment): PipelineConfig {
 
 // ─── Step config ──────────────────────────────────────────────────────────────
 
-// Modelo da mensagem de localização. O texto real da Vitalli — escrito por quem o
-// Victor contratou — é melhor do que qualquer template que a gente inventaria:
+// Modelo da mensagem de localização. Preserva detalhes operacionais que um
+// endereço simples não representa:
 // traz o endereço ALTERNATIVO do estacionamento e as estações de metrô, dois fatos
 // que nenhum campo estruturado nosso teria previsto. Aqui fica a forma dele, para a
 // próxima clínica editar em vez de começar do zero. Ponto de partida, não formato
@@ -236,8 +236,8 @@ const STEPS = [
   },
   {
     id: 2,
-    title: "Recepcionista virtual",
-    subtitle: "Tom de voz e diferenciais",
+    title: "Especialista comercial com IA",
+    subtitle: "Persona, tom de voz e diferenciais",
     Icon: Bot,
   },
   {
@@ -714,7 +714,7 @@ function StepIdentidade({
         <textarea
           value={data.greetingMessage}
           onChange={f("greetingMessage")}
-          placeholder="Ex: Ola! Sou a assistente virtual da empresa. Como posso ajudar?"
+          placeholder="Ex: Olá! Sou a especialista comercial com IA da empresa. Como posso ajudar?"
           rows={3}
           style={{ ...inputStyle, resize: "vertical" }}
         />
@@ -1192,7 +1192,7 @@ function StepRecepcionista({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div>
-        <SectionTitle>Tom de voz da recepcionista</SectionTitle>
+        <SectionTitle>Tom de voz do especialista comercial</SectionTitle>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {TONE_OPTIONS.map((opt) => (
             <button
@@ -2022,7 +2022,7 @@ function StepPolitica({
   onChange: (d: WizardInitial["policy"]) => void;
 }) {
   const RULE_PROMPTS = [
-    "O que a IA deve SEMPRE fazer que uma recepcionista humana sempre faria?",
+    "O que a IA deve SEMPRE fazer que um especialista comercial de alto desempenho faria?",
     "O que a IA NUNCA deve fazer ou prometer?",
     "Há situações especiais que a IA deve encaminhar para a equipe?",
   ];

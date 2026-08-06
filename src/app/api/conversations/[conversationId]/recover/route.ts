@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // J1 (mapeamento 18/07): a recuperação de lead parado saía de um mini-LLM à
-// parte — mensagem genérica, sem persona, sem conduzir; depois a recepcionista
+// parte — mensagem genérica, sem persona, sem conduzir; depois a especialista comercial
 // "se apresentava" de novo, criando duas personas na mesma conversa. Este
 // endpoint retoma pelo PRÓPRIO motor: reprocessa a última mensagem de texto do
 // lead como se tivesse acabado de chegar — saudação, persona, pipeline e ritmo

@@ -2,8 +2,8 @@
 //
 // O lead que volta depois de um gap longo recebe a saudação de abertura em vez de
 // continuidade. O limite vinha de `staleConversationHours`, que também é o TTL do
-// pipeline de tratamento — acoplamento que fazia a janela herdar 4h (Vitalli) /
-// 6h (Ximendes).
+// pipeline de tratamento — acoplamento que fazia a janela herdar 4h (Aurora) /
+// 6h (Horizonte).
 //
 // Medição em produção (n=3.183 gaps entre mensagens consecutivas do mesmo lead):
 // mediana 0h, p75 1,1h, p90 17h. Com 4h, 17,2% das respostas de lead disparavam

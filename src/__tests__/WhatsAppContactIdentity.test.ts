@@ -10,13 +10,13 @@ import {
 
 describe("WhatsAppContactIdentity", () => {
   it("detecta @lid", () => {
-    expect(isWhatsAppLid("271295921025045@lid")).toBe(true);
-    expect(isWhatsAppLid("5511979663668")).toBe(false);
+    expect(isWhatsAppLid("200000000000002@lid")).toBe(true);
+    expect(isWhatsAppLid("5511900000002")).toBe(false);
   });
 
   it("parseia telefone E.164", () => {
-    expect(parseWhatsAppContactField("5511979663668")).toEqual({ phone: "5511979663668" });
-    expect(parseWhatsAppContactField("+55 (11) 97966-3668")).toEqual({ phone: "5511979663668" });
+    expect(parseWhatsAppContactField("5511900000002")).toEqual({ phone: "5511900000002" });
+    expect(parseWhatsAppContactField("+55 (11) 90000-0002")).toEqual({ phone: "5511900000002" });
   });
 
   it("normaliza WhatsApp digitado manualmente na agenda com DDI", () => {
@@ -27,32 +27,32 @@ describe("WhatsAppContactIdentity", () => {
   });
 
   it("parseia @lid sem colocar em phone", () => {
-    expect(parseWhatsAppContactField("271295921025045@lid")).toEqual({
-      whatsappLid: "271295921025045@lid",
+    expect(parseWhatsAppContactField("200000000000002@lid")).toEqual({
+      whatsappLid: "200000000000002@lid",
     });
   });
 
   it("combina phone e chatLid do webhook", () => {
     expect(
       buildContactIdentifiersFromWebhook({
-        phone: "5511979663668",
-        chatLid: "271295921025045@lid",
+        phone: "5511900000002",
+        chatLid: "200000000000002@lid",
       }),
     ).toEqual({
-      phone: "5511979663668",
-      whatsappLid: "271295921025045@lid",
+      phone: "5511900000002",
+      whatsappLid: "200000000000002@lid",
     });
   });
 
   it("quando phone do webhook é @lid, usa chatLid se vier número", () => {
     expect(
       buildContactIdentifiersFromWebhook({
-        phone: "271295921025045@lid",
-        chatLid: "271295921025045@lid",
+        phone: "200000000000002@lid",
+        chatLid: "200000000000002@lid",
       }),
     ).toEqual({
       phone: null,
-      whatsappLid: "271295921025045@lid",
+      whatsappLid: "200000000000002@lid",
     });
   });
 
@@ -60,14 +60,14 @@ describe("WhatsAppContactIdentity", () => {
     expect(
       resolveWhatsAppChannelAddress(
         mergeContactIdentifiers(
-          { phone: "5511979663668" },
-          { whatsappLid: "271295921025045@lid" },
+          { phone: "5511900000002" },
+          { whatsappLid: "200000000000002@lid" },
         ),
       ),
-    ).toBe("5511979663668");
+    ).toBe("5511900000002");
 
     expect(
-      resolveWhatsAppChannelAddress({ phone: null, whatsappLid: "271295921025045@lid" }),
-    ).toBe("271295921025045@lid");
+      resolveWhatsAppChannelAddress({ phone: null, whatsappLid: "200000000000002@lid" }),
+    ).toBe("200000000000002@lid");
   });
 });

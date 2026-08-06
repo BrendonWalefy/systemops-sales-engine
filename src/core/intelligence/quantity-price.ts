@@ -2,7 +2,7 @@ import type { Treatment, TreatmentQuantityPrice } from "@/domain/entities/treatm
 
 // A4 — Preço por quantidade fechada (pacotes de lentes/facetas).
 //
-// Clínicas vendem pacotes cujo preço NÃO é proporcional à quantidade (na Vitalli,
+// Clínicas vendem pacotes cujo preço NÃO é proporcional à quantidade (na Aurora,
 // 10 lentes = R$1.500 e 20 = R$1.800). Quando o lead pergunta uma quantidade que não
 // está na tabela ("16 lentes"), a IA não pode extrapolar — o histórico mostra que ela
 // chutava R$2.000 (o valor de 20), contradizendo o que a operadora cotou (R$1.800).

@@ -76,15 +76,15 @@ describe("DrizzleLeadRepository", () => {
     );
   });
 
-  it("caso Américo: o lead recebido JÁ carrega o id existente — atualiza, nunca insere", async () => {
-    // Bug real (Ximendes, 22/07): o resolvedor enriquece o lead existente e reusa o
+  it("caso Paciente Exemplo: o lead recebido JÁ carrega o id existente — atualiza, nunca insere", async () => {
+    // Bug real (Horizonte, 22/07): o resolvedor enriquece o lead existente e reusa o
     // id dele, então lead.id === byLid.id. O guard antigo `byLid.id !== lead.id`
     // pulava o update e caía num insert que colidia no PK/índice do @lid → o job
     // message.process morria e a mensagem do lead (pergunta quente) sumia.
     const existingByLid = lead({
-      id: "amrico",
+      id: "lead-existing",
       phone: null,
-      whatsappLid: "257547881697439@lid",
+      whatsappLid: "200000000000001@lid",
     });
     const update = updateChain();
     dbMock.query.leads.findFirst
@@ -94,12 +94,12 @@ describe("DrizzleLeadRepository", () => {
 
     // Mesmo id do lead existente — o cenário que o teste anterior não cobria.
     await new DrizzleLeadRepository().save(
-      lead({ id: "amrico", phone: "5511976898360", whatsappLid: "257547881697439@lid" }),
+      lead({ id: "lead-existing", phone: "5511900000001", whatsappLid: "200000000000001@lid" }),
     );
 
     expect(dbMock.insert).not.toHaveBeenCalled();
     expect(dbMock.update).toHaveBeenCalledOnce();
-    expect(update.set).toHaveBeenCalledWith(expect.objectContaining({ phone: "5511976898360" }));
+    expect(update.set).toHaveBeenCalledWith(expect.objectContaining({ phone: "5511900000001" }));
   });
 
   it("lead genuinamente novo é inserido", async () => {

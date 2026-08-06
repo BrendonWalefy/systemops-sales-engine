@@ -89,7 +89,7 @@ export function splitSlotLabel(slotLabel: string): { date: string; time: string 
  *
  * Item #22: o template do operador separa data e horário em linhas rotuladas e traz
  * o complemento do endereço; o nosso mandava um `slotLabel` corrido. E o caminho sem
- * sinal (Ximendes) era texto livre da LLM, ou seja, formato diferente a cada
+ * sinal (Horizonte) era texto livre da LLM, ou seja, formato diferente a cada
  * agendamento — dado estruturado não tem por que passar por modelo nenhum.
  */
 export function buildAppointmentConfirmationMessage(params: {

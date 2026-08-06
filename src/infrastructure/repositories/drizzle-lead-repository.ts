@@ -94,7 +94,7 @@ export class DrizzleLeadRepository implements LeadRepository {
     // whatsappLid). Um único ON CONFLICT só cobre um deles, então quando um lead
     // já existe por uma identidade e a mensagem seguinte traz a outra, o insert
     // colide no índice NÃO nomeado (ou no próprio id) e o job morre — mensagem do
-    // lead engolida em silêncio (caso Américo, Ximendes 22/07: pergunta quente sem
+    // lead engolida em silêncio (caso Paciente Exemplo, Horizonte 22/07: pergunta quente sem
     // resposta). A correção: resolver o lead existente por QUALQUER identidade e
     // atualizar por id, que é a chave que nunca colide. Só inserir quando é novo.
     const byPhone = lead.phone ? await this.findByPhone(lead.clinicId, lead.phone) : null;

@@ -6,9 +6,9 @@
  *
  * Uso:
  *   npx tsx scripts/set-member-display-name.ts \
- *     --clinic ximendes --email "login@dominio.com" --name "Dr. Gregorie"
+ *     --clinic organizacao-demo --email "login@dominio.com" --name "Dra. Helena"
  *
- *   # --clinic aceita o slug ("ximendes") ou o nome ("Ximendes Odontologia").
+ *   # --clinic aceita o slug ou o nome exato da organização.
  *   # Para limpar o nome e voltar ao fallback, passe --name "".
  *
  * Requer DATABASE_URL no ambiente (ou .env.local).

@@ -19,7 +19,7 @@ const clinic: Organization = {
   serviceNoun: "tratamento",
   bookingNoun: "consulta",
   contactNoun: "paciente",
-  agentRole: "recepcionista virtual",
+  agentRole: "especialista comercial com IA",
   businessDescriptor: null,
   businessNoun: "clínica",
   city: null,

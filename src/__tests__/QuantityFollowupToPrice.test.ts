@@ -4,7 +4,7 @@
 // lentes". Isolada, a segunda mensagem parece comentário genérico — o classificador
 // lê como acknowledgment/general_question e a cotação se perde.
 //
-// Medido em produção (Vitalli + Ximendes): 3 de 6 continuações de quantidade após
+// Medido em produção (Aurora + Horizonte): 3 de 6 continuações de quantidade após
 // pergunta de preço caíam fora de price_inquiry. As frases abaixo são reais.
 // Ver docs/architecture/current.md.
 

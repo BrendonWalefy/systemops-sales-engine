@@ -22,7 +22,7 @@ const ctx: DemoClinicContext = {
     "remoção de dentes a partir de R$650; botox a partir de R$890; clareamento a partir de R$690; " +
     "implante a partir de R$2.900; alinhadores a partir de R$350/mês; limpeza R$220. " +
     "Valores sempre 'a partir de', após avaliação. " +
-    "Objeção de preço: parcelamos no cartão e o plano é montado na avaliação. Recepcionista: Marina.",
+    "Objeção de preço: parcelamos no cartão e o plano é montado na avaliação. Especialista comercial: Marina.",
   commercialPolicy:
     "Valores sempre 'a partir de', pois dependem de avaliação. Lentes por dente. " +
     "Prótese, remoção de dentes e botox dependem de avaliação. Parcelamos no cartão. Avaliação prévia R$150.",

@@ -214,7 +214,7 @@ export function EquipeClient({ members, professionals }: { members: Member[]; pr
                       type="text"
                       name="displayName"
                       defaultValue={m.displayName ?? ""}
-                      placeholder='Nome de exibição (ex.: "Dr. Gregorie")'
+                      placeholder='Nome de exibição (ex.: "Dr. Silva")'
                       style={{ margin: 0, flex: 1, fontSize: "13px" }}
                     />
                     <SaveNameButton />
@@ -280,7 +280,7 @@ export function EquipeClient({ members, professionals }: { members: Member[]; pr
             <span style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "5px" }}>
               Nome de exibição (opcional — aparece na saudação do dashboard)
             </span>
-            <input type="text" name="displayName" placeholder='Ex.: "Dr. Gregorie"' style={{ margin: 0 }} />
+            <input type="text" name="displayName" placeholder='Ex.: "Dr. Silva"' style={{ margin: 0 }} />
           </label>
 
           {professionals.length > 0 && (

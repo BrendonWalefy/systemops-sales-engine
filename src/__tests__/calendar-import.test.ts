@@ -15,7 +15,7 @@ import path from "path";
 // Arquivo .ics de teste
 const ICS_FILE_PATH = path.join(
   process.cwd(),
-  "vitalli-agenda-exemplo.ics",
+  "src/__tests__/fixtures/calendar-demo.ics",
 );
 
 // Fixo no passado — os testes de import chamam importCalendarEvents com este
@@ -24,15 +24,10 @@ const ICS_FILE_PATH = path.join(
 // quebraria sozinho assim que essa data ficasse no passado).
 const FAR_PAST_CUTOFF = new Date("2020-01-01T00:00:00Z");
 
-// P0.8: extractPatientName — casos reais da agenda da Vitalli (export do
-// Google Calendar, e-mail antigo dental.luxe98@gmail.com, 09/07/2026).
-// Confirmou o bug real: a primeira tentativa em produção assumia o padrão
-// "Tratamento - Nome" (usado só no fixture de exemplo criado antes de ver o
-// arquivo real), mas a agenda de verdade não usa separador nenhum — o nome do
-// paciente é sempre a primeira sequência de palavra(s) capitalizada(s) no
-// início do SUMMARY, com uma exceção clara: quando a frase abre com uma
-// palavra de tratamento ("Manutenção Fabio"), o nome vem em seguida.
-describe("extractPatientName — casos reais da agenda Vitalli", () => {
+// P0.8: extractPatientName — variações representativas e anonimizadas de
+// títulos encontrados em calendários operacionais. O parser aceita eventos sem
+// separador e reconhece quando o título começa pelo tratamento.
+describe("extractPatientName — variações representativas de agenda", () => {
   const casosReais: Array<[string, string]> = [
     ["Alex 20 Lentes 2 mil", "Alex"],
     ["Manutenção Fabio", "Fabio"],
@@ -45,7 +40,7 @@ describe("extractPatientName — casos reais da agenda Vitalli", () => {
     ["Denis William R$3.000 com a plástica + R$400 da remoção", "Denis William"],
     ["Gabriel Reparo canino R$200", "Gabriel"],
     ["Leonardo Paciente R$2.000", "Leonardo"],
-    ["Vilma avaliação gregorie", "Vilma"],
+    ["Vilma avaliação silva", "Vilma"],
     ["Ana Cristina manutenção 400 + limpeza 250 + Manutenção filho", "Ana Cristina"],
     ["Milena 20 lentes 2 mil", "Milena"],
     ["Ana Julia 20 lentes", "Ana Julia"],
@@ -57,7 +52,7 @@ describe("extractPatientName — casos reais da agenda Vitalli", () => {
     ["Vitor manutenção gratuita", "Vitor"],
     ["Polyane 20 lentes já pagou GREGORI", "Polyane"],
     ["Keyla remoção 20 lentes", "Keyla"],
-    ["Poliana paciente R$2.100 gregorie", "Poliana"],
+    ["Poliana paciente R$2.100 silva", "Poliana"],
   ];
 
   for (const [summary, expected] of casosReais) {
@@ -149,9 +144,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
   let demoClinicId: string;
 
   beforeAll(async () => {
-    // Criar clínica demo para testes
+    // Criar organização demo para testes
     const existingDemo = await db.query.organizations.findFirst({
-      where: eq(organizations.slug, "demo-vitalli-test"),
+      where: eq(organizations.slug, "demo-calendar-import-test"),
       columns: { id: true },
     });
 
@@ -161,12 +156,12 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
       await db.delete(appointments).where(eq(appointments.clinicId, demoClinicId));
       await db.delete(leads).where(eq(leads.clinicId, demoClinicId));
     } else {
-      // Criar clínica demo
+      // Criar organização demo
       const result = await db
         .insert(organizations)
         .values({
-          name: "Demo Vitalli Test",
-          slug: "demo-vitalli-test",
+          name: "Demo Calendar Import",
+          slug: "demo-calendar-import-test",
           specialty: "dental",
           city: "São Paulo",
           autoReplyEnabled: false,
@@ -196,8 +191,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
 
     // Validar primeiro evento
     const event1 = result.events[0];
-    expect(event1.summary).toContain("João Silva");
-    expect(event1.uid).toBe("google-calendar-vitalli-001@google.com");
+    expect(event1.summary).toContain("João Exemplo");
+    expect(event1.uid).toBe("calendar-demo-001@example.com");
     expect(event1.startTime).toBeDefined();
     expect(event1.endTime).toBeDefined();
   });
@@ -208,11 +203,10 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
 
     const events = result.events;
 
-    // Formato real observado na exportação da Vitalli: sem "-" nem
-    // parênteses, o nome do paciente abre a frase.
-    expect(events[0].summary).toMatch(/João Silva/);
-    expect(events[1].summary).toMatch(/Maria Santos/);
-    expect(events[2].summary).toMatch(/Pedro Costa/);
+    // Formato representativo: sem "-" nem parênteses, o nome abre a frase.
+    expect(events[0].summary).toMatch(/João Exemplo/);
+    expect(events[1].summary).toMatch(/Maria Exemplo/);
+    expect(events[2].summary).toMatch(/Pedro Exemplo/);
   });
 
   it("deve importar eventos para DB corretamente", async () => {
@@ -332,9 +326,9 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
     const parseResult = parseIcs(content);
 
     const testCases = [
-      { summary: "João Silva 20 lentes R$2.000", expectedPatient: "João Silva" },
-      { summary: "Maria Santos manutenção", expectedPatient: "Maria Santos" },
-      { summary: "Pedro Costa avaliação facetas", expectedPatient: "Pedro Costa" },
+      { summary: "João Exemplo 20 lentes", expectedPatient: "João Exemplo" },
+      { summary: "Maria Exemplo manutenção", expectedPatient: "Maria Exemplo" },
+      { summary: "Pedro Exemplo avaliação", expectedPatient: "Pedro Exemplo" },
     ];
 
     for (const testCase of testCases) {
@@ -347,11 +341,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
   });
 
   it("cutoffDate filtra eventos passados — não importa nem conta como erro, só como skipped", async () => {
-    // Caso real que motivou este filtro: a exportação real do Google Calendar
-    // da Vitalli trazia 1488 eventos desde 2024 (todo o histórico). Sem
-    // filtro, a primeira tentativa em produção processou centenas de
-    // consultas já passadas antes de travar. cutoffDate no futuro distante
-    // deve pular TODOS os eventos do fixture (que são de 2026-07-10/11).
+    // Exportações do Google Calendar podem trazer anos de histórico. O cutoff
+    // impede que consultas já passadas sejam processadas durante uma importação.
     const content = fs.readFileSync(ICS_FILE_PATH, "utf-8");
     const parseResult = parseIcs(content);
 
@@ -426,17 +417,14 @@ describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () 
   });
 
   it("vincula ao profissional mencionado no texto, e ao default quando nenhum é mencionado", async () => {
-    // Caso real pedido pelo usuário: Vitalli tem Dr. Gregorie (funcionário) e
-    // Dr. Victor (dono). Só 3 de 24 eventos futuros reais mencionam
-    // "gregorie" no SUMMARY — os demais não indicam profissional nenhum e
-    // devem cair no default (Victor).
-    const [gregorie] = await db
+    // Alguns títulos mencionam o profissional; os demais devem cair no default.
+    const [specialist] = await db
       .insert(professionals)
-      .values({ clinicId: demoClinicId, name: "Dr. Gregorie", specialty: "Odontologia" })
+      .values({ clinicId: demoClinicId, name: "Dr. Silva", specialty: "Odontologia" })
       .returning({ id: professionals.id });
-    const [victor] = await db
+    const [defaultProfessional] = await db
       .insert(professionals)
-      .values({ clinicId: demoClinicId, name: "Dr. Victor", specialty: "Odontologia" })
+      .values({ clinicId: demoClinicId, name: "Dr. Costa", specialty: "Odontologia" })
       .returning({ id: professionals.id });
 
     const ics = `BEGIN:VCALENDAR
@@ -445,26 +433,26 @@ BEGIN:VEVENT
 DTSTART:20260710T110000Z
 DTEND:20260710T120000Z
 UID:prof-test-1@test
-SUMMARY:Vilma avaliação gregorie
+SUMMARY:Paciente Alfa avaliação silva
 END:VEVENT
 BEGIN:VEVENT
 DTSTART:20260710T120000Z
 DTEND:20260710T130000Z
 UID:prof-test-2@test
-SUMMARY:Polyane 20 lentes já pagou GREGORI
+SUMMARY:Paciente Beta 20 lentes SILVA
 END:VEVENT
 BEGIN:VEVENT
 DTSTART:20260710T130000Z
 DTEND:20260710T140000Z
 UID:prof-test-3@test
-SUMMARY:Pedro manutenção sem custo
+SUMMARY:Paciente Gama manutenção sem custo
 END:VEVENT
 END:VCALENDAR`;
 
     const parseResult = parseIcs(ics);
     await importCalendarEvents(demoClinicId, parseResult.events, {
       cutoffDate: FAR_PAST_CUTOFF,
-      defaultProfessionalId: victor.id,
+      defaultProfessionalId: defaultProfessional.id,
     });
 
     const apts = await db.query.appointments.findMany({
@@ -473,8 +461,8 @@ END:VCALENDAR`;
     });
 
     const byUid = new Map(apts.map((a) => [a.calendarEventId, a.professionalId]));
-    expect(byUid.get("prof-test-1@test")).toBe(gregorie.id);
-    expect(byUid.get("prof-test-2@test")).toBe(gregorie.id); // "GREGORI" sem o "e" final
-    expect(byUid.get("prof-test-3@test")).toBe(victor.id); // sem menção → default
+    expect(byUid.get("prof-test-1@test")).toBe(specialist.id);
+    expect(byUid.get("prof-test-2@test")).toBe(specialist.id);
+    expect(byUid.get("prof-test-3@test")).toBe(defaultProfessional.id);
   });
 });

@@ -2,7 +2,7 @@
  * Nome do arquivo encaminhado ao WhatsApp do doutor.
  *
  * O encaminhamento chamava `sendMediaMessage` sem `fileName` — parâmetro que já
- * existia e nunca era usado. Resultado real (Vitalli, 21/07): o comprovante da
+ * existia e nunca era usado. Resultado real (Aurora, 21/07): o comprovante da
  * paciente chegou como `[documento] Sem nome` e **não abriu**. O mesmo arquivo
  * com nome abriu normalmente.
  *

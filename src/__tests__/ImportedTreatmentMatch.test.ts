@@ -7,7 +7,7 @@
 //   "Ana Julia 20 lentes"       x  "Lentes em Resina Composta"
 //   "Keyla remoção 20 lentes"   x  "Remoção de lentes"
 //
-// Medido em produção (Vitalli, 21/07): **0 de 44** eventos importados tinham
+// Medido em produção (Aurora, 21/07): **0 de 44** eventos importados tinham
 // `treatmentId`. Como as regras de pós-atendimento filtram por tratamento, elas
 // nunca encontravam ninguém — nenhuma mensagem de cuidados pós-lentes jamais
 // saiu. Ver docs/architecture/current.md.
@@ -22,8 +22,8 @@ import {
   type ImportTreatmentCandidate,
 } from "@/application/calendar/import-calendar-events";
 
-// Catálogo real da Vitalli (recorte com os que aparecem na agenda).
-const VITALLI: ImportTreatmentCandidate[] = [
+// Catálogo real da Aurora (recorte com os que aparecem na agenda).
+const AURORA: ImportTreatmentCandidate[] = [
   {
     id: "composta",
     name: "Lentes em Resina Composta",
@@ -74,18 +74,18 @@ describe("matchImportedTreatment — casos reais da agenda", () => {
     ["Laís Manutenção R$400", "manutencao"],
     ["Angelucia 8:30 manutenção 200$", "manutencao"],
     ["Vitor manutenção gratuita", "manutencao"],
-    ["Vilma avaliação gregorie", "avaliacao"],
+    ["Vilma avaliação silva", "avaliacao"],
   ])("resolve %s", (summary, expectedId) => {
-    expect(matchImportedTreatment(summary, VITALLI).treatmentId).toBe(expectedId);
+    expect(matchImportedTreatment(summary, AURORA).treatmentId).toBe(expectedId);
   });
 
   it("o nome completo continua funcionando quando aparece por extenso", () => {
-    expect(matchImportedTreatment("Joana Plástica Gengival", VITALLI).treatmentId).toBe("gengival");
+    expect(matchImportedTreatment("Joana Plástica Gengival", AURORA).treatmentId).toBe("gengival");
   });
 
   it("pontuação grudada não atrapalha", () => {
     // "Priscila lentes / pagou 100$" — barra e cifrão colados nas palavras.
-    expect(matchImportedTreatment("Angelucia 8:30 manutenção 200$", VITALLI).treatmentId).toBe("manutencao");
+    expect(matchImportedTreatment("Angelucia 8:30 manutenção 200$", AURORA).treatmentId).toBe("manutencao");
   });
 });
 
@@ -94,14 +94,14 @@ describe("família sem técnica cai no guarda-chuva", () => {
     // 21 dos 44 eventos reais têm essa forma. As três técnicas empatam no alias
     // "lentes"; vence a que carrega o pipeline — a entrada que existe justamente
     // para representar a família quando a técnica não foi dita.
-    const match = matchImportedTreatment("Ana Julia 20 lentes", VITALLI);
+    const match = matchImportedTreatment("Ana Julia 20 lentes", AURORA);
     expect(match.treatmentId).toBe("composta");
     expect(match.ambiguousWith).toEqual([]);
   });
 
   it("sem guarda-chuva na família, continua sem resolver", () => {
     // Se nenhuma das candidatas empatadas for a genérica, escolher seria chute.
-    const semGuardaChuva = VITALLI.map((t) =>
+    const semGuardaChuva = AURORA.map((t) =>
       t.id === "composta" ? { ...t, hasPipeline: false } : t,
     );
     const match = matchImportedTreatment("Ana Julia 20 lentes", semGuardaChuva);
@@ -114,15 +114,15 @@ describe("família sem técnica cai no guarda-chuva", () => {
     // guarda-chuva registraria instalação — mandando cuidados pós-instalação
     // para quem teve a lente RETIRADA. O alias "remoção" desempata antes, por
     // ser mais específico (7 letras contra 6).
-    expect(matchImportedTreatment("Keyla remoção 20 lentes", VITALLI).treatmentId).toBe("remocao");
-    expect(matchImportedTreatment("Regina Silva 2 mil 200 remoção", VITALLI).treatmentId).toBe("remocao");
+    expect(matchImportedTreatment("Keyla remoção 20 lentes", AURORA).treatmentId).toBe("remocao");
+    expect(matchImportedTreatment("Regina Silva 2 mil 200 remoção", AURORA).treatmentId).toBe("remocao");
   });
 
   it("a técnica escrita no evento desempata", () => {
     // Se o doutor escrever a técnica, o sistema resolve sozinho — é o caminho
     // para destravar os 24 sem palpite nosso.
-    expect(matchImportedTreatment("Ana Julia 20 lentes estratificada", VITALLI).treatmentId).toBe("estratificada");
-    expect(matchImportedTreatment("Murilo 20 lentes premium", VITALLI).treatmentId).toBe("premium");
+    expect(matchImportedTreatment("Ana Julia 20 lentes estratificada", AURORA).treatmentId).toBe("estratificada");
+    expect(matchImportedTreatment("Murilo 20 lentes premium", AURORA).treatmentId).toBe("premium");
   });
 
   it("empate entre DUAS genéricas não resolve — devolve os candidatos", () => {
@@ -138,14 +138,14 @@ describe("família sem técnica cai no guarda-chuva", () => {
 
 describe("bordas", () => {
   it("evento sem nenhum tratamento reconhecível fica sem tratamento", () => {
-    const match = matchImportedTreatment("Leonardo Paciente R$2.000", VITALLI);
+    const match = matchImportedTreatment("Leonardo Paciente R$2.000", AURORA);
     expect(match.treatmentId).toBeNull();
     expect(match.ambiguousWith).toEqual([]);
   });
 
   it("texto vazio não quebra", () => {
-    expect(matchImportedTreatment("", VITALLI).treatmentId).toBeNull();
-    expect(matchImportedTreatment("   ", VITALLI).treatmentId).toBeNull();
+    expect(matchImportedTreatment("", AURORA).treatmentId).toBeNull();
+    expect(matchImportedTreatment("   ", AURORA).treatmentId).toBeNull();
   });
 
   it("tratamento com keywordMatchEnabled=false fica fora", () => {
@@ -165,7 +165,7 @@ describe("bordas", () => {
 // ── Duração do bloco importado ──
 //
 // A clínica agenda no Google e, na pressa, erra o bloco: das 23 consultas
-// futuras da Vitalli, 9 estavam mais curtas que o procedimento exige — duas com
+// futuras da Aurora, 9 estavam mais curtas que o procedimento exige — duas com
 // 60min para uma instalação de lentes de 5h. O motor de horários lê a agenda
 // interna, via a tarde livre e podia ofertá-la a outro lead.
 
@@ -218,7 +218,7 @@ describe("resolveImportedEndsAt", () => {
 // ── Valor do atendimento ──
 //
 // A home soma valueCents para mostrar faturamento potencial e realizado. Medido
-// em 21/07: 45 de 46 consultas da Vitalli tinham valueCents nulo e os dois
+// em 21/07: 45 de 46 consultas da Aurora tinham valueCents nulo e os dois
 // números apareciam como R$ 0 — com o valor escrito na agenda o tempo todo.
 
 describe("extractEventValueCents", () => {
@@ -246,7 +246,7 @@ describe("extractEventValueCents", () => {
   });
 
   it("NÃO confunde horário com dinheiro", () => {
-    expect(extractEventValueCents("Vilma avaliação 8:30 gregorie")).toBeNull();
+    expect(extractEventValueCents("Vilma avaliação 8:30 silva")).toBeNull();
   });
 
   it("NÃO soma alternativas de preço", () => {

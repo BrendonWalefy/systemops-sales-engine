@@ -1,21 +1,25 @@
 #!/usr/bin/env tsx
 /**
  * Auditor canônico das referências de mídia de uma clínica (por padrão,
- * Ximendes). Verifica pipelines e seleções de playbook contra `media_assets`.
+ * uma organização). Verifica pipelines e seleções de playbook contra `media_assets`.
  *
  * O que compara: cada `mediaId` usado em pipeline_steps deve continuar
  * resolvendo para a MESMA url, antes e depois. Isso é o que garante que
  * nenhum vídeo em produção passa a ser omitido silenciosamente ao lead.
  *
- * Run: npx dotenv -e .env.local -- tsx scripts/dump-media-refs.ts ximendes
+ * Run: npx dotenv -e .env.local -- tsx scripts/dump-media-refs.ts <slug>
  *
- * Argumento opcional: slug da clínica (default: ximendes).
+ * O slug da organização é obrigatório.
  */
 import { neon } from "@neondatabase/serverless";
 import { readFileSync } from "fs";
 
 async function main() {
-  const slug = process.argv[2] ?? "ximendes";
+  const slug = process.argv[2]?.trim();
+  if (!slug) {
+    console.error("Uso: tsx scripts/dump-media-refs.ts <slug>");
+    process.exit(1);
+  }
 
   const envPath = new URL("../.env.local", import.meta.url).pathname;
   const env = readFileSync(envPath, "utf-8");

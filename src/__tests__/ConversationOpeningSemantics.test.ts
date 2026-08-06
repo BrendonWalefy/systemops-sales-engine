@@ -7,7 +7,7 @@
 //
 // Medido em produção (21/07): 123 primeiras respostas do agente saíram com o
 // lead já tendo 2+ mensagens sem resposta; 69 (56%) abriram com apresentação.
-// Um lead da Vitalli chegou a 14 mensagens nessa condição.
+// Um lead da Aurora chegou a 14 mensagens nessa condição.
 //
 // A separação: `isFirstMessage` continua governando a APRESENTAÇÃO (saudação
 // rica, nome da clínica dito uma vez) — quem nunca foi atendido merece isso na
@@ -56,7 +56,7 @@ describe("isConversationOpening x isFirstMessage", () => {
   });
 
   it("resposta do OPERADOR também encerra o primeiro contato", () => {
-    // clinic_user conta como não-lead: se o Victor respondeu à mão, a IA não
+    // clinic_user conta como não-lead: se o Silva respondeu à mão, a IA não
     // pode chegar depois se apresentando do zero.
     const flags = resolveOpeningFlags([lead(), operador(), lead()]);
     expect(flags.isFirstMessage).toBe(false);

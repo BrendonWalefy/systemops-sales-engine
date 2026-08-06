@@ -57,7 +57,7 @@ export async function composeRecoveryMessageAction(
     messages: [
       {
         role: "user",
-        content: `Você é ${receptionistName}, recepcionista virtual da ${clinic.name}, especializada em ${specialty}.
+        content: `Você é ${receptionistName}, especialista comercial com IA da ${clinic.name}, especializada em ${specialty}.
 
 HISTÓRICO DA CONVERSA:
 ${historyText}

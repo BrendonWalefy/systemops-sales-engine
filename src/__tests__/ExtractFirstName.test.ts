@@ -3,7 +3,7 @@ import { extractFirstName } from "@/core/pipeline/ConversationOrchestrator";
 
 // A8 — O nome de exibição do WhatsApp é livre; leads reais aparecem como status,
 // frases ou decoração. Saudar "Boa tarde, ocupado" soa robótico — melhor saudar sem
-// nome. Casos reais extraídos do histórico da Vitalli (15/07).
+// nome. Casos reais extraídos do histórico da Aurora (15/07).
 describe("extractFirstName — sanitização de nome de exibição do WhatsApp", () => {
   it("retorna o primeiro nome de nomes próprios normais", () => {
     expect(extractFirstName("Alex Santana")).toBe("Alex");
@@ -33,8 +33,8 @@ describe("extractFirstName — sanitização de nome de exibição do WhatsApp",
   });
 
   it("mantém o guard existente de prefixos de negócio/título", () => {
-    expect(extractFirstName("Dr. Victor")).toBeNull();
-    expect(extractFirstName("Clínica Vitalli")).toBeNull();
+    expect(extractFirstName("Dr. Silva")).toBeNull();
+    expect(extractFirstName("Clínica Aurora")).toBeNull();
   });
 
   it("aceita apelido curto legítimo (2+ letras)", () => {

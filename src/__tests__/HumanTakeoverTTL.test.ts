@@ -172,14 +172,14 @@ describe("HumanTakeover TTL — ResponseComposer system prompt", () => {
   }
 
   it("sem flag → bloco de retomada NÃO aparece no prompt", () => {
-    const block = buildTakeoverBlock(false, "Ximendes Odontologia");
+    const block = buildTakeoverBlock(false, "Clínica Horizonte");
     expect(block).toBe("");
   });
 
   it("com flag → bloco de retomada aparece no prompt", () => {
-    const block = buildTakeoverBlock(true, "Ximendes Odontologia");
+    const block = buildTakeoverBlock(true, "Clínica Horizonte");
     expect(block).toContain("RETOMADA APÓS ATENDIMENTO HUMANO");
-    expect(block).toContain("Ximendes Odontologia");
+    expect(block).toContain("Clínica Horizonte");
   });
 
   it("bloco de retomada menciona que operador atendeu diretamente", () => {

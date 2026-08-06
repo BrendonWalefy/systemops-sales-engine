@@ -15,7 +15,7 @@ vi.mock("@/infrastructure/repositories/drizzle-media-asset-repository", () => ({
 
 import { resolveMediaLibraryForVersion } from "@/application/config/editorial-config";
 
-const CLINIC_ID = "clinic-ximendes";
+const CLINIC_ID = "clinic-horizonte";
 
 describe("resolveMediaLibraryForVersion", () => {
   beforeEach(() => {

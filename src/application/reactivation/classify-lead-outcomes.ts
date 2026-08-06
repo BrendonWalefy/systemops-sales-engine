@@ -120,7 +120,7 @@ async function findEligibleLeads(clinicId: string): Promise<EligibleLead[]> {
 /**
  * Títulos das mídias que entregam preço nesta clínica.
  *
- * A Vitalli manda os valores em arte por decisão do dentista, e a imagem é
+ * A Aurora manda os valores em arte por decisão do dentista, e a imagem é
  * gravada como mensagem de texto com o título no corpo. Sem esta lista, o
  * estágio do silêncio classificaria como "perguntou e não foi respondida" uma
  * conversa em que o paciente recebeu a tabela inteira.

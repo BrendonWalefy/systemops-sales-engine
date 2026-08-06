@@ -17,7 +17,6 @@
     "verify:agenda": "vitest run src/__tests__/SlotEngine.test.ts src/__tests__/BookingDoubleBooking.test.ts src/__tests__/SlotDayPreference.test.ts src/__tests__/ClinicTimezone.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- tsx scripts/migrate.ts",
-    "seed": "dotenv -e .env.local -- tsx scripts/seed-ximendes.ts",
     "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
     "demo:roteiro": "dotenv -e .env.local -- tsx scripts/demo-roteiro.ts",
     "replay:export": "dotenv -e .env.local -- tsx scripts/export-sanitized-replay-corpus.ts",

@@ -2,7 +2,7 @@
 //   - Objeção de preço antigo ("vocês me passaram um valor menor antes").
 //   - Caso clínico atípico (dente fraturado, só raiz, ponte, prótese, implante) —
 //     a IA empurrava o pitch padrão de lentes em vez de fazer a triagem que o doutor
-//     precisa (radiografia/foto). Casos reais no histórico da Vitalli (Gaab, Marcel).
+//     precisa (radiografia/foto). Casos reais no histórico da Aurora (Gaab, Marcel).
 
 function normalize(text: string): string {
   return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -72,7 +72,7 @@ export function detectAtypicalClinicalCase(message: string): string | null {
 // "Um dos dentes quebrou", "a lente caiu", "as lentes estão quebrando". Hoje o
 // tratamento correto depende da LLM rotular a mensagem como clinical_urgency; quando
 // ela rotula outra coisa o lead recebe lista de horários ou cotação do tratamento base.
-// Caso real: Carla (Ximendes, 16/07) — lentes estratificadas feitas na casa em 23/06,
+// Caso real: Carla (Horizonte, 16/07) — lentes estratificadas feitas na casa em 23/06,
 // "Um dos dentes quebrou" 23 dias depois → intent reject_slots → 5 horários de segunda.
 //
 // Dois alvos, com pesos diferentes:
@@ -133,7 +133,7 @@ export function detectExistingWorkProblem(message: string): ExistingWorkProblem 
   // Vale o substantivo MAIS PRÓXIMO do termo de dano — é a ele que o dano se
   // refere. Preferir "trabalho" só porque a palavra existe na frase inverte o
   // sentido de mensagens reais: "só quero fazer as lentes, mas terei que remover
-  // 2 dentes quebrados" (ST, Vitalli 19/07) e "restaurações nesses dentes, alem
+  // 2 dentes quebrados" (ST, Aurora 19/07) e "restaurações nesses dentes, alem
   // de um quebrado […] as lentes resolvem isso?" (Marta, 21/07) são perguntas de
   // venda sobre dente natural, não relatos de lente quebrada. Empate vai para
   // trabalho, que é o alvo mais específico.
@@ -147,12 +147,12 @@ export function detectExistingWorkProblem(message: string): ExistingWorkProblem 
 
 // Vínculo declarado pelo próprio lead: "troquei minhas lentes com vcs", "vocês
 // fizeram", "sou paciente de vocês". Necessário porque o histórico no banco só
-// existe desde que a clínica entrou no sistema (Ximendes 27/05, Vitalli 09/07) —
+// existe desde que a clínica entrou no sistema (Horizonte 27/05, Aurora 09/07) —
 // quem fez lentes há 9 meses é paciente da casa sem nenhuma consulta registrada.
-// Caso real: Mô (Vitalli, 14/07) — "troquei minhas lentes de resina com vcs lá na
+// Caso real: Mô (Aurora, 14/07) — "troquei minhas lentes de resina com vcs lá na
 // av Sabará tem aproximadamente 9 meses […] a maioria das lentes estão quebrando".
 //
-// Conservador de propósito: "queria refazê-la com vocês" (Felipe, Ximendes) é
+// Conservador de propósito: "queria refazê-la com vocês" (Felipe, Horizonte) é
 // intenção futura, não vínculo — não casa, e o lead cai no ramo que pergunta.
 const SELF_DECLARED_PAST_WORK_RE = [
   /\b(fiz|refiz|coloquei|troquei|apliquei|tratei|operei)\b[^.?!]{0,60}\b(com voces|com vcs|com vc|com o dr|com a dra|com o doutor|com a doutora|ai na clinica|aqui na clinica|nessa clinica|nesta clinica)\b/,

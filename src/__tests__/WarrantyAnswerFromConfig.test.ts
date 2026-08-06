@@ -1,5 +1,5 @@
 // Garantia responde pelo cadastro da clínica. Bug medido em produção: a objeção
-// da Vitalli existe desde 07/07 22:04 e em 18/07 a Giuliana perguntou "tempo de
+// da Aurora existe desde 07/07 22:04 e em 18/07 a Giuliana perguntou "tempo de
 // garantia" e recebeu uma descrição das técnicas de lente. O matcher funcionava —
 // só nunca era chamado, porque a pergunta cai em `general_question` e o matcher
 // vivia dentro do ramo `needs_human`.
@@ -11,8 +11,8 @@ import {
 } from "@/core/pipeline/ConversationOrchestrator";
 import { composeWarrantySection } from "@/application/config/editorial-config";
 
-// Objeção real da Vitalli (playbook ativo).
-const VITALLI_OBJECTIONS = [
+// Objeção real da Aurora (playbook ativo).
+const AURORA_OBJECTIONS = [
   {
     objection: "Quanto tempo dura? Tem garantia e como é a manutenção?",
     response:
@@ -29,15 +29,15 @@ const VITALLI_OBJECTIONS = [
   },
 ];
 
-const VITALLI_TREATMENTS = ["Lentes de resina composta estratificada", "Manutenção Preventiva de lentes"];
+const AURORA_TREATMENTS = ["Lentes de resina composta estratificada", "Manutenção Preventiva de lentes"];
 
 describe("resolveWarrantyAnswer — a config manda", () => {
   it("caso Giuliana (18/07): 'tempo de garantia' devolve a resposta cadastrada", () => {
     const answer = resolveWarrantyAnswer({
       warrantyPolicy: null,
       message: "tempo de garantia",
-      objections: VITALLI_OBJECTIONS,
-      treatmentTerms: VITALLI_TREATMENTS,
+      objections: AURORA_OBJECTIONS,
+      treatmentTerms: AURORA_TREATMENTS,
     });
     expect(answer?.kind).toBe("registered");
     expect(answer?.clinicContext).toContain("garantia de 2 anos");
@@ -50,8 +50,8 @@ describe("resolveWarrantyAnswer — a config manda", () => {
     const answer = resolveWarrantyAnswer({
       warrantyPolicy: null,
       message: "Bom noite qual o tempo de garantia?",
-      objections: VITALLI_OBJECTIONS,
-      treatmentTerms: VITALLI_TREATMENTS,
+      objections: AURORA_OBJECTIONS,
+      treatmentTerms: AURORA_TREATMENTS,
     });
     expect(answer?.kind).toBe("registered");
     expect(answer?.clinicContext).toContain("depende de avaliação presencial");
@@ -68,8 +68,8 @@ describe("resolveWarrantyAnswer — a config manda", () => {
       expect(resolveWarrantyAnswer({
         warrantyPolicy: null,
         message,
-        objections: VITALLI_OBJECTIONS,
-        treatmentTerms: VITALLI_TREATMENTS,
+        objections: AURORA_OBJECTIONS,
+        treatmentTerms: AURORA_TREATMENTS,
       })?.kind).toBe("registered");
     }
   });
@@ -80,13 +80,13 @@ describe("resolveWarrantyAnswer — a config manda", () => {
     const answer = resolveWarrantyAnswer({
       warrantyPolicy: null,
       message: "Busco orçamento mesmo que estimado\nFormas de pagamento\nGarantias\n\nTipo de material",
-      objections: VITALLI_OBJECTIONS,
-      treatmentTerms: VITALLI_TREATMENTS,
+      objections: AURORA_OBJECTIONS,
+      treatmentTerms: AURORA_TREATMENTS,
     });
     expect(answer?.kind).toBe("registered");
   });
 
-  it("sem política cadastrada (Ximendes hoje), a IA não inventa e não vende", () => {
+  it("sem política cadastrada (Horizonte hoje), a IA não inventa e não vende", () => {
     const answer = resolveWarrantyAnswer({
       warrantyPolicy: null,
       message: "qual o tempo de garantia?",
@@ -124,16 +124,16 @@ describe("resolveWarrantyAnswer — a config manda", () => {
       expect(resolveWarrantyAnswer({
         warrantyPolicy: null,
         message,
-        objections: VITALLI_OBJECTIONS,
-        treatmentTerms: VITALLI_TREATMENTS,
+        objections: AURORA_OBJECTIONS,
+        treatmentTerms: AURORA_TREATMENTS,
       })).toBeNull();
     }
   });
 });
 
 describe("campo estruturado de garantia", () => {
-  // A política real da Vitalli, agora como dado e não como frase.
-  const VITALLI_WARRANTY = {
+  // A política real da Aurora, agora como dado e não como frase.
+  const AURORA_WARRANTY = {
     offersWarranty: true,
     tiers: [
       { periodMonths: 24, covers: "a lente descolar por completo" },
@@ -143,7 +143,7 @@ describe("campo estruturado de garantia", () => {
   };
 
   it("composeWarrantySection deriva a prosa do dado, com prazo legível", () => {
-    const section = composeWarrantySection(VITALLI_WARRANTY);
+    const section = composeWarrantySection(AURORA_WARRANTY);
     expect(section).toContain("2 anos: a lente descolar por completo");
     expect(section).toContain("1 mês: pigmentação ou quebra por descuido");
     expect(section).toContain("Condições: é só trazer a lente descolada");
@@ -152,9 +152,9 @@ describe("campo estruturado de garantia", () => {
   it("o campo estruturado tem precedência sobre a objeção cadastrada", () => {
     const answer = resolveWarrantyAnswer({
       message: "tempo de garantia",
-      warrantyPolicy: VITALLI_WARRANTY,
-      objections: VITALLI_OBJECTIONS,
-      treatmentTerms: VITALLI_TREATMENTS,
+      warrantyPolicy: AURORA_WARRANTY,
+      objections: AURORA_OBJECTIONS,
+      treatmentTerms: AURORA_TREATMENTS,
     });
     expect(answer).toEqual(
       expect.objectContaining({ kind: "registered", source: "structured" }),
@@ -166,8 +166,8 @@ describe("campo estruturado de garantia", () => {
     const answer = resolveWarrantyAnswer({
       message: "tempo de garantia",
       warrantyPolicy: null,
-      objections: VITALLI_OBJECTIONS,
-      treatmentTerms: VITALLI_TREATMENTS,
+      objections: AURORA_OBJECTIONS,
+      treatmentTerms: AURORA_TREATMENTS,
     });
     expect(answer).toEqual(
       expect.objectContaining({ kind: "registered", source: "objection" }),
@@ -219,13 +219,13 @@ describe("matchRegisteredObjection — token fraco não decide objeção", () =>
   it("'Posso ver os horários de sexta?' não vira a objeção de remarcação", () => {
     // Falso positivo medido: casava por "posso", 5 letras, presente no gatilho
     // "Posso cancelar ou remarcar meu horário?".
-    expect(matchRegisteredObjection("Posso ver os horários de sexta?", VITALLI_OBJECTIONS, VITALLI_TREATMENTS))
+    expect(matchRegisteredObjection("Posso ver os horários de sexta?", AURORA_OBJECTIONS, AURORA_TREATMENTS))
       .toBeNull();
-    expect(matchRegisteredObjection("Olá! Posso ter mais informações sobre isso?", VITALLI_OBJECTIONS, VITALLI_TREATMENTS))
+    expect(matchRegisteredObjection("Olá! Posso ter mais informações sobre isso?", AURORA_OBJECTIONS, AURORA_TREATMENTS))
       .toBeNull();
   });
 
-  it("apelido de tratamento também não decide objeção (106 casos da Vitalli)", () => {
+  it("apelido de tratamento também não decide objeção (106 casos da Aurora)", () => {
     // O anúncio do Meta manda sempre a mesma frase, e ela casava com "Como funciona
     // a troca de facetas antigas por novas?" pela palavra "facetas" — que é ALIAS do
     // tratamento, não nome. Só os nomes eram descartados como genéricos.
@@ -235,16 +235,16 @@ describe("matchRegisteredObjection — token fraco não decide objeção", () =>
     ];
     const anuncio = "Olá! Quero saber como posso transformar meu sorriso com facetas de resina?";
 
-    expect(matchRegisteredObjection(anuncio, VITALLI_OBJECTIONS, catalogo.map((t) => t.name))?.objection)
+    expect(matchRegisteredObjection(anuncio, AURORA_OBJECTIONS, catalogo.map((t) => t.name))?.objection)
       .toBe("Como funciona a troca de facetas antigas por novas?");
-    expect(matchRegisteredObjection(anuncio, VITALLI_OBJECTIONS, treatmentTermsForObjectionMatch(catalogo)))
+    expect(matchRegisteredObjection(anuncio, AURORA_OBJECTIONS, treatmentTermsForObjectionMatch(catalogo)))
       .toBeNull();
   });
 
   it("a objeção certa continua casando pela palavra que a distingue", () => {
-    expect(matchRegisteredObjection("Posso remarcar meu horário?", VITALLI_OBJECTIONS, VITALLI_TREATMENTS)?.objection)
+    expect(matchRegisteredObjection("Posso remarcar meu horário?", AURORA_OBJECTIONS, AURORA_TREATMENTS)?.objection)
       .toBe("Posso cancelar ou remarcar meu horário?");
-    expect(matchRegisteredObjection("tem garantia?", VITALLI_OBJECTIONS, VITALLI_TREATMENTS)?.objection)
+    expect(matchRegisteredObjection("tem garantia?", AURORA_OBJECTIONS, AURORA_TREATMENTS)?.objection)
       .toBe("Quanto tempo dura? Tem garantia e como é a manutenção?");
   });
 });

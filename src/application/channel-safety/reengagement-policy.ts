@@ -14,7 +14,7 @@
  *   - Respostas a inbound (reply) NÃO são afetadas — o lead acabou de falar,
  *     bloquear silenciaria o atendimento conversational-first.
  *
- * Uso típico: clínicas novas em risco (ex: Vitalli) entram em modo reply-only
+ * Uso típico: clínicas novas em risco (ex: Aurora) entram em modo reply-only
  * durante as primeiras semanas, depois o dono ou o owner desbloqueiam gradualmente.
  */
 

@@ -4,8 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { buildAddressAnswer } from "@/core/conversation/AddressBlock";
 
-// Texto real da Vitalli, escrito por quem o Victor contratou.
-const VITALLI = `🏢 Helbor Offices São Paulo II – Torre Sul
+// Texto real da Aurora, escrito por quem o Silva contratou.
+const AURORA = `🏢 Helbor Offices São Paulo II – Torre Sul
 
 📍Av. Adolfo Pinheiro, 1.029 – Santo Amaro, Sala 124 – 12º andar
 São Paulo/SP – CEP 04733-100
@@ -23,15 +23,15 @@ describe("buildAddressAnswer", () => {
       address: "Av. Adolfo Pinheiro, 1.029",
       addressComplement: "Sala 124",
       mapsUrl: "https://maps.google.com/outro",
-      locationMessage: VITALLI,
+      locationMessage: AURORA,
     });
-    expect(answer).toBe(VITALLI);
+    expect(answer).toBe(AURORA);
     // nada do template automático vaza para dentro
     expect(answer).not.toContain("Estamos na");
   });
 
   it("termina no link — é o que faz o encurtador e o card entrarem", () => {
-    const answer = buildAddressAnswer({ address: "X", locationMessage: VITALLI });
+    const answer = buildAddressAnswer({ address: "X", locationMessage: AURORA });
     expect(answer.trimEnd().endsWith("hl=pt")).toBe(true);
   });
 

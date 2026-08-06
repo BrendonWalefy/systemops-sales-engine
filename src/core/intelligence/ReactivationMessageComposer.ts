@@ -91,7 +91,7 @@ export function buildReactivationMessagePrompt(input: ReactivationMessageInput):
     ? `PRAZO AUTORIZADO: ${input.deadlineLabel}. Mencione esse prazo uma vez, sem pressionar.`
     : `SEM PRAZO: não invente urgência, não diga "por tempo limitado" nem "últimas vagas".`;
 
-  return `Você é ${input.receptionistName}, recepcionista da ${input.clinicName} (${input.specialty}).
+  return `Você é ${input.receptionistName}, especialista comercial com IA da ${input.clinicName} (${input.specialty}).
 
 Escreva UMA mensagem de WhatsApp para retomar contato com ${input.leadName ?? "esta pessoa"}, que conversou com a clínica e não fechou.
 

@@ -7,27 +7,27 @@ import { shouldRepointAppointmentLead } from "@/application/calendar/import-cale
 
 describe("extractEventPhone — formatos que o operador digita", () => {
   it("aceita o número cru com DDI", () => {
-    expect(extractEventPhone("5511921525494")).toBe("5511921525494");
+    expect(extractEventPhone("5511900000007")).toBe("5511900000007");
   });
 
   it("aceita DDD + móvel sem DDI e completa o 55", () => {
-    expect(extractEventPhone("11921525494")).toBe("5511921525494");
+    expect(extractEventPhone("11900000007")).toBe("5511900000007");
   });
 
   it("aceita o formato de agenda brasileiro", () => {
-    expect(extractEventPhone("(11) 92152-5494")).toBe("5511921525494");
+    expect(extractEventPhone("(11) 90000-0007")).toBe("5511900000007");
   });
 
   it("aceita +55 com espaços", () => {
-    expect(extractEventPhone("+55 11 92152-5494")).toBe("5511921525494");
+    expect(extractEventPhone("+55 11 90000-0007")).toBe("5511900000007");
   });
 
   it("aceita ponto como separador", () => {
-    expect(extractEventPhone("11.92152.5494")).toBe("5511921525494");
+    expect(extractEventPhone("11.90000.0007")).toBe("5511900000007");
   });
 
   it("aceita o 9 separado do resto", () => {
-    expect(extractEventPhone("11 9 2152-5494")).toBe("5511921525494");
+    expect(extractEventPhone("11 9 0000-0007")).toBe("5511900000007");
   });
 
   it("aceita telefone fixo de 8 dígitos", () => {
@@ -35,14 +35,14 @@ describe("extractEventPhone — formatos que o operador digita", () => {
   });
 
   it("encontra o número no meio de uma frase", () => {
-    expect(extractEventPhone("Paciente keylla, contato (11) 92152-5494, retorno")).toBe(
-      "5511921525494",
+    expect(extractEventPhone("Paciente Exemplo, contato (11) 90000-0007, retorno")).toBe(
+      "5511900000007",
     );
   });
 
   it("encontra o número com rótulo antes", () => {
-    expect(extractEventPhone("Tel: 11921525494")).toBe("5511921525494");
-    expect(extractEventPhone("WhatsApp 11921525494")).toBe("5511921525494");
+    expect(extractEventPhone("Tel: 11900000007")).toBe("5511900000007");
+    expect(extractEventPhone("WhatsApp 11900000007")).toBe("5511900000007");
   });
 });
 
@@ -73,7 +73,7 @@ describe("extractEventPhone — o que NÃO pode virar telefone", () => {
 
   it("recusa DDD inexistente", () => {
     expect(extractEventPhone("10921525494")).toBeNull();
-    expect(extractEventPhone("(01) 92152-5494")).toBeNull();
+    expect(extractEventPhone("(01) 90000-0007")).toBeNull();
   });
 
   it("recusa móvel de 9 dígitos que não começa com 9", () => {
@@ -85,7 +85,7 @@ describe("extractEventPhone — o que NÃO pode virar telefone", () => {
   });
 
   it("recusa sequência mais longa que um telefone", () => {
-    expect(extractEventPhone("1192152549412345")).toBeNull();
+    expect(extractEventPhone("1190000000712345")).toBeNull();
   });
 
   it("devolve null em texto sem número", () => {
@@ -101,21 +101,21 @@ describe("extractEventPhone — ruído não pode engolir o número válido", () 
   // candidato inválido "00 11921525" era consumido primeiro e o telefone real
   // sumia no que sobrava.
   it("acha o telefone depois de um número solto", () => {
-    expect(extractEventPhone("2000 11921525494")).toBe("5511921525494");
+    expect(extractEventPhone("2000 11900000007")).toBe("5511900000007");
   });
 
   it("acha o telefone depois de valor, data e hora juntos", () => {
     expect(
-      extractEventPhone("20 lentes R$ 2.000 — 22/07/2026 16:00 — tel 11921525494"),
-    ).toBe("5511921525494");
+      extractEventPhone("20 lentes R$ 2.000 — 22/07/2026 16:00 — tel 11900000007"),
+    ).toBe("5511900000007");
   });
 
   it("acha o telefone quando o DDD inválido vem antes", () => {
-    expect(extractEventPhone("sala 10 (11) 92152-5494")).toBe("5511921525494");
+    expect(extractEventPhone("sala 10 (11) 90000-0007")).toBe("5511900000007");
   });
 
   it("com dois números válidos, fica com o primeiro", () => {
-    expect(extractEventPhone("11921525494 / 11940755777")).toBe("5511921525494");
+    expect(extractEventPhone("11900000007 / 11900000008")).toBe("5511900000007");
   });
 });
 
@@ -123,33 +123,33 @@ describe("extractCalendarEventPhone — descrição antes do título", () => {
   it("prefere a descrição", () => {
     expect(
       extractCalendarEventPhone({
-        summary: "keylla 20 lentes 11940755777",
-        description: "contato 11921525494",
+        summary: "Paciente Exemplo 20 lentes 11900000008",
+        description: "contato 11900000007",
       }),
-    ).toBe("5511921525494");
+    ).toBe("5511900000007");
   });
 
   it("cai para o título quando a descrição não tem número", () => {
     expect(
       extractCalendarEventPhone({
-        summary: "keylla 20 lentes — 11921525494",
+        summary: "Paciente Exemplo 20 lentes — 11900000007",
         description: "confirmar retorno",
       }),
-    ).toBe("5511921525494");
+    ).toBe("5511900000007");
   });
 
   it("devolve null quando nenhum dos dois tem número", () => {
     expect(
       extractCalendarEventPhone({
-        summary: "keylla 20 lentes R$ 2.000",
+        summary: "Paciente Exemplo 20 lentes R$ 2.000",
         description: "",
       }),
     ).toBeNull();
   });
 
   it("aceita evento sem descrição", () => {
-    expect(extractCalendarEventPhone({ summary: "keylla 11921525494" })).toBe(
-      "5511921525494",
+    expect(extractCalendarEventPhone({ summary: "Paciente Exemplo 11900000007" })).toBe(
+      "5511900000007",
     );
   });
 });

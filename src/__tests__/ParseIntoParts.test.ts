@@ -186,7 +186,7 @@ describe("removeUnsupportedProofClaims — não promete prova visual sem fonte",
       {
         type: "text",
         content:
-          "A avaliação ajuda a entender seu sorriso. Além disso, o Dr. Gregorie pode mostrar casos anteriores para você ver os resultados. Posso ver os horários?",
+          "A avaliação ajuda a entender seu sorriso. Além disso, o Dr. Silva pode mostrar casos anteriores para você ver os resultados. Posso ver os horários?",
       },
     ], "Política: avaliação com planejamento e orçamento fechado.");
 

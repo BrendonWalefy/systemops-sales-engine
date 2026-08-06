@@ -1381,12 +1381,12 @@ export default async function ClinicDetailPage({
                       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                         <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>Cap horário (outbound/h)</label>
                         <input id="outbound_hourly_cap" name="outbound_hourly_cap" type="number" min={1} defaultValue={clinic.outboundHourlyCap} required style={{ ...inputStyle }} />
-                        <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>Default 40. Vitalli: 15.</p>
+                        <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>Padrão: 40. Ajuste conforme o perfil operacional.</p>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                         <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: "var(--muted)" }}>Cap diário (outbound/dia)</label>
                         <input id="outbound_daily_cap" name="outbound_daily_cap" type="number" min={1} defaultValue={clinic.outboundDailyCap} required style={{ ...inputStyle }} />
-                        <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>Default 200. Vitalli: 60.</p>
+                        <p style={{ margin: 0, fontSize: 11, color: "var(--muted)" }}>Padrão: 200. Ajuste conforme volume e capacidade.</p>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>

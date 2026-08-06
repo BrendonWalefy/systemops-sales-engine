@@ -3,8 +3,8 @@
 // novo agendamento no modo interno, saga completa cancel → rebook,
 // e proteção contra double-booking durante o reagendamento.
 //
-// Contexto real: Gregorie tentava reagendar e o sistema precisava
-// cancelar o appointment anterior antes de oferecer novos slots.
+// Regressão: o sistema precisa cancelar o appointment anterior antes de
+// oferecer novos slots.
 
 import { describe, expect, it } from "vitest";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
@@ -26,7 +26,7 @@ const clinic: Organization = {
   serviceNoun: "tratamento",
   bookingNoun: "consulta",
   contactNoun: "paciente",
-  agentRole: "recepcionista virtual",
+  agentRole: "especialista comercial com IA",
   businessDescriptor: null,
   businessNoun: "clínica",
   city: null,
@@ -58,10 +58,10 @@ const clinic: Organization = {
 };
 
 const lead: Lead = {
-  id: "lead-gregorie",
+  id: "lead-silva",
   clinicId: clinic.id,
-  name: "Gregorie",
-  phone: "5511954368563",
+  name: "Silva",
+  phone: "5511900000005",
   whatsappLid: null,
   email: null,
   channel: "whatsapp",

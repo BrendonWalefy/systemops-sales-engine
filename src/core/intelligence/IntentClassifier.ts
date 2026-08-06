@@ -4,6 +4,7 @@
 import OpenAI from "openai";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
 import type { Message } from "@/domain/entities/conversation";
+import { DEFAULT_AGENT_ROLE, normalizeAgentRole } from "@/domain/entities/clinic";
 import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 
 // Configurável por env para benchmark de modelo (Fase 5 do plano de excelência
@@ -266,7 +267,7 @@ export class IntentClassifier {
     hasPendingSlotOffer: boolean,
     treatments: TreatmentOption[] = [],
     context: PromptContext = {
-      agentRole: "recepcionista virtual",
+      agentRole: DEFAULT_AGENT_ROLE,
       serviceNoun: "tratamento",
       bookingNoun: "consulta",
       contactNoun: "paciente",
@@ -275,13 +276,17 @@ export class IntentClassifier {
     },
     historyWindowMessages?: number | null,
   ): Promise<IntentClassification> {
+    const effectiveContext = {
+      ...context,
+      agentRole: normalizeAgentRole(context.agentRole),
+    };
     const recentHistory = takeRecentConversationHistory(
       conversationHistory,
       historyWindowMessages,
     );
     const historyText = recentHistory
       .map((m) => {
-        const role = m.author === "lead" ? "Lead" : context.agentRole.charAt(0).toUpperCase() + context.agentRole.slice(1);
+        const role = m.author === "lead" ? "Lead" : effectiveContext.agentRole.charAt(0).toUpperCase() + effectiveContext.agentRole.slice(1);
         return `${role}: ${m.body}`;
       })
       .join("\n");
@@ -292,7 +297,7 @@ export class IntentClassifier {
 
     const userContent = [
       isFirstContact
-        ? `CONTEXTO: Primeiro contato deste lead — o(a) ${context.agentRole} ainda não respondeu nesta conversa. Frases de disponibilidade ('há alguém disponível?', 'tem alguém atendendo?') são aberturas naturais de anúncio, não pedidos de handoff humano.`
+        ? `CONTEXTO: Primeiro contato deste lead — o(a) ${effectiveContext.agentRole} ainda não respondeu nesta conversa. Frases de disponibilidade ('há alguém disponível?', 'tem alguém atendendo?') são aberturas naturais de anúncio, não pedidos de handoff humano.`
         : "",
       hasPendingSlotOffer
         ? "CONTEXTO: Há uma oferta de horários pendente aguardando confirmação do lead."
@@ -315,7 +320,7 @@ export class IntentClassifier {
         },
       },
       messages: [
-        { role: "system", content: buildSystemPrompt(treatments, context) },
+        { role: "system", content: buildSystemPrompt(treatments, effectiveContext) },
         { role: "user", content: userContent },
       ],
     });

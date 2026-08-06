@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { MenuItem } from "@/domain/entities/clinic";
+import { DEFAULT_AGENT_ROLE, type MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
@@ -295,7 +295,7 @@ export const organizations = pgTable("organizations", {
   city: text("city"),
   address: text("address"),
   // Prédio, torre, sala, andar. Campo próprio porque espremer isso no `address`
-  // some na leitura: a Vitalli tem "Sala 124" no meio de "Av. Adolfo Pinheiro,
+  // some na leitura: a Aurora tem "Sala 124" no meio de "Av. Adolfo Pinheiro,
   // 1.029, Sala 124 - Santo Amaro", enquanto o template do operador separa em
   // linha ("Helbor Offices Torre Sul, Sala 124, Andar 12"). Item #22 do plano.
   addressComplement: text("address_complement"),
@@ -307,7 +307,7 @@ export const organizations = pgTable("organizations", {
   // sistema compõe a resposta a partir de address/complemento/mapsUrl, como sempre.
   //
   // É texto livre de propósito. Estruturar isto seria chumbar o formato de UMA
-  // clínica: a Vitalli fica num prédio comercial e cita torre, sala, andar, endereço
+  // clínica: a Aurora fica num prédio comercial e cita torre, sala, andar, endereço
   // alternativo do estacionamento e estações de metrô; a próxima vai querer ponto de
   // referência ou "toque o interfone". O sistema nunca calcula nada com esses fatos —
   // só imprime. Estrutura só se paga quando há conta a fazer (preço, garantia).
@@ -367,7 +367,7 @@ export const organizations = pgTable("organizations", {
   outboundDailyCap: integer("outbound_daily_cap").notNull().default(200),
   // Flag do Channel Safety Engine: pausa reengajamento proativo (follow-up e
   // recovery) sem desligar respostas a inbound (autoReplyEnabled). Usado para
-  // colocar a Vitalli em modo reply-only nas semanas iniciais sem cirurgia no banco.
+  // colocar a Aurora em modo reply-only nas semanas iniciais sem cirurgia no banco.
   // appointment-reminder NUNCA é pausado por este flag — é aviso de compromisso
   // que o próprio lead marcou; suprimi-lo seria prejuízo ao lead, não proteção.
   automatedReengagementPaused: boolean("automated_reengagement_paused")
@@ -400,10 +400,9 @@ export const organizations = pgTable("organizations", {
   // Fecha o funil como o operador faz: depois de cotar preço de um único
   // tratamento (sem ambiguidade/escalonamento/objeção em curso), oferta
   // horários reais direto em vez de só perguntar "posso ver os horários?".
-  // Opt-in por clínica (não basta modo concierge) — pedido explícito da
-  // Vitalli em 17/07/2026; outras clínicas (ex.: Ximendes) têm padrões de
-  // conversa (objeção, compra para terceiro, especificação técnica) onde
-  // essa antecipação não foi validada. Ver ConversationOrchestrator.ts
+  // Opt-in por organização (não basta modo concierge): diferentes operações
+  // têm padrões de conversa onde essa antecipação ainda não foi validada. Ver
+  // ConversationOrchestrator.ts
   // case "price_inquiry".
   offerSlotsAfterPriceEnabled: boolean("offer_slots_after_price_enabled")
     .notNull()
@@ -419,8 +418,7 @@ export const organizations = pgTable("organizations", {
   // receptionist_phone (foto/comprovante/atenção), este é proativo e
   // recorrente — por isso é opt-in por clínica: uma clínica que configurou
   // receptionist_phone para receber encaminhamentos não necessariamente quer
-  // uma mensagem toda noite. Pedido da Vitalli em 17/07/2026. Ver
-  // appointment-reminder-staff/route.ts.
+  // uma mensagem toda noite. Ver appointment-reminder-staff/route.ts.
   staffDigestWhatsAppEnabled: boolean("staff_digest_whatsapp_enabled")
     .notNull()
     .default(false),
@@ -481,7 +479,7 @@ export const organizations = pgTable("organizations", {
   // Vocabulário do agente — derivado do segmento, sobrescrevível por tenant
   bookingNoun: text("booking_noun").notNull().default("consulta"),
   contactNoun: text("contact_noun").notNull().default("paciente"),
-  agentRole: text("agent_role").notNull().default("recepcionista virtual"),
+  agentRole: text("agent_role").notNull().default(DEFAULT_AGENT_ROLE),
   businessDescriptor: text("business_descriptor"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -1319,11 +1317,11 @@ export const playbookVersions = pgTable(
       .notNull()
       .default([]),
     // Política de garantia estruturada. Antes vivia (quando vivia) dentro do texto
-    // livre de uma objeção — a Vitalli tinha, a Ximendes não, e ninguém percebeu a
+    // livre de uma objeção — a Aurora tinha, a Horizonte não, e ninguém percebeu a
     // falta porque não existia campo para ficar vazio. `null` = não cadastrado (a IA
     // diz que confirma com a equipe); `offersWarranty: false` = a clínica decidiu que
     // não dá garantia, o que também é uma resposta que ela autorizou.
-    // Faixas porque a política real tem mais de um prazo: a Vitalli dá 2 anos para
+    // Faixas porque a política real tem mais de um prazo: a Aurora dá 2 anos para
     // descolamento e 30 dias para pigmentação/quebra por descuido.
     warrantyPolicy: jsonb("warranty_policy").$type<{
       offersWarranty: boolean;
@@ -1514,7 +1512,7 @@ export const clinicMembers = pgTable(
       .references(() => organizations.id),
     email: text("email").notNull(),
     role: memberRoleEnum("role").notNull().default("org_admin"),
-    // Nome de exibição amigável usado na saudação do dashboard (ex.: "Dr. Gregorie").
+    // Nome de exibição amigável usado na saudação do dashboard (ex.: "Dr. Silva").
     // Quando preenchido, tem prioridade sobre o profissional vinculado e o e-mail.
     displayName: text("display_name"),
     professionalId: uuid("professional_id").references(() => professionals.id),
@@ -1599,7 +1597,7 @@ export const shortLinks = pgTable("short_links", {
 });
 
 // Cache de pré-visualização de link. A prévia é buscada UMA vez por URL e reusada
-// em todos os envios seguintes — o link do endereço da Vitalli saiu 137 vezes com
+// em todos os envios seguintes — o link do endereço da Aurora saiu 137 vezes com
 // a mesma URL, então buscar a cada envio seria 137 idas ao Google para o mesmo
 // resultado. `ok=false` guarda a falha por menos tempo, para não martelar um site
 // fora do ar nem tentar de novo a cada mensagem.

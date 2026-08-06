@@ -1,4 +1,4 @@
-// Guards determinísticos P0 — casos reais das conversas da Ximendes (jun-jul/2026):
+// Guards determinísticos P0 — casos reais das conversas da Horizonte (jun-jul/2026):
 // starter genérico engolindo pergunta de negócio (Tania, Julllys, Carla),
 // follow-up de madrugada (lote de 02:43), oferta expirada dita "indisponível"
 // com o mesmo horário na lista (Aylane), markdown ** cru no WhatsApp.
@@ -156,7 +156,7 @@ describe("perguntas simples de política comercial", () => {
     "Quero sabe valores e formas de pagamento e fazer uma avaliação",
     "sim, gostaria de saber o valor para colocar as lentes, se passar cartão",
     "E quanto fica o valor parcelado?",
-    // Caiu em acknowledgment em produção (Ximendes, 04/06) e o lead recebeu o
+    // Caiu em acknowledgment em produção (Horizonte, 04/06) e o lead recebeu o
     // menu de boas-vindas em vez do preço.
     "Tenho interesse em lentes de resina estratificadas na cor BL2. Gostaria de saber o valor aproximado",
   ])("pergunta composta de preço + pagamento vira price_inquiry: %s", (frase) => {
@@ -166,14 +166,14 @@ describe("perguntas simples de política comercial", () => {
   });
 
   it("parcelamento sem a palavra 'valor' também chega a price_inquiry pelo guard do orquestrador", () => {
-    // Caso real (Vitalli, 19/07 01:34): "Esse valor pode ser parcelado ?" foi
+    // Caso real (Aurora, 19/07 01:34): "Esse valor pode ser parcelado ?" foi
     // classificada needs_human e a resposta certa saiu com um rabo indevido —
     // "Já avisei a equipe sobre sua dúvida e eles vão te responder em breve!".
     //
     // O guard que corrige isso (a772f57) só chegou à main às 17:56 do MESMO dia,
     // ~16h depois da mensagem. Não é bug vivo: é a evidência de que o guard é
     // necessário. Sem este teste, removê-lo silenciosamente traria a escalação
-    // de volta — e escalar parcelamento é justamente o que o Victor não quer.
+    // de volta — e escalar parcelamento é justamente o que o Silva não quer.
     const frase = "Esse valor pode ser parcelado ?";
     expect(isSimplePaymentPolicyQuestion(frase)).toBe(true);
     expect(coerceBusinessIntent({ message: frase, intent: "unclear", treatments, isClinicSegment: true })).toBe("price_inquiry");
@@ -256,7 +256,7 @@ describe("hasExplicitPipelineTreatmentTrigger", () => {
     ).toBe(true);
   });
 
-  // Regressão 18/07: os openers reais dos anúncios da Vitalli têm mais de 8
+  // Regressão 18/07: os openers reais dos anúncios da Aurora têm mais de 8
   // palavras e caíam no teto do resolveDirectTreatmentMention — todo lead de
   // tráfego pago perdia a saudação concierge e o pipeline de lentes.
   it("permite pipeline com o opener longo do anúncio (13 palavras)", () => {
@@ -390,7 +390,7 @@ describe("shouldBypassPendingPipelineContent", () => {
 });
 
 describe("extractSocialProfileInfo", () => {
-  it("extrai o Instagram da resposta validada da Vitalli", () => {
+  it("extrai o Instagram da resposta validada da Aurora", () => {
     const source =
       "Claro 😊 Este é o Instagram da Clínica Vittali: https://www.instagram.com/clinic.vittali  Dá uma olhadinha nos nossos trabalhos com lentes em resina e nos destaques.";
 

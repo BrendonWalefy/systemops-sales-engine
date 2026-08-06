@@ -1,6 +1,6 @@
 // "Vocês atendem aos sábados?" precisa responder pela AGENDA, não pelo cadastro.
 //
-// Medido em produção (Vitalli): sábado é o dia mais movimentado da clínica — 17
+// Medido em produção (Aurora): sábado é o dia mais movimentado da clínica — 17
 // agendamentos em 120 dias, mais que qualquer dia útil, com atendimentos das
 // 08:30 às 17:30. Ainda assim a IA respondia "Sim, atendemos aos sábados.
 // Horário cadastrado: Seg-Sáb 8h-18h." e a conversa morria ali.
@@ -24,8 +24,8 @@ import {
 import { parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
 
 // Configurações reais em produção.
-const VITALLI = parseBusinessHours("Seg-Sáb 8h-18h");
-const XIMENDES = parseBusinessHours("Segunda a sexta das 8h às 19h. Sábado das 8h às 13h.");
+const AURORA = parseBusinessHours("Seg-Sáb 8h-18h");
+const HORIZONTE = parseBusinessHours("Segunda a sexta das 8h às 19h. Sábado das 8h às 13h.");
 const SEM_SABADO = parseBusinessHours("Seg-Sex 8h-18h");
 
 const slot = (index: number, label: string) => ({ index, label });
@@ -36,15 +36,15 @@ describe("isSaturdayQuestionForOperatingClinic", () => {
     "Vc atende aos sábados?",
     "Vocês estão atendendo aos sábados?",
   ])("reconhece o plural que escapava: %s", (frase) => {
-    expect(isSaturdayQuestionForOperatingClinic(frase, VITALLI)).toBe(true);
+    expect(isSaturdayQuestionForOperatingClinic(frase, AURORA)).toBe(true);
   });
 
   it("reconhece também o singular, mantendo as duas formas equivalentes", () => {
-    expect(isSaturdayQuestionForOperatingClinic("Vocês atendem dia de sábado ?", VITALLI)).toBe(true);
+    expect(isSaturdayQuestionForOperatingClinic("Vocês atendem dia de sábado ?", AURORA)).toBe(true);
   });
 
-  it("vale para a Ximendes, que tem sábado com horário próprio", () => {
-    expect(isSaturdayQuestionForOperatingClinic("atendem aos sábados?", XIMENDES)).toBe(true);
+  it("vale para a Horizonte, que tem sábado com horário próprio", () => {
+    expect(isSaturdayQuestionForOperatingClinic("atendem aos sábados?", HORIZONTE)).toBe(true);
   });
 
   it("é falso quando a clínica NÃO abre sábado — lá quem responde é a escalação", () => {
@@ -53,17 +53,17 @@ describe("isSaturdayQuestionForOperatingClinic", () => {
   });
 
   it("é falso quando sábado não foi mencionado", () => {
-    expect(isSaturdayQuestionForOperatingClinic("qual o horário de funcionamento?", VITALLI)).toBe(false);
-    expect(isSaturdayQuestionForOperatingClinic("atendem aos domingos?", VITALLI)).toBe(false);
+    expect(isSaturdayQuestionForOperatingClinic("qual o horário de funcionamento?", AURORA)).toBe(false);
+    expect(isSaturdayQuestionForOperatingClinic("atendem aos domingos?", AURORA)).toBe(false);
   });
 
   it("NÃO se estende aos dias úteis — o parser não sabe quais são", () => {
     // parseBusinessHours só decide o sábado: seg-sex é sempre assumido [1..5] e
-    // domingo nunca é representável. A NC Beauty cadastra "Terça a sexta" e o
+    // domingo nunca é representável. A Estúdio Aurora cadastra "Terça a sexta" e o
     // parser devolve [1..6] — afirmar "atendemos às segundas" seria inventar.
-    const ncBeauty = parseBusinessHours("Terça a sexta das 13h às 19h. Sábado das 10h às 17h.");
-    expect(ncBeauty.days).toContain(1); // segunda entra mesmo sem constar no cadastro
-    expect(ncBeauty.days).not.toContain(0); // domingo nunca entra, mesmo se cadastrado
+    const studioSchedule = parseBusinessHours("Terça a sexta das 13h às 19h. Sábado das 10h às 17h.");
+    expect(studioSchedule.days).toContain(1); // segunda entra mesmo sem constar no cadastro
+    expect(studioSchedule.days).not.toContain(0); // domingo nunca entra, mesmo se cadastrado
     expect(parseBusinessHours("Dom-Sáb 8h-18h").days).not.toContain(0);
   });
 });

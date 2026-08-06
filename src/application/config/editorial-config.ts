@@ -192,7 +192,7 @@ export async function resolveMediaLibraryForVersion(
  * Política de garantia da clínica, estruturada.
  *
  * Antes disso a garantia só existia (quando existia) dentro do texto livre de uma
- * objeção: a Vitalli tinha, a Ximendes não, e a falta passou meses despercebida
+ * objeção: a Aurora tinha, a Horizonte não, e a falta passou meses despercebida
  * porque não havia campo para ficar vazio. Mesma tese do preço — o dado é
  * estruturado e a prosa é DERIVADA dele por `composeWarrantySection`.
  *
@@ -276,7 +276,7 @@ export const publishablePlaybookSchema = z.object({
   // Item 4: `procedureDescription` foi aposentado — a descrição de procedimento é
   // dona da tabela `treatments` (uma por procedimento), não mais um blob no playbook.
   toneOfVoice: z.string().trim().min(1).default("acolhedor"),
-  receptionistName: z.string().trim().min(1, "nome da recepcionista é obrigatório").default("Marina"),
+  receptionistName: z.string().trim().min(1, "nome da especialista comercial é obrigatório").default("Marina"),
   differentials: z.array(z.string()).default([]),
   objections: z
     .array(z.object({ objection: z.string(), response: z.string() }))
