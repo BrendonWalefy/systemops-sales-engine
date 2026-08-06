@@ -41,7 +41,7 @@
           <a href="#arquitetura">Arquitetura</a>
           <a href="#stack">Stack</a>
           <a href="#features">Features</a>
-          <a href="#glossario">Glossário</a>
+          <a href="#evolucao">Evolução</a>
           <a class="nav-cta" href="downloads/systemops-current-architecture.drawio" download>
             Baixar .drawio
           </a>
@@ -91,7 +91,7 @@
 
         <div class="container stat-strip reveal" aria-label="Características principais">
           <div><strong>WA</strong><span>canal principal: WhatsApp</span></div>
-          <div><strong>16</strong><span>categorias de intenção</span></div>
+          <div><strong>17</strong><span>categorias de intenção</span></div>
           <div><strong>PG</strong><span>inbox, filas, dados e outbox</span></div>
           <div><strong>CODE</strong><span>decisões de negócio determinísticas</span></div>
         </div>
@@ -178,7 +178,7 @@
               <h2>Desenho da solução</h2>
             </div>
             <p>
-              Quatro perspectivas complementares para entender a topologia, o runtime e as
+              Cinco perspectivas complementares para entender a topologia, o runtime e as
               features sem concentrar todas as relações em um único quadro.
             </p>
           </div>
@@ -237,6 +237,19 @@
                   data-description="Ofertas, reativação, aprovação humana, outbox e recorrências."
                 >
                   <span>04</span> Campanhas
+                </button>
+                <button
+                  id="tab-target"
+                  class="diagram-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="diagram-panel"
+                  data-diagram="assets/architecture-05.svg"
+                  data-title="Arquitetura alvo e evolução"
+                  data-description="SQS, workers, Strangler, gatilhos de escala e o limite para Kafka."
+                >
+                  <span>05</span> Evolução
                 </button>
               </div>
               <button class="icon-button" type="button" data-open-diagram aria-label="Ampliar diagrama">
@@ -302,7 +315,7 @@
               <h2>Arquitetura atual</h2>
             </div>
             <p>
-              Um monólito modular com execução híbrida assíncrona: simples de operar como uma
+              Um monólito modular com execução orientada a eventos: simples de operar como uma
               aplicação, explícito nas fronteiras como um conjunto de serviços.
             </p>
           </div>
@@ -317,7 +330,7 @@
             <article class="architecture-card reveal">
               <span class="card-index">02</span>
               <h3>Pipeline durável</h3>
-              <p>Webhooks persistem primeiro. Workers processam inbox e jobs; a entrega acontece pela outbox sem recomputar a conversa.</p>
+              <p>Evento+job e saída+job são commits atômicos. Workers processam inbox e outbox sem recomputar a conversa.</p>
               <code>inbound_events → jobs → outbound_messages</code>
             </article>
             <article class="architecture-card reveal">
@@ -417,7 +430,7 @@
             <article class="stack-card reveal"><span class="stack-icon stack-cyan">R</span><div><small>Interface</small><h3>React 19</h3><p>Server Components e experiências responsivas</p></div></article>
             <article class="stack-card reveal"><span class="stack-icon stack-green">PG</span><div><small>Dados</small><h3>Neon PostgreSQL</h3><p>Persistência serverless, filas e outbox duráveis</p></div></article>
             <article class="stack-card reveal"><span class="stack-icon stack-blue">D</span><div><small>ORM</small><h3>Drizzle ORM</h3><p>Schema tipado, queries e migrations reprodutíveis</p></div></article>
-            <article class="stack-card reveal"><span class="stack-icon stack-teal">AI</span><div><small>Inteligência</small><h3>OpenAI</h3><p>Classificação, composição, Whisper e TTS</p></div></article>
+            <article class="stack-card reveal"><span class="stack-icon stack-teal">AI</span><div><small>Inteligência</small><h3>OpenAI + Anthropic</h3><p>Classificação, composição, análise, Whisper e TTS</p></div></article>
             <article class="stack-card reveal"><span class="stack-icon stack-green">WA</span><div><small>Canal</small><h3>Z-API + Meta</h3><p>WhatsApp por clínica com adapter de canal</p></div></article>
             <article class="stack-card reveal"><span class="stack-icon stack-purple">V</span><div><small>Deploy</small><h3>Vercel</h3><p>Runtime, Blob, previews e agendamento de crons</p></div></article>
             <article class="stack-card reveal"><span class="stack-icon stack-blue">GC</span><div><small>Agenda</small><h3>Agenda interna + Google</h3><p>CalendarGateway selecionado por clínica</p></div></article>
@@ -460,7 +473,7 @@
             <div class="ownership-table" role="table" aria-label="Fontes de verdade">
               <div class="ownership-row ownership-head" role="row"><span>Informação</span><span>Dono canônico</span></div>
               <div class="ownership-row" role="row"><span>Conteúdo editorial</span><code>playbook_versions</code></div>
-              <div class="ownership-row" role="row"><span>Operação do tenant</span><code>clinics</code></div>
+              <div class="ownership-row" role="row"><span>Operação do tenant</span><code>organizations</code></div>
               <div class="ownership-row" role="row"><span>Capabilities e plano</span><code>clinic_modules</code></div>
               <div class="ownership-row" role="row"><span>Serviço e pipeline</span><code>treatments</code></div>
               <div class="ownership-row" role="row"><span>Tempo e timezone</span><code>ClinicTimezone</code></div>
@@ -484,7 +497,7 @@
             <article class="feature-group reveal">
               <div class="feature-group-header"><span>01</span><h3>Recepcionista com IA</h3></div>
               <p class="feature-purpose">Transforma mensagens recebidas em atendimento comercial contextual.</p>
-              <ul><li>16 categorias de intenção</li><li>Debounce de mensagens</li><li>Temperatura de lead</li><li>Áudio via Whisper</li><li>Imagens, vídeos e documentos</li></ul>
+              <ul><li>17 categorias de intenção</li><li>Debounce de mensagens</li><li>Temperatura de lead</li><li>Áudio via Whisper</li><li>Imagens, vídeos e documentos</li></ul>
             </article>
             <article class="feature-group reveal">
               <div class="feature-group-header"><span>02</span><h3>Agenda e booking</h3></div>
@@ -525,6 +538,89 @@
         </div>
       </section>
 
+      <section id="evolucao" class="section evolution-section">
+        <div class="container">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-kicker">Escala consciente</span>
+              <h2>Patterns atuais e arquitetura alvo</h2>
+            </div>
+            <p>O próximo passo é separar a fila e os workers quando métricas exigirem. Microsserviços e Kafka não são objetivos por si só.</p>
+          </div>
+
+          <div class="maturity-grid">
+            <article class="maturity-card reveal"><span>3/10</span><h3>Microsserviços</h3><p>Não implementados. O monólito modular mantém um deploy e um banco, com boundaries preparados para extração.</p></article>
+            <article class="maturity-card reveal"><span>8/10</span><h3>Event-driven</h3><p>Webhook, transactional inbox, jobs, workers, transactional outbox e automações assíncronas.</p></article>
+            <article class="maturity-card reveal"><span>0/10</span><h3>Kafka</h3><p>Não utilizado. O volume e o número de consumidores ainda não pagam o piso de custo e operação.</p></article>
+            <article class="maturity-card reveal"><span>7,5/10</span><h3>Mensageria</h3><p>Fila PostgreSQL durável com claims, leases, retry e dedupe; ainda sem broker gerenciado.</p></article>
+            <article class="maturity-card reveal"><span>8/10</span><h3>Patterns</h3><p>Inbox, Outbox, idempotência, backoff e DLQ existem. Strangler entra na primeira extração real.</p></article>
+            <article class="maturity-card reveal"><span>8,5/10</span><h3>Raciocínio</h3><p>Arquitetura proporcional, multi-tenant e determinística em torno dos modelos de IA.</p></article>
+          </div>
+
+          <p class="score-note reveal">Notas qualitativas de aderência, não uma certificação de maturidade.</p>
+
+          <div class="evolution-path reveal" aria-label="Sequência recomendada de evolução">
+            <div><span>Hoje</span><strong>PostgreSQL jobs</strong><small>medir SLO, lag e contenção</small></div>
+            <i>→</i>
+            <div><span>Etapa 1</span><strong>SQS + DLQ</strong><small>broker sem quebrar o core</small></div>
+            <i>→</i>
+            <div><span>Etapa 2</span><strong>Workers separados</strong><small>conversation, delivery, campaigns</small></div>
+            <i>→</i>
+            <div><span>Etapa 3</span><strong>Strangler</strong><small>bounded context por tenant</small></div>
+            <i>→</i>
+            <div><span>Somente depois</span><strong>Kafka</strong><small>streaming, replay e fan-out reais</small></div>
+          </div>
+
+          <div class="evolution-details">
+            <article class="evolution-panel reveal">
+              <span class="section-kicker">Migrar a fila quando</span>
+              <ul>
+                <li>p95 webhook → processamento permanecer acima de 30 segundos;</li>
+                <li>backlog não drenar em até 5 minutos após picos;</li>
+                <li>campanhas degradarem respostas inbound;</li>
+                <li>contenção da tabela de jobs afetar o banco transacional;</li>
+                <li>workers exigirem concorrência diferente da aplicação web.</li>
+              </ul>
+            </article>
+            <article class="evolution-panel reveal">
+              <span class="section-kicker">Extrair serviço quando</span>
+              <ul>
+                <li>houver owner e SLO próprios;</li>
+                <li>escala ou deploy forem realmente independentes;</li>
+                <li>dados e contrato estiverem definidos;</li>
+                <li>canary e rollback por tenant estiverem prontos;</li>
+                <li>o ganho superar rede, observabilidade e on-call.</li>
+              </ul>
+            </article>
+          </div>
+
+          <div class="cost-block reveal">
+            <div class="cost-heading">
+              <span class="section-kicker">Estimativa mensal</span>
+              <h3>Custo cresce junto com a complexidade operacional</h3>
+              <p>Faixas em dólar, região AWS us-east-1, sem WhatsApp, IA, impostos ou engenharia.</p>
+            </div>
+            <div class="cost-table" role="table" aria-label="Custos estimados de evolução">
+              <div class="cost-row cost-head" role="row"><span>Estágio</span><span>Incremento</span><span>Total central indicativo</span></div>
+              <div class="cost-row" role="row"><span>Atual · Vercel + Neon</span><strong>—</strong><strong>US$ 35–130</strong></div>
+              <div class="cost-row" role="row"><span>SQS + Lambda</span><strong>US$ 0–25</strong><strong>US$ 40–160</strong></div>
+              <div class="cost-row" role="row"><span>Workers ECS/Fargate</span><strong>US$ 35–120</strong><strong>US$ 90–300</strong></div>
+              <div class="cost-row" role="row"><span>Bounded services</span><strong>US$ 100–400</strong><strong>US$ 200–700</strong></div>
+              <div class="cost-row" role="row"><span>Kafka / MSK</span><strong>US$ 600–1.500+</strong><strong>US$ 800–2.200+</strong></div>
+            </div>
+            <p class="cost-footnote">Referência de câmbio: US$ 1 = R$ 5,50. O MSK Serverless tem piso de cluster próximo de US$ 548/mês antes de partições e tráfego. Recalcule antes de contratar.</p>
+            <div class="cost-links">
+              <a href="https://aws.amazon.com/sqs/pricing/" target="_blank" rel="noreferrer">SQS ↗</a>
+              <a href="https://aws.amazon.com/lambda/pricing/" target="_blank" rel="noreferrer">Lambda ↗</a>
+              <a href="https://aws.amazon.com/fargate/pricing/" target="_blank" rel="noreferrer">Fargate ↗</a>
+              <a href="https://aws.amazon.com/msk/pricing/" target="_blank" rel="noreferrer">MSK ↗</a>
+              <a href="https://neon.com/pricing" target="_blank" rel="noreferrer">Neon ↗</a>
+              <a href="https://vercel.com/pricing" target="_blank" rel="noreferrer">Vercel ↗</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="glossario" class="section glossary-section">
         <div class="container">
           <div class="section-heading reveal">
@@ -536,7 +632,7 @@
           </div>
 
           <dl class="glossary-grid">
-            <div class="glossary-item reveal"><dt>Tenant / clínica</dt><dd>Unidade isolada de configuração e dados. No código atual, o identificador principal é <code>clinicId</code>.</dd></div>
+            <div class="glossary-item reveal"><dt>Tenant / organização</dt><dd>Unidade isolada de configuração e dados. O banco usa <code>organizations</code>; partes do código preservam <code>clinicId</code> por compatibilidade.</dd></div>
             <div class="glossary-item reveal"><dt>Lead</dt><dd>Pessoa que entra em contato pelo canal e percorre estados do funil comercial.</dd></div>
             <div class="glossary-item reveal"><dt>Conversa</dt><dd>Histórico e contexto operacional associado a um lead, incluindo estado da IA e necessidade de atenção.</dd></div>
             <div class="glossary-item reveal"><dt>Intent</dt><dd>Classificação estruturada do objetivo da mensagem, usada pelo código para escolher uma ação permitida.</dd></div>
@@ -555,7 +651,7 @@
           <div>
             <span class="section-kicker">Artefato editável</span>
             <h2>Diagrama completo em formato editável</h2>
-            <p>O arquivo possui as quatro visões apresentadas nesta página e pode ser editado no diagrams.net ou Draw.io.</p>
+            <p>O arquivo possui as cinco visões apresentadas nesta página e pode ser editado no diagrams.net ou Draw.io.</p>
           </div>
           <div class="final-actions">
             <a class="button button-primary" href="downloads/systemops-current-architecture.drawio" download>Baixar .drawio</a>

@@ -40,7 +40,7 @@ export function shouldUseBWaveForMessage(
     case "impact":        return IMPACT_INTENTS.has(intent);
     case "mix":           return !SKIP_IN_MIX.has(intent);
     // Teaser comercial do plano Start: só a saudação vem em voz, o resto em texto.
-    // Ver docs/product/pricing-strategy.md — cria desejo de upgrade sem dar a
+    // Cria desejo de upgrade sem dar a
     // experiência completa de graça.
     case "greeting_only": return intent === "greeting";
   }

@@ -1,5 +1,5 @@
 // Guardas de isolamento da Biblioteca de Mídia — mídia NUNCA vaza entre
-// organizações nem entre procedimentos. Ver docs/product/biblioteca-midia-plano.md.
+// organizações nem entre procedimentos. Ver docs/features.md.
 import { describe, expect, it, vi } from "vitest";
 import {
   filterMediaLibraryForComposer,

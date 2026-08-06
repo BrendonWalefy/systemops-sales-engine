@@ -1,5 +1,5 @@
 // resolveMediaLibraryForVersion é a FONTE ÚNICA de leitura da biblioteca de
-// mídia (ver docs/product/biblioteca-midia-plano.md): lê media_asset_ids da
+// mídia (ver docs/features.md): lê media_asset_ids da
 // tabela clinic-level media_assets. Cobre também o isolamento por tenant.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 

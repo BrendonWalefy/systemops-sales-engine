@@ -3,7 +3,7 @@
 // `source` não distingue quem agendou: os 4 chamadores do BookingService (IA pela
 // conversa, operador pelo inbox, operador pela agenda, fluxo de sinal) gravavam
 // todos "app". Sem distinguir, é impossível medir a conversão da IA — foi o que o
-// diagnóstico de 21/07 mostrou (docs/product/objetividade-conversacional-diagnostico.md §8).
+// diagnóstico histórico mostrou; contrato atual em docs/architecture/current.md.
 //
 // Estes testes travam o contrato: o `origin` recebido no input SEMPRE vence o que o
 // gateway devolveu, inclusive no caminho de fallback (gateway indisponível).

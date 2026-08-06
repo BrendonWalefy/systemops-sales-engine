@@ -1,4 +1,4 @@
-// Guards do mapeamento 18/07 (docs/product/client-validation/vitalli-07-2026/06):
+// Guards derivados de validação sanitizada; contrato em docs/architecture/replay-fidelity-contract.md:
 // N1 — interesse genérico → conteúdo curado sem prosa LLM (caso Nathan)
 // J7 — CTA de avaliação/foto não repete quando ignorado (caso João Vitor)
 // J5 — markdown de mídia inventado pelo LLM nunca chega cru ao lead

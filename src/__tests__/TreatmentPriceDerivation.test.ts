@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { composePriceSection, type TreatmentPriceFact } from "@/application/config/editorial-config";
 
 /**
- * Item 3 — "um fato, um dono" (docs/architecture/config-ownership-audit.md §5).
+ * Regra "um fato, um dono" (docs/architecture/sources-of-truth.md).
  *
  * `composePriceSection` DERIVA a prosa de preço a partir dos fatos estruturados do
  * treatment (priceCents + flags), substituindo o preço digitado à mão na

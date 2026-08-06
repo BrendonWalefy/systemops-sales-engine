@@ -1,1 +1,0 @@
-Olá, tudo bem? 😊Passando para saber como foi seu atendimento aqui na clínica e o que você achou do resultado das suas lentes em resina? ✨🦷Sua opinião é muito importante para nós!

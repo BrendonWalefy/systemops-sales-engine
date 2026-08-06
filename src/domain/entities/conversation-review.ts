@@ -1,6 +1,6 @@
 /**
  * Entidades de domínio da Revisão de Conversas pelo Cliente
- * (docs/product/revisao-conversas-plano.md, seção 4).
+ * A feature está catalogada em docs/features.md.
  * Tipos puros — sem dependências de infra ou framework.
  *
  * O cliente vê "Revisão de conversas" e os rótulos "Paciente" /

@@ -3,7 +3,7 @@
  *
  * Nascido na página de validação do estudo de setup (ADR-002 Fase 2,
  * apêndice G) e extraído para módulo compartilhado quando a Revisão de
- * Conversas clonou o padrão (docs/product/revisao-conversas-plano.md,
+ * Conversas reutiliza o mesmo padrão (feature catalogada em docs/features.md,
  * Apêndice A). Hash e formato do token são idênticos aos originais —
  * `src/application/setup-study/access-token.ts` re-exporta este módulo.
  *

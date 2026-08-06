@@ -308,7 +308,7 @@ export const DEFAULT_MESSAGE_DEBOUNCE_MS = 15_000;
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
 // 24h cobre o padrão real do WhatsApp: o gap p90 entre mensagens consecutivas do
-// mesmo lead é de 17h (n=3.183, produção). Ver plano-correcao-conversacional.md.
+// mesmo lead é de 17h (n=3.183, amostra histórica).
 export const DEFAULT_CONVERSATION_RESTART_HOURS = 24;
 
 /**
@@ -986,7 +986,7 @@ export function buildBusinessHoursAnswer(
   }
 
   // Sábado/domingo: responde pelo que está CADASTRADO. Não consulta a agenda real
-  // — ver plano-correcao-conversacional.md item #18: a resposta certa é olhar a
+  // A resposta certa é olhar a
   // disponibilidade do dia, não só a configuração.
   if (asksSaturday) {
     if (businessHours.days.includes(6)) {
@@ -5236,7 +5236,7 @@ export class ConversationOrchestrator {
     // Medido em produção: o gap p90 entre mensagens consecutivas do mesmo lead é de
     // 17h. Com 4h, 17,2% das respostas de lead eram tratadas como conversa nova e o
     // lead recebia a saudação de abertura no meio do atendimento (a maior causa de
-    // perda de contexto). Ver docs/product/plano-correcao-conversacional.md.
+    // perda de contexto). Ver docs/architecture/current.md.
     const isStaleConversation =
       !isFirstMessage && !isMenuActive && !resetRequested && !menuReRequested && !rescheduleAfterReminder &&
       shouldRestartConversation({

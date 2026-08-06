@@ -1,6 +1,6 @@
 /**
  * Aplicação pura do feedback do cliente na Revisão de Conversas
- * (docs/product/revisao-conversas-plano.md, seções 6 e 8 — PR 2).
+ * Feature catalogada em docs/features.md.
  *
  * Mesmo padrão de `build-excerpt.ts`: núcleo puro e testável sem tocar o
  * banco; as actions públicas (`(public)/conversas/[token]/actions.ts`) ficam

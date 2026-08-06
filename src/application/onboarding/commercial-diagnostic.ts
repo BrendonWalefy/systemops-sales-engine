@@ -185,7 +185,7 @@ function round(n: number): number {
   return Math.round(n);
 }
 
-// Nomes e valores canônicos: docs/product/pricing-strategy.md + landing
+// Nomes e valores canônicos: configuração de produto + landing
 // (Start/Growth/Scale, mono-unidade). NÃO inventar — refletem site e contrato.
 const PLAN_LABEL: Record<OrgPlanKey, string> = {
   start: "Start",

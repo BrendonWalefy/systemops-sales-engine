@@ -2,7 +2,7 @@
  * Provisionamento automático de instância Z-API para o onboarding do owner.
  *
  * Cria a instância via API de parceiro integrador (Fase 1 de
- * docs/product/zapi-provisionamento-automatico.md), aplica o preset padrão
+ * docs/operations/onboarding-clinica.md), aplica o preset padrão
  * (notify-sent-by-me + ignorar grupos) e grava as credenciais já criptografadas
  * na clínica — o owner não precisa abrir o painel da Z-API.
  *
