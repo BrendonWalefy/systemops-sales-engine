@@ -32,9 +32,9 @@ describe("buildPromptContext", () => {
     expect(ctx.businessDescriptor).toBe("clínica de odontologia");
   });
 
-  it("dental: vocabulário padrão preservado", () => {
+  it("dental: normaliza o papel legado para o posicionamento atual", () => {
     const ctx = buildPromptContext(dentalBase);
-    expect(ctx.agentRole).toBe("recepcionista virtual");
+    expect(ctx.agentRole).toBe("especialista comercial com IA");
     expect(ctx.bookingNoun).toBe("consulta");
     expect(ctx.contactNoun).toBe("paciente");
     expect(ctx.serviceNoun).toBe("tratamento");
@@ -52,9 +52,9 @@ describe("buildPromptContext", () => {
     );
   });
 
-  it("atelier: vocabulário correto para o segmento", () => {
+  it("atelier: normaliza o papel legado e preserva o vocabulário operacional", () => {
     const ctx = buildPromptContext(atelierBase);
-    expect(ctx.agentRole).toBe("atendente virtual");
+    expect(ctx.agentRole).toBe("especialista comercial com IA");
     expect(ctx.bookingNoun).toBe("entrega");
     expect(ctx.contactNoun).toBe("cliente");
     expect(ctx.serviceNoun).toBe("pedido");
@@ -73,5 +73,10 @@ describe("buildPromptContext", () => {
   it("other segment: isClinicSegment = false", () => {
     const ctx = buildPromptContext({ ...atelierBase, segment: "other" });
     expect(ctx.isClinicSegment).toBe(false);
+  });
+
+  it("preserva um papel customizado pela organização", () => {
+    const ctx = buildPromptContext({ ...dentalBase, agentRole: "consultora de relacionamento" });
+    expect(ctx.agentRole).toBe("consultora de relacionamento");
   });
 });

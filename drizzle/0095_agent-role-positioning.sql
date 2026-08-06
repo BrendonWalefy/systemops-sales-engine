@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ALTER COLUMN "agent_role" SET DEFAULT 'especialista comercial com IA';

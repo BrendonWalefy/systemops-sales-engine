@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { MenuItem } from "@/domain/entities/clinic";
+import { DEFAULT_AGENT_ROLE, type MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
@@ -479,7 +479,7 @@ export const organizations = pgTable("organizations", {
   // Vocabulário do agente — derivado do segmento, sobrescrevível por tenant
   bookingNoun: text("booking_noun").notNull().default("consulta"),
   contactNoun: text("contact_noun").notNull().default("paciente"),
-  agentRole: text("agent_role").notNull().default("recepcionista virtual"),
+  agentRole: text("agent_role").notNull().default(DEFAULT_AGENT_ROLE),
   businessDescriptor: text("business_descriptor"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

@@ -213,7 +213,7 @@ export function TabGeral({ clinic }: { clinic: ClinicData }) {
               setGreetingMessage(e.target.value);
               triggerSave({ greetingMessage: e.target.value });
             }}
-            placeholder={`Olá! Sou a assistente virtual da ${clinic.name ?? "clínica"}. Como posso ajudá-lo?`}
+            placeholder={`Olá! Sou a especialista comercial com IA da ${clinic.name ?? "empresa"}. Como posso ajudar?`}
             rows={3}
           />
         </SettingsCard>

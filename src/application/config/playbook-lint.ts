@@ -86,10 +86,10 @@ export function lintCommercialPolicy(policy: string | null | undefined): string[
  * Coerência de persona: o `greetingMessage` da clínica é o OPENER do primeiro contato
  * (modo concierge), enquanto o `receptionistName` é quem a LLM diz ser nas respostas
  * seguintes. Se o nome configurado não aparece na saudação, o lead conhece dois
- * personagens: abre com "sou a recepcionista virtual" e depois recebe "aqui é a Marina".
+ * personagens: abre sem nome e depois recebe "aqui é a Marina".
  *
  * Caso real (Horizonte, jul/2026): receptionistName="Marina" mas a saudação não a
- * nomeava — 62 mensagens diziam "Marina" e 31 "recepcionista virtual" na mesma clínica.
+ * nomeava — parte das mensagens dizia "Marina" e parte usava uma persona genérica.
  * Descobrimos lendo conversa; este lint pega o drift no editor.
  *
  * AVISO (nunca bloqueia): a clínica pode legitimamente escolher um opener sem nome.
@@ -106,7 +106,7 @@ export function lintPersonaCoherence(
   if (normalize(greeting).includes(normalize(name))) return [];
 
   return [
-    `A saudação não menciona "${name}". Como ela é o texto de abertura do primeiro contato, o lead vai ler a saudação e depois receber respostas assinadas por "${name}" — dois personagens diferentes. Inclua o nome na saudação (ex.: "Me chamo ${name}, ...") ou ajuste o nome da recepcionista.`,
+    `A saudação não menciona "${name}". Como ela é o texto de abertura do primeiro contato, o lead vai ler a saudação e depois receber respostas assinadas por "${name}" — dois personagens diferentes. Inclua o nome na saudação (ex.: "Me chamo ${name}, ...") ou ajuste o nome da especialista comercial.`,
   ];
 }
 

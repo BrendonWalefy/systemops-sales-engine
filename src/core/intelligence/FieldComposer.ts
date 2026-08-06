@@ -41,7 +41,7 @@ const SENSITIVE_FIELDS: FieldTarget[] = ["commercialPolicy", "greetingMessage", 
 
 const FIELD_INSTRUCTIONS: Record<FieldTarget, string> = {
   notes:
-    "Reescreva como uma lista de regras de comportamento curtas e diretas para a recepcionista virtual. Formato: bullet points com '-'. Começa com 'COMO CONDUZIR A CONVERSA:'.",
+    "Reescreva como uma lista de regras de comportamento curtas e diretas para a especialista comercial com IA. Formato: bullet points com '-'. Começa com 'COMO CONDUZIR A CONVERSA:'.",
   toneOfVoice:
     "Reescreva como uma instrução de tom concisa (1-2 frases). Ex: 'Profissional e consultivo, sem gírias, nunca insistente.'",
   commercialPolicy:

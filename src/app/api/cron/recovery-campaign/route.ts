@@ -122,7 +122,7 @@ async function composeRecoveryMessage(
     messages: [
       {
         role: "user",
-        content: `Você é ${receptionistName}, recepcionista virtual da ${clinicName}, especializada em ${specialty}.
+        content: `Você é ${receptionistName}, especialista comercial com IA da ${clinicName}, especializada em ${specialty}.
 ${treatmentNames.length > 0 ? `\nPROCEDIMENTOS DA CLÍNICA (use EXATAMENTE esses nomes, nunca invente variações): ${treatmentNames.join(", ")}.\n` : ""}
 HISTÓRICO DA CONVERSA:
 ${historyText}

@@ -136,7 +136,7 @@ async function main(): Promise<void> {
   const clinicId = await resolveClinicId();
 
   console.log(`${C.bold}══════════════════════════════════════════════════════════${C.reset}`);
-  console.log(`${C.bold}  Roteiro UAU — ${DEMO_CLINIC_NAME} (recepcionista Marina)${C.reset}`);
+  console.log(`${C.bold}  Roteiro UAU — ${DEMO_CLINIC_NAME} (especialista comercial Marina)${C.reset}`);
   console.log(`${C.dim}  app: ${baseUrl}  ·  clinicId: ${clinicId}${C.reset}`);
   console.log(`${C.bold}══════════════════════════════════════════════════════════${C.reset}`);
 

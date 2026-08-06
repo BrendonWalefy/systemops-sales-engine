@@ -461,7 +461,7 @@ export function buildConciergeStarter(
 
   // greetingMessage é o opener curado da clínica — quando existe, ele é o corpo do
   // starter (a clínica é dona do próprio tom, não um template genérico). A persona
-  // nunca se apresenta como "assistente virtual": o atendimento fala como a equipe.
+  // nunca usa uma persona genérica: o atendimento fala como a equipe.
   const custom = clinic.greetingMessage?.trim();
   if (custom) {
     if (/^(bom\s*dia|boa\s*tarde|boa\s*noite)/i.test(custom)) {

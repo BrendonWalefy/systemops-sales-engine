@@ -714,7 +714,7 @@ function StepIdentidade({
         <textarea
           value={data.greetingMessage}
           onChange={f("greetingMessage")}
-          placeholder="Ex: Ola! Sou a assistente virtual da empresa. Como posso ajudar?"
+          placeholder="Ex: Olá! Sou a especialista comercial com IA da empresa. Como posso ajudar?"
           rows={3}
           style={{ ...inputStyle, resize: "vertical" }}
         />

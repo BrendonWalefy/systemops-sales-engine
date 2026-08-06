@@ -123,7 +123,7 @@ function buildConciergeStarter(
 ): string {
   const salutation = getDayGreeting(timezone);
   // Espelha o Orchestrator: o opener curado da clínica é o corpo do starter e a
-  // persona nunca se apresenta como "assistente virtual".
+  // persona nunca se apresenta de forma genérica.
   const custom = greetingMessage?.trim();
   if (custom) {
     if (/^(bom\s*dia|boa\s*tarde|boa\s*noite)/i.test(custom)) return custom;

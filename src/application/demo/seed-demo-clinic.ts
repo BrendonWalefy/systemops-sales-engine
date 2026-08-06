@@ -495,7 +495,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
     timezone: "America/Sao_Paulo",
     businessHours: "Seg–sex 08h–19h · Sáb 08h–13h",
     greetingMessage:
-      "Olá! Seja bem-vindo à Odonto Marques. Sou a Marina, assistente virtual da clínica. " +
+      "Olá! Seja bem-vindo à Odonto Marques. Sou a Marina, especialista comercial com IA da clínica. " +
       "Posso te ajudar com informações, avaliação, horários disponíveis e dúvidas sobre tratamentos. Como posso te ajudar hoje?",
     menuItems: [
       { number: 1, label: "Lentes", intent: "procedures", enabled: true, treatmentKeyword: "lentes" },
@@ -682,7 +682,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       "Valores sempre apresentados como 'a partir de', pois dependem de avaliação. Lentes são cobradas por dente. " +
       "Prótese, remoção de dentes e botox dependem de avaliação. Alinhadores têm valor mensal. Parcelamos no cartão. " +
       "Procedimentos estéticos e cirúrgicos exigem avaliação prévia. A avaliação estética/cirúrgica é o ponto de partida.",
-    notes: "Recepcionista virtual: Marina. Sempre oferecer horários reais e confirmar antes da consulta.",
+    notes: "Especialista comercial com IA: Marina. Sempre oferecer horários reais e confirmar antes da consulta.",
     differentials: [
       "Atendimento humanizado e premium",
       "Planejamento digital do sorriso",
@@ -709,7 +709,7 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       "remoção de dentes a partir de R$650; botox a partir de R$890; clareamento a partir de R$690; " +
       "implante a partir de R$2.900; alinhadores a partir de R$350/mês; limpeza R$220. " +
       "Valores sempre 'a partir de', após avaliação. " +
-      "Objeção de preço: parcelamos no cartão e o plano é montado na avaliação. Recepcionista: Marina.",
+      "Objeção de preço: parcelamos no cartão e o plano é montado na avaliação. Especialista comercial: Marina.",
     commercialPolicy:
       "Valores sempre 'a partir de', pois dependem de avaliação. Lentes por dente. " +
       "Prótese, remoção de dentes e botox dependem de avaliação. Parcelamos no cartão. " +

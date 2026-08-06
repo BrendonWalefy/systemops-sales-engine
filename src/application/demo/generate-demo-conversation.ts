@@ -1,6 +1,6 @@
 /**
  * Gerador de conversas da clínica demo — produz threads COERENTES na voz REAL da
- * recepcionista (Marina), rodando o MESMO pipeline da produção:
+ * especialista comercial (Marina), rodando o MESMO pipeline da produção:
  *   mensagem do lead → IntentClassifier → ação → ResponseComposer.
  *
  * Como o roteiro do LEAD é curado (progressão natural) e a IA classifica e responde

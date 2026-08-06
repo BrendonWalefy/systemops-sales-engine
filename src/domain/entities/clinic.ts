@@ -9,6 +9,22 @@ export type ConversationExperience = "menu_first" | "concierge";
 
 export const DEFAULT_CONVERSATION_EXPERIENCE: ConversationExperience = "menu_first";
 
+export const DEFAULT_AGENT_ROLE = "especialista comercial com IA";
+
+const LEGACY_AGENT_ROLES = new Set([
+  "recepcionista virtual",
+  "atendente virtual",
+  "assistente virtual",
+]);
+
+export function normalizeAgentRole(agentRole?: string | null): string {
+  const normalized = agentRole?.trim();
+  if (!normalized || LEGACY_AGENT_ROLES.has(normalized.toLowerCase())) {
+    return DEFAULT_AGENT_ROLE;
+  }
+  return normalized;
+}
+
 export type MenuItem = {
   number: number;
   label: string;
