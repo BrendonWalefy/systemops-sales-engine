@@ -561,7 +561,7 @@ export default async function InstalarPage({ searchParams }: { searchParams: Sea
               />
               <div className="inst-wm">
                 <strong>SystemOps</strong>
-                <small>Recepcionista autônoma para clínicas</small>
+                <small>Inteligência comercial e operacional com IA</small>
               </div>
             </div>
           </footer>

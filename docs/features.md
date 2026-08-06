@@ -6,7 +6,7 @@ Atualizado em 2026-08-06. Este catálogo descreve apenas capacidades existentes 
 
 | Capacidade | O que entrega | Principais donos |
 | --- | --- | --- |
-| Atendimento com IA | Entende texto, áudio e mídia; mantém contexto; responde conforme playbook e catálogo | `ConversationOrchestrator`, `IntentClassifier`, `ResponseComposer` |
+| Especialista comercial com IA | Entende texto, áudio e mídia; qualifica, mantém contexto e conduz a jornada conforme estratégia, playbook e catálogo | `ConversationOrchestrator`, `IntentClassifier`, `ResponseComposer` |
 | Pipeline por serviço | Executa conteúdo, vídeo, Q&A, coleta de foto e oferta de agenda | `treatments.pipelineSteps`, `PipelineMediaRouter` |
 | Agenda | Oferece slots, agenda, cancela e remarca com proteção contra conflito | `BookingService`, `SlotReservationService`, `CalendarGateway` |
 | Handoff | Pausa a IA e entrega contexto para a equipe em casos sensíveis ou falhas | `ConversationStateMachine`, Inbox, Web Push |
