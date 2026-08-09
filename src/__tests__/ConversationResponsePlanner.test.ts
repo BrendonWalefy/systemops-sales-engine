@@ -116,6 +116,56 @@ describe("ConversationResponsePlanner", () => {
     expect(JSON.stringify(result)).not.toContain("timeout-private-provider-details");
   });
 
+  it.each([
+    ["resposta inválida", "response_plan_violation"],
+    ["erro do provider", "composer_error"],
+  ] as const)(
+    "preserva a ação autorizada no fallback após mutação aninhada do composer: %s",
+    async (_scenario, fallbackReason) => {
+      const originalLabel = "Seg 10/08 às 14h";
+      const mutatedLabel = "Ter 11/08 às 19h";
+      const executionInput = {
+        ...input(),
+        composerInput: {
+          ...validComposerInput,
+          actionResult: {
+            type: "slots_found" as const,
+            askedForPreference: false,
+            slots: [{
+              index: 1,
+              startsAt: "2026-08-10T17:00:00.000Z",
+              endsAt: "2026-08-10T18:00:00.000Z",
+              label: originalLabel,
+            }],
+          },
+        },
+      };
+      const composer = {
+        compose: async (composerInput: ComposerInput): Promise<ComposedResponse> => {
+          if (composerInput.actionResult.type !== "slots_found") {
+            throw new Error("unexpected action");
+          }
+          composerInput.actionResult.slots[0]!.label = mutatedLabel;
+          if (fallbackReason === "composer_error") {
+            throw new Error("provider failure after mutation");
+          }
+          return composed("Custa R$ 9.999,00");
+        },
+      };
+
+      const result = await new ConversationResponsePlanner(composer).execute(executionInput);
+
+      expect(result.response.text).toBe(`Horários disponíveis:\n- ${originalLabel}`);
+      expect(result.response.text).not.toContain(mutatedLabel);
+      expect(result.requiresHandoff).toBe(false);
+      expect(result.fallbackReason).toBe(fallbackReason);
+      expect(result.violations).toEqual(
+        fallbackReason === "composer_error" ? [] : ["unauthorized_price"],
+      );
+      expect(executionInput.composerInput.actionResult.slots[0]!.label).toBe(originalLabel);
+    },
+  );
+
   it("falha fechado antes da composição para razão clínica não canônica", async () => {
     const rawReason = "paciente sinalizado pela auditoria interna";
     const composer = { compose: async () => composed(`Detalhes: ${rawReason}`) };

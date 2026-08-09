@@ -31,6 +31,12 @@ export type PlannedResponse = {
   fallbackReason: SafeResponseFallback["reason"] | null;
 };
 
+function snapshotActionResult(
+  actionResult: ComposerInput["actionResult"],
+): ComposerInput["actionResult"] {
+  return structuredClone(actionResult);
+}
+
 export class ConversationResponsePlanner {
   constructor(private readonly composer: ResponseComposerPort = new ResponseComposer()) {}
 
@@ -38,16 +44,17 @@ export class ConversationResponsePlanner {
     composerInput: ComposerInput;
     planInput: Omit<BuildResponsePlanInput, "actionResult">;
   }): Promise<PlannedResponse> {
+    const actionResult = snapshotActionResult(input.composerInput.actionResult);
     const plan = buildAuthorizedResponsePlan({
       ...input.planInput,
-      actionResult: input.composerInput.actionResult,
+      actionResult,
     });
     if (
-      input.composerInput.actionResult.type === "clinical_evaluation_required"
-      && !isAtypicalClinicalCaseLabel(input.composerInput.actionResult.reason)
+      actionResult.type === "clinical_evaluation_required"
+      && !isAtypicalClinicalCaseLabel(actionResult.reason)
     ) {
       const fallback = buildSafeResponseFallback({
-        actionResult: input.composerInput.actionResult,
+        actionResult,
         plan,
         reason: "response_plan_violation",
       });
@@ -63,10 +70,13 @@ export class ConversationResponsePlanner {
 
     let response: ComposedResponse;
     try {
-      response = await this.composer.compose(input.composerInput);
+      response = await this.composer.compose({
+        ...input.composerInput,
+        actionResult: snapshotActionResult(actionResult),
+      });
     } catch {
       const fallback = buildSafeResponseFallback({
-        actionResult: input.composerInput.actionResult,
+        actionResult,
         plan,
         reason: "composer_error",
       });
@@ -83,7 +93,7 @@ export class ConversationResponsePlanner {
 
     if (!validation.ok) {
       const fallback = buildSafeResponseFallback({
-        actionResult: input.composerInput.actionResult,
+        actionResult,
         plan,
         reason: "response_plan_violation",
       });
