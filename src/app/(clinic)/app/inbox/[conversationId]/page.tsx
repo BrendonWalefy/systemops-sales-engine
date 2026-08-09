@@ -312,21 +312,24 @@ export default async function ConversationPage({
   params: Promise<{ conversationId: string }>;
 }) {
   const { conversationId } = await params;
-
-  const [conv] = await db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.id, conversationId))
-    .limit(1);
-
-  if (!conv) notFound();
+  let clinicId: string | null = null;
 
   return measureServerOperation(
     {
-      clinicId: conv.clinicId,
+      getClinicId: () => clinicId,
       surface: "conversation",
       operation: "conversation_total",
     },
-    () => prepareConversationPage(conversationId, conv),
+    async () => {
+      const [conv] = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1);
+
+      if (!conv) notFound();
+      clinicId = conv.clinicId;
+      return prepareConversationPage(conversationId, conv);
+    },
   );
 }

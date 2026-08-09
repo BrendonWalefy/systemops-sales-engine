@@ -249,15 +249,18 @@ export default async function InboxPage({
   searchParams?: Promise<InboxSearchParams>;
 }) {
   const params = searchParams ? await searchParams : {};
-  const clinicId = await getSessionClinicId();
-  if (!clinicId) redirect("/login");
+  let clinicId: string | null = null;
 
   return measureServerOperation(
     {
-      clinicId,
+      getClinicId: () => clinicId,
       surface: "inbox_list",
       operation: "inbox_total",
     },
-    () => prepareInboxPage(clinicId, params),
+    async () => {
+      clinicId = await getSessionClinicId();
+      if (!clinicId) redirect("/login");
+      return prepareInboxPage(clinicId, params);
+    },
   );
 }

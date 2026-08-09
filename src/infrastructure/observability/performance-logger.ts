@@ -1,13 +1,17 @@
 import {
   PERFORMANCE_SCHEMA_VERSION,
+  parsePerformanceSample,
   type PerformanceOperation,
   type PerformanceSample,
   type PerformanceSurface,
 } from "@/application/observability/performance-telemetry";
 import { createLogger } from "@/infrastructure/logging/logger";
 
-type ServerTimingInput = {
-  clinicId: string;
+type ServerTimingContext =
+  | { clinicId: string; getClinicId?: never }
+  | { clinicId?: never; getClinicId(): string | null };
+
+type ServerTimingInput = ServerTimingContext & {
   surface: PerformanceSurface;
   operation: PerformanceOperation;
   enabled?: boolean;
@@ -21,9 +25,17 @@ type PerformanceLoggerDeps = {
 export function recordServerPerformance(
   sample: PerformanceSample & { clinicId: string },
 ): void {
-  const { clinicId, ...sampleWithoutClinicId } = sample;
-  createLogger({ scope: "PerformanceTelemetry", clinicId })
-    .info("performance.sample", sampleWithoutClinicId);
+  const normalizedSample = parsePerformanceSample({
+    schemaVersion: sample.schemaVersion,
+    source: sample.source,
+    surface: sample.surface,
+    operation: sample.operation,
+    durationMs: sample.durationMs,
+    ...(sample.cacheState === undefined ? {} : { cacheState: sample.cacheState }),
+    outcome: sample.outcome,
+  });
+  createLogger({ scope: "PerformanceTelemetry", clinicId: sample.clinicId })
+    .info("performance.sample", normalizedSample);
 }
 
 const defaultPerformanceLoggerDeps: PerformanceLoggerDeps = {
@@ -48,15 +60,19 @@ export async function measureServerOperation<T>(
     return result;
   } finally {
     try {
-      deps.emit({
-        schemaVersion: PERFORMANCE_SCHEMA_VERSION,
-        source: "server",
-        surface: input.surface,
-        operation: input.operation,
-        durationMs: deps.now() - startedAt,
-        outcome,
-        clinicId: input.clinicId,
-      });
+      const durationMs = deps.now() - startedAt;
+      const clinicId = "clinicId" in input ? input.clinicId : input.getClinicId();
+      if (clinicId) {
+        deps.emit({
+          schemaVersion: PERFORMANCE_SCHEMA_VERSION,
+          source: "server",
+          surface: input.surface,
+          operation: input.operation,
+          durationMs,
+          outcome,
+          clinicId,
+        });
+      }
     } catch {
       // Observability must never change the measured operation's result.
     }

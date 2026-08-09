@@ -155,4 +155,101 @@ describe("performance logger", () => {
       "outcome",
     ]);
   });
+
+  it.each([
+    ["inbox_list", "inbox_total"],
+    ["conversation", "conversation_total"],
+    ["dashboard", "dashboard_total"],
+  ] as const)("starts %s/%s before late clinic context is resolved", async (surface, operation) => {
+    const events: string[] = [];
+    const ticks = [100, 125];
+    let clinicId: string | null = null;
+
+    await measureServerOperation({
+      getClinicId: () => {
+        events.push("context");
+        return clinicId;
+      },
+      surface,
+      operation,
+      enabled: true,
+    }, async () => {
+      events.push("tenant_resolution");
+      clinicId = "clinic-id";
+      events.push("prepared_props");
+    }, {
+      now: () => {
+        events.push("clock");
+        return ticks.shift()!;
+      },
+      emit: (sample) => {
+        events.push("emit");
+        expect(sample.clinicId).toBe("clinic-id");
+      },
+    });
+
+    expect(events).toEqual([
+      "clock",
+      "tenant_resolution",
+      "prepared_props",
+      "clock",
+      "context",
+      "emit",
+    ]);
+  });
+
+  it("drops forbidden runtime fields before logging", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    recordServerPerformance({
+      schemaVersion: 1,
+      source: "server",
+      surface: "inbox_list",
+      operation: "inbox_total",
+      durationMs: 42,
+      outcome: "ok",
+      clinicId: "clinic-id",
+      query: "?lead=private-id",
+      headers: { authorization: "secret" },
+    } as Parameters<typeof recordServerPerformance>[0]);
+
+    const output = JSON.parse(String(log.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(output).not.toHaveProperty("query");
+    expect(output).not.toHaveProperty("headers");
+  });
+
+  it("preserves the work result when strict sample parsing rejects a measurement", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const ticks = [0, 120_001];
+
+    await expect(measureServerOperation({
+      clinicId: "clinic-id",
+      surface: "dashboard",
+      operation: "dashboard_total",
+      enabled: true,
+    }, async () => "rows", {
+      now: () => ticks.shift()!,
+      emit: recordServerPerformance,
+    })).resolves.toBe("rows");
+
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("preserves the work outcome when late clinic context cannot be resolved", async () => {
+    const emit = vi.fn();
+    const failure = new Error("tenant unavailable");
+    const input = {
+      getClinicId: () => null,
+      surface: "dashboard" as const,
+      operation: "dashboard_total" as const,
+      enabled: true,
+    };
+    const deps = { now: () => 0, emit };
+
+    await expect(measureServerOperation(input, async () => "rows", deps)).resolves.toBe("rows");
+    await expect(measureServerOperation(input, async () => {
+      throw failure;
+    }, deps)).rejects.toBe(failure);
+    expect(emit).not.toHaveBeenCalled();
+  });
 });

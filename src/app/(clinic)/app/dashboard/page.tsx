@@ -716,15 +716,18 @@ export default async function DashboardPage({
 }) {
   const { period = "7d" } = await searchParams;
   const safePeriod = (["1d", "7d", "30d"].includes(period) ? period : "7d") as PeriodKey;
-  const clinicId = await getSessionClinicId();
-  if (!clinicId) redirect("/login");
+  let clinicId: string | null = null;
 
   return measureServerOperation(
     {
-      clinicId,
+      getClinicId: () => clinicId,
       surface: "dashboard",
       operation: "dashboard_total",
     },
-    () => prepareDashboardPage(safePeriod, clinicId),
+    async () => {
+      clinicId = await getSessionClinicId();
+      if (!clinicId) redirect("/login");
+      return prepareDashboardPage(safePeriod, clinicId);
+    },
   );
 }
