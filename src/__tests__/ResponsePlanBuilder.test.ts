@@ -41,6 +41,23 @@ describe("buildAuthorizedResponsePlan", () => {
     expect(plan.expectedState).toBe("awaiting_confirmation");
   });
 
+  it("autoriza os labels de horários alternativos quando não há slots no período pedido", () => {
+    const plan = buildAuthorizedResponsePlan({
+      actionResult: {
+        type: "no_slots_available",
+        nextAvailableDate: "2026-08-10",
+        alternativeSlots: [slotA],
+      },
+      commercialPolicy: null,
+      installmentTable: null,
+      allowedMediaIds: [],
+      expectedState: "idle",
+      maxCharacters: 500,
+    });
+
+    expect(plan.allowedScheduleFacts).toEqual(["Seg 10/08 às 14h"]);
+  });
+
   it("coleta labels de agendamentos e lembretes, mas não de ações sem agenda", () => {
     const listedPlan = buildAuthorizedResponsePlan({
       actionResult: {

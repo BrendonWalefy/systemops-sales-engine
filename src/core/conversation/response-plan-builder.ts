@@ -45,6 +45,8 @@ function extractScheduleFacts(input: BuildResponsePlanInput): string[] {
     case "appointment_rescheduled":
     case "slot_taken_reoffered":
       return input.actionResult.newSlots.map((slot) => slot.label);
+    case "no_slots_available":
+      return input.actionResult.alternativeSlots?.map((slot) => slot.label) ?? [];
     case "appointments_listed":
       return input.actionResult.appointments.map((appointment) => appointment.label);
     case "slots_expired":
