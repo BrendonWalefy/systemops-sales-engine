@@ -1,4 +1,5 @@
 import type { AuthorizedResponsePlan } from "@/core/conversation/response-plan";
+import { validateComposedResponse } from "@/core/conversation/response-validator";
 import type { FormattedSlot } from "@/core/conversation/ConversationStateMachine";
 import type {
   ActionResult,
@@ -24,13 +25,30 @@ export function buildSafeResponseFallback(
   input: SafeResponseFallbackInput,
 ): SafeResponseFallback {
   const text = buildFallbackText(input.actionResult, input.plan);
-  const requiresHandoff = text === null;
+  const candidate = text === null ? null : deterministicResponse(text);
+
+  if (candidate && validateComposedResponse({ plan: input.plan, response: candidate }).ok) {
+    return {
+      response: candidate,
+      requiresHandoff: false,
+      reason: input.reason,
+    };
+  }
 
   return {
-    response: deterministicResponse(text ?? NEUTRAL_HANDOFF_COPY),
-    requiresHandoff,
+    response: safeHandoffResponse(input.plan),
+    requiresHandoff: true,
     reason: input.reason,
   };
+}
+
+function safeHandoffResponse(plan: AuthorizedResponsePlan): ComposedResponse {
+  const neutralHandoff = deterministicResponse(NEUTRAL_HANDOFF_COPY);
+  if (validateComposedResponse({ plan, response: neutralHandoff }).ok) {
+    return neutralHandoff;
+  }
+
+  return deterministicResponse("!");
 }
 
 function buildFallbackText(
