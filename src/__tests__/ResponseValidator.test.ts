@@ -94,4 +94,100 @@ describe("validateComposedResponse", () => {
 
     expect(result).toEqual({ ok: true, violations: [] });
   });
+
+  it("valida todas as claims emitidas em partes de texto divergentes", () => {
+    const result = validateComposedResponse({
+      plan: makePlan(),
+      response: {
+        text: "Tudo certo.",
+        parts: [{
+          type: "text",
+          content: "O valor é R$ 9.999,00. Tenho terça às 19h. O resultado é 100% garantido.",
+        }],
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      violations: [
+        "unauthorized_price",
+        "unauthorized_schedule_fact",
+        "unsupported_guarantee",
+      ],
+    });
+  });
+
+  it("aplica o limite de caracteres às legendas enviadas", () => {
+    const result = validateComposedResponse({
+      plan: makePlan({ allowedMediaIds: ["case-1"], maxCharacters: 10 }),
+      response: {
+        text: "Veja:",
+        parts: [{ type: "media", id: "case-1", caption: "Uma legenda longa." }],
+      },
+    });
+
+    expect(result).toEqual({ ok: false, violations: ["response_too_long"] });
+  });
+
+  it.each([
+    "Resultados garantidos.",
+    "Garantimos resultados.",
+    "É risco zero.",
+  ])("normaliza promessa proibida: %s", (text) => {
+    const result = validateComposedResponse({
+      plan: makePlan(),
+      response: { text, parts: [{ type: "text", content: text }] },
+    });
+
+    expect(result).toEqual({ ok: false, violations: ["unsupported_guarantee"] });
+  });
+
+  it.each([
+    "Tenho disponibilidade em 11/08.",
+    "Tenho na terça-feira.",
+  ])("recusa disponibilidade sem horário fora do plano: %s", (text) => {
+    const result = validateComposedResponse({
+      plan: makePlan(),
+      response: { text, parts: [{ type: "text", content: text }] },
+    });
+
+    expect(result).toEqual({ ok: false, violations: ["unauthorized_schedule_fact"] });
+  });
+
+  it.each([
+    "Tenho disponibilidade em 10/08.",
+    "Tenho na segunda-feira.",
+  ])("aceita disponibilidade parcial presente no plano: %s", (text) => {
+    const result = validateComposedResponse({
+      plan: makePlan({ allowedScheduleFacts: ["Seg 10/08 às 14h"] }),
+      response: { text, parts: [{ type: "text", content: text }] },
+    });
+
+    expect(result).toEqual({ ok: true, violations: [] });
+  });
+
+  it("não confunde duração de procedimento com horário de agenda", () => {
+    const text = "O procedimento costuma durar 1h.";
+    const result = validateComposedResponse({
+      plan: makePlan(),
+      response: { text, parts: [{ type: "text", content: text }] },
+    });
+
+    expect(result).toEqual({ ok: true, violations: [] });
+  });
+
+  it("aplica limites às partes de texto divergentes", () => {
+    const result = validateComposedResponse({
+      plan: makePlan({ maxCharacters: 12, maxQuestions: 1 }),
+      response: {
+        text: "Tudo certo.",
+        parts: [{ type: "text", content: "Qual opção? Pode confirmar?" }],
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      violations: ["response_too_long", "too_many_questions"],
+    });
+  });
 });
