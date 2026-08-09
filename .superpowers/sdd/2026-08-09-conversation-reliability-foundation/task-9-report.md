@@ -100,6 +100,24 @@ The size history is 9,143 lines before the response/media extraction and
 temperature-inference ownership correction. The branch log and the direct
 `wc` gate were both inspected; the latter is the current executable gate.
 
+### Branch-tip verification (added after the Task 9 documentation commit)
+
+The evidence above was recorded at `2fa32de`, before this report was
+committed, so the branch tip was not itself covered — the gap this report
+listed as a deferred Task 9 observation. The gates were re-run at the tip,
+`80edd04`, with the working tree clean:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `npm run verify` | 0 | 242 test files passed; 2,245 passed; 10 skipped (2,255 total). |
+| `test "$(wc -l < src/core/pipeline/ConversationOrchestrator.ts)" -lt 8300` | 0 | 8,271 lines. |
+| `git diff --check origin/develop...HEAD` | 0 | No whitespace errors. |
+| `git diff --name-only origin/develop...HEAD -- src/infrastructure/db/schema.ts drizzle migrations` | 0 | 0 tracked schema/migration paths. |
+
+This closes the deferred observation. It does not change the validation
+hierarchy above: the run is unit/integration only. Private approved replay
+and DB-backed Lab validation remain unrun.
+
 ## Claim self-review
 
 - “green” is limited to the fresh automated commands above; it does not mean
