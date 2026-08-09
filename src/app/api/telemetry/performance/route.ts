@@ -49,7 +49,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const sample = parsePerformanceSample(await readJsonWithinLimit(request));
-    if (sample.source !== "client" || sample.operation !== "soft_navigation") {
+    if (sample.source !== "client") {
       return new Response(null, { status: 400 });
     }
 
