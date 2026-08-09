@@ -210,7 +210,7 @@ against an environment. The token is absent locally and rotation is not confirme
 
 ## Safety
 - No WhatsApp message is sent.
-- Lab automation remains disabled.
+- Nenhum comando habilitou a automação; o estado atual não foi lido e permanece bloqueador.
 - No Ximendes operation is performed.
 - No credential is committed or logged.
 - Telemetry is disabled by default and stores no patient content.
@@ -249,3 +249,9 @@ Safest rollback for Task 8 itself: revert only the report commit. No runtime or
 external state was changed. If a future approved transfer is ever applied, the
 safe operational rollback remains detach-only; never automatically reattach the
 instance to Ximendes.
+
+## Fix rounds
+
+- Fix round 1: corrected the PR safety note so it records command behavior and
+  treats the unread external automation state as a blocker rather than an
+  observed fact. No external command was rerun.
