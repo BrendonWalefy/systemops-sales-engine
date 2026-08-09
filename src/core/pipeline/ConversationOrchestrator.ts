@@ -147,7 +147,7 @@ import {
 } from "@/core/pipeline/PipelineMediaRouter";
 import { resolvePipelineQaMaxTurns } from "@/core/pipeline/PipelineLimits";
 import {
-  TEMP_RANK, buildAlignedResponseMediaProjection, buildAnswerFirstPipelineContent,
+  buildAlignedResponseMediaProjection, buildAnswerFirstPipelineContent,
   buildDeferredPipelineAnswerContext, buildDirectTreatmentContext, buildEvaluationDepositClarification,
   buildInstallmentTable, buildLocationClinicContext, buildMediaClarificationClinicContext,
   buildPipelineContentParts, buildPipelineContentReply, buildSelectedTreatmentContext,
@@ -159,7 +159,7 @@ import {
   isRemotePreEvaluationRequest, isShortAffirmativeReply, isShowcaseRequestText, isValidMediaAssetId,
   mergeDeliveryMediaLibrary, nextActivePipelineStep, nextUnsentPipelineContentStep, normalizeFreeText,
   pickShowcaseMedia, resolveOutboundParts, shouldSuppressNextStepCta,
-  stripPriceProseWhenSystemQuoted, temperatureFromIntent,
+  stripPriceProseWhenSystemQuoted,
   type DeliveryMediaLibraryItem, type InstallmentRate,
 } from "@/core/conversation/conversation-response-parts";
 
@@ -174,7 +174,7 @@ export {
   isEvaluationPriceRequest, isGenericTreatmentInterestMessage, isPipelinePhotoInstructionContentStep,
   isRemotePreEvaluationRequest, isShortAffirmativeReply, isShowcaseRequestText, isValidMediaAssetId,
   mergeDeliveryMediaLibrary, nextActivePipelineStep, pickShowcaseMedia, resolveOutboundParts,
-  shouldSuppressNextStepCta, stripPriceProseWhenSystemQuoted, temperatureFromIntent,
+  shouldSuppressNextStepCta, stripPriceProseWhenSystemQuoted,
   trimAnswerToBridge, type InstallmentRate,
 } from "@/core/conversation/conversation-response-parts";
 
@@ -2571,6 +2571,29 @@ function getDayGreeting(timezone: ClinicTimezone): string {
 }
 const SLOTS_WITH_DATE_AND_TIME = 2;
 const SLOTS_WITH_DATE_ONLY = 5;
+
+const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
+
+export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "cold" {
+  switch (intent) {
+    case "book_appointment":
+    case "check_availability":
+    case "confirm_slot":
+    case "reject_slots":
+    case "reschedule_appointment":
+    case "cancel_appointment":
+    case "list_appointments":
+      return "hot";
+    case "price_inquiry":
+    case "general_question":
+    case "clinical_urgency":
+    case "needs_human":
+    case "patient_arrived":
+      return "warm";
+    default:
+      return "cold";
+  }
+}
 
 
 type ClinicRow = typeof organizations.$inferSelect;

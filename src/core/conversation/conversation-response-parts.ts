@@ -1,6 +1,5 @@
 import { buildAddressLines, type ClinicAddress } from "@/core/conversation/AddressBlock";
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
-import type { IntentType } from "@/core/intelligence/IntentClassifier";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import type { ConversationExperience } from "@/domain/entities/clinic";
 import type { Message } from "@/domain/entities/conversation";
@@ -56,29 +55,6 @@ export function isRemotePreEvaluationRequest(message: string): boolean {
   const mentionsRemoteMedia = /\b(?:pela|pelas|por|com|mandar|enviar|encaminhar)\s+(?:uma\s+|as\s+)?(?:foto|fotos|imagem|imagens|video|videos)\b/.test(normalized);
   return mentionsRemoteChannel || mentionsRemoteMedia;
 }
-export const TEMP_RANK = { hot: 2, warm: 1, cold: 0 } as const;
-
-export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "cold" {
-  switch (intent) {
-    case "book_appointment":
-    case "check_availability":
-    case "confirm_slot":
-    case "reject_slots":
-    case "reschedule_appointment":
-    case "cancel_appointment":
-    case "list_appointments":
-      return "hot";
-    case "price_inquiry":
-    case "general_question":
-    case "clinical_urgency":
-    case "needs_human":
-    case "patient_arrived":
-      return "warm";
-    default:
-      return "cold";
-  }
-}
-
 export function buildLocationClinicContext(clinic: ClinicAddress | string | null): string {
   // Aceita string por compatibilidade com chamadas antigas; o formato novo traz
   // complemento e link do Maps, que o operador manda à mão e a IA não tinha.
