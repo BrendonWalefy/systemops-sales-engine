@@ -1,11 +1,22 @@
-import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const navigationMocks = vi.hoisted(() => ({ pathname: "/app/agenda" }));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => navigationMocks.pathname,
+}));
 import {
   completeNavigation,
   markNavigationStart,
   markNavigationStartInSession,
   type NavigationStorage,
 } from "@/application/observability/navigation-timing";
-import { reportNavigationCompletion } from "@/components/performance/navigation-performance-reporter";
+import {
+  NavigationPerformanceReporter,
+  reportNavigationCompletion,
+} from "@/components/performance/navigation-performance-reporter";
 
 class MemoryStorage implements NavigationStorage {
   private readonly values = new Map<string, string>();
@@ -22,6 +33,12 @@ class MemoryStorage implements NavigationStorage {
     this.values.delete(key);
   }
 }
+
+afterEach(() => {
+  navigationMocks.pathname = "/app/agenda";
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("soft navigation timing", () => {
   it("matches the intended normalized surface and consumes the pending mark", () => {
@@ -147,6 +164,49 @@ describe("soft navigation timing", () => {
       expect.objectContaining({ method: "POST", keepalive: true }),
     );
     expect(addEventListener).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
+  });
+
+  it("clears a preexisting mark on mount and reports only a later in-document pathname change", async () => {
+    const storage = new MemoryStorage();
+    const sendBeacon = vi.fn(() => true);
+    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    let now = 100;
+    let renderer: ReactTestRenderer;
+
+    markNavigationStartInSession("/app/agenda", {
+      storage,
+      now: () => 50,
+    });
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal("window", { sessionStorage: storage });
+    vi.stubGlobal("navigator", { sendBeacon });
+    vi.stubGlobal("performance", { now: () => now });
+    vi.stubGlobal("fetch", fetch);
+    const realConsoleError = console.error.bind(console);
+    vi.spyOn(console, "error").mockImplementation((message, ...args) => {
+      if (String(message).includes("react-test-renderer is deprecated")) return;
+      realConsoleError(message, ...args);
+    });
+
+    await act(async () => {
+      renderer = create(createElement(NavigationPerformanceReporter, { enabled: true }));
+    });
+
+    expect(storage.getItem("systemops.performance.pending-navigation.v1")).toBeNull();
+    expect(sendBeacon).not.toHaveBeenCalled();
+
+    markNavigationStartInSession("/app/inbox/private-conversation-id", {
+      storage,
+      now: () => 120,
+    });
+    now = 180;
+    navigationMocks.pathname = "/app/inbox/private-conversation-id";
+    await act(async () => {
+      renderer.update(createElement(NavigationPerformanceReporter, { enabled: true }));
+    });
+
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    expect(storage.getItem("systemops.performance.sample-count.v1")).toBe("1");
+    await act(async () => renderer.unmount());
   });
 });

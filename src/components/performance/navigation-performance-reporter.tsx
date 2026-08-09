@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { MAX_CLIENT_SAMPLES_PER_SESSION } from "@/application/observability/performance-telemetry";
 import {
   NAVIGATION_COUNT_KEY,
+  NAVIGATION_MARK_KEY,
   consumeNavigationSampleInSession,
   type NavigationStorage,
 } from "@/application/observability/navigation-timing";
@@ -30,6 +31,14 @@ function browserReporterDeps(): NavigationReporterDeps {
       : undefined,
     fetch: globalThis.fetch.bind(globalThis),
   };
+}
+
+function clearPendingNavigationMark(): void {
+  try {
+    window.sessionStorage.removeItem(NAVIGATION_MARK_KEY);
+  } catch {
+    // Telemetry must never affect navigation.
+  }
 }
 
 export function reportNavigationCompletion(
@@ -69,9 +78,18 @@ export function reportNavigationCompletion(
 
 export function NavigationPerformanceReporter({ enabled = false }: { enabled?: boolean }) {
   const pathname = usePathname();
+  const previousPathname = useRef<string | null>(null);
 
   useEffect(() => {
-    if (enabled) reportNavigationCompletion(pathname);
+    if (previousPathname.current === null) {
+      previousPathname.current = pathname;
+      clearPendingNavigationMark();
+      return;
+    }
+
+    const pathnameChanged = previousPathname.current !== pathname;
+    previousPathname.current = pathname;
+    if (enabled && pathnameChanged) reportNavigationCompletion(pathname);
   }, [enabled, pathname]);
 
   return null;
