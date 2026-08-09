@@ -1,6 +1,6 @@
 # SystemOps Dental Conversion — Rebuild Design
 
-**Status:** aprovado em brainstorming; aguardando revisão do documento pelo usuário
+**Status:** aprovado pelo usuário em 2026-08-09; execução incremental autorizada
 
 **Data:** 2026-08-09
 
@@ -715,7 +715,7 @@ A v1 está pronta para venda repetível quando:
 
 ## 24. Decomposição para implementação
 
-Este documento é o desenho mestre. Ele não autoriza um “big bang”. O próximo artefato será um plano executável para **Fases 0 e 1: segurança do Lab, baseline e observabilidade de desempenho**. Ao concluir esse marco, cada fase seguinte recebe plano próprio, mantendo as decisões deste documento como guardrails.
+Este documento é o desenho mestre. Ele não autoriza um “big bang”. As **Fases 0 e 1: segurança do Lab, baseline e observabilidade de desempenho** foram integradas em `develop` pela PR #258. Cada fase seguinte recebe plano próprio, mantendo as decisões deste documento como guardrails.
 
 ## 25. Referências
 
