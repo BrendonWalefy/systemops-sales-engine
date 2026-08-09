@@ -8,6 +8,7 @@ import { MobileAvatarMenu } from "./mobile-avatar-menu";
 import { BellToggle } from "./bell-toggle";
 import { haptic } from "@/lib/haptic";
 import { SystemOpsBrand } from "./systemops-brand";
+import { markNavigationStartInSession } from "@/application/observability/navigation-timing";
 
 const NAV_ITEMS: { href: string; label: string; Icon: React.ElementType; mobileHidden?: boolean }[] = [
   { href: "/app/dashboard", label: "Início", Icon: Home },
@@ -102,7 +103,10 @@ function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, cl
           <>
             <Link
               href="/owner"
-              onClick={() => haptic()}
+              onClick={() => {
+                markNavigationStartInSession("/owner");
+                haptic();
+              }}
               className="side-nav-item nav-mobile-hidden"
               style={{ color: "#818cf8" }}
               title="Owner"
@@ -118,7 +122,10 @@ function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, cl
             key={href}
             href={href}
             prefetch
-            onClick={() => haptic()}
+            onClick={() => {
+              markNavigationStartInSession(href);
+              haptic();
+            }}
             className={`side-nav-item${activeFor(href) ? " active" : ""}${mobileHidden ? " nav-mobile-hidden" : ""}`}
             title={label}
           >
@@ -133,7 +140,10 @@ function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, cl
         <Link
           href="/app/agenda?new=1"
           prefetch
-          onClick={() => haptic("medium")}
+          onClick={() => {
+            markNavigationStartInSession("/app/agenda?new=1");
+            haptic("medium");
+          }}
           className="mobile-novo-btn"
           aria-label="Novo agendamento"
           title="Novo agendamento"
@@ -146,7 +156,10 @@ function SidebarNavInner({ email, avatarUrl, inboxBadge = 0, isOwner = false, cl
             key={href}
             href={href}
             prefetch
-            onClick={() => haptic()}
+            onClick={() => {
+              markNavigationStartInSession(href);
+              haptic();
+            }}
             className={`side-nav-item${activeFor(href) ? " active" : ""}${mobileHidden ? " nav-mobile-hidden" : ""}`}
             title={label}
           >

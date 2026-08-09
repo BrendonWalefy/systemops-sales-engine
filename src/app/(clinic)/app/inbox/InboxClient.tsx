@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from "react";
 import Link from "next/link";
+import { markNavigationStartInSession } from "@/application/observability/navigation-timing";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -468,9 +469,12 @@ function RecoveryCard({
           href={`/app/inbox/${row.convId}`}
           style={{ textDecoration: "none", display: "block" }}
           onClick={(e) => {
-            if (!selectionMode) return;
-            e.preventDefault();
-            onToggleSelected();
+            if (selectionMode) {
+              e.preventDefault();
+              onToggleSelected();
+              return;
+            }
+            markNavigationStartInSession(`/app/inbox/${row.convId}`);
           }}
         >
           <div className="inbox-card-v2-top">
@@ -510,6 +514,7 @@ function RecoveryCard({
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <Link
             href={`/app/inbox/${row.convId}`}
+            onClick={() => markNavigationStartInSession(`/app/inbox/${row.convId}`)}
             style={{
               flex: 1,
               textAlign: "center",
@@ -667,6 +672,7 @@ function InboxCard({
           onToggleSelected();
           return;
         }
+        markNavigationStartInSession(`/app/inbox/${row.convId}`);
         markConversationRead(row.convId);
       }}
       style={{ textDecoration: "none" }}

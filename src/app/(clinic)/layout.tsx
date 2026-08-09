@@ -9,6 +9,7 @@ import { clinicMembers, conversations, organizations } from "@/infrastructure/db
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { setSentryClinic } from "@/infrastructure/logging/sentry";
 import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
+import { NavigationPerformanceReporter } from "@/components/performance/navigation-performance-reporter";
 
 export default async function ClinicLayout({ children }: { children: ReactNode }) {
   const jar = await cookies();
@@ -64,6 +65,7 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
         clinicName={clinicName}
       />
       <main style={{ minWidth: 0, overflowX: "hidden" }}>{children}</main>
+      <NavigationPerformanceReporter enabled={process.env.PERFORMANCE_TELEMETRY_ENABLED === "1"} />
       <PushNotificationSetup />
     </div>
   );
