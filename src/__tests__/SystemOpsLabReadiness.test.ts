@@ -120,6 +120,72 @@ describe("SystemOps Lab readiness", () => {
     expect(remoteChecks).toBe(0);
   });
 
+  it("checks a disconnected remote once and emits only the sanitized blocker", async () => {
+    const lines: string[] = [];
+    let remoteChecks = 0;
+
+    const readiness = await runSystemOpsLabReadinessVerifier({
+      SYSTEMOPS_LAB_CLINIC_ID: "lab-id",
+      SYSTEMOPS_LAB_CHECK_REMOTE: "true",
+      ZAPI_WEBHOOK_SECRET: "webhook-secret-not-for-output",
+    }, {
+      readSnapshot: async () => ({
+        id: "lab-id",
+        isTest: true,
+        isDemo: false,
+        operationalStatus: "test",
+        autoReplyEnabled: false,
+        shadowModeEnabled: false,
+        channelProvider: "z_api",
+        zapiInstanceId: "instance-1",
+        zapiToken: "encrypted-token-not-for-output",
+        zapiClientToken: "encrypted-client-token-not-for-output",
+      }),
+      resolveClinicByInstance: async () => "lab-id",
+      resolveChannel: () => ({
+        provider: "z_api",
+        zapi: {
+          instanceId: "instance-1",
+          token: "decrypted-token-not-for-output",
+          clientToken: "decrypted-client-token-not-for-output",
+        },
+        meta: null,
+      }),
+      getRemoteStatus: async () => {
+        remoteChecks += 1;
+        return {
+          connected: false,
+          smartphoneConnected: false,
+          error: "remote-detail-not-for-output",
+        };
+      },
+      write: (line) => lines.push(line),
+    });
+
+    expect(remoteChecks).toBe(1);
+    expect(readiness).toEqual({
+      readyForControlledInbound: false,
+      readyForAutomation: false,
+      blockers: ["remote_not_connected"],
+    });
+    expect(JSON.parse(lines[0] ?? "")).toEqual({
+      clinicId: "lab-id",
+      credentials: { configured: true },
+      webhookSecret: { configured: true },
+      readiness: {
+        readyForControlledInbound: false,
+        readyForAutomation: false,
+        blockers: ["remote_not_connected"],
+      },
+      remote: {
+        checked: true,
+        connected: false,
+        warnings: [],
+      },
+    });
+    expect(lines.join("\n")).not.toMatch(/secret-not-for-output|token-not-for-output|remote-detail/);
+  });
+
   it("turns an entrypoint exception into a sanitized JSON failure reason", async () => {
     const lines: string[] = [];
 
