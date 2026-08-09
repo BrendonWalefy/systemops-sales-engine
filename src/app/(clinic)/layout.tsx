@@ -8,6 +8,7 @@ import { db } from "@/infrastructure/db/client";
 import { clinicMembers, conversations, organizations } from "@/infrastructure/db/schema";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { setSentryClinic } from "@/infrastructure/logging/sentry";
+import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
 
 export default async function ClinicLayout({ children }: { children: ReactNode }) {
   const jar = await cookies();
@@ -22,22 +23,29 @@ export default async function ClinicLayout({ children }: { children: ReactNode }
     try {
       const clinicId = await requireSessionClinicId();
       setSentryClinic(clinicId);
-      const [memberResult, badgeResult, clinicResult] = await Promise.all([
-        db
-          .select({ avatarUrl: clinicMembers.avatarUrl })
-          .from(clinicMembers)
-          .where(and(eq(clinicMembers.email, session.email), eq(clinicMembers.clinicId, clinicId)))
-          .limit(1),
-        db
-          .select({ count: count() })
-          .from(conversations)
-          .where(and(eq(conversations.clinicId, clinicId), eq(conversations.needsAttention, true))),
-        db
-          .select({ name: organizations.name })
-          .from(organizations)
-          .where(eq(organizations.id, clinicId))
-          .limit(1),
-      ]);
+      const [memberResult, badgeResult, clinicResult] = await measureServerOperation(
+        {
+          clinicId,
+          surface: "clinic_shell",
+          operation: "shell_context",
+        },
+        () => Promise.all([
+          db
+            .select({ avatarUrl: clinicMembers.avatarUrl })
+            .from(clinicMembers)
+            .where(and(eq(clinicMembers.email, session.email), eq(clinicMembers.clinicId, clinicId)))
+            .limit(1),
+          db
+            .select({ count: count() })
+            .from(conversations)
+            .where(and(eq(conversations.clinicId, clinicId), eq(conversations.needsAttention, true))),
+          db
+            .select({ name: organizations.name })
+            .from(organizations)
+            .where(eq(organizations.id, clinicId))
+            .limit(1),
+        ]),
+      );
       avatarUrl = memberResult[0]?.avatarUrl ?? null;
       inboxBadge = badgeResult[0]?.count ?? 0;
       clinicName = clinicResult[0]?.name ?? clinicName;

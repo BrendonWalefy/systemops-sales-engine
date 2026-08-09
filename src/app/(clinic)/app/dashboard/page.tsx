@@ -17,6 +17,7 @@ import {
 } from "./DashboardCommandCenter";
 import type { PeriodKey } from "./DashboardPeriodToggle";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
+import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
 
 const DASHBOARD_TZ = "America/Sao_Paulo";
 type DateLike = Date | string | number;
@@ -250,10 +251,7 @@ async function getResponsibleDoctorName(
   return primaryProfessional?.name ?? null;
 }
 
-async function fetchDashboardData(period: string): Promise<DashboardFetchResult> {
-  const CLINIC_ID = await getSessionClinicId();
-  if (!CLINIC_ID) redirect("/login");
-
+async function fetchDashboardData(period: string, CLINIC_ID: string): Promise<DashboardFetchResult> {
   const days = periodToDays(period);
   const todayStart = startOfDay(new Date());
   const flowStart = addDays(todayStart, -(days - 1));
@@ -681,14 +679,8 @@ async function fetchDashboardData(period: string): Promise<DashboardFetchResult>
   };
 }
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ period?: string }>;
-}) {
-  const { period = "7d" } = await searchParams;
-  const safePeriod = (["1d", "7d", "30d"].includes(period) ? period : "7d") as PeriodKey;
-  const data = await fetchDashboardData(safePeriod);
+async function prepareDashboardPage(safePeriod: PeriodKey, clinicId: string) {
+  const data = await fetchDashboardData(safePeriod, clinicId);
 
   const { memberProfile } = data;
   const showRevenue = memberProfile
@@ -714,5 +706,25 @@ export default async function DashboardPage({
       showRoi={showRoi}
       ownRevenueOnly={ownRevenueOnly}
     />
+  );
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
+  const { period = "7d" } = await searchParams;
+  const safePeriod = (["1d", "7d", "30d"].includes(period) ? period : "7d") as PeriodKey;
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) redirect("/login");
+
+  return measureServerOperation(
+    {
+      clinicId,
+      surface: "dashboard",
+      operation: "dashboard_total",
+    },
+    () => prepareDashboardPage(safePeriod, clinicId),
   );
 }

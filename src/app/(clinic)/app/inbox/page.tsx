@@ -10,49 +10,51 @@ import { InboxClient, type ConvRow } from "./InboxClient";
 import { getInboxVersion } from "./get-inbox-version";
 import { TreatmentGapBanner } from "./TreatmentGapBanner";
 import { resolveInboxPendingAction } from "./inbox-pending";
+import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
 
-export default async function InboxPage({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = searchParams ? await searchParams : {};
-  const clinicId = await getSessionClinicId();
-  if (!clinicId) redirect("/login");
+type InboxSearchParams = Record<string, string | string[] | undefined>;
 
-  const [clinicRows, rows] = await Promise.all([
-    db.select({
-      autoReplyEnabled: organizations.autoReplyEnabled,
-      updatedAt: organizations.updatedAt,
-    })
-      .from(organizations)
-      .where(eq(organizations.id, clinicId))
-      .limit(1),
-    db
-      .select({
-        convId: conversations.id,
-        leadId: leads.id,
-        lastMessageAt: conversations.lastMessageAt,
-        needsAttention: conversations.needsAttention,
-        attentionReason: conversations.attentionReason,
-        aiPaused: conversations.aiPaused,
-        conversationCategory: conversations.category,
-        takeoverExpiresAt: conversations.takeoverExpiresAt,
-        lastReadAt: conversations.lastReadAt,
-        leadName: leads.name,
-        leadPhone: leads.phone,
-        leadStatus: leads.status,
-        leadTemperature: leads.temperature,
-        leadTreatmentInterest: leads.treatmentInterest,
-        leadProfilePicUrl: leads.profilePicUrl,
-        leadUpdatedAt: leads.updatedAt,
-        conversationUpdatedAt: conversations.updatedAt,
+async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
+  const [clinicRows, rows] = await measureServerOperation(
+    {
+      clinicId,
+      surface: "inbox_list",
+      operation: "inbox_base_query",
+    },
+    () => Promise.all([
+      db.select({
+        autoReplyEnabled: organizations.autoReplyEnabled,
+        updatedAt: organizations.updatedAt,
       })
-      .from(conversations)
-      .innerJoin(leads, eq(conversations.leadId, leads.id))
-      .where(eq(conversations.clinicId, clinicId))
-      .orderBy(desc(conversations.lastMessageAt)),
-  ]);
+        .from(organizations)
+        .where(eq(organizations.id, clinicId))
+        .limit(1),
+      db
+        .select({
+          convId: conversations.id,
+          leadId: leads.id,
+          lastMessageAt: conversations.lastMessageAt,
+          needsAttention: conversations.needsAttention,
+          attentionReason: conversations.attentionReason,
+          aiPaused: conversations.aiPaused,
+          conversationCategory: conversations.category,
+          takeoverExpiresAt: conversations.takeoverExpiresAt,
+          lastReadAt: conversations.lastReadAt,
+          leadName: leads.name,
+          leadPhone: leads.phone,
+          leadStatus: leads.status,
+          leadTemperature: leads.temperature,
+          leadTreatmentInterest: leads.treatmentInterest,
+          leadProfilePicUrl: leads.profilePicUrl,
+          leadUpdatedAt: leads.updatedAt,
+          conversationUpdatedAt: conversations.updatedAt,
+        })
+        .from(conversations)
+        .innerJoin(leads, eq(conversations.leadId, leads.id))
+        .where(eq(conversations.clinicId, clinicId))
+        .orderBy(desc(conversations.lastMessageAt)),
+    ]),
+  );
 
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
 
@@ -62,9 +64,15 @@ export default async function InboxPage({
     .map((row) => row.leadId);
 
   const conversationIds = rows.map((row) => row.convId);
-  const [lastMessageRows, upcomingAppointmentRows, latestOutcomeRows, latestStateRows, pendingHumanReviewRows] = await Promise.all([
-    conversationIds.length > 0
-      ? db
+  const [lastMessageRows, upcomingAppointmentRows, latestOutcomeRows, latestStateRows, pendingHumanReviewRows] = await measureServerOperation(
+    {
+      clinicId,
+      surface: "inbox_list",
+      operation: "inbox_enrichment_query",
+    },
+    () => Promise.all([
+      conversationIds.length > 0
+        ? db
           .selectDistinctOn([messages.conversationId], {
             conversationId: messages.conversationId,
             body: messages.body,
@@ -75,9 +83,9 @@ export default async function InboxPage({
           .from(messages)
           .where(inArray(messages.conversationId, conversationIds))
           .orderBy(messages.conversationId, desc(messages.sentAt))
-      : Promise.resolve([]),
-    salesLeadIds.length > 0
-      ? db
+        : Promise.resolve([]),
+      salesLeadIds.length > 0
+        ? db
           .selectDistinctOn([appointments.leadId], {
             leadId: appointments.leadId,
             status: appointments.status,
@@ -93,9 +101,9 @@ export default async function InboxPage({
             ),
           )
           .orderBy(appointments.leadId, appointments.startsAt)
-      : Promise.resolve([]),
-    salesLeadIds.length > 0
-      ? db
+        : Promise.resolve([]),
+      salesLeadIds.length > 0
+        ? db
           .selectDistinctOn([appointments.leadId], {
             leadId: appointments.leadId,
             status: appointments.status,
@@ -110,9 +118,9 @@ export default async function InboxPage({
             ),
           )
           .orderBy(appointments.leadId, desc(appointments.updatedAt), desc(appointments.startsAt))
-      : Promise.resolve([]),
-    conversationIds.length > 0
-      ? db
+        : Promise.resolve([]),
+      conversationIds.length > 0
+        ? db
           .selectDistinctOn([conversationStates.conversationId], {
             conversationId: conversationStates.conversationId,
             state: conversationStates.state,
@@ -121,9 +129,9 @@ export default async function InboxPage({
           .from(conversationStates)
           .where(inArray(conversationStates.conversationId, conversationIds))
           .orderBy(conversationStates.conversationId, desc(conversationStates.createdAt))
-      : Promise.resolve([]),
-    conversationIds.length > 0
-      ? db
+        : Promise.resolve([]),
+      conversationIds.length > 0
+        ? db
           .select({ conversationId: humanReviewRequests.conversationId })
           .from(humanReviewRequests)
           .where(
@@ -137,8 +145,9 @@ export default async function InboxPage({
               ),
             ),
           )
-      : Promise.resolve([]),
-  ]);
+        : Promise.resolve([]),
+    ]),
+  );
 
   const lastMsgMap: Record<string, { body: string; author: string; sentAt: Date | null; simulated: boolean }> = {};
   for (const msg of lastMessageRows) {
@@ -231,5 +240,24 @@ export default async function InboxPage({
         initialTab={initialScope === "sales" ? initialTab : "all"}
       />
     </div>
+  );
+}
+
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams?: Promise<InboxSearchParams>;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const clinicId = await getSessionClinicId();
+  if (!clinicId) redirect("/login");
+
+  return measureServerOperation(
+    {
+      clinicId,
+      surface: "inbox_list",
+      operation: "inbox_total",
+    },
+    () => prepareInboxPage(clinicId, params),
   );
 }
