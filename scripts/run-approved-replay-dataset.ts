@@ -17,6 +17,16 @@ type Args = {
   repetitions: number;
 };
 
+type ReplayBatchResult = {
+  scenarioId: string;
+  mode: "closed_loop" | "concurrency";
+  repetition: number;
+  httpStatus: number;
+  golden: boolean;
+  passed: boolean;
+  result: unknown;
+};
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   await assertReplayOutputOutsideGitRepository(args.output);
@@ -26,7 +36,7 @@ async function main() {
   const calendarSnapshot = args.calendarSnapshot
     ? JSON.parse(await readFile(args.calendarSnapshot, "utf8")) as ReplayCalendarSnapshotV1
     : undefined;
-  const results: unknown[] = [];
+  const results: ReplayBatchResult[] = [];
 
   for (const scenario of dataset.scenarios) {
     const modes = scenario.compatibleModes.filter(
@@ -53,6 +63,7 @@ async function main() {
           mode,
           repetition,
           httpStatus: response.status,
+          golden: scenario.expectations !== undefined,
           passed: response.ok,
           result: body,
         });
@@ -60,6 +71,11 @@ async function main() {
     }
   }
 
+  const goldenResults = results.filter((result) => result.golden);
+  const legacyResults = results.filter((result) => !result.golden);
+  const passedCount = results.filter((result) => result.passed).length;
+  const goldenPassedCount = goldenResults.filter((result) => result.passed).length;
+  const legacyPassedCount = legacyResults.filter((result) => result.passed).length;
   const report = {
     schemaVersion: "replay-batch-run.v1",
     datasetVersion: dataset.datasetVersion,
@@ -67,8 +83,14 @@ async function main() {
     executedAt: new Date().toISOString(),
     repetitionCount: args.repetitions,
     runCount: results.length,
-    passedCount: results.filter((result) => (result as { passed: boolean }).passed).length,
-    failedCount: results.filter((result) => !(result as { passed: boolean }).passed).length,
+    passedCount,
+    failedCount: results.length - passedCount,
+    goldenRunCount: goldenResults.length,
+    goldenPassedCount,
+    goldenFailedCount: goldenResults.length - goldenPassedCount,
+    legacyRunCount: legacyResults.length,
+    legacyPassedCount,
+    legacyFailedCount: legacyResults.length - legacyPassedCount,
     results,
   };
   await writeFile(args.output, `${JSON.stringify(report, null, 2)}\n`, {
@@ -81,6 +103,13 @@ async function main() {
     runCount: report.runCount,
     passedCount: report.passedCount,
     failedCount: report.failedCount,
+    goldenRunCount: report.goldenRunCount,
+    goldenPassedCount: report.goldenPassedCount,
+    goldenFailedCount: report.goldenFailedCount,
+    legacyRunCount: report.legacyRunCount,
+    legacyPassedCount: report.legacyPassedCount,
+    legacyFailedCount: report.legacyFailedCount,
+    status: report.failedCount === 0 ? "passed" : "failed",
   }));
   if (report.failedCount > 0) process.exitCode = 1;
 }

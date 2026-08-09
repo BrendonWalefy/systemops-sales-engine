@@ -32,6 +32,18 @@ export function isReplayTurnTraceComplete(
     );
   }
 
+  const usesResponsePlanV1 = turnTraces.some(
+    (trace) =>
+      trace.stage === "outbound.planned" &&
+      trace.metadata?.responsePlanVersion === "response-plan.v1",
+  );
+  if (
+    usesResponsePlanV1 &&
+    (!stages.has("response.plan_built") || !stages.has("response.validated"))
+  ) {
+    return false;
+  }
+
   return [
     "state.loaded",
     "intent.classified",

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { e2eGuard, E2E_CLINIC_ID } from "@/app/api/e2e/_guard";
 import { POST as receiveZApiWebhook } from "@/app/api/whatsapp/zapi/route";
 import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
@@ -8,14 +8,23 @@ import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-que
 import { ProcessMessageJobHandler } from "@/application/jobs/process-message-job";
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
-import type { ReplayScenarioV1 } from "@/application/replay/contracts";
+import type {
+  ReplayGoldenExpectationsV1,
+  ReplayScenarioV1,
+} from "@/application/replay/contracts";
+import {
+  evaluateReplayGoldenExpectations,
+  type ReplayGoldenCheck,
+} from "@/application/replay/evaluate-golden-expectations";
 import { loadReplayClinicManifest } from "@/application/replay/load-replay-clinic-manifest";
 import { ReplayCalendarCapture } from "@/application/replay/replay-calendar-capture";
+import type { ReplayCalendarEffect } from "@/application/replay/replay-calendar-capture";
 import {
   ReplayCalendarSnapshotGateway,
   verifyReplayCalendarSnapshot,
 } from "@/application/replay/replay-calendar-snapshot";
 import { ReplayOutboundCapture } from "@/application/replay/replay-outbound-capture";
+import type { ReplayOutboundEffect } from "@/application/replay/replay-outbound-capture";
 import { buildReplayExecutionGroups } from "@/application/replay/replay-execution-plan";
 import {
   assertReplayScenarioRequest,
@@ -31,6 +40,7 @@ import {
   type ConversationAuxiliaryExternalEffect,
 } from "@/core/pipeline/ConversationOrchestrator";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
+import type { DecisionTraceEventV1 } from "@/core/observability/DecisionTrace";
 import { runWithRuntimeClock } from "@/core/time/RuntimeClock";
 import {
   resolveCalendarGateway,
@@ -64,6 +74,35 @@ import type { ZApiInboundPayload } from "@/infrastructure/adapters/channels/what
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+type ReplayCheck = { code: string; passed: boolean };
+
+export function applyReplayGoldenGate(input: {
+  fidelityChecks: ReplayCheck[];
+  expectations?: ReplayGoldenExpectationsV1;
+  trace: DecisionTraceEventV1[];
+  finalConversation: { aiPaused: boolean; needsAttention: boolean } | null;
+  finalState: string | null;
+  outboundEffects: ReplayOutboundEffect[];
+  calendarEffects: ReplayCalendarEffect[];
+}): { checks: ReplayCheck[]; status: 200 | 422 } {
+  const goldenChecks: ReplayGoldenCheck[] = input.expectations
+    ? evaluateReplayGoldenExpectations({
+        expectations: input.expectations,
+        trace: input.trace,
+        finalConversation: input.finalConversation,
+        finalState: input.finalState,
+        outboundEffects: input.outboundEffects,
+        calendarEffects: input.calendarEffects,
+      })
+    : [];
+  const checks = [...input.fidelityChecks, ...goldenChecks];
+  return { checks, status: resolveReplayScenarioStatus(checks) };
+}
+
+function resolveReplayScenarioStatus(checks: ReplayCheck[]): 200 | 422 {
+  return checks.every((check) => check.passed) ? 200 : 422;
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const blocked = e2eGuard(request);
@@ -127,7 +166,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const result = await runReplayScenario(input, manifest.clinic);
     return NextResponse.json(result, {
-      status: result.checks.every((check) => check.passed) ? 200 : 422,
+      status: resolveReplayScenarioStatus(result.checks),
     });
   } catch (error) {
     return NextResponse.json(
@@ -316,12 +355,24 @@ async function runReplayScenario(
     replayLeadId = lead?.id ?? null;
     const [conversation] = lead
       ? await db
-          .select()
+          .select({
+            id: conversations.id,
+            aiPaused: conversations.aiPaused,
+            needsAttention: conversations.needsAttention,
+          })
           .from(conversations)
           .where(eq(conversations.leadId, lead.id))
           .limit(1)
       : [];
     replayConversationId = conversation?.id ?? null;
+    const [terminalState] = conversation
+      ? await db
+          .select({ state: conversationStates.state })
+          .from(conversationStates)
+          .where(eq(conversationStates.conversationId, conversation.id))
+          .orderBy(desc(conversationStates.createdAt))
+          .limit(1)
+      : [];
     const transcript = conversation
       ? await db
           .select({
@@ -342,7 +393,7 @@ async function runReplayScenario(
       (message) => message.author === "agent",
     );
     const traces = decisionTrace.getEvents();
-    const checks = [
+    const fidelityChecks = [
       {
         code: "all_lead_turns_processed",
         passed:
@@ -378,6 +429,24 @@ async function runReplayScenario(
         ),
       },
     ];
+    const outboundEffects = outboundCapture.effects;
+    const calendarEffects = calendarCaptures.flatMap(
+      (capture) => capture.effects,
+    );
+    const { checks } = applyReplayGoldenGate({
+      fidelityChecks,
+      expectations: input.scenario.expectations,
+      trace: traces,
+      finalConversation: conversation
+        ? {
+            aiPaused: conversation.aiPaused,
+            needsAttention: conversation.needsAttention,
+          }
+        : null,
+      finalState: terminalState?.state ?? null,
+      outboundEffects,
+      calendarEffects,
+    });
 
     return {
       schemaVersion: "replay-scenario-run.v1",
@@ -390,8 +459,8 @@ async function runReplayScenario(
       transcript,
       trace: traces,
       effects: {
-        outbound: outboundCapture.effects,
-        calendar: calendarCaptures.flatMap((capture) => capture.effects),
+        outbound: outboundEffects,
+        calendar: calendarEffects,
         auxiliary: auxiliaryEffects,
       },
       executionRuns,
