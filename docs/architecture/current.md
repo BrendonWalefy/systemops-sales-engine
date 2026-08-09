@@ -143,6 +143,51 @@ Pontos principais de IA:
 
 Classifier e composer recebem a mesma janela recente de conversa. Conteúdo específico da organização vem do playbook ativo e do catálogo; comportamento universal fica no código de inteligência.
 
+### Resposta autorizada e fallback seguro
+
+Nos caminhos que compõem uma resposta a partir de uma ação, o resultado
+determinístico é a fronteira entre decisão e linguagem:
+
+```text
+ActionResult
+  -> AuthorizedResponsePlan
+  -> ResponseComposer
+  -> ResponseValidator
+  -> resposta validada ou fallback determinístico/handoff
+  -> outbound_messages + job message.send
+```
+
+`AuthorizedResponsePlan` deriva uma allowlist das fontes já resolvidas: preços
+explícitos, labels de agenda, mídia permitida, estado esperado, limite de
+caracteres e no máximo uma pergunta. O composer apenas verbaliza o
+`ActionResult`; ele não autoriza fatos novos. Antes de a resposta planejada
+entrar na outbox, o `ResponseValidator` bloqueia conteúdo vazio, tamanho ou
+quantidade de perguntas excedidos, mídia não autorizada, preço ou fato de
+agenda fora do plano e promessa sem suporte.
+
+Erro do composer, resposta inválida ou caso que exige avaliação seguem pelo
+`SafeResponseFallback`. Quando uma cópia determinística baseada no resultado
+real também passa no validator, ela é enviada; quando não passa, o sistema usa
+cópia neutra e solicita handoff com razão fixa, sem registrar texto do lead ou
+do modelo no trace. Assim, fallback é uma saída segura para uma resposta
+bloqueada, não uma aprovação da resposta bloqueada.
+
+O Decision Trace registra somente metadados permitidos dos estágios
+`response.plan_built`, `response.validated` e, quando aplicável,
+`response.fallback_applied`; contagens e códigos substituem conteúdo,
+prompts, preços, horários, mídia e identificadores externos. Uma falha de
+observabilidade continua best-effort e não muda a decisão de negócio.
+
+Esta é a primeira seam de extração do `ConversationOrchestrator`, não a sua
+decomposição completa. A extração de montagem de resposta/mídia reduziu o
+arquivo de 9.143 para 8.271 linhas, mantendo re-exports compatíveis. As
+próximas seams, nesta ordem, são `HandoffPolicy`, `AgendaOfferService`,
+`TreatmentJourneyService` e `ReservationAndDepositService`.
+
+O código e seus testes não autorizam operação externa. Validação com dados
+privados aprovados, banco de Lab e qualquer operação de cliente permanecem
+gates separados descritos em [Replay e Decision Trace](replay-and-decision-trace.md).
+
 ## Agenda
 
 - `ClinicTimezone` é a única fonte para tempo local.
