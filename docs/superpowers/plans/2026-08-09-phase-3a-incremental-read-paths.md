@@ -511,26 +511,37 @@ The five enrichment queries already accept an ID list. They are unbounded only b
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it, vi } from "vitest";
-import { INBOX_PAGE_SIZE } from "@/application/inbox/inbox-cursor";
+import { describe, expect, it } from "vitest";
+
+const PAGE_SOURCE = "src/app/(clinic)/app/inbox/page.tsx";
+
+async function readPageSource(): Promise<string> {
+  const fs = await import("node:fs/promises");
+  return fs.readFile(PAGE_SOURCE, "utf8");
+}
 
 describe("inbox page bounding", () => {
-  it("never feeds the enrichment queries more ids than one page", async () => {
-    const { listClinicConversations } = await import("@/application/inbox/list-conversations");
-    const spy = vi.fn(listClinicConversations);
-    expect(INBOX_PAGE_SIZE).toBeLessThanOrEqual(50);
-    expect(INBOX_PAGE_SIZE).toBeGreaterThanOrEqual(30);
-    expect(spy).toBeDefined();
+  it("delegates the base read to the paginated query", async () => {
+    const source = await readPageSource();
+    expect(source).toContain("listClinicConversations");
   });
 
-  it("keeps the inbox page free of an unbounded base select", async () => {
-    const fs = await import("node:fs/promises");
-    const source = await fs.readFile("src/app/(clinic)/app/inbox/page.tsx", "utf8");
-    expect(source).toContain("listClinicConversations");
+  it("keeps the unbounded base select out of the page", async () => {
+    const source = await readPageSource();
     expect(source).not.toMatch(/\.from\(conversations\)/);
+  });
+
+  it("derives the enrichment id lists from the returned page only", async () => {
+    const source = await readPageSource();
+    // conversationIds/salesLeadIds precisam sair de page.rows. Se voltarem a
+    // sair de um select próprio, o inArray volta a crescer com o histórico.
+    expect(source).toMatch(/const rows = page\.rows/);
+    expect(source).toMatch(/const conversationIds = rows\.map/);
   });
 });
 ```
+
+These are source-shape assertions, not behaviour assertions, and that is deliberate: the guarantee being protected is structural — that the page never again grows its own unbounded select. The behavioural guarantee that a page holds at most `INBOX_PAGE_SIZE` rows is already owned by Task 3's cursor tests; do not restate it here.
 
 - [ ] **Step 2: Run it and confirm it fails**
 
@@ -753,13 +764,22 @@ describe("inbox poll backoff", () => {
 
   it("caps at 60s and never exceeds it", () => {
     expect(nextPollDelayMs(50)).toBe(60_000);
+    expect(nextPollDelayMs(Number.MAX_SAFE_INTEGER)).toBe(60_000);
   });
 
-  it("resets to the floor after a change", () => {
-    expect(nextPollDelayMs(0)).toBe(15_000);
+  it("never decreases as the unchanged streak grows", () => {
+    const ladder = [0, 1, 2, 3, 10].map(nextPollDelayMs);
+    const sorted = [...ladder].sort((a, b) => a - b);
+    expect(ladder).toEqual(sorted);
+  });
+
+  it("treats a negative counter as the floor rather than throwing", () => {
+    expect(nextPollDelayMs(-1)).toBe(15_000);
   });
 });
 ```
+
+`nextPollDelayMs` is a pure function of the unchanged-streak counter. Resetting that counter when the version changes is the poller's job (Step 6), not this function's — do not write a "reset" test here.
 
 - [ ] **Step 2: Run it and confirm it fails**
 
