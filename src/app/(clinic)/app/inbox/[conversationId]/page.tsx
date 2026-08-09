@@ -19,6 +19,7 @@ import { tempLabel, statusLabel, channelLabel, avatarColor, conversationCategory
 import { LeadAvatar } from "./LeadAvatar";
 import { ConversationCategoryControl } from "./ConversationCategoryControl";
 import { avatarInitial } from "../avatar-initial";
+import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
 
 const TZ = "America/Sao_Paulo";
 
@@ -30,21 +31,10 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: TZ });
 }
 
-export default async function ConversationPage({
-  params,
-}: {
-  params: Promise<{ conversationId: string }>;
-}) {
-  const { conversationId } = await params;
-
-  const [conv] = await db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.id, conversationId))
-    .limit(1);
-
-  if (!conv) notFound();
-
+async function prepareConversationPage(
+  conversationId: string,
+  conv: typeof conversations.$inferSelect,
+) {
   const [lead] = await db.select().from(leads).where(eq(leads.id, conv.leadId)).limit(1);
   if (!lead) notFound();
 
@@ -313,5 +303,33 @@ export default async function ConversationPage({
         </div>
       </div>
     </div>
+  );
+}
+
+export default async function ConversationPage({
+  params,
+}: {
+  params: Promise<{ conversationId: string }>;
+}) {
+  const { conversationId } = await params;
+  let clinicId: string | null = null;
+
+  return measureServerOperation(
+    {
+      getClinicId: () => clinicId,
+      surface: "conversation",
+      operation: "conversation_total",
+    },
+    async () => {
+      const [conv] = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1);
+
+      if (!conv) notFound();
+      clinicId = conv.clinicId;
+      return prepareConversationPage(conversationId, conv);
+    },
   );
 }

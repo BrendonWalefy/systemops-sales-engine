@@ -27,6 +27,7 @@
     "replay:run": "tsx scripts/run-approved-replay-dataset.ts",
     "replay:calendar": "dotenv -e .env.local -- tsx scripts/capture-replay-calendar-snapshot.ts",
     "replay:sandbox": "tsx scripts/manage-replay-sandbox.ts",
+    "performance:summary": "tsx scripts/summarize-performance-logs.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
     "dev:workers": "dotenv -e .env.local -- ./scripts/dev-workers.sh"
   },
@@ -56,14 +57,19 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.16.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/react-test-renderer": "19.1.0",
     "@types/web-push": "^3.6.4",
     "dotenv": "^17.4.2",
     "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.31.10",
+    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.2.12",
+    "pg": "^8.23.0",
+    "react-test-renderer": "19.2.6",
     "tsx": "^4.22.3",
     "typescript": "^5.8.0",
     "vitest": "^3.2.7"
