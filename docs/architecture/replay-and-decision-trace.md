@@ -2,6 +2,59 @@
 
 O replay valida o motor conversacional real em ambiente isolado. O Decision Trace explica decisões de produção sem armazenar conteúdo sensível.
 
+## Hierarquia de evidência e handoff da Fase 2
+
+```text
+Unit/integration green != approved private replay green != Lab validation green.
+```
+
+Esses níveis não são intercambiáveis. Testes unitários e de integração exercem
+contratos e seams no código; não provam que um dataset privado aprovado passou
+no caminho fiel. Um replay privado só conta depois de usar um dataset
+sanitizado, revisado por humano e assinado, no sandbox isolado. A validação de
+Lab é a execução desse replay com banco isolado, configuração permitida e
+adapters de captura, seguida da revisão operacional exigida. Nesta entrega,
+nenhum replay de golden dataset privado aprovado foi executado e nenhuma
+validação com banco de Lab foi executada.
+
+Não há dataset privado criado ou aprovado a declarar nesta entrega. Quando os
+datasets forem criados e aprovados, o Lab deverá executar — sem transformar as
+famílias em alegações de cobertura já existente — as 12 famílias requeridas:
+
+1. abertura genérica de anúncio de resina;
+2. pergunta ambígua de preço;
+3. pacote exato e parcelamento;
+4. quantidade/arcada não padrão;
+5. prova, cor e resultado;
+6. foto para pré-avaliação;
+7. data/horário explícito;
+8. slot, sinal e confirmação;
+9. promoção antiga;
+10. manutenção, garantia ou caso atípico;
+11. takeover e continuidade humana;
+12. follow-up seguro.
+
+Cada família precisa das variações aplicáveis de linguagem, áudio, rajada,
+repetição, troca de assunto e retorno posterior. Os resultados devem manter
+separados os modos `historical_turn`, `closed_loop`, `counterfactual` e
+`concurrency` quando eles forem executados.
+
+Antes de qualquer operação de produção ou de cliente, inclusive canal,
+provider, Z-API, WhatsApp ou referência à Ximendes, todos estes stop gates são
+obrigatórios:
+
+1. credenciais prontas, incluindo confirmação de rotação de qualquer token
+   exposto; token presente em screenshot ou histórico nunca é utilizável;
+2. dataset privado sanitizado, revisado, assinado e aprovado;
+3. banco isolado e gates de sandbox aprovados, com efeitos externos somente em
+   adapters de captura;
+4. revisão four-eyes do dataset, do resultado e das configurações usadas;
+5. CI, preview e QA manual verdes antes de qualquer operação de produção ou
+   cliente.
+
+Não houve nesta entrega operação real de cliente, Z-API, provider, Ximendes ou
+WhatsApp, nem deploy.
+
 ## Decision Trace
 
 O `turnId` nasce do `inboundEventId` e atravessa:
@@ -117,3 +170,30 @@ Uma execução deve registrar commit, versão do dataset, fingerprint de configu
 - qualidade de LLM é tratada como distribuição em múltiplas execuções;
 - erro de infraestrutura/modelo nunca vira resultado verde;
 - harness que pula webhook, banco, fila, state machine, outbox ou sender é teste parcial, não replay fiel.
+
+### Semântica golden, legado e respostas bloqueadas
+
+`ReplayGoldenExpectationsV1` é opcional em `ReplayScenarioV1`. Um cenário com
+expectations válidas é golden somente quando os checks de trace obrigatório e
+proibido, estado final, efeitos de outbox e limite de escrita de agenda passam.
+Qualquer check falso faz a execução falhar; erro de infraestrutura ou modelo
+também não pode produzir verde. Cenários sem `expectations` continuam
+executáveis e aparecem como legado para compatibilidade, mas nunca contam como
+golden path.
+
+No runtime, validação de resposta e validação de replay têm papéis distintos:
+
+- Bloqueante antes da outbox: o validator rejeita a saída do composer que
+  excede o plano autorizado; a saída rejeitada não é enviada.
+- Fallback controlado: erro do composer ou rejeição do validator tenta cópia
+  determinística baseada no `ActionResult`; essa cópia é validada de novo. Se
+  ainda não for segura, segue cópia neutra com handoff e atenção humana.
+- Bloqueante no Lab: dataset sem aprovação/assinatura, banco não isolado,
+  fingerprint divergente, fila pendente, efeito externo real, trace incompleto
+  ou expectation golden falha impedem resultado fiel verde.
+
+O handoff operacional da Fase 2 não é autorização para executar replay
+privado, usar Lab ou operar clientes. O rollback é por faixas de commits
+independentes: response plan/validator, fallback/planner, trace, golden replay
+e extração de montagem de resposta podem ser revertidos separadamente; não há
+migration nesta fase.
