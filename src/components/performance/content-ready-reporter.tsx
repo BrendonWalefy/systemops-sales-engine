@@ -8,13 +8,43 @@ import {
 } from "@/application/observability/performance-contract";
 import {
   NAVIGATION_COUNT_KEY,
+  type NavigationStorage,
 } from "@/application/observability/navigation-timing";
 
 type Props = { surface: PerformanceSurface };
 
-function readSampleCount(storage: Storage): number {
+type EmitDeps = {
+  storage: NavigationStorage;
+  fetch: typeof globalThis.fetch;
+  now(): number;
+};
+
+function readSampleCount(storage: NavigationStorage): number {
   const count = Number(storage.getItem(NAVIGATION_COUNT_KEY));
   return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+export function emitContentReadySample(
+  surface: PerformanceSurface,
+  deps: EmitDeps,
+): void {
+  try {
+    const count = readSampleCount(deps.storage);
+    if (count >= MAX_CLIENT_SAMPLES_PER_SESSION) return;
+    deps.storage.setItem(NAVIGATION_COUNT_KEY, String(count + 1));
+
+    const durationMs = Math.round(deps.now());
+    void deps.fetch("/api/telemetry/performance", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(createContentReadySample(surface, durationMs)),
+      keepalive: true,
+    }).catch(() => {
+      // Telemetria nunca pode quebrar a tela que está medindo.
+    });
+  } catch {
+    // Telemetria nunca pode quebrar a tela que está medindo.
+  }
 }
 
 export function ContentReadyReporter({ surface }: Props) {
@@ -25,23 +55,11 @@ export function ContentReadyReporter({ surface }: Props) {
     reported.current = true;
 
     const frame = requestAnimationFrame(() => {
-      try {
-        const count = readSampleCount(window.sessionStorage);
-        if (count >= MAX_CLIENT_SAMPLES_PER_SESSION) return;
-        window.sessionStorage.setItem(NAVIGATION_COUNT_KEY, String(count + 1));
-
-        const durationMs = Math.round(performance.now());
-        void fetch("/api/telemetry/performance", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(createContentReadySample(surface, durationMs)),
-          keepalive: true,
-        }).catch(() => {
-          // Telemetria nunca pode quebrar a tela que está medindo.
-        });
-      } catch {
-        // Telemetria nunca pode quebrar a tela que está medindo.
-      }
+      emitContentReadySample(surface, {
+        storage: window.sessionStorage,
+        fetch: globalThis.fetch,
+        now: () => performance.now(),
+      });
     });
 
     return () => cancelAnimationFrame(frame);
