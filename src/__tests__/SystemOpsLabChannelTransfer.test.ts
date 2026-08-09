@@ -48,6 +48,7 @@ describe("SystemOps Lab channel transfer policy", () => {
     ["target is already bound to a different instance", { target: { ...safeContext.target!, zapiInstanceId: "other-instance" } }, "old-id"],
     ["source differs from the expected source", { source: { ...safeContext.source!, id: "other-source-id" } }, "old-id"],
     ["source exists but no expected source was supplied", {}, null],
+    ["source is missing despite an expected source", { source: null }, "old-id"],
   ];
 
   it.each(invalidContexts)("rejects when %s", (_label, patch, expectedSourceClinicId) => {
@@ -63,6 +64,8 @@ describe("SystemOps Lab channel transfer policy", () => {
     ["instance id", { instanceId: "" }],
     ["rotated token", { rotatedToken: "  " }],
     ["confirmation", { confirmation: "wrong-confirmation" }],
+    ["empty confirmation", { confirmation: "" }],
+    ["blank confirmation", { confirmation: "  " }],
   ])("rejects a missing or invalid %s", (_label, patch) => {
     expect(() => validateSystemOpsLabTransfer({
       ...safeInput,
