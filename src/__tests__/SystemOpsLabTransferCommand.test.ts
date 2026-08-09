@@ -1,5 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createServer } from "node:net";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
+import EmbeddedPostgres from "embedded-postgres";
 
 import {
   SYSTEMOPS_LAB_TRANSFER_CONFIRMATION,
@@ -13,6 +20,22 @@ const safeEnv = {
   SYSTEMOPS_LAB_ZAPI_INSTANCE_ID: "instance-1",
   SYSTEMOPS_LAB_EXPECTED_SOURCE_CLINIC_ID: "old-id",
 };
+
+async function reserveAvailablePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to reserve a local PostgreSQL test port");
+  }
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+  return address.port;
+}
 
 describe("SystemOps Lab transfer command", () => {
   it("is dry-run by default and never transfers", async () => {
@@ -302,4 +325,211 @@ describe("Drizzle SystemOps Lab channel transfer repository", () => {
     await expect(repository.resolveClinicIdByInstance("instance-1"))
       .resolves.toBe("00000000-0000-4000-8000-000000000001");
   });
+});
+
+describe.sequential("SystemOps Lab atomic transfer on isolated PostgreSQL", () => {
+  const sourceId = "10000000-0000-4000-8000-000000000001";
+  const targetAId = "20000000-0000-4000-8000-000000000002";
+  const targetBId = "30000000-0000-4000-8000-000000000003";
+  let cluster: EmbeddedPostgres;
+  let databaseDir: string;
+  let admin: ReturnType<EmbeddedPostgres["getPgClient"]>;
+  let sessionA: ReturnType<EmbeddedPostgres["getPgClient"]>;
+  let sessionB: ReturnType<EmbeddedPostgres["getPgClient"]>;
+
+  beforeAll(async () => {
+    databaseDir = await mkdtemp(join(tmpdir(), "systemops-lab-transfer-"));
+    cluster = new EmbeddedPostgres({
+      databaseDir,
+      port: await reserveAvailablePort(),
+      user: "postgres",
+      password: "isolated-test-only",
+      persistent: false,
+      postgresFlags: ["-c", "listen_addresses=127.0.0.1"],
+      onLog: () => undefined,
+      onError: () => undefined,
+    });
+    await cluster.initialise();
+    await cluster.start();
+
+    admin = cluster.getPgClient("postgres", "127.0.0.1");
+    sessionA = cluster.getPgClient("postgres", "127.0.0.1");
+    sessionB = cluster.getPgClient("postgres", "127.0.0.1");
+    await Promise.all([admin.connect(), sessionA.connect(), sessionB.connect()]);
+    await admin.query(`
+      create table organizations (
+        id uuid primary key,
+        name text not null,
+        is_test boolean not null default false,
+        is_demo boolean not null default false,
+        operational_status text not null default 'prospect',
+        auto_reply_enabled boolean not null default false,
+        shadow_mode_enabled boolean not null default false,
+        channel_provider text,
+        zapi_instance_id text,
+        zapi_token text,
+        zapi_client_token text,
+        channel_paired_at timestamptz,
+        updated_at timestamptz not null default now()
+      );
+      create unique index organizations_zapi_instance_unique
+        on organizations (zapi_instance_id)
+        where zapi_instance_id is not null and btrim(zapi_instance_id) <> '';
+    `);
+  }, 60_000);
+
+  afterAll(async () => {
+    await Promise.allSettled([admin?.end(), sessionA?.end(), sessionB?.end()]);
+    if (cluster) await cluster.stop();
+    if (databaseDir) await rm(databaseDir, { recursive: true, force: true });
+  }, 60_000);
+
+  beforeEach(async () => {
+    vi.stubEnv("CREDENTIAL_ENCRYPTION_KEY", "44".repeat(32));
+    await admin.query("drop trigger if exists delay_lab_transfer_detach on organizations");
+    await admin.query("drop function if exists delay_lab_transfer_detach()");
+    await admin.query("truncate organizations");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function insertOrganization(input: {
+    id: string;
+    name: string;
+    instanceId?: string;
+    token?: string;
+  }): Promise<void> {
+    await admin.query({
+      text: `
+        insert into organizations (
+          id, name, is_test, is_demo, operational_status,
+          auto_reply_enabled, shadow_mode_enabled,
+          channel_provider, zapi_instance_id, zapi_token
+        ) values ($1, $2, true, false, 'test', false, false, $3, $4, $5)
+      `,
+      values: [
+        input.id,
+        input.name,
+        input.instanceId ? "z_api" : null,
+        input.instanceId ?? null,
+        input.token ?? null,
+      ],
+    });
+  }
+
+  it("atomically detaches an existing owner and assigns the Lab", async () => {
+    await insertOrganization({
+      id: sourceId,
+      name: "Previous owner",
+      instanceId: "instance-handoff",
+      token: "previous-encrypted-value",
+    });
+    await insertOrganization({ id: targetAId, name: "SystemOps Lab" });
+    const repository = new DrizzleSystemOpsLabChannelTransferRepository(
+      drizzleNodePostgres(sessionA),
+    );
+
+    await repository.transfer({
+      targetClinicId: targetAId,
+      instanceId: "instance-handoff",
+      rotatedToken: "synthetic-rotated-value",
+      clientToken: null,
+      expectedSourceClinicId: sourceId,
+    });
+
+    const result = await admin.query<{
+      id: string;
+      is_test: boolean;
+      is_demo: boolean;
+      operational_status: string;
+      auto_reply_enabled: boolean;
+      shadow_mode_enabled: boolean;
+      channel_provider: string | null;
+      zapi_instance_id: string | null;
+      zapi_token: string | null;
+    }>("select * from organizations order by id");
+    const source = result.rows.find((row) => row.id === sourceId);
+    const target = result.rows.find((row) => row.id === targetAId);
+
+    expect(source).toMatchObject({
+      channel_provider: null,
+      zapi_instance_id: null,
+      zapi_token: null,
+    });
+    expect(target).toMatchObject({
+      is_test: true,
+      is_demo: false,
+      operational_status: "test",
+      auto_reply_enabled: false,
+      shadow_mode_enabled: false,
+      channel_provider: "z_api",
+      zapi_instance_id: "instance-handoff",
+    });
+    expect(target?.zapi_token).toMatch(/^enc:v1:/);
+  }, 30_000);
+
+  it("lets at most one cross-target transfer win under real lock contention", async () => {
+    await insertOrganization({
+      id: sourceId,
+      name: "Contended owner",
+      instanceId: "instance-contended",
+      token: "previous-encrypted-value",
+    });
+    await insertOrganization({ id: targetAId, name: "Lab candidate A" });
+    await insertOrganization({ id: targetBId, name: "Lab candidate B" });
+    await admin.query(`
+      create function delay_lab_transfer_detach() returns trigger
+      language plpgsql as $$
+      begin
+        if old.zapi_instance_id = 'instance-contended'
+          and new.zapi_instance_id is null then
+          perform pg_sleep(0.2);
+        end if;
+        return new;
+      end;
+      $$;
+      create trigger delay_lab_transfer_detach
+        before update on organizations
+        for each row execute function delay_lab_transfer_detach();
+    `);
+    const repositoryA = new DrizzleSystemOpsLabChannelTransferRepository(
+      drizzleNodePostgres(sessionA),
+    );
+    const repositoryB = new DrizzleSystemOpsLabChannelTransferRepository(
+      drizzleNodePostgres(sessionB),
+    );
+
+    const outcomes = await Promise.allSettled([
+      repositoryA.transfer({
+        targetClinicId: targetAId,
+        instanceId: "instance-contended",
+        rotatedToken: "synthetic-rotated-a",
+        clientToken: null,
+        expectedSourceClinicId: sourceId,
+      }),
+      repositoryB.transfer({
+        targetClinicId: targetBId,
+        instanceId: "instance-contended",
+        rotatedToken: "synthetic-rotated-b",
+        clientToken: null,
+        expectedSourceClinicId: sourceId,
+      }),
+    ]);
+
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    const rejected = outcomes.find((outcome) => outcome.status === "rejected");
+    expect(rejected?.reason).toEqual(
+      new Error("Atomic Lab transfer rejected by database guard"),
+    );
+
+    const owners = await admin.query<{ id: string }>(
+      "select id from organizations where zapi_instance_id = 'instance-contended'",
+    );
+    expect(owners.rows).toHaveLength(1);
+    expect([targetAId, targetBId]).toContain(owners.rows[0]?.id);
+    expect(owners.rows[0]?.id).not.toBe(sourceId);
+  }, 30_000);
 });

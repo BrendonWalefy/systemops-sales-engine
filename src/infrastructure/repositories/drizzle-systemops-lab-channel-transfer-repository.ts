@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 
 import type {
   SystemOpsLabChannelTransferRepository,
@@ -10,7 +10,9 @@ import {
 } from "@/infrastructure/crypto/credential-vault";
 import { db } from "@/infrastructure/db/client";
 
-type DatabaseExecutor = Pick<typeof db, "execute">;
+type DatabaseExecutor = {
+  execute(query: SQL): PromiseLike<{ rows: unknown[] }>;
+};
 
 type TransferContextRow = {
   target_id: string | null;
@@ -39,7 +41,7 @@ implements SystemOpsLabChannelTransferRepository {
     instanceId: string,
     targetClinicId: string,
   ): Promise<SystemOpsLabTransferContext> {
-    const result = await this.database.execute<TransferContextRow>(sql`
+    const result = await this.database.execute(sql`
       with target as (
         select
           id,
@@ -75,7 +77,7 @@ implements SystemOpsLabChannelTransferRepository {
       left join target on true
       left join current_owner on true
     `);
-    const row = result.rows[0];
+    const row = result.rows[0] as TransferContextRow | undefined;
 
     return {
       target: row?.target_id && row.target_name && row.target_operational_status
@@ -112,9 +114,9 @@ implements SystemOpsLabChannelTransferRepository {
       throw new Error("Atomic Lab transfer requires a rotated credential");
     }
 
-    let result: Awaited<ReturnType<DatabaseExecutor["execute"]>>;
+    let result: { rows: unknown[] };
     try {
-      result = await this.database.execute<{ id: string }>(sql`
+      result = await this.database.execute(sql`
         with eligible_target as (
         select id, zapi_instance_id
         from organizations
@@ -181,12 +183,12 @@ implements SystemOpsLabChannelTransferRepository {
   }
 
   async resolveClinicIdByInstance(instanceId: string): Promise<string | null> {
-    const result = await this.database.execute<{ id: string }>(sql`
+    const result = await this.database.execute(sql`
       select id
       from organizations
       where zapi_instance_id = ${instanceId}
       limit 1
     `);
-    return result.rows[0]?.id ?? null;
+    return (result.rows[0] as { id: string } | undefined)?.id ?? null;
   }
 }
