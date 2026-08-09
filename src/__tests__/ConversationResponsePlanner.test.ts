@@ -1,13 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  enqueueOutboundMessage: vi.fn(),
+}));
+
+vi.mock("@/application/jobs/enqueue-outbound-message", () => ({
+  enqueueOutboundMessage: mocks.enqueueOutboundMessage,
+}));
+
 import {
   ConversationResponsePlanner,
   type PlannedResponse,
 } from "@/core/conversation/ConversationResponsePlanner";
+import type { ConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
+import { isReplayTurnTraceComplete } from "@/application/replay/replay-trace-contract";
 import type { BuildResponsePlanInput } from "@/core/conversation/response-plan";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import * as orchestratorModule from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { TurnSafetyHandoffGuard } from "@/core/conversation/TurnSafetyHandoffGuard";
+import { DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 import type {
   ComposedResponse,
   ComposerInput,
@@ -221,11 +233,27 @@ type OrchestratorResponsePlanInput = {
 type OrchestratorPlannerInternals = {
   responsePlanner: ConversationResponsePlanner;
   executeResponsePlan(input: OrchestratorResponsePlanInput): Promise<PlannedResponse>;
+  stateMachine: {
+    getCurrentState(conversationId: string): Promise<null>;
+  };
+  enqueueConversationReply(
+    clinicId: string,
+    conversationId: string,
+    payload: ConversationOutboundPayload,
+    deterministicTrace?: unknown,
+    plannedResponse?: PlannedResponse,
+  ): Promise<void>;
 };
 
 describe("ConversationOrchestrator response planner integration", () => {
   beforeEach(() => {
     vi.stubEnv("OPENAI_API_KEY", "test-response-planner-key");
+    mocks.enqueueOutboundMessage.mockReset();
+    mocks.enqueueOutboundMessage.mockResolvedValue({
+      outboundMessageId: "outbound-1",
+      messageWasNew: true,
+      jobWasNew: true,
+    });
   });
 
   afterEach(() => {
@@ -304,6 +332,104 @@ describe("ConversationOrchestrator response planner integration", () => {
         },
       }),
     ]);
+  });
+
+  it("marca o outbound planejado sem vazar a versão para um turno determinístico", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+    const orchestrator = new orchestratorModule.ConversationOrchestrator({
+      decisionTraceSink: sink,
+      responsePlanner: new ConversationResponsePlanner({
+        compose: async () => composed("Resposta autorizada"),
+      }),
+    });
+    const internal = orchestrator as unknown as OrchestratorPlannerInternals;
+    internal.stateMachine = { getCurrentState: async () => null };
+    const planned = await internal.executeResponsePlan({
+      composerInput: validComposerInput,
+      planInput: {
+        commercialPolicy: null,
+        installmentTable: null,
+        allowedMediaIds: [],
+        expectedState: "idle",
+        maxCharacters: 420,
+      },
+      turnId: "turn-outbound",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      onRequiresHandoff: vi.fn(),
+    });
+
+    await internal.enqueueConversationReply(
+      "clinic-1",
+      "conversation-1",
+      {
+        version: 1,
+        kind: "conversation_reply",
+        turnId: "turn-outbound",
+        to: "replay-address",
+        agentMessageId: "agent-1",
+        replyText: planned.response.text,
+        intent: "general_question",
+        useVoice: false,
+        ttsConfig: DEFAULT_TTS_CONFIG,
+        interleavedParts: [],
+        mediaParts: [],
+        leadId: "lead-1",
+        pipelineAdvance: null,
+      },
+      undefined,
+      planned,
+    );
+
+    const emittedTrace = sink.getEvents("turn-outbound");
+    expect(emittedTrace.find((event) => event.stage === "outbound.planned"))
+      .toEqual(expect.objectContaining({
+        metadata: expect.objectContaining({
+          responsePlanVersion: "response-plan.v1",
+        }),
+      }));
+    const faithfulTrace = [
+      { turnId: "turn-outbound", stage: "ingress.received" },
+      { turnId: "turn-outbound", stage: "orchestrator.started" },
+      { turnId: "turn-outbound", stage: "state.loaded" },
+      { turnId: "turn-outbound", stage: "intent.classified" },
+      { turnId: "turn-outbound", stage: "intent.resolved" },
+      ...emittedTrace,
+      {
+        turnId: "turn-outbound",
+        stage: "orchestrator.completed",
+        metadata: { replied: true },
+      },
+      { turnId: "turn-outbound", stage: "delivery.sent" },
+    ];
+    expect(isReplayTurnTraceComplete(faithfulTrace, "turn-outbound")).toBe(true);
+    expect(isReplayTurnTraceComplete(
+      faithfulTrace.filter((event) => event.stage !== "response.validated"),
+      "turn-outbound",
+    )).toBe(false);
+
+    await internal.enqueueConversationReply(
+      "clinic-1",
+      "conversation-1",
+      {
+        version: 1,
+        kind: "conversation_reply",
+        turnId: "turn-deterministic",
+        to: "replay-address",
+        agentMessageId: "agent-2",
+        replyText: "Resposta determinística",
+        intent: "acknowledgment",
+        useVoice: false,
+        ttsConfig: DEFAULT_TTS_CONFIG,
+        interleavedParts: [],
+        mediaParts: [],
+        leadId: "lead-1",
+        pipelineAdvance: null,
+      },
+    );
+    expect(sink.getEvents("turn-deterministic").find(
+      (event) => event.stage === "outbound.planned",
+    )?.metadata).not.toHaveProperty("responsePlanVersion");
   });
 
   it("aplica fallback, sinaliza atenção e não vaza entradas sensíveis no trace", async () => {

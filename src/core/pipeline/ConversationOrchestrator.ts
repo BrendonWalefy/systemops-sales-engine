@@ -4850,7 +4850,7 @@ export class ConversationOrchestrator {
           "intent.classified",
           "intent.resolved",
         ],
-      });
+      }, mediaPlanned);
 
       return { replied: true };
       } // end else (não é mídia de anúncio)
@@ -5198,6 +5198,7 @@ export class ConversationOrchestrator {
           await this.stateMachine.invalidate(conversation.id);
           const appt = await this.appointmentRepo.findById(confirmPayload.appointmentId);
           let confirmReplyText: string;
+          let confirmationPlannedResponse: PlannedResponse | undefined;
           const composeAppointmentConfirmation = async (
             actionResult: Extract<
               ActionResult,
@@ -5261,6 +5262,7 @@ export class ConversationOrchestrator {
                 );
               },
             });
+            confirmationPlannedResponse = planned;
             return planned.response.text;
           };
           if (confirmationSignal === "yes") {
@@ -5314,7 +5316,7 @@ export class ConversationOrchestrator {
             finalIntent: null,
             confidence: 1,
             missingStages: ["intent.classified", "intent.resolved"],
-          });
+          }, confirmationPlannedResponse);
           return { replied: true };
         }
       }
@@ -5952,6 +5954,7 @@ export class ConversationOrchestrator {
     // Helper para compor resposta
     let composedMediaIds: string[] = [];
     let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
+    let plannedResponse: PlannedResponse | undefined;
     let triggerPartsOverride: import("@/core/intelligence/ResponseComposer").ResponsePart[] | null = null;
     const turnSafetyHandoff = new TurnSafetyHandoffGuard();
     // Avanço de pipeline adiado: executado APÓS todo o conteúdo ser enviado para evitar
@@ -6044,6 +6047,7 @@ export class ConversationOrchestrator {
             );
           },
         });
+        plannedResponse = planned;
         const composed = planned.response;
         composerInputTokens = composed.inputTokens;
         composerOutputTokens = composed.outputTokens;
@@ -8460,7 +8464,7 @@ export class ConversationOrchestrator {
       mediaParts,
       leadId: lead.id,
       pipelineAdvance: durablePipelineAdvance,
-    });
+    }, undefined, plannedResponse);
     if (durablePipelineAdvance) {
       const applied = await this.applyDurablePipelineAdvance(
         conversation.id,
@@ -8721,6 +8725,7 @@ export class ConversationOrchestrator {
     conversationId: string,
     payload: ConversationOutboundPayload,
     deterministicTrace?: ConversationDeterministicTraceCompletion,
+    plannedResponse?: PlannedResponse,
   ): Promise<void> {
     if (payload.turnId) {
       const stateBeforeDelivery =
@@ -8770,6 +8775,9 @@ export class ConversationOrchestrator {
           useVoice: payload.useVoice,
           interleavedPartCount: payload.interleavedParts.length,
           mediaPartCount: payload.mediaParts.length,
+          ...(plannedResponse
+            ? { responsePlanVersion: plannedResponse.plan.version }
+            : {}),
         },
       });
     }

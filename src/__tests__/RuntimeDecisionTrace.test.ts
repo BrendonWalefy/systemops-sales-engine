@@ -102,6 +102,27 @@ describe("runtime DecisionTrace", () => {
     });
   });
 
+  it("preserva somente o código da versão do plano no outbound persistido", () => {
+    expect(sanitizeDecisionTraceRecord({
+      turnId: "turn-planned",
+      stage: "outbound.planned",
+      occurredAt: "2026-08-09T12:00:00.000Z",
+      metadata: traceMetadata({
+        agentMessageId: "agent-1",
+        responsePlanVersion: "response-plan.v1",
+        responseText: "conteúdo privado",
+      }),
+    })).toEqual({
+      turnId: "turn-planned",
+      stage: "outbound.planned",
+      occurredAt: "2026-08-09T12:00:00.000Z",
+      metadata: {
+        agentMessageId: "agent-1",
+        responsePlanVersion: "response-plan.v1",
+      },
+    });
+  });
+
   it.each([
     {
       stage: "response.plan_built" as const,
