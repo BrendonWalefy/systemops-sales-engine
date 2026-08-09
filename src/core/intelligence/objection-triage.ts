@@ -68,6 +68,10 @@ export function detectAtypicalClinicalCase(message: string): string | null {
   return null;
 }
 
+export function isAtypicalClinicalCaseLabel(value: string): boolean {
+  return ATYPICAL_PATTERNS.some(({ label }) => label === value);
+}
+
 // ── #21 — Relato de dano em trabalho já realizado ──
 // "Um dos dentes quebrou", "a lente caiu", "as lentes estão quebrando". Hoje o
 // tratamento correto depende da LLM rotular a mensagem como clinical_urgency; quando

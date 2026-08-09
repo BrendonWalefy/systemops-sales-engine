@@ -5,6 +5,7 @@ import type {
   ActionResult,
   ComposedResponse,
 } from "@/core/intelligence/ResponseComposer";
+import { isAtypicalClinicalCaseLabel } from "@/core/intelligence/objection-triage";
 
 export type SafeResponseFallback = {
   response: ComposedResponse;
@@ -59,7 +60,9 @@ function buildFallbackText(
     case "quantity_price_confirmation_required":
       return quantityPriceConfirmationCopy(actionResult.quantity, actionResult.scope);
     case "clinical_evaluation_required":
-      return `Entendi o que aconteceu com ${actionResult.reason}. Como esse caso precisa ser avaliado pelo Doutor, não vou confirmar técnica ou valor por mensagem. Já sinalizei a equipe para orientar o próximo passo e montar o orçamento correto.`;
+      return isAtypicalClinicalCaseLabel(actionResult.reason)
+        ? `Entendi o que aconteceu com ${actionResult.reason}. Como esse caso precisa ser avaliado pelo Doutor, não vou confirmar técnica ou valor por mensagem. Já sinalizei a equipe para orientar o próximo passo e montar o orçamento correto.`
+        : null;
     case "slots_found":
       return slotsCopy(actionResult.slots, plan);
     case "appointment_confirmed":

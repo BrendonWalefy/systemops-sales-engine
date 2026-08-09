@@ -234,15 +234,32 @@ describe("buildSafeResponseFallback", () => {
   it("preserva a cópia aprovada para avaliação clínica", () => {
     const plan = makePlan({ action: "clinical_evaluation_required" });
     const fallback = buildSafeResponseFallback({
-      actionResult: { type: "clinical_evaluation_required", reason: "esse procedimento" },
+      actionResult: { type: "clinical_evaluation_required", reason: "dente fraturado" },
       plan,
       reason: "composer_error",
     });
 
     expect(fallback.response.text).toBe(
-      "Entendi o que aconteceu com esse procedimento. Como esse caso precisa ser avaliado pelo Doutor, não vou confirmar técnica ou valor por mensagem. Já sinalizei a equipe para orientar o próximo passo e montar o orçamento correto.",
+      "Entendi o que aconteceu com dente fraturado. Como esse caso precisa ser avaliado pelo Doutor, não vou confirmar técnica ou valor por mensagem. Já sinalizei a equipe para orientar o próximo passo e montar o orçamento correto.",
     );
     expect(fallback.requiresHandoff).toBe(false);
+    expectValidFallback(fallback, plan);
+  });
+
+  it("não expõe razão clínica interna mesmo quando o validador não reconhece violações", () => {
+    const plan = makePlan({ action: "clinical_evaluation_required" });
+    const fallback = buildSafeResponseFallback({
+      actionResult: {
+        type: "clinical_evaluation_required",
+        reason: "paciente sinalizado pela auditoria interna",
+      },
+      plan,
+      reason: "composer_error",
+    });
+
+    expect(fallback.response.text).toBe(neutralHandoff);
+    expect(fallback.response.text).not.toContain("auditoria interna");
+    expect(fallback.requiresHandoff).toBe(true);
     expectValidFallback(fallback, plan);
   });
 
