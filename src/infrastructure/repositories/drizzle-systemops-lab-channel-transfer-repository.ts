@@ -116,7 +116,7 @@ implements SystemOpsLabChannelTransferRepository {
     try {
       result = await this.database.execute<{ id: string }>(sql`
         with eligible_target as (
-        select id
+        select id, zapi_instance_id
         from organizations
         where id = ${input.targetClinicId}
           and is_test = true
@@ -141,6 +141,7 @@ implements SystemOpsLabChannelTransferRepository {
             updated_at = now()
         where zapi_instance_id = ${input.instanceId}
           and id <> ${input.targetClinicId}
+          and (${expectedSourceClinicId}::uuid is null or id = ${expectedSourceClinicId}::uuid)
           and exists (select 1 from eligible_target)
         returning id
       )
@@ -152,6 +153,22 @@ implements SystemOpsLabChannelTransferRepository {
           channel_paired_at = coalesce(channel_paired_at, now()),
           updated_at = now()
       where id in (select id from eligible_target)
+        and (
+          ${expectedSourceClinicId}::uuid is null
+          or exists (
+            select 1
+            from detached
+            where detached.id = ${expectedSourceClinicId}::uuid
+          )
+          or (
+            id = ${expectedSourceClinicId}::uuid
+            and exists (
+              select 1
+              from eligible_target
+              where eligible_target.zapi_instance_id = ${input.instanceId}
+            )
+          )
+        )
         returning id
       `);
     } catch {

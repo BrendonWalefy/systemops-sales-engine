@@ -243,10 +243,14 @@ describe("Drizzle SystemOps Lab channel transfer repository", () => {
     expect(statement.sql).toContain("operational_status = 'test'");
     expect(statement.sql).toContain("auto_reply_enabled = false");
     expect(statement.sql).toContain("shadow_mode_enabled = false");
-    expect(statement.sql).toContain("with eligible_target as");
     expect(statement.sql).toContain("for update");
     expect(statement.sql).toContain("detached as");
     expect(statement.sql).toContain("returning id");
+    const outerUpdate = statement.sql.slice(statement.sql.lastIndexOf("update organizations"));
+    expect(outerUpdate).toContain("from detached");
+    expect(outerUpdate).toMatch(
+      /exists \(\s*select 1\s*from detached\s*where detached\.id = \$\d+::uuid\s*\)/,
+    );
     expect(statement.params).toContain("00000000-0000-4000-8000-000000000002");
     expect(statement.params).not.toContain("  00000000-0000-4000-8000-000000000002  ");
     expect(statement.params).not.toContain("rotated-token");
