@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { MAX_CLIENT_SAMPLES_PER_SESSION } from "@/application/observability/performance-telemetry";
+import { MAX_CLIENT_SAMPLES_PER_SESSION } from "@/application/observability/performance-contract";
 import {
   NAVIGATION_COUNT_KEY,
   NAVIGATION_MARK_KEY,

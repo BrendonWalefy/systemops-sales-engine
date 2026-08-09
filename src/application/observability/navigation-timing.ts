@@ -1,11 +1,10 @@
 import {
-  PERFORMANCE_SCHEMA_VERSION,
   PERFORMANCE_SURFACES,
+  createSoftNavigationSample,
   normalizePerformanceRoute,
-  parsePerformanceSample,
   type PerformanceSample,
   type PerformanceSurface,
-} from "@/application/observability/performance-telemetry";
+} from "@/application/observability/performance-contract";
 
 export const NAVIGATION_MARK_KEY = "systemops.performance.pending-navigation.v1";
 export const NAVIGATION_COUNT_KEY = "systemops.performance.sample-count.v1";
@@ -68,15 +67,7 @@ export function completeNavigation(
 
   return {
     nextPending: null,
-    sample: parsePerformanceSample({
-      schemaVersion: PERFORMANCE_SCHEMA_VERSION,
-      source: "client",
-      surface,
-      operation: "soft_navigation",
-      durationMs,
-      cacheState: "unknown",
-      outcome: "ok",
-    }),
+    sample: createSoftNavigationSample(surface, durationMs),
   };
 }
 
