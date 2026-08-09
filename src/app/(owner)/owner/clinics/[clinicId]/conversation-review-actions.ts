@@ -2,7 +2,7 @@
 
 /**
  * Server actions owner da Revisão de Conversas pelo Cliente
- * (docs/product/revisao-conversas-plano.md, seção 7).
+ * Feature catalogada em docs/features.md.
  *
  * Padrão copiado de `setup-study-actions.ts`:
  * - `assertOwnerSession()` em toda action;

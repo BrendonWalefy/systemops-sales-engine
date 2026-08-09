@@ -2,7 +2,7 @@
 
 /**
  * Server actions da página pública de revisão de conversas
- * (docs/product/revisao-conversas-plano.md, seções 6 e 8 — PR 2).
+ * Feature catalogada em docs/features.md.
  *
  * SEGURANÇA / MULTI-TENANT:
  * - A rodada é resolvida **exclusivamente** pelo hash sha256 do token. Nem

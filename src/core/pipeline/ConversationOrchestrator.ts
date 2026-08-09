@@ -24,12 +24,16 @@ import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzl
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { sendTextMessage, sendMediaMessage, sendButtonListMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
-import type { OutboundPart } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 import { createLogger, type Logger } from "@/infrastructure/logging/logger";
 import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, type TtsConfig } from "@/domain/entities/tts-config";
-import type { VoiceElevenLabsConfig, VoiceTtsConfig, ConciergeModeConfig } from "@/application/modules/module-configs";
+import type {
+  VoiceElevenLabsConfig,
+  VoiceTtsConfig,
+  ConciergeModeConfig,
+  ConciergeVerbosity,
+} from "@/application/modules/module-configs";
 import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voice-mode";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
@@ -37,8 +41,17 @@ import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/sche
 import type { LocalDateParts, ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine, SLOT_OFFER_TTL_MINUTES } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType, type SlotPreference } from "@/core/intelligence/IntentClassifier";
-import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
-import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
+import type {
+  ActionResult,
+  ComposerInput,
+  ResponsePart,
+} from "@/core/intelligence/ResponseComposer";
+import {
+  ConversationResponsePlanner,
+  type PlannedResponse,
+} from "@/core/conversation/ConversationResponsePlanner";
+import type { BuildResponsePlanInput } from "@/core/conversation/response-plan";
+import { TurnSafetyHandoffGuard } from "@/core/conversation/TurnSafetyHandoffGuard";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery, extractQuantity } from "@/core/intelligence/quantity-price";
@@ -64,14 +77,14 @@ import {
   buildDepositProofReceivedMessage,
   buildDepositProofMissingMessage,
 } from "@/core/conversation/DepositTemplates";
-import { buildAddressAnswer, buildAddressLines, type ClinicAddress } from "@/core/conversation/AddressBlock";
+import { buildAddressAnswer } from "@/core/conversation/AddressBlock";
 import { selectBestSlots } from "@/core/scheduling/SlotEngine";
 import { resolveTreatmentDuration } from "@/core/scheduling/resolveTreatmentDuration";
 import type {
   FormattedSlot,
   TreatmentPipelinePayload,
 } from "@/core/conversation/ConversationStateMachine";
-import type { PipelineStep, ContentBlock } from "@/domain/entities/treatment";
+import type { PipelineStep } from "@/domain/entities/treatment";
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
@@ -133,6 +146,37 @@ import {
   resolvePipelineMediaRoute,
 } from "@/core/pipeline/PipelineMediaRouter";
 import { resolvePipelineQaMaxTurns } from "@/core/pipeline/PipelineLimits";
+import {
+  buildAlignedResponseMediaProjection, buildAnswerFirstPipelineContent,
+  buildDeferredPipelineAnswerContext, buildDirectTreatmentContext, buildEvaluationDepositClarification,
+  buildInstallmentTable, buildLocationClinicContext, buildMediaClarificationClinicContext,
+  buildPipelineContentParts, buildPipelineContentReply, buildSelectedTreatmentContext,
+  buildSocialProfileClinicContext, canAppendQaFollowUpContent, collectCurrentLeadBurstBodies,
+  collectMediaIds, collectPreviousAgentTurnBodies, contextualizeReplyWhileAwaitingDeposit,
+  filterMediaLibraryForComposer, formatBrl, hasAgentRequestedPhoto, hasAnyKeyword,
+  hasPipelineContentStepBeenSent, isAffirmativeReplyToOpenOffer, isClinicalTreatmentPlanJudgmentRequest,
+  isEvaluationPriceRequest, isGenericTreatmentInterestMessage, isPipelinePhotoInstructionContentStep,
+  isRemotePreEvaluationRequest, isShortAffirmativeReply, isShowcaseRequestText, isValidMediaAssetId,
+  mergeDeliveryMediaLibrary, nextActivePipelineStep, nextUnsentPipelineContentStep, normalizeFreeText,
+  pickShowcaseMedia, resolveOutboundParts, shouldSuppressNextStepCta,
+  stripPriceProseWhenSystemQuoted,
+  type DeliveryMediaLibraryItem, type InstallmentRate,
+} from "@/core/conversation/conversation-response-parts";
+
+export {
+  buildAlignedResponseMediaProjection, buildAnswerFirstPipelineContent, buildDeferredPipelineAnswerContext,
+  buildDirectTreatmentContext, buildEvaluationDepositClarification, buildInstallmentTable,
+  buildLocationClinicContext, buildMediaClarificationClinicContext, buildSelectedTreatmentContext,
+  calculateFlatInstallment, canAppendQaFollowUpContent, collectCurrentLeadBurstBodies,
+  collectPreviousAgentTurnBodies, contextualizeReplyWhileAwaitingDeposit, filterMediaLibraryForComposer,
+  filterMediaLibraryForTreatment, hasAgentRequestedPhoto, hasPipelineContentStepBeenSent,
+  isAestheticTreatment, isAffirmativeReplyToOpenOffer, isClinicalTreatmentPlanJudgmentRequest,
+  isEvaluationPriceRequest, isGenericTreatmentInterestMessage, isPipelinePhotoInstructionContentStep,
+  isRemotePreEvaluationRequest, isShortAffirmativeReply, isShowcaseRequestText, isValidMediaAssetId,
+  mergeDeliveryMediaLibrary, nextActivePipelineStep, pickShowcaseMedia, resolveOutboundParts,
+  shouldSuppressNextStepCta, stripPriceProseWhenSystemQuoted,
+  trimAnswerToBridge, type InstallmentRate,
+} from "@/core/conversation/conversation-response-parts";
 
 // ── Menu resolution ──────────────────────────────────────────────────────────
 
@@ -147,6 +191,16 @@ type ConversationDeterministicTraceCompletion = Omit<
   DeterministicDecisionTraceCompletion,
   "turnId" | "clinicId" | "conversationId" | "state"
 >;
+
+const RESPONSE_PLAN_ATTENTION_REASON = "Resposta segura requer revisão humana";
+
+export function resolveResponseMaxCharacters(
+  verbosity: ConciergeVerbosity | undefined,
+): number {
+  if (verbosity === "concisa") return 280;
+  if (verbosity === "detalhada") return 1_200;
+  return 600;
+}
 
 export function resolveVoiceOutputFlags(params: {
   hasElevenLabsModule: boolean;
@@ -308,7 +362,7 @@ export const DEFAULT_MESSAGE_DEBOUNCE_MS = 15_000;
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
 // 24h cobre o padrão real do WhatsApp: o gap p90 entre mensagens consecutivas do
-// mesmo lead é de 17h (n=3.183, produção). Ver plano-correcao-conversacional.md.
+// mesmo lead é de 17h (n=3.183, amostra histórica).
 export const DEFAULT_CONVERSATION_RESTART_HOURS = 24;
 
 /**
@@ -742,19 +796,6 @@ export function isProcedureCatalogRequest(message: string): boolean {
   return wantsCatalog && !definiteSingular;
 }
 
-function normalizeFreeText(message: string): string {
-  return message
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function hasAnyKeyword(normalized: string, keywords: string[]): boolean {
-  return keywords.some((keyword) => normalized.includes(keyword));
-}
 
 // Anexo determinístico de mídia num step "qa": retorna o mediaId da primeira
 // entrada cujas palavras-chave casam com a mensagem (já normalizada) do lead.
@@ -986,7 +1027,7 @@ export function buildBusinessHoursAnswer(
   }
 
   // Sábado/domingo: responde pelo que está CADASTRADO. Não consulta a agenda real
-  // — ver plano-correcao-conversacional.md item #18: a resposta certa é olhar a
+  // A resposta certa é olhar a
   // disponibilidade do dia, não só a configuração.
   if (asksSaturday) {
     if (businessHours.days.includes(6)) {
@@ -1569,41 +1610,6 @@ export function normalizeSchedulingIntentForMissingPendingOffer(
   return intent;
 }
 
-export function isShortAffirmativeReply(message: string): boolean {
-  const normalized = normalizeFreeText(message);
-  if (!normalized) return false;
-  return new Set([
-    "sim",
-    "sim pode",
-    "pode",
-    "pode sim",
-    "claro",
-    "quero",
-    "quero sim",
-    "vamos",
-    "ok",
-    "ta bom",
-    "tudo bem",
-    "beleza",
-  ]).has(normalized);
-}
-
-// Pedido explícito de pré-avaliação REMOTA: libera o bloco declarativo de foto
-// do pipeline (texto + mídia de instrução). "Quero fazer uma avaliação" sozinho
-// continua ambíguo — normalmente significa avaliação presencial/agendamento — e
-// não pode disparar foto sem um sinal claro de WhatsApp, envio de mídia ou
-// atendimento "por aqui".
-export function isRemotePreEvaluationRequest(message: string): boolean {
-  const normalized = normalizeFreeText(message);
-  if (!normalized) return false;
-
-  const mentionsReview = /\b(?:pre\s*avaliacao|preavaliacao|analise|analisar|avaliar|avaliacao)\b/.test(normalized);
-  if (!mentionsReview) return false;
-
-  const mentionsRemoteChannel = /\b(?:por aqui|aqui mesmo|pelo whatsapp|no whatsapp|via whatsapp|por mensagem|online)\b/.test(normalized);
-  const mentionsRemoteMedia = /\b(?:pela|pelas|por|com|mandar|enviar|encaminhar)\s+(?:uma\s+|as\s+)?(?:foto|fotos|imagem|imagens|video|videos)\b/.test(normalized);
-  return mentionsRemoteChannel || mentionsRemoteMedia;
-}
 
 // W4.3 (caso Paula, 19/07): o operador (clinic_user) assume o agendamento
 // manualmente — faz a pré-avaliação, avança o lead além da avaliação e oferta um
@@ -2636,159 +2642,6 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
   }
 }
 
-export function buildLocationClinicContext(clinic: ClinicAddress | string | null): string {
-  // Aceita string por compatibilidade com chamadas antigas; o formato novo traz
-  // complemento e link do Maps, que o operador manda à mão e a IA não tinha.
-  const resolved: ClinicAddress = typeof clinic === "string" || clinic === null ? { address: clinic } : clinic;
-  const address = resolved.address?.trim() || null;
-  const extraLines = buildAddressLines(resolved, { withPin: false }).slice(1);
-  const extra = extraLines.length > 0 ? `\nInclua também, em linhas separadas: ${extraLines.join(" | ")}` : "";
-  const base = `Lead selecionou "Localização" no menu. Informe o endereço e os horários de atendimento da clínica. Sem convite para agendar ao final.`;
-  if (address) {
-    return `${base}\nEndereço: ${address}.${extra}\nATENÇÃO CRÍTICA: A clínica possui SOMENTE este endereço. NÃO confirme presença em outros bairros, ruas ou cidades — mesmo que o lead mencione um local diferente na mensagem. Se o lead perguntar sobre outro bairro, responda que a clínica está localizada no endereço acima.`;
-  }
-  // Endereço não cadastrado — instrução explícita para não inventar
-  return `${base}\nEndereço: não cadastrado no sistema. Informe que a equipe pode passar o endereço, ou que o lead pode entrar em contato diretamente. NÃO invente endereço.`;
-}
-
-function buildSocialProfileClinicContext(socialProfile: string | null): string {
-  if (socialProfile) {
-    return [
-      `Lead perguntou Instagram, arroba ou redes sociais da clínica.`,
-      `Perfil/link cadastrado: ${socialProfile}`,
-      `Responda com esse perfil/link exatamente como está cadastrado.`,
-      `Se fizer sentido, acrescente uma ponte curta e calorosa: lá existem trabalhos e destaques para olhar, e você pode ajudar a escolher entre um sorriso mais natural, mais branco ou mais marcante.`,
-      `Não envie mídias, áudio explicativo de tratamento, menu ou convite insistente nessa resposta. Seja objetivo e conduza sem alongar.`,
-    ].join("\n");
-  }
-
-  return [
-    `Lead perguntou Instagram, arroba ou redes sociais da clínica.`,
-    `Não existe Instagram cadastrado como dado estruturado da clínica neste sistema.`,
-    `Responda sem inventar perfil: diga que você não tem o @ cadastrado aqui e que a equipe pode enviar o perfil correto por aqui.`,
-    `Não envie mídias, áudio explicativo de tratamento, menu ou convite de agendamento nessa resposta.`,
-  ].join("\n");
-}
-
-export function buildMediaClarificationClinicContext(): string {
-  return [
-    `O lead está pedindo esclarecimento sobre uma foto, card ou mídia enviada nesta conversa.`,
-    `Use somente fatos presentes no tratamento, no pipeline, nas legendas de mídia ou nas orientações editoriais desta clínica.`,
-    `Se não for possível identificar inequivocamente a mídia, peça que o lead diga o título, a ordem ou reenvie a referência.`,
-    `Não invente nomes de técnicas, materiais, preços ou comparações e não reenvie mídias nessa resposta.`,
-  ].join("\n");
-}
-
-// ─── Cálculo de parcelas (flat rate exato) ───────────────────────────────────
-
-export type InstallmentRate = { n: number; rate: number; active: boolean };
-
-/** Parcela exata usando taxa flat da maquininha: preço ÷ (1 − taxa) ÷ N */
-export function calculateFlatInstallment(principal: number, flatRatePercent: number, n: number): number {
-  return Math.ceil(principal / (1 - flatRatePercent / 100) / n);
-}
-
-/**
- * Gera tabela de parcelamento com taxas flat exatas da maquininha.
- * Extrai preços da política comercial e aplica cada faixa ativa.
- */
-export function buildInstallmentTable(
-  policy: string,
-  rates: InstallmentRate[],
-): string | null {
-  const activeRates = rates.filter((r) => r.active).sort((a, b) => a.n - b.n);
-  if (activeRates.length === 0) return null;
-
-  const matches = [...policy.matchAll(/R\$\s*([\d.]+(?:,\d{1,2})?)/g)];
-  const prices = [
-    ...new Set(
-      matches
-        .map((m) => parseFloat(m[1].replace(/\./g, "").replace(",", ".")))
-        .filter((v) => !isNaN(v) && v >= 200),
-    ),
-  ].sort((a, b) => a - b);
-
-  if (prices.length === 0) return null;
-
-  const rows = prices.map((price) => {
-    const opts = activeRates
-      .map((r) => `${r.n}x R$${calculateFlatInstallment(price, r.rate, r.n).toLocaleString("pt-BR")}`)
-      .join(" | ");
-    return `• R$${price.toLocaleString("pt-BR")}: ${opts}`;
-  });
-
-  return `TABELA DE PARCELAMENTO (taxa já embutida — apresente estes valores diretamente, sem mencionar taxa adicional):
-${rows.join("\n")}
-Se o lead pedir faixa não listada, indique a mais próxima. NUNCA diga "+ taxa" — a taxa já está nos valores acima.`;
-}
-
-export function isAestheticTreatment(isAesthetic: boolean | null | undefined): boolean {
-  return isAesthetic === true;
-}
-
-// Instrução de convite à foto — posicionada como benefício ao cliente, nunca obrigatória.
-// Usada apenas em modo concierge e apenas para serviços estéticos visuais.
-function buildPhotoInviteInstruction(): string {
-  return `SE O LEAD AINDA NÃO ENVIOU FOTO e demonstrou interesse neste serviço: se fizer sentido depois de esclarecer a dúvida principal, convide-o de forma acolhedora e completamente opcional, posicionando como um benefício para ele — exemplo de tom: "Se quiser, e só se se sentir à vontade, você pode me mandar uma foto. Assim consigo te passar uma orientação mais personalizada de como poderia ficar 😊". REGRAS OBRIGATÓRIAS: (1) nunca pressione nem torne obrigatório; (2) use linguagem leve como "se quiser" ou "se se sentir à vontade"; (3) só faça esse convite UMA vez por conversa — se já foi pedido antes, não repita; (4) NÃO misture o convite da foto com pergunta de agenda no mesmo turno.`;
-}
-
-export function buildSelectedTreatmentContext(item: ProcedureListItem, commercialPolicy?: string | null, experience?: ConversationExperience): string {
-  const shouldDelayScheduling = experience === "concierge" && isAestheticTreatment(item.isAesthetic);
-  const nextStep = shouldDelayScheduling
-    ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver entendendo o tratamento, prefira encerrar com uma pergunta consultiva sobre a técnica ou a dúvida dele. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
-    : item.requiresEvaluationFirst
-    ? "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você fazer a avaliação?' ou 'Quando você teria disponibilidade?'. Nunca pergunte 'Quer verificar?' (fechado). Pressuposto de avanço, não pedido de permissão."
-    : "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você?' ou 'Que dia fica melhor para você?'. Nunca pergunte 'Quer agendar?' (fechado). Pressuposto de avanço, não pedido de permissão.";
-
-  const details = [
-    `Lead selecionou o procedimento "${item.name}" em uma lista numerada.`,
-    item.description ? `Descrição cadastrada: ${item.description}` : null,
-    item.requiresEvaluationFirst
-      ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
-      : "Explique o procedimento com naturalidade.",
-    commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
-    experience === "concierge" && isAestheticTreatment(item.isAesthetic) ? buildPhotoInviteInstruction() : null,
-    nextStep,
-    experience !== "concierge" ? "Mencione que o lead pode digitar *menu* a qualquer momento para ver outras opções." : null,
-  ].filter(Boolean);
-
-  const format = experience === "concierge"
-    ? "FORMATO: tópicos — apresente os destaques do procedimento em até 4 bullet points (•), um por linha. Depois de listar, faça a pergunta de próximo passo."
-    : "Formato: até 2 parágrafos curtos, sem lista.";
-
-  return `${details.join("\n")}\n${format}`;
-}
-
-export function buildDirectTreatmentContext(treatment: Treatment, commercialPolicy?: string | null, experience?: ConversationExperience): string {
-  const shouldDelayScheduling =
-    experience === "concierge" &&
-    isAestheticTreatment(treatment.isAesthetic);
-  const nextStep = shouldDelayScheduling
-    ? "PRÓXIMO PASSO: responda a dúvida principal primeiro. Se o lead ainda estiver conhecendo o tratamento, prefira encerrar com uma pergunta consultiva sobre técnicas, resultado ou expectativas. Só conduza para avaliação depois de esclarecer o essencial. NÃO misture explicação técnica, convite de foto e pergunta de agenda na mesma resposta."
-    : treatment.requiresEvaluationFirst
-    ? "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você fazer a avaliação?' ou 'Quando você teria disponibilidade?'. Nunca pergunte 'Quer verificar?' (fechado). Pressuposto de avanço, não pedido de permissão."
-    : "FECHAMENTO: use uma pergunta aberta que pressuponha que o lead vai agendar — ex: 'Qual seria o melhor momento para você?' ou 'Que dia fica melhor para você?'. Nunca pergunte 'Quer agendar?' (fechado). Pressuposto de avanço, não pedido de permissão.";
-
-  const details = [
-    `Lead mencionou diretamente o tratamento "${treatment.name}".`,
-    treatment.description ? `Descrição cadastrada: ${treatment.description}` : null,
-    treatment.requiresEvaluationFirst
-      ? "Este procedimento exige avaliação antes do agendamento definitivo. Explique isso com naturalidade e conduza para avaliação."
-      : "Explique o procedimento com naturalidade.",
-    commercialPolicy ? `Política comercial: ${commercialPolicy}` : null,
-    "Se a política comercial ou as orientações da clínica trouxerem valores, condições, técnicas ou limites explícitos para este tratamento, preserve esses dados na resposta.",
-    "MÍDIA: se houver vídeo ou imagem na BIBLIOTECA DE MÍDIA com título relacionado a este tratamento, inclua [MEDIA:id] ao final da resposta conforme a regra da biblioteca.",
-    experience === "concierge" && isAestheticTreatment(treatment.isAesthetic) ? buildPhotoInviteInstruction() : null,
-    nextStep,
-  ].filter(Boolean);
-
-  // Não forçar bullet points aqui: o playbook de cada clínica define o formato
-  // (prosa TTS-friendly ou bullets), e a instrução do actionContext sobreporia
-  // as regras de voz das ORIENTAÇÕES DA CLÍNICA, causando bullets no áudio.
-  const format = "Formato: até 2 parágrafos curtos. Siga as orientações de formato da clínica.";
-
-  return `${details.join("\n")}\n${format}`;
-}
 
 type ClinicRow = typeof organizations.$inferSelect;
 
@@ -2886,68 +2739,7 @@ async function rehostLeadMedia(
   }
 }
 
-// Isolamento entre procedimentos, aplicado na COMPOSIÇÃO do prompt: quando há
-// um tratamento ativo nesta virada, a LLM só vê mídia geral (treatmentId null)
-// ou dela — mídia de OUTRO procedimento nem aparece como opção no [MEDIA:id].
-// Sem tratamento ativo, comportamento de hoje (lista completa da seleção do
-// playbook). Reduz a chance de alucinação; a garantia dura é o gate abaixo,
-// em resolveOutboundParts, que não depende da LLM ter obedecido este filtro.
-export function filterMediaLibraryForTreatment<T extends { treatmentId?: string | null }>(
-  items: T[],
-  activeTreatmentId: string | null,
-): T[] {
-  if (!activeTreatmentId) return items;
-  return items.filter((m) => !m.treatmentId || m.treatmentId === activeTreatmentId);
-}
 
-function isPriceMediaTitle(title: string): boolean {
-  const n = normalizeFreeText(title);
-  return hasAnyKeyword(n, ["valor", "valores", "preco", "investimento", "pacote", "pacotes"]);
-}
-
-export function filterMediaLibraryForComposer<T extends { title: string; treatmentId?: string | null }>(
-  items: T[],
-  activeTreatmentId: string | null,
-  actionResult: ActionResult,
-): T[] {
-  const treatmentScoped = filterMediaLibraryForTreatment(items, activeTreatmentId);
-  if (actionResult.type !== "price_inquiry") return treatmentScoped;
-
-  const priceMedia = treatmentScoped.filter((item) => isPriceMediaTitle(item.title));
-  return priceMedia.length > 0 ? priceMedia : treatmentScoped;
-}
-
-type DeliveryMediaLibraryItem = {
-  id: string;
-  title: string;
-  type: "video" | "image";
-  url: string;
-  treatmentId?: string | null;
-};
-
-function collectMediaIds(parts: ResponsePart[]): string[] {
-  return Array.from(new Set(parts.filter((p): p is Extract<ResponsePart, { type: "media" }> => p.type === "media").map((p) => p.id)));
-}
-
-const MEDIA_ASSET_UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/**
- * media_assets.id is a Postgres UUID. Keep malformed LLM tokens out of the
- * query boundary (for example the literal `[MEDIA:id]`).
- */
-export function isValidMediaAssetId(id: string): boolean {
-  return MEDIA_ASSET_UUID_RE.test(id);
-}
-
-function formatBrl(cents: number): string {
-  const reais = cents / 100;
-  const isRound = cents % 100 === 0;
-  return `R$ ${reais.toLocaleString("pt-BR", {
-    minimumFractionDigits: isRound ? 0 : 2,
-    maximumFractionDigits: isRound ? 0 : 2,
-  })}`;
-}
 
 // "23/06" — data de uma consulta passada. Ano só quando não é o ano corrente:
 // "esteve com a gente em 23/06" lê melhor do que "em 23/06/2026".
@@ -3008,21 +2800,6 @@ export function resolveMaintenancePriceLabel(
   return labels.length > 0 ? labels.join(" | ") : null;
 }
 
-export function mergeDeliveryMediaLibrary(
-  editorialMediaLibrary: DeliveryMediaLibraryItem[] | undefined,
-  directlyReferencedAssets: DeliveryMediaLibraryItem[],
-): DeliveryMediaLibraryItem[] {
-  const merged = [...(editorialMediaLibrary ?? [])];
-  const known = new Set(merged.map((m) => m.id));
-
-  for (const asset of directlyReferencedAssets) {
-    if (known.has(asset.id)) continue;
-    merged.push(asset);
-    known.add(asset.id);
-  }
-
-  return merged;
-}
 
 async function resolveDeliveryMediaLibrary(params: {
   clinicId: string;
@@ -3076,473 +2853,6 @@ async function resolveDeliveryMediaLibrary(params: {
   return mergeDeliveryMediaLibrary(editorialMediaLibrary, deliverableAssets);
 }
 
-// Resolve as tags [MEDIA:id] das partes compostas contra a biblioteca de mídia,
-// produzindo partes prontas para entrega. IDs ausentes são logados como erro crítico
-// (vídeo perdido silenciosamente é pior do que log ruidoso) e pulados.
-//
-// activeTreatmentId é o GATE DETERMINÍSTICO de isolamento entre procedimentos
-// (ver AGENTS.md "o sistema decide, a LLM verbaliza"): mesmo que a LLM emita
-// um [MEDIA:id] de outro procedimento (alucinação ou prompt mal seguido), este
-// gate bloqueia o envio — não depende do filtro de prompt acima ter funcionado.
-export function resolveOutboundParts(
-  parts: ResponsePart[],
-  mediaLibrary: DeliveryMediaLibraryItem[] | undefined,
-  log: Logger,
-  activeTreatmentId: string | null = null,
-): OutboundPart[] {
-  const out: OutboundPart[] = [];
-  const libraryIds = mediaLibrary?.map((m) => m.id) ?? [];
-
-  for (const part of parts) {
-    if (part.type === "text") {
-      out.push({ type: "text", content: part.content });
-      continue;
-    }
-    const item = mediaLibrary?.find((m) => m.id === part.id);
-    if (!item) {
-      // Erro crítico: o vídeo era esperado mas será silenciosamente omitido ao lead.
-      // Causas comuns: (1) pipeline step com mediaId de versão antiga do playbook,
-      // (2) vídeo re-uploadado com novo ID sem re-seeded o pipeline,
-      // (3) LLM gerou ID inventado.
-      log.error("mediaId não encontrado na biblioteca — vídeo será omitido ao lead", {
-        mediaId: part.id,
-        libraryIds,
-        librarySize: libraryIds.length,
-      });
-      continue;
-    }
-    if (item.treatmentId && activeTreatmentId && item.treatmentId !== activeTreatmentId) {
-      log.error("mediaId pertence a outro procedimento — vídeo será omitido ao lead (isolamento entre procedimentos)", {
-        mediaId: item.id,
-        itemTreatmentId: item.treatmentId,
-        activeTreatmentId,
-      });
-      continue;
-    }
-    if (!item.url) {
-      log.error("item da biblioteca sem URL — vídeo será omitido ao lead", {
-        mediaId: item.id,
-        title: item.title,
-      });
-      continue;
-    }
-    out.push({
-      type: "media",
-      mediaId: item.id,
-      url: item.url,
-      mediaType: item.type,
-      title: item.title,
-      caption: part.caption,
-    });
-  }
-  return out;
-}
-
-// ─── Pipeline helpers ─────────────────────────────────────────────────────────
-
-// Converte os blocos de um step "content" em ResponseParts prontas para envio.
-function buildPipelineContentParts(blocks: ContentBlock[]): ResponsePart[] {
-  return blocks.map((b) =>
-    b.kind === "text"
-      ? { type: "text" as const, content: b.content }
-      : { type: "media" as const, id: b.mediaId, caption: b.caption },
-  );
-}
-
-function normalizeContentFingerprint(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-export function hasPipelineContentStepBeenSent(
-  step: Extract<PipelineStep, { type: "content" }>,
-  history: Pick<Message, "author" | "body">[],
-  mediaTitleById?: Map<string, string>,
-): boolean {
-  if (step.once === false) return false;
-
-  // Texto e legenda casam por SUBSTRING dentro do corpo já enviado.
-  const substringFingerprints = step.blocks
-    .map((block) => (block.kind === "text" ? block.content : block.caption ?? ""))
-    .map(normalizeContentFingerprint)
-    .filter(Boolean);
-
-  // Mídia: o corpo gravado é o TÍTULO do arquivo (ver outbound-message-persistence),
-  // nunca a legenda. Sem casar por título, um content step SÓ de mídia jamais era
-  // reconhecido como enviado e reenviava a cada virada — o loop de vídeos da Ximendes
-  // (23/07). Casamento EXATO de propósito: um título curto ("Vídeo") por substring
-  // deduplicaria conteúdo alheio. Requer o mapa id→título (opcional p/ compatibilidade
-  // dos callers que ainda não o passam).
-  const exactMediaTitleFingerprints = step.blocks
-    .flatMap((block) => {
-      if (block.kind !== "media") return [];
-      const title = mediaTitleById?.get(block.mediaId);
-      return title ? [normalizeContentFingerprint(title)] : [];
-    })
-    .filter(Boolean);
-
-  if (substringFingerprints.length === 0 && exactMediaTitleFingerprints.length === 0) return false;
-
-  // clinic_user conta: conteúdo que a operação já enviou manualmente não deve
-  // ser repetido pelo motor quando o pipeline assume a conversa depois.
-  const outboundBodies = history
-    .filter((message) => message.author === "agent" || message.author === "clinic_user")
-    .map((message) => normalizeContentFingerprint(message.body));
-
-  return (
-    substringFingerprints.some((fp) => outboundBodies.some((body) => body.includes(fp))) ||
-    exactMediaTitleFingerprints.some((fp) => outboundBodies.some((body) => body === fp))
-  );
-}
-
-export function isPipelinePhotoInstructionContentStep(
-  step: Extract<PipelineStep, { type: "content" }>,
-): boolean {
-  const text = [
-    step.label,
-    ...step.blocks.map((block) => block.kind === "text" ? block.content : block.caption ?? ""),
-  ].join(" ");
-  const normalized = normalizeFreeText(text);
-  return hasAnyKeyword(normalized, ["foto", "fotos", "video", "videos", "frontal", "perfil", "pre avaliacao"]);
-}
-
-// Contexto do answer-first quando o conteúdo do pipeline sai na MESMA resposta:
-// o composer precisa VER o que o conteúdo já cobre para não respondê-lo de novo.
-// A instrução genérica ("não descreva o tratamento") não bastava — sem enxergar
-// o texto que vem a seguir, o LLM explicava tudo e os cards repetiam logo abaixo
-// (replay Vitalli 18/07).
-export function buildDeferredPipelineAnswerContext(params: {
-  treatmentName: string;
-  contentBlocks: ContentBlock[];
-  treatmentDescription?: string | null;
-  commercialPolicy?: string | null;
-}): string {
-  const contentPreview = params.contentBlocks
-    .map((block) => (block.kind === "text" ? block.content : `[mídia anexada${block.caption ? `: ${block.caption}` : ""}]`))
-    .join("\n");
-  return [
-    `Lead está em conversa consultiva sobre "${params.treatmentName}".`,
-    "LOGO APÓS a sua resposta, o sistema envia automaticamente este conteúdo pronto na mesma mensagem:",
-    "─── CONTEÚDO QUE SERÁ ENVIADO ───",
-    contentPreview,
-    "─── FIM DO CONTEÚDO ───",
-    "Sua resposta deve ter NO MÁXIMO 2 frases curtas: responda só o que o conteúdo acima NÃO cobre (cortesia, pergunta pessoal do lead) e faça uma ponte curta para ele.",
-    "NÃO repita nem resuma o conteúdo acima. NÃO explique técnicas, diferenças ou valores que ele já apresenta. NÃO convide para avaliação/agendamento, NÃO peça foto e NÃO termine com pergunta — o conteúdo seguinte conduz.",
-    params.treatmentDescription ? `Descrição do tratamento (apenas contexto, não recite): ${params.treatmentDescription}` : null,
-    params.commercialPolicy ? `Política comercial (apenas contexto, não recite): ${params.commercialPolicy}` : null,
-  ].filter(Boolean).join("\n");
-}
-
-// Contrato do answer-first: a resposta do composer é só a ponte curta — o
-// conteúdo canônico vem dos blocos do pipeline logo em seguida. A instrução de
-// prompt pede no máximo 2 frases, mas o LLM nem sempre obedece; quando ele se
-// alonga, o sistema corta no primeiro parágrafo (o playbook decide o conteúdo,
-// não a improvisação do modelo).
-export function trimAnswerToBridge(answerText: string): string {
-  const paragraphs = answerText.trim().split(/\n{2,}/);
-  return (paragraphs[0] ?? "").trim();
-}
-
-export function buildAnswerFirstPipelineContent(params: {
-  answerText: string;
-  answerParts: ResponsePart[];
-  contentBlocks: ContentBlock[];
-}): { replyText: string; parts: ResponsePart[]; mediaIds: string[] } {
-  const contentParts = buildPipelineContentParts(params.contentBlocks);
-  const contentText = contentParts
-    .filter((part): part is Extract<ResponsePart, { type: "text" }> => part.type === "text")
-    .map((part) => part.content)
-    .join("\n\n")
-    .trim();
-  const bridgeText = trimAnswerToBridge(params.answerText);
-  // A ponte vira um único bloco de texto; partes não-textuais da resposta
-  // (ex.: mídia anexada pelo composer) são preservadas antes do conteúdo.
-  const nonTextAnswerParts = params.answerParts.filter((part) => part.type !== "text");
-  const bridgeParts: ResponsePart[] = bridgeText ? [{ type: "text", content: bridgeText }] : [];
-  const replyText = [bridgeText, contentText].filter(Boolean).join("\n\n");
-  const parts = [...bridgeParts, ...nonTextAnswerParts, ...contentParts];
-
-  return {
-    replyText,
-    parts,
-    mediaIds: collectMediaIds(parts),
-  };
-}
-
-// N1 (mapeamento 18/07, caso Nathan): quando a mensagem do lead é interesse
-// genérico no tratamento do pipeline ("quero entender como funciona e valores"),
-// o conteúdo curado É a resposta — compor explicação por LLM antes duplica a
-// informação e vaza valores em prosa. Detector conservador: qualquer token fora
-// do vocabulário de interesse (além de saudação e menção ao tratamento) mantém
-// o answer-first, que segue sendo o caminho certo para perguntas específicas.
-const GENERIC_INTEREST_VOCABULARY = new Set([
-  "ola", "oi", "eae", "hey", "bom", "boa", "dia", "tarde", "noite", "tudo", "bem",
-  "quero", "queria", "gostaria", "quer", "adoraria", "sim", "pode", "claro", "por", "favor", "pfv",
-  "saber", "entender", "enteder", "conhecer", "ver", "escutar", "ouvir",
-  "mais", "um", "uma", "uns", "umas", "pouco", "pouquinho", "melhor",
-  "sobre", "como", "funciona", "seria", "e", "de", "do", "da", "dos", "das", "o", "a", "os", "as", "no", "na",
-  "posso", "consigo", "transformar", "mudar", "melhorar", "arrumar", "meu", "minha", "sorriso", "dente", "dentes",
-  "com", "para", "pra", "tambem", "tbm", "ne",
-  "valor", "valores", "preco", "precos", "custo", "custos", "investimento",
-  "informacao", "informacoes", "detalhe", "detalhes", "duvida", "duvidas",
-  "me", "conta", "conte", "explica", "explicar", "fala", "falar", "mostra", "mostrar",
-  "tenho", "interesse", "interessado", "interessada", "interessei",
-  "esse", "essa", "isso", "este", "esta", "isto", "aqui",
-  "voces", "vcs", "procedimento", "tratamento", "gente",
-  // W3.4 (caso Felipe 19/07): "Ambas" respondendo "quer entender como funciona
-  // ou ver valores?" é interesse genérico nas duas técnicas — direto ao conteúdo.
-  "ambas", "ambos", "duas", "dois", "tecnica", "tecnicas", "opcoes", "opcao",
-]);
-
-export function isGenericTreatmentInterestMessage(message: string, treatment: Treatment): boolean {
-  const normalized = normalizeFreeText(message);
-  if (!normalized) return false;
-  const treatmentTokens = new Set(
-    [treatment.name, ...(treatment.aliases ?? [])]
-      .flatMap((name) => normalizeFreeText(name).split(/\s+/))
-      .filter(Boolean),
-  );
-  return normalized
-    .split(/\s+/)
-    .every((token) => GENERIC_INTEREST_VOCABULARY.has(token) || treatmentTokens.has(token));
-}
-
-// J7 (mapeamento 18/07, caso João Vitor): convite de avaliação/agenda/foto em
-// turnos consecutivos sem reação do lead derruba conversão — "faz o cliente
-// fugir" (validação real). O sistema decide se o turno pode fechar com CTA; a
-// LLM só verbaliza.
-const AGENT_CTA_PHRASES = [
-  "que tal agendar",
-  "que tal agendarmos",
-  "vamos agendar",
-  "podemos agendar",
-  "posso agendar",
-  "quer agendar",
-  "gostaria de agendar",
-  "que tal marcar",
-  "posso ver os horarios",
-  "posso mostrar os horarios",
-  "posso te mostrar os horarios",
-  "ver os horarios disponiveis",
-  "agendar uma avaliacao",
-  "agendarmos uma avaliacao",
-  "marcar uma avaliacao",
-  "marcarmos uma avaliacao",
-  "que tal uma avaliacao",
-  "agendar sua avaliacao",
-  "enviar uma foto",
-  "envie uma foto",
-  "enviar a foto",
-  "me encaminhar uma foto",
-  "encaminhar uma foto",
-  "manda uma foto",
-  "mandar uma foto",
-  "foto do seu sorriso",
-];
-
-function agentMessageEndsWithCta(body: string): boolean {
-  const normalized = normalizeFreeText(body);
-  if (!normalized) return false;
-  return AGENT_CTA_PHRASES.some((phrase) => normalized.includes(phrase));
-}
-
-function leadEngagesWithCta(message: string): boolean {
-  const normalized = normalizeFreeText(message);
-  if (!normalized) return false;
-  const words = new Set(normalized.split(/\s+/));
-  const wordSignals = [
-    "agendar", "agendarmos", "marcar", "marcarmos", "horario", "horarios", "agenda",
-    "sim", "pode", "podemos", "claro", "bora", "vamos", "quando", "foto", "fotos",
-  ];
-  if (wordSignals.some((word) => words.has(word))) return true;
-  const phraseSignals = ["pode ser", "quero sim", "como faco", "como agendo", "to dentro", "tou dentro"];
-  return phraseSignals.some((phrase) => normalized.includes(phrase));
-}
-
-// Turno anterior do agente: percorre o histórico do fim para o início, pula o
-// burst atual do lead e coleta as mensagens de agente/operador até encontrar a
-// mensagem anterior do lead. Operador conta: CTA humano ignorado também não
-// deve ser repetido pela IA.
-export function collectPreviousAgentTurnBodies(
-  history: Pick<Message, "author" | "body">[],
-): string[] {
-  const bodies: string[] = [];
-  for (let i = history.length - 1; i >= 0; i--) {
-    const message = history[i];
-    if (message.author === "lead") {
-      if (bodies.length > 0) break;
-      continue;
-    }
-    if (message.author === "agent" || message.author === "clinic_user") {
-      bodies.push(message.body);
-    }
-  }
-  return bodies;
-}
-
-export function shouldSuppressNextStepCta(params: {
-  previousAgentMessages: string[];
-  currentLeadMessage: string;
-}): boolean {
-  const previousHadCta = params.previousAgentMessages.some(agentMessageEndsWithCta);
-  if (!previousHadCta) return false;
-  return !leadEngagesWithCta(params.currentLeadMessage);
-}
-
-// J8 (teste real 18/07 22:18): no passo de Q&A, o pedido de foto NÃO se acopla
-// a respostas de descoberta ("me mostra as cores") — pergunta é sinal de
-// exploração, não de prontidão. Conteúdo comum segue anexável nos momentos de
-// ritmo (mídia por keyword ou afirmativa curta); a instrução de foto só entra
-// quando o lead sinaliza prontidão com afirmativa curta. Sem prontidão, o Q&A
-// permanece aberto e o passo de foto pede na vez dele (fim dos qaTurns).
-export function canAppendQaFollowUpContent(params: {
-  nextContentIsPhotoInstruction: boolean;
-  keywordMediaMatched: boolean;
-  leadMessage: string;
-}): boolean {
-  if (params.nextContentIsPhotoInstruction) {
-    return isShortAffirmativeReply(params.leadMessage) ||
-      isRemotePreEvaluationRequest(params.leadMessage);
-  }
-  return params.keywordMediaMatched || isShortAffirmativeReply(params.leadMessage);
-}
-
-// J2 (mapeamento 18/07, caso João Vitor): afirmativa curta respondendo a uma
-// oferta aberta do agente é ACEITE da oferta — não saudação nem ack. Sem este
-// guard, o gap de horas marcava a conversa como stale e o "Boa noite pode sim"
-// recebia o starter da Gleice de novo, engolindo o aceite do lead.
-const OPEN_OFFER_PHRASES = [
-  "posso te ajudar",
-  "posso ajudar",
-  "posso te mostrar",
-  "posso te passar",
-  "posso te explicar",
-  "posso te enviar",
-  "quer que eu",
-  "quer entender",
-  "quer saber",
-  "quer ver",
-  "me conta",
-  "gostaria de saber",
-  "gostaria de ver",
-  "gostaria de entender",
-];
-
-const LEAD_GREETING_PREFIX_RE = /^(?:ola|oi|opa|eae|bom dia|boa tarde|boa noite)\b\s*/;
-
-export function isAffirmativeReplyToOpenOffer(params: {
-  lastAgentMessage: string | null | undefined;
-  message: string;
-}): boolean {
-  if (!params.lastAgentMessage) return false;
-  const strippedLeadMessage = normalizeFreeText(params.message).replace(LEAD_GREETING_PREFIX_RE, "").trim();
-  if (!isShortAffirmativeReply(strippedLeadMessage)) return false;
-  if (params.lastAgentMessage.trim().endsWith("?")) return true;
-  const normalizedOffer = normalizeFreeText(params.lastAgentMessage);
-  return OPEN_OFFER_PHRASES.some((phrase) => normalizedOffer.includes(phrase));
-}
-
-// J4 (caso João Vitor): num burst, "20 lentes" seguido de outra pergunta era
-// respondido só pela última mensagem — o valor exato do pacote sumia. Recolhe
-// o burst atual do lead (mensagens após a última resposta do agente/operador),
-// em ordem cronológica, incluindo a mensagem atual.
-export function collectCurrentLeadBurstBodies(
-  history: Pick<Message, "author" | "body">[],
-): string[] {
-  const bodies: string[] = [];
-  for (let i = history.length - 1; i >= 0; i--) {
-    const message = history[i];
-    if (message.author === "lead") {
-      bodies.unshift(message.body);
-      continue;
-    }
-    if (message.author === "agent" || message.author === "clinic_user") break;
-  }
-  return bodies;
-}
-
-// J4: quando o sistema já abriu a resposta com os valores exatos do pacote, a
-// prosa da LLM não pode repetir números — instrução sozinha não segura o modelo
-// (validado em replay 19/07). Remove parágrafos com R$ e os anúncios que os
-// introduziam ("Para 20 lentes, os valores são:") para não sobrar frase órfã.
-export function stripPriceProseWhenSystemQuoted(text: string): string {
-  const kept: string[] = [];
-  for (const paragraph of text.split("\n\n")) {
-    if (/r\$\s?\d/i.test(paragraph)) {
-      if (kept.length > 0 && /:\s*$/.test(kept[kept.length - 1].trim())) kept.pop();
-      continue;
-    }
-    kept.push(paragraph);
-  }
-  while (
-    kept.length > 0 &&
-    /(valor|valores|investimento|pre[çc]o|pre[çc]os|pacote)[^\n]*:\s*$/i.test(kept[kept.length - 1].trim())
-  ) {
-    kept.pop();
-  }
-  return kept.join("\n\n").trim();
-}
-
-// T2 (caso Barbara): criativo de anúncio encaminhado APÓS a saudação virava
-// "foto clínica" e pulava o funil. A proteção certa não é "o agente já falou",
-// e sim "o agente já pediu foto" — antes do pedido, mídia colada num opener de
-// anúncio ainda é criativo.
-const AGENT_PHOTO_REQUEST_RE =
-  /foto\s+(?:do|de)\s+(?:seu\s+)?sorriso|encaminhar\s+uma\s+foto|enviar\s+uma\s+foto|envie\s+uma\s+foto|nos\s+encaminhar\s+uma\s+foto|mandar?\s+uma\s+foto|foto\s+ou\s+(?:um\s+)?video|foto\s+clara\s+ou\s+um\s+video/;
-
-export function hasAgentRequestedPhoto(
-  history: Pick<Message, "author" | "body">[],
-): boolean {
-  return history.some(
-    (message) =>
-      (message.author === "agent" || message.author === "clinic_user") &&
-      AGENT_PHOTO_REQUEST_RE.test(normalizeFreeText(message.body)),
-  );
-}
-
-// J6 (caso João Vitor): "queria ver um pouco do trabalho de vocês" prometia
-// casos e não entregava nada — a seleção de vitrine é do sistema, não da LLM.
-const SHOWCASE_REQUEST_PHRASES = [
-  "ver o trabalho",
-  "ver os trabalhos",
-  "ver trabalhos",
-  "trabalho de voces",
-  "trabalhos de voces",
-  "ver casos",
-  "casos de sucesso",
-  "ver resultados",
-  "ver resultado",
-  "ver algum resultado",
-  "antes e depois",
-  "fotos de resultado",
-  "fotos de resultados",
-  "fotos de casos",
-  "exemplos de resultado",
-  "ver exemplos",
-  "trabalhos anteriores",
-  "trabalhos realizados",
-  "trabalhos ja feitos",
-  "portfolio",
-];
-
-export function isShowcaseRequestText(message: string): boolean {
-  const normalized = normalizeFreeText(message);
-  if (!normalized) return false;
-  return SHOWCASE_REQUEST_PHRASES.some((phrase) => normalized.includes(phrase));
-}
-
-const SHOWCASE_MEDIA_TITLE_RE = /resultado|caso|antes e depois/i;
-
-export function pickShowcaseMedia<T extends { id: string; title: string; treatmentId?: string | null }>(
-  library: T[],
-  treatmentId: string | null,
-  limit = 2,
-): T[] {
-  const candidates = library.filter((item) => SHOWCASE_MEDIA_TITLE_RE.test(item.title));
-  const scoped = treatmentId
-    ? candidates.filter((item) => !item.treatmentId || item.treatmentId === treatmentId)
-    : candidates;
-  return scoped.slice(0, limit);
-}
 
 export function findPipelineTreatmentContextForPriceRequest(params: {
   message: string;
@@ -3593,152 +2903,6 @@ export function findPipelineTreatmentContextForPriceRequest(params: {
   return null;
 }
 
-// Retorna o próximo step do pipeline que requer condução ativa (content, qa, photo).
-// Steps ask_availability / offer_slots / book são documentação para o doutor;
-// o fluxo reativo existente os cobre quando o lead expressa intenção.
-// Exportado: a ação guiada do Inbox usa para posicionar o pipeline no passo certo.
-export function nextActivePipelineStep(
-  steps: PipelineStep[],
-  fromIndex: number,
-  options?: {
-    skipOptionalPhoto?: boolean;
-    skipPhotoInstructionContent?: boolean;
-    conversationHistory?: Pick<Message, "author" | "body">[];
-    mediaTitleById?: Map<string, string>;
-  },
-): { step: PipelineStep; index: number } | null {
-  for (let i = fromIndex; i < steps.length; i++) {
-    const s = steps[i];
-    if (s.type === "photo" && options?.skipOptionalPhoto && !s.required) {
-      continue;
-    }
-    if (s.type === "content" && options?.skipPhotoInstructionContent && isPipelinePhotoInstructionContentStep(s)) {
-      continue;
-    }
-    if (
-      s.type === "content" &&
-      options?.conversationHistory &&
-      hasPipelineContentStepBeenSent(s, options.conversationHistory, options.mediaTitleById)
-    ) {
-      continue;
-    }
-    if (s.type === "content" || s.type === "qa" || s.type === "photo") {
-      return { step: s, index: i };
-    }
-  }
-  return null;
-}
-
-function nextUnsentPipelineContentStep(
-  steps: PipelineStep[],
-  fromIndex: number,
-  conversationHistory: Pick<Message, "author" | "body">[],
-  mediaTitleById?: Map<string, string>,
-): { step: Extract<PipelineStep, { type: "content" }>; index: number } | null {
-  for (let i = fromIndex; i < steps.length; i++) {
-    const step = steps[i];
-    if (step.type === "ask_availability" || step.type === "offer_slots" || step.type === "book") {
-      return null;
-    }
-    if (step.type === "content" && !hasPipelineContentStepBeenSent(step, conversationHistory, mediaTitleById)) {
-      return { step, index: i };
-    }
-  }
-  return null;
-}
-
-function buildPipelineContentReply(step: Extract<PipelineStep, { type: "content" }>): {
-  replyText: string;
-  parts: ResponsePart[];
-  mediaIds: string[];
-} {
-  const parts = buildPipelineContentParts(step.blocks);
-  return {
-    replyText: parts
-      .filter((p): p is { type: "text"; content: string } => p.type === "text")
-      .map((p) => p.content)
-      .join("\n\n"),
-    parts,
-    mediaIds: collectMediaIds(parts),
-  };
-}
-
-export function isEvaluationPriceRequest(message: string): boolean {
-  const normalized = normalizeFreeText(message);
-  if (!normalized.includes("avaliacao")) return false;
-  // W3.1 (caso Lineeh 19/07): o preço perguntado precisa ser DA AVALIAÇÃO.
-  // "Quero valores, formas de pagamento e fazer uma avaliação" é pedido de
-  // preço do TRATAMENTO + intenção de agendar — responder só o sinal de R$ 30
-  // engolia os valores e gerava fricção ("não dá para avaliar por aqui?").
-  return (
-    /\b(?:valor|valores|preco|precos|custo)\s+(?:d[ae]s?\s+|para\s+|pra\s+)?(?:uma\s+|a\s+)?avaliacao\b/.test(normalized) ||
-    /\bquanto\s+(?:custa|cobra|cobram|fica|sai|e)\s+(?:uma\s+|a\s+)?avaliacao\b/.test(normalized) ||
-    /\bavaliacao\s+(?:e\s+)?(?:cobrada?|paga|gratuita|gratis|de\s+graca|custa|tem\s+custo)\b/.test(normalized)
-  );
-}
-
-export function isClinicalTreatmentPlanJudgmentRequest(message: string): boolean {
-  const normalized = normalizeFreeText(message);
-  if (!normalized) return false;
-  const asksCaseSpecificScope = hasAnyKeyword(normalized, [
-    "fechar os espacos",
-    "fechar os espacinhos",
-    "fechar espacos",
-    "fechar espacinhos",
-    "pouca resina",
-    "menos resina",
-    "so resina",
-    "quanto de resina",
-    "quantidade de resina",
-  ]);
-  const combinesProcedures =
-    (normalized.includes("resina") || normalized.includes("lente")) &&
-    normalized.includes("clareamento") &&
-    (message.includes("+") || hasAnyKeyword(normalized, ["junto", "combinar", "combinado", "e clareamento"]));
-  return asksCaseSpecificScope || combinesProcedures;
-}
-
-export function buildEvaluationDepositClarification(
-  depositAmountCents: number,
-  evaluation?: { priceCents: number | null; priceQuotableInChat: boolean } | null,
-): string {
-  const amount = formatBrl(depositAmountCents);
-  const evaluationLine = evaluation?.priceQuotableInChat
-    ? evaluation.priceCents === 0
-      ? "A avaliação não tem custo."
-      : evaluation.priceCents != null
-        ? `A avaliação custa ${formatBrl(evaluation.priceCents)}.`
-        : "O valor da avaliação precisa ser confirmado pela equipe."
-    : "O valor da avaliação precisa ser confirmado pela equipe.";
-  return [
-    evaluationLine,
-    "",
-    `Para reservar o horário da avaliação, a clínica pede um sinal de ${amount}.`,
-    "",
-    "O sinal é separado do valor da avaliação: ele garante a reserva e é abatido do tratamento se você avançar.",
-    "",
-    "Posso te mostrar os horários disponíveis agora?",
-  ].join("\n");
-}
-
-export function contextualizeReplyWhileAwaitingDeposit(
-  replyText: string,
-  slotLabel: string,
-): string {
-  const paragraphs = replyText.trim().split(/\n\s*\n/);
-  while (
-    paragraphs.length > 0 &&
-    /(?:posso|quer|vamos|que tal).*(?:ver|mostrar|buscar|agendar).*(?:horarios?|agenda|avaliacao)/i.test(
-      normalizeFreeText(paragraphs[paragraphs.length - 1]),
-    )
-  ) {
-    paragraphs.pop();
-  }
-  return [
-    paragraphs.join("\n\n").trim(),
-    `Seu horário de ${slotLabel} continua reservado provisoriamente. Para confirmá-lo, envie o comprovante do sinal nesta conversa.`,
-  ].filter(Boolean).join("\n\n");
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -3758,6 +2922,7 @@ export type ConversationAuxiliaryExternalEffect =
 
 export class ConversationOrchestrator {
   private readonly decisionTraceSink: DecisionTraceSink;
+  private readonly responsePlanner: ConversationResponsePlanner;
   private readonly calendarGatewayResolver: typeof resolveCalendarGateway;
   private readonly suppressAuxiliaryExternalEffects: boolean;
   private readonly onAuxiliaryExternalEffect?: (
@@ -3767,7 +2932,6 @@ export class ConversationOrchestrator {
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
-  private responseComposer = new ResponseComposer();
 
   private leadRepo = new DrizzleLeadRepository();
   private conversationRepo = new DrizzleConversationRepository();
@@ -3782,6 +2946,7 @@ export class ConversationOrchestrator {
 
   constructor(deps: {
     decisionTraceSink?: DecisionTraceSink;
+    responsePlanner?: ConversationResponsePlanner;
     calendarGatewayResolver?: typeof resolveCalendarGateway;
     suppressAuxiliaryExternalEffects?: boolean;
     onAuxiliaryExternalEffect?: (
@@ -3790,6 +2955,7 @@ export class ConversationOrchestrator {
     turnCoordinator?: ConversationTurnCoordinator;
   } = {}) {
     this.decisionTraceSink = deps.decisionTraceSink ?? noopDecisionTraceSink;
+    this.responsePlanner = deps.responsePlanner ?? new ConversationResponsePlanner();
     this.calendarGatewayResolver =
       deps.calendarGatewayResolver ?? resolveCalendarGateway;
     this.suppressAuxiliaryExternalEffects =
@@ -3806,6 +2972,75 @@ export class ConversationOrchestrator {
         },
       },
     );
+  }
+
+  private async executeResponsePlan(input: {
+    composerInput: ComposerInput;
+    planInput: Omit<BuildResponsePlanInput, "actionResult">;
+    turnId: string;
+    clinicId: string;
+    conversationId: string;
+    safetyHandoffGuard?: TurnSafetyHandoffGuard;
+    onRequiresHandoff: (reason: string) => Promise<void>;
+  }): Promise<PlannedResponse> {
+    const planned = await this.responsePlanner.execute({
+      composerInput: input.composerInput,
+      planInput: input.planInput,
+    });
+    const traceBase = {
+      turnId: input.turnId,
+      occurredAt: runtimeNow().toISOString(),
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+    };
+
+    await recordDecisionTrace(this.decisionTraceSink, {
+      ...traceBase,
+      stage: "response.plan_built",
+      metadata: {
+        action: planned.plan.action,
+        planVersion: planned.plan.version,
+        allowedPriceCount: planned.plan.allowedPriceCents.length,
+        allowedScheduleFactCount: planned.plan.allowedScheduleFacts.length,
+        allowedMediaCount: planned.plan.allowedMediaIds.length,
+        maxCharacters: planned.plan.maxCharacters,
+        expectedState: planned.plan.expectedState,
+      },
+    });
+    await recordDecisionTrace(this.decisionTraceSink, {
+      ...traceBase,
+      stage: "response.validated",
+      metadata: {
+        action: planned.plan.action,
+        valid: planned.source === "composer",
+        violationCount: planned.violations.length,
+        requiresHandoff: planned.requiresHandoff,
+      },
+    });
+
+    if (planned.source === "deterministic_fallback") {
+      await recordDecisionTrace(this.decisionTraceSink, {
+        ...traceBase,
+        stage: "response.fallback_applied",
+        metadata: {
+          action: planned.plan.action,
+          fallbackReason: planned.fallbackReason,
+          requiresHandoff: planned.requiresHandoff,
+        },
+      });
+    }
+
+    if (planned.requiresHandoff) {
+      if (input.safetyHandoffGuard) {
+        await input.safetyHandoffGuard.applySafetyHandoff(
+          () => input.onRequiresHandoff(RESPONSE_PLAN_ATTENTION_REASON),
+        );
+      } else {
+        await input.onRequiresHandoff(RESPONSE_PLAN_ATTENTION_REASON);
+      }
+    }
+
+    return planned;
   }
 
   private captureAuxiliaryExternalEffect(
@@ -4668,31 +3903,65 @@ export class ConversationOrchestrator {
 
       // IA ativa: foto/vídeo/documento fora de pipeline → responde e pausa para o doutor avaliar
       const mediaHistory = await this.conversationRepo.listMessages(conversation.id);
-      const mediaComposed = await this.responseComposer.compose({
-        actionResult: { type: "media_received", mediaType: inboundMediaType },
-        conversationHistory: mediaHistory,
-        historyWindowMessages: clinic.aiContextWindowMessages,
-        clinic: {
-          name: clinic.name,
-          plan: clinic.plan,
-          specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? null,
-          playbook: editorial?.playbookText ?? null,
-          commercialPolicy: editorial?.commercialPolicy ?? null,
-          installmentTable: null,
-          receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+      const mediaActionResult: ActionResult = {
+        type: "media_received",
+        mediaType: inboundMediaType,
+      };
+      const mediaCommercialPolicy = editorial?.commercialPolicy ?? null;
+      const mediaInstallmentTable = clinic.installmentRates && mediaCommercialPolicy
+        ? buildInstallmentTable(
+            mediaCommercialPolicy,
+            clinic.installmentRates as InstallmentRate[],
+          )
+        : null;
+      const filteredMediaLibrary = filterMediaLibraryForComposer(
+        editorial?.mediaLibrary ?? [],
+        null,
+        mediaActionResult,
+      );
+      const mediaProjection = buildAlignedResponseMediaProjection(filteredMediaLibrary);
+      let responsePlanAttentionReason: string | null = null;
+      const mediaPlanned = await this.executeResponsePlan({
+        composerInput: {
+          actionResult: mediaActionResult,
+          conversationHistory: mediaHistory,
+          historyWindowMessages: clinic.aiContextWindowMessages,
+          clinic: {
+            name: clinic.name,
+            plan: clinic.plan,
+            specialty: editorial?.specialty ?? clinic.specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: mediaCommercialPolicy,
+            mediaLibrary: mediaProjection.composerMediaLibrary,
+            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          },
+          leadName: lead.name,
+          timezone,
+          isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
+          conversationExperience: clinicExperience,
+          conciergeVerbosity: conciergeConfig?.verbosity,
+          conciergeDrive: conciergeConfig?.drive,
+          resumedFromHumanTakeover: false,
         },
-        leadName: lead.name,
-        timezone,
-        isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
-        conversationExperience: clinicExperience,
-        conciergeVerbosity: conciergeConfig?.verbosity,
-        conciergeDrive: conciergeConfig?.drive,
-        resumedFromHumanTakeover: false,
+        planInput: {
+          commercialPolicy: mediaCommercialPolicy,
+          installmentTable: mediaInstallmentTable,
+          allowedMediaIds: mediaProjection.allowedMediaIds,
+          expectedState: "none",
+          maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+        },
+        turnId,
+        clinicId,
+        conversationId: conversation.id,
+        onRequiresHandoff: async (reason) => {
+          responsePlanAttentionReason = reason;
+        },
       });
-      const mediaReplyText = mediaComposed.text;
+      const mediaReplyText = mediaPlanned.response.text;
 
-      const attentionReason = `Lead enviou ${inboundMediaType === "image" ? "foto" : inboundMediaType} para avaliação`;
+      const attentionReason = responsePlanAttentionReason
+        ?? `Lead enviou ${inboundMediaType === "image" ? "foto" : inboundMediaType} para avaliação`;
       const now = runtimeNow();
       const mediaTtl = clinic.mediaTakeoverTtlHours;
       const mediaTakeoverExpiresAt = mediaTtl && mediaTtl > 0
@@ -4705,6 +3974,15 @@ export class ConversationOrchestrator {
         attentionReason,
         updatedAt: now,
       }).where(eq(conversationsTable.id, conversation.id));
+      if (responsePlanAttentionReason) {
+        await this.notifyAttentionNeeded(
+          clinic,
+          channelConfig,
+          phone,
+          lead.name ?? null,
+          responsePlanAttentionReason,
+        );
+      }
 
       // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
       // suprimida quando outra mensagem do lead chegou na janela de burst.
@@ -4747,7 +4025,7 @@ export class ConversationOrchestrator {
           "intent.classified",
           "intent.resolved",
         ],
-      });
+      }, mediaPlanned);
 
       return { replied: true };
       } // end else (não é mídia de anúncio)
@@ -5095,27 +4373,81 @@ export class ConversationOrchestrator {
           await this.stateMachine.invalidate(conversation.id);
           const appt = await this.appointmentRepo.findById(confirmPayload.appointmentId);
           let confirmReplyText: string;
+          let confirmationPlannedResponse: PlannedResponse | undefined;
+          const composeAppointmentConfirmation = async (
+            actionResult: Extract<
+              ActionResult,
+              {
+                type:
+                  | "appointment_confirmation_accepted"
+                  | "appointment_confirmation_rejected";
+              }
+            >,
+          ): Promise<string> => {
+            const commercialPolicy = editorial?.commercialPolicy ?? null;
+            const installmentTable = clinic.installmentRates && commercialPolicy
+              ? buildInstallmentTable(
+                  commercialPolicy,
+                  clinic.installmentRates as InstallmentRate[],
+                )
+              : null;
+            const planned = await this.executeResponsePlan({
+              composerInput: {
+                actionResult,
+                conversationHistory: allMessages,
+                historyWindowMessages: clinic.aiContextWindowMessages,
+                clinic: {
+                  name: clinic.name,
+                  plan: clinic.plan,
+                  specialty: editorial?.specialty ?? clinic.specialty,
+                  toneOfVoice: editorial?.toneOfVoice ?? null,
+                  playbook: editorial?.playbookText ?? null,
+                  commercialPolicy,
+                  receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+                },
+                leadName: extractFirstName(lead.name),
+                timezone,
+                isFirstMessage: false,
+              },
+              planInput: {
+                commercialPolicy,
+                installmentTable,
+                allowedMediaIds: [],
+                expectedState: currentConversationState?.state ?? "none",
+                maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+              },
+              turnId,
+              clinicId,
+              conversationId: conversation.id,
+              onRequiresHandoff: async (reason) => {
+                await db
+                  .update(conversationsTable)
+                  .set({
+                    needsAttention: true,
+                    attentionReason: reason,
+                    updatedAt: runtimeNow(),
+                  })
+                  .where(eq(conversationsTable.id, conversation.id));
+                await this.notifyAttentionNeeded(
+                  clinic,
+                  channelConfig,
+                  phone,
+                  lead.name ?? null,
+                  reason,
+                );
+              },
+            });
+            confirmationPlannedResponse = planned;
+            return planned.response.text;
+          };
           if (confirmationSignal === "yes") {
             if (appt) {
               await this.appointmentRepo.save({ ...appt, status: "confirmed", updatedAt: runtimeNow() });
             }
-            confirmReplyText = await this.responseComposer.compose({
-              actionResult: { type: "appointment_confirmation_accepted", appointmentLabel: confirmPayload.appointmentLabel },
-              conversationHistory: allMessages,
-              historyWindowMessages: clinic.aiContextWindowMessages,
-              clinic: {
-                name: clinic.name,
-                plan: clinic.plan,
-                specialty: editorial?.specialty ?? clinic.specialty,
-                toneOfVoice: editorial?.toneOfVoice ?? null,
-                playbook: editorial?.playbookText ?? null,
-                commercialPolicy: editorial?.commercialPolicy ?? null,
-                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-              },
-              leadName: extractFirstName(lead.name),
-              timezone,
-              isFirstMessage: false,
-            }).then((c) => c.text);
+            confirmReplyText = await composeAppointmentConfirmation({
+              type: "appointment_confirmation_accepted",
+              appointmentLabel: confirmPayload.appointmentLabel,
+            });
           } else {
             if (appt) {
               await this.appointmentRepo.save({ ...appt, status: "cancelled", updatedAt: runtimeNow() });
@@ -5124,23 +4456,9 @@ export class ConversationOrchestrator {
               .update(conversationsTable)
               .set({ aiPaused: true, needsAttention: true, attentionReason: "Lead cancelou a consulta — reagendamento necessário", updatedAt: runtimeNow() })
               .where(eq(conversationsTable.id, conversation.id));
-            confirmReplyText = await this.responseComposer.compose({
-              actionResult: { type: "appointment_confirmation_rejected" },
-              conversationHistory: allMessages,
-              historyWindowMessages: clinic.aiContextWindowMessages,
-              clinic: {
-                name: clinic.name,
-                plan: clinic.plan,
-                specialty: editorial?.specialty ?? clinic.specialty,
-                toneOfVoice: editorial?.toneOfVoice ?? null,
-                playbook: editorial?.playbookText ?? null,
-                commercialPolicy: editorial?.commercialPolicy ?? null,
-                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-              },
-              leadName: extractFirstName(lead.name),
-              timezone,
-              isFirstMessage: false,
-            }).then((c) => c.text);
+            confirmReplyText = await composeAppointmentConfirmation({
+              type: "appointment_confirmation_rejected",
+            });
           }
           const confirmAgentId = randomUUID();
           await this.conversationRepo.appendMessage({
@@ -5173,7 +4491,7 @@ export class ConversationOrchestrator {
             finalIntent: null,
             confidence: 1,
             missingStages: ["intent.classified", "intent.resolved"],
-          });
+          }, confirmationPlannedResponse);
           return { replied: true };
         }
       }
@@ -5236,7 +4554,7 @@ export class ConversationOrchestrator {
     // Medido em produção: o gap p90 entre mensagens consecutivas do mesmo lead é de
     // 17h. Com 4h, 17,2% das respostas de lead eram tratadas como conversa nova e o
     // lead recebia a saudação de abertura no meio do atendimento (a maior causa de
-    // perda de contexto). Ver docs/product/plano-correcao-conversacional.md.
+    // perda de contexto). Ver docs/architecture/current.md.
     const isStaleConversation =
       !isFirstMessage && !isMenuActive && !resetRequested && !menuReRequested && !rescheduleAfterReminder &&
       shouldRestartConversation({
@@ -5811,7 +5129,9 @@ export class ConversationOrchestrator {
     // Helper para compor resposta
     let composedMediaIds: string[] = [];
     let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
+    let plannedResponse: PlannedResponse | undefined;
     let triggerPartsOverride: import("@/core/intelligence/ResponseComposer").ResponsePart[] | null = null;
+    const turnSafetyHandoff = new TurnSafetyHandoffGuard();
     // Avanço de pipeline adiado: executado APÓS todo o conteúdo ser enviado para evitar
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
@@ -5826,7 +5146,7 @@ export class ConversationOrchestrator {
     // P0.6: Fallback para IA indisponível (timeout, OpenAI errors)
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
-      actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
+      actionResult: ComposerInput["actionResult"],
       // Segunda chamada na mesma vez (ex.: oferta de horários após a resposta de
       // preço): a resposta já composta entra no histórico como fala do agente —
       // sem isso o LLM re-responde a última pergunta do lead antes de agir.
@@ -5834,36 +5154,76 @@ export class ConversationOrchestrator {
     ) => {
       try {
         if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
-        const composed = await this.responseComposer.compose({
+        const commercialPolicy = editorial?.commercialPolicy ?? null;
+        const installmentTable = clinic.installmentRates && commercialPolicy
+          ? buildInstallmentTable(commercialPolicy, clinic.installmentRates as InstallmentRate[])
+          : null;
+        const filteredMediaLibrary = filterMediaLibraryForComposer(
+          editorial?.mediaLibrary ?? [],
+          activeTreatmentId,
           actionResult,
-          suppressNextStepCta: ctaSuppressed,
-          conversationHistory: options?.extraHistory
-            ? [...allMessagesForContext, ...options.extraHistory]
-            : allMessagesForContext,
-          historyWindowMessages: clinic.aiContextWindowMessages,
-          clinic: {
-            name: clinic.name,
-            plan: clinic.plan,
-            specialty: editorial?.specialty ?? clinic.specialty,
-            toneOfVoice: editorial?.toneOfVoice ?? null,
-            playbook: editorial?.playbookText ?? null,
-            commercialPolicy: editorial?.commercialPolicy ?? null,
-            installmentTable: clinic.installmentRates && editorial?.commercialPolicy
-              ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
-              : null,
-            mediaLibrary: filterMediaLibraryForComposer(editorial?.mediaLibrary ?? [], activeTreatmentId, actionResult),
-            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+        );
+        const mediaProjection = buildAlignedResponseMediaProjection(filteredMediaLibrary);
+        const planned = await this.executeResponsePlan({
+          composerInput: {
+            actionResult,
+            suppressNextStepCta: ctaSuppressed,
+            conversationHistory: options?.extraHistory
+              ? [...allMessagesForContext, ...options.extraHistory]
+              : allMessagesForContext,
+            historyWindowMessages: clinic.aiContextWindowMessages,
+            clinic: {
+              name: clinic.name,
+              plan: clinic.plan,
+              specialty: editorial?.specialty ?? clinic.specialty,
+              toneOfVoice: editorial?.toneOfVoice ?? null,
+              playbook: editorial?.playbookText ?? null,
+              commercialPolicy,
+              installmentTable,
+              mediaLibrary: mediaProjection.composerMediaLibrary,
+              receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+            },
+            context: promptContext,
+            leadName: extractFirstName(lead.name),
+            timezone,
+            isFirstMessage,
+            conversationExperience: experience,
+            conciergeVerbosity: conciergeConfig?.verbosity,
+            conciergeDrive: conciergeConfig?.drive,
+            resumedFromHumanTakeover,
+            voiceResponseEnabled: voiceEnabled,
           },
-          context: promptContext,
-          leadName: extractFirstName(lead.name),
-          timezone,
-          isFirstMessage,
-          conversationExperience: experience,
-          conciergeVerbosity: conciergeConfig?.verbosity,
-          conciergeDrive: conciergeConfig?.drive,
-          resumedFromHumanTakeover,
-          voiceResponseEnabled: voiceEnabled,
+          planInput: {
+            commercialPolicy,
+            installmentTable,
+            allowedMediaIds: mediaProjection.allowedMediaIds,
+            expectedState: currentConversationState?.state ?? "none",
+            maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+          },
+          turnId,
+          clinicId,
+          conversationId: conversation.id,
+          safetyHandoffGuard: turnSafetyHandoff,
+          onRequiresHandoff: async (reason) => {
+            await db
+              .update(conversationsTable)
+              .set({
+                needsAttention: true,
+                attentionReason: reason,
+                updatedAt: runtimeNow(),
+              })
+              .where(eq(conversationsTable.id, conversation.id));
+            await this.notifyAttentionNeeded(
+              clinic,
+              channelConfig,
+              phone,
+              lead.name ?? null,
+              reason,
+            );
+          },
         });
+        plannedResponse = planned;
+        const composed = planned.response;
         composerInputTokens = composed.inputTokens;
         composerOutputTokens = composed.outputTokens;
         composerModel = composed.model;
@@ -6864,28 +6224,42 @@ export class ConversationOrchestrator {
           });
         }
         const pauseAi = !existingWorkProblem || existingWorkProblem.relationship !== "unknown";
-        await db
-          .update(conversationsTable)
-          .set({
-            aiPaused: pauseAi,
-            takeoverExpiresAt: null, // pausa permanente — operador decide quando retomar
-            needsAttention: true,
-            attentionReason: reason,
-            updatedAt: runtimeNow(),
-          })
-          .where(eq(conversationsTable.id, conversation.id));
-        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, reason);
+        const appliedBusinessHandoff = await turnSafetyHandoff.applyLaterHandoff(async () => {
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: pauseAi,
+              takeoverExpiresAt: null, // pausa permanente — operador decide quando retomar
+              needsAttention: true,
+              attentionReason: reason,
+              updatedAt: runtimeNow(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, reason);
+        });
+        if (!appliedBusinessHandoff) {
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: pauseAi,
+              takeoverExpiresAt: null,
+              updatedAt: runtimeNow(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+        }
         break;
       }
 
       // ── Urgência clínica ──
       case "clinical_urgency": {
         replyText = await compose({ type: "clinical_urgency" });
-        await db
-          .update(conversationsTable)
-          .set({ needsAttention: true, attentionReason: "Urgência clínica relatada pelo lead", updatedAt: runtimeNow() })
-          .where(eq(conversationsTable.id, conversation.id));
-        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Urgência clínica relatada");
+        await turnSafetyHandoff.applyLaterHandoff(async () => {
+          await db
+            .update(conversationsTable)
+            .set({ needsAttention: true, attentionReason: "Urgência clínica relatada pelo lead", updatedAt: runtimeNow() })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Urgência clínica relatada");
+        });
         break;
       }
 
@@ -8140,7 +7514,7 @@ export class ConversationOrchestrator {
         .update(conversationsTable)
         .set({
           consecutiveUnclearCount: newCount,
-          ...(hitThreshold && {
+          ...(hitThreshold && !turnSafetyHandoff.hasSafetyHandoff && {
             needsAttention: true,
             attentionReason: "Lead enviou 3 mensagens sem que a IA conseguisse entender",
           }),
@@ -8149,7 +7523,9 @@ export class ConversationOrchestrator {
         .where(eq(conversationsTable.id, conversation.id));
 
       if (hitThreshold) {
-        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Não conseguiu entender o lead após 3 tentativas");
+        await turnSafetyHandoff.applyLaterHandoff(async () => {
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Não conseguiu entender o lead após 3 tentativas");
+        });
       }
     } else if (resetsClarity && (conversation.consecutiveUnclearCount ?? 0) > 0) {
       await db
@@ -8263,7 +7639,7 @@ export class ConversationOrchestrator {
       mediaParts,
       leadId: lead.id,
       pipelineAdvance: durablePipelineAdvance,
-    });
+    }, undefined, plannedResponse);
     if (durablePipelineAdvance) {
       const applied = await this.applyDurablePipelineAdvance(
         conversation.id,
@@ -8524,6 +7900,7 @@ export class ConversationOrchestrator {
     conversationId: string,
     payload: ConversationOutboundPayload,
     deterministicTrace?: ConversationDeterministicTraceCompletion,
+    plannedResponse?: PlannedResponse,
   ): Promise<void> {
     if (payload.turnId) {
       const stateBeforeDelivery =
@@ -8573,6 +7950,9 @@ export class ConversationOrchestrator {
           useVoice: payload.useVoice,
           interleavedPartCount: payload.interleavedParts.length,
           mediaPartCount: payload.mediaParts.length,
+          ...(plannedResponse
+            ? { responsePlanVersion: plannedResponse.plan.version }
+            : {}),
         },
       });
     }

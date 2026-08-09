@@ -11,6 +11,7 @@ import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { getActivePriceCampaignsByTreatment, effectiveBookableValueCents } from "@/application/config/price-campaigns";
+import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
 
 export default async function AgendaPage({
   searchParams,
@@ -21,22 +22,29 @@ export default async function AgendaPage({
   const clinicId = await getSessionClinicId();
   if (!clinicId) redirect("/login");
 
-  const [professionals, clinicRow, treatments, activeCampaigns, memberProfile] = await Promise.all([
-    getCachedProfessionals(clinicId),
-    db
-      .select({
-        timezone: organizations.timezone,
-        serviceNoun: organizations.serviceNoun,
-        segment: organizations.segment,
-        defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
-      })
-      .from(organizations)
-      .where(eq(organizations.id, clinicId))
-      .limit(1),
-    getCachedTreatmentsForAgenda(clinicId),
-    getActivePriceCampaignsByTreatment(clinicId),
-    getSessionMemberProfile(clinicId),
-  ]);
+  const [professionals, clinicRow, treatments, activeCampaigns, memberProfile] = await measureServerOperation(
+    {
+      clinicId,
+      surface: "agenda",
+      operation: "agenda_bootstrap",
+    },
+    () => Promise.all([
+      getCachedProfessionals(clinicId),
+      db
+        .select({
+          timezone: organizations.timezone,
+          serviceNoun: organizations.serviceNoun,
+          segment: organizations.segment,
+          defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, clinicId))
+        .limit(1),
+      getCachedTreatmentsForAgenda(clinicId),
+      getActivePriceCampaignsByTreatment(clinicId),
+      getSessionMemberProfile(clinicId),
+    ]),
+  );
   const timezone = clinicRow[0]?.timezone ?? "America/Sao_Paulo";
   const serviceNoun = clinicRow[0]?.serviceNoun ?? "tratamento";
   const businessNoun = resolveSegmentVocab(clinicRow[0]?.segment ?? "dental").businessNoun;

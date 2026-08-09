@@ -9,7 +9,7 @@ export type CalendarSlot = {
 
 // Quem produziu o agendamento. `source` não distingue: "app" cobre IA, operador
 // (inbox e agenda) e fluxo de sinal, o que impede medir a conversão de cada um.
-// Ver docs/product/objetividade-conversacional-diagnostico.md §8.
+// Ver docs/architecture/current.md (Agenda).
 export type AppointmentOrigin =
   | "ai_conversation"
   | "operator_inbox"
@@ -38,4 +38,3 @@ export type Appointment = {
   createdAt: Date;
   updatedAt: Date;
 };
-

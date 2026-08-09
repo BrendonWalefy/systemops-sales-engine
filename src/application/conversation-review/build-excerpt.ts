@@ -1,6 +1,6 @@
 /**
  * Build-excerpt: monta um trecho congelado de conversa para a Revisão de
- * Conversas pelo Cliente (docs/product/revisao-conversas-plano.md, seção 7).
+ * Conversas pelo Cliente (feature catalogada em docs/features.md).
  *
  * Regras:
  * - Guarda de tenant: a conversa precisa pertencer à clínica (WHERE escopado).

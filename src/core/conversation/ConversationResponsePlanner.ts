@@ -1,0 +1,119 @@
+import {
+  buildAuthorizedResponsePlan,
+} from "@/core/conversation/response-plan-builder";
+import type {
+  AuthorizedResponsePlan,
+  BuildResponsePlanInput,
+  ResponsePlanViolationCode,
+} from "@/core/conversation/response-plan";
+import { validateComposedResponse } from "@/core/conversation/response-validator";
+import {
+  buildSafeResponseFallback,
+  type SafeResponseFallback,
+} from "@/core/conversation/safe-response-fallback";
+import {
+  ResponseComposer,
+  type ComposedResponse,
+  type ComposerInput,
+} from "@/core/intelligence/ResponseComposer";
+import { isAtypicalClinicalCaseLabel } from "@/core/intelligence/objection-triage";
+
+export type ResponseComposerPort = {
+  compose(input: ComposerInput): Promise<ComposedResponse>;
+};
+
+export type PlannedResponse = {
+  plan: AuthorizedResponsePlan;
+  response: ComposedResponse;
+  source: "composer" | "deterministic_fallback";
+  violations: readonly ResponsePlanViolationCode[];
+  requiresHandoff: boolean;
+  fallbackReason: SafeResponseFallback["reason"] | null;
+};
+
+function snapshotActionResult(
+  actionResult: ComposerInput["actionResult"],
+): ComposerInput["actionResult"] {
+  return structuredClone(actionResult);
+}
+
+export class ConversationResponsePlanner {
+  constructor(private readonly composer: ResponseComposerPort = new ResponseComposer()) {}
+
+  async execute(input: {
+    composerInput: ComposerInput;
+    planInput: Omit<BuildResponsePlanInput, "actionResult">;
+  }): Promise<PlannedResponse> {
+    const actionResult = snapshotActionResult(input.composerInput.actionResult);
+    const plan = buildAuthorizedResponsePlan({
+      ...input.planInput,
+      actionResult,
+    });
+    if (
+      actionResult.type === "clinical_evaluation_required"
+      && !isAtypicalClinicalCaseLabel(actionResult.reason)
+    ) {
+      const fallback = buildSafeResponseFallback({
+        actionResult,
+        plan,
+        reason: "response_plan_violation",
+      });
+      return {
+        plan,
+        response: fallback.response,
+        source: "deterministic_fallback",
+        violations: [],
+        requiresHandoff: fallback.requiresHandoff,
+        fallbackReason: fallback.reason,
+      };
+    }
+
+    let response: ComposedResponse;
+    try {
+      response = await this.composer.compose({
+        ...input.composerInput,
+        actionResult: snapshotActionResult(actionResult),
+      });
+    } catch {
+      const fallback = buildSafeResponseFallback({
+        actionResult,
+        plan,
+        reason: "composer_error",
+      });
+      return {
+        plan,
+        response: fallback.response,
+        source: "deterministic_fallback",
+        violations: [],
+        requiresHandoff: fallback.requiresHandoff,
+        fallbackReason: fallback.reason,
+      };
+    }
+    const validation = validateComposedResponse({ plan, response });
+
+    if (!validation.ok) {
+      const fallback = buildSafeResponseFallback({
+        actionResult,
+        plan,
+        reason: "response_plan_violation",
+      });
+      return {
+        plan,
+        response: fallback.response,
+        source: "deterministic_fallback",
+        violations: validation.violations,
+        requiresHandoff: fallback.requiresHandoff,
+        fallbackReason: fallback.reason,
+      };
+    }
+
+    return {
+      plan,
+      response,
+      source: "composer",
+      violations: [],
+      requiresHandoff: false,
+      fallbackReason: null,
+    };
+  }
+}

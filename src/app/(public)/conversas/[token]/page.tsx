@@ -1,6 +1,6 @@
 /**
  * Página pública de revisão de conversas pelo cliente
- * (docs/product/revisao-conversas-plano.md, seção 6).
+ * Feature catalogada em docs/features.md.
  *
  * Sem login, sem cookie, sem `clinicId`/`reviewId` na URL: a rodada é
  * resolvida apenas pelo hash sha256 do token (rate limit dispensado na v1 —

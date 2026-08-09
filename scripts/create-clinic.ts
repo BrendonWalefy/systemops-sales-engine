@@ -10,7 +10,7 @@
  * Uso:
  *   npx dotenv -e .env.local -- npx tsx scripts/create-clinic.ts ./clinic-nova.json
  *
- * O JSON segue o formato de docs/onboarding-clinica.md. Rodar de novo com o
+ * O fluxo segue docs/operations/onboarding-clinica.md. Rodar de novo com o
  * mesmo slug ATUALIZA a clínica e republica o playbook (não duplica).
  */
 import "dotenv/config";

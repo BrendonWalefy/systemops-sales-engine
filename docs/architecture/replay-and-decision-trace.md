@@ -1,269 +1,199 @@
-# Replay conversacional e Decision Trace
+# Replay e Decision Trace
 
-Este documento define a fronteira arquitetural do mecanismo recorrente de
-validação conversacional. A implementação será incremental; a seção
-“Estado atual” distingue o que já existe do que ainda precisa ser construído.
+O replay valida o motor conversacional real em ambiente isolado. O Decision Trace explica decisões de produção sem armazenar conteúdo sensível.
 
-## Responsabilidades
-
-### SystemOps
-
-O SystemOps é o único dono de:
-
-- execução do motor conversacional real;
-- regras determinísticas e seus identificadores;
-- configuração e playbook ativos por clínica;
-- anonimização e criação do corpus;
-- sandbox sem efeitos externos;
-- `DecisionTrace` e invariantes de domínio.
-
-### OMNIQA
-
-O OMNIQA é um consumidor externo e independente. Ele pode:
-
-- selecionar clínicas, datasets, modos e número de repetições;
-- iniciar execuções pelo adapter seguro do SystemOps;
-- agregar resultados determinísticos;
-- executar LLM Judge e especialistas;
-- comparar baseline e candidato;
-- produzir relatórios HTML/JUnit.
-
-O SystemOps nunca depende do OMNIQA. O OMNIQA nunca replica o orquestrador,
-playbooks ou regras comerciais.
-
-## Contratos versionados
-
-Os contratos neutros vivem em:
-
-- `src/application/replay/contracts.ts`;
-- `src/core/observability/DecisionTrace.ts`.
-
-Versões iniciais:
-
-- `replay-scenario.v1`;
-- `replay-dataset.v2`;
-- `decision-trace.v1`;
-- `replay-result.v1`;
-- `replay-evaluation.v1`.
-
-Mudanças incompatíveis exigem uma nova versão. Um cenário nunca pode conter ID
-real de banco, telefone, nome, e-mail, URL de mídia ou texto não anonimizado.
-
-## Correlação do turno
-
-No fluxo assíncrono principal, `turnId` nasce do `inboundEventId` e acompanha:
+## Hierarquia de evidência e handoff da Fase 2
 
 ```text
-message.process
-  -> ConversationOrchestrator
-  -> ConversationOutboundPayload
-  -> message.send
-  -> SendMessageJobHandler
+Unit/integration green != approved private replay green != Lab validation green.
 ```
 
-Payloads antigos continuam válidos porque `turnId` é opcional e o runtime usa o
-ID operacional anterior como fallback de log.
+Esses níveis não são intercambiáveis. Testes unitários e de integração exercem
+contratos e seams no código; não provam que um dataset privado aprovado passou
+no caminho fiel. Um replay privado só conta depois de usar um dataset
+sanitizado, revisado por humano e assinado, no sandbox isolado. A validação de
+Lab é a execução desse replay com banco isolado, configuração permitida e
+adapters de captura, seguida da revisão operacional exigida. Nesta entrega,
+nenhum replay de golden dataset privado aprovado foi executado e nenhuma
+validação com banco de Lab foi executada.
 
-## Captura
+Não há dataset privado criado ou aprovado a declarar nesta entrega. Quando os
+datasets forem criados e aprovados, o Lab deverá executar — sem transformar as
+famílias em alegações de cobertura já existente — as 12 famílias requeridas:
 
-O runtime agrega os eventos do turno em memória e persiste lotes sanitizados em
-`decision_traces`. Isso acrescenta uma escrita ao fim do processamento e outra
-ao fim da entrega, em vez de uma escrita por estágio. A retenção é de 30 dias e
-o cron diário `/api/cron/decision-trace-cleanup` remove os lotes vencidos.
+1. abertura genérica de anúncio de resina;
+2. pergunta ambígua de preço;
+3. pacote exato e parcelamento;
+4. quantidade/arcada não padrão;
+5. prova, cor e resultado;
+6. foto para pré-avaliação;
+7. data/horário explícito;
+8. slot, sinal e confirmação;
+9. promoção antiga;
+10. manutenção, garantia ou caso atípico;
+11. takeover e continuidade humana;
+12. follow-up seguro.
 
-O estágio `tenant.config_loaded` registra a versão ativa do playbook e o
-`updatedAt` da configuração operacional usada naquele turno. O endpoint autenticado e tenant-scoped
-`GET /api/conversations/:conversationId/decision-trace` permite inspecionar o
-caminho de uma conversa sem expor corpo, prompt, resposta, telefone, nome ou URL.
-Metadados fora da allowlist do sink são descartados antes da persistência.
+Cada família precisa das variações aplicáveis de linguagem, áudio, rajada,
+repetição, troca de assunto e retorno posterior. Os resultados devem manter
+separados os modos `historical_turn`, `closed_loop`, `counterfactual` e
+`concurrency` quando eles forem executados.
 
-Para usar apenas logs efêmeros:
+Antes de qualquer operação de produção ou de cliente, inclusive canal,
+provider, Z-API, WhatsApp ou referência à Ximendes, todos estes stop gates são
+obrigatórios:
+
+1. credenciais prontas, incluindo confirmação de rotação de qualquer token
+   exposto; token presente em screenshot ou histórico nunca é utilizável;
+2. dataset privado sanitizado, revisado, assinado e aprovado;
+3. banco isolado e gates de sandbox aprovados, com efeitos externos somente em
+   adapters de captura;
+4. revisão four-eyes do dataset, do resultado e das configurações usadas;
+5. CI, preview e QA manual verdes antes de qualquer operação de produção ou
+   cliente.
+
+Não houve nesta entrega operação real de cliente, Z-API, provider, Ximendes ou
+WhatsApp, nem deploy.
+
+## Decision Trace
+
+O `turnId` nasce do `inboundEventId` e atravessa:
+
+```text
+message.process -> ConversationOrchestrator -> outbound_messages
+-> message.send -> SendMessageJobHandler
+```
+
+O runtime persiste lotes de metadados sanitizados em `decision_traces` por 30 dias. Nunca inclui mensagem, prompt, resposta, telefone, nome, email ou URL. Falha de observabilidade nunca altera o atendimento.
+
+Modos:
 
 ```bash
-DECISION_TRACE_MODE=structured_log
+DECISION_TRACE_MODE=""               # banco sanitizado, padrão
+DECISION_TRACE_MODE=structured_log   # logs efêmeros
+DECISION_TRACE_MODE=off              # desativado
 ```
 
-Para desligar completamente, use `DECISION_TRACE_MODE=off`. Falha de
-observabilidade nunca altera a decisão nem interrompe o atendimento.
+O endpoint autenticado e tenant-scoped de uma conversa permite inspecionar os estágios permitidos. O cron `decision-trace-cleanup` aplica retenção.
 
-O `InMemoryDecisionTraceSink` continua sendo o destino do replay isolado e dos
-testes; dados sintéticos do replay não são gravados na trilha operacional.
+## Replay fiel
 
-## Privacidade
+Uma execução fiel atravessa o mesmo caminho de produção:
 
-`GET /api/e2e/production-conversations` foi desativado. O endpoint antigo
-devolvia texto e IDs brutos de conversas reais e não deve ser reativado.
+```text
+payload do canal -> webhook -> inbound_events -> jobs
+-> orquestrador + state machine -> outbound_messages -> jobs
+-> sender -> adapters de captura
+```
 
-O exportador substituto deve:
+Somente fronteiras externas são substituídas: WhatsApp, Google Calendar, storage e relógio. O sandbox nunca aponta para produção.
 
-1. rodar internamente e em modo read-only;
-2. exigir allowlist explícita de clínicas;
-3. anonimizar antes de gravar ou transmitir;
-4. substituir IDs reais por hashes opacos;
-5. remover URLs de mídia;
-6. gerar manifesto, checksum e versão do dataset;
-7. gravar artefatos fora do Git;
-8. ter retenção e acesso restritos.
+Critérios completos em [Contrato de fidelidade](replay-fidelity-contract.md).
 
-### Exportador local
+## Dataset e privacidade
 
-O primeiro exportador read-only está disponível por:
+Datasets ficam fora do Git e seguem estes estados:
+
+```text
+export sanitizado -> needs_review -> revisão humana
+-> aprovação Ed25519 -> approved -> replay sandbox
+```
+
+Um cenário não pode conter ID real, telefone, nome, email, credencial, URL de mídia ou texto não anonimizado. A sanitização automática não substitui revisão humana.
+
+### Exportar
 
 ```bash
 npm run replay:export -- \
-  --clinic <slug-da-clinica> \
+  --clinic <slug-autorizado> \
   --dataset-version <versao-imutavel> \
-  --out-dir <caminho-absoluto-fora-de-qualquer-repositorio-git> \
+  --out-dir <diretorio-absoluto-fora-do-git> \
   --limit 50
 ```
 
-Ele exige:
+Variáveis locais obrigatórias:
 
 ```bash
-REPLAY_EXPORT_ALLOWED_CLINICS=slug-explicitamente-autorizado
-REPLAY_EXPORT_HASH_KEY=chave-local-com-pelo-menos-32-caracteres
+REPLAY_EXPORT_ALLOWED_CLINICS=<slugs-autorizados>
+REPLAY_EXPORT_HASH_KEY=<chave-com-32+-caracteres>
 ```
 
-O export:
-
-- consulta apenas tabelas necessárias em modo read-only;
-- inclui a conversa intercalada inteira das conversas selecionadas;
-- preserva offsets e tipo de mídia, sem URL;
-- pseudonimiza IDs por HMAC;
-- gera fingerprints de configuração e playbook;
-- sanitiza padrões conhecidos de PII;
-- grava com permissão `0600` e `flag=wx`, sem sobrescrever baseline;
-- sempre nasce `needs_review`.
-
-`needs_review` não pode ser entregue ao OMNIQA. Mesmo com detecção automática,
-texto livre pode conter um identificador não reconhecido.
-
-Gere uma visão Markdown privada para fazer a revisão cenário a cenário:
+### Revisar e aprovar
 
 ```bash
 npm run replay:review -- \
-  --input /caminho/corpus/clinica.baseline.needs-review.json \
-  --output /caminho/corpus/clinica.baseline.review.md
-```
+  --input /privado/dataset.needs-review.json \
+  --output /privado/dataset.review.md
 
-O relatório inclui o checklist obrigatório e uma confirmação por cenário. Ele
-também fica fora de Git, é criado com permissão `0600` e nunca sobrescreve um
-arquivo existente.
+npm run replay:keys -- --out-dir /privado/replay-keys
 
-### Aprovação assinada
-
-A aprovação não é uma edição manual do JSON. Gere uma vez o par Ed25519 em um
-diretório privado fora de qualquer repositório:
-
-```bash
-npm run replay:keys -- --out-dir /caminho/privado/replay-keys
-```
-
-Depois de revisar manualmente todos os textos e placeholders do arquivo
-`needs-review`, aprove sem sobrescrever a origem:
-
-```bash
 npm run replay:approve -- \
-  --input /caminho/corpus/clinica.baseline.needs-review.json \
-  --output /caminho/corpus/clinica.baseline.approved.json \
-  --private-key /caminho/privado/replay-keys/replay-approval-private.pem \
+  --input /privado/dataset.needs-review.json \
+  --output /privado/dataset.approved.json \
+  --private-key /privado/replay-keys/replay-approval-private.pem \
   --reviewer qa-owner \
   --confirm-reviewed YES
 ```
 
-O arquivo aprovado contém digest da origem, identidade não pessoal do revisor,
-data, ID da chave e assinatura do conteúdo inteiro. Alterar qualquer turno,
-fingerprint ou metadado após a aprovação invalida a assinatura. O OMNIQA recebe
-somente a chave pública confiável.
+Alterar o dataset depois da aprovação invalida digest e assinatura.
 
-Os critérios para chamar uma execução de replay fiel estão em
-[`replay-fidelity-contract.md`](replay-fidelity-contract.md).
-
-## Estado atual
-
-Implementado:
-
-- contratos de cenário/resultado `v1` e dataset assinado `v2`;
-- `turnId` entre ingresso, orquestrador, outbox e sender;
-- sink em memória, persistência sanitizada agregada e log estruturado opt-in;
-- estágios iniciais de ingresso, configuração, planejamento, enqueue e entrega;
-- bloqueio da exportação bruta;
-- exportador read-only com allowlist, pseudonimização, sanitização e saída fora
-  de Git em estado `needs_review`.
-- geração local de chaves Ed25519 e aprovação humana assinada, sem sobrescrita.
-- captura injetável de WhatsApp, TTS, storage, notificações de operador,
-  consulta de foto e escritas de calendário, mantendo sender, persistência
-  multiparte, follow-ups e avanço de pipeline reais;
-- resolvedor de calendário injetável no orquestrador;
-- trace de estado carregado, classificação, intenção final e estado antes/depois
-  da entrega.
-- relógio lógico controlado por `scenario.clock.startedAt`, propagado pela cadeia
-  assíncrona sem alterar o relógio global do processo;
-- fotografia de calendário `replay-calendar-snapshot.v1`, assinada com Ed25519,
-  vinculada à clínica e ao fingerprint e recusada se a consulta sair da faixa;
-- runner `npm run replay:run` que verifica a assinatura do dataset antes de
-  executar cenários/repetições e grava relatório privado fora de repositórios;
-- rota opt-in `/api/e2e/replay/scenario` para `closed_loop` e `concurrency`, que valida
-  fingerprint, atravessa webhook e filas reais, devolve trace/efeitos/checks e
-  remove todos os registros sintéticos ao terminar.
-- plano de execução que mantém turnos comuns sequenciais e reivindica em lote
-  somente rajadas consecutivas do lead dentro da janela de 5 segundos. Resposta
-  histórica de agente/operador encerra a rajada e nunca é reenviada como input.
-- reconciliação automática dos estreitos intervalos entre persistir inbound/
-  outbox e enfileirar seus jobs, com contadores expostos no resultado dos
-  workers.
-
-### Sandbox de execução
-
-A rota de cenário exige a autenticação E2E existente e também:
+### Executar
 
 ```bash
-E2E_MODE=true
-E2E_REPLAY_MODE=true
-REPLAY_SANDBOX_DATABASE_HOST=<host-exato-do-branch-isolado>
-REPLAY_PRODUCTION_DATABASE_HOST=<host-exato-de-producao>
+npm run replay:sandbox -- --output /privado/replay-sandbox.json
+npm run replay:run -- \
+  --dataset /privado/dataset.approved.json \
+  --public-key /privado/replay-keys/replay-approval-public.pem \
+  --endpoint http://127.0.0.1:3000/api/e2e/replay/scenario \
+  --secret <e2e-secret> \
+  --output /privado/replay-result.json
+
+npm run replay:sandbox -- \
+  --delete-branch <branch-id> \
+  --confirm <branch-id>
 ```
 
-Ela não existe fora do modo E2E, recusa Vercel Production, exige que o host
-atual seja exatamente o sandbox declarado e diferente de produção, exige fila
-vazia no início e compara os fingerprints do cenário com a clínica do banco.
-Cada cenário usa contato sintético e limpa lead, conversa, mensagens, estados,
-appointments, reservas, follow-ups, eventos, outbox, jobs e custos gerados.
+O runner rejeita banco de produção, host não local por padrão, assinatura inválida e qualquer efeito externo não capturado.
 
-O runner força a política de automação para `live` somente dentro desse sandbox,
-inclusive quando o snapshot da clínica está em shadow/pausado. Isso testa o
-comportamento que seria ativado sem alterar a configuração copiada. A entrega
-continua atravessando o sender real, mas a boundary marcada como captura sandbox
-substitui os provedores e registra os efeitos. O orquestrador também captura as
-fronteiras auxiliares (rehost, foto do lead, push e WhatsApp do operador), sem
-acessar rede ou storage. Essa exceção não existe no runtime online.
+## Responsabilidades
 
-No runtime online, shadow é estritamente `observation-only`: registra inbound e
-encerra antes de qualquer decisão ou efeito da IA. Áudios são transcritos para
-preservar o corpus, sem autorizar resposta.
+- SystemOps: runtime, regras, config, sanitização, sandbox, traces e invariantes.
+- Ferramenta de QA externa: seleção, repetição, comparação, judges e relatórios.
 
-Clínicas com agenda interna usam a fotografia já presente no banco isolado.
-Clínicas em `google_calendar` podem executar conversas que não consultem agenda;
-qualquer leitura de disponibilidade falha com `calendar_snapshot_required` em
-vez de chamar o Google real.
+O SystemOps não depende de um avaliador externo, e o avaliador não replica o orquestrador.
 
-O branch isolado pode ser criado com expiração automática de 24 horas:
+## Gate de qualidade
 
-```bash
-NEON_API_KEY=... \
-NEON_PROJECT_ID=... \
-NEON_REPLAY_PARENT_BRANCH_ID=... \
-npm run replay:sandbox -- --output /caminho/privado/replay-sandbox.json
-```
+Uma execução deve registrar commit, versão do dataset, fingerprint de configuração, modo, modelos, transcript sanitizado, estados, traces, efeitos capturados e resultado terminal.
 
-O manifesto privado contém a URL do banco e nunca é impresso no terminal. Para
-remoção antecipada, a confirmação precisa repetir o ID exato:
+- invariantes determinísticas passam em 100%;
+- qualidade de LLM é tratada como distribuição em múltiplas execuções;
+- erro de infraestrutura/modelo nunca vira resultado verde;
+- harness que pula webhook, banco, fila, state machine, outbox ou sender é teste parcial, não replay fiel.
 
-```bash
-npm run replay:sandbox -- --delete-branch br-... --confirm br-...
-```
+### Semântica golden, legado e respostas bloqueadas
 
-Ainda não implementado:
+`ReplayGoldenExpectationsV1` é opcional em `ReplayScenarioV1`. Um cenário com
+expectations válidas é golden somente quando os checks de trace obrigatório e
+proibido, estado final, efeitos de outbox e limite de escrita de agenda passam.
+Qualquer check falso faz a execução falhar; erro de infraestrutura ou modelo
+também não pode produzir verde. Cenários sem `expectations` continuam
+executáveis e aparecem como legado para compatibilidade, mas nunca contam como
+golden path.
 
-- modos `historical_turn` e `counterfactual`;
-- baseline das clínicas e relatório comparativo.
+No runtime, validação de resposta e validação de replay têm papéis distintos:
+
+- Bloqueante antes da outbox: o validator rejeita a saída do composer que
+  excede o plano autorizado; a saída rejeitada não é enviada.
+- Fallback controlado: erro do composer ou rejeição do validator tenta cópia
+  determinística baseada no `ActionResult`; essa cópia é validada de novo. Se
+  ainda não for segura, segue cópia neutra com handoff e atenção humana.
+- Bloqueante no Lab: dataset sem aprovação/assinatura, banco não isolado,
+  fingerprint divergente, fila pendente, efeito externo real, trace incompleto
+  ou expectation golden falha impedem resultado fiel verde.
+
+O handoff operacional da Fase 2 não é autorização para executar replay
+privado, usar Lab ou operar clientes. O rollback é por faixas de commits
+independentes: response plan/validator, fallback/planner, trace, golden replay
+e extração de montagem de resposta podem ser revertidos separadamente; não há
+migration nesta fase.

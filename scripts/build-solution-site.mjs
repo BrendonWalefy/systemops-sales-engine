@@ -31,6 +31,7 @@ const REQUIRED_SITE_FILES = [
   "assets/architecture-02.svg",
   "assets/architecture-03.svg",
   "assets/architecture-04.svg",
+  "assets/architecture-05.svg",
 ];
 
 for (const relativePath of REQUIRED_SITE_FILES) {

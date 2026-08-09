@@ -8,25 +8,63 @@
 
 export const DECISION_TRACE_SCHEMA_VERSION = "decision-trace.v1" as const;
 
-export type DecisionTraceStage =
-  | "ingress.received"
-  | "ingress.content_resolved"
-  | "orchestrator.started"
-  | "tenant.config_loaded"
-  | "state.loaded"
-  | "intent.classified"
-  | "intent.resolved"
-  | "treatment.resolved"
-  | "state.before_delivery"
-  | "outbound.planned"
-  | "outbound.enqueued"
-  | "state.pipeline_committed"
-  | "orchestrator.completed"
-  | "delivery.started"
-  | "state.after_delivery"
-  | "delivery.sent"
-  | "turn.ignored"
-  | "turn.failed";
+export const DECISION_TRACE_STAGES = [
+  "ingress.received",
+  "ingress.content_resolved",
+  "orchestrator.started",
+  "tenant.config_loaded",
+  "state.loaded",
+  "intent.classified",
+  "intent.resolved",
+  "treatment.resolved",
+  "response.plan_built",
+  "response.validated",
+  "response.fallback_applied",
+  "state.before_delivery",
+  "outbound.planned",
+  "outbound.enqueued",
+  "state.pipeline_committed",
+  "orchestrator.completed",
+  "delivery.started",
+  "state.after_delivery",
+  "delivery.sent",
+  "turn.ignored",
+  "turn.failed",
+] as const;
+
+export type DecisionTraceStage = typeof DECISION_TRACE_STAGES[number];
+
+const DECISION_TRACE_STAGE_ALLOWLIST = new Set<string>(DECISION_TRACE_STAGES);
+
+export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
+  "response.plan_built": [
+    "action",
+    "planVersion",
+    "allowedPriceCount",
+    "allowedScheduleFactCount",
+    "allowedMediaCount",
+    "maxCharacters",
+    "expectedState",
+  ],
+  "response.validated": [
+    "action",
+    "valid",
+    "violationCount",
+    "requiresHandoff",
+  ],
+  "response.fallback_applied": [
+    "action",
+    "fallbackReason",
+    "requiresHandoff",
+  ],
+} as const satisfies Partial<Record<DecisionTraceStage, readonly string[]>>;
+
+const RESPONSE_DECISION_TRACE_METADATA_KEY_SETS = Object.fromEntries(
+  Object.entries(RESPONSE_DECISION_TRACE_METADATA_KEYS).map(([stage, keys]) => [
+    stage,
+    new Set<string>(keys),
+  ]),
+) as Partial<Record<DecisionTraceStage, ReadonlySet<string>>>;
 
 export type DecisionTraceMetadataValue = string | number | boolean | null;
 export type DecisionTraceMetadata = Readonly<Record<string, DecisionTraceMetadataValue>>;
@@ -69,6 +107,28 @@ export const noopDecisionTraceSink: DecisionTraceSink = {
   },
 };
 
+export function hasResponseDecisionTraceMetadataContract(
+  stage: DecisionTraceStage,
+): boolean {
+  return stage in RESPONSE_DECISION_TRACE_METADATA_KEYS;
+}
+
+export function sanitizeResponseDecisionTraceRecord(
+  record: DecisionTraceRecord,
+): DecisionTraceRecord {
+  const allowedKeys = RESPONSE_DECISION_TRACE_METADATA_KEY_SETS[record.stage];
+  if (!allowedKeys) return record;
+
+  const metadata = Object.fromEntries(
+    Object.entries(record.metadata ?? {}).filter(([key]) => allowedKeys.has(key)),
+  ) as DecisionTraceMetadata;
+
+  return {
+    ...record,
+    ...(Object.keys(metadata).length > 0 ? { metadata } : { metadata: undefined }),
+  };
+}
+
 /**
  * Trace nunca pode interromper o atendimento. Em replay, o sink em memória
  * continua expondo todos os eventos capturados para que ausência de estágio
@@ -78,8 +138,12 @@ export async function recordDecisionTrace(
   sink: DecisionTraceSink | undefined,
   record: DecisionTraceRecord,
 ): Promise<void> {
+  if (!DECISION_TRACE_STAGE_ALLOWLIST.has(record.stage)) return;
+
   try {
-    await (sink ?? noopDecisionTraceSink).record(record);
+    await (sink ?? noopDecisionTraceSink).record(
+      sanitizeResponseDecisionTraceRecord(record),
+    );
   } catch {
     // Observabilidade é best-effort no runtime e não muda decisões de negócio.
   }

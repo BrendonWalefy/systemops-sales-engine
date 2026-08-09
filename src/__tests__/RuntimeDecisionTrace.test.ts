@@ -4,6 +4,11 @@ import {
   sanitizeDecisionTraceRecord,
 } from "@/infrastructure/observability/runtime-decision-trace";
 import type { DecisionTraceBatchStore } from "@/infrastructure/repositories/drizzle-decision-trace-store";
+import type { DecisionTraceMetadata } from "@/core/observability/DecisionTrace";
+
+function traceMetadata(metadata: DecisionTraceMetadata): DecisionTraceMetadata {
+  return metadata;
+}
 
 describe("runtime DecisionTrace", () => {
   it("agrega eventos e persiste somente no fechamento do processamento", async () => {
@@ -82,18 +87,111 @@ describe("runtime DecisionTrace", () => {
       stage: "intent.resolved",
       occurredAt: "2026-07-26T12:00:00.000Z",
       clinicId: "clinic-1",
-      metadata: {
+      metadata: traceMetadata({
         finalIntent: "location",
         phone: "5511999999999",
         messageText: "conteúdo privado",
         prompt: "prompt privado",
-      },
+      }),
     })).toEqual({
       turnId: "turn-1",
       stage: "intent.resolved",
       occurredAt: "2026-07-26T12:00:00.000Z",
       clinicId: "clinic-1",
       metadata: { finalIntent: "location" },
+    });
+  });
+
+  it("preserva somente o código da versão do plano no outbound persistido", () => {
+    expect(sanitizeDecisionTraceRecord({
+      turnId: "turn-planned",
+      stage: "outbound.planned",
+      occurredAt: "2026-08-09T12:00:00.000Z",
+      metadata: traceMetadata({
+        agentMessageId: "agent-1",
+        responsePlanVersion: "response-plan.v1",
+        responseText: "conteúdo privado",
+      }),
+    })).toEqual({
+      turnId: "turn-planned",
+      stage: "outbound.planned",
+      occurredAt: "2026-08-09T12:00:00.000Z",
+      metadata: {
+        agentMessageId: "agent-1",
+        responsePlanVersion: "response-plan.v1",
+      },
+    });
+  });
+
+  it.each([
+    {
+      stage: "response.plan_built" as const,
+      metadata: traceMetadata({
+        action: "price_inquiry",
+        planVersion: "response-plan-v1",
+        allowedPriceCount: 2,
+        allowedScheduleFactCount: 1,
+        allowedMediaCount: 0,
+        maxCharacters: 600,
+        expectedState: "none",
+        responseText: "conteúdo privado",
+      }),
+      expected: {
+        action: "price_inquiry",
+        planVersion: "response-plan-v1",
+        allowedPriceCount: 2,
+        allowedScheduleFactCount: 1,
+        allowedMediaCount: 0,
+        maxCharacters: 600,
+        expectedState: "none",
+      },
+    },
+    {
+      stage: "response.validated" as const,
+      metadata: traceMetadata({
+        action: "price_inquiry",
+        valid: false,
+        violationCount: 2,
+        requiresHandoff: true,
+        policy: "política privada",
+      }),
+      expected: {
+        action: "price_inquiry",
+        valid: false,
+        violationCount: 2,
+        requiresHandoff: true,
+      },
+    },
+    {
+      stage: "response.fallback_applied" as const,
+      metadata: traceMetadata({
+        action: "price_inquiry",
+        fallbackReason: "validation_failed",
+        requiresHandoff: true,
+        mediaId: "asset-secreto",
+        url: "https://private.example/patient",
+      }),
+      expected: {
+        action: "price_inquiry",
+        fallbackReason: "validation_failed",
+        requiresHandoff: true,
+      },
+    },
+  ])("preserva o contrato seguro de $stage na sanitização de produção", ({
+    stage,
+    metadata,
+    expected,
+  }) => {
+    expect(sanitizeDecisionTraceRecord({
+      turnId: "turn-response",
+      stage,
+      occurredAt: "2026-08-09T00:00:00.000Z",
+      metadata,
+    })).toEqual({
+      turnId: "turn-response",
+      stage,
+      occurredAt: "2026-08-09T00:00:00.000Z",
+      metadata: expected,
     });
   });
 

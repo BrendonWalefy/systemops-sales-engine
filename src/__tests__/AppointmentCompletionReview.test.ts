@@ -5,7 +5,7 @@
 // disparou. O lembrete de fim de dia já é entregue há dias — só que ele lista os
 // pendentes e manda abrir o painel, e confirmar exige sair do WhatsApp.
 //
-// Ver docs/product/plano-correcao-conversacional.md item #20, bloqueio 2.
+// Ver docs/architecture/current.md.
 
 import { describe, expect, it } from "vitest";
 import {

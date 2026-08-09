@@ -9,6 +9,23 @@ const base = [
   { turnId: "turn-1", stage: "orchestrator.started" },
 ];
 
+const completeResponsePlanBase = [
+  ...base,
+  { turnId: "turn-1", stage: "state.loaded" },
+  { turnId: "turn-1", stage: "intent.classified" },
+  { turnId: "turn-1", stage: "intent.resolved" },
+  {
+    turnId: "turn-1",
+    stage: "outbound.planned",
+    metadata: { responsePlanVersion: "response-plan.v1" },
+  },
+  {
+    turnId: "turn-1",
+    stage: "orchestrator.completed",
+    metadata: { replied: true },
+  },
+] as const;
+
 describe("ReplayTraceContract", () => {
   it("aceita resposta somente com decisão, outbox e entrega completas", () => {
     expect(isReplayTurnTraceComplete([
@@ -24,6 +41,34 @@ describe("ReplayTraceContract", () => {
       },
       { turnId: "turn-1", stage: "delivery.sent" },
     ], "turn-1")).toBe(true);
+  });
+
+  it("aceita turno composto somente quando o response plan foi construído e validado", () => {
+    expect(isReplayTurnTraceComplete([
+      ...completeResponsePlanBase,
+      { turnId: "turn-1", stage: "response.plan_built" },
+      { turnId: "turn-1", stage: "response.validated" },
+      { turnId: "turn-1", stage: "outbound.enqueued" },
+      { turnId: "turn-1", stage: "delivery.sent" },
+    ], "turn-1")).toBe(true);
+  });
+
+  it("recusa response-plan.v1 sem validação mesmo quando houve entrega", () => {
+    expect(isReplayTurnTraceComplete([
+      ...completeResponsePlanBase,
+      { turnId: "turn-1", stage: "response.plan_built" },
+      { turnId: "turn-1", stage: "outbound.enqueued" },
+      { turnId: "turn-1", stage: "delivery.sent" },
+    ], "turn-1")).toBe(false);
+  });
+
+  it("recusa response-plan.v1 sem construção mesmo quando foi validado e entregue", () => {
+    expect(isReplayTurnTraceComplete([
+      ...completeResponsePlanBase,
+      { turnId: "turn-1", stage: "response.validated" },
+      { turnId: "turn-1", stage: "outbound.enqueued" },
+      { turnId: "turn-1", stage: "delivery.sent" },
+    ], "turn-1")).toBe(false);
   });
 
   it("aceita silêncio intencional somente com turn.ignored e sem entrega", () => {

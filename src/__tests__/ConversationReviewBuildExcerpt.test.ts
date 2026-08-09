@@ -1,6 +1,6 @@
 /**
  * Testes do builder de trechos da Revisão de Conversas pelo Cliente
- * (docs/product/revisao-conversas-plano.md, seções 7 e 8 — PR 1).
+ * (feature catalogada em docs/features.md).
  *
  * Cobertura exigida pelo plano: conversa de outra clínica → erro;
  * anonimização aplicada no snapshot; roles mapeados; `system` descartada;

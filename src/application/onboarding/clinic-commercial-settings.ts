@@ -1,9 +1,9 @@
 export type OrgPlan = "start" | "growth" | "scale" | "enterprise";
 
-// Valores oficiais em docs/product/pricing-strategy.md.
+// Valores canônicos do produto; mantenha-os alinhados com a landing comercial.
 // Mapeamento comercial: essencial = Start, avancado = Growth, rede = Scale
 // (mono-unidade de alto volume — "scale" aqui NÃO significa multi-unidade, ver
-// docs/operations/billing-roadmap.md).
+// billing futuro).
 export const PLAN_PRICE_BRL_CENTS: Record<OrgPlan, number> = {
   start: 130000,
   growth: 210000,
