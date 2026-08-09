@@ -49,6 +49,8 @@ SYSTEMOPS_LAB_CHECK_REMOTE=true npx dotenv -e .env.local -- npx tsx scripts/veri
 
 O primeiro check é local e read-only; `remote_not_connected` nele é aviso porque a consulta remota não foi solicitada. O segundo também é read-only, consulta somente o status da instância e deve retornar conexão ativa. As saídas são JSON e não exibem segredos, apenas `configured: true|false`.
 
+Se o verificador não puder concluir uma leitura local, ele ainda retorna JSON sanitizado com o único reason code operacional allowlisted `readiness_check_failed`; não use mensagens de banco, rede ou provider como reason code e não as registre com credenciais.
+
 ## 8. Send no message until the Phase 2 activation gate
 
 Não envie, responda, dispare teste, campanha ou automação até o gate de ativação da Fase 2 estar formalmente aprovado. Mantenha `autoReplyEnabled=false` e `shadowModeEnabled=false`; a prontidão deste runbook autoriza apenas inbound controlado, nunca automação.

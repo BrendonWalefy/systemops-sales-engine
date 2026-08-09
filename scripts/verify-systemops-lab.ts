@@ -17,6 +17,10 @@ import { eq } from "drizzle-orm";
 
 export type SystemOpsLabReadinessVerifierEnv = Record<string, string | undefined>;
 
+export const SYSTEMOPS_LAB_READINESS_FAILURE_REASON_CODES = [
+  "readiness_check_failed",
+] as const;
+
 type SystemOpsLabReadinessSnapshot = {
   id: string;
   isTest: boolean;
@@ -50,6 +54,25 @@ function reportMissingClinic(): SystemOpsLabReadinessReport {
     readyForAutomation: false,
     blockers: ["target_not_test"],
   };
+}
+
+function writeReadinessFailure(
+  clinicId: string,
+  webhookSecretConfigured: boolean,
+  write: (line: string) => void,
+): void {
+  write(JSON.stringify({
+    clinicId,
+    credentials: { configured: false },
+    webhookSecret: { configured: webhookSecretConfigured },
+    readiness: {
+      readyForControlledInbound: false,
+      readyForAutomation: false,
+      blockers: [],
+    },
+    remote: { checked: false, connected: null, warnings: ["remote_not_connected"] },
+    reasonCodes: SYSTEMOPS_LAB_READINESS_FAILURE_REASON_CODES,
+  }));
 }
 
 export async function runSystemOpsLabReadinessVerifier(
@@ -110,8 +133,25 @@ export async function runSystemOpsLabReadinessVerifier(
   return readiness;
 }
 
+export async function runSystemOpsLabReadinessCommand(
+  env: SystemOpsLabReadinessVerifierEnv,
+  deps: SystemOpsLabReadinessVerifierDependencies,
+): Promise<SystemOpsLabReadinessReport | null> {
+  const clinicId = env.SYSTEMOPS_LAB_CLINIC_ID?.trim() || "unknown";
+  try {
+    return await runSystemOpsLabReadinessVerifier(env, deps);
+  } catch {
+    writeReadinessFailure(
+      clinicId,
+      Boolean(env.ZAPI_WEBHOOK_SECRET?.trim()),
+      deps.write,
+    );
+    return null;
+  }
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  void runSystemOpsLabReadinessVerifier(process.env, {
+  void runSystemOpsLabReadinessCommand(process.env, {
     readSnapshot: async (clinicId) => {
       const row = await db
         .select({
@@ -136,8 +176,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     resolveChannel: resolveChannelConfig,
     getRemoteStatus: getZApiInstanceStatus,
     write: (line) => process.stdout.write(`${line}\n`),
-  }).catch(() => {
-    process.stderr.write("reasonCodes=readiness_check_failed\n");
-    process.exitCode = 1;
+  }).then((readiness) => {
+    if (readiness === null) process.exitCode = 1;
   });
 }

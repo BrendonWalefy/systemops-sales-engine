@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { evaluateSystemOpsLabReadiness } from "@/application/labs/systemops-lab-readiness";
-import { runSystemOpsLabReadinessVerifier } from "../../scripts/verify-systemops-lab";
+import {
+  runSystemOpsLabReadinessCommand,
+  runSystemOpsLabReadinessVerifier,
+} from "../../scripts/verify-systemops-lab";
 
 describe("SystemOps Lab readiness", () => {
   it("is ready for controlled inbound but not automation", () => {
@@ -68,6 +71,7 @@ describe("SystemOps Lab readiness", () => {
 
   it("emits a read-only local report and keeps an unchecked remote status as a warning", async () => {
     const lines: string[] = [];
+    let remoteChecks = 0;
 
     await runSystemOpsLabReadinessVerifier({
       SYSTEMOPS_LAB_CLINIC_ID: "lab-id",
@@ -91,7 +95,10 @@ describe("SystemOps Lab readiness", () => {
         zapi: { instanceId: "instance-1", token: "decrypted-only-in-memory" },
         meta: null,
       }),
-      getRemoteStatus: async () => ({ connected: true, smartphoneConnected: true }),
+      getRemoteStatus: async () => {
+        remoteChecks += 1;
+        return { connected: true, smartphoneConnected: true };
+      },
       write: (line) => lines.push(line),
     });
 
@@ -110,5 +117,38 @@ describe("SystemOps Lab readiness", () => {
         warnings: ["remote_not_connected"],
       },
     });
+    expect(remoteChecks).toBe(0);
+  });
+
+  it("turns an entrypoint exception into a sanitized JSON failure reason", async () => {
+    const lines: string[] = [];
+
+    const result = await runSystemOpsLabReadinessCommand({
+      SYSTEMOPS_LAB_CLINIC_ID: "lab-id",
+      ZAPI_WEBHOOK_SECRET: "secret-not-for-output",
+    }, {
+      readSnapshot: async () => {
+        throw new Error("database rejected secret-not-for-output");
+      },
+      resolveClinicByInstance: async () => "lab-id",
+      resolveChannel: () => ({ provider: "z_api", zapi: null, meta: null }),
+      getRemoteStatus: async () => ({ connected: false, smartphoneConnected: false }),
+      write: (line) => lines.push(line),
+    });
+
+    expect(result).toBeNull();
+    expect(JSON.parse(lines[0] ?? "")).toEqual({
+      clinicId: "lab-id",
+      credentials: { configured: false },
+      webhookSecret: { configured: true },
+      readiness: {
+        readyForControlledInbound: false,
+        readyForAutomation: false,
+        blockers: [],
+      },
+      remote: { checked: false, connected: null, warnings: ["remote_not_connected"] },
+      reasonCodes: ["readiness_check_failed"],
+    });
+    expect(lines.join("\n")).not.toContain("secret-not-for-output");
   });
 });
