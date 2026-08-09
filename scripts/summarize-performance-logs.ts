@@ -9,11 +9,37 @@ function usage(): void {
   console.error("Usage: npm run performance:summary -- <performance-log.jsonl>");
 }
 
-function projectPerformanceSample(entry: unknown): PerformanceSample | null {
-  if (!entry || typeof entry !== "object") return null;
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
 
-  const logEntry = entry as Record<string, unknown>;
-  if (logEntry.msg !== "performance.sample") return null;
+function extractPerformanceLog(entry: unknown): Record<string, unknown> | null {
+  const root = asRecord(entry);
+  if (!root) return null;
+
+  const candidates: Record<string, unknown>[] = [root];
+  const message = root.message;
+  const messageObject = asRecord(message);
+
+  if (messageObject) {
+    candidates.push(messageObject);
+  } else if (typeof message === "string") {
+    try {
+      const parsedMessage = asRecord(JSON.parse(message));
+      if (parsedMessage) candidates.push(parsedMessage);
+    } catch {
+      // A malformed Vercel message envelope is ignored without exposing it.
+    }
+  }
+
+  return candidates.find((candidate) => candidate.msg === "performance.sample") ?? null;
+}
+
+function projectPerformanceSample(entry: unknown): PerformanceSample | null {
+  const logEntry = extractPerformanceLog(entry);
+  if (!logEntry) return null;
 
   try {
     return parsePerformanceSample({

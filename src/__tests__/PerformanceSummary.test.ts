@@ -165,4 +165,46 @@ describe("performance summary", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("accepts only root and allowlisted Vercel message envelopes without exposing envelope data", () => {
+    const directory = mkdtempSync(join(tmpdir(), "performance-summary-envelopes-"));
+    const filePath = join(directory, "samples.jsonl");
+    const sample = {
+      msg: "performance.sample",
+      schemaVersion: 1,
+      source: "client",
+      surface: "inbox_list",
+      operation: "soft_navigation",
+      durationMs: 120,
+      cacheState: "unknown",
+      outcome: "ok",
+    };
+
+    try {
+      writeFileSync(filePath, [
+        JSON.stringify(sample),
+        JSON.stringify({ message: sample, requestId: "wrapped-private-id" }),
+        JSON.stringify({ message: JSON.stringify(sample), query: "private-query" }),
+        JSON.stringify({ message: "not-json", cookie: "private-cookie" }),
+        JSON.stringify({ message: { payload: sample }, authorization: "private-secret" }),
+        JSON.stringify({ payload: sample, headers: "private-headers" }),
+      ].join("\n"));
+
+      const result = spawnSync(
+        process.execPath,
+        ["node_modules/tsx/dist/cli.mjs", "scripts/summarize-performance-logs.ts", filePath],
+        { cwd: process.cwd(), encoding: "utf8" },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("| client|inbox_list|soft_navigation|ok | 3 |");
+      expect(result.stdout).not.toContain("wrapped-private-id");
+      expect(result.stdout).not.toContain("private-query");
+      expect(result.stdout).not.toContain("private-cookie");
+      expect(result.stdout).not.toContain("private-secret");
+      expect(result.stdout).not.toContain("private-headers");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
