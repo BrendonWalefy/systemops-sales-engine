@@ -68,7 +68,7 @@ describe("performance telemetry route", () => {
     expect(mocks.createLogger).not.toHaveBeenCalled();
   });
 
-  it("rejects malformed, unknown-field, and non-client soft-navigation payloads", async () => {
+  it("rejects malformed, unknown-field, and non-client payloads", async () => {
     const malformed = new Request("http://systemops.test/api/telemetry/performance", {
       method: "POST",
       body: "{",
@@ -77,8 +77,17 @@ describe("performance telemetry route", () => {
     expect((await POST(malformed)).status).toBe(400);
     expect((await POST(requestWith({ ...VALID_SAMPLE, pathname: "/app/inbox/private-id" }))).status).toBe(400);
     expect((await POST(requestWith({ ...VALID_SAMPLE, source: "server" }))).status).toBe(400);
-    expect((await POST(requestWith({ ...VALID_SAMPLE, operation: "dashboard_total" }))).status).toBe(400);
     expect(mocks.createLogger).not.toHaveBeenCalled();
+  });
+
+  it("accepts all client operations, including content_ready and app_first_open", async () => {
+    const contentReadySample = { ...VALID_SAMPLE, operation: "content_ready", cacheState: "warm" };
+    const appFirstOpenSample = { ...VALID_SAMPLE, operation: "app_first_open" };
+    const dashboardSample = { ...VALID_SAMPLE, operation: "dashboard_total" };
+
+    expect((await POST(requestWith(contentReadySample))).status).toBe(204);
+    expect((await POST(requestWith(appFirstOpenSample))).status).toBe(204);
+    expect((await POST(requestWith(dashboardSample))).status).toBe(204);
   });
 
   it("logs only the strict sample under the server-resolved clinic id", async () => {
