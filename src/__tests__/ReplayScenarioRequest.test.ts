@@ -134,6 +134,19 @@ describe("assertReplayScenarioRequest", () => {
     expect(request.scenario.expectations).toEqual(expectations());
   });
 
+  it("recusa stage simultaneamente obrigatório e proibido", () => {
+    expect(() => assertReplayScenarioRequest({
+      runId: "run-1234",
+      mode: "closed_loop",
+      scenario: scenario({
+        expectations: expectations({
+          requiredTraceStages: ["response.validated"],
+          forbiddenTraceStages: ["response.validated"],
+        }),
+      }),
+    })).toThrow("Invalid replay golden expectations");
+  });
+
   it.each([
     ["limite mínimo negativo", expectations({ outbound: { minEffects: -1, maxEffects: 1, requiredKinds: [] } })],
     ["limite máximo negativo", expectations({ outbound: { minEffects: 0, maxEffects: -1, requiredKinds: [] } })],

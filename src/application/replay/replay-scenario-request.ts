@@ -87,6 +87,10 @@ function assertReplayGoldenExpectations(
     expectations.schemaVersion !== "replay-golden-expectations.v1" ||
     !isTraceStageList(expectations.requiredTraceStages) ||
     !isTraceStageList(expectations.forbiddenTraceStages) ||
+    hasTraceStageConflict(
+      expectations.requiredTraceStages,
+      expectations.forbiddenTraceStages,
+    ) ||
     !isFinalConversation(expectations.finalConversation) ||
     (expectations.finalState !== null && typeof expectations.finalState !== "string") ||
     !isOutboundExpectation(expectations.outbound) ||
@@ -94,6 +98,14 @@ function assertReplayGoldenExpectations(
   ) {
     throw new Error("Invalid replay golden expectations");
   }
+}
+
+function hasTraceStageConflict(
+  requiredTraceStages: DecisionTraceStage[],
+  forbiddenTraceStages: DecisionTraceStage[],
+): boolean {
+  const forbidden = new Set<DecisionTraceStage>(forbiddenTraceStages);
+  return requiredTraceStages.some((stage) => forbidden.has(stage));
 }
 
 function isTraceStageList(value: unknown): value is DecisionTraceStage[] {
