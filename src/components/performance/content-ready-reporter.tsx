@@ -57,7 +57,7 @@ export function ContentReadyReporter({ surface }: Props) {
     const frame = requestAnimationFrame(() => {
       emitContentReadySample(surface, {
         storage: window.sessionStorage,
-        fetch: globalThis.fetch,
+        fetch: globalThis.fetch.bind(globalThis),
         now: () => performance.now(),
       });
     });
