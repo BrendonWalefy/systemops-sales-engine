@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  ConversationResponsePlanner,
+  type PlannedResponse,
+} from "@/core/conversation/ConversationResponsePlanner";
+import type { BuildResponsePlanInput } from "@/core/conversation/response-plan";
+import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
+import * as orchestratorModule from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type {
   ComposedResponse,
@@ -198,5 +204,194 @@ describe("ConversationResponsePlanner", () => {
     expect(result.source).toBe("composer");
     expect(result.response).toBe(response);
     expect(result.fallbackReason).toBeNull();
+  });
+});
+
+type OrchestratorResponsePlanInput = {
+  composerInput: ComposerInput;
+  planInput: Omit<BuildResponsePlanInput, "actionResult">;
+  turnId: string;
+  clinicId: string;
+  conversationId: string;
+  onRequiresHandoff: (reason: string) => Promise<void>;
+};
+
+type OrchestratorPlannerInternals = {
+  responsePlanner: ConversationResponsePlanner;
+  executeResponsePlan(input: OrchestratorResponsePlanInput): Promise<PlannedResponse>;
+};
+
+describe("ConversationOrchestrator response planner integration", () => {
+  beforeEach(() => {
+    vi.stubEnv("OPENAI_API_KEY", "test-response-planner-key");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("preserva a injeção do planner para todos os caminhos de composição", () => {
+    const responsePlanner = new ConversationResponsePlanner({
+      compose: async () => composed("Resposta autorizada"),
+    });
+    const orchestrator = new orchestratorModule.ConversationOrchestrator({
+      responsePlanner,
+    });
+
+    expect(
+      (orchestrator as unknown as OrchestratorPlannerInternals).responsePlanner,
+    ).toBe(responsePlanner);
+  });
+
+  it("preserva response e registra somente contagens e códigos no caminho válido", async () => {
+    const response = {
+      ...composed("Resposta autorizada"),
+      parts: [
+        { type: "text" as const, content: "Resposta autorizada" },
+        { type: "media" as const, id: "media-allowed" },
+      ],
+      mediaIds: ["media-allowed"],
+      model: "planner-model",
+      inputTokens: 17,
+      outputTokens: 9,
+    };
+    const sink = new InMemoryDecisionTraceSink();
+    const responsePlanner = new ConversationResponsePlanner({ compose: async () => response });
+    const orchestrator = new orchestratorModule.ConversationOrchestrator({
+      decisionTraceSink: sink,
+      responsePlanner,
+    });
+    const internal = orchestrator as unknown as OrchestratorPlannerInternals;
+
+    const planned = await internal.executeResponsePlan({
+      composerInput: validComposerInput,
+      planInput: {
+        commercialPolicy: "Política privada R$ 1.234,00",
+        installmentTable: null,
+        allowedMediaIds: ["media-allowed"],
+        expectedState: "idle",
+        maxCharacters: 600,
+      },
+      turnId: "turn-valid",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      onRequiresHandoff: vi.fn(),
+    });
+
+    expect(planned.response).toBe(response);
+    expect(sink.getEvents("turn-valid")).toEqual([
+      expect.objectContaining({
+        stage: "response.plan_built",
+        metadata: {
+          action: "general_question",
+          planVersion: "response-plan.v1",
+          allowedPriceCount: 1,
+          allowedScheduleFactCount: 0,
+          allowedMediaCount: 1,
+          maxCharacters: 600,
+          expectedState: "idle",
+        },
+      }),
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: {
+          action: "general_question",
+          valid: true,
+          violationCount: 0,
+          requiresHandoff: false,
+        },
+      }),
+    ]);
+  });
+
+  it("aplica fallback, sinaliza atenção e não vaza entradas sensíveis no trace", async () => {
+    const sensitiveProviderText = "provider-private-timeout";
+    const sensitivePolicy = "policy-private R$ 1.234,00";
+    const sensitiveMediaId = "media-private-id";
+    const sink = new InMemoryDecisionTraceSink();
+    const responsePlanner = new ConversationResponsePlanner({
+      compose: async () => composed(`Custa R$ 9.999,00 ${sensitiveProviderText}`),
+    });
+    const orchestrator = new orchestratorModule.ConversationOrchestrator({
+      decisionTraceSink: sink,
+      responsePlanner,
+    });
+    const internal = orchestrator as unknown as OrchestratorPlannerInternals;
+    const onRequiresHandoff = vi.fn(async () => undefined);
+
+    const planned = await internal.executeResponsePlan({
+      composerInput: validComposerInput,
+      planInput: {
+        commercialPolicy: sensitivePolicy,
+        installmentTable: "12x de R$ 102,83",
+        allowedMediaIds: [sensitiveMediaId],
+        expectedState: "awaiting_preference",
+        maxCharacters: 600,
+      },
+      turnId: "turn-fallback",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      onRequiresHandoff,
+    });
+
+    expect(planned).toMatchObject({
+      source: "deterministic_fallback",
+      violations: ["unauthorized_price"],
+      requiresHandoff: true,
+      fallbackReason: "response_plan_violation",
+    });
+    expect(onRequiresHandoff).toHaveBeenCalledOnce();
+    expect(onRequiresHandoff).toHaveBeenCalledWith(
+      "Resposta segura requer revisão humana",
+    );
+    expect(sink.getEvents("turn-fallback").map((event) => ({
+      stage: event.stage,
+      metadata: event.metadata,
+    }))).toEqual([
+      {
+        stage: "response.plan_built",
+        metadata: {
+          action: "general_question",
+          planVersion: "response-plan.v1",
+          allowedPriceCount: 2,
+          allowedScheduleFactCount: 0,
+          allowedMediaCount: 1,
+          maxCharacters: 600,
+          expectedState: "awaiting_preference",
+        },
+      },
+      {
+        stage: "response.validated",
+        metadata: {
+          action: "general_question",
+          valid: false,
+          violationCount: 1,
+          requiresHandoff: true,
+        },
+      },
+      {
+        stage: "response.fallback_applied",
+        metadata: {
+          action: "general_question",
+          fallbackReason: "response_plan_violation",
+          requiresHandoff: true,
+        },
+      },
+    ]);
+    const serializedTrace = JSON.stringify(sink.getEvents("turn-fallback"));
+    expect(serializedTrace).not.toContain(sensitiveProviderText);
+    expect(serializedTrace).not.toContain(sensitivePolicy);
+    expect(serializedTrace).not.toContain(sensitiveMediaId);
+    expect(serializedTrace).not.toContain("9.999");
+    expect(serializedTrace).not.toContain("102,83");
+  });
+
+  it.each([
+    ["concisa", 280],
+    ["equilibrada", 600],
+    ["detalhada", 1_200],
+    [undefined, 600],
+  ] as const)("mapeia verbosidade %s para %i caracteres", (verbosity, expected) => {
+    expect(orchestratorModule.resolveResponseMaxCharacters(verbosity)).toBe(expected);
   });
 });

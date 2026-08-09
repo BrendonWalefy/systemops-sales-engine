@@ -8,25 +8,33 @@
 
 export const DECISION_TRACE_SCHEMA_VERSION = "decision-trace.v1" as const;
 
-export type DecisionTraceStage =
-  | "ingress.received"
-  | "ingress.content_resolved"
-  | "orchestrator.started"
-  | "tenant.config_loaded"
-  | "state.loaded"
-  | "intent.classified"
-  | "intent.resolved"
-  | "treatment.resolved"
-  | "state.before_delivery"
-  | "outbound.planned"
-  | "outbound.enqueued"
-  | "state.pipeline_committed"
-  | "orchestrator.completed"
-  | "delivery.started"
-  | "state.after_delivery"
-  | "delivery.sent"
-  | "turn.ignored"
-  | "turn.failed";
+export const DECISION_TRACE_STAGES = [
+  "ingress.received",
+  "ingress.content_resolved",
+  "orchestrator.started",
+  "tenant.config_loaded",
+  "state.loaded",
+  "intent.classified",
+  "intent.resolved",
+  "treatment.resolved",
+  "response.plan_built",
+  "response.validated",
+  "response.fallback_applied",
+  "state.before_delivery",
+  "outbound.planned",
+  "outbound.enqueued",
+  "state.pipeline_committed",
+  "orchestrator.completed",
+  "delivery.started",
+  "state.after_delivery",
+  "delivery.sent",
+  "turn.ignored",
+  "turn.failed",
+] as const;
+
+export type DecisionTraceStage = typeof DECISION_TRACE_STAGES[number];
+
+const DECISION_TRACE_STAGE_ALLOWLIST = new Set<string>(DECISION_TRACE_STAGES);
 
 export type DecisionTraceMetadataValue = string | number | boolean | null;
 export type DecisionTraceMetadata = Readonly<Record<string, DecisionTraceMetadataValue>>;
@@ -78,6 +86,8 @@ export async function recordDecisionTrace(
   sink: DecisionTraceSink | undefined,
   record: DecisionTraceRecord,
 ): Promise<void> {
+  if (!DECISION_TRACE_STAGE_ALLOWLIST.has(record.stage)) return;
+
   try {
     await (sink ?? noopDecisionTraceSink).record(record);
   } catch {

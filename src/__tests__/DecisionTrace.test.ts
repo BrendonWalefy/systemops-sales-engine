@@ -63,6 +63,46 @@ describe("DecisionTrace", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("registra somente metadados sanitizados de validação", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+
+    await recordDecisionTrace(sink, {
+      turnId: "turn-1",
+      stage: "response.validated",
+      occurredAt: "2026-08-09T00:00:00.000Z",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      metadata: {
+        action: "price_inquiry",
+        valid: false,
+        violationCount: 1,
+        requiresHandoff: true,
+      },
+    });
+
+    expect(sink.getEvents()[0]).toMatchObject({
+      stage: "response.validated",
+      metadata: {
+        action: "price_inquiry",
+        valid: false,
+        violationCount: 1,
+        requiresHandoff: true,
+      },
+    });
+  });
+
+  it("descarta stages fora da allowlist em vez de persistir trace arbitrário", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+
+    await recordDecisionTrace(sink, {
+      turnId: "turn-1",
+      stage: "response.raw_content",
+      occurredAt: "2026-08-09T00:00:00.000Z",
+    } as unknown as Parameters<typeof recordDecisionTrace>[1]);
+
+    expect(sink.getEvents()).toEqual([]);
+  });
+
   it("completa apenas os estágios pulados por uma decisão determinística", async () => {
     const sink = new InMemoryDecisionTraceSink();
 

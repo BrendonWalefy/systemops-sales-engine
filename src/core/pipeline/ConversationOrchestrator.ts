@@ -29,7 +29,12 @@ import { resolveChannelConfig, type ClinicChannelConfig } from "@/infrastructure
 import { fetchAndPersistLeadPhoto } from "@/infrastructure/adapters/channels/whatsapp/lead-photo-service";
 import { createLogger, type Logger } from "@/infrastructure/logging/logger";
 import { ttsConfigFromVoice, DEFAULT_TTS_CONFIG, TTS_SPEED_DEFAULTS, type TtsConfig } from "@/domain/entities/tts-config";
-import type { VoiceElevenLabsConfig, VoiceTtsConfig, ConciergeModeConfig } from "@/application/modules/module-configs";
+import type {
+  VoiceElevenLabsConfig,
+  VoiceTtsConfig,
+  ConciergeModeConfig,
+  ConciergeVerbosity,
+} from "@/application/modules/module-configs";
 import { shouldUseBWaveForMessage, type VoiceMode } from "@/domain/entities/voice-mode";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 
@@ -37,8 +42,16 @@ import { ClinicTimezone, parseBusinessHours, getTimeGreeting } from "@/core/sche
 import type { LocalDateParts, ParsedBusinessHours } from "@/core/scheduling/ClinicTimezone";
 import { ConversationStateMachine, SLOT_OFFER_TTL_MINUTES } from "@/core/conversation/ConversationStateMachine";
 import { IntentClassifier, type IntentType, type SlotPreference } from "@/core/intelligence/IntentClassifier";
-import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
-import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
+import type {
+  ActionResult,
+  ComposerInput,
+  ResponsePart,
+} from "@/core/intelligence/ResponseComposer";
+import {
+  ConversationResponsePlanner,
+  type PlannedResponse,
+} from "@/core/conversation/ConversationResponsePlanner";
+import type { BuildResponsePlanInput } from "@/core/conversation/response-plan";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery, extractQuantity } from "@/core/intelligence/quantity-price";
@@ -147,6 +160,16 @@ type ConversationDeterministicTraceCompletion = Omit<
   DeterministicDecisionTraceCompletion,
   "turnId" | "clinicId" | "conversationId" | "state"
 >;
+
+const RESPONSE_PLAN_ATTENTION_REASON = "Resposta segura requer revisão humana";
+
+export function resolveResponseMaxCharacters(
+  verbosity: ConciergeVerbosity | undefined,
+): number {
+  if (verbosity === "concisa") return 280;
+  if (verbosity === "detalhada") return 1_200;
+  return 600;
+}
 
 export function resolveVoiceOutputFlags(params: {
   hasElevenLabsModule: boolean;
@@ -3711,6 +3734,7 @@ export type ConversationAuxiliaryExternalEffect =
 
 export class ConversationOrchestrator {
   private readonly decisionTraceSink: DecisionTraceSink;
+  private readonly responsePlanner: ConversationResponsePlanner;
   private readonly calendarGatewayResolver: typeof resolveCalendarGateway;
   private readonly suppressAuxiliaryExternalEffects: boolean;
   private readonly onAuxiliaryExternalEffect?: (
@@ -3720,7 +3744,6 @@ export class ConversationOrchestrator {
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
-  private responseComposer = new ResponseComposer();
 
   private leadRepo = new DrizzleLeadRepository();
   private conversationRepo = new DrizzleConversationRepository();
@@ -3735,6 +3758,7 @@ export class ConversationOrchestrator {
 
   constructor(deps: {
     decisionTraceSink?: DecisionTraceSink;
+    responsePlanner?: ConversationResponsePlanner;
     calendarGatewayResolver?: typeof resolveCalendarGateway;
     suppressAuxiliaryExternalEffects?: boolean;
     onAuxiliaryExternalEffect?: (
@@ -3743,6 +3767,7 @@ export class ConversationOrchestrator {
     turnCoordinator?: ConversationTurnCoordinator;
   } = {}) {
     this.decisionTraceSink = deps.decisionTraceSink ?? noopDecisionTraceSink;
+    this.responsePlanner = deps.responsePlanner ?? new ConversationResponsePlanner();
     this.calendarGatewayResolver =
       deps.calendarGatewayResolver ?? resolveCalendarGateway;
     this.suppressAuxiliaryExternalEffects =
@@ -3759,6 +3784,68 @@ export class ConversationOrchestrator {
         },
       },
     );
+  }
+
+  private async executeResponsePlan(input: {
+    composerInput: ComposerInput;
+    planInput: Omit<BuildResponsePlanInput, "actionResult">;
+    turnId: string;
+    clinicId: string;
+    conversationId: string;
+    onRequiresHandoff: (reason: string) => Promise<void>;
+  }): Promise<PlannedResponse> {
+    const planned = await this.responsePlanner.execute({
+      composerInput: input.composerInput,
+      planInput: input.planInput,
+    });
+    const traceBase = {
+      turnId: input.turnId,
+      occurredAt: runtimeNow().toISOString(),
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+    };
+
+    await recordDecisionTrace(this.decisionTraceSink, {
+      ...traceBase,
+      stage: "response.plan_built",
+      metadata: {
+        action: planned.plan.action,
+        planVersion: planned.plan.version,
+        allowedPriceCount: planned.plan.allowedPriceCents.length,
+        allowedScheduleFactCount: planned.plan.allowedScheduleFacts.length,
+        allowedMediaCount: planned.plan.allowedMediaIds.length,
+        maxCharacters: planned.plan.maxCharacters,
+        expectedState: planned.plan.expectedState,
+      },
+    });
+    await recordDecisionTrace(this.decisionTraceSink, {
+      ...traceBase,
+      stage: "response.validated",
+      metadata: {
+        action: planned.plan.action,
+        valid: planned.source === "composer",
+        violationCount: planned.violations.length,
+        requiresHandoff: planned.requiresHandoff,
+      },
+    });
+
+    if (planned.source === "deterministic_fallback") {
+      await recordDecisionTrace(this.decisionTraceSink, {
+        ...traceBase,
+        stage: "response.fallback_applied",
+        metadata: {
+          action: planned.plan.action,
+          fallbackReason: planned.fallbackReason,
+          requiresHandoff: planned.requiresHandoff,
+        },
+      });
+    }
+
+    if (planned.requiresHandoff) {
+      await input.onRequiresHandoff(RESPONSE_PLAN_ATTENTION_REASON);
+    }
+
+    return planned;
   }
 
   private captureAuxiliaryExternalEffect(
@@ -4621,31 +4708,63 @@ export class ConversationOrchestrator {
 
       // IA ativa: foto/vídeo/documento fora de pipeline → responde e pausa para o doutor avaliar
       const mediaHistory = await this.conversationRepo.listMessages(conversation.id);
-      const mediaComposed = await this.responseComposer.compose({
-        actionResult: { type: "media_received", mediaType: inboundMediaType },
-        conversationHistory: mediaHistory,
-        historyWindowMessages: clinic.aiContextWindowMessages,
-        clinic: {
-          name: clinic.name,
-          plan: clinic.plan,
-          specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? null,
-          playbook: editorial?.playbookText ?? null,
-          commercialPolicy: editorial?.commercialPolicy ?? null,
-          installmentTable: null,
-          receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+      const mediaActionResult: ActionResult = {
+        type: "media_received",
+        mediaType: inboundMediaType,
+      };
+      const mediaCommercialPolicy = editorial?.commercialPolicy ?? null;
+      const mediaInstallmentTable = clinic.installmentRates && mediaCommercialPolicy
+        ? buildInstallmentTable(
+            mediaCommercialPolicy,
+            clinic.installmentRates as InstallmentRate[],
+          )
+        : null;
+      const filteredMediaLibrary = filterMediaLibraryForComposer(
+        editorial?.mediaLibrary ?? [],
+        null,
+        mediaActionResult,
+      );
+      let responsePlanAttentionReason: string | null = null;
+      const mediaPlanned = await this.executeResponsePlan({
+        composerInput: {
+          actionResult: mediaActionResult,
+          conversationHistory: mediaHistory,
+          historyWindowMessages: clinic.aiContextWindowMessages,
+          clinic: {
+            name: clinic.name,
+            plan: clinic.plan,
+            specialty: editorial?.specialty ?? clinic.specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: mediaCommercialPolicy,
+            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          },
+          leadName: lead.name,
+          timezone,
+          isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
+          conversationExperience: clinicExperience,
+          conciergeVerbosity: conciergeConfig?.verbosity,
+          conciergeDrive: conciergeConfig?.drive,
+          resumedFromHumanTakeover: false,
         },
-        leadName: lead.name,
-        timezone,
-        isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
-        conversationExperience: clinicExperience,
-        conciergeVerbosity: conciergeConfig?.verbosity,
-        conciergeDrive: conciergeConfig?.drive,
-        resumedFromHumanTakeover: false,
+        planInput: {
+          commercialPolicy: mediaCommercialPolicy,
+          installmentTable: mediaInstallmentTable,
+          allowedMediaIds: filteredMediaLibrary.map((media) => media.id),
+          expectedState: "none",
+          maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+        },
+        turnId,
+        clinicId,
+        conversationId: conversation.id,
+        onRequiresHandoff: async (reason) => {
+          responsePlanAttentionReason = reason;
+        },
       });
-      const mediaReplyText = mediaComposed.text;
+      const mediaReplyText = mediaPlanned.response.text;
 
-      const attentionReason = `Lead enviou ${inboundMediaType === "image" ? "foto" : inboundMediaType} para avaliação`;
+      const attentionReason = responsePlanAttentionReason
+        ?? `Lead enviou ${inboundMediaType === "image" ? "foto" : inboundMediaType} para avaliação`;
       const now = runtimeNow();
       const mediaTtl = clinic.mediaTakeoverTtlHours;
       const mediaTakeoverExpiresAt = mediaTtl && mediaTtl > 0
@@ -4658,6 +4777,15 @@ export class ConversationOrchestrator {
         attentionReason,
         updatedAt: now,
       }).where(eq(conversationsTable.id, conversation.id));
+      if (responsePlanAttentionReason) {
+        await this.notifyAttentionNeeded(
+          clinic,
+          channelConfig,
+          phone,
+          lead.name ?? null,
+          responsePlanAttentionReason,
+        );
+      }
 
       // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
       // suprimida quando outra mensagem do lead chegou na janela de burst.
@@ -5048,27 +5176,79 @@ export class ConversationOrchestrator {
           await this.stateMachine.invalidate(conversation.id);
           const appt = await this.appointmentRepo.findById(confirmPayload.appointmentId);
           let confirmReplyText: string;
+          const composeAppointmentConfirmation = async (
+            actionResult: Extract<
+              ActionResult,
+              {
+                type:
+                  | "appointment_confirmation_accepted"
+                  | "appointment_confirmation_rejected";
+              }
+            >,
+          ): Promise<string> => {
+            const commercialPolicy = editorial?.commercialPolicy ?? null;
+            const installmentTable = clinic.installmentRates && commercialPolicy
+              ? buildInstallmentTable(
+                  commercialPolicy,
+                  clinic.installmentRates as InstallmentRate[],
+                )
+              : null;
+            const planned = await this.executeResponsePlan({
+              composerInput: {
+                actionResult,
+                conversationHistory: allMessages,
+                historyWindowMessages: clinic.aiContextWindowMessages,
+                clinic: {
+                  name: clinic.name,
+                  plan: clinic.plan,
+                  specialty: editorial?.specialty ?? clinic.specialty,
+                  toneOfVoice: editorial?.toneOfVoice ?? null,
+                  playbook: editorial?.playbookText ?? null,
+                  commercialPolicy,
+                  receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+                },
+                leadName: extractFirstName(lead.name),
+                timezone,
+                isFirstMessage: false,
+              },
+              planInput: {
+                commercialPolicy,
+                installmentTable,
+                allowedMediaIds: [],
+                expectedState: currentConversationState?.state ?? "none",
+                maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+              },
+              turnId,
+              clinicId,
+              conversationId: conversation.id,
+              onRequiresHandoff: async (reason) => {
+                await db
+                  .update(conversationsTable)
+                  .set({
+                    needsAttention: true,
+                    attentionReason: reason,
+                    updatedAt: runtimeNow(),
+                  })
+                  .where(eq(conversationsTable.id, conversation.id));
+                await this.notifyAttentionNeeded(
+                  clinic,
+                  channelConfig,
+                  phone,
+                  lead.name ?? null,
+                  reason,
+                );
+              },
+            });
+            return planned.response.text;
+          };
           if (confirmationSignal === "yes") {
             if (appt) {
               await this.appointmentRepo.save({ ...appt, status: "confirmed", updatedAt: runtimeNow() });
             }
-            confirmReplyText = await this.responseComposer.compose({
-              actionResult: { type: "appointment_confirmation_accepted", appointmentLabel: confirmPayload.appointmentLabel },
-              conversationHistory: allMessages,
-              historyWindowMessages: clinic.aiContextWindowMessages,
-              clinic: {
-                name: clinic.name,
-                plan: clinic.plan,
-                specialty: editorial?.specialty ?? clinic.specialty,
-                toneOfVoice: editorial?.toneOfVoice ?? null,
-                playbook: editorial?.playbookText ?? null,
-                commercialPolicy: editorial?.commercialPolicy ?? null,
-                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-              },
-              leadName: extractFirstName(lead.name),
-              timezone,
-              isFirstMessage: false,
-            }).then((c) => c.text);
+            confirmReplyText = await composeAppointmentConfirmation({
+              type: "appointment_confirmation_accepted",
+              appointmentLabel: confirmPayload.appointmentLabel,
+            });
           } else {
             if (appt) {
               await this.appointmentRepo.save({ ...appt, status: "cancelled", updatedAt: runtimeNow() });
@@ -5077,23 +5257,9 @@ export class ConversationOrchestrator {
               .update(conversationsTable)
               .set({ aiPaused: true, needsAttention: true, attentionReason: "Lead cancelou a consulta — reagendamento necessário", updatedAt: runtimeNow() })
               .where(eq(conversationsTable.id, conversation.id));
-            confirmReplyText = await this.responseComposer.compose({
-              actionResult: { type: "appointment_confirmation_rejected" },
-              conversationHistory: allMessages,
-              historyWindowMessages: clinic.aiContextWindowMessages,
-              clinic: {
-                name: clinic.name,
-                plan: clinic.plan,
-                specialty: editorial?.specialty ?? clinic.specialty,
-                toneOfVoice: editorial?.toneOfVoice ?? null,
-                playbook: editorial?.playbookText ?? null,
-                commercialPolicy: editorial?.commercialPolicy ?? null,
-                receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-              },
-              leadName: extractFirstName(lead.name),
-              timezone,
-              isFirstMessage: false,
-            }).then((c) => c.text);
+            confirmReplyText = await composeAppointmentConfirmation({
+              type: "appointment_confirmation_rejected",
+            });
           }
           const confirmAgentId = randomUUID();
           await this.conversationRepo.appendMessage({
@@ -5765,6 +5931,7 @@ export class ConversationOrchestrator {
     let composedMediaIds: string[] = [];
     let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
     let triggerPartsOverride: import("@/core/intelligence/ResponseComposer").ResponsePart[] | null = null;
+    let responsePlanHandoffHandled = false;
     // Avanço de pipeline adiado: executado APÓS todo o conteúdo ser enviado para evitar
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
@@ -5779,7 +5946,7 @@ export class ConversationOrchestrator {
     // P0.6: Fallback para IA indisponível (timeout, OpenAI errors)
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
-      actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"],
+      actionResult: ComposerInput["actionResult"],
       // Segunda chamada na mesma vez (ex.: oferta de horários após a resposta de
       // preço): a resposta já composta entra no histórico como fala do agente —
       // sem isso o LLM re-responde a última pergunta do lead antes de agir.
@@ -5787,36 +5954,75 @@ export class ConversationOrchestrator {
     ) => {
       try {
         if (shouldForceTextOnlyForActionResult(actionResult)) forceTextOnlyReply = true;
-        const composed = await this.responseComposer.compose({
+        const commercialPolicy = editorial?.commercialPolicy ?? null;
+        const installmentTable = clinic.installmentRates && commercialPolicy
+          ? buildInstallmentTable(commercialPolicy, clinic.installmentRates as InstallmentRate[])
+          : null;
+        const filteredMediaLibrary = filterMediaLibraryForComposer(
+          editorial?.mediaLibrary ?? [],
+          activeTreatmentId,
           actionResult,
-          suppressNextStepCta: ctaSuppressed,
-          conversationHistory: options?.extraHistory
-            ? [...allMessagesForContext, ...options.extraHistory]
-            : allMessagesForContext,
-          historyWindowMessages: clinic.aiContextWindowMessages,
-          clinic: {
-            name: clinic.name,
-            plan: clinic.plan,
-            specialty: editorial?.specialty ?? clinic.specialty,
-            toneOfVoice: editorial?.toneOfVoice ?? null,
-            playbook: editorial?.playbookText ?? null,
-            commercialPolicy: editorial?.commercialPolicy ?? null,
-            installmentTable: clinic.installmentRates && editorial?.commercialPolicy
-              ? buildInstallmentTable(editorial.commercialPolicy, clinic.installmentRates as InstallmentRate[])
-              : null,
-            mediaLibrary: filterMediaLibraryForComposer(editorial?.mediaLibrary ?? [], activeTreatmentId, actionResult),
-            receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+        );
+        const planned = await this.executeResponsePlan({
+          composerInput: {
+            actionResult,
+            suppressNextStepCta: ctaSuppressed,
+            conversationHistory: options?.extraHistory
+              ? [...allMessagesForContext, ...options.extraHistory]
+              : allMessagesForContext,
+            historyWindowMessages: clinic.aiContextWindowMessages,
+            clinic: {
+              name: clinic.name,
+              plan: clinic.plan,
+              specialty: editorial?.specialty ?? clinic.specialty,
+              toneOfVoice: editorial?.toneOfVoice ?? null,
+              playbook: editorial?.playbookText ?? null,
+              commercialPolicy,
+              installmentTable,
+              mediaLibrary: filteredMediaLibrary,
+              receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+            },
+            context: promptContext,
+            leadName: extractFirstName(lead.name),
+            timezone,
+            isFirstMessage,
+            conversationExperience: experience,
+            conciergeVerbosity: conciergeConfig?.verbosity,
+            conciergeDrive: conciergeConfig?.drive,
+            resumedFromHumanTakeover,
+            voiceResponseEnabled: voiceEnabled,
           },
-          context: promptContext,
-          leadName: extractFirstName(lead.name),
-          timezone,
-          isFirstMessage,
-          conversationExperience: experience,
-          conciergeVerbosity: conciergeConfig?.verbosity,
-          conciergeDrive: conciergeConfig?.drive,
-          resumedFromHumanTakeover,
-          voiceResponseEnabled: voiceEnabled,
+          planInput: {
+            commercialPolicy,
+            installmentTable,
+            allowedMediaIds: filteredMediaLibrary.map((media) => media.id),
+            expectedState: currentConversationState?.state ?? "none",
+            maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+          },
+          turnId,
+          clinicId,
+          conversationId: conversation.id,
+          onRequiresHandoff: async (reason) => {
+            if (responsePlanHandoffHandled) return;
+            await db
+              .update(conversationsTable)
+              .set({
+                needsAttention: true,
+                attentionReason: reason,
+                updatedAt: runtimeNow(),
+              })
+              .where(eq(conversationsTable.id, conversation.id));
+            await this.notifyAttentionNeeded(
+              clinic,
+              channelConfig,
+              phone,
+              lead.name ?? null,
+              reason,
+            );
+            responsePlanHandoffHandled = true;
+          },
         });
+        const composed = planned.response;
         composerInputTokens = composed.inputTokens;
         composerOutputTokens = composed.outputTokens;
         composerModel = composed.model;
