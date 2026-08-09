@@ -174,7 +174,11 @@ Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Add the reporter component**
 
-Create `src/components/performance/content-ready-reporter.tsx`. It renders nothing and fires once per mount, after paint, so it measures data-painted rather than route-changed. It reuses the existing `MAX_CLIENT_SAMPLES_PER_SESSION` budget enforced by the telemetry route.
+Create `src/components/performance/content-ready-reporter.tsx`. It renders nothing and fires once per mount, after paint, so it measures data-painted rather than route-changed.
+
+**Correction to an earlier draft of this plan:** `MAX_CLIENT_SAMPLES_PER_SESSION` is **not** enforced by the ingest route. The only enforcement is client-side, in `src/components/performance/navigation-performance-reporter.tsx:54`, using a `sessionStorage` counter. The new reporter must carry the same guard — mirror that component's counter rather than inventing a second scheme, and share the counter key with it so the two reporters draw on one budget instead of two.
+
+The ingest route keeps an explicit allowlist of operations a client is permitted to submit. Add `content_ready` and `app_first_open` to that allowlist; do not remove the check. Operations such as `dashboard_total`, `shell_context`, `inbox_base_query`, `inbox_enrichment_query`, `inbox_total`, `conversation_total` and `agenda_bootstrap` are produced only by `measureServerOperation` with `source: "server"`, and a client-tagged payload claiming them must still be rejected.
 
 ```tsx
 "use client";
