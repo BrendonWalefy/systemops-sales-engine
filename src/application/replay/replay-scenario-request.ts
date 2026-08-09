@@ -1,9 +1,18 @@
 import type {
+  ReplayGoldenExpectationsV1,
   ReplayScenarioMode,
   ReplayScenarioV1,
   ReplayCalendarSnapshotV1,
 } from "@/application/replay/contracts";
+import { REPLAY_GOLDEN_OUTBOUND_KINDS } from "@/application/replay/contracts";
 import { buildReplayExecutionGroups } from "@/application/replay/replay-execution-plan";
+import {
+  DECISION_TRACE_STAGES,
+  type DecisionTraceStage,
+} from "@/core/observability/DecisionTrace";
+
+const decisionTraceStages = new Set<string>(DECISION_TRACE_STAGES);
+const replayOutboundKinds = new Set<string>(REPLAY_GOLDEN_OUTBOUND_KINDS);
 
 export type ExecutableReplayScenarioMode = Extract<
   ReplayScenarioMode,
@@ -59,6 +68,77 @@ export function assertReplayScenarioRequest(
   ) {
     throw new Error("Concurrency replay requires a consecutive lead burst");
   }
+  if (input.scenario.expectations !== undefined) {
+    assertReplayGoldenExpectations(input.scenario.expectations);
+  }
 
   return input as ReplayScenarioRequest;
+}
+
+function assertReplayGoldenExpectations(
+  value: unknown,
+): asserts value is ReplayGoldenExpectationsV1 {
+  if (!value || typeof value !== "object") {
+    throw new Error("Invalid replay golden expectations");
+  }
+
+  const expectations = value as Partial<ReplayGoldenExpectationsV1>;
+  if (
+    expectations.schemaVersion !== "replay-golden-expectations.v1" ||
+    !isTraceStageList(expectations.requiredTraceStages) ||
+    !isTraceStageList(expectations.forbiddenTraceStages) ||
+    !isFinalConversation(expectations.finalConversation) ||
+    (expectations.finalState !== null && typeof expectations.finalState !== "string") ||
+    !isOutboundExpectation(expectations.outbound) ||
+    !isCalendarExpectation(expectations.calendar)
+  ) {
+    throw new Error("Invalid replay golden expectations");
+  }
+}
+
+function isTraceStageList(value: unknown): value is DecisionTraceStage[] {
+  return Array.isArray(value) && value.every(
+    (stage) => typeof stage === "string" && decisionTraceStages.has(stage),
+  );
+}
+
+function isFinalConversation(
+  value: unknown,
+): value is ReplayGoldenExpectationsV1["finalConversation"] {
+  if (!value || typeof value !== "object") return false;
+  const finalConversation = value as Record<string, unknown>;
+  return isBooleanOrNull(finalConversation.aiPaused) &&
+    isBooleanOrNull(finalConversation.needsAttention);
+}
+
+function isOutboundExpectation(
+  value: unknown,
+): value is ReplayGoldenExpectationsV1["outbound"] {
+  if (!value || typeof value !== "object") return false;
+  const outbound = value as Record<string, unknown>;
+  return isNonNegativeInteger(outbound.minEffects) &&
+    isNonNegativeInteger(outbound.maxEffects) &&
+    outbound.minEffects <= outbound.maxEffects &&
+    Array.isArray(outbound.requiredKinds) &&
+    outbound.requiredKinds.every(
+      (kind) => typeof kind === "string" && replayOutboundKinds.has(kind),
+    );
+}
+
+function isCalendarExpectation(
+  value: unknown,
+): value is ReplayGoldenExpectationsV1["calendar"] {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    isNonNegativeInteger((value as Record<string, unknown>).maxWriteEffects),
+  );
+}
+
+function isBooleanOrNull(value: unknown): value is boolean | null {
+  return value === null || typeof value === "boolean";
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }

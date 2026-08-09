@@ -1,10 +1,20 @@
-import type { DecisionTraceEventV1 } from "@/core/observability/DecisionTrace";
+import type {
+  DecisionTraceEventV1,
+  DecisionTraceStage,
+} from "@/core/observability/DecisionTrace";
 
 export const REPLAY_SCENARIO_SCHEMA_VERSION = "replay-scenario.v1" as const;
 export const REPLAY_DATASET_SCHEMA_VERSION = "replay-dataset.v2" as const;
 export const REPLAY_RESULT_SCHEMA_VERSION = "replay-result.v1" as const;
 export const REPLAY_EVALUATION_SCHEMA_VERSION = "replay-evaluation.v1" as const;
 export const REPLAY_CALENDAR_SNAPSHOT_SCHEMA_VERSION = "replay-calendar-snapshot.v1" as const;
+export const REPLAY_GOLDEN_EXPECTATIONS_SCHEMA_VERSION = "replay-golden-expectations.v1" as const;
+export const REPLAY_GOLDEN_OUTBOUND_KINDS = [
+  "text",
+  "voice",
+  "media",
+  "suppressed",
+] as const;
 
 export type ReplayScenarioMode =
   | "historical_turn"
@@ -24,6 +34,23 @@ export type ReplayScenarioTurnV1 = {
     /** Conteúdo já anonimizado. Mídia usa descrição/placeholder, nunca URL real. */
     text: string;
   };
+};
+
+export type ReplayGoldenExpectationsV1 = {
+  schemaVersion: typeof REPLAY_GOLDEN_EXPECTATIONS_SCHEMA_VERSION;
+  requiredTraceStages: DecisionTraceStage[];
+  forbiddenTraceStages: DecisionTraceStage[];
+  finalConversation: {
+    aiPaused: boolean | null;
+    needsAttention: boolean | null;
+  };
+  finalState: string | null;
+  outbound: {
+    minEffects: number;
+    maxEffects: number;
+    requiredKinds: Array<(typeof REPLAY_GOLDEN_OUTBOUND_KINDS)[number]>;
+  };
+  calendar: { maxWriteEffects: number };
 };
 
 /**
@@ -51,6 +78,7 @@ export type ReplayScenarioV1 = {
   };
   tags: string[];
   turns: ReplayScenarioTurnV1[];
+  expectations?: ReplayGoldenExpectationsV1;
 };
 
 export type ReplayDatasetApprovalV1 = {
