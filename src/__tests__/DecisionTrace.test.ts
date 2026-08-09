@@ -63,7 +63,7 @@ describe("DecisionTrace", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("registra somente metadados sanitizados de validação", async () => {
+  it("remove metadados desconhecidos antes de qualquer sink de response trace", async () => {
     const sink = new InMemoryDecisionTraceSink();
 
     await recordDecisionTrace(sink, {
@@ -77,10 +77,15 @@ describe("DecisionTrace", () => {
         valid: false,
         violationCount: 1,
         requiresHandoff: true,
+        responseText: "preço confidencial",
+        mediaId: "asset-secreto",
+        policy: "política comercial privada",
+        providerError: "erro com PII",
+        url: "https://private.example/patient",
       },
     });
 
-    expect(sink.getEvents()[0]).toMatchObject({
+    expect(sink.getEvents()[0]).toEqual(expect.objectContaining({
       stage: "response.validated",
       metadata: {
         action: "price_inquiry",
@@ -88,7 +93,7 @@ describe("DecisionTrace", () => {
         violationCount: 1,
         requiresHandoff: true,
       },
-    });
+    }));
   });
 
   it("descarta stages fora da allowlist em vez de persistir trace arbitrário", async () => {

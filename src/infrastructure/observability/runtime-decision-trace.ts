@@ -1,6 +1,8 @@
 import {
   DECISION_TRACE_SCHEMA_VERSION,
+  hasResponseDecisionTraceMetadataContract,
   noopDecisionTraceSink,
+  sanitizeResponseDecisionTraceRecord,
   type DecisionTraceMetadata,
   type DecisionTraceRecord,
   type DecisionTraceSink,
@@ -99,8 +101,10 @@ export class BufferedDatabaseDecisionTraceSink implements DecisionTraceSink {
 export function sanitizeDecisionTraceRecord(
   record: DecisionTraceRecord,
 ): DecisionTraceRecord {
+  const responseRecord = sanitizeResponseDecisionTraceRecord(record);
   const metadata = Object.fromEntries(
-    Object.entries(record.metadata ?? {}).filter(([key]) =>
+    Object.entries(responseRecord.metadata ?? {}).filter(([key]) =>
+      hasResponseDecisionTraceMetadataContract(record.stage) ||
       PERSISTED_METADATA_KEYS.has(key),
     ),
   ) as DecisionTraceMetadata;

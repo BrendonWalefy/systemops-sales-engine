@@ -7,6 +7,7 @@ import type { BuildResponsePlanInput } from "@/core/conversation/response-plan";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import * as orchestratorModule from "@/core/pipeline/ConversationOrchestrator";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import { TurnSafetyHandoffGuard } from "@/core/conversation/TurnSafetyHandoffGuard";
 import type {
   ComposedResponse,
   ComposerInput,
@@ -213,6 +214,7 @@ type OrchestratorResponsePlanInput = {
   turnId: string;
   clinicId: string;
   conversationId: string;
+  safetyHandoffGuard?: TurnSafetyHandoffGuard;
   onRequiresHandoff: (reason: string) => Promise<void>;
 };
 
@@ -393,5 +395,102 @@ describe("ConversationOrchestrator response planner integration", () => {
     [undefined, 600],
   ] as const)("mapeia verbosidade %s para %i caracteres", (verbosity, expected) => {
     expect(orchestratorModule.resolveResponseMaxCharacters(verbosity)).toBe(expected);
+  });
+
+  it.each([
+    "needs_human",
+    "clinical_urgency",
+    "unclear_threshold",
+  ])(
+    "mantém o handoff seguro sem duplicar efeitos quando %s roda depois da composição",
+    async (laterPath) => {
+      const responsePlanner = new ConversationResponsePlanner({
+        compose: async () => composed("Custa R$ 9.999,00"),
+      });
+      const orchestrator = new orchestratorModule.ConversationOrchestrator({
+        responsePlanner,
+      });
+      const internal = orchestrator as unknown as OrchestratorPlannerInternals;
+      const attentionEffects: string[] = [];
+      const guard = new TurnSafetyHandoffGuard();
+
+      await internal.executeResponsePlan({
+        composerInput: validComposerInput,
+        planInput: {
+          commercialPolicy: null,
+          installmentTable: null,
+          allowedMediaIds: [],
+          expectedState: "none",
+          maxCharacters: 600,
+        },
+        turnId: `turn-${laterPath}`,
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        safetyHandoffGuard: guard,
+        onRequiresHandoff: async (reason) => {
+          attentionEffects.push(`update:${reason}`, `notify:${reason}`);
+        },
+      });
+      await guard.applyLaterHandoff(async () => {
+        attentionEffects.push(`update:${laterPath}`, `notify:${laterPath}`);
+      });
+
+      expect(attentionEffects).toEqual([
+        "update:Resposta segura requer revisão humana",
+        "notify:Resposta segura requer revisão humana",
+      ]);
+    },
+  );
+
+  it("preserva o handoff normal quando não existe revisão segura no turno", async () => {
+    const attentionEffects: string[] = [];
+    const guard = new TurnSafetyHandoffGuard();
+
+    const applied = await guard.applyLaterHandoff(async () => {
+      attentionEffects.push("update:needs_human", "notify:needs_human");
+    });
+
+    expect(applied).toBe(true);
+    expect(attentionEffects).toEqual([
+      "update:needs_human",
+      "notify:needs_human",
+    ]);
+  });
+
+  it("alinha exatamente a biblioteca filtrada de mídia entre composer e plano", () => {
+    const editorialLibrary = [
+      {
+        id: "media-general",
+        title: "Apresentação da clínica",
+        type: "video" as const,
+        treatmentId: null,
+      },
+      {
+        id: "media-treatment",
+        title: "Resultado do tratamento",
+        type: "image" as const,
+        treatmentId: "treatment-1",
+      },
+    ];
+    const filtered = orchestratorModule.filterMediaLibraryForComposer(
+      editorialLibrary,
+      null,
+      { type: "media_received", mediaType: "image" },
+    );
+
+    const projection = orchestratorModule.buildAlignedResponseMediaProjection(filtered);
+
+    expect(projection.composerMediaLibrary).toBe(filtered);
+    expect(projection.composerMediaLibrary).toEqual([
+      editorialLibrary[0],
+      editorialLibrary[1],
+    ]);
+    expect(projection.allowedMediaIds).toEqual([
+      "media-general",
+      "media-treatment",
+    ]);
+    expect(projection.allowedMediaIds).toEqual(
+      projection.composerMediaLibrary.map((media) => media.id),
+    );
   });
 });

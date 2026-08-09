@@ -52,6 +52,7 @@ import {
   type PlannedResponse,
 } from "@/core/conversation/ConversationResponsePlanner";
 import type { BuildResponsePlanInput } from "@/core/conversation/response-plan";
+import { TurnSafetyHandoffGuard } from "@/core/conversation/TurnSafetyHandoffGuard";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { resolveQuantityPriceQuery, extractQuantity } from "@/core/intelligence/quantity-price";
@@ -2893,6 +2894,18 @@ export function filterMediaLibraryForComposer<T extends { title: string; treatme
   return priceMedia.length > 0 ? priceMedia : treatmentScoped;
 }
 
+export function buildAlignedResponseMediaProjection<
+  T extends { id: string; title: string; type: "video" | "image" },
+>(filteredMediaLibrary: T[]): {
+  composerMediaLibrary: T[];
+  allowedMediaIds: string[];
+} {
+  return {
+    composerMediaLibrary: filteredMediaLibrary,
+    allowedMediaIds: filteredMediaLibrary.map((media) => media.id),
+  };
+}
+
 type DeliveryMediaLibraryItem = {
   id: string;
   title: string;
@@ -3792,6 +3805,7 @@ export class ConversationOrchestrator {
     turnId: string;
     clinicId: string;
     conversationId: string;
+    safetyHandoffGuard?: TurnSafetyHandoffGuard;
     onRequiresHandoff: (reason: string) => Promise<void>;
   }): Promise<PlannedResponse> {
     const planned = await this.responsePlanner.execute({
@@ -3842,7 +3856,13 @@ export class ConversationOrchestrator {
     }
 
     if (planned.requiresHandoff) {
-      await input.onRequiresHandoff(RESPONSE_PLAN_ATTENTION_REASON);
+      if (input.safetyHandoffGuard) {
+        await input.safetyHandoffGuard.applySafetyHandoff(
+          () => input.onRequiresHandoff(RESPONSE_PLAN_ATTENTION_REASON),
+        );
+      } else {
+        await input.onRequiresHandoff(RESPONSE_PLAN_ATTENTION_REASON);
+      }
     }
 
     return planned;
@@ -4724,6 +4744,7 @@ export class ConversationOrchestrator {
         null,
         mediaActionResult,
       );
+      const mediaProjection = buildAlignedResponseMediaProjection(filteredMediaLibrary);
       let responsePlanAttentionReason: string | null = null;
       const mediaPlanned = await this.executeResponsePlan({
         composerInput: {
@@ -4737,6 +4758,7 @@ export class ConversationOrchestrator {
             toneOfVoice: editorial?.toneOfVoice ?? null,
             playbook: editorial?.playbookText ?? null,
             commercialPolicy: mediaCommercialPolicy,
+            mediaLibrary: mediaProjection.composerMediaLibrary,
             receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
           leadName: lead.name,
@@ -4750,7 +4772,7 @@ export class ConversationOrchestrator {
         planInput: {
           commercialPolicy: mediaCommercialPolicy,
           installmentTable: mediaInstallmentTable,
-          allowedMediaIds: filteredMediaLibrary.map((media) => media.id),
+          allowedMediaIds: mediaProjection.allowedMediaIds,
           expectedState: "none",
           maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
         },
@@ -5931,7 +5953,7 @@ export class ConversationOrchestrator {
     let composedMediaIds: string[] = [];
     let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
     let triggerPartsOverride: import("@/core/intelligence/ResponseComposer").ResponsePart[] | null = null;
-    let responsePlanHandoffHandled = false;
+    const turnSafetyHandoff = new TurnSafetyHandoffGuard();
     // Avanço de pipeline adiado: executado APÓS todo o conteúdo ser enviado para evitar
     // race condition onde um segundo webhook encontra pipelineState=Q&A durante o envio
     // dos blocos e injeta o texto de comparação no meio da sequência.
@@ -5963,6 +5985,7 @@ export class ConversationOrchestrator {
           activeTreatmentId,
           actionResult,
         );
+        const mediaProjection = buildAlignedResponseMediaProjection(filteredMediaLibrary);
         const planned = await this.executeResponsePlan({
           composerInput: {
             actionResult,
@@ -5979,7 +6002,7 @@ export class ConversationOrchestrator {
               playbook: editorial?.playbookText ?? null,
               commercialPolicy,
               installmentTable,
-              mediaLibrary: filteredMediaLibrary,
+              mediaLibrary: mediaProjection.composerMediaLibrary,
               receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
             },
             context: promptContext,
@@ -5995,15 +6018,15 @@ export class ConversationOrchestrator {
           planInput: {
             commercialPolicy,
             installmentTable,
-            allowedMediaIds: filteredMediaLibrary.map((media) => media.id),
+            allowedMediaIds: mediaProjection.allowedMediaIds,
             expectedState: currentConversationState?.state ?? "none",
             maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
           },
           turnId,
           clinicId,
           conversationId: conversation.id,
+          safetyHandoffGuard: turnSafetyHandoff,
           onRequiresHandoff: async (reason) => {
-            if (responsePlanHandoffHandled) return;
             await db
               .update(conversationsTable)
               .set({
@@ -6019,7 +6042,6 @@ export class ConversationOrchestrator {
               lead.name ?? null,
               reason,
             );
-            responsePlanHandoffHandled = true;
           },
         });
         const composed = planned.response;
@@ -7023,28 +7045,42 @@ export class ConversationOrchestrator {
           });
         }
         const pauseAi = !existingWorkProblem || existingWorkProblem.relationship !== "unknown";
-        await db
-          .update(conversationsTable)
-          .set({
-            aiPaused: pauseAi,
-            takeoverExpiresAt: null, // pausa permanente — operador decide quando retomar
-            needsAttention: true,
-            attentionReason: reason,
-            updatedAt: runtimeNow(),
-          })
-          .where(eq(conversationsTable.id, conversation.id));
-        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, reason);
+        const appliedBusinessHandoff = await turnSafetyHandoff.applyLaterHandoff(async () => {
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: pauseAi,
+              takeoverExpiresAt: null, // pausa permanente — operador decide quando retomar
+              needsAttention: true,
+              attentionReason: reason,
+              updatedAt: runtimeNow(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, reason);
+        });
+        if (!appliedBusinessHandoff) {
+          await db
+            .update(conversationsTable)
+            .set({
+              aiPaused: pauseAi,
+              takeoverExpiresAt: null,
+              updatedAt: runtimeNow(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+        }
         break;
       }
 
       // ── Urgência clínica ──
       case "clinical_urgency": {
         replyText = await compose({ type: "clinical_urgency" });
-        await db
-          .update(conversationsTable)
-          .set({ needsAttention: true, attentionReason: "Urgência clínica relatada pelo lead", updatedAt: runtimeNow() })
-          .where(eq(conversationsTable.id, conversation.id));
-        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Urgência clínica relatada");
+        await turnSafetyHandoff.applyLaterHandoff(async () => {
+          await db
+            .update(conversationsTable)
+            .set({ needsAttention: true, attentionReason: "Urgência clínica relatada pelo lead", updatedAt: runtimeNow() })
+            .where(eq(conversationsTable.id, conversation.id));
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Urgência clínica relatada");
+        });
         break;
       }
 
@@ -8299,7 +8335,7 @@ export class ConversationOrchestrator {
         .update(conversationsTable)
         .set({
           consecutiveUnclearCount: newCount,
-          ...(hitThreshold && {
+          ...(hitThreshold && !turnSafetyHandoff.hasSafetyHandoff && {
             needsAttention: true,
             attentionReason: "Lead enviou 3 mensagens sem que a IA conseguisse entender",
           }),
@@ -8308,7 +8344,9 @@ export class ConversationOrchestrator {
         .where(eq(conversationsTable.id, conversation.id));
 
       if (hitThreshold) {
-        await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Não conseguiu entender o lead após 3 tentativas");
+        await turnSafetyHandoff.applyLaterHandoff(async () => {
+          await this.notifyAttentionNeeded(clinic, channelConfig, phone, lead.name ?? null, "Não conseguiu entender o lead após 3 tentativas");
+        });
       }
     } else if (resetsClarity && (conversation.consecutiveUnclearCount ?? 0) > 0) {
       await db
