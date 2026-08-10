@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import {
   createContentReadySample,
-  createFirstOpenSample,
   MAX_CLIENT_SAMPLES_PER_SESSION,
   type PerformanceSample,
   type PerformanceSurface,
@@ -27,6 +26,14 @@ type EmitDeps = {
   navigationStartedAt: number | null;
   // Primeiro content-ready DESTE documento — ou seja, o render que veio junto
   // com o carregamento da página, não uma navegação suave posterior.
+  //
+  // NÃO é usado para decidir o que emitir (ver `buildSample`): "primeiro
+  // mount neste documento" não distingue uma abertura fria de uma navegação
+  // suave para cá vinda de uma superfície sem `ContentReadyReporter` (ex.:
+  // Dashboard → Inbox), porque em ambos os casos não existe marca e este É o
+  // primeiro mount do documento. Construir um discriminador confiável de
+  // primeira abertura é trabalho de um marco futuro; até lá o campo continua
+  // aqui para essa implementação futura, mas não gera amostra nenhuma.
   isFirstInDocument: boolean;
 };
 
@@ -40,13 +47,18 @@ function readSampleCount(storage: NavigationStorage): number {
  *
  * 1. Com marca de navegação: o tempo é `now - startedAt`, ou seja da navegação
  *    até o conteúdo pintado. É o que `content_ready` promete medir.
- * 2. Sem marca, primeiro render do documento: é um carregamento duro, e aí o
- *    `timeOrigin` de `performance.now()` É o início da navegação. O número
- *    vale — e o que ele mede é "abrir o app do zero até ver conteúdo", que é
- *    `app_first_open`, não `content_ready`.
- * 3. Sem marca e não é o primeiro render: não existe ponto de partida
- *    conhecido. `performance.now()` aqui é o tempo de SESSÃO, que não mede
- *    nada que qualquer uma das duas operações promete. Não emite.
+ * 2. Sem marca: não existe ponto de partida conhecido para ESTA superfície.
+ *    Isso vale tanto para um carregamento duro quanto para uma navegação
+ *    suave vinda de uma página sem `ContentReadyReporter` (ex.: Dashboard →
+ *    Inbox) — os dois casos são indistinguíveis daqui (primeiro mount do
+ *    documento, sem marca), e `performance.now()` aqui pode ser o tempo de
+ *    SESSÃO inteiro, não o tempo desde a navegação. Emitir sob qualquer nome
+ *    de operação criaria uma amostra cuja duração não mede o que a operação
+ *    promete medir. Não emite.
+ *
+ *    (`app_first_open` continua definida no contrato para um marco futuro
+ *    construir um discriminador correto de primeira abertura — não é isso
+ *    aqui.)
  */
 function buildSample(
   surface: PerformanceSurface,
@@ -60,11 +72,6 @@ function buildSample(
       return null;
     }
     return createContentReadySample(surface, Math.round(durationMs));
-  }
-
-  if (deps.isFirstInDocument) {
-    if (!Number.isFinite(now) || now < 0 || now > MAX_NAVIGATION_DURATION_MS) return null;
-    return createFirstOpenSample(surface, Math.round(now));
   }
 
   return null;

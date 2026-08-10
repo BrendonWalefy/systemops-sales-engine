@@ -8,10 +8,16 @@
 // com `startedAt` gravado no clique por markNavigationStartInSession. Aqui a
 // mesma marca passa a alimentar o content_ready.
 //
-// E o caso sem marca (carregamento duro, não navegação suave) é decidido de
-// propósito: aí `timeOrigin` É o início da navegação, então `performance.now()`
-// vale — e é exatamente a medida de "primeira abertura do app", então sai como
-// `app_first_open`, não como um `content_ready` de número inflado.
+// E o caso sem marca não emite nada, mesmo quando é o primeiro content-ready
+// do documento. Uma tentativa anterior tratou "primeiro do documento" como
+// prova de carregamento duro e emitiu `app_first_open` com
+// `performance.now()`. Mas "primeiro `ContentReadyReporter` mount neste
+// documento" também é verdade para uma navegação suave vinda de uma página
+// sem reporter (ex.: Dashboard → Inbox) — os dois casos são indistinguíveis
+// daqui, e o segundo produziu amostras com o tempo de sessão inteiro (dezenas
+// de segundos) contra um alvo de 1,5s. Construir um discriminador correto de
+// primeira abertura é trabalho de um marco futuro; até lá, sem marca é sem
+// amostra, ponto final.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -65,10 +71,14 @@ describe("content_ready mede a partir do início da navegação", () => {
     ]);
   });
 
-  it("no carregamento duro (sem marca) emite app_first_open com o tempo desde o timeOrigin", () => {
-    // Sem navegação suave anterior, `timeOrigin` É o início da navegação:
-    // `performance.now()` no paint é a medida certa — e a medida que o alvo
-    // "primeira abertura do app" pede.
+  it("sem marca, mesmo sendo o primeiro content-ready do documento, não emite NADA", () => {
+    // "Primeiro render do documento" não é prova de carregamento duro: uma
+    // navegação suave vinda de uma página sem `ContentReadyReporter` (ex.:
+    // Dashboard → Inbox) chega aqui do mesmo jeito — primeiro mount deste
+    // documento, sem marca. Os dois casos são indistinguíveis, então nenhuma
+    // amostra pode sair sob nome de operação nenhum. `performance.now()` aqui
+    // pode ser o tempo de sessão inteiro (uma leitura demorada do Dashboard
+    // antes do clique), não o tempo desde uma navegação real.
     emitContentReadySample("inbox_list", {
       storage,
       fetch,
@@ -77,14 +87,8 @@ describe("content_ready mede a partir do início da navegação", () => {
       isFirstInDocument: true,
     });
 
-    expect(sentSamples(fetch)).toEqual([
-      expect.objectContaining({
-        operation: "app_first_open",
-        surface: "inbox_list",
-        durationMs: 1_240,
-        cacheState: "cold",
-      }),
-    ]);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(storage.getItem(NAVIGATION_COUNT_KEY)).toBeNull();
   });
 
   it("sem marca e já não é o primeiro render do documento: não emite NADA", () => {

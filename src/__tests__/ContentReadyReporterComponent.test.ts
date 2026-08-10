@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe("ContentReadyReporter component integration", () => {
-  it("dispatches the sample only when fetch is called with the global receiver", async () => {
+  it("does not dispatch a sample on the document's first render when there is no navigation mark", async () => {
     const storage = new MemoryStorage();
     const { fn: fetch, successfulCalls } = createReceiverEnforcingFetch(globalThis);
     stubBrowser(storage, 125, fetch);
@@ -80,38 +80,21 @@ describe("ContentReadyReporter component integration", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    // A checagem que importa: o fetch precisa ter sido chamado com o receptor
-    // certo e ter completado com sucesso. Não basta "nenhuma exceção escapou" —
-    // o contador de sessão é incrementado ANTES do fetch e o try/catch do
-    // componente engole silenciosamente qualquer `TypeError: Illegal
-    // invocation` vindo de um fetch desvinculado. Se `.bind(globalThis)` for
-    // removido de content-ready-reporter.tsx, este stub lança,
-    // `successfulCalls` fica vazio e a asserção abaixo falha.
-    expect(successfulCalls).toHaveLength(1);
-    expect(successfulCalls[0].input).toBe("/api/telemetry/performance");
-    expect(successfulCalls[0].init).toEqual(
-      expect.objectContaining({
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        keepalive: true,
-      }),
-    );
+    // Sem marca de navegação, "primeiro render do documento" NÃO é prova de
+    // carregamento duro: uma navegação suave vinda de uma página sem
+    // `ContentReadyReporter` (ex.: Dashboard → Inbox) também chega aqui sem
+    // marca e também é o primeiro mount deste documento. Os dois casos são
+    // indistinguíveis, então nenhuma amostra pode ser enviada sob nome de
+    // operação nenhum — nem `content_ready` nem `app_first_open`. Antes desta
+    // correção, este cenário emitia `app_first_open` com `durationMs` igual
+    // ao tempo de sessão inteiro, que para uma leitura demorada do Dashboard
+    // chegava a dezenas de segundos contra um alvo de 1,5s.
+    expect(fetch).not.toHaveBeenCalled();
+    expect(successfulCalls).toHaveLength(0);
 
-    // Sem marca de navegação e primeiro render do documento = carregamento
-    // duro: `timeOrigin` É o início da navegação, e o que isso mede é a
-    // primeira abertura do app.
-    const body: unknown = JSON.parse(String(successfulCalls[0].init?.body));
-    expect(body).toEqual({
-      schemaVersion: 1,
-      source: "client",
-      surface: "inbox_list",
-      operation: "app_first_open",
-      durationMs: 125,
-      cacheState: "cold",
-      outcome: "ok",
-    });
-
-    expect(storage.getItem(NAVIGATION_COUNT_KEY)).toBe("1");
+    // Amostra descartada por falta de ponto de partida não pode gastar a
+    // cota de amostras da sessão.
+    expect(storage.getItem(NAVIGATION_COUNT_KEY)).toBeNull();
 
     await act(async () => renderer.unmount());
   });
@@ -152,7 +135,7 @@ describe("ContentReadyReporter component integration", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("uma marca de OUTRA superfície não é usada como ponto de partida", async () => {
+  it("uma marca de OUTRA superfície não é usada como ponto de partida, e nada é emitido", async () => {
     const storage = new MemoryStorage();
     storage.setItem(
       NAVIGATION_MARK_KEY,
@@ -169,10 +152,17 @@ describe("ContentReadyReporter component integration", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    // Cai no caminho de carregamento duro (primeiro do documento), não num
-    // content_ready medido contra a navegação errada.
-    const body = JSON.parse(String(successfulCalls[0].init?.body)) as { operation: string };
-    expect(body.operation).toBe("app_first_open");
+    // Não é medido como content_ready (a marca é de outra superfície, então
+    // não é um ponto de partida válido para esta) nem emitido como
+    // app_first_open (este mount é o primeiro do documento, mas isso também
+    // é verdade para uma navegação suave vinda de uma página sem
+    // ContentReadyReporter — os dois casos são indistinguíveis daqui). Amostra
+    // nenhuma é enviada; regressão pinada para o bug em que este caso
+    // produzia `app_first_open` com `durationMs` igual ao tempo de sessão
+    // inteiro (45.450 aqui), e não à navegação real.
+    expect(fetch).not.toHaveBeenCalled();
+    expect(successfulCalls).toHaveLength(0);
+    expect(storage.getItem(NAVIGATION_COUNT_KEY)).toBeNull();
 
     await act(async () => renderer.unmount());
   });

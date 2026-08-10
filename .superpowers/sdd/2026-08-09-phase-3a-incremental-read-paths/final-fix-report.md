@@ -448,3 +448,119 @@ GREEN: `Tests 5 passed (5)`.
    organization itself, so an open Inbox for it is moot and
    `clinic_read_versions` cascades; the e2e routes are not production. Neither
    was changed.
+
+---
+
+## Addendum — untrustworthy `app_first_open` emitter reverted
+
+Finding 4 above wired `app_first_open` on the discriminator "first
+`ContentReadyReporter` mount in this document" and called that the
+correct measurement of first application open. It was not: the reporter is
+mounted on exactly two surfaces (`inbox_list`, `conversation`), so any
+un-instrumented `<Link>` into the Inbox from a page without a reporter —
+`DashboardCommandCenter.tsx`, `MobileDashboardTabs.tsx`,
+`AppointmentDrawer.tsx`, and others — also arrives as "no mark, first mount
+in this document". The reporter cannot tell that soft navigation apart from a
+genuine cold start. An operator hard-loading `/app/dashboard`, reading it for
+20 s, then clicking "Ver inbox" produced `app_first_open` with
+`durationMs ≈ 20,000` against a 1.5 s target. The regression test added in
+finding 4 (`ContentReadyReporterComponent.test.ts`, the "another surface's
+mark" case) pinned exactly this shape but asserted only the operation name,
+not the duration, so it ratified the misreport instead of catching it.
+
+The coordinator adjudicated: revert the documentation claim and stop the
+emitter from producing untrustworthy samples. Building a correct first-open
+discriminator is deliberately out of scope for this phase.
+
+### What changed
+
+1. **`src/components/performance/content-ready-reporter.tsx`** —
+   `buildSample` no longer has an `isFirstInDocument` branch. With no
+   navigation mark, it now always returns `null` regardless of whether this
+   is the document's first `ContentReadyReporter` mount. The `content_ready`
+   branch (measured from the navigation mark) is untouched. `createFirstOpenSample`
+   is no longer imported or called here. `EmitDeps.isFirstInDocument` and the
+   module-level `firstContentReadyInDocument` tracking are left in place —
+   they are the scaffolding a future correct discriminator would need — with
+   a comment explaining they currently drive no behaviour.
+   `createFirstOpenSample` and the `app_first_open` entry in
+   `PERFORMANCE_OPERATIONS` (`performance-contract.ts`) are untouched; the
+   contract entry was fine, only the emitter was wrong.
+2. **Tests fixed to assert the new behaviour, not ratify the old one:**
+   - `src/__tests__/ContentReadyReporterComponent.test.ts` — the "mark
+     belongs to another surface" case (the one that pinned the misreport
+     shape) now asserts `fetch` is never called and the session budget is
+     not consumed, instead of asserting `operation === "app_first_open"`.
+     The first test in the file (fresh document, no mark at all — the same
+     bug, a cleaner instance of it) was converted the same way and renamed
+     to state the behaviour it now pins.
+   - `src/__tests__/ContentReadyNavigationTiming.test.ts` — the unit-level
+     test that called `emitContentReadySample` directly with
+     `isFirstInDocument: true` and asserted an `app_first_open` sample now
+     asserts no fetch call and no budget consumption. The file header
+     comment, which described the `app_first_open` branch as an intentional
+     design decision, is corrected.
+3. **`docs/operations/performance-baseline.md`** — "First application open"
+   reverted to `not_measurable`, with the reason ("no emitter can currently
+   distinguish a cold start from an un-instrumented soft navigation into an
+   instrumented surface"). The "three targets that moved out of
+   `not_measurable`" prose is now "two", and the paragraph walking through
+   the reporter's branches drops the hard-load → `app_first_open` case in
+   favor of describing why no-mark now means no emission either way.
+4. **`.superpowers/sdd/2026-08-09-phase-3a-incremental-read-paths/task-8-report.md`**
+   — Correction 6 updated: `content_ready` is fixed, `app_first_open` was
+   wired then reverted and is `not_measurable` again. Added one line to "No
+   performance target is proven met" recording that first-open readiness
+   remains unmeasurable end to end.
+
+### RED/GREEN evidence
+
+RED — reverted only `content-ready-reporter.tsx` (`git stash push -- src/components/performance/content-ready-reporter.tsx`) and ran the two amended suites against the old emitter:
+
+```
+FAIL  ContentReadyNavigationTiming.test.ts > sem marca, mesmo sendo o primeiro content-ready do documento, não emite NADA
+  expected "spy" to not be called at all, but actually been called 1 times
+
+FAIL  ContentReadyReporterComponent.test.ts > does not dispatch a sample on the document's first render when there is no navigation mark
+  AssertionError: expected "spy" to not be called at all, but actually been called 1 times
+  1st spy call: ["/api/telemetry/performance", { body: '{"...","surface":"inbox_list","operation":"app_first_open","durationMs":125,"cacheState":"cold",...}' }]
+
+FAIL  ContentReadyReporterComponent.test.ts > uma marca de OUTRA superfície não é usada como ponto de partida, e nada é emitido
+  AssertionError: expected "spy" to not be called at all, but actually been called 1 times
+  1st spy call: ["/api/telemetry/performance", { body: '{"...","surface":"conversation","operation":"app_first_open","durationMs":45450,"cacheState":"cold",...}' }]
+
+Test Files  2 failed (2)
+     Tests  3 failed | 7 passed (10)
+```
+
+The `durationMs: 45450` sample in the third failure is the exact defect from
+the report: a mark for surface `agenda` at `startedAt: 45_000`, read at
+`now: 45_450` by a `ContentReadyReporter` mounted for `conversation`,
+misreported as `app_first_open` with the session-elapsed time instead of
+being dropped.
+
+GREEN — restored (`git stash pop`) and reran:
+
+```
+✓ ContentReadyNavigationTiming.test.ts (7 tests)
+✓ ContentReadyReporterComponent.test.ts (3 tests)
+
+Test Files  2 passed (2)
+     Tests  10 passed (10)
+```
+
+### Commands
+
+| Command | Exit | Result |
+| --- | ---: | --- |
+| `npm run verify` | **0** | `db:check` OK; `eslint .` clean; `tsc --noEmit` clean; **265 test files passed, 2,397 passed, 10 skipped (2,407 total)** — same counts as the wave above (no tests added or removed, three amended in place). |
+| `npm run build` | **0** | `✓ Compiled successfully in 8.8s`. |
+
+### Confirmation
+
+`content_ready` behaviour is unchanged: it still measures `now -
+navigationStartedAt` from the peeked navigation mark, bounded by
+`MAX_NAVIGATION_DURATION_MS`, and its dedicated test
+(`ContentReadyReporterComponent.test.ts` — "com marca de navegação, mede da
+navegação até o paint") was not touched and still asserts `durationMs: 450`
+for a mark at `45_000` observed at `45_450`.

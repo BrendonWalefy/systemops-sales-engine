@@ -129,20 +129,32 @@ clinic, one indexed row read instead of four aggregations, no unconditional
 refresh — but it is **not measured**. No target in that document may be
 described as met on the strength of this branch.
 
-Task 1 made three previously `not_measurable` targets measurable. Measurable
-is not measured.
+Task 1 made three previously `not_measurable` targets measurable, on paper.
+It is now two. Measurable is not measured.
 
 **Correction 6 — two of those three were not measurable as shipped for
-review.** `createFirstOpenSample` had **zero production callers** while
-`docs/operations/performance-baseline.md` mapped "First application open" to
-it, and `content_ready` reported `Math.round(performance.now())` — elapsed
-time since the document's `timeOrigin`, not since the navigation that produced
-the content, so a conversation opened 45 s into a session reported ~45,000 ms
-against an 800 ms target. Both are fixed in the final fix wave: `content_ready`
-now measures from the navigation mark, and a hard load emits `app_first_open`
-from the same reporter. The claim in this section stands unchanged in
-substance — measurable is still not measured, and no cohort has been
-collected.
+review, and one of the two still is not.** `createFirstOpenSample` had **zero
+production callers** while `docs/operations/performance-baseline.md` mapped
+"First application open" to it, and `content_ready` reported
+`Math.round(performance.now())` — elapsed time since the document's
+`timeOrigin`, not since the navigation that produced the content, so a
+conversation opened 45 s into a session reported ~45,000 ms against an 800 ms
+target. `content_ready` is fixed in the final fix wave: it now measures from
+the navigation mark. The final fix wave also wired `app_first_open` from the
+same reporter, on the discriminator "first `ContentReadyReporter` mount in
+this document" — but that discriminator cannot tell a genuine cold start from
+a soft navigation into an instrumented surface (Inbox, a conversation) from a
+page that carries no reporter of its own, such as the Dashboard. Both look
+identical to the reporter, so it reported the elapsed session time — tens of
+seconds for a Dashboard read before the click — as a false first-open sample.
+That emission was reverted in a follow-up fix; see the "Untrustworthy
+`app_first_open` emitter reverted" addendum in `final-fix-report.md`.
+`app_first_open` is `not_measurable` again, and a correct first-open
+discriminator is deliberately out of scope for this phase. The claim in this
+section stands unchanged in substance — measurable is still not measured, and
+no cohort has been collected.
+
+First-open readiness remains unmeasurable end to end: no reporter mounted anywhere in this branch can tell a cold start apart from a soft navigation into an instrumented surface from an un-instrumented one, so none may emit `app_first_open` without lying about what it measured.
 
 ## The Inbox is not fully sublinear
 
