@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { conversations, leads } from "@/infrastructure/db/schema";
 import { INBOX_PAGE_SIZE, decodeInboxCursor, encodeInboxCursor } from "./inbox-cursor";
@@ -63,7 +63,16 @@ export async function listClinicConversations(params: {
     .from(conversations)
     .innerJoin(leads, eq(conversations.leadId, leads.id))
     .where(whereClause)
-    .orderBy(sql`${conversations.lastMessageAt} desc nulls last`, desc(conversations.id))
+    // `desc nulls last` explícito nas DUAS chaves: `desc(col)` do drizzle
+    // renderiza só `desc`, que no Postgres é `DESC NULLS FIRST`, e o índice
+    // conversations_org_last_message_idx é `id DESC NULLS LAST`. Com pathkeys
+    // diferentes na segunda chave o planner não satisfaz a ordenação inteira
+    // pelo índice e empilha um Sort por cima. `conversations.id` é NOT NULL,
+    // então as linhas devolvidas são idênticas — o que muda é o plano.
+    .orderBy(
+      sql`${conversations.lastMessageAt} desc nulls last`,
+      sql`${conversations.id} desc nulls last`,
+    )
     .limit(limit + 1);
 
   const page = rows.slice(0, limit);

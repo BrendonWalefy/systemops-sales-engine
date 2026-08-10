@@ -60,7 +60,13 @@ export async function loadInboxSegmentIndex(params: {
           )
         : eq(conversations.clinicId, clinicId),
     )
-    .orderBy(sql`${conversations.lastMessageAt} desc nulls last`, desc(conversations.id));
+    // Mesma chave e mesma colocação de nulos da página (list-conversations.ts)
+    // e do índice: `desc(col)` sozinho seria `DESC NULLS FIRST` e faria o
+    // planner ordenar por cima do índice em vez de ler na ordem dele.
+    .orderBy(
+      sql`${conversations.lastMessageAt} desc nulls last`,
+      sql`${conversations.id} desc nulls last`,
+    );
 
   // Só conversas comerciais entram nas abas (categoryRows(..., "sales")), então
   // o enriquecimento caro é restrito a elas já no banco.

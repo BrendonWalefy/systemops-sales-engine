@@ -70,7 +70,14 @@ describe("listClinicConversations", () => {
     vi.clearAllMocks();
   });
 
-  it("orders by lastMessageAt desc nulls last, id desc — matching the Task 2 index column order exactly", async () => {
+  // Direção E colocação de nulos, nas duas chaves: um `desc` simples na
+  // segunda chave é `DESC NULLS FIRST` no Postgres, e o índice
+  // conversations_org_last_message_idx é `id DESC NULLS LAST`. Pathkeys
+  // diferentes = o planner não consegue satisfazer a ordenação inteira pelo
+  // índice e precisa empilhar um Sort — exatamente o custo que esta branch
+  // existe para remover. `conversations.id` é NOT NULL, então o resultado é
+  // idêntico dos dois jeitos; o que muda é o plano.
+  it("orders by lastMessageAt desc nulls last, id desc nulls last — matching the Task 2 index exactly", async () => {
     const chain = selectChain([]);
     dbMock.select.mockReturnValue(chain);
 
@@ -79,7 +86,7 @@ describe("listClinicConversations", () => {
     expect(chain.orderBy).toHaveBeenCalledOnce();
     const [firstArg, secondArg] = chain.orderBy.mock.calls[0];
     expect(renderFragment(firstArg).sql).toBe('"conversations"."last_message_at" desc nulls last');
-    expect(renderFragment(secondArg).sql).toBe('"conversations"."id" desc');
+    expect(renderFragment(secondArg).sql).toBe('"conversations"."id" desc nulls last');
   });
 
   it("scopes every query by clinicId, even with no cursor", async () => {
