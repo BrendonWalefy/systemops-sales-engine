@@ -856,13 +856,19 @@ export function InboxClient({
   autoReplyEnabled,
   initialScope = "sales",
   initialTab = "all",
+  // nextCursor ainda não alimenta UI nesta task — só percorre até o cliente
+  // para a Fase 3B (delta API / "carregar mais") reusar a mesma codificação.
+  nextCursor = null,
 }: {
   rows: ConvRow[];
   lastMsgMap: Record<string, LastInboxMessage>;
   autoReplyEnabled: boolean;
   initialScope?: InboxCategoryScope;
   initialTab?: LiveInboxTabFilter | "recovery";
+  nextCursor?: string | null;
 }) {
+  // Sem uso de UI ainda — só mantém o valor vivo até a Fase 3B ligar o "carregar mais".
+  void nextCursor;
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<InboxCategoryScope>(initialScope);

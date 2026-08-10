@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
-import { organizations, conversations, leads, messages, appointments, conversationStates, humanReviewRequests } from "@/infrastructure/db/schema";
+import { organizations, messages, appointments, conversationStates, humanReviewRequests } from "@/infrastructure/db/schema";
 import { and, eq, desc, inArray, gte, isNull, or } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { InboxClient, type ConvRow } from "./InboxClient";
@@ -11,11 +11,15 @@ import { getInboxVersion } from "./get-inbox-version";
 import { TreatmentGapBanner } from "./TreatmentGapBanner";
 import { resolveInboxPendingAction } from "./inbox-pending";
 import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
+import { ContentReadyReporter } from "@/components/performance/content-ready-reporter";
+import { listClinicConversations } from "@/application/inbox/list-conversations";
 
 type InboxSearchParams = Record<string, string | string[] | undefined>;
 
 async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
-  const [clinicRows, rows] = await measureServerOperation(
+  const cursor = typeof params.cursor === "string" ? params.cursor : null;
+
+  const [clinicRows, page] = await measureServerOperation(
     {
       clinicId,
       surface: "inbox_list",
@@ -29,34 +33,14 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
         .from(organizations)
         .where(eq(organizations.id, clinicId))
         .limit(1),
-      db
-        .select({
-          convId: conversations.id,
-          leadId: leads.id,
-          lastMessageAt: conversations.lastMessageAt,
-          needsAttention: conversations.needsAttention,
-          attentionReason: conversations.attentionReason,
-          aiPaused: conversations.aiPaused,
-          conversationCategory: conversations.category,
-          takeoverExpiresAt: conversations.takeoverExpiresAt,
-          lastReadAt: conversations.lastReadAt,
-          leadName: leads.name,
-          leadPhone: leads.phone,
-          leadStatus: leads.status,
-          leadTemperature: leads.temperature,
-          leadTreatmentInterest: leads.treatmentInterest,
-          leadProfilePicUrl: leads.profilePicUrl,
-          leadUpdatedAt: leads.updatedAt,
-          conversationUpdatedAt: conversations.updatedAt,
-        })
-        .from(conversations)
-        .innerJoin(leads, eq(conversations.leadId, leads.id))
-        .where(eq(conversations.clinicId, clinicId))
-        .orderBy(desc(conversations.lastMessageAt)),
+      listClinicConversations({ clinicId, cursor }),
     ]),
   );
 
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
+
+  const rows = page.rows;
+  const nextCursor = page.nextCursor;
 
   const now = new Date();
   const salesLeadIds = rows
@@ -231,6 +215,7 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
   return (
     <div className="inbox-shell">
       <InboxPoller initialVersion={initialVersion} />
+      <ContentReadyReporter surface="inbox_list" />
       <TreatmentGapBanner />
       <InboxClient
         rows={allRows}
@@ -238,6 +223,7 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
         autoReplyEnabled={autoReplyEnabled}
         initialScope={initialScope}
         initialTab={initialScope === "sales" ? initialTab : "all"}
+        nextCursor={nextCursor}
       />
     </div>
   );
