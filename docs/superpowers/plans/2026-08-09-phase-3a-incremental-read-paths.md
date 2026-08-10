@@ -604,6 +604,85 @@ git commit -m "feat(inbox): bound page reads to one cursor page"
 
 ---
 
+### Task 4b: Server-side tab segmentation
+
+**Added during execution.** Task 4's own audit found a defect in this plan: Task 4 assumed the five enrichment queries were the only consumers of the full conversation list. They are not. `src/app/(clinic)/app/inbox/InboxClient.tsx:840-941` derives every tab's **membership and count** by filtering the `rows` prop on the client — `totalAll = rows.length` at line 915, and per-tab counts at lines 935-941.
+
+Once `rows` is a 40-row page, that is a functional regression, not a cost change: counters under-report, and a conversation needing attention that falls outside the 40 most recent vanishes from the "Atenção" tab. Spec §12.2 mandates read models for Inbox counters; this plan failed to turn that into a task.
+
+**Files:**
+- Create: `src/application/inbox/inbox-segmentation.ts`
+- Create: `src/application/inbox/segment-index.ts`
+- Modify: `src/app/(clinic)/app/inbox/inbox-presentation.ts` — export the predicates for server reuse
+- Modify: `src/app/(clinic)/app/inbox/page.tsx`
+- Modify: `src/app/(clinic)/app/inbox/InboxClient.tsx` — consume counts instead of deriving them
+- Test: `src/__tests__/InboxSegmentIndex.test.ts`
+
+**Interfaces:**
+- Consumes: `listClinicConversations` (Task 3), and the existing predicates `segmentRows`, `isRecoveryCandidate`, `resolveInboxPendingAction`.
+- Produces:
+  - `type InboxTabKey = "all" | "hot" | "attention" | "pending" | "paused" | "cold" | "recovery"`
+  - `buildSegmentIndex(rows: SegmentInputRow[]): { counts: Record<InboxTabKey, number>; idsByTab: Record<InboxTabKey, string[]> }`
+  - `loadInboxSegmentIndex({ clinicId }): Promise<ReturnType<typeof buildSegmentIndex>>`
+
+**The design constraint that decides this task.** The tab predicates depend on enrichment — the last message's author, the latest appointment lifecycle state, and the pending-action inputs. Re-expressing them as SQL `WHERE` clauses would create a second implementation of the same business rules, and `docs/architecture/sources-of-truth.md` forbids a second owner for any decision. **Do not translate the predicates into SQL.**
+
+Instead, split the work by cost:
+
+1. A **narrow clinic-wide scan** selects only the columns the predicates read — no message bodies, no profile picture URLs, no lead names, no summaries. This stays linear in conversation count but carries a small fixed payload per row.
+2. The **existing TypeScript predicates** run over that narrow set on the server, producing counts and an ordered ID list per tab. One implementation, no drift.
+3. The **expensive work** — the full 17-column rows plus the five enrichment queries plus message bodies — is then fetched for at most `INBOX_PAGE_SIZE` IDs of the selected tab.
+
+That bounds what actually costs money while keeping correctness exact. The remaining linear scan is a deliberate, documented limitation: replacing it with a true materialised read model belongs to Phase 3B, and Task 8 must record it as unfinished rather than implying the Inbox is now fully sublinear.
+
+- [ ] **Step 1: Write the failing test**
+
+Test `buildSegmentIndex` as a pure function over hand-built rows — no database. Cover, with real assertions on both `counts` and `idsByTab`:
+
+- a conversation needing attention that sits far down the recency order still lands in `attention` (the exact regression this task exists to prevent);
+- `hot` and `cold` split by `leadTemperature`;
+- `recovery` picks up a `follow_up_due` row whose last message author is not `lead`;
+- `paused` excludes a row that is also a recovery candidate;
+- `closed`/`won`/`lost` rows are excluded from `all`;
+- counts equal `idsByTab[tab].length` for every tab.
+
+Assert counts that would change if a predicate were inverted. A test asserting only that the function returns an object is worthless here — three tasks on this branch already failed review for exactly that.
+
+- [ ] **Step 2: Run it and confirm it fails**
+
+Run: `npm test -- src/__tests__/InboxSegmentIndex.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Extract the predicates for reuse**
+
+`isRecoveryCandidate` and `resolveAppointmentLifecycleState` already live in `src/app/(clinic)/app/inbox/inbox-presentation.ts`; `segmentRows` and `categoryRows` are private to `InboxClient.tsx`. Move `segmentRows` and `categoryRows` into `src/application/inbox/inbox-segmentation.ts` and re-export them where the client used them. Do not change their logic — this is a move, and the existing behaviour is the specification.
+
+- [ ] **Step 4: Implement `buildSegmentIndex`**
+
+Pure function. Takes the narrow rows plus the last-message map, applies `categoryRows` then `segmentRows`, and derives the same seven tabs `InboxClient.tsx:935-941` builds today, returning both counts and ordered ID lists. Order must match the page ordering: `lastMessageAt DESC NULLS LAST, id DESC`.
+
+- [ ] **Step 5: Implement the narrow scan**
+
+`loadInboxSegmentIndex` in `src/application/inbox/segment-index.ts`. Scoped by `clinicId`. Select only what the predicates read: `conversations.id`, `category`, `aiPaused`, `needsAttention`, `attentionReason`, `takeoverExpiresAt`, `lastMessageAt`, `leads.status`, `leads.temperature`, plus the latest message's `author`/`sentAt`, the latest appointment's `status`/`startsAt`, the latest conversation state, and pending human-review conversation IDs. Explicitly do **not** select `messages.body`, `leads.name`, `leads.phone`, `leads.profilePicUrl` or `conversations.summary`.
+
+- [ ] **Step 6: Wire the page and the client**
+
+`page.tsx` calls `loadInboxSegmentIndex`, then fetches full rows for the first `INBOX_PAGE_SIZE` IDs of the active tab, and passes `counts` to `InboxClient`. `InboxClient` takes `counts` as a prop and stops computing them from `rows`. Delete the client-side count derivation rather than leaving it beside the new prop — two sources for the same number is the defect this task removes.
+
+Keep `measureServerOperation` wrapping both the scan and the page fetch, using distinct operation names so the baseline can tell them apart.
+
+- [ ] **Step 7: Verify and commit**
+
+Run: `npm run verify`
+Expected: exit 0.
+
+```bash
+git add src/application/inbox "src/app/(clinic)/app/inbox" src/__tests__/InboxSegmentIndex.test.ts
+git commit -m "feat(inbox): segment tabs on the server"
+```
+
+---
+
 ### Task 5: Materialised read version per clinic
 
 Replaces the four aggregations with one indexed row read. The version is bumped by the writes that change what the Inbox displays.
