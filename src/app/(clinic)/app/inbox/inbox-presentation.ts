@@ -23,6 +23,17 @@ export type AppointmentLifecycleState =
   | "no_show";
 
 const RECOVERY_WAIT_HOURS = 2;
+const MS_PER_HOUR = 3_600_000;
+
+// Dono único da conta de espera: o índice de segmentação (servidor) e a linha
+// exibida no card precisam do MESMO número, senão a aba e o card divergem.
+export function hoursWaitingSince(
+  lastMessageAt: Date | null | undefined,
+  now: Date,
+): number {
+  if (!lastMessageAt) return 0;
+  return (now.getTime() - new Date(lastMessageAt).getTime()) / MS_PER_HOUR;
+}
 
 export function resolveAppointmentLifecycleState(
   row: InboxPresentationRow,
