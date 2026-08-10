@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContentReadyReporter } from "@/components/performance/content-ready-reporter";
 import { NAVIGATION_COUNT_KEY } from "@/application/observability/navigation-timing";
 
@@ -32,16 +32,37 @@ class MemoryStorage implements Storage {
   }
 }
 
-describe("ContentReadyReporter component integration", () => {
-  let renderer: ReactTestRenderer;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
+/**
+ * `fetch` nativo é uma operação WebIDL que exige um receptor Window/WorkerGlobalScope:
+ * chamado com um `this` diferente — como acontece em `deps.fetch(...)`, onde `deps` é
+ * um objeto qualquer — o navegador real lança `TypeError: Illegal invocation`. Um
+ * `vi.fn()` comum não impõe essa checagem de receptor, então um mock ingênuo passa
+ * igualmente com `deps.fetch = globalThis.fetch` (sem bind) ou com
+ * `deps.fetch = globalThis.fetch.bind(globalThis)`. Este stub reproduz a checagem de
+ * receptor do navegador para que o teste realmente dependa de
+ * `content-ready-reporter.tsx` chamar `.bind(globalThis)`.
+ */
+function createReceiverEnforcingFetch(expectedReceiver: unknown) {
+  const successfulCalls: Array<{ input: unknown; init: RequestInit | undefined }> = [];
+  const fn = vi.fn(function (this: unknown, input: unknown, init?: RequestInit) {
+    if (this !== expectedReceiver) {
+      throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+    }
+    successfulCalls.push({ input, init });
+    return Promise.resolve(new Response(null, { status: 204 }));
   });
+  return { fn, successfulCalls };
+}
 
-  it("mounts without error and dispatches content-ready sample with bound fetch", async () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("ContentReadyReporter component integration", () => {
+  it("dispatches the content-ready sample only when fetch is called with the global receiver", async () => {
     const storage = new MemoryStorage();
-    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    const { fn: fetch, successfulCalls } = createReceiverEnforcingFetch(globalThis);
 
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal("window", { sessionStorage: storage });
@@ -59,19 +80,26 @@ describe("ContentReadyReporter component integration", () => {
       realConsoleError(message, ...args);
     });
 
+    let renderer: ReactTestRenderer;
     await act(async () => {
       renderer = create(createElement(ContentReadyReporter, { surface: "inbox_list" }));
     });
 
-    // Allow requestAnimationFrame to fire
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Deixa o microtask do fetch (que resolve ou lança de forma síncrona dentro
+    // do try/catch do componente) se propagar antes de inspecionar o resultado.
+    await Promise.resolve();
+    await Promise.resolve();
 
-    // Component should have dispatched one sample
-    expect(fetch).toHaveBeenCalledTimes(1);
-
-    // Verify the call structure
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/telemetry/performance",
+    // A checagem que importa: o fetch precisa ter sido chamado com o receptor
+    // certo e ter completado com sucesso. Não basta "nenhuma exceção escapou" —
+    // o contador de sessão é incrementado ANTES do fetch (linha 34 do
+    // componente) e o try/catch do componente engole silenciosamente qualquer
+    // `TypeError: Illegal invocation` vindo de um fetch desvinculado. Se
+    // `.bind(globalThis)` for removido de content-ready-reporter.tsx:60, este
+    // stub lança, `successfulCalls` fica vazio e a asserção abaixo falha.
+    expect(successfulCalls).toHaveLength(1);
+    expect(successfulCalls[0].input).toBe("/api/telemetry/performance");
+    expect(successfulCalls[0].init).toEqual(
       expect.objectContaining({
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -79,56 +107,18 @@ describe("ContentReadyReporter component integration", () => {
       }),
     );
 
-    // Verify counter was incremented
-    const count = storage.getItem(NAVIGATION_COUNT_KEY);
-    expect(count).toBe("1");
-
-    // Verify the fetch was called with correct URL and options
-    // The mock.calls array should have at least one call
-    expect(fetch.mock.calls.length).toBeGreaterThan(0);
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("would fail to dispatch if fetch is not bound to global scope (regression test)", async () => {
-    const storage = new MemoryStorage();
-
-    // This fetch mock enforces the receiver must be globalThis
-    const fetch = vi.fn(() => {
-      // Simulate real fetch behavior: throw if not called with correct receiver
-      // This is how the real browser fetch behaves
-      throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+    const body: unknown = JSON.parse(String(successfulCalls[0].init?.body));
+    expect(body).toEqual({
+      schemaVersion: 1,
+      source: "client",
+      surface: "inbox_list",
+      operation: "content_ready",
+      durationMs: 125,
+      cacheState: "unknown",
+      outcome: "ok",
     });
 
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    vi.stubGlobal("window", { sessionStorage: storage });
-    vi.stubGlobal("performance", { now: () => 125 });
-    vi.stubGlobal("fetch", fetch);
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      cb(0);
-      return 1;
-    });
-    vi.stubGlobal("cancelAnimationFrame", () => {});
-
-    const realConsoleError = console.error.bind(console);
-    vi.spyOn(console, "error").mockImplementation((message, ...args) => {
-      if (String(message).includes("react-test-renderer is deprecated")) return;
-      realConsoleError(message, ...args);
-    });
-
-    // If fetch is NOT bound (regression), this will still succeed because
-    // the try/catch swallows the error. But the counter is incremented.
-    await act(async () => {
-      renderer = create(createElement(ContentReadyReporter, { surface: "inbox_list" }));
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    // The fetch mock will have been called (with wrong receiver), thrown, and caught
-    // Counter will be incremented even though sample never sent (bug behavior)
-    // To test correct behavior: the fetch in deps must be bound, so it doesn't throw
-    // That's why this test exists - if someone removes .bind(globalThis), it will start
-    // failing because the mock will throw, but currently it passes because we bind correctly
+    expect(storage.getItem(NAVIGATION_COUNT_KEY)).toBe("1");
 
     await act(async () => renderer.unmount());
   });
