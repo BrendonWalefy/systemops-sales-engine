@@ -6,6 +6,7 @@ import type {
   HumanReviewDecisionSource,
 } from "@/domain/entities/human-review";
 import { runtimeNow } from "@/core/time/RuntimeClock";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export type HumanReviewRequestRecord = typeof humanReviewRequests.$inferSelect;
 
@@ -40,6 +41,11 @@ export class DrizzleHumanReviewRequestRepository {
             expiresAt: input.expiresAt ?? null,
           })
           .returning();
+        // Uma revisão pendente põe a conversa na aba "Pendências" do Inbox
+        // (segment-index.ts filtra por status='pending'). Bump aqui, no dono
+        // da escrita, em vez de contar com o bump vizinho do orquestrador ao
+        // persistir a próxima mensagem.
+        bumpInboxVersion(created.clinicId);
         return created;
       } catch (error) {
         if (attempt === 2) throw error;
@@ -112,6 +118,9 @@ export class DrizzleHumanReviewRequestRepository {
         ),
       )
       .returning();
+    // Decidir tira a linha da aba "Pendências"; sem bump, ela continuaria
+    // aparecendo lá em qualquer Inbox já aberto.
+    if (updated) bumpInboxVersion(updated.clinicId);
     return updated ?? null;
   }
 

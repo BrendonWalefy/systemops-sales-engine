@@ -18,6 +18,7 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { getStaffReminderWindows, isPendingCompletionAppointment } from "@/core/scheduling/appointment-reminder-staff";
 import type { AppointmentCompletionAction } from "./appointment-completion-review";
 import { toTimeCode } from "./appointment-completion-review";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export type PendingTodayAppointment = {
   id: string;
@@ -110,6 +111,7 @@ export async function applyAppointmentCompletion(params: {
         inArray(appointments.status, ["scheduled", "confirmed"]),
       ),
     );
+  bumpInboxVersion(params.clinicId);
 
   return { ok: true, updated: alvos, action: params.action };
 }

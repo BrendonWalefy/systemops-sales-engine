@@ -13,6 +13,7 @@ import { inspectOperatorAttachment, type OperatorAttachmentInspection } from "@/
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,7 @@ export async function POST(
     .update(conversations)
     .set({ aiPaused: true, takeoverExpiresAt, needsAttention: false, attentionReason: null, consecutiveUnclearCount: 0, lastMessageAt: now, updatedAt: now })
     .where(eq(conversations.id, conversationId));
+  bumpInboxVersion(conv.clinicId);
 
   // ── 8. Outbox durável e ordenada por conversa. Retry não chama o provedor
   // nesta rota e não recompõe conteúdo. ──

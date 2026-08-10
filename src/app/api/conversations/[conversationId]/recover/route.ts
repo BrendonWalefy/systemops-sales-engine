@@ -5,6 +5,7 @@ import { conversations, leads, messages } from "@/infrastructure/db/schema";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 // O replay roda classificação + composição LLM inline (a entrega sai pelo
@@ -79,6 +80,7 @@ export async function POST(
     .update(conversations)
     .set({ aiPaused: false, takeoverExpiresAt: null, aiResumedAt: now, updatedAt: now })
     .where(eq(conversations.id, conversationId));
+  bumpInboxVersion(conv.clinicId);
 
   try {
     const orchestrator = new ConversationOrchestrator();

@@ -59,6 +59,7 @@ import { GenerateSetupStudyButton, SetupStudyCard } from "./setup-study-ui";
 import { ConversationReviewCard, CreateReviewButton } from "./conversation-review-ui";
 import { CalendarImportPanel } from "./calendar-import-panel";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
 
@@ -129,6 +130,7 @@ async function toggleClinicAutomation(clinicId: string, currentAutoReplyEnabled:
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, clinicId));
+  bumpInboxVersion(clinicId);
 
   createLogger({ scope: "OwnerPanel", clinicId }).info("clinic.automation_toggled", {
     autoReplyEnabled: nextAutoReplyEnabled,

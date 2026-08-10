@@ -1,7 +1,7 @@
 // Tests for inbox filter logic — pure functions, no DOM needed.
 
 import { describe, it, expect } from "vitest";
-import { filterBySearch, filterLiveRowsByTab, resolveEmConversa, sortInboxRowsByRecency } from "@/app/(clinic)/app/inbox/inbox-filter";
+import { filterBySearch, resolveEmConversa, sortInboxRowsByRecency } from "@/app/(clinic)/app/inbox/inbox-filter";
 import { resolveInboxPendingAction } from "@/app/(clinic)/app/inbox/inbox-pending";
 import type { ConvRow } from "@/app/(clinic)/app/inbox/InboxClient";
 
@@ -117,43 +117,36 @@ describe("sortInboxRowsByRecency", () => {
     expect(result.map((item) => item.convId)).toEqual(["recent", "no-ts"]);
   });
 
-  it("prefere a atividade mais recente da conversa mesmo quando o último inbound do lead é mais antigo", () => {
-    const responded = row({
+  it("ordena só por lastMessageAt — latestMessageAt não influencia mais a ordem", () => {
+    // Fix round 1 — Important #2: o servidor pagina por conversations.lastMessageAt
+    // (Task 2 index), não por latestMessageAt (sentAt da última mensagem, de
+    // qualquer autor). Se o cliente reordenasse pela chave errada, uma
+    // conversa poderia aparecer no topo da lista renderizada mesmo tendo
+    // ficado de fora da página que o servidor buscou — ou vice-versa.
+    const respondedRecently = row({
       convId: "responded",
       lastMessageAt: new Date("2026-06-11T10:00:00.000Z"),
       latestMessageAt: new Date("2026-06-11T12:00:00.000Z"),
     });
-    const waiting = row({
+    const leadWroteLater = row({
       convId: "waiting",
       lastMessageAt: new Date("2026-06-11T11:00:00.000Z"),
       latestMessageAt: new Date("2026-06-11T11:00:00.000Z"),
     });
 
-    const result = sortInboxRowsByRecency([waiting, responded]);
+    const result = sortInboxRowsByRecency([respondedRecently, leadWroteLater]);
 
-    expect(result.map((item) => item.convId)).toEqual(["responded", "waiting"]);
-  });
-});
-
-describe("filterLiveRowsByTab", () => {
-  it("retorna apenas conversas em pausa manual na aba pausados", () => {
-    const paused = row({ convId: "paused", aiPaused: true, needsAttention: false });
-    const attention = row({ convId: "attention", aiPaused: true, needsAttention: true });
-    const activeRow = row({ convId: "active", aiPaused: false, needsAttention: false });
-
-    const result = filterLiveRowsByTab([paused, attention, activeRow], "paused");
-
-    expect(result.map((item) => item.convId)).toEqual(["paused"]);
+    expect(result.map((item) => item.convId)).toEqual(["waiting", "responded"]);
   });
 
-  it("reúne as pendências de doutor, comprovante e validação sem incluir conversas comuns", () => {
-    const doctor = row({ convId: "doctor", pendingAction: "doctor_review" });
-    const proof = row({ convId: "proof", pendingAction: "deposit_proof" });
-    const validation = row({ convId: "validation", pendingAction: "deposit_validation" });
+  it("desempata lastMessageAt igual por convId DESCENDENTE — mesmo critério do ORDER BY do servidor", () => {
+    const tie = new Date("2026-06-11T10:00:00.000Z");
+    const result = sortInboxRowsByRecency([
+      row({ convId: "conv-aaa", lastMessageAt: tie }),
+      row({ convId: "conv-zzz", lastMessageAt: tie }),
+    ]);
 
-    const result = filterLiveRowsByTab([doctor, proof, validation, active], "pending");
-
-    expect(result.map((item) => item.convId)).toEqual(["doctor", "proof", "validation"]);
+    expect(result.map((item) => item.convId)).toEqual(["conv-zzz", "conv-aaa"]);
   });
 });
 

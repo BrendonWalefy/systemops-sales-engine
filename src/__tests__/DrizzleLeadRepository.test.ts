@@ -13,6 +13,17 @@ const dbMock = vi.hoisted(() => ({
 
 vi.mock("@/infrastructure/db/client", () => ({ db: dbMock }));
 
+// A leitura materializada (Task 5/6) é um efeito colateral best-effort do
+// write, não a coisa sendo testada aqui — mockado para isolar o
+// comportamento de upsert de lead do restante da suíte. A propriedade "uma
+// falha no bump não derruba a escrita" é garantida estruturalmente por
+// bumpInboxVersion ser void (não uma Promise) — coberta uma vez em
+// ClinicReadVersion.test.ts, não repetida em cada repositório chamador.
+const bumpInboxVersionMock = vi.hoisted(() => vi.fn());
+vi.mock("@/application/read-versions/clinic-read-version", () => ({
+  bumpInboxVersion: bumpInboxVersionMock,
+}));
+
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 
 function lead(overrides: Partial<Lead> = {}): Lead {
@@ -113,5 +124,16 @@ describe("DrizzleLeadRepository", () => {
 
     expect(dbMock.insert).toHaveBeenCalledOnce();
     expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
+  it("marca a versão da inbox da clínica após salvar o lead", async () => {
+    const existingByLid = lead({ id: "lead-by-lid", phone: null, whatsappLid: "123456789@lid" });
+    const update = updateChain();
+    dbMock.query.leads.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(existingByLid);
+    dbMock.update.mockReturnValue(update);
+
+    await new DrizzleLeadRepository().save(lead({ id: "incoming-lead", clinicId: "clinic-42" }));
+
+    expect(bumpInboxVersionMock).toHaveBeenCalledWith("clinic-42");
   });
 });

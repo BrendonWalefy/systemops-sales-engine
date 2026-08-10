@@ -8,6 +8,7 @@ import { db } from "@/infrastructure/db/client";
 import { conversations } from "@/infrastructure/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,7 @@ export async function POST(
       updatedAt: new Date(),
     })
     .where(eq(conversations.id, conversationId));
+  bumpInboxVersion(sessionClinicId);
 
   return NextResponse.json({ ok: true });
 }

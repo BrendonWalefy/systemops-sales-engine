@@ -16,6 +16,7 @@ import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-mess
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { validateManualRecoveryRecipient } from "@/application/conversations/manual-recovery-policy";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export async function composeRecoveryMessageAction(
   convId: string,
@@ -165,6 +166,7 @@ export async function sendRecoveryMessageAction(
       return { ok: false, error: "Identificador de envio já utilizado" };
     }
   }
+  bumpInboxVersion(clinicId);
 
   await enqueueOutboundMessage({
     clinicId,

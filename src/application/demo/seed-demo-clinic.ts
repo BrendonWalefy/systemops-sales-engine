@@ -27,6 +27,7 @@ import { DEMO_CONVERSATIONS } from "@/application/demo/demo-conversation-scripts
 import { DEMO_MEDIA_MANIFEST } from "@/application/demo/demo-media-manifest";
 import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import {
   organizations,
   treatments,
@@ -973,6 +974,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       })
       .where(and(eq(clinicModules.clinicId, clinicId), eq(clinicModules.moduleKey, "voice_elevenlabs")));
   }
+
+  // Uma marca no final, depois que leads/conversas/mensagens já estão
+  // persistidos — não no meio do reset. Bumpar cedo (antes da re-semeadura)
+  // deixaria uma aba aberta refrescar mostrando a clínica vazia e nunca uma
+  // segunda vez mostrando o conteúdo recém-semeado.
+  bumpInboxVersion(clinicId);
 
   return {
     clinicId,

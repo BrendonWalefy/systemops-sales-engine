@@ -18,6 +18,9 @@ export const PERFORMANCE_OPERATIONS = [
   "agenda_bootstrap",
   "dashboard_total",
   "soft_navigation",
+  "content_ready",
+  "app_first_open",
+  "inbox_segment_scan",
 ] as const;
 
 export type PerformanceSurface = typeof PERFORMANCE_SURFACES[number];
@@ -58,4 +61,35 @@ export function normalizePerformanceRoute(raw: string): PerformanceSurface | nul
   if (pathname === "/app/dashboard") return "dashboard";
 
   return null;
+}
+
+export function createContentReadySample(
+  surface: PerformanceSurface,
+  durationMs: number,
+  cacheState: "cold" | "warm" | "unknown" = "unknown",
+): PerformanceSample {
+  return {
+    schemaVersion: PERFORMANCE_SCHEMA_VERSION,
+    source: "client",
+    surface,
+    operation: "content_ready",
+    durationMs,
+    cacheState,
+    outcome: "ok",
+  };
+}
+
+export function createFirstOpenSample(
+  surface: PerformanceSurface,
+  durationMs: number,
+): PerformanceSample {
+  return {
+    schemaVersion: PERFORMANCE_SCHEMA_VERSION,
+    source: "client",
+    surface,
+    operation: "app_first_open",
+    durationMs,
+    cacheState: "cold",
+    outcome: "ok",
+  };
 }
