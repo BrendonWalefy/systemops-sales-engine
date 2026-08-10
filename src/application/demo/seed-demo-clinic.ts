@@ -27,6 +27,7 @@ import { DEMO_CONVERSATIONS } from "@/application/demo/demo-conversation-scripts
 import { DEMO_MEDIA_MANIFEST } from "@/application/demo/demo-media-manifest";
 import { createTtsProvider } from "@/infrastructure/adapters/ai/tts/tts-gateway-factory";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import {
   organizations,
   treatments,
@@ -253,6 +254,7 @@ async function resetClinic(clinicId: string): Promise<void> {
   await db.delete(calendarBlocks).where(eq(calendarBlocks.clinicId, clinicId));
   await db.delete(followUps).where(eq(followUps.clinicId, clinicId));
   await db.delete(conversations).where(eq(conversations.clinicId, clinicId));
+  bumpInboxVersion(clinicId);
   await db.delete(clinicMembers).where(eq(clinicMembers.clinicId, clinicId));
   // media_assets referencia organizations e treatments — precisa sair antes dos dois.
   await db.delete(mediaAssets).where(eq(mediaAssets.clinicId, clinicId));

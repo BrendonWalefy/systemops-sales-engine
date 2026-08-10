@@ -100,6 +100,11 @@ export async function importCalendarEvents(
     columns: { id: true, name: true },
   });
 
+  // Uma marca ao final da importação inteira, não uma por evento — um
+  // export real chega a ~1500 eventos, e cada um contenderia na mesma linha
+  // de clinic_read_versions se marcasse individualmente.
+  let wroteAnything = false;
+
   for (const event of relevantEvents) {
     try {
       const { patientName, treatmentName } = extractEventInfo(event);
@@ -160,7 +165,7 @@ export async function importCalendarEvents(
           await db.update(leads)
             .set({ phone: eventPhone, updatedAt: new Date() })
             .where(eq(leads.id, leadId));
-          bumpInboxVersion(clinicId);
+          wroteAnything = true;
           leadsSemTelefone.delete(leadId);
           leadsMudos.delete(leadId);
           leadByPhone.set(eventPhone, leadId);
@@ -241,7 +246,7 @@ export async function importCalendarEvents(
             updatedAt: new Date(),
           })
           .where(eq(appointments.id, existingAppointment.id));
-        bumpInboxVersion(clinicId);
+        wroteAnything = true;
         result.skipped++;
         continue;
       }
@@ -264,7 +269,7 @@ export async function importCalendarEvents(
       }).returning({ id: appointments.id });
 
       if (appointmentResult.length) {
-        bumpInboxVersion(clinicId);
+        wroteAnything = true;
         result.imported++;
       } else {
         result.errors.push({
@@ -279,6 +284,8 @@ export async function importCalendarEvents(
       });
     }
   }
+
+  if (wroteAnything) bumpInboxVersion(clinicId);
 
   return result;
 }

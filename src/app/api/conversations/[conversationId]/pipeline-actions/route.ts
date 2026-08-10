@@ -25,6 +25,7 @@ import type { OutboundDeliveryPart } from "@/application/jobs/conversation-outbo
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 // Replay inclui classificação + composição LLM inline (a entrega em si sai pelo
@@ -360,6 +361,7 @@ export async function POST(
           updatedAt: now,
         })
         .where(eq(conversations.id, conversationId));
+      bumpInboxVersion(conv.clinicId);
 
       await enqueueOutboundMessage(
         {
@@ -486,6 +488,7 @@ export async function POST(
       updatedAt: now,
     })
     .where(eq(conversations.id, conversationId));
+  bumpInboxVersion(conv.clinicId);
 
   if (firstActive.step.type === "content" || (selectedStepIndex !== undefined && firstActive.step.type === "photo")) {
     if (!preparedDelivery) {
@@ -514,6 +517,7 @@ export async function POST(
       intent: "general_question",
       deliveryFormat: null,
     });
+    bumpInboxVersion(conv.clinicId);
 
     await enqueueOutboundMessage(
       {

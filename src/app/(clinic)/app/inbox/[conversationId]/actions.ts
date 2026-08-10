@@ -13,24 +13,27 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export async function pauseAi(conversationId: string, leadId: string) {
   // Pause manual via dashboard — sem TTL (operador decide quando retomar)
-  await db
+  const [updated] = await db
     .update(conversations)
     .set({ aiPaused: true, takeoverExpiresAt: null, updatedAt: new Date() })
-    .where(eq(conversations.id, conversationId));
+    .where(eq(conversations.id, conversationId))
+    .returning({ clinicId: conversations.clinicId });
   await db
     .update(leads)
     .set({ status: "in_conversation", updatedAt: new Date() })
     .where(eq(leads.id, leadId));
+  if (updated) bumpInboxVersion(updated.clinicId);
   revalidatePath("/app/inbox");
   revalidatePath(`/app/inbox/${conversationId}`);
 }
 
 export async function resumeAi(conversationId: string) {
   const now = new Date();
-  await db
+  const [updated] = await db
     .update(conversations)
     .set({
       aiPaused: false,
@@ -41,7 +44,9 @@ export async function resumeAi(conversationId: string) {
       aiResumedAt: now,
       updatedAt: now,
     })
-    .where(eq(conversations.id, conversationId));
+    .where(eq(conversations.id, conversationId))
+    .returning({ clinicId: conversations.clinicId });
+  if (updated) bumpInboxVersion(updated.clinicId);
   revalidatePath("/app/inbox");
   revalidatePath(`/app/inbox/${conversationId}`);
 }
@@ -50,14 +55,16 @@ export async function resumeAi(conversationId: string) {
 // o lead manualmente e quer remover o aviso do inbox sem mudar o controle da IA.
 export async function clearAttention(conversationId: string) {
   const now = new Date();
-  await db
+  const [updated] = await db
     .update(conversations)
     .set({
       needsAttention: false,
       attentionReason: null,
       updatedAt: now,
     })
-    .where(eq(conversations.id, conversationId));
+    .where(eq(conversations.id, conversationId))
+    .returning({ clinicId: conversations.clinicId });
+  if (updated) bumpInboxVersion(updated.clinicId);
   revalidatePath("/app/inbox");
   revalidatePath(`/app/inbox/${conversationId}`);
 }
@@ -88,6 +95,7 @@ export async function setConversationCategory(
       updatedAt: now,
     })
     .where(eq(conversations.id, conversationId));
+  bumpInboxVersion(conversation.clinicId);
 
   revalidatePath("/app/inbox");
   revalidatePath(`/app/inbox/${conversationId}`);
@@ -119,6 +127,7 @@ export async function setConversationCategoryBulk(
       updatedAt: now,
     })
     .where(and(eq(conversations.clinicId, clinicId), inArray(conversations.id, ids)));
+  bumpInboxVersion(clinicId);
 
   revalidatePath("/app/inbox");
   revalidatePath("/app/dashboard");
@@ -146,6 +155,7 @@ export async function deleteConversationsBulk(conversationIds: string[]) {
   await db
     .delete(conversations)
     .where(and(eq(conversations.clinicId, clinicId), inArray(conversations.id, scopedIds)));
+  bumpInboxVersion(clinicId);
 
   revalidatePath("/app/inbox");
   revalidatePath("/app/dashboard");

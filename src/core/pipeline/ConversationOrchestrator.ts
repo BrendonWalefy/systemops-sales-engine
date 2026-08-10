@@ -3020,10 +3020,9 @@ export class ConversationOrchestrator {
     leadId: string,
     phone: string,
     credentials: Parameters<typeof fetchAndPersistLeadPhoto>[2],
-    clinicId: string,
   ): Promise<void> {
     if (this.captureAuxiliaryExternalEffect({ kind: "lead_photo_lookup" })) return;
-    await fetchAndPersistLeadPhoto(leadId, phone, credentials, clinicId);
+    await fetchAndPersistLeadPhoto(leadId, phone, credentials);
   }
 
   private async notifyOperators(
@@ -3403,7 +3402,7 @@ export class ConversationOrchestrator {
     // Z-API não envia senderPhoto no webhook — buscamos sob demanda via /profile-picture
     // e re-hospedamos no Vercel Blob para evitar expiração de 48h das URLs do WhatsApp.
     if (!lead.profilePicUrl && lead.phone && channelConfig.zapi) {
-      void this.persistLeadPhoto(lead.id, lead.phone, channelConfig.zapi, clinicId);
+      void this.persistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
     }
 
     // ── 3.1b. Rehost de áudio (fire-and-forget) ──

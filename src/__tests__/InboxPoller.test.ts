@@ -94,18 +94,30 @@ describe("InboxPoller", () => {
     });
   });
 
-  it("não busca a versão enquanto document.hidden é true", async () => {
+  it("não busca a versão enquanto document.hidden é true, e retoma sozinho quando a aba volta a ficar visível", async () => {
+    // Regressão que só "não busca enquanto hidden" não pega: se o poller
+    // desse um `return` cedo demais e nunca chamasse scheduleNext() de novo,
+    // o fetch também ficaria em zero pra sempre — passaria pela mesma
+    // asserção. Só fica provado que o laço continua vivo se ele voltar a
+    // buscar depois que a aba fica visível de novo.
     mockFetchVersion("v1");
     const renderer = await render("v1");
+    const documentStub = (globalThis as unknown as { document: { hidden: boolean } }).document;
 
-    (globalThis as unknown as { document: { hidden: boolean } }).document.hidden = true;
-    const callsWhileVisible = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+    documentStub.hidden = true;
+    const callsWhileHidden = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsWhileHidden);
 
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsWhileVisible);
+    documentStub.hidden = false;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsWhileHidden);
+
     act(() => {
       renderer.unmount();
     });

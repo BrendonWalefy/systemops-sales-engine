@@ -45,7 +45,6 @@ export async function fetchAndPersistLeadPhoto(
   leadId: string,
   phone: string,
   creds: ZapiCreds,
-  clinicId: string,
 ): Promise<void> {
   const photoUrl = await fetchZApiProfilePicture(phone, creds);
   if (!photoUrl) return;
@@ -63,11 +62,14 @@ export async function fetchAndPersistLeadPhoto(
   }
 
   try {
-    await db
+    // clinicId vem da própria linha que acabou de ser escrita — nunca do
+    // chamador, para não haver como marcar a inbox de uma clínica errada.
+    const [updated] = await db
       .update(leads)
       .set({ profilePicUrl: permanentUrl, updatedAt: new Date() })
-      .where(eq(leads.id, leadId));
-    bumpInboxVersion(clinicId);
+      .where(eq(leads.id, leadId))
+      .returning({ clinicId: leads.clinicId });
+    if (updated) bumpInboxVersion(updated.clinicId);
   } catch {
     // silently ignore — next message will retry
   }

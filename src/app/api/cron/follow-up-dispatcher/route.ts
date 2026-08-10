@@ -24,6 +24,7 @@ import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clin
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { FollowUp } from "@/domain/entities/follow-up";
 
@@ -381,6 +382,10 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
     if (outcome === "dispatched") dispatched++;
     else if (outcome === "failed") failed++;
   }
+
+  // Uma marca por execução da clínica, não uma por follow-up despachado —
+  // até DISPATCH_CONCURRENCY escritas concorrentes na mesma linha por tick.
+  if (dispatched > 0) bumpInboxVersion(clinicId);
 
   return { clinicId, dispatched, failed, total: dueFollowUps.length };
 }

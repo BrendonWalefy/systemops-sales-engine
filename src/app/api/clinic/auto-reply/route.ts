@@ -4,6 +4,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations } from "@/infrastructure/db/schema";
 import { eq } from "drizzle-orm";
 import { resolveOperationalStatusFromAutomationState } from "@/application/clinics/clinic-operational-status";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, clinicId));
+  bumpInboxVersion(clinicId);
 
   return NextResponse.json({
     autoReplyEnabled: body.enabled,

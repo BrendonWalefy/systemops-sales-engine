@@ -3,6 +3,7 @@ import { and, eq, isNotNull, lt } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { conversations } from "@/infrastructure/db/schema";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         lt(conversations.takeoverExpiresAt, now),
       ),
     )
-    .returning({ id: conversations.id });
+    .returning({ id: conversations.id, clinicId: conversations.clinicId });
+
+  // Lote cruza clínicas — cada uma que teve pelo menos uma conversa retomada
+  // precisa da própria marca (não é "uma escrita", são N escritas de N clínicas).
+  const affectedClinicIds = new Set(resumed.map((row) => row.clinicId));
+  for (const clinicId of affectedClinicIds) {
+    bumpInboxVersion(clinicId);
+  }
 
   console.log(`[ResumeExpiredTakeovers] resumed=${resumed.length}`);
   return NextResponse.json({ resumed: resumed.length });

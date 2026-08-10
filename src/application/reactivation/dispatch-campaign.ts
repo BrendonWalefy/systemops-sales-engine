@@ -259,7 +259,6 @@ export async function dispatchCampaign(input: {
           deliveryFormat: null,
         })
         .onConflictDoNothing();
-      bumpInboxVersion(input.clinicId);
 
       const { outboundMessageId } = await enqueueOutboundMessage(
         {
@@ -311,6 +310,10 @@ export async function dispatchCampaign(input: {
       .set({ status: "running", lastDispatchAt: now, updatedAt: now })
       .where(eq(reactivationCampaigns.id, input.campaignId));
   }
+
+  // Uma marca por disparo da campanha, não uma por alvo — o laço acima pode
+  // enfileirar dezenas de mensagens na mesma execução.
+  if (queued > 0) bumpInboxVersion(input.clinicId);
 
   return { campaignId: input.campaignId, queued, skipped, failed, rehearsal };
 }
