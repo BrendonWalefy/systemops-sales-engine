@@ -24,7 +24,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
+export async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
   const now = new Date();
 
   // A aba/escopo/busca ativos decidem QUAIS conversas valem a leitura cara —
@@ -52,8 +52,14 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
   const activeTab = resolveActiveInboxTab(initialScope, initialTab);
 
   // Não depende da varredura de segmentação — dispara em paralelo com ela
-  // em vez de esperar (Fix round 1 — Important #6: antes ficava dentro do
-  // Promise.all de inbox_base_query, que só começa depois da varredura).
+  // em vez de esperar (Fix round 1 — Important #6). O query builder do
+  // drizzle é um thenable PREGUIÇOSO (query-promise.js: `then()` chama
+  // `execute()`) — só criar o objeto não manda nada pro Neon. `.execute()`
+  // aqui é o que realmente dispara a requisição na hora; sem ele, a consulta
+  // só saía quando o Promise.all de inbox_base_query desse `await` nela, ou
+  // seja, só depois do scan de segmentação já ter resolvido (Fix round 2 —
+  // Important #5: a "paralelização" da rodada 1 só movia onde o objeto era
+  // CONSTRUÍDO, não onde a requisição saía).
   const clinicRowsPromise = db
     .select({
       autoReplyEnabled: organizations.autoReplyEnabled,
@@ -61,7 +67,15 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
     })
     .from(organizations)
     .where(eq(organizations.id, clinicId))
-    .limit(1);
+    .limit(1)
+    .execute();
+  // Sem isso, uma falha aqui vira unhandledRejection assim que a promise
+  // rejeita — antes do Promise.all de inbox_base_query (lá embaixo) chegar a
+  // dar `await` nela, já que o scan de segmentação pode levar um tempo.
+  // O catch aqui só marca a rejeição como "tratada"; quem trata de verdade
+  // (e propaga o erro pra derrubar a página, como sempre) continua sendo
+  // aquele await mais abaixo.
+  clinicRowsPromise.catch(() => {});
 
   // Varredura estreita clinic-wide (Task 4b): decide membership e contagem
   // de TODAS as abas/escopos, mas só carrega as colunas que os predicados
