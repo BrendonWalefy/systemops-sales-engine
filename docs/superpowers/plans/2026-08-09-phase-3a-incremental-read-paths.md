@@ -898,13 +898,19 @@ This deletes the four aggregations. The old file's `serializeDate` helper and it
 
 - [ ] **Step 5: Bump on the writes that matter**
 
-Call `bumpClinicReadVersion(clinicId, "inbox")` after the durable write in each path that changes what the Inbox shows. Locate them and add the call after the write succeeds:
+Call `bumpClinicReadVersion(clinicId, "inbox")` after the durable write in each path that changes what the Inbox shows.
+
+**Correction to an earlier draft of this plan.** The original search scope here was `src/application src/infrastructure`, which is wrong: every operator-initiated Inbox mutation lives in `src/app` and writes through `db` directly, bypassing the repositories. Search all three trees:
 
 ```bash
-rg -n "update\(conversations\)|insert\(messages\)|update\(leads\)|insert\(appointments\)|update\(appointments\)" src/application src/infrastructure --type ts
+rg -n "update\(conversations\)|update\(leads\)|update\(organizations\)|insert\(messages\)|insert\(appointments\)|update\(appointments\)|delete\(conversations\)" src/app src/application src/infrastructure
 ```
 
-The bump is fire-and-forget relative to correctness — a missed bump degrades to the 60-second ladder, it does not lose data. Never let a bump failure fail the write:
+Confirm each candidate has a production caller before counting it as covered. `ConversationRepository.setAiPaused` and `setTakeover` look like the pause and takeover write paths but have **zero production callers** — the real ones are direct `db.update` calls in `src/app/(clinic)/app/inbox/[conversationId]/actions.ts`.
+
+**The tolerance for a missed bump is narrower than an earlier draft of this plan claimed.** That draft said a missed bump "degrades to the 60-second ladder". That is true only for a missed *instance*. The version this replaces was **derived** from the data, so any write self-healed it; the new one is bump-driven only. A missed *category* of write therefore means the poll returns an identical version forever and the Inbox never refreshes for that class of change at all. Categories that must bump, each verified against a real caller: pause and resume AI, clear attention, change category or archive, bulk delete, mark as read, and the clinic-wide auto-reply toggle. The last three were explicit components of the aggregation this task deletes — `max(conversations.lastReadAt)`, `organizations.autoReplyEnabled` and `organizations.updatedAt`.
+
+Never let a bump failure fail the write:
 
 ```ts
   void bumpClinicReadVersion(clinicId, "inbox").catch(() => {
