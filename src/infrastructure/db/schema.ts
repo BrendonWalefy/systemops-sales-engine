@@ -2008,7 +2008,7 @@ export const clinicReadVersions = pgTable(
   {
     clinicId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     resource: text("resource").notNull(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

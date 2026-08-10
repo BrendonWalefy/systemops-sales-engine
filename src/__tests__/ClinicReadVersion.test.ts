@@ -53,6 +53,24 @@ describe("clinic read versions table", () => {
     expect(names).toContain("version");
     expect(names).toContain("updated_at");
   });
+
+  it(
+    "a FK para organizations é ON DELETE CASCADE — sem isto, apagar (ou " +
+      "resetar) uma clínica que já teve um bump falha com 23503, porque " +
+      "esta linha derivada não tem sentido nenhum sem a clínica dona dela",
+    () => {
+      const config = getTableConfig(clinicReadVersions);
+      const fk = config.foreignKeys.find((f) => {
+        const ref = f.reference();
+        return (
+          ref.columns.some((c) => c.name === "organization_id") &&
+          ref.foreignColumns.some((c) => c.name === "id")
+        );
+      });
+      expect(fk).toBeDefined();
+      expect(fk?.onDelete).toBe("cascade");
+    },
+  );
 });
 
 describe("bumpClinicReadVersion", () => {

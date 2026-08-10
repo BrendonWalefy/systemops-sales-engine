@@ -254,7 +254,6 @@ async function resetClinic(clinicId: string): Promise<void> {
   await db.delete(calendarBlocks).where(eq(calendarBlocks.clinicId, clinicId));
   await db.delete(followUps).where(eq(followUps.clinicId, clinicId));
   await db.delete(conversations).where(eq(conversations.clinicId, clinicId));
-  bumpInboxVersion(clinicId);
   await db.delete(clinicMembers).where(eq(clinicMembers.clinicId, clinicId));
   // media_assets referencia organizations e treatments — precisa sair antes dos dois.
   await db.delete(mediaAssets).where(eq(mediaAssets.clinicId, clinicId));
@@ -975,6 +974,12 @@ export async function seedDemoClinic(): Promise<DemoSeedResult> {
       })
       .where(and(eq(clinicModules.clinicId, clinicId), eq(clinicModules.moduleKey, "voice_elevenlabs")));
   }
+
+  // Uma marca no final, depois que leads/conversas/mensagens já estão
+  // persistidos — não no meio do reset. Bumpar cedo (antes da re-semeadura)
+  // deixaria uma aba aberta refrescar mostrando a clínica vazia e nunca uma
+  // segunda vez mostrando o conteúdo recém-semeado.
+  bumpInboxVersion(clinicId);
 
   return {
     clinicId,
