@@ -713,6 +713,14 @@ export const conversations = pgTable(
     externalThreadIdx: index("conversations_external_thread_idx").on(
       table.externalThreadId,
     ),
+    // Cobre a leitura do inbox: filtro por clínica, ordenado por última
+    // mensagem. `id` desempata mensagens simultâneas para o cursor keyset
+    // da Task 3 — a ordem das colunas aqui é o contrato dela.
+    clinicLastMessageIdx: index("conversations_org_last_message_idx").on(
+      table.clinicId,
+      table.lastMessageAt.desc(),
+      table.id.desc(),
+    ),
   }),
 );
 
