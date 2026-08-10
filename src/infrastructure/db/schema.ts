@@ -1,10 +1,12 @@
 import {
+  bigint,
   boolean,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -1995,5 +1997,23 @@ export const calendarImportTokens = pgTable(
   (t) => ({
     orgTokenIdx: index("calendar_import_tokens_org_idx").on(t.organizationId),
     expiresAtIdx: index("calendar_import_tokens_expires_idx").on(t.expiresAt),
+  }),
+);
+
+// Read model de invalidação: uma linha por (clínica, recurso). Substitui as
+// quatro agregações que o poll da inbox rodava a cada 5s por aba. A versão é
+// monotônica e só indica "mudou"; ela nunca carrega conteúdo de conversa.
+export const clinicReadVersions = pgTable(
+  "clinic_read_versions",
+  {
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    resource: text("resource").notNull(),
+    version: bigint("version", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.clinicId, table.resource] }),
   }),
 );
