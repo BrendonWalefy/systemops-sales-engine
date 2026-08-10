@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { conversations, leads } from "@/infrastructure/db/schema";
 import { INBOX_PAGE_SIZE, decodeInboxCursor, encodeInboxCursor } from "./inbox-cursor";
@@ -7,7 +7,15 @@ export async function listClinicConversations(params: {
   clinicId: string;
   cursor?: string | null;
   limit?: number;
+  // Restringe a página às conversas de uma aba já decidida pelo índice de
+  // segmentação (Task 4b). Sem isso, mantém o comportamento clinic-wide
+  // original — os testes existentes cobrem esse caminho.
+  ids?: string[];
 }) {
+  if (params.ids && params.ids.length === 0) {
+    return { rows: [], nextCursor: null };
+  }
+
   const limit = params.limit ?? INBOX_PAGE_SIZE;
   const cursor = decodeInboxCursor(params.cursor ?? null);
 
@@ -22,6 +30,15 @@ export async function listClinicConversations(params: {
         )
       : and(sql`${conversations.lastMessageAt} is null`, lt(conversations.id, cursor.id))
     : undefined;
+
+  const idsFilter = params.ids ? inArray(conversations.id, params.ids) : undefined;
+
+  // Mesma forma de where quando não há ids/cursor extras: preserva a query
+  // exercitada pelos testes existentes (eq isolado, sem `and` de 1 elemento).
+  const conditions = [eq(conversations.clinicId, params.clinicId), keyset, idsFilter].filter(
+    (condition): condition is SQL => condition !== undefined,
+  );
+  const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
 
   const rows = await db
     .select({
@@ -45,7 +62,7 @@ export async function listClinicConversations(params: {
     })
     .from(conversations)
     .innerJoin(leads, eq(conversations.leadId, leads.id))
-    .where(keyset ? and(eq(conversations.clinicId, params.clinicId), keyset) : eq(conversations.clinicId, params.clinicId))
+    .where(whereClause)
     .orderBy(sql`${conversations.lastMessageAt} desc nulls last`, desc(conversations.id))
     .limit(limit + 1);
 

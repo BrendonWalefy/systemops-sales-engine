@@ -203,6 +203,29 @@ describe("listClinicConversations", () => {
     expect(decodeInboxCursor(result.nextCursor)).toEqual({ lastMessageAt: null, id: "conv-2" });
   });
 
+  it("scopes to an explicit id list via inArray, on top of the clinicId condition — the Task 4b tab-bounded page", async () => {
+    const chain = selectChain([]);
+    dbMock.select.mockReturnValue(chain);
+
+    await listClinicConversations({ clinicId: "clinic-1", ids: ["conv-a", "conv-b"] });
+
+    const rendered = renderFragment(chain.where.mock.calls[0][0]);
+    expect(rendered.sql).toBe(
+      '("conversations"."organization_id" = $1 and "conversations"."id" in ($2, $3))',
+    );
+    expect(rendered.params).toEqual(["clinic-1", "conv-a", "conv-b"]);
+  });
+
+  it("returns no rows without querying the database when ids is an empty array", async () => {
+    const chain = selectChain([{ convId: "should-not-be-returned" } as never]);
+    dbMock.select.mockReturnValue(chain);
+
+    const result = await listClinicConversations({ clinicId: "clinic-1", ids: [] });
+
+    expect(result).toEqual({ rows: [], nextCursor: null });
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
   it("resolving that nextCursor produces the null-only keyset predicate — proving the boundary hand-off between page fetch and next predicate is consistent", async () => {
     const rows = [
       fakeRow({ convId: "conv-1", lastMessageAt: new Date("2026-08-03T00:00:00.000Z") }),

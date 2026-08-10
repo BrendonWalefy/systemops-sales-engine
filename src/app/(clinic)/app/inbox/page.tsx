@@ -6,18 +6,59 @@ import { redirect } from "next/navigation";
 import { organizations, messages, appointments, conversationStates, humanReviewRequests } from "@/infrastructure/db/schema";
 import { and, eq, desc, inArray, gte, isNull, or } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
-import { InboxClient, type ConvRow } from "./InboxClient";
+import { InboxClient, type ConvRow, type InboxTabCounts } from "./InboxClient";
 import { getInboxVersion } from "./get-inbox-version";
 import { TreatmentGapBanner } from "./TreatmentGapBanner";
 import { resolveInboxPendingAction } from "./inbox-pending";
 import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
 import { ContentReadyReporter } from "@/components/performance/content-ready-reporter";
 import { listClinicConversations } from "@/application/inbox/list-conversations";
+import { loadInboxSegmentIndex } from "@/application/inbox/segment-index";
+import { INBOX_PAGE_SIZE, encodeInboxCursor } from "@/application/inbox/inbox-cursor";
 
 type InboxSearchParams = Record<string, string | string[] | undefined>;
 
 async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
-  const cursor = typeof params.cursor === "string" ? params.cursor : null;
+  const now = new Date();
+
+  // A aba/escopo ativos decidem QUAIS conversas valem a leitura cara — vêm
+  // dos mesmos search params de sempre, só que agora lidos antes da página
+  // ser buscada, não depois.
+  const filterParam = Array.isArray(params.filter) ? params.filter[0] : params.filter;
+  const scopeParam = Array.isArray(params.scope) ? params.scope[0] : params.scope;
+  const initialScope =
+    scopeParam === "operational" ||
+    scopeParam === "vendor" ||
+    scopeParam === "spam" ||
+    scopeParam === "archived"
+      ? scopeParam
+      : "sales";
+  const initialTab =
+    filterParam === "attention" ||
+    filterParam === "pending" ||
+    filterParam === "hot" ||
+    filterParam === "paused" ||
+    filterParam === "cold" ||
+    filterParam === "recovery"
+      ? filterParam
+      : "all";
+  const activeTab = initialScope === "sales" ? initialTab : "all";
+
+  // Varredura estreita clinic-wide (Task 4b): decide membership e contagem
+  // de TODAS as abas/escopos, mas só carrega as colunas que os predicados
+  // leem — nunca corpo de mensagem, nome, telefone ou foto.
+  const segmentIndex = await measureServerOperation(
+    {
+      clinicId,
+      surface: "inbox_list",
+      operation: "inbox_segment_scan",
+    },
+    () => loadInboxSegmentIndex({ clinicId, now }),
+  );
+
+  const activeIds =
+    initialScope === "sales" ? segmentIndex.idsByTab[activeTab] : segmentIndex.idsByScope[initialScope];
+  const pageIds = activeIds.slice(0, INBOX_PAGE_SIZE);
 
   const [clinicRows, page] = await measureServerOperation(
     {
@@ -33,16 +74,26 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
         .from(organizations)
         .where(eq(organizations.id, clinicId))
         .limit(1),
-      listClinicConversations({ clinicId, cursor }),
+      // Não é mais a página recente clinic-wide: são as até INBOX_PAGE_SIZE
+      // conversas da aba/escopo ativos, na mesma ordem do índice de segmentação.
+      listClinicConversations({ clinicId, ids: pageIds }),
     ]),
   );
 
   const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
 
   const rows = page.rows;
-  const nextCursor = page.nextCursor;
+  // O cursor keyset original perde sentido aqui: a página não é mais "os
+  // próximos N da clínica", é "os próximos N desta aba". O índice de
+  // segmentação já sabe se sobra mais nesta aba; o cursor só carrega o
+  // ponto de retomada para quando a Fase 3B ligar o "carregar mais".
+  const hasMoreInActiveTab = pageIds.length < activeIds.length;
+  const lastPageRow = rows.at(-1);
+  const nextCursor =
+    hasMoreInActiveTab && lastPageRow
+      ? encodeInboxCursor({ lastMessageAt: lastPageRow.lastMessageAt, id: lastPageRow.convId })
+      : null;
 
-  const now = new Date();
   const salesLeadIds = rows
     .filter((row) => row.conversationCategory === "sales")
     .map((row) => row.leadId);
@@ -193,24 +244,15 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
 
   const initialVersion = await getInboxVersion(clinicId);
 
-  const filter = Array.isArray(params.filter) ? params.filter[0] : params.filter;
-  const scopeParam = Array.isArray(params.scope) ? params.scope[0] : params.scope;
-  const initialScope =
-    scopeParam === "operational" ||
-    scopeParam === "vendor" ||
-    scopeParam === "spam" ||
-    scopeParam === "archived"
-      ? scopeParam
-      : "sales";
-  const initialTab =
-    filter === "attention" ||
-    filter === "pending" ||
-    filter === "hot" ||
-    filter === "paused" ||
-    filter === "cold" ||
-    filter === "recovery"
-      ? filter
-      : "all";
+  // Contagens/badges das abas: vêm do índice de segmentação (varredura
+  // clinic-wide), nunca de `allRows` — que agora é só a página da aba ativa.
+  // Um único dono para cada número; ver InboxClient.tsx.
+  const counts: InboxTabCounts = {
+    tabs: segmentIndex.counts,
+    scopes: segmentIndex.scopeCounts,
+    activeCount: segmentIndex.activeCount,
+    totalConversations: segmentIndex.totalConversations,
+  };
 
   return (
     <div className="inbox-shell">
@@ -221,8 +263,9 @@ async function prepareInboxPage(clinicId: string, params: InboxSearchParams) {
         rows={allRows}
         lastMsgMap={lastMsgMap}
         autoReplyEnabled={autoReplyEnabled}
+        counts={counts}
         initialScope={initialScope}
-        initialTab={initialScope === "sales" ? initialTab : "all"}
+        initialTab={activeTab}
         nextCursor={nextCursor}
       />
     </div>

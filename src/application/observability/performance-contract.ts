@@ -20,6 +20,7 @@ export const PERFORMANCE_OPERATIONS = [
   "soft_navigation",
   "content_ready",
   "app_first_open",
+  "inbox_segment_scan",
 ] as const;
 
 export type PerformanceSurface = typeof PERFORMANCE_SURFACES[number];
