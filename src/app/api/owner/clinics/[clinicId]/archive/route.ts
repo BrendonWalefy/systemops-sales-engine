@@ -5,6 +5,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/session";
 import { db } from "@/infrastructure/db/client";
 import { organizations } from "@/infrastructure/db/schema";
 import { createLogger } from "@/infrastructure/logging/logger";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,7 @@ export async function POST(
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, clinicId));
+  bumpInboxVersion(clinicId);
 
   createLogger({ scope: "OwnerPanel", clinicId }).info("clinic.archived", {});
 

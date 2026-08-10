@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { conversations } from "@/infrastructure/db/schema";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export async function POST(
   if (!updated) {
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
+  bumpInboxVersion(clinicId);
 
   revalidatePath("/app/inbox");
   revalidatePath(`/app/inbox/${conversationId}`);

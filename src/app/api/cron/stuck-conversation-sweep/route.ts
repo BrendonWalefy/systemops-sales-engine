@@ -11,6 +11,7 @@ import {
 import { NotifyClinicOperators } from "@/application/use-cases/notifications/notify-clinic-operators";
 import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories/drizzle-push-subscription-repository";
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const alerts = findStuckConversationAlerts(candidates, now, STUCK_THRESHOLD_MS);
 
+  // `needsAttention`/`attentionReason` são colunas que o Inbox mostra (badge
+  // "Atenção" e a aba homônima). A versão do Inbox é bump-driven, então sem
+  // este bump a marcação feita aqui ficaria PERMANENTEMENTE invisível pro
+  // operador — não atrasada. Uma marca por clínica depois do laço, como o
+  // recovery-campaign: o laço pode marcar dezenas de conversas da mesma
+  // clínica e todas apontam para a mesma linha de clinic_read_versions.
+  const affectedClinicIds = new Set<string>();
+
   for (const alert of alerts) {
     await db
       .update(conversations)
@@ -104,6 +113,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         updatedAt: now,
       })
       .where(eq(conversations.id, alert.conversationId));
+    affectedClinicIds.add(alert.clinicId);
 
     await notifier
       .execute(alert.clinicId, {
@@ -115,6 +125,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         console.error("[StuckConversationSweep] Push falhou:", err),
       );
   }
+
+  for (const clinicId of affectedClinicIds) bumpInboxVersion(clinicId);
 
   console.log(
     `[StuckConversationSweep] checked=${candidates.length} flagged=${alerts.length}`,

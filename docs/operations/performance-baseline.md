@@ -81,7 +81,55 @@ Do not describe this baseline as an optimization, regression, production benchma
 | Metric | Design target | Baseline mapping |
 | --- | --- | --- |
 | Visual feedback after tap | < 100 ms | Measurable with `client|<surface>|soft_navigation|ok`. |
-| Previously visited screen | p75 < 300 ms | `not_measurable`: current navigation timing stops at pathname/loading feedback, not useful content readiness. |
-| First application open | p75 < 1.5 s | `not_measurable`: initial reporter mount emits no sample. |
-| Open conversation | p75 < 800 ms | `not_measurable`: `soft_navigation` can stop on the conversation skeleton. |
-| New message visible | <= 1 s | `not_measurable`: requires the planned Phase 3 realtime milestone. |
+| Previously visited screen | p75 < 300 ms | Measurable with `client|<surface>|content_ready|ok`. |
+| First application open | p75 < 1.5 s | `not_measurable`: no emitter can currently distinguish a cold start from an un-instrumented soft navigation into an instrumented surface. |
+| Open conversation | p75 < 800 ms | Measurable with `client|conversation|content_ready|ok`. |
+| New message visible | <= 1 s | `not_measurable`: requires the planned Phase 3B realtime milestone. |
+
+The two targets that moved out of `not_measurable` — previously visited
+screen and open conversation — did so because the `content_ready` operation
+was added to the telemetry contract. It fires after paint, once the surface's
+data is rendered, so it measures content readiness rather than the pathname
+change that `soft_navigation` stops at.
+
+`app_first_open` is also in the telemetry contract, but no emitter currently
+produces it, and first application open stays `not_measurable`. The reporter
+that emits `content_ready`, `src/components/performance/content-ready-reporter.tsx`,
+decides what the measurement *means* before it decides the number:
+
+- On a **soft navigation** it measures from the navigation mark written at
+  click time by `markNavigationStartInSession` to the paint, and emits
+  `content_ready`. Earlier revisions of this document assumed the elapsed
+  value of `performance.now()`; that is time since the document's
+  `timeOrigin`, so a conversation opened 45 s into a session reported
+  ~45,000 ms against an 800 ms target.
+- With **no mark**, the reporter emits nothing, regardless of whether this is
+  the first content-ready of the document. A hard load has no mark because
+  nothing has been clicked yet — but so does a soft navigation into an
+  instrumented surface (`inbox_list` or `conversation`) from a page that
+  carries no `ContentReadyReporter` of its own, such as the Dashboard. Both
+  look identical from inside the reporter: first mount in the document, no
+  mark. There is currently no way to tell them apart, so the reporter would
+  otherwise report the elapsed session time — potentially tens of seconds of
+  reading the Dashboard — as a false first-open measurement. A previous
+  revision of this document and this reporter did exactly that, mapping this
+  case to `app_first_open`; it produced untrustworthy samples and was
+  reverted. Building a real first-open discriminator is deliberately out of
+  scope for this phase and is left for a future milestone.
+
+Being measurable is not being measured. No cohort has been collected against
+these operations, so none of these targets has a baseline value yet, let alone
+a met/not-met verdict.
+
+## Comparing against the Phase 1 baseline after Phase 3A
+
+Phase 3A moved the clinic-wide portion of the Inbox read out of
+`inbox_base_query` and into a new `inbox_segment_scan` operation.
+`inbox_base_query` now covers only the bounded page fetch.
+
+A before/after reading of `inbox_base_query` alone is therefore
+apples-to-oranges and will overstate the improvement. Any comparison against a
+Phase 1 cohort must **sum `inbox_base_query` and `inbox_segment_scan`** to
+represent the same work the Phase 1 number covered. Recording them separately
+is still correct and useful — it shows which half the cost sits in — but the
+sum is the only figure comparable to the earlier baseline.

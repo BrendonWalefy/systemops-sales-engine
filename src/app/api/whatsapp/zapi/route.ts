@@ -57,6 +57,7 @@ import {
 } from "@/application/conversations/apply-appointment-completion";
 import { sendButtonListMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { enqueueNoShowRecovery } from "@/application/conversations/enqueue-no-show-recovery";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -77,6 +78,7 @@ type OperatorOutbound =
 async function saveOperatorOutbound(
   body: ZApiInboundPayload,
   convId: string,
+  clinicId: string,
   ttlHours: number,
   msg: OperatorOutbound,
 ): Promise<void> {
@@ -107,6 +109,7 @@ async function saveOperatorOutbound(
       updatedAt: now,
     })
     .where(eq(conversations.id, convId));
+  bumpInboxVersion(clinicId);
 
   console.log(
     `[ZApi] Operador enviou ${msg.kind} pelo celular (conv=${convId}) — IA pausada até ${takeoverExpiresAt?.toISOString() ?? "indefinidamente"}`,
@@ -386,6 +389,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             updatedAt: new Date(),
           })
           .where(eq(conversations.id, pendingReview.conversationId));
+        bumpInboxVersion(clinicId);
       }
 
       if (
@@ -506,7 +510,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
 
         // Nenhuma verificação bateu → operador enviando texto do celular
-        await saveOperatorOutbound(body, conv.id, ttlHours, {
+        await saveOperatorOutbound(body, conv.id, clinicId, ttlHours, {
           kind: "text",
           body: body.text!.message,
         });
@@ -540,9 +544,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
 
       if (operatorMedia) {
-        await saveOperatorOutbound(body, conv.id, ttlHours, operatorMedia);
+        await saveOperatorOutbound(body, conv.id, clinicId, ttlHours, operatorMedia);
       } else if (operatorPlaceholder) {
-        await saveOperatorOutbound(body, conv.id, ttlHours, {
+        await saveOperatorOutbound(body, conv.id, clinicId, ttlHours, {
           kind: "text",
           body: operatorPlaceholder,
         });

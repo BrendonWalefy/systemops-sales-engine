@@ -24,6 +24,7 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createHash } from "crypto";
 import { toTimeCode } from "./appointment-completion-review";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 // Mesma entrada → mesmo id, para o pré-registro da mensagem casar com o dedupe
 // da outbox se o doutor tocar duas vezes.
@@ -173,6 +174,7 @@ export async function enqueueNoShowRecovery(params: {
     intent: "reengagement",
     deliveryFormat: null,
   }).onConflictDoNothing();
+  bumpInboxVersion(clinic.id);
 
   await enqueueOutboundMessage(
     {

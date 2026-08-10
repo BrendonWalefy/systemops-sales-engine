@@ -15,6 +15,7 @@ import {
   whatsappMessageCosts,
 } from "@/infrastructure/db/schema";
 import type { ClinicResetPort, DbResetCounts } from "@/application/use-cases/clinics/reset-clinic-data";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export class DrizzleClinicResetRepository implements ClinicResetPort {
   async findClinicName(clinicId: string): Promise<string | null> {
@@ -114,6 +115,7 @@ export class DrizzleClinicResetRepository implements ClinicResetPort {
         .where(eq(conversations.clinicId, clinicId))
         .returning({ id: conversations.id });
       counts.conversations = convDeleted.length;
+      bumpInboxVersion(clinicId);
     }
 
     const aiDeleted = await db

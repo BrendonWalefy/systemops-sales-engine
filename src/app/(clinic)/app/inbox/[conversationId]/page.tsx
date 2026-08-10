@@ -3,13 +3,15 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/infrastructure/db/client";
-import { appointments, organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
-import { eq, desc, count as drizzleCount } from "drizzle-orm";
+import { appointments, organizations, conversations, leads } from "@/infrastructure/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { ArrowLeft, Phone, Calendar, ExternalLink } from "lucide-react";
 import { isSalesConversationCategory } from "@/domain/value-objects/conversation-category";
 import { AiPauseButton } from "./AiPauseButton";
 import { ChatWindow } from "./ChatWindow";
 import { attachInboxPreviews } from "@/application/messaging/attach-inbox-previews";
+import { listConversationMessages } from "@/application/inbox/list-messages";
+import { ContentReadyReporter } from "@/components/performance/content-ready-reporter";
 import { ConvComposer } from "./ConvComposer";
 import { DepositBanner } from "./DepositBanner";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -38,19 +40,11 @@ async function prepareConversationPage(
   const [lead] = await db.select().from(leads).where(eq(leads.id, conv.leadId)).limit(1);
   if (!lead) notFound();
 
-  const MSG_LIMIT = 60;
-  const [totalMsgsRow, recentMsgs] = await Promise.all([
-    db.select({ total: drizzleCount() }).from(messages).where(eq(messages.conversationId, conversationId)),
-    db
-      .select()
-      .from(messages)
-      .where(eq(messages.conversationId, conversationId))
-      .orderBy(desc(messages.sentAt))
-      .limit(MSG_LIMIT)
-      .then((rows) => rows.reverse()),
-  ]);
+  const { messages: recentMsgs, hasMore: hasOlderMessages } = await listConversationMessages({
+    conversationId,
+    clinicId: conv.clinicId,
+  });
   const msgs = await attachInboxPreviews(recentMsgs);
-  const hasOlderMessages = (totalMsgsRow[0]?.total ?? 0) > MSG_LIMIT;
 
   const [appointment] = await db
     .select()
@@ -87,6 +81,7 @@ async function prepareConversationPage(
   return (
     <div className="conv-root">
       <ConversationReadMarker conversationId={conversationId} />
+      <ContentReadyReporter surface="conversation" />
 
       {/* ── Header V2 ── */}
       <div className="conv-header-v2">

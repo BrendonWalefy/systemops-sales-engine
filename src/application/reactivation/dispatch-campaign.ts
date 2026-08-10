@@ -42,6 +42,7 @@ import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactId
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { randomUUID } from "crypto";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 /**
  * Teto de mensagens por ensaio. O número de teste receberia a campanha inteira
@@ -309,6 +310,10 @@ export async function dispatchCampaign(input: {
       .set({ status: "running", lastDispatchAt: now, updatedAt: now })
       .where(eq(reactivationCampaigns.id, input.campaignId));
   }
+
+  // Uma marca por disparo da campanha, não uma por alvo — o laço acima pode
+  // enfileirar dezenas de mensagens na mesma execução.
+  if (queued > 0) bumpInboxVersion(input.clinicId);
 
   return { campaignId: input.campaignId, queued, skipped, failed, rehearsal };
 }

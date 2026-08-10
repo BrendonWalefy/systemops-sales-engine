@@ -12,6 +12,7 @@ import {
   messages,
   slotReservations,
 } from "@/infrastructure/db/schema";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export class DrizzleLeadRepository implements LeadRepository {
   async findById(id: string): Promise<Lead | null> {
@@ -114,6 +115,7 @@ export class DrizzleLeadRepository implements LeadRepository {
       // Enriquece o lead existente (ex.: preenche o phone que faltava, ou
       // acrescenta o @lid) sem arriscar colisão — update por id.
       await db.update(leads).set(set).where(eq(leads.id, existingId));
+      bumpInboxVersion(lead.clinicId);
       return;
     }
 
@@ -132,6 +134,7 @@ export class DrizzleLeadRepository implements LeadRepository {
       if (!raced) throw error;
       await db.update(leads).set(set).where(eq(leads.id, raced.id));
     }
+    bumpInboxVersion(lead.clinicId);
   }
 
   async mergeDuplicateLeads(params: {
@@ -254,6 +257,7 @@ export class DrizzleLeadRepository implements LeadRepository {
     if (!merged) {
       throw new Error("mergeDuplicateLeads: lead canônico sumiu após merge");
     }
+    bumpInboxVersion(canonical.clinicId);
     return merged;
   }
 }

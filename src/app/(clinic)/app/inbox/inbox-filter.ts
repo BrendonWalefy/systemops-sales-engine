@@ -1,4 +1,5 @@
 import type { ConvRow } from "./InboxClient";
+import { compareInboxRecency } from "@/application/inbox/inbox-segmentation";
 
 export type InboxFilter = "all" | "attention";
 export type LiveInboxTabFilter = "all" | "hot" | "attention" | "pending" | "paused" | "cold";
@@ -13,24 +14,15 @@ export function filterBySearch(rows: ConvRow[], search: string): ConvRow[] {
   );
 }
 
+// Mesma chave que o servidor usa pra decidir quais conversas cabem na página
+// (lastMessageAt DESC NULLS LAST, id DESC — Task 2 index, list-conversations.ts,
+// inbox-segmentation.ts). Não é uma reordenação "defensiva" independente: é
+// uma RESTATEMENT da ordem do servidor, reaplicada no cliente só porque um
+// filtro local (busca em andamento, por exemplo) pode ter embaralhado a
+// ordem das linhas já carregadas. Divergir daqui faria o cliente mostrar uma
+// ordem diferente da que decidiu quais conversas entraram na página.
 export function sortInboxRowsByRecency(rows: ConvRow[]): ConvRow[] {
-  return [...rows].sort((a, b) => {
-    const diff =
-      (b.latestMessageAt?.getTime() ?? b.lastMessageAt?.getTime() ?? 0) -
-      (a.latestMessageAt?.getTime() ?? a.lastMessageAt?.getTime() ?? 0);
-    if (diff !== 0) return diff;
-
-    return a.convId.localeCompare(b.convId);
-  });
-}
-
-export function filterLiveRowsByTab(rows: ConvRow[], tab: LiveInboxTabFilter): ConvRow[] {
-  if (tab === "hot") return rows.filter((r) => r.leadTemperature === "hot");
-  if (tab === "attention") return rows.filter((r) => r.needsAttention);
-  if (tab === "pending") return rows.filter((r) => r.pendingAction !== null);
-  if (tab === "paused") return rows.filter((r) => r.aiPaused && !r.needsAttention);
-  if (tab === "cold") return rows.filter((r) => r.leadTemperature === "cold");
-  return rows;
+  return [...rows].sort(compareInboxRecency);
 }
 
 export function resolveEmConversa(

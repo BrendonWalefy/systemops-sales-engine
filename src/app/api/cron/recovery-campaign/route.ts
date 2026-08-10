@@ -16,6 +16,7 @@ import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactId
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import OpenAI from "openai";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -323,6 +324,10 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
       failed++;
     }
   }
+
+  // Uma marca por execução da clínica, não uma por lead — o laço acima pode
+  // varrer dezenas de leads na mesma linha de clinic_read_versions.
+  if (sent > 0) bumpInboxVersion(clinicId);
 
   return { clinicId, sent, skipped, failed };
 }

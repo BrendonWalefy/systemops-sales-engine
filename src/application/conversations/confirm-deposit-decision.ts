@@ -17,6 +17,7 @@ import type { DepositProofDecision } from "@/application/conversations/deposit-p
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export type ConfirmDepositDecisionResult =
   | { ok: true; action: DepositProofDecision; leadName: string | null }
@@ -67,6 +68,7 @@ export async function confirmDepositDecision(params: {
         updatedAt: new Date(),
       })
       .where(eq(conversations.id, params.conversationId));
+    bumpInboxVersion(params.clinicId);
     return { ok: true, action: "reject", leadName: lead.name };
   }
 
@@ -184,6 +186,7 @@ export async function confirmDepositDecision(params: {
     sentAt: new Date(),
     externalId: null,
   });
+  bumpInboxVersion(params.clinicId);
   if (channelAddress) {
     await enqueueOutboundMessage({
       clinicId: params.clinicId,
