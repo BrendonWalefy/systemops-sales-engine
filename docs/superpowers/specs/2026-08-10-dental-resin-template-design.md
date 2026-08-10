@@ -79,10 +79,34 @@ manifest que o código diz, ou com uma versão anterior do mesmo número — que
 fonte de verdade — do contrário criamos o problema de dois donos que
 `docs/architecture/sources-of-truth.md` proíbe.
 
-**O plano só escreve nos donos canônicos.** Preço vai para `commercialPolicy` do playbook
-ativo; tom e objeções para `playbook_versions`; aliases e pipeline para `treatments`;
-horários e limites para `organizations`. Uma operação de plano que aponte para outro lugar é
-um defeito de contrato, não uma escolha de implementação.
+**O plano só escreve nos donos canônicos.** Verificado contra o schema atual:
+
+| Informação | Dono canônico |
+| --- | --- |
+| Preço estruturado | `treatments.priceCents`, `minPriceCents`, `maxPriceCents`, `priceKind`, `priceQuotableInChat` |
+| Política comercial em prosa | `playbook_versions.commercialPolicy` (campo `text`) |
+| Tom, nome da recepcionista, diferenciais | `playbook_versions` |
+| Objeções e respostas | `playbook_versions.objections` (`jsonb<{objection, response}[]>`) |
+| Garantia | `playbook_versions.warrantyPolicy` |
+| Aliases, pipeline, duração, gatilhos | `treatments` |
+| Mídia | `playbook_versions.mediaLibrary` / `mediaAssetIds` |
+| Horários, timezone, limites, canal | `organizations` |
+
+Uma operação de plano que aponte para outro lugar é um defeito de contrato, não uma escolha
+de implementação.
+
+**Correção a um rascunho anterior deste spec:** ele afirmava que preço vai para
+`commercialPolicy` do playbook. Está errado — `commercialPolicy` é `text` livre, para
+política em prosa. O preço estruturado que o runtime lê vive em `treatments`. Escrever valor
+em prosa e esperar que a IA o respeite é precisamente o modo como ela cotou errado antes.
+
+**Mapeamento do canal de entrega para o schema existente**, sem coluna nova:
+
+| Canal | `priceQuotableInChat` | Asset de mídia |
+| --- | --- | --- |
+| `text` | `true` | não exigido |
+| `media` | `true` | **exigido** — é o que a IA envia |
+| `human` | `false` | não exigido; o turno vira handoff |
 
 ## 4. O manifest
 
