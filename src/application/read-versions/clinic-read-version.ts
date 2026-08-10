@@ -47,3 +47,18 @@ export async function readClinicVersion(
 
   return String(row?.version ?? 0);
 }
+
+/**
+ * Dispara o bump do recurso "inbox" em fire-and-forget: o chamador nunca
+ * espera por isto e uma falha aqui nunca pode derrubar a escrita real (a
+ * mensagem, o lead, o agendamento). Um bump perdido só degrada para o teto
+ * de 60s da escada de polling — não perde dado.
+ *
+ * Helper único para os ~9 call sites de escrita (Task 6) em vez de repetir o
+ * `void ... .catch()` em cada arquivo.
+ */
+export function bumpInboxVersion(clinicId: string): void {
+  void bumpClinicReadVersion(clinicId, "inbox").catch(() => {
+    // Invalidação é best-effort; a escada de polling cobre uma falha.
+  });
+}

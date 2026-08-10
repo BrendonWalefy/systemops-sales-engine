@@ -3,6 +3,7 @@ import { db } from "@/infrastructure/db/client";
 import { leads } from "@/infrastructure/db/schema";
 import { VercelBlobStorageGateway } from "@/infrastructure/adapters/storage/vercel-blob-storage-gateway";
 import type { ZapiCreds } from "./channel-config";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 async function fetchZApiProfilePicture(phone: string, creds: ZapiCreds): Promise<string | null> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -44,6 +45,7 @@ export async function fetchAndPersistLeadPhoto(
   leadId: string,
   phone: string,
   creds: ZapiCreds,
+  clinicId: string,
 ): Promise<void> {
   const photoUrl = await fetchZApiProfilePicture(phone, creds);
   if (!photoUrl) return;
@@ -65,6 +67,7 @@ export async function fetchAndPersistLeadPhoto(
       .update(leads)
       .set({ profilePicUrl: permanentUrl, updatedAt: new Date() })
       .where(eq(leads.id, leadId));
+    bumpInboxVersion(clinicId);
   } catch {
     // silently ignore — next message will retry
   }

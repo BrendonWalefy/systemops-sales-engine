@@ -4,6 +4,7 @@ import type { AppointmentRepository } from "@/domain/repositories/appointment-re
 import { calendarEventIdCandidates } from "@/application/calendar/import-calendar-events";
 import { db } from "@/infrastructure/db/client";
 import { appointments } from "@/infrastructure/db/schema";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export class DrizzleAppointmentRepository implements AppointmentRepository {
   async save(appointment: Appointment): Promise<void> {
@@ -47,6 +48,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
           updatedAt: appointment.updatedAt,
         },
       });
+    bumpInboxVersion(appointment.clinicId);
   }
 
   async findById(id: string): Promise<Appointment | null> {

@@ -42,6 +42,7 @@ import {
 import { db } from "@/infrastructure/db/client";
 import { organizations, messages, followUps, leads, conversations } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
@@ -464,6 +465,7 @@ const drizzleAutomationDispatchLifecycle: AutomationDispatchLifecycle = {
         .update(leads)
         .set({ status: "in_conversation", updatedAt: deliveredAt })
         .where(and(eq(leads.id, outbound.payload.leadId), eq(leads.clinicId, outbound.clinicId)));
+      bumpInboxVersion(outbound.clinicId);
     }
     if (outbound.category === "recovery" && outbound.dedupeKey?.startsWith("manual-recovery:")) {
       await db
@@ -473,6 +475,7 @@ const drizzleAutomationDispatchLifecycle: AutomationDispatchLifecycle = {
           eq(conversations.id, outbound.payload.conversationId),
           eq(conversations.clinicId, outbound.clinicId),
         ));
+      bumpInboxVersion(outbound.clinicId);
       await db
         .insert(followUps)
         .values({

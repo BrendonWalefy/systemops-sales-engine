@@ -49,6 +49,7 @@ async function main() {
   const rows = await db
     .select({
       leadId: leads.id,
+      clinicId: leads.clinicId,
       name: leads.name,
       phone: leads.phone,
       profilePicUrl: leads.profilePicUrl,
@@ -88,7 +89,7 @@ async function main() {
     }
 
     const before = row.profilePicUrl;
-    await fetchAndPersistLeadPhoto(row.leadId, row.phone!, config.zapi);
+    await fetchAndPersistLeadPhoto(row.leadId, row.phone!, config.zapi, row.clinicId);
 
     // Re-lê para confirmar se gravou
     const after = await db.query.leads.findFirst({

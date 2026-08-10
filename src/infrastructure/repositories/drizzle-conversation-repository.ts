@@ -4,6 +4,7 @@ import type { ConversationRepository } from "@/domain/repositories/conversation-
 import { db } from "@/infrastructure/db/client";
 import { isPostgresErrorCode } from "@/infrastructure/db/is-postgres-error-code";
 import { conversations, messages } from "@/infrastructure/db/schema";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export class DrizzleConversationRepository implements ConversationRepository {
   async findByLeadId(leadId: string): Promise<Conversation | null> {
@@ -38,20 +39,25 @@ export class DrizzleConversationRepository implements ConversationRepository {
           updatedAt: conversation.updatedAt,
         },
       });
+    bumpInboxVersion(conversation.clinicId);
   }
 
   async setAiPaused(conversationId: string, paused: boolean): Promise<void> {
-    await db
+    const [updated] = await db
       .update(conversations)
       .set({ aiPaused: paused, updatedAt: new Date() })
-      .where(eq(conversations.id, conversationId));
+      .where(eq(conversations.id, conversationId))
+      .returning({ clinicId: conversations.clinicId });
+    if (updated) bumpInboxVersion(updated.clinicId);
   }
 
   async setTakeover(conversationId: string, expiresAt: Date | null): Promise<void> {
-    await db
+    const [updated] = await db
       .update(conversations)
       .set({ aiPaused: expiresAt !== null, takeoverExpiresAt: expiresAt, updatedAt: new Date() })
-      .where(eq(conversations.id, conversationId));
+      .where(eq(conversations.id, conversationId))
+      .returning({ clinicId: conversations.clinicId });
+    if (updated) bumpInboxVersion(updated.clinicId);
   }
 
   async appendMessage(message: Message): Promise<void> {
@@ -73,14 +79,16 @@ export class DrizzleConversationRepository implements ConversationRepository {
         })
         .onConflictDoNothing();
 
-      await db
+      const [updated] = await db
         .update(conversations)
         .set(
           message.author === "lead"
             ? { lastMessageAt: message.sentAt, updatedAt: new Date() }
             : { updatedAt: new Date() },
         )
-        .where(eq(conversations.id, message.conversationId));
+        .where(eq(conversations.id, message.conversationId))
+        .returning({ clinicId: conversations.clinicId });
+      if (updated) bumpInboxVersion(updated.clinicId);
     } catch (err) {
       // Código 23503 = foreign_key_violation no PostgreSQL.
       // Ocorre quando a conversa foi deletada concorrentemente (ex: reset E2E)

@@ -3,6 +3,7 @@ import { appointments, leads, treatments, professionals } from "@/infrastructure
 import { eq } from "drizzle-orm";
 import type { CalendarEvent } from "./parse-ics";
 import { extractCalendarEventPhone } from "./extract-event-phone";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export interface ImportResult {
   imported: number;
@@ -159,6 +160,7 @@ export async function importCalendarEvents(
           await db.update(leads)
             .set({ phone: eventPhone, updatedAt: new Date() })
             .where(eq(leads.id, leadId));
+          bumpInboxVersion(clinicId);
           leadsSemTelefone.delete(leadId);
           leadsMudos.delete(leadId);
           leadByPhone.set(eventPhone, leadId);
@@ -239,6 +241,7 @@ export async function importCalendarEvents(
             updatedAt: new Date(),
           })
           .where(eq(appointments.id, existingAppointment.id));
+        bumpInboxVersion(clinicId);
         result.skipped++;
         continue;
       }
@@ -261,6 +264,7 @@ export async function importCalendarEvents(
       }).returning({ id: appointments.id });
 
       if (appointmentResult.length) {
+        bumpInboxVersion(clinicId);
         result.imported++;
       } else {
         result.errors.push({

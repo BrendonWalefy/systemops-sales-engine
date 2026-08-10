@@ -18,7 +18,7 @@ const dbMock = vi.hoisted(() => ({
 
 vi.mock("@/infrastructure/db/client", () => ({ db: dbMock }));
 
-import { bumpClinicReadVersion, readClinicVersion } from "@/application/read-versions/clinic-read-version";
+import { bumpClinicReadVersion, bumpInboxVersion, readClinicVersion } from "@/application/read-versions/clinic-read-version";
 
 const dialect = new PgDialect();
 
@@ -88,6 +88,39 @@ describe("bumpClinicReadVersion", () => {
     const rendered = renderFragment(call.set.version);
     expect(rendered.sql).toBe('"clinic_read_versions"."version" + 1');
     expect(rendered.params).toEqual([]);
+  });
+});
+
+describe("bumpInboxVersion", () => {
+  // Helper compartilhado pelos ~10 call sites da Task 6 (escritas que mudam o
+  // que a Inbox mostra): dispara bumpClinicReadVersion(clinicId, "inbox") em
+  // fire-and-forget. A propriedade que importa aqui não é "bumpou certo" —
+  // isso já está coberto acima — é que NADA que ele faça pode propagar uma
+  // rejeição para quem chamou.
+  beforeEach(() => vi.clearAllMocks());
+
+  it("delega para bumpClinicReadVersion com o recurso fixo 'inbox'", () => {
+    const chain = insertChain();
+    dbMock.insert.mockReturnValue(chain);
+
+    bumpInboxVersion("clinic-1");
+
+    expect(dbMock.insert).toHaveBeenCalledWith(clinicReadVersions);
+    expect(chain.values).toHaveBeenCalledWith({ clinicId: "clinic-1", resource: "inbox", version: 1 });
+  });
+
+  it("retorna undefined de forma síncrona — nunca uma promise que o chamador possa esperar/rejeitar", () => {
+    // Se algum dia isto virasse `return bumpClinicReadVersion(...)` (sem o
+    // void + .catch), o retorno passaria a ser uma Promise, e um dos ~10 call
+    // sites que hoje só faz `bumpInboxVersion(clinicId);` (sem await/catch)
+    // ganharia um unhandledRejection sempre que o upsert falhasse.
+    const chain = insertChain();
+    chain.onConflictDoUpdate.mockRejectedValue(new Error("neon indisponível"));
+    dbMock.insert.mockReturnValue(chain);
+
+    const result = bumpInboxVersion("clinic-1");
+
+    expect(result).toBeUndefined();
   });
 });
 

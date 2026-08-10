@@ -42,6 +42,7 @@ import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactId
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { randomUUID } from "crypto";
+import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 /**
  * Teto de mensagens por ensaio. O número de teste receberia a campanha inteira
@@ -258,6 +259,7 @@ export async function dispatchCampaign(input: {
           deliveryFormat: null,
         })
         .onConflictDoNothing();
+      bumpInboxVersion(input.clinicId);
 
       const { outboundMessageId } = await enqueueOutboundMessage(
         {

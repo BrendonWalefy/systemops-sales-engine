@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-
-const FORCED_REFRESH_INTERVAL_MS = 60_000;
-const POLL_INTERVAL_MS = 5_000;
+import { nextPollDelayMs } from "./poll-schedule";
 
 type Props = {
   initialVersion: string;
@@ -14,48 +12,58 @@ export function InboxPoller({ initialVersion }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const versionRef = useRef(initialVersion);
-  const refreshAtRef = useRef(0);
 
   useEffect(() => {
     versionRef.current = initialVersion;
-    refreshAtRef.current = Date.now();
   }, [initialVersion]);
 
-  const refreshInbox = () => {
-    refreshAtRef.current = Date.now();
-    startTransition(() => {
-      router.refresh();
-    });
-  };
-
   useEffect(() => {
-    const check = async () => {
-      if (document.hidden) return;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    // Sequência de polls sem mudança — alimenta a escada de backoff. Zera
+    // sempre que a versão muda; nunca é resetada por tempo (não existe mais
+    // refresh forçado).
+    let consecutiveUnchanged = 0;
 
-      if (Date.now() - refreshAtRef.current >= FORCED_REFRESH_INTERVAL_MS) {
-        refreshInbox();
-        return;
-      }
-
-      try {
-        const response = await fetch("/api/inbox/check", { cache: "no-store" });
-        if (!response.ok) return;
-        const data: { version?: string } = await response.json();
-        if (data.version && data.version !== versionRef.current) {
-          versionRef.current = data.version;
-          refreshInbox();
-        }
-      } catch {
-        // Ignora falhas transitórias e tenta novamente no próximo ciclo.
-      }
+    const scheduleNext = () => {
+      if (cancelled) return;
+      timeoutId = setTimeout(() => {
+        void runPoll();
+      }, nextPollDelayMs(consecutiveUnchanged));
     };
 
-    void check();
-    const id = window.setInterval(() => {
-      void check();
-    }, POLL_INTERVAL_MS);
+    const runPoll = async () => {
+      if (cancelled) return;
 
-    return () => clearInterval(id);
+      if (!document.hidden) {
+        try {
+          const response = await fetch("/api/inbox/check", { cache: "no-store" });
+          if (response.ok) {
+            const data: { version?: string } = await response.json();
+            if (data.version && data.version !== versionRef.current) {
+              versionRef.current = data.version;
+              consecutiveUnchanged = 0;
+              startTransition(() => {
+                router.refresh();
+              });
+            } else {
+              consecutiveUnchanged += 1;
+            }
+          }
+        } catch {
+          // Ignora falhas transitórias e tenta novamente no próximo ciclo.
+        }
+      }
+
+      scheduleNext();
+    };
+
+    scheduleNext();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
