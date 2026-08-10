@@ -11,6 +11,9 @@ export type InboxNavigationTarget = {
   scope: ConversationCategory;
   tab: LiveInboxTabFilter | "recovery";
   search: string;
+  // Continuação da lista. Ausente ou 1 = primeira página, e nesse caso o
+  // parâmetro nem entra na URL: o estado padrão continua sendo `/app/inbox`.
+  page?: number;
 };
 
 export function buildInboxHref(target: InboxNavigationTarget): string {
@@ -25,6 +28,11 @@ export function buildInboxHref(target: InboxNavigationTarget): string {
   const trimmedSearch = target.search.trim();
   if (trimmedSearch) {
     query.set("q", trimmedSearch);
+  }
+
+  const page = target.page ?? 1;
+  if (Number.isSafeInteger(page) && page > 1) {
+    query.set("page", String(page));
   }
 
   const queryString = query.toString();

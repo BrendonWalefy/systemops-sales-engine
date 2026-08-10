@@ -35,6 +35,7 @@ import {
   resolvePipelineIndex,
 } from "./inbox-presentation";
 import type { InboxTabKey } from "@/application/inbox/inbox-segmentation";
+import type { InboxPageWindow } from "@/application/inbox/inbox-page-window";
 import { buildInboxHref, type InboxNavigationTarget } from "./inbox-navigation";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
 import { tempKey, tempLabel, avatarColor, relativeTime, conversationCategoryLabel } from "./inbox-utils";
@@ -838,6 +839,62 @@ function AttendedButton({ convId }: { convId: string }) {
   );
 }
 
+// Rodapé de continuação. A troca de página é uma NAVEGAÇÃO de servidor, igual
+// à troca de aba: é page.tsx que decide quais ids valem a leitura cara, então
+// cada passo busca no máximo INBOX_PAGE_SIZE conversas — a lista não acumula
+// no cliente. Por isso o rótulo diz "mais antigas" e vem acompanhado do
+// intervalo exibido, em vez de fingir scroll infinito.
+function InboxContinuation({
+  window: pageWindow,
+  pending,
+  onGoToPage,
+}: {
+  window: InboxPageWindow;
+  pending: boolean;
+  onGoToPage: (page: number) => void;
+}) {
+  if (!pageWindow.hasMore && !pageWindow.hasPrevious) return null;
+
+  const buttonStyle: React.CSSProperties = {
+    background: "var(--surface-raised)",
+    border: "1px solid var(--line)",
+    borderRadius: 8,
+    padding: "9px 16px",
+    fontSize: 13,
+    color: "var(--text)",
+    cursor: pending ? "wait" : "pointer",
+    opacity: pending ? 0.6 : 1,
+  };
+
+  return (
+    <div
+      className="inbox-continuation"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        padding: "18px 0 8px",
+      }}
+    >
+      {pageWindow.hasPrevious && (
+        <button type="button" style={buttonStyle} disabled={pending} onClick={() => onGoToPage(pageWindow.page - 1)}>
+          Mais recentes
+        </button>
+      )}
+      <span style={{ fontSize: 12, color: "var(--muted)" }}>
+        {pageWindow.firstIndex}–{pageWindow.lastIndex} de {pageWindow.totalIds}
+      </span>
+      {pageWindow.hasMore && (
+        <button type="button" style={buttonStyle} disabled={pending} onClick={() => onGoToPage(pageWindow.page + 1)}>
+          Carregar mais antigas
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Contagens/membership por aba e por escopo: hoje decididas pelo índice de
 // segmentação do servidor (src/application/inbox/inbox-segmentation.ts), não
 // mais recalculadas aqui em cima de `rows` — `rows` é só a página (até
@@ -859,6 +916,7 @@ export function InboxClient({
   initialScope = "sales",
   initialTab = "all",
   initialSearch = "",
+  pageWindow,
 }: {
   rows: ConvRow[];
   lastMsgMap: Record<string, LastInboxMessage>;
@@ -867,6 +925,10 @@ export function InboxClient({
   initialScope?: InboxCategoryScope;
   initialTab?: LiveInboxTabFilter | "recovery";
   initialSearch?: string;
+  // Janela da lista da aba ativa. Decidida no servidor (page.tsx), porque é o
+  // servidor que escolhe quais ids valem a leitura cara — aqui só se
+  // renderiza o rodapé a partir dela.
+  pageWindow: InboxPageWindow;
 }) {
   const router = useRouter();
   // Aba/escopo ativos NÃO são mais estado local: vêm de page.tsx, que já leu
@@ -904,7 +966,11 @@ export function InboxClient({
       clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = null;
     }
-    const target: InboxNavigationTarget = { scope, tab, search, ...overrides };
+    // `page: 1` na base, não `pageWindow.page`: trocar de aba, de escopo ou de
+    // busca precisa VOLTAR para a primeira página, senão o operador clica em
+    // "Atenção" estando na página 3 e cai numa aba que parece vazia. Só o
+    // rodapé de continuação passa `page` explicitamente.
+    const target: InboxNavigationTarget = { scope, tab, search, page: 1, ...overrides };
     startTabTransition(() => {
       router.push(buildInboxHref(target));
     });
@@ -1239,6 +1305,12 @@ export function InboxClient({
             ))}
           </div>
         )}
+
+        <InboxContinuation
+          window={pageWindow}
+          pending={isTabPending}
+          onGoToPage={(page) => goToInbox({ page })}
+        />
       </div>
     </>
   );

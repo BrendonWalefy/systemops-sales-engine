@@ -41,4 +41,27 @@ describe("buildInboxHref", () => {
       "/app/inbox?scope=archived&q=joao",
     );
   });
+
+  // Continuação da lista (a conversa 41 em diante). A página vive na URL junto
+  // com scope/tab/q porque a troca de página é uma navegação de servidor — é
+  // page.tsx que decide quais ids valem a leitura cara.
+  it("página 1 não aparece na URL — é o estado padrão", () => {
+    expect(buildInboxHref({ scope: "sales", tab: "all", search: "", page: 1 })).toBe("/app/inbox");
+  });
+
+  it("página > 1 entra como page, junto com filter e q", () => {
+    expect(buildInboxHref({ scope: "sales", tab: "hot", search: "ana", page: 3 })).toBe(
+      "/app/inbox?filter=hot&q=ana&page=3",
+    );
+  });
+
+  it("página fora de escopo sales acompanha o scope", () => {
+    expect(buildInboxHref({ scope: "archived", tab: "all", search: "", page: 2 })).toBe(
+      "/app/inbox?scope=archived&page=2",
+    );
+  });
+
+  it("página ausente é tratada como 1 — chamadas antigas continuam válidas", () => {
+    expect(buildInboxHref({ scope: "sales", tab: "cold", search: "" })).toBe("/app/inbox?filter=cold");
+  });
 });

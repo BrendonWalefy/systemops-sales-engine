@@ -16,7 +16,7 @@ import { ContentReadyReporter } from "@/components/performance/content-ready-rep
 import { listClinicConversations } from "@/application/inbox/list-conversations";
 import { loadInboxSegmentIndex } from "@/application/inbox/segment-index";
 import { resolveActiveInboxTab, selectSegmentedConversationIds } from "@/application/inbox/inbox-segmentation";
-import { INBOX_PAGE_SIZE } from "@/application/inbox/inbox-cursor";
+import { parseInboxPageParam, selectInboxPageWindow } from "@/application/inbox/inbox-page-window";
 
 type InboxSearchParams = Record<string, string | string[] | undefined>;
 
@@ -50,6 +50,7 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
       ? filterParam
       : "all";
   const activeTab = resolveActiveInboxTab(initialScope, initialTab);
+  const requestedPage = parseInboxPageParam(firstParam(params.page));
 
   // Não depende da varredura de segmentação — dispara em paralelo com ela
   // em vez de esperar (Fix round 1 — Important #6). O query builder do
@@ -100,10 +101,17 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
       ]),
   );
 
-  const pageIds = selectSegmentedConversationIds(searchIndex ?? segmentIndex, initialScope, initialTab).slice(
-    0,
-    INBOX_PAGE_SIZE,
+  // A lista de ids da aba vem COMPLETA do índice de segmentação, então a
+  // continuação é aritmética sobre ela — não precisa de cursor de banco (o
+  // keyset da Task 3 era clinic-wide e não sabia retomar a lista de UMA aba,
+  // que foi o motivo de ele ter saído daqui). Só a leitura cara continua
+  // limitada a INBOX_PAGE_SIZE por passo. Sem esta janela, a conversa 41 de
+  // uma clínica com 137 não tinha rota de acesso nenhuma pela interface.
+  const pageWindow = selectInboxPageWindow(
+    selectSegmentedConversationIds(searchIndex ?? segmentIndex, initialScope, initialTab),
+    requestedPage,
   );
+  const pageIds = pageWindow.ids;
 
   const [clinicRows, page] = await measureServerOperation(
     {
@@ -295,6 +303,7 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
         initialScope={initialScope}
         initialTab={activeTab}
         initialSearch={trimmedSearch}
+        pageWindow={pageWindow}
       />
     </div>
   );
