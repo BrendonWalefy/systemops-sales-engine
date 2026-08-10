@@ -9,7 +9,7 @@ import {
 export const NAVIGATION_MARK_KEY = "systemops.performance.pending-navigation.v1";
 export const NAVIGATION_COUNT_KEY = "systemops.performance.sample-count.v1";
 
-const MAX_NAVIGATION_DURATION_MS = 120_000;
+export const MAX_NAVIGATION_DURATION_MS = 120_000;
 
 export type PendingNavigation = {
   surface: PerformanceSurface;
@@ -119,6 +119,32 @@ export function markNavigationStartInSession(
     runtime.storage.setItem(NAVIGATION_MARK_KEY, JSON.stringify(pending));
   } catch {
     // Telemetry must never affect navigation.
+  }
+}
+
+/**
+ * Lê a marca de início de navegação SEM consumi-la.
+ *
+ * `consumeNavigationSampleInSession` (usado pelo NavigationPerformanceReporter
+ * do layout) remove a marca ao emitir `soft_navigation`. O ContentReadyReporter
+ * precisa do mesmo `startedAt` para medir da navegação até o paint, então lê
+ * por aqui — sem remover, porque o dono da remoção continua sendo quem emite o
+ * soft_navigation.
+ *
+ * Devolve null quando não há marca, quando ela é de outra superfície (uma
+ * navegação anterior que nunca completou) ou quando o storage não está
+ * acessível.
+ */
+export function peekNavigationStartForSurface(
+  surface: PerformanceSurface,
+  storage: NavigationStorage,
+): number | null {
+  try {
+    const pending = parsePendingNavigation(storage.getItem(NAVIGATION_MARK_KEY));
+    if (!pending || pending.surface !== surface) return null;
+    return pending.startedAt;
+  } catch {
+    return null;
   }
 }
 

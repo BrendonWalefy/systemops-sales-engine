@@ -82,7 +82,7 @@ Do not describe this baseline as an optimization, regression, production benchma
 | --- | --- | --- |
 | Visual feedback after tap | < 100 ms | Measurable with `client|<surface>|soft_navigation|ok`. |
 | Previously visited screen | p75 < 300 ms | Measurable with `client|<surface>|content_ready|ok`. |
-| First application open | p75 < 1.5 s | Measurable with `client|clinic_shell|app_first_open|ok`. |
+| First application open | p75 < 1.5 s | Measurable with `client|<entry surface>|app_first_open|ok`. |
 | Open conversation | p75 < 800 ms | Measurable with `client|conversation|content_ready|ok`. |
 | New message visible | <= 1 s | `not_measurable`: requires the planned Phase 3B realtime milestone. |
 
@@ -92,6 +92,28 @@ contract. `content_ready` fires after paint, once the surface's data is
 rendered, so it measures content readiness rather than the pathname change
 that `soft_navigation` stops at. `app_first_open` supplies the initial-mount
 measurement that `soft_navigation` structurally cannot emit.
+
+Both operations are emitted by the same reporter,
+`src/components/performance/content-ready-reporter.tsx`, which decides what
+the measurement *means* before it decides the number:
+
+- On a **soft navigation** it measures from the navigation mark written at
+  click time by `markNavigationStartInSession` to the paint, and emits
+  `content_ready`. Earlier revisions of this document assumed the elapsed
+  value of `performance.now()`; that is time since the document's
+  `timeOrigin`, so a conversation opened 45 s into a session reported
+  ~45,000 ms against an 800 ms target.
+- On a **hard load** there is no mark, and `timeOrigin` *is* the navigation
+  start, so `performance.now()` at paint is valid. What it measures is
+  "opening the app from cold until content is on screen", which is
+  `app_first_open`. The surface is therefore the **entry surface** the
+  operator landed on — `inbox_list` or `conversation` — not `clinic_shell`,
+  which this table previously named and which no reporter emits. Filter on
+  the operation, not on a fixed surface.
+- With **neither** a mark nor a first-in-document render — a
+  `router.refresh()`, or a link that never wrote a mark — there is no known
+  starting point, and the reporter emits **nothing** rather than a
+  session-elapsed number under an operation name that promises otherwise.
 
 Being measurable is not being measured. No cohort has been collected against
 these operations, so none of these targets has a baseline value yet, let alone
