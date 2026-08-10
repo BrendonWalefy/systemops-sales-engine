@@ -4,6 +4,8 @@ import { INBOX_PAGE_SIZE } from "@/application/inbox/inbox-cursor";
 import {
   buildSegmentIndex,
   INBOX_TAB_KEYS,
+  resolveActiveInboxTab,
+  selectSegmentedConversationIds,
   type SegmentInputRow,
 } from "@/application/inbox/inbox-segmentation";
 
@@ -456,5 +458,95 @@ describe("loadInboxSegmentIndex", () => {
     expect(index.scopeCounts.archived).toBe(1);
     expect(index.idsByScope.archived).toEqual(["conv-arquivada"]);
     expect(index.totalConversations).toBe(3);
+  });
+
+  it("sem busca, a varredura base continua com o WHERE de sempre — só clinicId", async () => {
+    primeScan({ conversations: [scanConversationRow()] });
+
+    await loadInboxSegmentIndex({ clinicId: CLINIC_ID, now: NOW });
+
+    expect(renderParams(chains[0].where.mock.calls[0][0])).toEqual([CLINIC_ID]);
+  });
+
+  it("com busca, filtra a varredura base por nome OU telefone do lead — clínica inteira, não a página", async () => {
+    // Fix round 1 — Critical #1: antes desta task, o campo de busca filtrava
+    // só as até 40 linhas já carregadas no cliente. Isso prova que o filtro
+    // agora entra na consulta que varre a clínica inteira, antes de qualquer
+    // corte de página.
+    primeScan({ conversations: [scanConversationRow()] });
+
+    await loadInboxSegmentIndex({ clinicId: CLINIC_ID, now: NOW, search: "Ana Silva" });
+
+    const rendered = chains[0].where.mock.calls[0][0];
+    expect(renderParams(rendered)).toEqual([CLINIC_ID, "%Ana Silva%", "%Ana Silva%"]);
+  });
+
+  it("uma busca que só bate numa conversa fora das 40 mais recentes ainda aparece no índice", async () => {
+    // Mesma regressão que a aba "attention" já cobre, agora para busca: o
+    // índice não teria como saber disso se a busca filtrasse depois do
+    // corte de página em vez de antes da segmentação.
+    primeScan({
+      conversations: [
+        scanConversationRow({ convId: "conv-distante", leadId: "lead-distante" }),
+      ],
+    });
+
+    const index = await loadInboxSegmentIndex({ clinicId: CLINIC_ID, now: NOW, search: "silva" });
+
+    expect(index.idsByTab.all).toEqual(["conv-distante"]);
+  });
+
+  it("busca só com espaços é tratada como ausência de busca", async () => {
+    primeScan({ conversations: [scanConversationRow()] });
+
+    await loadInboxSegmentIndex({ clinicId: CLINIC_ID, now: NOW, search: "   " });
+
+    expect(renderParams(chains[0].where.mock.calls[0][0])).toEqual([CLINIC_ID]);
+  });
+});
+
+describe("resolveActiveInboxTab", () => {
+  it("escopo sales preserva a aba pedida", () => {
+    expect(resolveActiveInboxTab("sales", "hot")).toBe("hot");
+    expect(resolveActiveInboxTab("sales", "recovery")).toBe("recovery");
+  });
+
+  it("fora de sales não existe sub-aba: sempre 'all'", () => {
+    expect(resolveActiveInboxTab("archived", "hot")).toBe("all");
+    expect(resolveActiveInboxTab("operational", "attention")).toBe("all");
+  });
+});
+
+describe("selectSegmentedConversationIds", () => {
+  // Cada chave do fixture tem uma lista DIFERENTE — se o seletor trocar
+  // "sales"+aba por idsByScope, ou um escopo por idsByTab, o teste vê uma
+  // lista errada em vez de, por coincidência, a mesma lista.
+  const index = {
+    idsByTab: {
+      all: ["all-1"],
+      hot: ["hot-1"],
+      attention: ["attention-1"],
+      pending: ["pending-1"],
+      paused: ["paused-1"],
+      cold: ["cold-1"],
+      recovery: ["recovery-1"],
+    },
+    idsByScope: {
+      sales: ["scope-sales-1"],
+      operational: ["scope-operational-1"],
+      vendor: ["scope-vendor-1"],
+      spam: ["scope-spam-1"],
+      archived: ["scope-archived-1"],
+    },
+  };
+
+  it("escopo sales lê de idsByTab, na aba pedida", () => {
+    expect(selectSegmentedConversationIds(index, "sales", "hot")).toEqual(["hot-1"]);
+    expect(selectSegmentedConversationIds(index, "sales", "all")).toEqual(["all-1"]);
+  });
+
+  it("escopo não-sales lê de idsByScope, ignorando a aba", () => {
+    expect(selectSegmentedConversationIds(index, "archived", "hot")).toEqual(["scope-archived-1"]);
+    expect(selectSegmentedConversationIds(index, "operational", "recovery")).toEqual(["scope-operational-1"]);
   });
 });

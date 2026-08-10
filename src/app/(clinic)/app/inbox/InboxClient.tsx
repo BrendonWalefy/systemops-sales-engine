@@ -29,12 +29,13 @@ import {
   deleteConversationsBulk,
   clearAttention,
 } from "./[conversationId]/actions";
-import { filterBySearch, sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
+import { sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
 import {
   resolveAppointmentLifecycleState,
   resolvePipelineIndex,
 } from "./inbox-presentation";
 import type { InboxTabKey } from "@/application/inbox/inbox-segmentation";
+import { buildInboxHref, type InboxNavigationTarget } from "./inbox-navigation";
 import { isConversationUnreadByClinic } from "./inbox-visibility";
 import { tempKey, tempLabel, avatarColor, relativeTime, conversationCategoryLabel } from "./inbox-utils";
 import { LeadAvatar } from "./[conversationId]/LeadAvatar";
@@ -857,9 +858,7 @@ export function InboxClient({
   counts,
   initialScope = "sales",
   initialTab = "all",
-  // nextCursor ainda não alimenta UI nesta task — só percorre até o cliente
-  // para a Fase 3B (delta API / "carregar mais") reusar a mesma codificação.
-  nextCursor = null,
+  initialSearch = "",
 }: {
   rows: ConvRow[];
   lastMsgMap: Record<string, LastInboxMessage>;
@@ -867,12 +866,9 @@ export function InboxClient({
   counts: InboxTabCounts;
   initialScope?: InboxCategoryScope;
   initialTab?: LiveInboxTabFilter | "recovery";
-  nextCursor?: string | null;
+  initialSearch?: string;
 }) {
-  // Sem uso de UI ainda — só mantém o valor vivo até a Fase 3B ligar o "carregar mais".
-  void nextCursor;
   const router = useRouter();
-  const [search, setSearch] = useState("");
   // Aba/escopo ativos NÃO são mais estado local: vêm de page.tsx, que já leu
   // os search params e buscou a página bounded certa para eles. Se virassem
   // useState de novo, clicar numa aba mudaria o rótulo ativo mas `rows`
@@ -880,6 +876,10 @@ export function InboxClient({
   // task existe pra fechar.
   const scope = initialScope;
   const tab = initialTab;
+  // `search` É estado local, mas só pra digitação instantânea no campo — o
+  // texto que decide QUAIS conversas aparecem é sempre `initialSearch`
+  // (o que o servidor já filtrou). Ver o useEffect de debounce abaixo.
+  const [search, setSearch] = useState(initialSearch);
   const [isTabPending, startTabTransition] = useTransition();
   const [topMenuOpen, setTopMenuOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -888,23 +888,42 @@ export function InboxClient({
   const [isBulkPending, startBulkTransition] = useTransition();
   const topMenuRef = useRef<HTMLDivElement>(null);
   const bulkMoveRef = useRef<HTMLDivElement>(null);
+  // Debounce da busca pode estar esperando pra navegar quando um clique de
+  // aba navega primeiro; sem cancelar o timer, o debounce dispara depois com
+  // o fechamento antigo de scope/tab e desfaz o clique. goToInbox cancela
+  // qualquer debounce pendente antes de navegar por qualquer motivo.
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Troca de aba/escopo navega para uma nova URL em vez de só trocar estado
-  // local: page.tsx roda de novo no servidor e busca a página bounded da
-  // nova aba (a leitura cara é limitada a INBOX_PAGE_SIZE da aba ativa, não
-  // dá mais pra ter todas as abas pré-carregadas no cliente).
-  function goToInbox(nextScope: InboxCategoryScope, nextTab: LiveInboxTabFilter | "recovery") {
-    const query = new URLSearchParams();
-    if (nextScope !== "sales") {
-      query.set("scope", nextScope);
-    } else if (nextTab !== "all") {
-      query.set("filter", nextTab);
+  // Troca de aba/escopo/busca navega para uma nova URL em vez de só trocar
+  // estado local: page.tsx roda de novo no servidor e busca a página bounded
+  // certa (a leitura cara é limitada a INBOX_PAGE_SIZE da aba+busca ativas,
+  // não dá mais pra ter todas as abas pré-carregadas no cliente, e a busca
+  // precisa valer pra clínica inteira, não só pra página já carregada).
+  function goToInbox(overrides: Partial<InboxNavigationTarget>) {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
     }
-    const queryString = query.toString();
+    const target: InboxNavigationTarget = { scope, tab, search, ...overrides };
     startTabTransition(() => {
-      router.push(queryString ? `/app/inbox?${queryString}` : "/app/inbox");
+      router.push(buildInboxHref(target));
     });
   }
+
+  // Debounce: cada tecla atualiza o campo na hora (estado local), mas só
+  // navega — e só então re-executa a busca clinic-wide no servidor — depois
+  // de 350ms sem digitar. Sem isso, cada tecla dispararia uma varredura
+  // completa da clínica.
+  useEffect(() => {
+    if (search === initialSearch) return;
+    searchDebounceRef.current = setTimeout(() => {
+      goToInbox({ search });
+    }, 350);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   useEffect(() => {
     if (!topMenuOpen) return;
@@ -959,11 +978,13 @@ export function InboxClient({
   const isArchivedScope = scope === "archived";
   const isRecoveryTab = isSalesScope && tab === "recovery";
   // `rows` já chega do servidor como a página (até INBOX_PAGE_SIZE) da
-  // aba/escopo ativos, na ordem certa — a única filtragem que ainda cabe no
-  // cliente é a busca por nome/telefone dentro dessa página já carregada.
-  const filteredRows = sortInboxRowsByRecency(filterBySearch(rows, search));
-  const sortedRows = isRecoveryTab ? [] : filteredRows;
-  const sortedRecovery = isRecoveryTab ? filteredRows : [];
+  // aba/escopo/busca ativos — a busca em si é feita pelo servidor sobre a
+  // clínica inteira (Fix round 1 — Critical #1), não sobra filtro de busca
+  // pra fazer aqui. sortInboxRowsByRecency só reafirma a ordem do servidor
+  // (não filtra nada), útil se `rows` chegar fora de ordem por qualquer motivo.
+  const sortedAll = sortInboxRowsByRecency(rows);
+  const sortedRows = isRecoveryTab ? [] : sortedAll;
+  const sortedRecovery = isRecoveryTab ? sortedAll : [];
   const scopeLabel = conversationCategoryLabel(scope).toLowerCase();
   const selectedCount = selectedIds.size;
   const selectedIdList = [...selectedIds];
@@ -1117,7 +1138,7 @@ export function InboxClient({
           <button
             key={key}
             className={`inbox-tab-pill${isSalesScope && tab === key ? " active" : ""}`}
-            onClick={() => goToInbox("sales", key)}
+            onClick={() => goToInbox({ scope: "sales", tab: key })}
           >
             {label}
             {count > 0 && (
@@ -1132,7 +1153,7 @@ export function InboxClient({
       <div className="inbox-archive-tabs" style={{ opacity: isTabPending ? 0.6 : 1 }}>
         <button
           className={`inbox-tab-pill inbox-archive-tab${isArchivedScope ? " active" : ""}`}
-          onClick={() => goToInbox("archived", "all")}
+          onClick={() => goToInbox({ scope: "archived", tab: "all" })}
         >
           <Archive size={12} />
           Arquivados
@@ -1145,7 +1166,7 @@ export function InboxClient({
         {scope !== "sales" && scope !== "archived" && (
           <button
             className="inbox-tab-pill inbox-archive-tab active"
-            onClick={() => goToInbox(scope, "all")}
+            onClick={() => goToInbox({ scope, tab: "all" })}
           >
             {conversationCategoryLabel(scope)}
             <span className="inbox-tab-count active">
@@ -1155,7 +1176,7 @@ export function InboxClient({
         )}
       </div>
 
-      <div className="inbox-search-bar">
+      <div className="inbox-search-bar" style={{ opacity: isTabPending ? 0.6 : 1 }}>
         <Search size={13} style={{ color: "var(--muted)", flexShrink: 0 }} />
         <input
           type="text"

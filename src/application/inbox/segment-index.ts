@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import {
   appointments,
@@ -26,9 +26,16 @@ import {
 export async function loadInboxSegmentIndex(params: {
   clinicId: string;
   now?: Date;
+  // Busca por nome/telefone do lead (Fix round 1 — Critical #1): filtra a
+  // varredura ANTES da segmentação, então a busca vale pra clínica inteira,
+  // não só pra página de até INBOX_PAGE_SIZE que seria montada a partir
+  // dela. `leads.name`/`leads.phone` entram só no WHERE, nunca no SELECT —
+  // não voltam pra aplicação, então a varredura continua sem PII no payload.
+  search?: string;
 }): Promise<InboxSegmentIndex> {
   const { clinicId } = params;
   const now = params.now ?? new Date();
+  const search = params.search?.trim();
 
   const conversationRows = await db
     .select({
@@ -45,7 +52,14 @@ export async function loadInboxSegmentIndex(params: {
     })
     .from(conversations)
     .innerJoin(leads, eq(conversations.leadId, leads.id))
-    .where(eq(conversations.clinicId, clinicId))
+    .where(
+      search
+        ? and(
+            eq(conversations.clinicId, clinicId),
+            or(ilike(leads.name, `%${search}%`), ilike(leads.phone, `%${search}%`)),
+          )
+        : eq(conversations.clinicId, clinicId),
+    )
     .orderBy(sql`${conversations.lastMessageAt} desc nulls last`, desc(conversations.id));
 
   // Só conversas comerciais entram nas abas (categoryRows(..., "sales")), então

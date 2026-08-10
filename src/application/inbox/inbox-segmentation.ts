@@ -103,8 +103,15 @@ type EnrichedRow = SegmentInputRow & {
   pendingAction: InboxPendingAction | null;
 };
 
-// Mesma ordenação da página: lastMessageAt DESC NULLS LAST, id DESC.
-function compareInboxRecency(a: SegmentInputRow, b: SegmentInputRow): number {
+// Mesma ordenação da página: lastMessageAt DESC NULLS LAST, id DESC — o
+// ORDER BY que decide quais linhas entram na varredura (Task 2 index) e na
+// página (list-conversations.ts). Dono único desta chave: o cliente
+// (inbox-filter.ts) importa e reusa esta função em vez de reimplementá-la,
+// senão a lista renderizada pode divergir de quais conversas realmente
+// couberam na página.
+export type RecencyOrderedRow = { lastMessageAt: Date | null; convId: string };
+
+export function compareInboxRecency(a: RecencyOrderedRow, b: RecencyOrderedRow): number {
   const at = a.lastMessageAt?.getTime() ?? null;
   const bt = b.lastMessageAt?.getTime() ?? null;
 
@@ -186,4 +193,31 @@ export function buildSegmentIndex(
     activeCount: handoff.length + active.length,
     totalConversations: ordered.length,
   };
+}
+
+// Fora do escopo "sales" não existe sub-aba: cada escopo tem uma lista só
+// (idsByScope), sem distinção hot/attention/pending/etc. Único lugar que
+// decide qual é a aba "efetivamente" ativa — page.tsx e os testes chamam
+// esta função em vez de reimplementar o ternário escopo === "sales" ? tab : "all".
+export function resolveActiveInboxTab(
+  scope: ConversationCategory,
+  tab: InboxTabKey,
+): InboxTabKey {
+  return scope === "sales" ? tab : "all";
+}
+
+// Decide, a partir do índice de segmentação (clinic-wide ou filtrado por
+// busca — ambos têm o mesmo formato), qual lista de ids representa a página
+// atual de escopo+aba. Único lugar que faz essa escolha: se a leitura cara
+// (page.tsx) e este seletor divergirem, a página busca a lista errada sem
+// nenhum erro visível — só uma aba com o conteúdo de outra.
+export function selectSegmentedConversationIds(
+  index: Pick<InboxSegmentIndex, "idsByTab" | "idsByScope">,
+  scope: ConversationCategory,
+  tab: InboxTabKey,
+): string[] {
+  if (scope === "sales") {
+    return index.idsByTab[resolveActiveInboxTab(scope, tab)];
+  }
+  return index.idsByScope[scope];
 }
