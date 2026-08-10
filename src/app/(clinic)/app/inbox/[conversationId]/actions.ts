@@ -15,23 +15,31 @@ import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
+// Todas as ações deste arquivo recebem ids vindos do CLIENTE. O predicado de
+// clínica entra no WHERE (nunca numa comparação depois da escrita) para que
+// um id de outro tenant simplesmente não atinja linha nenhuma: sem escrita,
+// sem `returning`, e portanto sem bump cross-tenant na versão do Inbox da
+// clínica alheia. Mesmo padrão que setConversationCategoryBulk e
+// deleteConversationsBulk já usavam mais abaixo.
 export async function pauseAi(conversationId: string, leadId: string) {
+  const clinicId = await requireSessionClinicId();
   // Pause manual via dashboard — sem TTL (operador decide quando retomar)
   const [updated] = await db
     .update(conversations)
     .set({ aiPaused: true, takeoverExpiresAt: null, updatedAt: new Date() })
-    .where(eq(conversations.id, conversationId))
+    .where(and(eq(conversations.clinicId, clinicId), eq(conversations.id, conversationId)))
     .returning({ clinicId: conversations.clinicId });
   await db
     .update(leads)
     .set({ status: "in_conversation", updatedAt: new Date() })
-    .where(eq(leads.id, leadId));
+    .where(and(eq(leads.clinicId, clinicId), eq(leads.id, leadId)));
   if (updated) bumpInboxVersion(updated.clinicId);
   revalidatePath("/app/inbox");
   revalidatePath(`/app/inbox/${conversationId}`);
 }
 
 export async function resumeAi(conversationId: string) {
+  const clinicId = await requireSessionClinicId();
   const now = new Date();
   const [updated] = await db
     .update(conversations)
@@ -44,7 +52,7 @@ export async function resumeAi(conversationId: string) {
       aiResumedAt: now,
       updatedAt: now,
     })
-    .where(eq(conversations.id, conversationId))
+    .where(and(eq(conversations.clinicId, clinicId), eq(conversations.id, conversationId)))
     .returning({ clinicId: conversations.clinicId });
   if (updated) bumpInboxVersion(updated.clinicId);
   revalidatePath("/app/inbox");
@@ -54,6 +62,7 @@ export async function resumeAi(conversationId: string) {
 // Limpa o flag de atenção sem retomar a IA — usado quando o operador já atendeu
 // o lead manualmente e quer remover o aviso do inbox sem mudar o controle da IA.
 export async function clearAttention(conversationId: string) {
+  const clinicId = await requireSessionClinicId();
   const now = new Date();
   const [updated] = await db
     .update(conversations)
@@ -62,7 +71,7 @@ export async function clearAttention(conversationId: string) {
       attentionReason: null,
       updatedAt: now,
     })
-    .where(eq(conversations.id, conversationId))
+    .where(and(eq(conversations.clinicId, clinicId), eq(conversations.id, conversationId)))
     .returning({ clinicId: conversations.clinicId });
   if (updated) bumpInboxVersion(updated.clinicId);
   revalidatePath("/app/inbox");
@@ -73,17 +82,15 @@ export async function setConversationCategory(
   conversationId: string,
   category: ConversationCategory,
 ) {
-  const [conversation] = await db
-    .select({ clinicId: conversations.clinicId })
-    .from(conversations)
-    .where(eq(conversations.id, conversationId))
-    .limit(1);
-  if (!conversation) throw new Error("Conversa não encontrada");
-
+  const clinicId = await requireSessionClinicId();
   const now = new Date();
   const isSales = category === "sales";
 
-  await db
+  // O SELECT prévio que existia aqui só servia para descobrir a clínica da
+  // conversa — o que a sessão já responde, e com autoridade. "Não encontrada"
+  // agora significa "não existe DENTRO desta clínica", que é a resposta certa
+  // tanto para um id inexistente quanto para um id de outro tenant.
+  const [updated] = await db
     .update(conversations)
     .set({
       category,
@@ -94,14 +101,16 @@ export async function setConversationCategory(
       consecutiveUnclearCount: 0,
       updatedAt: now,
     })
-    .where(eq(conversations.id, conversationId));
-  bumpInboxVersion(conversation.clinicId);
+    .where(and(eq(conversations.clinicId, clinicId), eq(conversations.id, conversationId)))
+    .returning({ clinicId: conversations.clinicId });
+  if (!updated) throw new Error("Conversa não encontrada");
+  bumpInboxVersion(updated.clinicId);
 
   revalidatePath("/app/inbox");
   revalidatePath(`/app/inbox/${conversationId}`);
   revalidatePath("/app/dashboard");
   revalidatePath("/owner");
-  revalidatePath(`/owner/clinics/${conversation.clinicId}`);
+  revalidatePath(`/owner/clinics/${updated.clinicId}`);
 }
 
 export async function setConversationCategoryBulk(

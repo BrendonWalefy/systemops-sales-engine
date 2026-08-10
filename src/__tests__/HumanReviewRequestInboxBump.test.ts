@@ -86,7 +86,7 @@ describe("DrizzleHumanReviewRequestRepository invalidação do Inbox", () => {
 
     const result = await repo.applyDecision({
       id: "review-1",
-      decision: "rejected",
+      decision: "not_eligible",
       source: "whatsapp",
       reviewerPhone: null,
     });
