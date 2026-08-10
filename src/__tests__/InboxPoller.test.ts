@@ -20,6 +20,47 @@ function mockFetchVersion(version: string, ok = true) {
   });
 }
 
+// Stub mínimo de `document` com listeners de verdade: o poller precisa
+// reagir a `visibilitychange`, não só ler `document.hidden`.
+type DocumentStub = {
+  hidden: boolean;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+  listenerCount(type: string): number;
+  dispatch(type: string): void;
+};
+
+function installDocumentStub(): DocumentStub {
+  const listeners = new Map<string, Set<() => void>>();
+  const stub: DocumentStub = {
+    hidden: false,
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)!.add(listener);
+    },
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
+    listenerCount(type) {
+      return listeners.get(type)?.size ?? 0;
+    },
+    dispatch(type) {
+      for (const listener of [...(listeners.get(type) ?? [])]) listener();
+    },
+  };
+  (globalThis as unknown as { document: DocumentStub }).document = stub;
+  return stub;
+}
+
+// O poll imediato da volta de visibilidade resolve em microtasks
+// (fetch -> json -> scheduleNext). `advanceTimersByTimeAsync(0)` cede o
+// controle uma vez só, então sem drenar a fila o `setTimeout` do próximo poll
+// acaba registrado 1ms adiante e escapa da janela de avanço seguinte —
+// artefato do relógio falso, não do componente.
+async function settle(): Promise<void> {
+  for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+}
+
 async function render(initialVersion: string): Promise<ReactTestRenderer> {
   let renderer!: ReactTestRenderer;
   await act(async () => {
@@ -30,11 +71,17 @@ async function render(initialVersion: string): Promise<ReactTestRenderer> {
   return renderer;
 }
 
+function fetchCallCount(): number {
+  return (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+}
+
 describe("InboxPoller", () => {
+  let documentStub: DocumentStub;
+
   beforeEach(() => {
     vi.useFakeTimers();
     refreshMock.mockClear();
-    (globalThis as unknown as { document: { hidden: boolean } }).document = { hidden: false };
+    documentStub = installDocumentStub();
   });
 
   afterEach(() => {
@@ -42,23 +89,58 @@ describe("InboxPoller", () => {
   });
 
   it(
-    "nunca chama router.refresh() enquanto a versão não muda, mesmo muito além dos " +
-      "60s do antigo refresh forçado (regressão: refresh incondicional)",
+    "não chama router.refresh() enquanto a versão não muda — nem no minuto em que o " +
+      "antigo refresh incondicional disparava (regressão: refresh incondicional)",
     async () => {
       mockFetchVersion("v1");
       const renderer = await render("v1");
 
-      // 12 ciclos no teto de 60s = 12 minutos de tab ociosa — bem além da
-      // marca de 60s em que o código antigo forçava router.refresh() mesmo
-      // sem nenhuma mudança de versão.
-      for (let i = 0; i < 12; i++) {
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(60_000);
-        });
-      }
+      // t=60s era o ponto em que o código antigo forçava router.refresh()
+      // mesmo sem nenhuma mudança de versão. O teto novo é bem mais tarde.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
 
-      expect(global.fetch).toHaveBeenCalled();
+      expect(fetchCallCount()).toBeGreaterThan(0);
       expect(refreshMock).not.toHaveBeenCalled();
+
+      act(() => {
+        renderer.unmount();
+      });
+    },
+  );
+
+  it(
+    "mas TEM teto: depois de 4 polls seguidos no degrau de 60s sem mudança, força um " +
+      "refresh (transições sem escrita: hoursWaiting, expiresAt, agendamento vencido)",
+    async () => {
+      mockFetchVersion("v1");
+      const renderer = await render("v1");
+
+      // 15s + 30s + 60s*3 = 225s: quarto poll de 60s ainda não aconteceu.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(225_000);
+      });
+      expect(refreshMock).not.toHaveBeenCalled();
+
+      // t=285s: quarto poll no topo da escada — o teto dispara.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(refreshMock).toHaveBeenCalledTimes(1);
+
+      // Regime permanente: mais 4 polls de 60s até o próximo refresh forçado
+      // (a escada NÃO volta pra 15s — a aba ociosa continua barata).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(180_000);
+      });
+      expect(refreshMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(refreshMock).toHaveBeenCalledTimes(2);
+
       act(() => {
         renderer.unmount();
       });
@@ -83,11 +165,11 @@ describe("InboxPoller", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
 
     // Depois da mudança, a escada reinicia em 15s (índice 0) — não em 60s.
-    const fetchCallsBeforeNextTick = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+    const fetchCallsBeforeNextTick = fetchCallCount();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fetchCallsBeforeNextTick + 1);
+    expect(fetchCallCount()).toBe(fetchCallsBeforeNextTick + 1);
 
     act(() => {
       renderer.unmount();
@@ -102,21 +184,164 @@ describe("InboxPoller", () => {
     // buscar depois que a aba fica visível de novo.
     mockFetchVersion("v1");
     const renderer = await render("v1");
-    const documentStub = (globalThis as unknown as { document: { hidden: boolean } }).document;
 
     documentStub.hidden = true;
-    const callsWhileHidden = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+    const callsWhileHidden = fetchCallCount();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsWhileHidden);
+    expect(fetchCallCount()).toBe(callsWhileHidden);
 
     documentStub.hidden = false;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsWhileHidden);
+    expect(fetchCallCount()).toBeGreaterThan(callsWhileHidden);
+
+    act(() => {
+      renderer.unmount();
+    });
+  });
+
+  it("busca na hora quando a aba volta a ficar visível — sem esperar o degrau corrente vencer", async () => {
+    mockFetchVersion("v1");
+    const renderer = await render("v1");
+
+    // Leva a escada até o topo (60s) para que o próximo poll agendado esteja
+    // longe: sem o listener, voltar à aba renderia até um minuto de espera.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(105_000);
+    });
+
+    documentStub.hidden = true;
+    await act(async () => {
+      documentStub.dispatch("visibilitychange");
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    const callsBeforeReturn = fetchCallCount();
+
+    documentStub.hidden = false;
+    await act(async () => {
+      documentStub.dispatch("visibilitychange");
+      // Nenhum avanço de relógio: o poll tem que sair imediatamente.
+      await settle();
+    });
+
+    expect(fetchCallCount()).toBe(callsBeforeReturn + 1);
+
+    // E a escada voltou ao começo: o poll imediato conta como um poll sem
+    // mudança (streak 0 -> 1), então o próximo sai no SEGUNDO degrau, 30s —
+    // não nos 60s do topo em que a aba estava antes de ser escondida.
+    const callsAfterReturn = fetchCallCount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000);
+    });
+    expect(fetchCallCount()).toBe(callsAfterReturn);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchCallCount()).toBe(callsAfterReturn + 1);
+
+    act(() => {
+      renderer.unmount();
+    });
+  });
+
+  it("uma aba escondida por mais que o degrau de topo volta com refresh forçado", async () => {
+    mockFetchVersion("v1");
+    const renderer = await render("v1");
+
+    documentStub.hidden = true;
+    await act(async () => {
+      documentStub.dispatch("visibilitychange");
+      // Três horas fora: hoursWaiting, expiresAt e agendamentos mudaram de
+      // categoria sem nenhuma escrita, então a versão pode estar idêntica.
+      await vi.advanceTimersByTimeAsync(3 * 3600_000);
+    });
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    documentStub.hidden = false;
+    await act(async () => {
+      documentStub.dispatch("visibilitychange");
+      await settle();
+    });
+
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      renderer.unmount();
+    });
+  });
+
+  it("alt-tab rápido não paga refresh — só o poll imediato", async () => {
+    mockFetchVersion("v1");
+    const renderer = await render("v1");
+
+    documentStub.hidden = true;
+    await act(async () => {
+      documentStub.dispatch("visibilitychange");
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    documentStub.hidden = false;
+    await act(async () => {
+      documentStub.dispatch("visibilitychange");
+      await settle();
+    });
+
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    act(() => {
+      renderer.unmount();
+    });
+  });
+
+  it("desmontar remove o listener de visibilidade", async () => {
+    mockFetchVersion("v1");
+    const renderer = await render("v1");
+    expect(documentStub.listenerCount("visibilitychange")).toBe(1);
+
+    act(() => {
+      renderer.unmount();
+    });
+
+    expect(documentStub.listenerCount("visibilitychange")).toBe(0);
+  });
+
+  it("voltar à aba não duplica o laço de polling", async () => {
+    // Sem o guarda de ciclo, o poll imediato da volta e o timeout do ciclo
+    // anterior passariam a reagendar em paralelo, dobrando o custo da aba
+    // ociosa a cada alt-tab.
+    mockFetchVersion("v1");
+    const renderer = await render("v1");
+
+    for (let i = 0; i < 3; i++) {
+      documentStub.hidden = true;
+      await act(async () => {
+        documentStub.dispatch("visibilitychange");
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      documentStub.hidden = false;
+      await act(async () => {
+        documentStub.dispatch("visibilitychange");
+        await settle();
+      });
+    }
+
+    // Três voltas de visibilidade = três polls imediatos, um por volta.
+    const callsAfterToggling = fetchCallCount();
+    expect(callsAfterToggling).toBe(3);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    // Exatamente UM poll no degrau seguinte, não um por ciclo deixado vivo:
+    // três alt-tabs teriam deixado três laços reagendando em paralelo.
+    expect(fetchCallCount()).toBe(callsAfterToggling + 1);
 
     act(() => {
       renderer.unmount();
