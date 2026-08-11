@@ -14,6 +14,9 @@ export const CANONICAL_OWNERS = [
 ] as const;
 export type CanonicalOwner = typeof CANONICAL_OWNERS[number];
 
+/** Slug interno estável. NUNCA o nome comercial da clínica. */
+export type VariantSlug = "base" | "enhanced";
+
 export type Placeholder = {
   key: string;
   kind: PlaceholderKind;
@@ -22,15 +25,22 @@ export type Placeholder = {
   defaultValue?: unknown;
 };
 
-export type TemplateVariant = {
-  /** Slug interno estável. NUNCA o nome comercial da clínica. */
-  slug: "base" | "enhanced";
-  displayNamePlaceholder: string;
-  priceChannel: PriceChannel;
-  priceKind: "fixed" | "from";
-  /** Obrigatório quando priceChannel === "media". */
-  mediaAssetPlaceholder?: string;
-};
+/** Variantes de tratamento, discriminadas pelo canal de entrega de preço. */
+export type TemplateVariant =
+  | {
+      slug: VariantSlug;
+      displayNamePlaceholder: string;
+      priceChannel: "text" | "human";
+      priceKind: "fixed" | "from";
+    }
+  | {
+      slug: VariantSlug;
+      displayNamePlaceholder: string;
+      priceChannel: "media";
+      priceKind: "fixed" | "from";
+      /** Obrigatório quando priceChannel === "media". */
+      mediaAssetPlaceholder: string;
+    };
 
 export type TemplateManifest = {
   id: string;
@@ -38,7 +48,7 @@ export type TemplateManifest = {
   segment: string;
   variants: TemplateVariant[];
   placeholders: Placeholder[];
-  objections: Array<{ objection: string; response: string; appliesToVariant?: "base" | "enhanced" }>;
+  objections: Array<{ objection: string; response: string; appliesToVariant?: VariantSlug }>;
   qualificationQuestions: string[];
   handoffReasons: string[];
 };
