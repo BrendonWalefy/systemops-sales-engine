@@ -389,7 +389,9 @@ Create `objections.ts` exporting `DENTAL_RESIN_OBJECTIONS`. Cover at minimum: pr
 
 Create `manifest.ts` importing the objections. Declare both variants, every placeholder they reference, the qualification questions, and the handoff reasons.
 
-The blocking placeholders must be exactly the four gates: channel and tenant, price, agenda, media and reception phone. Everything else is `defaulted` and ships with a value.
+The blocking placeholders cover the four gates: channel and tenant, price, agenda, media and reception phone.
+
+**Correction made during execution:** the two variant display names are **also blocking**, not defaulted. A defaulted display name means the assistant names the clinic's own product for it — a lead who saw an ad for one commercial name and hears a neutral placeholder is a conversion leak in exactly the funnel this template exists to repair. The name is a commercial fact the clinic owns, the same class as price, and supplying it costs two strings. `reception.teamLabel` stays defaulted: "a equipe" is a reasonable neutral fallback and is not a product name.
 
 - [ ] **Step 5: Run the test and confirm it passes**
 
@@ -467,10 +469,13 @@ describe("template install planner", () => {
   });
 
   it("records an overridden default as a custom field", () => {
-    const values = { ...completeValues(), "playbook.tone": "objetivo e direto" };
+    // reception.teamLabel, não playbook.tone: o validador exige que todo
+    // placeholder declarado seja referenciado em texto, e um descritor de tom
+    // não tem lugar honesto nas respostas autorizadas. Task 3 descobriu isso.
+    const values = { ...completeValues(), "reception.teamLabel": "a recepção" };
     const result = planTemplateInstall({ manifest: dentalResinV1, clinicId: CLINIC, values });
     if (!("plan" in result)) throw new Error("esperava um plano");
-    expect(result.plan.customFields).toContain("playbook.tone");
+    expect(result.plan.customFields).toContain("reception.teamLabel");
   });
 
   it("does not record an untouched default as a custom field", () => {
