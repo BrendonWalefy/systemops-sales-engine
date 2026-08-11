@@ -26,7 +26,7 @@ From `docs/superpowers/specs/2026-08-10-dental-resin-template-design.md`:
 | Mídia | `playbook_versions.mediaLibrary` / `mediaAssetIds` |
 | Horários, timezone, limites, canal | `organizations` |
 
-- **Variants carry a stable internal slug** (`entry`, `premium`) with a clinic-supplied display name. Never hardcode "Simplificada", "Estratificada", "Premium" or "Slim" as universal taxonomy — spec mestre §19 forbids it.
+- **Variants carry a stable internal slug** (`base`, `enhanced`) with a clinic-supplied display name. Never hardcode "Simplificada", "Estratificada", "Premium" or "Slim" as universal taxonomy — spec mestre §19 forbids it.
 - **Two placeholder categories only:** `blocking` and `defaulted`. There is no "optional without default".
 - **Delivery channel maps onto existing columns**, no new schema: `text` → `priceQuotableInChat: true`; `media` → `true` plus a required asset; `human` → `false`.
 - **The manifest contains no clinical rule, no result claim, no warranty coverage promise.**
@@ -134,7 +134,7 @@ export type Placeholder = {
 
 export type TemplateVariant = {
   /** Slug interno estável. NUNCA o nome comercial da clínica. */
-  slug: "entry" | "premium";
+  slug: "base" | "enhanced";
   displayNamePlaceholder: string;
   priceChannel: PriceChannel;
   priceKind: "fixed" | "from";
@@ -148,7 +148,7 @@ export type TemplateManifest = {
   segment: string;
   variants: TemplateVariant[];
   placeholders: Placeholder[];
-  objections: Array<{ objection: string; response: string; appliesToVariant?: "entry" | "premium" }>;
+  objections: Array<{ objection: string; response: string; appliesToVariant?: "base" | "enhanced" }>;
   qualificationQuestions: string[];
   handoffReasons: string[];
 };
@@ -215,10 +215,10 @@ function baseManifest(): TemplateManifest {
     version: "1.0.0",
     segment: "odontologia-estetica",
     variants: [
-      { slug: "entry", displayNamePlaceholder: "variant.entry.name", priceChannel: "text", priceKind: "from" },
+      { slug: "base", displayNamePlaceholder: "variant.base.name", priceChannel: "text", priceKind: "from" },
     ],
     placeholders: [
-      { key: "variant.entry.name", kind: "blocking", label: "Nome da variante de entrada" },
+      { key: "variant.base.name", kind: "blocking", label: "Nome da variante de entrada" },
     ],
     objections: [],
     qualificationQuestions: [],
@@ -255,9 +255,9 @@ describe("manifest validation", () => {
 
   it("rejects an objection pointing at a variant the manifest does not define", () => {
     const m = baseManifest();
-    m.objections.push({ objection: "caro", response: "…", appliesToVariant: "premium" });
+    m.objections.push({ objection: "caro", response: "…", appliesToVariant: "enhanced" });
     expect(validateManifest(m)).toContainEqual(
-      expect.stringContaining("premium"),
+      expect.stringContaining("enhanced"),
     );
   });
 
@@ -317,7 +317,7 @@ Read all three before writing content. They record what the human team actually 
 **Content rules, each with a failure behind it:**
 
 - No clinical claim, no result promise, no warranty coverage statement. The assistant previously asserted coverage it had no data for.
-- Never present a commercial difference between `entry` and `premium` as clinical superiority.
+- Never present a commercial difference between `base` and `enhanced` as clinical superiority.
 - Answer the question before pitching. The audit records the assistant ignoring the lead's question to deliver a pitch.
 - One main idea per response, at most one question per turn.
 - Never state a price, condition, quantity or deadline absent from the active configuration.
@@ -342,7 +342,7 @@ describe("dental resin v1 manifest", () => {
   });
 
   it("defines both variants by stable slug", () => {
-    expect(dentalResinV1.variants.map((v) => v.slug).sort()).toEqual(["entry", "premium"]);
+    expect(dentalResinV1.variants.map((v) => v.slug).sort()).toEqual(["base", "enhanced"]);
   });
 
   it("never hardcodes a clinic's commercial vocabulary", () => {
@@ -764,6 +764,6 @@ Then use `superpowers:finishing-a-development-branch`, targeting `develop`.
 
 **Placeholder scan.** Tasks 7 and 8 describe their tests rather than pasting complete bodies, because both depend on structures the implementer must read first — `clinic-blueprint.ts` for the gate, and the planner's own shape for the diff. Their assertions are named precisely. Task 4's `completeValues()` is deliberately empty in the test skeleton and filled in Step 3, because its keys come from the manifest written in Task 3; the step says so explicitly rather than leaving a silent stub.
 
-**Type consistency.** `TemplateManifest`, `TemplateVariant`, `Placeholder`, `PlaceholderKind`, `PriceChannel`, `CanonicalOwner`, `InstallOperation`, `InstallPlan`, `Blocker`, `validateManifest`, `dentalResinV1`, `planTemplateInstall`, `executeInstallPlan`, `recordInstallation`, `findInstallation`, `evaluateActivationGate` are each defined once and referenced under the same name thereafter. Variant slugs are `entry` and `premium` throughout.
+**Type consistency.** `TemplateManifest`, `TemplateVariant`, `Placeholder`, `PlaceholderKind`, `PriceChannel`, `CanonicalOwner`, `InstallOperation`, `InstallPlan`, `Blocker`, `validateManifest`, `dentalResinV1`, `planTemplateInstall`, `executeInstallPlan`, `recordInstallation`, `findInstallation`, `evaluateActivationGate` are each defined once and referenced under the same name thereafter. Variant slugs are `base` and `enhanced` throughout. They were deliberately chosen not to collide with any clinic's commercial vocabulary: an earlier draft used `premium`, which Task 3's own vocabulary test forbids, so the manifest would have failed its own suite by construction.
 
 **Known risk carried into execution.** Task 3 is content authoring, and its tests can only check for forbidden patterns and structural properties — they cannot judge whether an objection answer actually sells. The reviewer should read the content as a person, not only run the suite, and the next spec's replay families are what will genuinely test it.
