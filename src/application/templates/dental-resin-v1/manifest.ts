@@ -46,9 +46,15 @@ import { DENTAL_RESIN_OBJECTIONS } from "@/application/templates/dental-resin-v1
  * | Área | Placeholders bloqueantes | Falha que a originou |
  * | --- | --- | --- |
  * | Canal e tenant | `clinic.displayName` | `clinic_not_resolved`: instância sem tenant resolvido |
- * | Preço | `price.startingFrom`, `price.installmentsPolicy` | preço 10x errado; política dizia "12x", operador vendia 3x |
+ * | Preço | `price.startingFrom`, `price.installmentsPolicy`, `variant.base.name`, `variant.enhanced.name` | preço 10x errado; política dizia "12x", operador vendia 3x |
  * | Agenda | `agenda.evaluationLabel` | horário oferecido sem vir da agenda |
  * | Mídia e recepção | `media.priceCard` | preço vive numa arte; sem o asset, o valor nunca sai |
+ *
+ * Os nomes comerciais das variantes são bloqueantes por correção de revisão:
+ * um nome com valor padrão faz a assistente batizar o produto da clínica no
+ * lugar dela, e o lead que veio de um anúncio com um nome ouve outro. Nome
+ * comercial é fato que a clínica possui, da mesma classe do preço, e fornecê-lo
+ * custa duas strings.
  *
  * Todo o resto é `defaulted` e chega com valor pronto. Não existe terceira
  * categoria: um campo que não bloqueia e chega vazio é o buraco por onde a
@@ -83,21 +89,17 @@ const PLACEHOLDERS: TemplateManifest["placeholders"] = [
     label: "Asset com a arte de valores da variante enhanced",
   },
 
-  // Nomes comerciais: chegam com uma descrição neutra da técnica, que a
-  // clínica troca pelo vocabulário dela. Descrever a técnica não é afirmar
-  // resultado, e nenhum dos dois defaults sugere que uma camada seja
-  // clinicamente melhor.
+  // Nomes comerciais: bloqueantes, sem valor padrão. É a palavra que o lead
+  // viu no anúncio; o template não tem como adivinhá-la e não deve tentar.
   {
     key: "variant.base.name",
-    kind: "defaulted",
-    label: "Nome comercial da variante base",
-    defaultValue: "resina em camada única",
+    kind: "blocking",
+    label: "Nome comercial da variante base, como a clínica anuncia",
   },
   {
     key: "variant.enhanced.name",
-    kind: "defaulted",
-    label: "Nome comercial da variante enhanced",
-    defaultValue: "resina em camadas",
+    kind: "blocking",
+    label: "Nome comercial da variante enhanced, como a clínica anuncia",
   },
   // Frase única, nas palavras da clínica, com o que de fato separa as duas
   // opções. É `defaulted` porque nenhuma clínica pode ficar sem resposta aqui,
@@ -108,7 +110,7 @@ const PLACEHOLDERS: TemplateManifest["placeholders"] = [
     key: "variant.differenceSummary",
     kind: "defaulted",
     label: "Uma frase com a diferença entre as duas opções, nas palavras da clínica",
-    defaultValue: "A diferença está nas etapas de aplicação e no valor.",
+    defaultValue: "Mudam as etapas de aplicação e o valor.",
   },
   {
     key: "reception.teamLabel",

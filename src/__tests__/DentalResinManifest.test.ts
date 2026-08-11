@@ -72,17 +72,25 @@ const ARTICLE_BEFORE_PLACEHOLDER =
  * A faixa observada no operador humano é 41–120 caracteres. O teto aqui é mais
  * frouxo do que essa faixa de propósito — ele existe para impedir a regressão
  * documentada (respostas passando de 300 caracteres), não para congelar o
- * estilo. A maior resposta hoje renderiza em 160 caracteres.
+ * estilo. Hoje a maior resposta renderiza em 158 caracteres e a mediana em 114.
  */
 const RESPONSE_LENGTH_CEILING = 180;
 
-/** Valores representativos para os placeholders bloqueantes. */
+/**
+ * Valores representativos para os placeholders bloqueantes.
+ *
+ * Os nomes de variante são longos e de gêneros diferentes de propósito: são o
+ * caso que expõe tanto concordância presa a artigo quanto resposta que estoura
+ * o teto só porque a clínica escreve nomes compridos.
+ */
 const SAMPLE_BLOCKING_VALUES: Record<string, string> = {
   "clinic.displayName": "Clínica Exemplo",
   "price.startingFrom": "R$ 1.500",
   "price.installmentsPolicy": "3x sem juros ou até 21x com taxa",
   "agenda.evaluationLabel": "avaliação",
   "media.priceCard": "arte-de-valores",
+  "variant.base.name": "Lentes de Resina Natural",
+  "variant.enhanced.name": "Lentes de Resina Artesanal",
 };
 
 function resolvedValues(): Record<string, string> {
