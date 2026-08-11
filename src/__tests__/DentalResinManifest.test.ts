@@ -23,17 +23,24 @@ const FORBIDDEN_CLAIMS: Array<{ pattern: RegExp; why: string }> = [
   { pattern: /nunca\s+mancha/i, why: "promessa de resultado" },
   { pattern: /dura\s+para\s+sempre/i, why: "promessa de durabilidade" },
   {
-    pattern: /\bgarant(?:ias|ia|imos|ido|ida|em|e)\b/i,
+    pattern: /\bgarant(?:ias|ia|imos|ido|ida|iu|iram|em|e)\b/i,
     why: "qualquer afirmação de cobertura, não só a frase 'garantia de'",
   },
   {
     // O `\b` final que esta regra tinha antes não fechava depois de "à": em
     // JavaScript `\w` é ASCII, então "à" é caractere não-palavra e não há
     // fronteira entre ele e o espaço seguinte. "é superior à outra" passava
-    // batido. O lookahead abaixo não depende de fronteira de palavra.
+    // batido. O lookahead abaixo não depende de fronteira de palavra, e
+    // "àquela/aquele" entraram porque "é superior àquela" escapava das duas.
     pattern:
-      /\b(?:melhor|superior|pior|inferior)(?:es)?\s+(?:do\s+que|que|às|aos|à|ao|as|os|a|o)(?=\s|[.,;!?]|$)/i,
+      /\b(?:melhor|superior|pior|inferior)(?:es)?\s+(?:do\s+que|que|àquele|àquela|aquele|aquela|às|aos|à|ao|as|os|a|o)(?=\s|[.,;!?]|$)/i,
     why: "comparativo entre variantes; deixa passar 'arcada superior', que é anatomia",
+  },
+  {
+    // Superlativo, que o comparativo acima não pega: "é a melhor opção" não
+    // compara com nada explícito e mesmo assim rankeia as variantes.
+    pattern: /\b(?:a|o)\s+(?:melhor|pior)\b/i,
+    why: "superlativo; rankeia variante sem citar o termo comparado",
   },
   { pattern: /\bindolor\b/i, why: "afirmação clínica" },
   { pattern: /\bsem\s+(?:risco|riscos|dor|dores)\b/i, why: "afirmação clínica" },
@@ -54,17 +61,33 @@ const PASSIVE_CLOSINGS = [
 ];
 
 /**
- * Um pedido de informação, em qualquer forma. Contar só "?" deixaria passar
- * *"me diz quantos dentes."*, que pergunta sem ponto de interrogação.
+ * Uma frase "pede informação" se termina em interrogação, traz verbo de pedido,
+ * ou COMEÇA com pronome interrogativo. A última condição existe porque contar
+ * só "?" deixava passar *"quantos dentes e sua cidade."*; ela é ancorada no
+ * início da frase de propósito, senão *"depende de quantos dentes entram"* —
+ * declarativa — contaria como pergunta.
  */
-const ASK_MARKERS = [
-  /\?/g,
-  /\bme\s+(?:diz|conta|fala|informa|manda|envia|passa)\b/gi,
-];
+const REQUEST_VERB = /\bme\s+(?:diz|conta|fala|informa|manda|envia|passa)\b/i;
+const LEADING_INTERROGATIVE =
+  /^(?:e\s+|mas\s+|então\s+)?(?:quantos|quantas|quanto|qual|quais|quando|onde|como|quem|por\s+que|o\s+que)\b/i;
 
-/** Artigo colado num placeholder: a origem de "na check-up inicial". */
+function isAsking(sentence: string): boolean {
+  const trimmed = sentence.trim();
+  return (
+    trimmed.includes("?") || REQUEST_VERB.test(trimmed) || LEADING_INTERROGATIVE.test(trimmed)
+  );
+}
+
+/**
+ * Artigo colado num placeholder: a origem de "na check-up inicial".
+ *
+ * O `\b` inicial que esta regra tinha antes tornava `à|às|ao|aos` alternativas
+ * mortas — mesmo mecanismo ASCII documentado acima, agora do lado esquerdo:
+ * `/\bà/.test("comparado à outra")` é `false`. E "às {{...}}" é justamente o
+ * caso que renderiza pior. `(?:^|[\s(])` não depende de fronteira de palavra.
+ */
 const ARTICLE_BEFORE_PLACEHOLDER =
-  /\b(?:a|o|as|os|na|no|nas|nos|da|do|das|dos|à|às|ao|aos|um|uma|uns|umas)\s+\{\{/i;
+  /(?:^|[\s(])(?:a|o|as|os|na|no|nas|nos|da|do|das|dos|à|às|ao|aos|um|uma|uns|umas)\s+\{\{/i;
 
 /**
  * Teto de tamanho da resposta renderizada.
@@ -91,6 +114,7 @@ const SAMPLE_BLOCKING_VALUES: Record<string, string> = {
   "media.priceCard": "arte-de-valores",
   "variant.base.name": "Lentes de Resina Natural",
   "variant.enhanced.name": "Lentes de Resina Artesanal",
+  "variant.differenceSummary": "Muda o número de etapas de aplicação e o valor.",
 };
 
 function resolvedValues(): Record<string, string> {
@@ -115,10 +139,18 @@ function render(text: string): string {
   });
 }
 
-/** Todo texto que o template escreve — não só as respostas de objeção. */
+/**
+ * Todo texto que o template ESCREVE — a fala da assistente e o texto interno.
+ *
+ * As chaves de objeção ficam de fora de propósito: elas são a fala do LEAD,
+ * usada pelo matcher do runtime. O lead pode perfeitamente perguntar "tem
+ * garantia?", e proibir a palavra ali tornaria a objeção de garantia
+ * incasável. O que a assistente responde continua proibido de afirmar
+ * cobertura, e isso é o que estas listas guardam.
+ */
 function allAuthoredStrings(): string[] {
   return [
-    ...dentalResinV1.objections.flatMap((o) => [o.objection, o.response]),
+    ...dentalResinV1.objections.map((o) => o.response),
     ...dentalResinV1.qualificationQuestions,
     ...dentalResinV1.handoffReasons,
     ...dentalResinV1.placeholders.flatMap((p) => [
@@ -128,15 +160,12 @@ function allAuthoredStrings(): string[] {
   ];
 }
 
-function countAsks(text: string): number {
-  return ASK_MARKERS.reduce(
-    (total, marker) => total + (text.match(marker) ?? []).length,
-    0,
-  );
-}
-
 function sentences(text: string): string[] {
   return text.split(/(?<=[.?!])\s+/).filter((s) => s.trim().length > 0);
+}
+
+function askingSentences(text: string): string[] {
+  return sentences(text).filter(isAsking);
 }
 
 describe("dental resin v1 manifest", () => {
@@ -168,23 +197,36 @@ describe("dental resin v1 manifest", () => {
 
   it("asks at most one thing per authorized response", () => {
     for (const { objection, response } of dentalResinV1.objections) {
-      expect(countAsks(response), `objeção "${objection}"`).toBeLessThanOrEqual(1);
+      expect(
+        askingSentences(render(response)).length,
+        `objeção "${objection}"`,
+      ).toBeLessThanOrEqual(1);
     }
   });
 
   it("does not stack a second request inside the sentence that asks", () => {
-    // Heurística, e assumidamente parcial: pega "me diz seu nome e sua cidade",
+    // Heurística, e assumidamente parcial: pega "quantos dentes e sua cidade",
     // não pega dois pedidos costurados sem conectivo. O limite está registrado
     // no relatório.
     for (const { objection, response } of dentalResinV1.objections) {
-      for (const sentence of sentences(render(response))) {
-        if (countAsks(sentence) === 0) continue;
+      for (const sentence of askingSentences(render(response))) {
         expect(
           / e /.test(sentence),
           `objeção "${objection}": a frase que pergunta encadeia um segundo pedido — "${sentence}"`,
         ).toBe(false);
       }
     }
+  });
+
+  it("never closes two responses with the same sentence", () => {
+    // Mensagem idêntica repetida já é defeito de produção neste projeto, e um
+    // lead que pergunta parcelamento, depois durabilidade, depois dor ouviria
+    // o mesmo fecho três vezes seguidas.
+    const closings = dentalResinV1.objections.map(({ response }) => {
+      const parts = sentences(render(response));
+      return parts[parts.length - 1]?.trim().toLowerCase();
+    });
+    expect(new Set(closings).size).toBe(closings.length);
   });
 
   it("covers the objections the real conversations produced", () => {
@@ -197,9 +239,10 @@ describe("dental resin v1 manifest", () => {
   it("covers the two moments most likely to lose the lead", () => {
     const keys = dentalResinV1.objections.map((o) => o.objection.toLowerCase()).join("|");
     // Dor/desgaste é a maior objeção não-financeira da jornada; o "não" macio
-    // é o maior vazamento documentado do funil.
+    // é o maior vazamento documentado do funil. As chaves são fala do lead,
+    // então o teste procura a palavra que o LEAD usa, não o rótulo interno.
     expect(keys).toContain("dor");
-    expect(keys).toContain("adiamento");
+    expect(keys).toContain("pensar");
   });
 
   it("never closes passively", () => {

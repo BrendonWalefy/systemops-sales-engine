@@ -21,18 +21,30 @@ import { DENTAL_RESIN_OBJECTIONS } from "@/application/templates/dental-resin-v1
  * técnica. Nenhum texto deste template pode apresentar a diferença comercial
  * entre elas como superioridade clínica.
  *
- * ## Preço: o que é placeholder e o que é dono canônico
+ * ## Preço: por que nenhum valor é renderizado em texto autorizado
  *
- * Um rascunho anterior deste arquivo não deixava nenhum valor entrar no texto
- * autorizado, com o argumento de que isso criaria um segundo dono do preço. O
- * argumento estava errado, e `price.installmentsPolicy` já era a prova: um
- * placeholder renderizado na instalação não é um dono paralelo, é o mesmo
- * valor que a clínica forneceu, escrito também onde o lead vai ler.
+ * Este arquivo já esteve nos dois extremos. Primeiro proibiu qualquer valor no
+ * texto, com um argumento errado ("seria um segundo dono"). Depois passou a
+ * renderizar `{{price.startingFrom}}` na resposta de preço. A segunda versão é
+ * que estava errada, e por um motivo concreto:
  *
- * O que continua valendo é mais estreito: o template nunca traz número
- * próprio. Todo valor vem da clínica, por placeholder bloqueante. Quando a
- * clínica alterar o preço depois da instalação, o texto instalado não
- * acompanha sozinho — ver a nota de risco no relatório desta task.
+ * - renderizar o número o grava em `playbook_versions.objections`, uma tabela
+ *   com caminho de edição próprio, enquanto quem possui preço é `treatments`.
+ *   `sources-of-truth.md` item 5 chama isso de remodelagem obrigatória;
+ * - pior que envelhecer: `price_campaigns` e `resolveEffectivePrice` possuem o
+ *   preço EFETIVO e são consultados ao vivo pelo orquestrador. Texto congelado
+ *   contradiz toda campanha de desconto ativa — o caminho que a clínica mais
+ *   usa.
+ *
+ * Não existe hoje interpolação em tempo de composição para resolver isso: não
+ * há nenhum `{{...}}` em `src/core` ou `src/application` fora desta pasta.
+ * Dizer o preço de partida na conversa depende de uma mudança no caminho de
+ * composição, que é de quem for dono do orquestrador — não desta task.
+ *
+ * `price.startingFrom` continua bloqueante, porque o valor precisa ser
+ * capturado na instalação e escrito em `treatments`, onde ele mora. Ele é
+ * referenciado apenas num motivo de handoff, que é texto interno de roteamento
+ * e não fala com o lead.
  */
 
 /**
@@ -46,7 +58,7 @@ import { DENTAL_RESIN_OBJECTIONS } from "@/application/templates/dental-resin-v1
  * | Área | Placeholders bloqueantes | Falha que a originou |
  * | --- | --- | --- |
  * | Canal e tenant | `clinic.displayName` | `clinic_not_resolved`: instância sem tenant resolvido |
- * | Preço | `price.startingFrom`, `price.installmentsPolicy`, `variant.base.name`, `variant.enhanced.name` | preço 10x errado; política dizia "12x", operador vendia 3x |
+ * | Preço | `price.startingFrom`, `price.installmentsPolicy`, `variant.base.name`, `variant.enhanced.name`, `variant.differenceSummary` | preço 10x errado; política dizia "12x", operador vendia 3x |
  * | Agenda | `agenda.evaluationLabel` | horário oferecido sem vir da agenda |
  * | Mídia e recepção | `media.priceCard` | preço vive numa arte; sem o asset, o valor nunca sai |
  *
@@ -56,7 +68,9 @@ import { DENTAL_RESIN_OBJECTIONS } from "@/application/templates/dental-resin-v1
  * comercial é fato que a clínica possui, da mesma classe do preço, e fornecê-lo
  * custa duas strings.
  *
- * Todo o resto é `defaulted` e chega com valor pronto. Não existe terceira
+ * Sobrou um único `defaulted`: `reception.teamLabel`. "Nossa equipe" é um
+ * neutro razoável e não é nome de produto nem número — as duas classes de coisa
+ * que o template não pode inventar no lugar da clínica. Não existe terceira
  * categoria: um campo que não bloqueia e chega vazio é o buraco por onde a
  * assistente inventa.
  */
@@ -101,16 +115,16 @@ const PLACEHOLDERS: TemplateManifest["placeholders"] = [
     kind: "blocking",
     label: "Nome comercial da variante enhanced, como a clínica anuncia",
   },
-  // Frase única, nas palavras da clínica, com o que de fato separa as duas
-  // opções. É `defaulted` porque nenhuma clínica pode ficar sem resposta aqui,
-  // e o default é deliberadamente factual e curto: qualquer coisa mais
-  // específica seria o template afirmando técnica em nome de uma clínica que
-  // ele não conhece.
+  // Bloqueante, e não `defaulted`, por eliminação honesta: todo default que
+  // tentamos escrever aqui era a tautologia "a diferença entre as duas
+  // técnicas é a técnica", e qualquer default mais específico seria o template
+  // afirmando técnica em nome de uma clínica que ele não conhece. Um campo que
+  // só ensina algo quando alguém o reescreve não pode ter valor de partida.
   {
     key: "variant.differenceSummary",
-    kind: "defaulted",
-    label: "Uma frase com a diferença entre as duas opções, nas palavras da clínica",
-    defaultValue: "Mudam as etapas de aplicação e o valor.",
+    kind: "blocking",
+    label:
+      "Uma frase completa, terminada em ponto final, com a diferença entre as duas opções nas palavras da clínica — ela é interpolada no meio da resposta e o template não acrescenta pontuação",
   },
   {
     key: "reception.teamLabel",
@@ -153,6 +167,10 @@ const QUALIFICATION_QUESTIONS: string[] = [
  * ao lead tem duas respostas possíveis, e as duas precisam ter para onde ir.
  */
 const HANDOFF_REASONS: string[] = [
+  // Único lugar onde `price.startingFrom` aparece em texto. É roteamento
+  // interno, lido pela equipe, não fala com o lead — o valor de partida não
+  // pode virar prosa numa resposta, ver a nota de preço no topo do arquivo.
+  "Lead insiste em fechar por valor abaixo de {{price.startingFrom}}: {{reception.teamLabel}} decide",
   "Lead relata dor, sangramento ou qualquer intercorrência depois de um procedimento",
   "Lead pede reparo ou ajuste de trabalho cuja origem não está confirmada",
   "Lead confirma que o trabalho a reparar foi feito aqui: {{reception.teamLabel}} verifica histórico e política antes de qualquer resposta sobre cobertura",
