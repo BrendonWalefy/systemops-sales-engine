@@ -52,8 +52,11 @@ export function validateManifest(manifest: TemplateManifest): string[] {
   }
 
   // --- Objeções: appliesToVariant precisa apontar para uma variante
-  // definida; {{key}} dentro do texto da resposta conta como uso.
-  for (const objection of manifest.objections) {
+  // definida; {{key}} dentro do texto da resposta conta como uso E precisa
+  // corresponder a um placeholder declarado (regra espelhada da de órfão:
+  // lá sobra declaração sem uso, aqui sobra uso sem declaração — o mesmo
+  // typo que vazaria literalmente "{{...}}" pro WhatsApp de um lead real).
+  manifest.objections.forEach((objection, index) => {
     if (objection.appliesToVariant && !variantSlugs.has(objection.appliesToVariant)) {
       issues.push(
         `A objeção "${objection.objection}" aponta para a variante "${objection.appliesToVariant}" em appliesToVariant, que não está definida em variants.`,
@@ -61,21 +64,37 @@ export function validateManifest(manifest: TemplateManifest): string[] {
     }
     for (const key of extractPlaceholderKeys(objection.response)) {
       usedKeys.add(key);
+      if (!declaredKeys.has(key)) {
+        issues.push(
+          `Referência "{{${key}}}" em objeção ${index + 1} não corresponde a nenhum placeholder declarado.`,
+        );
+      }
     }
-  }
+  });
 
-  // --- Perguntas de qualificação e motivos de handoff: {{key}} conta como uso.
-  for (const question of manifest.qualificationQuestions) {
+  // --- Perguntas de qualificação e motivos de handoff: {{key}} conta como
+  // uso e passa pela mesma checagem de referência pendente.
+  manifest.qualificationQuestions.forEach((question, index) => {
     for (const key of extractPlaceholderKeys(question)) {
       usedKeys.add(key);
+      if (!declaredKeys.has(key)) {
+        issues.push(
+          `Referência "{{${key}}}" em pergunta de qualificação ${index + 1} não corresponde a nenhum placeholder declarado.`,
+        );
+      }
     }
-  }
+  });
 
-  for (const reason of manifest.handoffReasons) {
+  manifest.handoffReasons.forEach((reason, index) => {
     for (const key of extractPlaceholderKeys(reason)) {
       usedKeys.add(key);
+      if (!declaredKeys.has(key)) {
+        issues.push(
+          `Referência "{{${key}}}" em motivo de handoff ${index + 1} não corresponde a nenhum placeholder declarado.`,
+        );
+      }
     }
-  }
+  });
 
   // --- Placeholders declarados: órfão (declarado mas nunca usado) e
   // "defaulted" sem defaultValue (a instalação não tem o que preencher).

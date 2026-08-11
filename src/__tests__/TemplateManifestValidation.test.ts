@@ -147,4 +147,117 @@ describe("manifest validation — usage scan robustness (supplementary)", () => 
     const m = JSON.parse(JSON.stringify(raw)) as TemplateManifest;
     expect(validateManifest(m)).toContainEqual(expect.stringContaining("media"));
   });
+
+  // Revisão apontou: o branch "mediaAssetPlaceholder declarado" (espelho de
+  // displayNamePlaceholder para o canal media) foi adicionado sem teste
+  // próprio. Este cobre exatamente esse caso.
+  it("rejects a variant whose media asset placeholder is not declared", () => {
+    const m: TemplateManifest = {
+      id: "dental-resin",
+      version: "1.0.0",
+      segment: "odontologia-estetica",
+      variants: [
+        {
+          slug: "base",
+          displayNamePlaceholder: "variant.base.name",
+          priceChannel: "media",
+          priceKind: "from",
+          mediaAssetPlaceholder: "not.declared",
+        },
+      ],
+      placeholders: [
+        { key: "variant.base.name", kind: "blocking", label: "Nome da variante de entrada" },
+      ],
+      objections: [],
+      qualificationQuestions: [],
+      handoffReasons: [],
+    };
+    expect(validateManifest(m)).toContainEqual(expect.stringContaining("not.declared"));
+  });
+
+  // Revisão apontou dois casos do scan sem teste: referência com espaço
+  // interno ("{{ key }}") e a mesma chave referenciada mais de uma vez.
+  it("counts a placeholder as used when referenced with interior whitespace like \"{{ key }}\"", () => {
+    const m = baseManifest();
+    m.placeholders.push({ key: "com.espaco", kind: "blocking", label: "Com espaço" });
+    m.qualificationQuestions.push("Você já fez {{ com.espaco }} antes?");
+    expect(validateManifest(m)).toEqual([]);
+  });
+
+  it("counts a placeholder as used when the same key is referenced repeatedly, in one string and across surfaces", () => {
+    const m = baseManifest();
+    m.placeholders.push({ key: "repetido", kind: "blocking", label: "Repetido" });
+    m.qualificationQuestions.push("Pergunta sobre {{repetido}} e de novo {{repetido}}.");
+    m.handoffReasons.push("Handoff por causa de {{repetido}}.");
+    expect(validateManifest(m)).toEqual([]);
+  });
+});
+
+// Regra espelhada da 5 (órfão): lá, um placeholder DECLARADO sem uso é o
+// problema. Aqui, uma referência {{key}} USADA em texto livre sem
+// placeholder declarado correspondente é o problema — um typo em
+// "{{variant.bas.name}}" hoje não falha nada, e vai literalmente para o
+// WhatsApp de um lead real como "{{variant.bas.name}}". Mesma varredura,
+// comparada no sentido oposto.
+describe("manifest validation — dangling reference rule (mirror of orphan detection)", () => {
+  it("reports a dangling {{key}} reference in an objection response, naming the key and the location", () => {
+    const m = baseManifest();
+    m.objections.push({
+      objection: "quanto custa",
+      response: "O valor está em {{variant.bas.name}}.",
+      appliesToVariant: "base",
+    });
+    const messages = validateManifest(m);
+    expect(messages).toContainEqual(expect.stringContaining("{{variant.bas.name}}"));
+    expect(messages).toContainEqual(expect.stringContaining("objeção 1"));
+  });
+
+  it("reports a dangling {{key}} reference in a qualification question, naming the location", () => {
+    const m = baseManifest();
+    m.qualificationQuestions.push("Você já ouviu falar de {{variant.bas.name}}?");
+    const messages = validateManifest(m);
+    expect(messages).toContainEqual(expect.stringContaining("{{variant.bas.name}}"));
+    expect(messages).toContainEqual(expect.stringContaining("pergunta de qualificação 1"));
+  });
+
+  it("reports a dangling {{key}} reference in a handoff reason, naming the location", () => {
+    const m = baseManifest();
+    m.handoffReasons.push("Cliente perguntou sobre {{variant.bas.name}} e quer humano.");
+    const messages = validateManifest(m);
+    expect(messages).toContainEqual(expect.stringContaining("{{variant.bas.name}}"));
+    expect(messages).toContainEqual(expect.stringContaining("motivo de handoff 1"));
+  });
+
+  it("does not report a correctly-spelled reference as dangling", () => {
+    const m = baseManifest();
+    m.objections.push({
+      objection: "quanto custa",
+      response: "O valor está em {{variant.base.name}}.",
+      appliesToVariant: "base",
+    });
+    expect(validateManifest(m)).toEqual([]);
+  });
+
+  it("reports the same typo twice when it appears in two different locations, without deduping", () => {
+    const m = baseManifest();
+    m.objections.push({ objection: "quanto custa", response: "Veja {{variant.bas.name}}.", appliesToVariant: "base" });
+    m.objections.push({ objection: "é confiável", response: "Sim, {{variant.bas.name}} garante isso.", appliesToVariant: "base" });
+    const messages = validateManifest(m);
+    const danglingMentions = messages.filter((msg) => msg.includes("{{variant.bas.name}}"));
+    expect(danglingMentions).toHaveLength(2);
+    expect(messages).toContainEqual(expect.stringContaining("objeção 1"));
+    expect(messages).toContainEqual(expect.stringContaining("objeção 2"));
+  });
+
+  it("reports only the invalid reference when a valid and an invalid reference sit in the same string", () => {
+    const m = baseManifest();
+    m.objections.push({
+      objection: "quanto custa",
+      response: "Veja {{variant.base.name}} e compare com {{variant.bas.name}}.",
+      appliesToVariant: "base",
+    });
+    const messages = validateManifest(m);
+    expect(messages.some((msg) => msg.includes("{{variant.bas.name}}"))).toBe(true);
+    expect(messages.some((msg) => msg.includes("{{variant.base.name}}"))).toBe(false);
+  });
 });
