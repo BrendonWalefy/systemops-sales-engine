@@ -17,15 +17,29 @@ Efeito medido: estrato A de 73,0% para **95,2%**, falha crítica de 2,0 por roda
 
 **Preview não recebeu a variável** — a CLI insistiu em confirmação interativa. Se quiser paridade preview/produção, setar `OPENAI_CLASSIFIER_MODEL=gpt-5.4-mini` no painel.
 
-## 2. O que está aberto para você aprovar
+## 2. Mergeado depois, e o que o dry-run revelou
 
-**PR #266** — `docs/conversational-audit-program`. Contém as quatro specs do programa de auditoria e as unidades 1 a 3 da escala por dia. **Não mergeei de propósito:** toca schema e cálculo de disponibilidade, e eu estava trabalhando sem supervisão. Nada muda de comportamento no merge — a coluna nasce nula e o motor cai no caminho legado até alguém rodar o backfill.
+**#266** (specs + escala por dia, migração `0098`) e **#267** (conserto de privacidade do sanitizador) foram mergeados com CI verde; deploy de produção `success` em `5fd59bc`. **#256** mirava `develop` — que está 31 commits atrás da `main` e 0 à frente — foi retargetado para `main`, testado com `npm run verify` sobre o resultado do merge, e mergeado.
 
-Ordem sugerida depois de mergear:
+**Dois PRs continuam travados, com o motivo comentado no próprio PR:**
 
-1. `npm run db:backfill-schedule -- --dry-run` e **conferir a coluna "escala" contra "texto"** de cada clínica.
-2. `npm run db:backfill-schedule` sem a flag.
-3. Passar `businessSchedule` nos chamadores de `computeAvailableSlots` (hoje ninguém passa, então a escala está gravada e inerte).
+- **#232** adiciona `drizzle/0083_soft_silver_surfer.sql`, mas a `main` já tem `0083_magenta_red_shift.sql` — número de migração duplicado. Precisa rebasear e regerar como `0099`.
+- **#257** mira `develop` e está `DIRTY` com 100 arquivos em conflito, 68 em `src/`. Precisa decidir se ainda tem escopo depois do `3115cef`.
+
+### O defeito que o dry-run do backfill expôs
+
+`npm run db:backfill-schedule -- --dry-run` mostrou 7 organizações a preencher, e uma delas está **errada em produção agora**:
+
+```
+NC Beauty & Clinic
+  texto:  "Terça a sexta das 13h às 19h. Sábado das 10h às 17h."
+  escala:  Seg 13:00-19:00 | Ter | Qua | Qui | Sex | Sáb 10:00-17:00
+            ^^^^ a clínica não abre segunda
+```
+
+O parser não entende "Terça a sexta": ele só detecta sábado e cai no default `[Seg..Sex]`. **O sistema oferece segunda-feira para uma clínica que não abre segunda.** O backfill reproduz isso fielmente por desenho — preservar o comportamento atual é o gate da unidade 2. Corrigir vem depois de gravado, e só agora é possível expressar a correção.
+
+**Pendente de decisão sua:** confirmar as 7 escalas contra a realidade antes de gravar. Ximendes e Vitalli parecem plausíveis, mas plausível não é verificado.
 
 ## 3. Pendências, com o motivo de cada uma
 
