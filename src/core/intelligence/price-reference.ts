@@ -38,21 +38,36 @@ export function formatReferencedPrice(cents: number): string {
   })}`;
 }
 
-/**
- * Retorna o primeiro valor plausível citado em uma pergunta comercial.
- * Exige contexto de preço/pagamento para não confundir telefone ou outros
- * números da mensagem com o valor do tratamento.
- */
-export function extractReferencedPrice(message: string): ReferencedPrice | null {
-  if (!MONEY_CONTEXT_RE.test(message)) return null;
+function* referencedPriceCents(message: string): Generator<number> {
+  if (!MONEY_CONTEXT_RE.test(message)) return;
 
   for (const match of message.matchAll(MONEY_TOKEN_RE)) {
     const cents = parseAmountToCents(match[1]);
     // Valores clínicos abaixo de R$100 não são uma referência de pacote neste
     // fluxo; o limite também evita capturar números incidentais.
     if (cents === null || cents < 10_000 || cents > 100_000_000) continue;
+    yield cents;
+  }
+}
+
+/**
+ * Retorna o primeiro valor plausível citado em uma pergunta comercial.
+ * Exige contexto de preço/pagamento para não confundir telefone ou outros
+ * números da mensagem com o valor do tratamento.
+ */
+export function extractReferencedPrice(message: string): ReferencedPrice | null {
+  for (const cents of referencedPriceCents(message)) {
     return { cents, formatted: formatReferencedPrice(cents) };
   }
 
   return null;
+}
+
+/**
+ * Todos os valores distintos citados, na ordem em que aparecem. Uma resposta
+ * comercial costuma citar mais de um ("à vista ou 10x de"), e comparar apenas o
+ * primeiro esconde divergência no restante da oferta.
+ */
+export function extractAllReferencedPrices(message: string): number[] {
+  return [...new Set(referencedPriceCents(message))];
 }
