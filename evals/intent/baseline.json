@@ -1,0 +1,31 @@
+{
+  "model": "gpt-4o-mini",
+  "recordedAt": "2026-08-13T03:21:30.813Z",
+  "runs": 3,
+  "strata": {
+    "incident": {
+      "total": 21,
+      "accuracyMean": 0.7301587301587302,
+      "accuracySpread": 0.04761904761904756,
+      "severityCounts": {
+        "none": 46,
+        "low": 2,
+        "medium": 0,
+        "high": 9,
+        "critical": 6
+      }
+    },
+    "prompt_rule": {
+      "total": 58,
+      "accuracyMean": 0.9252873563218391,
+      "accuracySpread": 0.01724137931034475,
+      "severityCounts": {
+        "none": 161,
+        "low": 0,
+        "medium": 9,
+        "high": 3,
+        "critical": 1
+      }
+    }
+  }
+}
