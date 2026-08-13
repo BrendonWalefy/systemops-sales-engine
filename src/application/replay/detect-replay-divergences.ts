@@ -154,18 +154,37 @@ function detectMediaDivergences(input: ReplayDivergenceInput): ReplayBugV1[] {
     });
   }
 
-  const historicalAttachments = input.historical.turns.filter(
+  // Quem anexou na época decide o peso do achado. Anexo da IA que sumiu é
+  // regressão. Anexo que só o operador humano mandava nunca foi comportamento
+  // da IA — cobrar isso dela infla a lista: na Ximendes, 17 das 23 respostas
+  // com anexo tinham operador envolvido.
+  const attachments = input.historical.turns.filter(
     (turn) => turn.author !== "lead" && turn.content.type !== "text",
   );
-  if (historicalAttachments.length > 0 && replayedRefs.length === 0) {
+  const fromAgent = attachments.filter((turn) => turn.author === "agent");
+  const fromOperatorOnly = attachments.length > 0 && fromAgent.length === 0;
+
+  if (replayedRefs.length === 0 && fromAgent.length > 0) {
     bugs.push({
       code: "media_omitted",
       severity: "high",
       title:
-        `Histórico entregou ${historicalAttachments.length} anexo(s) ` +
-        `(${listAttachmentTypes(historicalAttachments)}) e o replay respondeu só com texto`,
+        `Histórico entregou ${fromAgent.length} anexo(s) da IA ` +
+        `(${listAttachmentTypes(fromAgent)}) e o replay respondeu só com texto`,
       evidenceStages: ["response.plan_built", "outbound.planned"],
       probableOwner: "deterministic_code",
+    });
+  }
+
+  if (replayedRefs.length === 0 && fromOperatorOnly) {
+    bugs.push({
+      code: "media_handled_by_operator",
+      severity: "low",
+      title:
+        `Só o operador entregava anexo aqui (${listAttachmentTypes(attachments)}) — ` +
+        "lacuna de biblioteca ou de passo de pipeline, não regressão da IA",
+      evidenceStages: ["response.plan_built"],
+      probableOwner: "clinic_config",
     });
   }
 

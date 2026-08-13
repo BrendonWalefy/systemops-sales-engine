@@ -154,6 +154,44 @@ describe("detectReplayDivergences", () => {
     );
   });
 
+  it("não acusa mídia ausente quando quem anexou foi o operador, não a IA", () => {
+    // Recepcionista humana mandando foto na mão não é comportamento que a IA
+    // devia replicar. Comparar contra isso infla a lista com falso positivo:
+    // na Ximendes, 17 das 23 respostas com anexo tinham operador envolvido.
+    const bugs = detect({
+      historicalTurns: [
+        historicalTurn("", {
+          author: "operator",
+          content: { type: "image", text: "[imagem]" },
+        }),
+      ],
+      outboundEffects: [textEffect("Te explico por aqui mesmo.")],
+    });
+
+    expect(bugs.map((bug) => bug.code)).not.toContain("media_omitted");
+  });
+
+  it("registra em severidade baixa que só o operador dava conta do anexo", () => {
+    // Sinal de lacuna de produto (a IA não tinha o asset), não de regressão.
+    const bugs = detect({
+      historicalTurns: [
+        historicalTurn("", {
+          author: "operator",
+          content: { type: "image", text: "[imagem]" },
+        }),
+      ],
+      outboundEffects: [textEffect("Te explico por aqui mesmo.")],
+    });
+
+    expect(bugs).toContainEqual(
+      expect.objectContaining({
+        code: "media_handled_by_operator",
+        severity: "low",
+        probableOwner: "clinic_config",
+      }),
+    );
+  });
+
   it("não acusa mídia ausente quando o histórico também foi só texto", () => {
     const bugs = detect({
       historicalTurns: [historicalTurn("Claro, pode vir terça às 14h.")],
