@@ -10,6 +10,7 @@ import {
   scheduleFromParsedBusinessHours,
   windowsForWeekday,
   isOpenOnWeekday,
+  operatingWeekdays,
   type BusinessSchedule,
 } from "@/core/scheduling/BusinessSchedule";
 import { parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
@@ -133,4 +134,60 @@ describe("escalas que o texto livre nunca conseguiu expressar", () => {
     };
     expect(windowsForWeekday(schedule, 1).map((w) => w.startHour)).toEqual([8, 14]);
   });
+});
+
+// Gate de equivalência do backfill: para cada formato de texto que existe no
+// banco hoje, a escala derivada tem de reproduzir exatamente os dias e horários
+// que o parser legado produz. O backfill não pode mudar disponibilidade.
+describe("equivalência do backfill sobre formatos reais de texto", () => {
+  const TEXTOS = [
+    "seg-sex 8h-18h",
+    "Segunda a sexta, das 8h às 18h",
+    "seg a sex 9h30-18h30",
+    "08:30-18:00",
+    "seg-sex 8h-18h, sáb 8h-13h",
+    "segunda a sábado 8h-19h",
+    "seg-sex 7h-21h",
+    "Seg-Sex 10:00-19:00, Sábado 9h às 14h",
+  ];
+
+  for (const texto of TEXTOS) {
+    it(`preserva dias e horários de ${JSON.stringify(texto)}`, () => {
+      const parsed = parseBusinessHours(texto);
+      const schedule = scheduleFromParsedBusinessHours(parsed);
+
+      // mesmos dias de operação
+      expect(operatingWeekdays(schedule)).toEqual([...parsed.days].sort((a, b) => a - b));
+
+      // mesma faixa nos dias não-sábado
+      for (const weekday of parsed.days.filter((d) => d !== 6)) {
+        expect(windowsForWeekday(schedule, weekday)).toEqual([
+          {
+            startHour: parsed.startHour,
+            startMinute: parsed.startMinute,
+            endHour: parsed.endHour,
+            endMinute: parsed.endMinute,
+          },
+        ]);
+      }
+
+      // sábado: faixa própria quando o texto a declara, geral quando não
+      if (parsed.days.includes(6)) {
+        const esperado = parsed.saturdayStartHour !== undefined && parsed.saturdayEndHour !== undefined
+          ? {
+              startHour: parsed.saturdayStartHour,
+              startMinute: parsed.saturdayStartMinute ?? 0,
+              endHour: parsed.saturdayEndHour,
+              endMinute: parsed.saturdayEndMinute ?? 0,
+            }
+          : {
+              startHour: parsed.startHour,
+              startMinute: parsed.startMinute,
+              endHour: parsed.endHour,
+              endMinute: parsed.endMinute,
+            };
+        expect(windowsForWeekday(schedule, 6)).toEqual([esperado]);
+      }
+    });
+  }
 });
