@@ -2392,6 +2392,29 @@ export function resolvePipelineSourceTreatment(
   return source ?? treatment;
 }
 
+// Mídia que os passos do pipeline entregam por conta própria: os vídeos de
+// técnica dos blocos de conteúdo e a mídia anexada por palavra-chave na Q&A. O
+// pipeline é o dono dela e escolhe o momento; nenhuma resposta avulsa pode
+// antecipá-la nem reenviá-la por token [MEDIA:id]. Resolve o pipeline canônico
+// da família, porque variação herda os passos do tratamento-fonte.
+export function collectPipelineStepMediaIds(
+  treatment: Treatment | null | undefined,
+  treatments: Treatment[],
+): Set<string> {
+  const ids = new Set<string>();
+  if (!treatment) return ids;
+  for (const step of resolvePipelineSourceTreatment(treatment, treatments).pipelineSteps ?? []) {
+    if (step.type === "content") {
+      for (const block of step.blocks) {
+        if (block.kind === "media") ids.add(block.mediaId);
+      }
+    } else if (step.type === "qa") {
+      for (const entry of step.mediaOnKeywords ?? []) ids.add(entry.mediaId);
+    }
+  }
+  return ids;
+}
+
 export function resolveMediaScopeTreatmentId(params: {
   pipelineTreatmentId?: string | null;
   classifiedTreatment?: Treatment | null;
@@ -5143,6 +5166,13 @@ export class ConversationOrchestrator {
       previousAgentMessages: collectPreviousAgentTurnBodies(allMessagesForContext),
       currentLeadMessage: messageText,
     });
+    // Calculado uma vez: compose() pode rodar duas vezes na mesma virada.
+    const pipelineStepMediaIds = collectPipelineStepMediaIds(
+      activeTreatmentId
+        ? clinicTreatments.find((candidate) => candidate.id === activeTreatmentId)
+        : null,
+      clinicTreatments,
+    );
     // P0.6: Fallback para IA indisponível (timeout, OpenAI errors)
     // Aciona needs_human silenciosamente + log Sentry (sem alerta por mensagem)
     const compose = async (
@@ -5162,6 +5192,7 @@ export class ConversationOrchestrator {
           editorial?.mediaLibrary ?? [],
           activeTreatmentId,
           actionResult,
+          pipelineStepMediaIds,
         );
         const mediaProjection = buildAlignedResponseMediaProjection(filteredMediaLibrary);
         const planned = await this.executeResponsePlan({
