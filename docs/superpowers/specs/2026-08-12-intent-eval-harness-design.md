@@ -155,13 +155,24 @@ O classificador precisa de contexto para operar, então o caso carrega o context
   "observedLlmIntent": "acknowledgment",
   "source": "src/__tests__/BusinessIntentCoercion.test.ts:59",
   "context": {
-    "isFirstContact": true,
     "hasPendingSlotOffer": false,
+    "isClinicSegment": true,
     "treatments": ["Lentes de resina composta", "Clareamento dental"]
   },
   "history": []
 }
 ```
+
+Não existe campo `isFirstContact`: o classificador o deriva de
+`conversationHistory.every((m) => m.author === "lead")`. Um caso que precise de
+"não é primeiro contato" declara isso pondo uma fala de agente em `history`. Guardar a flag
+separada criaria um campo que o runner não teria como honrar.
+
+`isClinicSegment` é obrigatório e não tem default silencioso. A suíte atual contém o mesmo
+texto `"cheguei"` esperando `acknowledgment` num caso e `patient_arrived` noutro; a única
+diferença é essa flag, porque as regras de chegada e de urgência clínica só valem no
+segmento de saúde. Sem o campo, esses dois casos entrariam no dataset como contradição e um
+deles seria contado como erro do modelo para sempre.
 
 - `stratum` — `"incident"` (texto real de lead) ou `"prompt_rule"` (frase que a própria
   regra do prompt nomeia). Governa o agrupamento do relatório; os estratos nunca somam.
@@ -233,9 +244,12 @@ runner aborta em vez de publicar número sujo.
 
 Custo: o system prompt domina cada chamada (cerca de 2 mil tokens), então uma passagem por
 todos os casos fica na ordem de centenas de milhares de tokens de entrada em `gpt-4o-mini`
-— alguns centavos de dólar. Com `--repeat 3`, ainda abaixo de US$ 0,25. O runner imprime o
-total real de tokens consumidos, para que o número pare de ser estimativa na primeira
-rodada.
+— alguns centavos de dólar. Com `--repeat 3`, ainda abaixo de US$ 0,25.
+
+O número continua sendo estimativa, e de propósito: `IntentClassifier.classify()` descarta
+o `usage` da resposta e devolve só a classificação. Ler o consumo real exigiria alterar
+código de produção, o que a §4 proíbe. O custo verdadeiro se confere no painel de billing
+da OpenAI, não no runner.
 
 ## 9. Gate: local agora, CI depois
 
