@@ -84,6 +84,7 @@ function segmentIndexWithLiveConversations(allIds: string[]): InboxSegmentIndex 
       paused: 0,
       cold: 0,
       recovery: 0,
+      closed: 0,
     },
     idsByTab: {
       all: allIds,
@@ -93,6 +94,7 @@ function segmentIndexWithLiveConversations(allIds: string[]): InboxSegmentIndex 
       paused: [],
       cold: [],
       recovery: [],
+      closed: [],
     },
     scopeCounts: {
       sales: allIds.length,

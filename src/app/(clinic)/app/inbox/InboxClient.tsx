@@ -29,7 +29,7 @@ import {
   deleteConversationsBulk,
   clearAttention,
 } from "./[conversationId]/actions";
-import { sortInboxRowsByRecency, type LiveInboxTabFilter } from "./inbox-filter";
+import { sortInboxRowsByRecency } from "./inbox-filter";
 import {
   resolveAppointmentLifecycleState,
   resolvePipelineIndex,
@@ -923,7 +923,7 @@ export function InboxClient({
   autoReplyEnabled: boolean;
   counts: InboxTabCounts;
   initialScope?: InboxCategoryScope;
-  initialTab?: LiveInboxTabFilter | "recovery";
+  initialTab?: InboxTabKey;
   initialSearch?: string;
   // Janela da lista da aba ativa. Decidida no servidor (page.tsx), porque é o
   // servidor que escolhe quais ids valem a leitura cara — aqui só se
@@ -1030,7 +1030,7 @@ export function InboxClient({
     );
   }
 
-  const TABS: { key: LiveInboxTabFilter | "recovery"; label: string; count: number }[] = [
+  const TABS: { key: InboxTabKey; label: string; count: number }[] = [
     { key: "all",       label: "Todas",       count: counts.tabs.all },
     { key: "hot",       label: "Quentes",     count: counts.tabs.hot },
     { key: "attention", label: "Atenção",     count: counts.tabs.attention },
@@ -1038,6 +1038,10 @@ export function InboxClient({
     { key: "paused",    label: "Pausados",    count: counts.tabs.paused },
     { key: "cold",      label: "Resfriadas",  count: counts.tabs.cold },
     { key: "recovery",  label: "Recuperação", count: counts.tabs.recovery },
+    // Última porque é histórico, não fila de trabalho. Sem ela, conversa de
+    // lead ganho ou perdido não tinha onde ser vista: o varredor de inatividade
+    // marca `lost` e a conversa saía de todas as abas.
+    { key: "closed",    label: "Fechadas",    count: counts.tabs.closed },
   ];
 
   const isSalesScope = scope === "sales";
