@@ -889,16 +889,33 @@ export function isBusinessHoursQuestion(message: string): boolean {
   // não o horário. Nesse padrão, "funciona" não conta como sinal de expediente —
   // exige um verbo real de atendimento (atende/abre/horario/expediente/funcionamento).
   const asksHowItWorks = /\bcomo funciona/.test(normalized);
+  // O stem "funciona" é ambíguo e casa por substring, então quem decide é o
+  // SUJEITO: "a clínica funciona de manhã" pergunta expediente, "o aparelho
+  // funciona bem" e "tenho uma operação funcionANDO" não. Sem sujeito de
+  // negócio explícito, só valem as formas que já são institucionais por si —
+  // "funcionam" (2ª pessoa) e "funcionamento" (substantivo). Caso real
+  // SystemOps 13/08: a dor do lead ("operação funcionando... durante o dia")
+  // virou tabela de horário.
+  const hasBusinessSubject = hasAnyKeyword(normalized, [
+    "clinica",
+    "consultorio",
+    "voces",
+    "vcs",
+  ]);
+  const ambiguousOperatingVerbs = hasBusinessSubject ? ["funciona"] : [];
   const operatingVerbs = asksHowItWorks
     ? ["atende", "atendem", "atendimento", "abrem", "abre", "horario", "expediente", "funcionamento"]
-    : ["atende", "atendem", "atendimento", "abrem", "abre", "horario", "expediente", "funcionamento", "funciona"];
+    : [
+        "atende", "atendem", "atendimento", "abrem", "abre", "horario", "expediente",
+        "funcionamento", "funcionam", ...ambiguousOperatingVerbs,
+      ];
 
   const hasExplicitDate = extractExplicitPreferredDateFromText(message) !== null;
   const explicitlyAsksOperatingHours = hasAnyKeyword(
     normalized,
     asksHowItWorks
       ? ["funcionamento", "abrem", "abre", "expediente"]
-      : ["funciona", "funcionamento", "abrem", "abre", "expediente"],
+      : ["funcionam", "funcionamento", "abrem", "abre", "expediente", ...ambiguousOperatingVerbs],
   );
   // Uma data concreta acompanhada de "horário" é uma consulta de
   // disponibilidade, não uma pergunta institucional. Caso Tatiana (19/07):
