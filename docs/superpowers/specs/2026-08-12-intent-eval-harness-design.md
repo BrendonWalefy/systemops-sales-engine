@@ -67,24 +67,38 @@ O campo `intent` é o modo de falha documentado do modelo real naquele texto exa
 torna o dataset utilizável para duas perguntas distintas: *"qual a acurácia?"* e
 *"o modelo novo ainda erra isto?"*.
 
-**Três arquivos convertem. Quatro não.**
+**Contagem verificada por leitura, não por estimativa.** Uma passagem anterior desta spec
+falava de cerca de 90 casos. Esse número contava blocos `it(` em arquivos que exercitam
+várias funções, não chamadas de `coerceBusinessIntent`. O número real é 23:
 
-| Arquivo | Forma | Aproveitamento |
-| --- | --- | --- |
-| `BusinessIntentCoercion.test.ts` | `coerceBusinessIntent({message, intent}) → intent` | 48 triplas confirmadas |
-| `P0.1-anti-greeting.test.ts` | texto → intent | a determinar na extração |
-| `DirectTreatmentMention.test.ts` | texto → intent/tratamento | a determinar na extração |
-| `StopContactIntent.test.ts` | orquestrador com LLM stubado | não converte |
-| `NeedsHumanHandoff.test.ts` | orquestrador com LLM stubado | não converte |
-| `XimendesConversationPatterns.test.ts` | orquestrador com LLM stubado | não converte |
-| `PendingSlotChoice.test.ts` | orquestrador com LLM stubado | não converte |
+| Arquivo | Triplas de intent |
+| --- | --- |
+| `BusinessIntentCoercion.test.ts` | 10 |
+| `P0.1-anti-greeting.test.ts` | 13 |
+| `DirectTreatmentMention.test.ts` | 0 — testa resolução de tratamento, outra dimensão |
+| `StopContactIntent.test.ts` | 1, já contido nos 10 acima |
+| `NeedsHumanHandoff.test.ts`, `XimendesConversationPatterns.test.ts`, `PendingSlotChoice.test.ts` | 0 — orquestrador com LLM stubado |
 
-A estimativa de trabalho é da ordem de 90 casos. O número exato sai da extração; apenas
-os 48 do primeiro arquivo estão confirmados por leitura. Os quatro arquivos que não
-convertem permanecem como estão — são testes de orquestrador, que é o que devem ser.
+23 casos cobrem 7 dos 17 intents (`price_inquiry` 8, `patient_arrived` 3, `needs_human` 3,
+`greeting` 3, `general_question` 3, `book_appointment` 2, `acknowledgment` 1). Nenhum caso
+para `stop_contact` ou `clinical_urgency`, que são justamente os de severidade crítica.
 
-O dataset é enviesado por construção: cobre o que já quebrou. Isso é aceito
-deliberadamente para a primeira versão, porque são exatamente os bugs que reincidem.
+23 é pouco para uma taxa: um caso virando move o número em mais de quatro pontos. Então o
+dataset tem **dois estratos, reportados separadamente e nunca somados**:
+
+**Estrato A — incidentes reais (23 casos).** Texto de lead verdadeiro, com o erro do modelo
+documentado. Mede generalização nos casos que realmente quebraram em produção. É o estrato
+que governa o gate.
+
+**Estrato B — regras do prompt.** O system prompt carrega 201 frases entre aspas dentro das
+suas próprias regras (`"quanto custa"`, `"cheguei"`, `"me tira dessa lista"`, …), cada uma
+com o intent que a regra manda aplicar. Extraí-las mede **aderência à regra**, não
+generalização: uma frase que a própria instrução nomeia e o modelo ainda erra é a evidência
+direta de que as regras estão se degradando entre si. Este estrato cobre os 17 intents,
+inclusive os críticos que o estrato A não alcança.
+
+A distinção é obrigatória no relatório. Acerto no estrato B não é prova de qualidade em
+conversa real; erro no estrato B é prova de que uma regra escrita não está valendo.
 
 ### 3.1 Por que não colher de produção agora
 
@@ -113,9 +127,9 @@ Nomeados para não virarem escopo silencioso:
 
 ```
 evals/intent/
-  cases.jsonl        ~90 casos, um por linha, versionado
+  cases.jsonl        casos dos dois estratos, um por linha, versionado
   severity.ts        matriz de custo por par (esperado, obtido)
-  baseline.json      resultado commitado do modelo corrente
+  baseline.json      resultado commitado do modelo corrente, por estrato
 scripts/eval-intent.ts   runner: instancia o IntentClassifier real
 ```
 
@@ -135,6 +149,7 @@ O classificador precisa de contexto para operar, então o caso carrega o context
 ```json
 {
   "id": "tania-custo-01",
+  "stratum": "incident",
   "message": "Olá! Posso ter mais informações sobre custo ?",
   "expected": "price_inquiry",
   "observedLlmIntent": "acknowledgment",
@@ -148,6 +163,8 @@ O classificador precisa de contexto para operar, então o caso carrega o context
 }
 ```
 
+- `stratum` — `"incident"` (texto real de lead) ou `"prompt_rule"` (frase que a própria
+  regra do prompt nomeia). Governa o agrupamento do relatório; os estratos nunca somam.
 - `expected` — rótulo, um dos 17 valores de `IntentType`.
 - `observedLlmIntent` — opcional; o erro documentado do modelo, quando o caso de origem
   o registra. Habilita a pergunta de retirada de guard.
@@ -177,6 +194,12 @@ diferente de zero. Na etapa 1 (§9) isso reprova a execução local, não o CI �
 travado até a promoção da etapa 2. Acurácia plana é reportada e nunca reprova: ela pode
 cair legitimamente enquanto o que importa sobe.
 
+Consequência a registrar: como o estrato A não tem nenhum caso de `stop_contact` nem de
+`clinical_urgency`, o nível Crítica só tem onde morder no estrato B enquanto o estrato A
+não crescer. O gate é aplicado aos dois estratos por isso, com a ressalva de que reprovação
+crítica vinda de B significa "uma regra escrita não está valendo", não "o modelo falha com
+lead real".
+
 ## 8. Runner: saída, variância e falha
 
 `temperature: 0` não garante determinismo na OpenAI. O runner aceita `--repeat N` e a
@@ -184,15 +207,19 @@ baseline grava média e dispersão observada. As primeiras rodadas locais existe
 justamente para medir o ruído antes de qualquer limiar virar gate.
 
 ```
-Modelo: gpt-4o-mini   Casos: 90   Rodadas: 3
-Acurácia: 67.8% (±2.1)
+Modelo: gpt-4o-mini   Rodadas: 3
 
-Falhas:  crítica 3   alta 14   média 9   baixa 3
+Estrato A — incidentes reais (23 casos)
+  Acertos: 15/23 (65.2%, ±2.1)
+  Falhas:  crítica 0   alta 6   média 2   baixa 0
+  Confusões:  price_inquiry <- acknowledgment  4x
+              patient_arrived <- acknowledgment  2x
 
-Confusões mais frequentes:
-  price_inquiry    <- acknowledgment   8x
-  patient_arrived  <- acknowledgment   3x
+Estrato B — aderência às regras do prompt (118 casos)
+  Acertos: 104/118 (88.1%, ±1.4)
+  Regras que o modelo não obedece:  stop_contact <- farewell  5x
 
+Erros de execução: 0
 Diff vs baseline: sem regressão
 ```
 
@@ -204,8 +231,11 @@ do modelo. Portanto: falha de API é contada como erro de execução, reportada 
 própria, e não conta como acerto nem como erro de classificação. Acima de 5% dos casos o
 runner aborta em vez de publicar número sujo.
 
-Custo estimado de uma passagem pelos ~90 casos: cerca de 430 mil tokens de entrada em
-`gpt-4o-mini`, aproximadamente US$ 0,07. Com `--repeat 3`, cerca de US$ 0,21 por rodada.
+Custo: o system prompt domina cada chamada (cerca de 2 mil tokens), então uma passagem por
+todos os casos fica na ordem de centenas de milhares de tokens de entrada em `gpt-4o-mini`
+— alguns centavos de dólar. Com `--repeat 3`, ainda abaixo de US$ 0,25. O runner imprime o
+total real de tokens consumidos, para que o número pare de ser estimativa na primeira
+rodada.
 
 ## 9. Gate: local agora, CI depois
 
@@ -245,9 +275,13 @@ O resultado alimenta a spec seguinte. Nenhuma separação é executada aqui.
 
 ## 12. Riscos
 
-- **Dataset pequeno e enviesado.** 90 casos cobrem falhas conhecidas, não a distribuição
-  real. Mitigação: tratar o número como piso, não como veredito, e crescer o conjunto
-  com histórico sanitizado numa etapa posterior.
+- **Estrato A é pequeno.** 23 casos: um caso virando move a taxa em mais de quatro pontos,
+  e não há caso algum de `stop_contact` nem de `clinical_urgency`. Mitigação: reportar
+  contagem absoluta de acertos ao lado da porcentagem, nunca a taxa sozinha, e crescer o
+  estrato com histórico sanitizado numa etapa posterior.
+- **Estrato B não prova qualidade.** Aderência a frases que a própria instrução nomeia é
+  o piso, não o teto. Um modelo pode acertar 100% do estrato B e ainda descarrilar em
+  conversa real. O relatório precisa deixar isso explícito para quem lê o número.
 - **Disciplina.** O harness só acumula valor se cada bug corrigido virar um caso novo.
   É compromisso de processo, não propriedade automática do código.
 - **Overfit se otimizado cedo.** Otimização automática de prompt sobre 90 casos produz
