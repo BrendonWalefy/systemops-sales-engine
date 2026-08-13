@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "SystemOps",
     short_name: "SystemOps",
-    description: "Recepcionista autônoma para clínicas",
+    description: "Inteligência comercial e operacional com IA",
     start_url: "/app/inbox",
     display: "standalone",
     background_color: "#09090b",
