@@ -6,6 +6,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { classifyConfusion } from "../../evals/intent/severity";
 import { loadEvalCases } from "../../evals/intent/load-cases";
+import { buildReport } from "../../evals/intent/report";
+import type { CaseOutcome } from "../../evals/intent/types";
+
+function outcome(over: Partial<CaseOutcome> = {}): CaseOutcome {
+  return {
+    caseId: "c",
+    stratum: "incident",
+    expected: "price_inquiry",
+    got: "price_inquiry",
+    severity: "none",
+    executionError: null,
+    ...over,
+  };
+}
 
 describe("classifyConfusion", () => {
   it("acerto não tem severidade", () => {
@@ -79,5 +93,57 @@ describe("loadEvalCases", () => {
   it("rejeita estrato desconhecido", () => {
     const bad = JSON.stringify({ ...JSON.parse(valid), stratum: "chute" });
     expect(() => loadEvalCases(writeCases(bad))).toThrow(/stratum/);
+  });
+});
+
+describe("buildReport", () => {
+  it("separa os estratos e nunca os soma", () => {
+    const report = buildReport([[
+      outcome({ caseId: "a", stratum: "incident" }),
+      outcome({ caseId: "b", stratum: "prompt_rule" }),
+      outcome({ caseId: "c", stratum: "prompt_rule" }),
+    ]]);
+
+    expect(report.strata.incident.total).toBe(1);
+    expect(report.strata.prompt_rule.total).toBe(2);
+  });
+
+  it("calcula média e dispersão da acurácia entre rodadas", () => {
+    const hit = outcome({ caseId: "a", got: "price_inquiry", severity: "none" });
+    const miss = outcome({ caseId: "a", got: "greeting", severity: "high" });
+    const report = buildReport([[hit], [miss], [hit]]);
+
+    expect(report.strata.incident.accuracyMean).toBeCloseTo(2 / 3, 5);
+    expect(report.strata.incident.accuracySpread).toBeGreaterThan(0);
+  });
+
+  it("dispersão é zero quando todas as rodadas concordam", () => {
+    const hit = outcome({ caseId: "a" });
+    expect(buildReport([[hit], [hit]]).strata.incident.accuracySpread).toBe(0);
+  });
+
+  it("conta severidade e ordena confusões por frequência", () => {
+    const report = buildReport([[
+      outcome({ caseId: "a", expected: "price_inquiry", got: "greeting", severity: "high" }),
+      outcome({ caseId: "b", expected: "price_inquiry", got: "greeting", severity: "high" }),
+      outcome({ caseId: "c", expected: "stop_contact", got: "farewell", severity: "critical" }),
+    ]]);
+
+    expect(report.strata.incident.severityCounts.high).toBe(2);
+    expect(report.strata.incident.severityCounts.critical).toBe(1);
+    expect(report.strata.incident.confusions[0]).toEqual({
+      expected: "price_inquiry", got: "greeting", count: 2,
+    });
+  });
+
+  it("erro de execução não conta como acerto nem como erro de classificação", () => {
+    const report = buildReport([[
+      outcome({ caseId: "a" }),
+      outcome({ caseId: "b", got: null, severity: "medium", executionError: "429" }),
+    ]]);
+
+    expect(report.executionErrors).toBe(1);
+    expect(report.strata.incident.total).toBe(1);
+    expect(report.strata.incident.accuracyMean).toBe(1);
   });
 });
