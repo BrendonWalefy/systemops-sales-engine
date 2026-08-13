@@ -358,7 +358,9 @@ const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
  * Antes este número era `?? 5000` repetido em 4 pontos do arquivo — default global de
  * fato, mas duplicado e sem origem documentada.
  */
-export const DEFAULT_MESSAGE_DEBOUNCE_MS = 15_000;
+import { shouldDiscardComposedReply } from "@/core/pipeline/composed-reply-supersession";
+import { resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
+export { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
 // 24h cobre o padrão real do WhatsApp: o gap p90 entre mensagens consecutivas do
@@ -3252,6 +3254,10 @@ export class ConversationOrchestrator {
       },
     });
     const isReplay = !!params.replayOfMessageDbId;
+    // Efeito externo irreversível neste turno (reserva, oferta de horário,
+    // booking). Enquanto for false, a resposta composta pode ser descartada sem
+    // deixar rastro; depois de true, descartar deixaria slot preso.
+    let turnTouchedScheduling = false;
     let messageText = params.messageText;
     const replyEnabled = params.replyEnabled ?? true;
     const contactIdentifiers = buildContactIdentifiersFromWebhook({
@@ -3626,6 +3632,7 @@ export class ConversationOrchestrator {
           }).catch(() => {});
 
           if (depositState.payload.reservationId) {
+            turnTouchedScheduling = true;
             await this.reservationService.extend(depositState.payload.reservationId, (clinic.depositTtlHours ?? 24) * 60);
           }
           await this.stateMachine.markDepositProofReceived(conversation.id, incomingMessage.id, proofReviewCode);
@@ -3868,7 +3875,7 @@ export class ConversationOrchestrator {
           };
         }
 
-        if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
+        if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env }))) {
           return { replied: false, reason: "superseded_by_newer_message" };
         }
 
@@ -4009,7 +4016,7 @@ export class ConversationOrchestrator {
 
       // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
       // suprimida quando outra mensagem do lead chegou na janela de burst.
-      if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS)) {
+      if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env }))) {
         return { replied: false, reason: "superseded_by_newer_message" };
       }
 
@@ -4069,7 +4076,7 @@ export class ConversationOrchestrator {
     // Após registrar, espera N ms e verifica se chegou mensagem mais recente.
     // Se sim, esta mensagem não gera resposta — a última do burst responde
     // com o histórico completo (que já inclui todas as anteriores).
-    const debounceMs = isReplay ? 0 : clinic.messageDebounceMs ?? DEFAULT_MESSAGE_DEBOUNCE_MS;
+    const debounceMs = resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env });
     if (debounceMs > 0) {
       await new Promise((r) => setTimeout(r, debounceMs));
       const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
@@ -5308,6 +5315,7 @@ export class ConversationOrchestrator {
       const bookingTreatment = evaluationTreatment ?? commercialTreatment;
       if (!bookingTreatment) return false;
 
+      turnTouchedScheduling = true;
       const { slots } = await this.fetchAndOfferSlots(
         conversation.id,
         clinic,
@@ -5384,6 +5392,7 @@ export class ConversationOrchestrator {
         if (wantsChange) {
           // Quer outro horário/cancelar → libera o hold e deixa o fluxo normal reofertar.
           if (depositTextState.payload.reservationId) {
+            turnTouchedScheduling = true;
             await this.reservationService.release(depositTextState.payload.reservationId);
           }
           await this.stateMachine.invalidate(conversation.id);
@@ -5537,6 +5546,7 @@ export class ConversationOrchestrator {
           clinic.outsideHoursExceptionEnabled,
         )
       ) {
+        turnTouchedScheduling = true;
         const { slots: saturdaySlots, preferredDayEmpty: saturdayFull } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
@@ -5654,6 +5664,7 @@ export class ConversationOrchestrator {
         // a preferência do lead.
         if (pendingChoice.kind === "no_match" && !slotPreference.preferredDate) {
           await this.stateMachine.invalidate(conversation.id);
+          turnTouchedScheduling = true;
           const { slots: prefSlots, preferredDayEmpty: prefEmpty } = await this.fetchAndOfferSlots(
             conversation.id, clinic, calendarGateway, timezone, businessHours,
             undefined,
@@ -5684,6 +5695,7 @@ export class ConversationOrchestrator {
             });
             if (!dateMatchesPending) {
               await this.stateMachine.invalidate(conversation.id);
+              turnTouchedScheduling = true;
               const { slots: redirectSlots, preferredDayEmpty: rdEmpty, outsideBookingWindow: rdOutside, outsideBusinessHours: rdNotOpen, preferredPeriodUnavailable: rdPeriod } = await this.fetchAndOfferSlots(
                 conversation.id, clinic, calendarGateway, timezone, businessHours,
                 slotPreference.preferredDate, slotPreference.preferredPeriod ?? undefined,
@@ -5721,6 +5733,7 @@ export class ConversationOrchestrator {
         if (!chosenSlot) {
           // Lead escolheu (por número OU expressando dia/hora) mas a oferta expirou (15 min TTL)
           if (slotPreference.slotChoice !== null || slotPreference.preferredTime || slotPreference.preferredDate) {
+            turnTouchedScheduling = true;
             const { slots: freshSlots } = await this.fetchAndOfferSlots(
               conversation.id,
               clinic,
@@ -5783,11 +5796,13 @@ export class ConversationOrchestrator {
           const startsAt = new Date(chosenSlot.startsAt);
           const endsAt = new Date(chosenSlot.endsAt);
           const ttlHours = clinic.depositTtlHours ?? 24;
+          turnTouchedScheduling = true;
           const held = await this.reservationService.reserve(
             clinic.id, lead.id, startsAt, endsAt, ttlHours * 60,
           );
           if (!held) {
             // Slot tomado entre a oferta e a escolha → reoferta.
+            turnTouchedScheduling = true;
             const { slots: newSlots } = await this.fetchAndOfferSlots(
               conversation.id, clinic, calendarGateway, timezone, businessHours,
               undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
@@ -5831,6 +5846,7 @@ export class ConversationOrchestrator {
           break;
         }
 
+        turnTouchedScheduling = true;
         const result = await bookingService.book({
           clinic,
           lead,
@@ -5845,6 +5861,7 @@ export class ConversationOrchestrator {
         if (result.success) {
           // Só agora é seguro cancelar o agendamento anterior (remarcação implícita)
           if (existingAppointment) {
+            turnTouchedScheduling = true;
             await bookingService.cancel({ lead, appointment: existingAppointment });
           }
           await this.stateMachine.transition(conversation.id, "idle");
@@ -5868,6 +5885,7 @@ export class ConversationOrchestrator {
               });
         } else if (result.reason === "slot_taken") {
           // Slot foi tomado por outro lead entre a oferta e a confirmação
+          turnTouchedScheduling = true;
           const { slots: newSlots } = await this.fetchAndOfferSlots(
             conversation.id,
             clinic,
@@ -5899,6 +5917,7 @@ export class ConversationOrchestrator {
         // Se o lead rejeitou E expressou preferência (ex: "não quero quinta, só tenho sexta"),
         // busca imediatamente para aquele dia em vez de perguntar novamente.
         if (slotPreference.preferredDate || slotPreference.preferredPeriod) {
+          turnTouchedScheduling = true;
           const { slots: preferredSlots, preferredDayEmpty: rejectDayEmpty, outsideBookingWindow: rejectOutside, outsideBusinessHours: rejectNotOpen, preferredPeriodUnavailable: rejectPeriodUnavail } = await this.fetchAndOfferSlots(
             conversation.id,
             clinic,
@@ -6022,6 +6041,7 @@ export class ConversationOrchestrator {
             const evalTreatment = clinicTreatments.find((t) => /avalia[cç][aã]o/i.test(t.name));
             const evalDuration = evalTreatment?.durationMinutes ?? 60;
             const evalName = evalTreatment?.name ?? "Avaliação";
+            turnTouchedScheduling = true;
             const { slots: evalSlots } = await this.fetchAndOfferSlots(
               conversation.id, clinic, calendarGateway, timezone, businessHours,
               slotPreference.preferredDate ?? undefined,
@@ -6041,6 +6061,7 @@ export class ConversationOrchestrator {
         const resolvedTreatmentName = resolution.kind === "matched" ? resolution.treatmentName : undefined;
         const resolvedDurationMinutes = resolution.durationMinutes;
 
+        turnTouchedScheduling = true;
         const { slots: formattedSlots, preferredDayEmpty, outsideBookingWindow, outsideBusinessHours, preferredPeriodUnavailable } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
@@ -6120,6 +6141,7 @@ export class ConversationOrchestrator {
         }
 
         // Cancela todos os appointments ativos em paralelo
+        turnTouchedScheduling = true;
         const results = await Promise.all(
           allActive.map((a) => bookingService.cancel({ lead, appointment: a })),
         );
@@ -6143,9 +6165,11 @@ export class ConversationOrchestrator {
         const activeAppointment = await this.appointmentRepo.findActiveByLeadId(lead.id);
 
         if (activeAppointment) {
+          turnTouchedScheduling = true;
           await bookingService.cancel({ lead, appointment: activeAppointment });
         }
 
+        turnTouchedScheduling = true;
         const { slots: newSlots, preferredDayEmpty: rescheduleEmpty, outsideBookingWindow: rescheduleOutside, outsideBusinessHours: rescheduleNotOpen, preferredPeriodUnavailable: reschedulePeriodUnavail } = await this.fetchAndOfferSlots(
           conversation.id,
           clinic,
@@ -6593,6 +6617,7 @@ export class ConversationOrchestrator {
           const bookingTargetName = evalTreatment?.name ?? matchedPriceTreatment.name;
           const bookingTargetDuration = evalTreatment?.durationMinutes ?? matchedPriceTreatment.durationMinutes;
 
+          turnTouchedScheduling = true;
           const { slots: priceFollowSlots, preferredDayEmpty: priceFollowEmpty } = await this.fetchAndOfferSlots(
             conversation.id, clinic, calendarGateway, timezone, businessHours,
             undefined, undefined, undefined,
@@ -7617,12 +7642,19 @@ export class ConversationOrchestrator {
     // rodaram: descartar uma oferta de horário deixaria slots reservados que o
     // lead nunca viu. O starter concierge é texto puro, sem esse risco — e é
     // exatamente a resposta que não deveria ter saído.
-    if (replyIsCannedOpener && !isReplay) {
+    {
       const latestBeforeSend = await this.conversationRepo.findLatestLeadMessage(conversation.id);
-      if (latestBeforeSend && latestBeforeSend.id !== incomingMessage.id) {
+      if (shouldDiscardComposedReply({
+        isReplayOfMessage: isReplay,
+        replyIsCannedOpener,
+        turnTouchedScheduling,
+        latestLeadMessageId: latestBeforeSend?.id ?? null,
+        incomingMessageId: incomingMessage.id,
+      })) {
         console.log(
-          `[Orchestrator] Rajada pós-composição: abertura de ${incomingMessage.id} descartada — ` +
-          `lead falou de novo (${latestBeforeSend.id}); o turno mais recente responde (conv=${conversation.id})`,
+          `[Orchestrator] Rajada pós-composição: resposta de ${incomingMessage.id} descartada ` +
+          `(abertura=${replyIsCannedOpener}, agenda tocada=${turnTouchedScheduling}) — ` +
+          `lead falou de novo (${latestBeforeSend?.id}); o turno mais recente responde (conv=${conversation.id})`,
         );
         return { replied: false, reason: "superseded_by_newer_message" };
       }
