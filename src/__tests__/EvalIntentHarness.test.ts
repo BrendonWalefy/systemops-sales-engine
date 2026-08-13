@@ -7,7 +7,27 @@ import { join } from "node:path";
 import { classifyConfusion } from "../../evals/intent/severity";
 import { loadEvalCases } from "../../evals/intent/load-cases";
 import { buildReport } from "../../evals/intent/report";
+import { compareToBaseline, type Baseline } from "../../evals/intent/baseline";
 import type { CaseOutcome } from "../../evals/intent/types";
+
+function baseline(over: Partial<Baseline> = {}): Baseline {
+  return {
+    model: "gpt-4o-mini",
+    recordedAt: "2026-08-12T00:00:00.000Z",
+    runs: 3,
+    strata: {
+      incident: {
+        total: 21, accuracyMean: 0.6, accuracySpread: 0.05,
+        severityCounts: { none: 13, low: 0, medium: 2, high: 6, critical: 0 },
+      },
+      prompt_rule: {
+        total: 0, accuracyMean: 0, accuracySpread: 0,
+        severityCounts: { none: 0, low: 0, medium: 0, high: 0, critical: 0 },
+      },
+    },
+    ...over,
+  };
+}
 
 function outcome(over: Partial<CaseOutcome> = {}): CaseOutcome {
   return {
@@ -145,5 +165,51 @@ describe("buildReport", () => {
     expect(report.executionErrors).toBe(1);
     expect(report.strata.incident.total).toBe(1);
     expect(report.strata.incident.accuracyMean).toBe(1);
+  });
+});
+
+describe("compareToBaseline", () => {
+  it("sem baseline não reprova — a primeira rodada é a que cria a referência", () => {
+    const diff = compareToBaseline(buildReport([[outcome()]]), null);
+    expect(diff.failed).toBe(false);
+    expect(diff.reasons.join(" ")).toMatch(/sem baseline/i);
+  });
+
+  it("mais falha crítica que a baseline reprova", () => {
+    const current = buildReport([[
+      outcome({ caseId: "a", expected: "stop_contact", got: "farewell", severity: "critical" }),
+    ]]);
+    const diff = compareToBaseline(current, baseline());
+    expect(diff.failed).toBe(true);
+    expect(diff.reasons.join(" ")).toMatch(/critical/);
+  });
+
+  it("mais falha alta que a baseline reprova", () => {
+    const run = Array.from({ length: 7 }, (_, i) =>
+      outcome({ caseId: `h${i}`, expected: "price_inquiry", got: "greeting", severity: "high" }),
+    );
+    const diff = compareToBaseline(buildReport([run]), baseline());
+    expect(diff.failed).toBe(true);
+    expect(diff.reasons.join(" ")).toMatch(/high/);
+  });
+
+  it("acurácia plana caindo não reprova sozinha", () => {
+    const run = [
+      outcome({ caseId: "a", expected: "greeting", got: "acknowledgment", severity: "low" }),
+      outcome({ caseId: "b", expected: "farewell", got: "acknowledgment", severity: "low" }),
+    ];
+    const diff = compareToBaseline(buildReport([run]), baseline());
+    expect(diff.failed).toBe(false);
+    expect(diff.reasons.join(" ")).toMatch(/informativo/);
+  });
+
+  it("compara por rodada, não por soma, para --repeat não gerar falso positivo", () => {
+    const run = Array.from({ length: 2 }, (_, i) =>
+      outcome({ caseId: `h${i}`, expected: "price_inquiry", got: "greeting", severity: "high" }),
+    );
+    // 6 falhas high em 3 rodadas na baseline = 2 por rodada. Duas rodadas com
+    // 2 cada também é 2 por rodada: mesmo patamar, não reprova.
+    const diff = compareToBaseline(buildReport([run, run]), baseline());
+    expect(diff.failed).toBe(false);
   });
 });
