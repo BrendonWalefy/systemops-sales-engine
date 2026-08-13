@@ -11,6 +11,17 @@ import type { PromptContext } from "@/core/intelligence/PromptContextBuilder";
 const MODEL = process.env.OPENAI_CLASSIFIER_MODEL?.trim() || "gpt-4o-mini";
 const OPENAI_TIMEOUT_MS = 30_000;
 
+// Modelos gpt-5.5+ (5.6 luna/terra/sol) e a família gpt-5-mini/nano rejeitam
+// `temperature` diferente de 1 com HTTP 400, então enviar 0 quebra a chamada
+// inteira. Medido em 13/08/2026: sem o parâmetro esses modelos devolvem a mesma
+// classificação em 5 chamadas idênticas, isto é, são determinísticos na prática
+// para esta tarefa — omitir não troca precisão por variância.
+// Os modelos que aceitam 0 continuam recebendo 0: o comportamento de
+// gpt-4o-mini fica idêntico ao de antes desta mudança.
+export function supportsTemperatureZero(model: string): boolean {
+  return !/^gpt-5\.(5|6)|^gpt-5-(mini|nano)/.test(model);
+}
+
 export type TreatmentOption = {
   name: string;
   aliases?: string[];
@@ -305,7 +316,7 @@ export class IntentClassifier {
 
     const response = await this.client.chat.completions.create({
       model: MODEL,
-      temperature: 0,
+      ...(supportsTemperatureZero(MODEL) ? { temperature: 0 } : {}),
       response_format: {
         type: "json_schema",
         json_schema: {
