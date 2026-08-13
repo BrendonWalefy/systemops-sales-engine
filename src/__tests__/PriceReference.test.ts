@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { extractReferencedPrice } from "@/core/intelligence/price-reference";
+import {
+  extractAllReferencedPrices,
+  extractReferencedPrice,
+} from "@/core/intelligence/price-reference";
 import { buildActionContext } from "@/core/intelligence/ResponseComposer";
 
 describe("extractReferencedPrice", () => {
@@ -18,6 +21,24 @@ describe("extractReferencedPrice", () => {
 
   it("não trata telefone como preço", () => {
     expect(extractReferencedPrice("Dá para parcelar? Meu telefone é 5511999999999")).toBeNull();
+  });
+});
+
+describe("extractAllReferencedPrices", () => {
+  it("devolve os dois valores de uma oferta à vista ou parcelada", () => {
+    expect(
+      extractAllReferencedPrices("Fica R$ 4.000 à vista ou 10x de R$ 400 no cartão."),
+    ).toEqual([400_000, 40_000]);
+  });
+
+  it("não repete o mesmo valor citado duas vezes na mesma resposta", () => {
+    expect(
+      extractAllReferencedPrices("O valor é R$ 2.000. Confirma o R$ 2.000?"),
+    ).toEqual([200_000]);
+  });
+
+  it("devolve vazio quando não há contexto de dinheiro", () => {
+    expect(extractAllReferencedPrices("Podemos marcar terça às 14h?")).toEqual([]);
   });
 });
 

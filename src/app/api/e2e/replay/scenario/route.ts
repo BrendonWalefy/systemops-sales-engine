@@ -13,6 +13,10 @@ import type {
   ReplayScenarioV1,
 } from "@/application/replay/contracts";
 import {
+  detectReplayScenarioDivergences,
+  type ReplayScenarioRun,
+} from "@/application/replay/detect-replay-divergences";
+import {
   evaluateReplayGoldenExpectations,
   type ReplayGoldenCheck,
 } from "@/application/replay/evaluate-golden-expectations";
@@ -204,6 +208,11 @@ async function runReplayScenario(
     process: Awaited<ReturnType<typeof drainMessageProcessQueue>>;
     send: Awaited<ReturnType<typeof drainMessageSendQueue>>;
   }> = [];
+  // Os efeitos capturados são cumulativos; guardar a fatia de cada drenagem é o
+  // que permite comparar turno a turno em vez de cenário inteiro contra cenário.
+  const runEffects: ReplayScenarioRun[] = [];
+  const collectCalendarEffects = () =>
+    calendarCaptures.flatMap((capture) => capture.effects);
   let replayLeadId: string | null = null;
   let replayConversationId: string | null = null;
 
@@ -301,6 +310,8 @@ async function runReplayScenario(
     };
 
     const drain = async (turns: typeof leadTurns, concurrent: boolean) => {
+      const outboundFrom = outboundCapture.effects.length;
+      const calendarFrom = collectCalendarEffects().length;
       logicalNowMs = Math.max(...turns.map((turn) => controlledStart + turn.offsetMs));
       const injected = await runWithRuntimeClock(runtimeClock, async () =>
         concurrent
@@ -336,6 +347,11 @@ async function runReplayScenario(
         turnIds: injected.map((turn) => turn.turnId),
         process: processDrain,
         send: sendDrain,
+      });
+      runEffects.push({
+        scenarioTurnIds: injected.map((turn) => turn.scenarioTurnId),
+        outboundEffects: outboundCapture.effects.slice(outboundFrom),
+        calendarEffects: collectCalendarEffects().slice(calendarFrom),
       });
     };
 
@@ -453,6 +469,11 @@ async function runReplayScenario(
       runId: input.runId,
       scenarioId: input.scenario.id,
       mode: input.mode,
+      bugs: detectReplayScenarioDivergences({
+        scenario: input.scenario,
+        runs: runEffects,
+        trace: traces,
+      }),
       clockMode: "scenario_controlled_preserving_offsets",
       controlledStartedAt: new Date(controlledStart).toISOString(),
       clinic: input.scenario.clinic,
