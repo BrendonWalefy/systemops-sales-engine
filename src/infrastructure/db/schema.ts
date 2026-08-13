@@ -19,6 +19,7 @@ import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/comm
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
 import type { DecisionTraceRecord } from "@/core/observability/DecisionTrace";
+import type { BusinessSchedule } from "@/core/scheduling/BusinessSchedule";
 import { sql } from "drizzle-orm";
 
 export const channelEnum = pgEnum("channel", [
@@ -322,6 +323,13 @@ export const organizations = pgTable("organizations", {
   commercialDiagnostic:
     jsonb("commercial_diagnostic").$type<CommercialDiagnosticSnapshot>(),
   businessHours: text("business_hours"),
+  // Escala por dia da semana. Substitui a leitura de business_hours, que só
+  // consegue expressar uma faixa de horário mais uma exceção de sábado — e que
+  // por isso produzia disponibilidade errada para clínica fechada no meio da
+  // semana, dois turnos, ou horário distinto por dia. Null = derivar do texto
+  // legado; ver resolveBusinessSchedule, a porta única de leitura.
+  // business_hours NÃO é removida: é a origem do backfill e a rede de rollback.
+  businessSchedule: jsonb("business_schedule").$type<BusinessSchedule>(),
   googleCalendarId: text("google_calendar_id"),
   // Fonte de verdade da disponibilidade. Null = derivar de googleCalendarId no resolver.
   calendarMode: calendarModeEnum("calendar_mode"),
