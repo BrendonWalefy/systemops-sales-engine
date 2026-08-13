@@ -111,3 +111,94 @@ export function isOpenOnWeekday(schedule: BusinessSchedule, weekday: number): bo
 export function operatingWeekdays(schedule: BusinessSchedule): Weekday[] {
   return WEEKDAYS.filter((weekday) => isOpenOnWeekday(schedule, weekday));
 }
+
+// ── Pergunta sobre um dia específico ─────────────────────────────────────────
+// `isSaturdayQuestionForOperatingClinic` só sabia sobre sábado, e o comentário
+// dela admitia: "Enquanto o parser não souber o resto da semana, o sistema não
+// afirma o que não sabe". Com a escala, saber sobre quarta é a mesma consulta.
+
+const WEEKDAY_PATTERNS: { weekday: Weekday; pattern: RegExp }[] = [
+  { weekday: 0, pattern: /\bdomingos?\b/ },
+  { weekday: 1, pattern: /\b(segunda|segundas|seg)\b/ },
+  // "ter" fica FORA de propósito: colide com o verbo ter, e "queria ter um
+  // horário" viraria terça-feira. "dom" também fica fora, por ser palavra.
+  { weekday: 2, pattern: /\b(terca|tercas)\b/ },
+  { weekday: 3, pattern: /\b(quarta|quartas|qua)\b/ },
+  { weekday: 4, pattern: /\b(quinta|quintas|qui)\b/ },
+  { weekday: 5, pattern: /\b(sexta|sextas|sex)\b/ },
+  { weekday: 6, pattern: /\b(sabado|sabados|sab)\b/ },
+];
+
+/**
+ * Dia da semana citado numa mensagem já normalizada (sem acento, minúscula).
+ * Devolve null quando nenhum dia é citado, ou quando MAIS DE UM é: "de segunda a
+ * sexta" cita dois e não é pergunta sobre um dia específico.
+ */
+export function detectWeekdayQuestion(normalizedMessage: string): Weekday | null {
+  const matched = WEEKDAY_PATTERNS.filter(({ pattern }) => pattern.test(normalizedMessage));
+  return matched.length === 1 ? matched[0].weekday : null;
+}
+
+export const WEEKDAY_NAME: Record<Weekday, string> = {
+  0: "domingo",
+  1: "segunda",
+  2: "terça",
+  3: "quarta",
+  4: "quinta",
+  5: "sexta",
+  6: "sábado",
+};
+
+function formatWindow(window: DayWindow): string {
+  const fmt = (hour: number, minute: number) =>
+    minute === 0 ? `${hour}h` : `${hour}h${String(minute).padStart(2, "0")}`;
+  return `${fmt(window.startHour, window.startMinute)} às ${fmt(window.endHour, window.endMinute)}`;
+}
+
+/** Horário do dia em prosa, ou null quando fechado. Ex.: "8h às 12h e 14h às 18h". */
+export function describeWeekdayHours(schedule: BusinessSchedule, weekday: Weekday): string | null {
+  const windows = windowsForWeekday(schedule, weekday);
+  if (windows.length === 0) return null;
+  return windows.map(formatWindow).join(" e ");
+}
+
+/**
+ * Hora local cai dentro de alguma janela do dia. Substitui
+ * ClinicTimezone.isBusinessHour quando há escala: o fim da janela é exclusivo,
+ * então 12:00 não é horário válido numa janela que termina às 12:00.
+ */
+export function isOpenAtLocalTime(
+  schedule: BusinessSchedule,
+  weekday: number,
+  hour: number,
+  minute: number,
+): boolean {
+  const timeMin = hour * 60 + minute;
+  return windowsForWeekday(schedule, weekday).some((w) => {
+    const startMin = w.startHour * 60 + w.startMinute;
+    const endMin = w.endHour * 60 + w.endMinute;
+    return timeMin >= startMin && timeMin < endMin;
+  });
+}
+
+/**
+ * O slot INTEIRO cabe dentro de UMA janela do dia. Mais estrito que checar
+ * início e fim separadamente: um slot de 60min começando às 11:30 num dia
+ * 8:00-12:00 + 14:00-18:00 tem início e fim "em horário de atendimento" se os
+ * dois forem avaliados isolados, mas atravessa o almoço e não existe.
+ */
+export function slotFitsInSingleWindow(
+  schedule: BusinessSchedule,
+  weekday: number,
+  startHour: number,
+  startMinute: number,
+  durationMinutes: number,
+): boolean {
+  const startMin = startHour * 60 + startMinute;
+  const endMin = startMin + durationMinutes;
+  return windowsForWeekday(schedule, weekday).some(
+    (w) =>
+      startMin >= w.startHour * 60 + w.startMinute &&
+      endMin <= w.endHour * 60 + w.endMinute,
+  );
+}

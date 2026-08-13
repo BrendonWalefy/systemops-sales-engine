@@ -11,9 +11,13 @@ import {
   windowsForWeekday,
   isOpenOnWeekday,
   operatingWeekdays,
+  detectWeekdayQuestion,
+  describeWeekdayHours,
+  isOpenAtLocalTime,
   type BusinessSchedule,
 } from "@/core/scheduling/BusinessSchedule";
-import { parseBusinessHours } from "@/core/scheduling/ClinicTimezone";
+import { parseBusinessHours, ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
+import { computeAvailableSlots } from "@/core/scheduling/SlotEngine";
 
 const SEG_A_SEX_8_18: BusinessSchedule = {
   days: {
@@ -190,4 +194,164 @@ describe("equivalência do backfill sobre formatos reais de texto", () => {
       }
     });
   }
+});
+
+describe("detectWeekdayQuestion — os sete dias, não só sábado", () => {
+  it("reconhece cada dia da semana", () => {
+    expect(detectWeekdayQuestion("vocês atendem na segunda?")).toBe(1);
+    expect(detectWeekdayQuestion("abre quarta?")).toBe(3);
+    expect(detectWeekdayQuestion("tem atendimento quinta")).toBe(4);
+    expect(detectWeekdayQuestion("e na sexta?")).toBe(5);
+    expect(detectWeekdayQuestion("atendem sabado?")).toBe(6);
+    expect(detectWeekdayQuestion("e domingo?")).toBe(0);
+  });
+
+  it("não confunde o verbo 'ter' com terça-feira", () => {
+    expect(detectWeekdayQuestion("queria ter um horario essa semana")).toBeNull();
+    expect(detectWeekdayQuestion("posso ter mais informacoes?")).toBeNull();
+  });
+
+  it("reconhece terça quando é realmente o dia", () => {
+    expect(detectWeekdayQuestion("atendem na terca?")).toBe(2);
+  });
+
+  it("faixa de dias não é pergunta sobre um dia específico", () => {
+    expect(detectWeekdayQuestion("de segunda a sexta vocês abrem?")).toBeNull();
+  });
+
+  it("mensagem sem dia devolve null", () => {
+    expect(detectWeekdayQuestion("quanto custa a lente?")).toBeNull();
+  });
+});
+
+describe("describeWeekdayHours e isOpenAtLocalTime", () => {
+  const COM_ALMOCO: BusinessSchedule = {
+    days: {
+      1: [
+        { startHour: 8, startMinute: 0, endHour: 12, endMinute: 0 },
+        { startHour: 14, startMinute: 0, endHour: 18, endMinute: 30 },
+      ],
+    },
+  };
+
+  it("descreve dois turnos em prosa", () => {
+    expect(describeWeekdayHours(COM_ALMOCO, 1)).toBe("8h às 12h e 14h às 18h30");
+  });
+
+  it("dia fechado descreve como null", () => {
+    expect(describeWeekdayHours(COM_ALMOCO, 3)).toBeNull();
+  });
+
+  it("horário no intervalo de almoço está fechado — hoje isso é invisível", () => {
+    expect(isOpenAtLocalTime(COM_ALMOCO, 1, 10, 0)).toBe(true);
+    expect(isOpenAtLocalTime(COM_ALMOCO, 1, 13, 0)).toBe(false);
+    expect(isOpenAtLocalTime(COM_ALMOCO, 1, 15, 0)).toBe(true);
+  });
+
+  it("fim de janela é exclusivo", () => {
+    expect(isOpenAtLocalTime(COM_ALMOCO, 1, 12, 0)).toBe(false);
+    expect(isOpenAtLocalTime(COM_ALMOCO, 1, 11, 30)).toBe(true);
+    expect(isOpenAtLocalTime(COM_ALMOCO, 1, 18, 30)).toBe(false);
+  });
+});
+
+// ── Escala por dia no SlotEngine ─────────────────────────────────────────────
+// Os três cenários abaixo são IMPOSSÍVEIS de expressar no texto legado de
+// business_hours, e por isso produziam disponibilidade errada.
+describe("computeAvailableSlots com escala por dia", () => {
+  const tz = new ClinicTimezone("America/Sao_Paulo");
+  // Seg 17/08/2026 a Sáb 22/08/2026
+  const from = new Date("2026-08-17T03:00:00.000Z"); // 00:00 local de segunda
+  const to = new Date("2026-08-23T03:00:00.000Z");
+
+  function slotsWith(businessSchedule: BusinessSchedule, slotDurationMinutes = 60) {
+    return computeAvailableSlots({
+      timezone: tz,
+      businessHours: parseBusinessHours("seg-sex 8h-18h"),
+      businessSchedule,
+      existingEvents: [],
+      from,
+      to,
+      slotDurationMinutes,
+      clinicId: "clinic-1",
+      maxSlots: 500,
+    });
+  }
+
+  function weekdaysOffered(slots: { startsAt: Date }[]): number[] {
+    return [...new Set(slots.map((s) => tz.toLocalParts(s.startsAt).weekday))].sort();
+  }
+
+  it("clínica fechada na quarta não oferece slot na quarta", () => {
+    const slots = slotsWith({
+      days: {
+        1: [{ startHour: 8, startMinute: 0, endHour: 18, endMinute: 0 }],
+        2: [{ startHour: 8, startMinute: 0, endHour: 18, endMinute: 0 }],
+        4: [{ startHour: 8, startMinute: 0, endHour: 18, endMinute: 0 }],
+        5: [{ startHour: 8, startMinute: 0, endHour: 18, endMinute: 0 }],
+      },
+    });
+    expect(weekdaysOffered(slots)).toEqual([1, 2, 4, 5]);
+  });
+
+  it("intervalo de almoço não é ofertado", () => {
+    const slots = slotsWith({
+      days: {
+        1: [
+          { startHour: 8, startMinute: 0, endHour: 12, endMinute: 0 },
+          { startHour: 14, startMinute: 0, endHour: 18, endMinute: 0 },
+        ],
+      },
+    });
+    const horas = slots
+      .filter((s) => tz.toLocalParts(s.startsAt).weekday === 1)
+      .map((s) => tz.toLocalParts(s.startsAt).hour);
+    expect(horas).toContain(11);
+    expect(horas).not.toContain(12);
+    expect(horas).not.toContain(13);
+    expect(horas).toContain(14);
+  });
+
+  it("slot não atravessa o almoço — um de 60min às 11h30 não existe", () => {
+    const slots = slotsWith({
+      days: {
+        1: [
+          { startHour: 8, startMinute: 0, endHour: 12, endMinute: 0 },
+          { startHour: 14, startMinute: 0, endHour: 18, endMinute: 0 },
+        ],
+      },
+    }, 60);
+    const inicios = slots
+      .filter((s) => tz.toLocalParts(s.startsAt).weekday === 1)
+      .map((s) => `${tz.toLocalParts(s.startsAt).hour}:${tz.toLocalParts(s.startsAt).minute}`);
+    expect(inicios).not.toContain("11:30");
+    expect(inicios).toContain("11:0");
+  });
+
+  it("horário reduzido no sábado é respeitado", () => {
+    const slots = slotsWith({
+      days: {
+        5: [{ startHour: 8, startMinute: 0, endHour: 18, endMinute: 0 }],
+        6: [{ startHour: 8, startMinute: 0, endHour: 12, endMinute: 0 }],
+      },
+    });
+    const sabado = slots
+      .filter((s) => tz.toLocalParts(s.startsAt).weekday === 6)
+      .map((s) => tz.toLocalParts(s.startsAt).hour);
+    expect(sabado.length).toBeGreaterThan(0);
+    expect(Math.max(...sabado)).toBeLessThan(12);
+  });
+
+  it("sem escala, o comportamento é o de antes — texto legado governa", () => {
+    const slots = computeAvailableSlots({
+      timezone: tz,
+      businessHours: parseBusinessHours("seg-sex 8h-18h"),
+      existingEvents: [],
+      from, to,
+      slotDurationMinutes: 60,
+      clinicId: "clinic-1",
+      maxSlots: 500,
+    });
+    expect(weekdaysOffered(slots)).toEqual([1, 2, 3, 4, 5]);
+  });
 });

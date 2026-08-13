@@ -5,10 +5,20 @@ import type { CalendarSlot } from "@/domain/entities/calendar-slot";
 import type { ProfessionalWorkSchedule, } from "@/domain/entities/professional";
 import type { TreatmentBookingWindow } from "@/domain/entities/treatment";
 import { type ParsedBusinessHours, type ClinicTimezone } from "./ClinicTimezone";
+import {
+  isOpenOnWeekday,
+  slotFitsInSingleWindow,
+  type BusinessSchedule,
+} from "@/core/scheduling/BusinessSchedule";
 
 export type SlotEngineParams = {
   timezone: ClinicTimezone;
   businessHours: ParsedBusinessHours;
+  // Escala por dia. Quando presente, ela governa dia e janela em lugar de
+  // `businessHours`, o que permite clínica fechada no meio da semana, dois
+  // turnos com almoço, e horário distinto por dia — nada disso é representável
+  // no texto legado. Ausente = comportamento idêntico ao de antes desta opção.
+  businessSchedule?: BusinessSchedule | null;
   existingEvents: { startsAt: Date; endsAt: Date; appliesPostEventBuffer?: boolean }[];
   from: Date;
   to: Date;
@@ -73,6 +83,7 @@ function computeWindowedSlots(
     postEventBufferMinutes = 0,
     maxSlots = 100,
     professionalSchedule = null,
+    businessSchedule = null,
   } = params;
 
   const slotMs = slotDurationMinutes * 60_000;
@@ -91,7 +102,9 @@ function computeWindowedSlots(
   while (dayCursor < to && slots.length < maxSlots) {
     const dp = timezone.toLocalParts(dayCursor);
     // Só oferece em dias de operação da clínica.
-    if (businessHours.days.includes(dp.weekday)) {
+    if (businessSchedule
+      ? isOpenOnWeekday(businessSchedule, dp.weekday)
+      : businessHours.days.includes(dp.weekday)) {
       // Ordena as janelas do dia por horário para candidatos cronológicos.
       const dayWindows = windows
         .filter((w) => !w.weekdays || w.weekdays.includes(dp.weekday))
@@ -147,6 +160,7 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
     postEventBufferMinutes = 0,
     maxSlots = 100,
     professionalSchedule = null,
+    businessSchedule = null,
   } = params;
 
   const slotMs = slotDurationMinutes * 60_000;
@@ -180,7 +194,14 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
       const slotStart = startDate.getTime();
       if (startDate < from || startDate >= to) continue;
       if (slotStart < lastAcceptedEnd) continue;
-      if (!timezone.isBusinessHour(startDate, businessHours)) continue;
+      if (businessSchedule) {
+        // A escala decide dia E janela, e exige o slot inteiro numa só janela.
+        if (!slotFitsInSingleWindow(
+          businessSchedule, dp.weekday,
+          Math.floor(minutes / 60), minutes % 60,
+          slotDurationMinutes,
+        )) continue;
+      } else if (!timezone.isBusinessHour(startDate, businessHours)) continue;
 
       const slotEnd = slotStart + slotMs;
       // Verifica se o FIM do slot também está dentro do horário comercial
@@ -191,9 +212,9 @@ export function computeAvailableSlots(params: SlotEngineParams): CalendarSlot[] 
       const endBusinessMin = isSaturdayEnd
         ? businessHours.saturdayEndHour! * 60 + (businessHours.saturdayEndMinute ?? 0)
         : businessHours.endHour * 60 + businessHours.endMinute;
-      const endStillInBusiness =
-        businessHours.days.includes(endParts.weekday) &&
-        endTimeMin <= endBusinessMin;
+      const endStillInBusiness = businessSchedule
+        ? true // slotFitsInSingleWindow já garantiu que o slot cabe inteiro
+        : businessHours.days.includes(endParts.weekday) && endTimeMin <= endBusinessMin;
       if (!endStillInBusiness) continue;
 
       if (!fitsProfessionalSchedule(professionalSchedule, timezone, startDate, slotEndDate)) continue;
