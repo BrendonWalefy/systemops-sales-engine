@@ -50,6 +50,9 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "action",
     "valid",
     "violationCount",
+    // Códigos do enum de violação, separados por vírgula. Sem eles o trace diz
+    // quantas regras quebraram e nunca quais — e a investigação para aí.
+    "violations",
     "requiresHandoff",
   ],
   "response.fallback_applied": [

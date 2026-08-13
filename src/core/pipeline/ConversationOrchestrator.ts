@@ -3056,6 +3056,7 @@ export class ConversationOrchestrator {
         action: planned.plan.action,
         valid: planned.source === "composer",
         violationCount: planned.violations.length,
+        violations: planned.violations.join(","),
         requiresHandoff: planned.requiresHandoff,
       },
     });
