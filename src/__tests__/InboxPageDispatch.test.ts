@@ -53,8 +53,8 @@ import { prepareInboxPage } from "@/app/(clinic)/app/inbox/page";
 
 function fakeSegmentIndex(): InboxSegmentIndex {
   return {
-    counts: { all: 0, hot: 0, attention: 0, pending: 0, paused: 0, cold: 0, recovery: 0 },
-    idsByTab: { all: [], hot: [], attention: [], pending: [], paused: [], cold: [], recovery: [] },
+    counts: { all: 0, hot: 0, attention: 0, pending: 0, paused: 0, cold: 0, recovery: 0, closed: 0 },
+    idsByTab: { all: [], hot: [], attention: [], pending: [], paused: [], cold: [], recovery: [], closed: [] },
     scopeCounts: { sales: 0, operational: 0, vendor: 0, spam: 0, archived: 0 },
     idsByScope: { sales: [], operational: [], vendor: [], spam: [], archived: [] },
     activeCount: 0,

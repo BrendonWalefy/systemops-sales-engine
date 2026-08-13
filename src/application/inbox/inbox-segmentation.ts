@@ -22,7 +22,13 @@ export type InboxTabKey =
   | "pending"
   | "paused"
   | "cold"
-  | "recovery";
+  | "recovery"
+  // Lead ganho ou perdido. `segmentRows` sempre calculou este balde e nenhuma
+  // aba o consumia, então conversa fechada ficava inalcançável pela interface —
+  // medido em 13/08/2026: 1.024 das 1.028 conversas da Vitalli, marcadas `lost`
+  // pelo varredor de inatividade, não apareciam em lugar nenhum. Elas nunca
+  // saíram do banco; faltava onde mostrá-las.
+  | "closed";
 
 export const INBOX_TAB_KEYS: readonly InboxTabKey[] = [
   "all",
@@ -32,6 +38,7 @@ export const INBOX_TAB_KEYS: readonly InboxTabKey[] = [
   "paused",
   "cold",
   "recovery",
+  "closed",
 ];
 
 export const INBOX_SCOPE_KEYS: readonly ConversationCategory[] = [
@@ -151,12 +158,13 @@ export function buildSegmentIndex(
   }));
 
   const salesRows = categoryRows(enriched, "sales");
-  const { handoff, active, paused, recovery } = segmentRows(salesRows, lastMsgMap);
+  const { handoff, active, paused, recovery, closed } = segmentRows(salesRows, lastMsgMap);
 
   // handoff/active/paused são concatenados na UI; refiltrar por membership
   // devolve a ordem global de recência em vez da ordem de concatenação.
   const liveIds = new Set(idsOf([...handoff, ...active, ...paused]));
   const allLive = salesRows.filter((row) => liveIds.has(row.convId));
+  const closedIds = new Set(idsOf(closed));
 
   const idsByTab: Record<InboxTabKey, string[]> = {
     all: idsOf(allLive),
@@ -170,6 +178,9 @@ export function buildSegmentIndex(
     paused: idsOf(paused),
     cold: idsOf(allLive.filter((r) => r.leadTemperature === "cold")),
     recovery: idsOf(recovery),
+    // Ordenada pela mesma recência global das outras abas, e não pela ordem em
+    // que o filtro as encontrou.
+    closed: idsOf(salesRows.filter((row) => closedIds.has(row.convId))),
   };
 
   const idsByScope = {} as Record<ConversationCategory, string[]>;
