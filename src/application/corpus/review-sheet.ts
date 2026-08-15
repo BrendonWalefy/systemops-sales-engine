@@ -123,6 +123,16 @@ function stableRank(caseId: string): string {
 export function renderReviewSheet(params: {
   cases: CorpusCase[];
   tenantConfigDirectory: string;
+  /**
+   * Fatos objetivos do caso que não estão no histórico nem no catálogo do
+   * tenant — objeção cadastrada no playbook, conteúdo extra recebido no nome de
+   * exibição. Entram na seção de fatos porque o revisor precisa deles para
+   * julgar; ficam fora do corpus porque não são rótulo.
+   *
+   * O texto tem de ser fato, não leitura do fato: sem "deveria", sem nome de
+   * defeito, sem indicação de qual resposta era a melhor.
+   */
+  extraFacts?: Readonly<Record<string, readonly string[]>>;
 }): string {
   const blocks = params.cases.map((entry) => {
     const config = JSON.parse(
@@ -156,7 +166,7 @@ ${history}
 
 **Fatos disponíveis do tenant \`${entry.input.tenantConfigRef}\`**
 
-${renderTenantFacts(config)}
+${[renderTenantFacts(config), ...(params.extraFacts?.[entry.caseId] ?? []).map((fact) => `- ${fact}`)].join("\n")}
 
 **Resposta da IA**
 
