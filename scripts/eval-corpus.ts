@@ -8,6 +8,7 @@ import {
 } from "@/application/corpus/v1-understanding-adapter";
 import { referenceDecider, runDecisionEval } from "@/application/corpus/eval-decision";
 import { aggregateProse, measureProse } from "@/application/corpus/eval-prose";
+import { renderTenantFacts } from "@/application/corpus/review-sheet";
 import type { Message } from "@/domain/entities/conversation";
 
 /**
@@ -267,6 +268,17 @@ async function runJudge(cases: CorpusCase[]) {
   let firstError: string | null = null;
 
   for (const entry of pairs) {
+    // O judge julgava sem ver os fatos do tenant, então não tinha como aplicar a
+    // dimensão de lastro — a rubrica pedia grounding e a informação para
+    // verificá-lo ficava de fora. Era a causa provável dos 13 empates em 14.
+    const facts = renderTenantFacts(
+      JSON.parse(
+        readFileSync(
+          `evals/corpus/tenant-configs/${entry.input.tenantConfigRef}.json`,
+          "utf8",
+        ),
+      ),
+    );
     const verdicts: string[] = [];
     for (const flipped of [false, true]) {
       const first = flipped ? entry.observed.humanResponse! : entry.observed.aiResponse!;
@@ -274,13 +286,26 @@ async function runJudge(cases: CorpusCase[]) {
       try {
         const response = await client.messages.create({
           model: judgeModel,
-          max_tokens: 16,
+          max_tokens: 8,
           messages: [
             {
               role: "user",
-              content: `Você julga qual das duas respostas de WhatsApp serve melhor ao lead nesta clínica.
+              content: `Você compara duas respostas de WhatsApp de uma clínica e decide qual serve melhor ao lead.
 
-Critérios, nesta ordem: (1) trata o que o lead levantou; (2) não afirma fato não autorizado; (3) leva a conversa a um próximo passo concreto; (4) tom natural e conciso para WhatsApp.
+Compare nesta ordem, e pare na primeira dimensão que separe as duas:
+
+1. LASTRO FACTUAL — toda afirmação sobre preço, desconto, pagamento, serviço, atributo de serviço, horário, disponibilidade, agendamento, endereço, garantia, condição comercial, ação realizada ou capacidade prometida tem de estar sustentada pelos fatos listados abaixo. Não demonstrado falso NÃO basta: sem lastro nos fatos, a afirmação conta contra a resposta.
+2. RESPOSTA DIRETA — trata o que o lead levantou, e não outra coisa.
+3. PRÓXIMO PASSO LEGÍTIMO — o passo proposto é válido e executável com estes fatos. Passo fabricado (horário inventado, desconto inexistente) conta contra, nunca a favor.
+4. CLAREZA E CONCISÃO.
+5. NATURALIDADE COMERCIAL.
+
+REGRA FORTE: uma resposta com fato não autorizado ou ação fabricada NÃO pode vencer por ser mais persuasiva, mais calorosa, mais longa ou mais bem escrita. Lastro e legitimidade do passo decidem antes de estilo.
+
+Responda EMPATE apenas quando nenhuma das duas tiver vantagem material em nenhuma das cinco dimensões. Diferença clara em qualquer uma delas é vitória, não empate.
+
+FATOS DISPONÍVEIS NESTE TURNO:
+${facts}
 
 Contexto anterior:
 ${entry.input.history.map((turn) => `${turn.author}: ${turn.body}`).join("\n") || "(sem histórico)"}

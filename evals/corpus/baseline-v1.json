@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-15T20:31:26.566Z",
+  "generatedAt": "2026-08-15T20:45:32.176Z",
   "corpus": {
     "totalCases": 66,
     "shardHashes": {
@@ -32,8 +32,8 @@
         "axis": "request",
         "expected": 66,
         "produced": 64,
-        "correct": 46,
-        "accuracy": 0.696969696969697
+        "correct": 45,
+        "accuracy": 0.6818181818181818
       },
       {
         "axis": "dialogueMove",
@@ -78,7 +78,7 @@
         "accuracy": 0
       }
     ],
-    "intentAccuracyOnV1Vocabulary": 0.71875,
+    "intentAccuracyOnV1Vocabulary": 0.703125,
     "comparableCases": 64,
     "skipped": 2,
     "confusions": [
@@ -106,6 +106,11 @@
         "caseId": "burst-0003",
         "expected": "general_question",
         "got": "greeting"
+      },
+      {
+        "caseId": "discount-0001",
+        "expected": "needs_human",
+        "got": "price_inquiry"
       },
       {
         "caseId": "discount-0003",
@@ -145,7 +150,7 @@
       {
         "caseId": "media-0003",
         "expected": "needs_human",
-        "got": "acknowledgment"
+        "got": "unclear"
       },
       {
         "caseId": "objection-0002",
@@ -260,12 +265,12 @@
       "model": "claude-sonnet-5",
       "pairs": 14,
       "judgements": 28,
-      "aiWins": 1,
+      "aiWins": 0,
       "humanWins": 0,
-      "ties": 13,
-      "unstableVerdicts": 3,
-      "unstableRate": 0.21428571428571427,
-      "longerAnswerWonRate": 1,
+      "ties": 14,
+      "unstableVerdicts": 6,
+      "unstableRate": 0.42857142857142855,
+      "longerAnswerWonRate": 0,
       "averageAiCharacters": 308,
       "averageHumanCharacters": 155,
       "errors": 0
@@ -273,7 +278,7 @@
   },
   "cost": {
     "classifierCalls": 64,
-    "averageClassifierLatencyMs": 1273,
-    "wallClockMs": 120358
+    "averageClassifierLatencyMs": 1161,
+    "wallClockMs": 112535
   }
 }

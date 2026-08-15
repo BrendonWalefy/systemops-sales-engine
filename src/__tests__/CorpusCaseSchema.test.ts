@@ -130,6 +130,29 @@ describe("schema do caso de corpus", () => {
     );
   });
 
+  // Um caso cuja premissa contradiz a própria fixture não tem ground truth
+  // consistente: calibrar uma pergunta contra ele mede o defeito do caso, não a
+  // pergunta. O caso continua no corpus como evidência; o campo é o que impede
+  // que ele volte a servir de régua sem alguém decidir isso.
+  it("aceita caso marcado como estruturalmente inválido, com motivo", () => {
+    const parsed = parseCorpusCase(
+      validCase({
+        validity: {
+          status: "fixture-invalid",
+          reason: "O histórico oferece horário fora do horário do tenant.",
+        },
+      }),
+    );
+
+    expect(parsed.validity?.status).toBe("fixture-invalid");
+  });
+
+  it("recusa marca de invalidez sem motivo escrito", () => {
+    expect(() =>
+      parseCorpusCase(validCase({ validity: { status: "corpus-invalid" } })),
+    ).toThrow(/reason/);
+  });
+
   it("exige que o caseId comece pela jornada do caso", () => {
     expect(() =>
       parseCorpusCase(validCase({ caseId: "media-0007" })),

@@ -27,9 +27,15 @@ export type SheetAnswers = {
 type TenantConfig = {
   ref: string;
   businessHours?: string;
-  services?: Array<{ name: string; priceCents: number | null; priceUnit?: string }>;
+  services?: Array<{
+    name: string;
+    priceCents: number | null;
+    priceUnit?: string;
+    freeEvaluation?: boolean;
+  }>;
   knownAmbiguity?: string;
   paymentPolicy?: string;
+  priceDeliveredAsImage?: boolean;
 };
 
 function formatPrice(cents: number | null): string {
@@ -40,13 +46,61 @@ function formatPrice(cents: number | null): string {
 export function renderTenantFacts(config: TenantConfig): string {
   const lines = [`- Horário: ${config.businessHours ?? "não declarado"}`];
   for (const service of config.services ?? []) {
+    // A flag comercial vai junto do serviço: sem ela, "sem preço cadastrado"
+    // é lido como "valor desconhecido", e a segunda revisão marcou uma resposta
+    // correta como sem lastro exatamente por isso.
+    const flags = [
+      service.priceUnit,
+      service.freeEvaluation ? "sem custo para o lead" : null,
+    ].filter(Boolean);
     lines.push(
-      `- ${service.name}: ${formatPrice(service.priceCents)}${service.priceUnit ? ` (${service.priceUnit})` : ""}`,
+      `- ${service.name}: ${formatPrice(service.priceCents)}${flags.length ? ` (${flags.join("; ")})` : ""}`,
     );
   }
   if (config.paymentPolicy) lines.push(`- Pagamento: ${config.paymentPolicy}`);
+  if (config.priceDeliveredAsImage) {
+    lines.push("- Preço deste tenant é entregue por arte, não por texto.");
+  }
   if (config.knownAmbiguity) lines.push(`- Ambiguidade conhecida: ${config.knownAmbiguity}`);
   return lines.join("\n");
+}
+
+const MEDIA_MARKER_RE = /\[MIDIA:([A-Z]+)\]/g;
+const CLOCK_RE = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})\b/g;
+
+/**
+ * Evidência objetiva do turno que não é texto de conversa: mídia anexada e
+ * horários já citados no fio.
+ *
+ * As duas existem porque a segunda revisão não conseguiu julgar sem elas — uma
+ * resposta que diz "te enviei um vídeo" parece afirmação sem lastro quando o
+ * anexo não aparece em lugar nenhum, e um horário confirmado parece inventado
+ * quando o horário ofertado não está visível.
+ */
+function renderTurnEvidence(entry: CorpusCase): string[] {
+  const lines: string[] = [];
+
+  const mediaOf = (label: string, text: string | null): void => {
+    if (!text) return;
+    const kinds = [...text.matchAll(MEDIA_MARKER_RE)].map((m) => m[1]!.toLowerCase());
+    if (kinds.length > 0) {
+      lines.push(`- Mídia neste turno — ${label}: ${[...new Set(kinds)].join(", ")}`);
+    }
+  };
+  mediaOf("mensagem do lead", entry.input.leadMessage);
+  mediaOf("resposta da IA", entry.observed.aiResponse);
+  mediaOf("resposta humana", entry.observed.humanResponse);
+
+  const clocks = new Set<string>();
+  for (const turn of entry.input.history) {
+    if (turn.author === "lead") continue;
+    for (const match of turn.body.matchAll(CLOCK_RE)) clocks.add(match[0]);
+  }
+  if (clocks.size > 0) {
+    lines.push(`- Horários já citados no fio pela clínica: ${[...clocks].join(", ")}`);
+  }
+
+  return lines;
 }
 
 function quote(text: string | null): string {
@@ -79,7 +133,11 @@ export function selectCalibrationSample(
   const selected: CorpusCase[] = [];
 
   for (const group of quota) {
-    const pool = cases.filter((entry) => group.journeys.includes(entry.journey));
+    // Caso estruturalmente inválido nunca entra na calibração: o ground truth
+    // dele é inconsistente, então a divergência que ele produz mede o caso.
+    const pool = cases.filter(
+      (entry) => group.journeys.includes(entry.journey) && !entry.validity,
+    );
 
     // Agrupa por origem e serve em rodízio: um grupo servido só por casos
     // sintéticos ensina o revisor a reconhecer o formato do defeito em vez de
@@ -164,9 +222,11 @@ ${quote(entry.input.leadMessage || "(turno iniciado pela clínica, sem mensagem 
 
 ${history}
 
+**Quando** — turno de ${entry.source.capturedAt.slice(0, 10)}
+
 **Fatos disponíveis do tenant \`${entry.input.tenantConfigRef}\`**
 
-${[renderTenantFacts(config), ...(params.extraFacts?.[entry.caseId] ?? []).map((fact) => `- ${fact}`)].join("\n")}
+${[renderTenantFacts(config), ...renderTurnEvidence(entry), ...(params.extraFacts?.[entry.caseId] ?? []).map((fact) => `- ${fact}`)].join("\n")}
 
 **Resposta da IA**
 
@@ -301,6 +361,8 @@ export function compareReviews(params: {
   for (const answer of params.answers) {
     const corpusCase = byId.get(answer.caseId);
     if (!corpusCase) continue;
+    // Mesma razão da amostragem: caso inválido não entra na conta.
+    if (corpusCase.validity) continue;
     if (!answer.ai && !answer.human) continue;
     reviewedCases += 1;
 

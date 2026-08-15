@@ -228,9 +228,32 @@ const corpusCaseSchema = z
         // Preenchido quando o caso passou pela dupla revisão de calibração.
         secondReviewer: z.string().min(1).optional(),
         secondReviewedAt: z.string().datetime().optional(),
+        /**
+         * Re-derivação do checklist depois de uma mudança na definição das
+         * perguntas. Preserva quem julgou primeiro e quando: o rótulo mudou
+         * porque a régua mudou, não porque alguém trocou de ideia.
+         */
+        revisedAt: z.string().datetime().optional(),
+        revisionReason: z.string().trim().min(1).optional(),
       })
       .strict(),
     tags: z.array(z.string().regex(/^[a-z][a-z0-9:_-]*$/)),
+    /**
+     * Marca o caso como estruturalmente inválido — a premissa dele contradiz a
+     * própria fixture, ou o dado que ele exige não existe no corpus.
+     *
+     * O caso **continua** no corpus: ele é evidência do bug que motivou sua
+     * criação. O campo existe para que ele pare de servir de régua, porque
+     * calibrar uma pergunta contra ground truth inconsistente mede o defeito do
+     * caso e não a pergunta. Ausente = válido.
+     */
+    validity: z
+      .object({
+        status: z.enum(["fixture-invalid", "corpus-invalid"]),
+        reason: z.string().trim().min(1),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((corpusCase, ctx) => {

@@ -24,7 +24,14 @@ export type ReviewChecklist = {
    * self-review no fim deste arquivo.
    */
   addressedWhatTheLeadRaised: boolean;
-  /** A conversa ficou mais perto de um próximo passo concreto? */
+  /**
+   * A resposta aproximou a conversa de um próximo passo **válido, relevante e
+   * executável** com os fatos e o estado disponíveis?
+   *
+   * Passo fabricado não é avanço. Oferecer horário realmente consultado pode
+   * ser avanço; inventar horário não é. Oferecer desconto inexistente não é.
+   * Responder à objeção e propor um próximo passo legítimo é.
+   */
   advancedTheJourney: boolean;
   /** Você mandaria exatamente isso hoje, para este lead, neste ponto? */
   wouldRepeatToday: boolean;
@@ -37,7 +44,7 @@ export const REVIEW_CHECKLIST_QUESTIONS: ReadonlyArray<{
   {
     field: "factuallyCorrect",
     question:
-      "O dado afirmado estava correto no momento? (preço, horário, serviço, garantia, endereço)",
+      "Toda afirmação factual ou operacional da resposta está sustentada pelos fatos disponíveis neste turno? (preço, desconto, pagamento, serviço e seus atributos, horário, disponibilidade, agendamento, endereço, garantia, condição comercial, ação que o sistema diz ter feito, capacidade prometida). Não demonstrado falso NÃO basta — sem evidência, responda N. Frase puramente social não precisa de lastro; frase social que promete capacidade operacional precisa.",
   },
   {
     field: "addressedWhatTheLeadRaised",
@@ -46,7 +53,8 @@ export const REVIEW_CHECKLIST_QUESTIONS: ReadonlyArray<{
   },
   {
     field: "advancedTheJourney",
-    question: "A conversa ficou mais perto de um próximo passo concreto?",
+    question:
+      "A conversa ficou mais perto de um próximo passo válido, relevante e executável com os fatos e o estado disponíveis? Passo fabricado (horário inventado, desconto inexistente) NÃO conta como avanço.",
   },
   {
     field: "wouldRepeatToday",
