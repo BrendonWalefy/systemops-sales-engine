@@ -43,10 +43,51 @@ const UUID_ANYWHERE_RE =
 const SCHEMELESS_URL_RE =
   /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|br|io|app|me|gov)(?:\.[a-z]{2})?(?:\/[^\s]*)?/gi;
 
-export function redactCorpusText(text: string): string {
+/**
+ * Termo de identidade que o chamador conhece e o texto não deveria carregar.
+ *
+ * Nome comercial do tenant, prédio, bairro e estação nunca foram PII do lead, e
+ * por isso nenhum detector de nome olhava para eles — mas identificam o tenant,
+ * que o corpus troca por hash exatamente para não identificar. Como não há regra
+ * geral que separe "Ximendes Odontologia" de um substantivo qualquer, a lista é
+ * explícita e vem de fora: é uma deny-list, e vale só o que estiver nela.
+ */
+export type IdentityTerm = { term: string; marker: string };
+
+function foldAccents(value: string): string {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+function redactIdentities(text: string, terms: readonly IdentityTerm[]): string {
+  // Decompõe para NFD antes de casar: em NFD "í" vira "i" + acento combinante,
+  // e aí `i\p{M}*` alcança as duas grafias. Sem isso, o termo só casaria na
+  // forma exatamente igual à cadastrada — e a conversa real escreve as duas.
+  let output = text.normalize("NFD");
+  for (const { term, marker } of terms) {
+    const pattern = foldAccents(term)
+      .split(/\s+/)
+      .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      // Cada token casa com ou sem acento: o texto real escreve "Clinica" e
+      // "Clínica" na mesma conversa.
+      .map((token) => token.split("").map((ch) => `${ch}\\p{M}*`).join(""))
+      .join("\\s+");
+    // Fronteira por classe de letra, não `\b`: `\b` não separa "Vitalli" de
+    // "vitallidade" quando o termo é prefixo de outra palavra.
+    output = output.replace(
+      new RegExp(`(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, "giu"),
+      marker,
+    );
+  }
+  return output.normalize("NFC");
+}
+
+export function redactCorpusText(
+  text: string,
+  identityTerms: readonly IdentityTerm[] = [],
+): string {
   // UUID antes de pagamento: o Pix contém um, e deixar o bloco inteiro virar
   // [PAGAMENTO] esconderia que havia um identificador ali.
-  return text
+  return redactIdentities(text, identityTerms)
     .replace(UUID_ANYWHERE_RE, "[ID]")
     .replace(PAYMENT_CANDIDATE_RE, (candidate) =>
       isPaymentPayload(candidate) ? "[PAGAMENTO]" : candidate,

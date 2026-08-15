@@ -17,6 +17,9 @@ export type SheetAnswers = {
   caseId: string;
   ai: boolean[] | null;
   human: boolean[] | null;
+  /** Entendimento e ação em texto livre, como o revisor escreveu. */
+  understanding: string;
+  actionResult: string;
   notes: string;
 };
 
@@ -75,7 +78,9 @@ export function renderReviewSheet(params: {
       (question, index) => `${index + 1}. ${question.question}`,
     ).join("\n");
 
-    return `## ${entry.caseId} · ${entry.journey} · ${entry.source.kind}
+    // A origem do caso fica de fora: "synthetic_regression" entrega o gabarito,
+    // porque caso sintético foi escrito para ser defeito.
+    return `## ${entry.caseId} · ${entry.journey}
 
 **Mensagem do lead**
 
@@ -106,6 +111,8 @@ ${questions}
 \`\`\`
 ${entry.caseId} IA  [ ] [ ] [ ] [ ]
 ${entry.caseId} HUM [ ] [ ] [ ] [ ]
+${entry.caseId} UND:
+${entry.caseId} ACT:
 ${entry.caseId} OBS:
 \`\`\`
 `;
@@ -113,11 +120,25 @@ ${entry.caseId} OBS:
 
   return `# Folha de revisão do corpus
 
-Preencha apenas os blocos \`\`\` de cada caso. Marque \`S\` para sim e \`N\` para não,
-na ordem das quatro perguntas. Linha de resposta sem nenhuma marca é lida como
-"não revisado" e não conta como divergência.
+Este arquivo é **cego**: não contém rótulo, parecer, nota, entendimento, ação
+esperada nem tag de nenhum revisor anterior. Responda com o seu julgamento.
 
-Uma resposta que não existe (\`—\`) não se revisa: deixe a linha inteira em branco.
+Preencha apenas os blocos \`\`\` de cada caso.
+
+**IA / HUM** — marque \`S\` ou \`N\` dentro de cada colchete, na ordem das quatro
+perguntas. Linha sem nenhuma marca é lida como "não revisado" e não conta como
+divergência. Resposta que não existe (\`—\`) não se revisa: deixe a linha em branco.
+
+**UND** — o que o lead está pedindo, em uma expressão curta em kebab-case
+(exemplos de forma, não de conteúdo: \`algo-de-algo\`, \`acao-alvo\`), seguido do
+movimento de diálogo entre \`new_topic\`, \`answers_pending\`, \`acknowledges\`,
+\`repeats\`, \`closes\`. Acrescente entidades que você reconhecer (serviço, data,
+quantidade) e se há ambiguidade real entre opções.
+
+**ACT** — que ação o sistema deveria ter tomado neste turno, na sua palavra. Não
+existe lista fechada aqui de propósito.
+
+**OBS** — o que não cabe em sim ou não.
 
 ${blocks.join("\n---\n\n")}`;
 }
@@ -132,7 +153,8 @@ export function parseReviewSheet(markdown: string): SheetAnswers[] {
 
   for (const rawLine of markdown.split("\n")) {
     const line = rawLine.trim();
-    const match = /^([a-z][a-z0-9-]*-\d{4})\s+(IA|HUM|OBS)[:\s]\s*(.*)$/.exec(line);
+    const match =
+      /^([a-z][a-z0-9-]*-\d{4})\s+(IA|HUM|OBS|UND|ACT)[:\s]\s*(.*)$/.exec(line);
     if (!match) continue;
     const [, caseId, kind, rest] = match as unknown as [string, string, string, string];
 
@@ -140,11 +162,17 @@ export function parseReviewSheet(markdown: string): SheetAnswers[] {
       caseId,
       ai: null,
       human: null,
+      understanding: "",
+      actionResult: "",
       notes: "",
     };
 
     if (kind === "OBS") {
       entry.notes = rest.trim();
+    } else if (kind === "UND") {
+      entry.understanding = rest.trim();
+    } else if (kind === "ACT") {
+      entry.actionResult = rest.trim();
     } else {
       const answers = [...rest.matchAll(REVIEW_SHEET_ANSWER_PATTERN)].map((box) =>
         box[1]!.trim().toUpperCase(),

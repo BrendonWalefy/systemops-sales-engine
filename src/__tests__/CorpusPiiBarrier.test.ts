@@ -55,6 +55,40 @@ describe("barreira de PII do corpus", () => {
     );
   });
 
+  // O corpus troca o id do tenant por hash justamente para não identificá-lo.
+  // O nome comercial da clínica dentro da própria mensagem desfaz isso — e ele
+  // nunca foi PII do lead, então nenhum detector de nome olhava para lá.
+  it("redige identidade do tenant informada pelo chamador", () => {
+    const terms = [
+      { term: "Clinica Exemplo", marker: "[NEGOCIO]" },
+      { term: "Edifício Aurora", marker: "[LOCAL]" },
+      { term: "estação Vila Nova", marker: "[LOCAL]" },
+    ];
+
+    expect(
+      redactCorpusText(
+        "assistente virtual da Clinica Exemplo, no Edifício Aurora, 5 min da estação Vila Nova",
+        terms,
+      ),
+    ).toBe(
+      "assistente virtual da [NEGOCIO], no [LOCAL], 5 min da [LOCAL]",
+    );
+  });
+
+  it("casa a identidade sem acento e em qualquer caixa", () => {
+    const terms = [{ term: "Clínica Exemplo", marker: "[NEGOCIO]" }];
+    expect(redactCorpusText("da CLINICA EXEMPLO aqui", terms)).toBe(
+      "da [NEGOCIO] aqui",
+    );
+  });
+
+  it("não redige palavra que apenas contém o termo", () => {
+    const terms = [{ term: "Vitalli", marker: "[NEGOCIO]" }];
+    expect(redactCorpusText("vitallidade e energia", terms)).toBe(
+      "vitallidade e energia",
+    );
+  });
+
   it("preserva o texto de conversa que interessa avaliar", () => {
     expect(redactCorpusText("quanto custa a lente de resina? fica R$ 2.000")).toBe(
       "quanto custa a lente de resina? fica R$ 2.000",

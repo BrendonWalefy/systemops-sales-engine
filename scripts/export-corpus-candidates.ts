@@ -8,7 +8,10 @@ import {
   assertClinicAllowedForReplayExport,
   assertReplayOutputOutsideGitRepository,
 } from "@/application/replay/replay-export-policy";
-import { redactCorpusText } from "@/application/corpus/redact-corpus-text";
+import {
+  redactCorpusText,
+  type IdentityTerm,
+} from "@/application/corpus/redact-corpus-text";
 import { sanitizeReplayText } from "@/application/replay/sanitize-replay-text";
 import { db } from "@/infrastructure/db/client";
 import {
@@ -66,7 +69,11 @@ async function main(): Promise<void> {
   await assertReplayOutputOutsideGitRepository(outputDirectory);
 
   const [clinic] = await db
-    .select({ id: organizations.id, slug: organizations.slug })
+    .select({
+      id: organizations.id,
+      slug: organizations.slug,
+      name: organizations.name,
+    })
     .from(organizations)
     .where(eq(organizations.slug, args.clinicKey))
     .limit(1);
@@ -121,6 +128,19 @@ async function main(): Promise<void> {
     byConversation.set(row.conversationId, bucket);
   }
 
+  // Identidade do tenant: nome comercial + marcos de endereço declarados fora do
+  // repositório. O corpus troca o id do tenant por hash para não identificá-lo, e
+  // o nome da clínica dentro da própria mensagem desfaria isso. Não há regra
+  // geral para reconhecê-los, então a lista é explícita e vale só o que contém.
+  const identityTerms: IdentityTerm[] = [
+    ...(clinic.name ? [{ term: clinic.name, marker: "[NEGOCIO]" }] : []),
+    ...(process.env.CORPUS_REDACT_PLACES ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((term) => ({ term, marker: "[LOCAL]" })),
+  ];
+
   const candidates: CorpusCandidate[] = [];
   for (const [conversationId, rows] of byConversation) {
     const leadName = leadNameById.get(
@@ -131,6 +151,7 @@ async function main(): Promise<void> {
         conversationHash: opaqueRef(hashKey, [clinic.slug ?? "", conversationId]),
         tenantHash: opaqueRef(hashKey, [clinic.slug ?? ""]),
         leadName,
+        identityTerms,
         rows,
       }),
     );
@@ -193,6 +214,7 @@ export function buildCandidates(params: {
   conversationHash: string;
   tenantHash: string;
   leadName: string | null;
+  identityTerms?: readonly IdentityTerm[];
   rows: SourceRow[];
 }): CorpusCandidate[] {
   const ordered = [...params.rows]
@@ -205,7 +227,7 @@ export function buildCandidates(params: {
   for (let index = 0; index < ordered.length; index += 1) {
     const row = ordered[index]!;
     const authored = row.author === "lead" ? "lead" : row.author === "agent" ? "agent" : "operator";
-    const text = sanitize(row, params.leadName);
+    const text = sanitize(row, params.leadName, params.identityTerms);
 
     if (row.author !== "lead") {
       history.push({ author: authored, body: text });
@@ -236,8 +258,18 @@ export function buildCandidates(params: {
       capturedAt: row.sentAt.toISOString(),
       leadMessage: text,
       history: history.slice(-HISTORY_TURNS),
-      aiResponse: joinReplies(untilNextLead, "agent", params.leadName),
-      humanResponse: joinReplies(untilNextLead, "clinic_user", params.leadName),
+      aiResponse: joinReplies(
+        untilNextLead,
+        "agent",
+        params.leadName,
+        params.identityTerms,
+      ),
+      humanResponse: joinReplies(
+        untilNextLead,
+        "clinic_user",
+        params.leadName,
+        params.identityTerms,
+      ),
       // O intent que a V1 resolveu em produção é gravado na mensagem da IA que
       // responde ao turno, nunca na mensagem do lead: 2.488 das 2.600 de agente
       // têm o campo, e nenhuma das 7.802 de lead tem. É o único registro barato
@@ -259,19 +291,27 @@ function joinReplies(
   rows: SourceRow[],
   author: "agent" | "clinic_user",
   leadName: string | null,
+  identityTerms?: readonly IdentityTerm[],
 ): string | null {
   const parts = rows
     .filter((row) => row.author === author)
-    .map((row) => sanitize(row, leadName));
+    .map((row) => sanitize(row, leadName, identityTerms));
   return parts.length > 0 ? parts.join("\n") : null;
 }
 
-function sanitize(row: SourceRow, leadName: string | null): string {
+function sanitize(
+  row: SourceRow,
+  leadName: string | null,
+  identityTerms: readonly IdentityTerm[] = [],
+): string {
   // Duas barreiras, não uma. A do replay foi escrita para artefato que fica fora
   // do Git; a do corpus existe porque o caso rotulado é commitado, e cobre as
   // formas que a primeira deixou passar — nome dentro de nome de arquivo,
   // payload de Pix, UUID grudado em dígitos, domínio sem esquema.
-  const sanitized = redactCorpusText(sanitizeReplayText(row.body, leadName));
+  const sanitized = redactCorpusText(
+    sanitizeReplayText(row.body, leadName),
+    identityTerms,
+  );
   const marker = row.mediaType ? `[MIDIA:${row.mediaType.toUpperCase()}]` : "";
   return [marker, sanitized].filter(Boolean).join(" ") || "[SEM_TEXTO]";
 }

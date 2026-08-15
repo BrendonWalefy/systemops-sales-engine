@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-15T19:20:59.859Z",
+  "generatedAt": "2026-08-15T19:52:03.886Z",
   "corpus": {
     "totalCases": 66,
     "shardHashes": {
@@ -232,7 +232,7 @@
     "v1Responses": {
       "responses": 33,
       "medianCharacters": 156,
-      "responsesOver400Characters": 7,
+      "responsesOver400Characters": 6,
       "responsesWithTwoOrMoreQuestions": 9,
       "responsesQuotingUnauthorizedPrice": 3,
       "responsesRepeatingPreviousBlock": 2,
@@ -258,14 +258,22 @@
     },
     "judge": {
       "model": "claude-sonnet-5",
-      "blocked": true,
-      "reason": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011Ce55Q3cHcQhbL2p7cKJWx\"}",
-      "pairs": 14
+      "pairs": 14,
+      "judgements": 28,
+      "aiWins": 1,
+      "humanWins": 0,
+      "ties": 13,
+      "unstableVerdicts": 2,
+      "unstableRate": 0.14285714285714285,
+      "longerAnswerWonRate": 1,
+      "averageAiCharacters": 308,
+      "averageHumanCharacters": 155,
+      "errors": 0
     }
   },
   "cost": {
     "classifierCalls": 64,
-    "averageClassifierLatencyMs": 1222,
-    "wallClockMs": 86262
+    "averageClassifierLatencyMs": 1273,
+    "wallClockMs": 120636
   }
 }
