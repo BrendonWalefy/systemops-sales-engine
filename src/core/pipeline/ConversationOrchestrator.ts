@@ -326,6 +326,7 @@ import { shouldDiscardComposedReply } from "@/core/pipeline/composed-reply-super
 import { resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
 import { buildComposerTelemetryMetadata } from "@/core/conversation/composer-telemetry";
+import { buildTurnFailureReport } from "@/core/pipeline/turn-failure-report";
 export { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
@@ -7753,8 +7754,22 @@ export class ConversationOrchestrator {
         timestamp: runtimeNow().toISOString(),
       };
       console.error("[Orchestrator] Falha no processamento — needs_human silencioso:", errorContext);
-      // TODO: Sentry.captureException(err, { tags: { clinicId }, extra: errorContext })
-      // Agregação por org, alerta só se taxa de erro > 3%/hora (ver P0.6-CRASH-TIMEOUT-FALLBACK.md)
+      // Captura real: `log.error` é o único canal que encaminha para o Sentry, e
+      // já aplica a redação de PII de `scrubEvent`. clinicId e conversationId
+      // viram tags pelo LogContext; o corpo da conversa não entra em lugar nenhum.
+      buildTurnFailureReport({
+        clinicId,
+        conversationId: conversation.id,
+        leadId: lead.id,
+        messageId,
+        error: err,
+        log: createLogger({
+          scope: "Orchestrator",
+          correlationId: messageId,
+          clinicId,
+          conversationId: conversation.id,
+        }),
+      });
 
       try {
         await db
