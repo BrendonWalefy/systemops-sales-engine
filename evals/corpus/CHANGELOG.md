@@ -33,3 +33,26 @@ número deste corpus deve ser citado como calibrado.
 balde declarado de sobra da amostragem: 34,9% dos turnos reais não casam com
 nenhuma regra de jornada, e chamá-los de "procedure" fabricaria casos que ninguém
 verificou.
+
+## 2026-08-15 — correção de PII no lote 1
+
+Uma varredura do corpus commitado achou duas formas de PII que a sanitização
+automática deixou passar: o nome completo de um terceiro dentro de um nome de
+arquivo anexado (`Certidao_Nascimento_<nome>.pdf`) e um payload de Pix
+copia-e-cola com domínio de banco e UUID.
+
+Causa de cada escape: nome em nome de arquivo não tem espaço nem título, e
+nenhum detector de nome alcança; o padrão de UUID ancorava em `\b` no fim, que
+não casa quando o UUID é seguido de dígitos, como no Pix; o padrão de URL exigia
+esquema `http(s)://`; e não havia detector de payload de pagamento.
+
+`redactCorpusText` passou a ser a segunda barreira, aplicada na extração e de
+novo como recusa no parse. O corpus foi re-extraído, re-amostrado e reconstruído
+inteiro; a seleção é determinística e a redação não muda identificador, então os
+mesmos 41 turnos voltaram na mesma ordem e todos os rótulos continuam válidos.
+
+Os bytes vazados foram removidos dos quatro commits que os carregavam. A branch
+nunca foi publicada.
+
+**Nenhum caso mudou de rótulo.** O baseline foi remedido sobre o texto redigido
+e é idêntico: 71,9% no eixo `request`, 18 confusões, 55 puros / 11 com I/O.
