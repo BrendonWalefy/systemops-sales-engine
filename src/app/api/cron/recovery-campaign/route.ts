@@ -17,8 +17,7 @@ import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import OpenAI from "openai";
 import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
-import { buildComposerTelemetryMetadata } from "@/core/conversation/composer-telemetry";
-import { recordDecisionTrace } from "@/core/observability/DecisionTrace";
+import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import type { ComposedResponse } from "@/core/intelligence/ResponseComposer";
 import {
@@ -335,23 +334,11 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
       }
 
       const message = planned.response.text;
-      await recordDecisionTrace(traceSink, {
+      await recordAutomationResponseTrace(traceSink, {
         turnId: `recovery:${lead.lead_id}:${now.toISOString().slice(0, 10)}`,
-        stage: "response.validated",
-        occurredAt: new Date().toISOString(),
         clinicId,
         conversationId: lead.conv_id,
-        metadata: {
-          action: planned.plan.action,
-          valid: planned.source === "composer",
-          violationCount: planned.violations.length,
-          violations: planned.violations.join(","),
-          requiresHandoff: planned.requiresHandoff,
-          ...buildComposerTelemetryMetadata({
-            response: planned.response,
-            latencyMs: planned.composerLatencyMs,
-          }),
-        },
+        planned,
       });
 
       // Reengajamento passa pela outbox → Safety Gate (opt-out, caps, quiet

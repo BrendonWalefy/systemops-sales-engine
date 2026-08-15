@@ -13,6 +13,8 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import {
   FOLLOW_UP_MAX_CHARACTERS,
   buildFollowUpPlanInput,
@@ -280,6 +282,12 @@ async function processOneFollowUp(
       isFirstMessage: false,
     },
     planInput: buildFollowUpPlanInput({ maxCharacters: FOLLOW_UP_MAX_CHARACTERS }),
+  });
+  await recordAutomationResponseTrace(createRuntimeDecisionTraceSink(), {
+    turnId: `follow-up:${followUp.id}`,
+    clinicId: clinic.id,
+    conversationId: conv.id,
+    planned,
   });
   const composed = planned.response;
 

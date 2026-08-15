@@ -14,6 +14,8 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
 import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import {
   REMINDER_MAX_CHARACTERS,
   buildReminderComposerInput,
@@ -104,6 +106,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const conversationRepository = new DrizzleConversationRepository();
   const stateMachine = new ConversationStateMachine();
   const planner = new ConversationResponsePlanner();
+  const traceSink = createRuntimeDecisionTraceSink();
 
   const now = new Date();
   const windowStart = new Date(now.getTime() + WINDOW_START_HOURS * 60 * 60 * 1000);
@@ -179,6 +182,12 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         planInput: buildReminderPlanInput({
           maxCharacters: REMINDER_MAX_CHARACTERS,
         }),
+      });
+      await recordAutomationResponseTrace(traceSink, {
+        turnId: `reminder:${appointment.id}`,
+        clinicId,
+        conversationId: conversation.id,
+        planned,
       });
       const composed = planned.response;
 
