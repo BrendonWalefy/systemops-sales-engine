@@ -59,17 +59,17 @@ e é idêntico: 71,9% no eixo `request`, 18 confusões, 55 puros / 11 com I/O.
 
 ## C.7 — segunda revisão e quarto vazamento de PII
 
-A segunda revisão do pacote final devolveu, na própria folha, um primeiro nome de
-paciente: `scheduling-0001` trazia "Olá [PACIENTE] boa tarde". O lead está
-cadastrado como "Cleberson"; o operador digitou errado. A redação de identidade
+A segunda revisão do pacote final devolveu, na própria folha, um primeiro nome
+de paciente: `scheduling-0001` abria com uma saudação seguida do nome. O lead
+está cadastrado com uma grafia e o operador digitou outra. A redação de identidade
 casa token exato contra o cadastro, então grafia errada não é alcançada por
 construção, e nenhum detector procurava nome solto — nome de pessoa não tem forma
 reconhecível como telefone tem.
 
 O vocativo depois da saudação tem forma: é posição, não grafia. A regra passou a
 valer na barreira, no detector do parse e no auditor, a partir de uma fonte só.
-Rodada sobre os 66 casos, achou um segundo nome que ninguém tinha visto —
-"Fala [PACIENTE]", em `procedure-0001` — e nenhum falso positivo.
+Rodada sobre os 66 casos, achou um segundo nome que ninguém tinha visto, em
+`procedure-0001`, e nenhum falso positivo.
 
 **Nenhum caso mudou de rótulo.** Só dois textos mudaram, e a mudança é a troca do
 nome por `[PACIENTE]`.
