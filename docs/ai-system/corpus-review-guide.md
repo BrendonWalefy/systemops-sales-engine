@@ -35,8 +35,37 @@ Escreva `S` ou `N` dentro de cada colchete, na ordem das quatro perguntas:
 | --- | --- | --- |
 | 1 | O dado afirmado estava correto no momento? | preço, horário, serviço, garantia ou endereço divergem dos fatos listados no caso |
 | 2 | A resposta tratou o que o lead levantou? | a pergunta, a objeção, a reclamação ou a foto ficaram sem tratamento |
-| 3 | A conversa ficou mais perto de um próximo passo concreto? | o turno termina sem nada que o lead possa fazer a seguir |
+| 3 | A resposta reduz de forma relevante a distância até uma resolução ou próximo passo válido? | o turno só reconhece, cumprimenta ou encerra socialmente — ou o passo que ele oferece é fabricado |
 | 4 | Você mandaria exatamente isso hoje? | você reescreveria antes de enviar |
+
+### Pergunta 3 — o que conta como avanço
+
+Definição adotada no C.8, depois de essa pergunta ser a única divergência que
+sobrou entre dois revisores independentes com régua e folha já corrigidas. A
+formulação anterior — "ficou mais perto de um próximo passo" — não dizia se
+reconhecer aproxima, e dois julgamentos honestos podiam divergir para sempre.
+
+**Conta como avanço** (a resposta reduz a distância até a resolução):
+
+- responde informação necessária;
+- reduz ambiguidade;
+- coleta informação necessária para uma próxima ação;
+- trata uma objeção de forma útil;
+- executa ou confirma uma ação válida.
+
+**Não conta:** mero reconhecimento, saudação, encerramento social. Cortesia não é
+avanço — "fico à disposição" e "obrigado pela confirmação" deixam a conversa
+exatamente onde estava.
+
+**Pergunta de clarificação conta quando** coleta informação realmente necessária
+para a próxima ação. Não conta quando devolve ao lead algo que ele já disse, ou
+que a configuração do tenant já responde: aí ela custa uma volta e não coleta
+nada.
+
+**Ação ou disponibilidade fabricada nunca conta**, por mais que aparente mover a
+conversa. Horário inventado, desconto inexistente e agendamento que não foi feito
+afastam da resolução em vez de aproximar — o lead vai agir sobre algo que não
+existe.
 
 Três regras que valem mais do que a intuição:
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  REVIEW_CHECKLIST_QUESTIONS,
   compareProseLabels,
   deriveBetterResponder,
   deriveProseLabel,
@@ -14,6 +15,20 @@ const allTrue = {
 } satisfies ReviewChecklist;
 
 describe("derivação de rótulo de prosa", () => {
+  // A pergunta é a régua: se ela não distingue reconhecer de avançar, dois
+  // revisores honestos divergem para sempre. Foi a única divergência que sobrou
+  // depois de corrigir régua e renderer no C.7.
+  it("a pergunta de avanço distingue reconhecer de aproximar de um passo", () => {
+    const question = REVIEW_CHECKLIST_QUESTIONS.find(
+      (item) => item.field === "advancedTheJourney",
+    )!.question;
+
+    expect(question).toContain("reduz");
+    expect(question).toMatch(/reconhecimento|saudação|encerramento social/);
+    expect(question).toMatch(/clarificação|clarifica/);
+    expect(question).toContain("fabricad");
+  });
+
   // A regra existe para impedir que uma resposta humana vire referência só por
   // ser humana: se o dado dito estava errado, nada mais compensa.
   it("erro de fato nunca é golden, mesmo com todo o resto bom", () => {

@@ -25,12 +25,29 @@ export type ReviewChecklist = {
    */
   addressedWhatTheLeadRaised: boolean;
   /**
-   * A resposta aproximou a conversa de um próximo passo **válido, relevante e
-   * executável** com os fatos e o estado disponíveis?
+   * A resposta **reduziu de forma relevante a distância** até uma resolução ou
+   * um próximo passo válido?
    *
-   * Passo fabricado não é avanço. Oferecer horário realmente consultado pode
-   * ser avanço; inventar horário não é. Oferecer desconto inexistente não é.
-   * Responder à objeção e propor um próximo passo legítimo é.
+   * Contam como redução de distância:
+   *
+   * - responder informação necessária;
+   * - reduzir ambiguidade;
+   * - coletar informação necessária para uma próxima ação;
+   * - tratar uma objeção de forma útil;
+   * - executar ou confirmar uma ação válida.
+   *
+   * Não contam: reconhecimento, saudação e encerramento social — cortesia não é
+   * avanço. Pergunta de clarificação conta **quando** coleta informação
+   * realmente necessária, e não conta quando devolve ao lead algo que ele já
+   * disse ou que a configuração já responde. Ação ou disponibilidade fabricada
+   * nunca conta, por mais que aparente mover a conversa: horário inventado,
+   * desconto inexistente e agendamento não realizado afastam da resolução em
+   * vez de aproximar.
+   *
+   * Redigida assim depois do C.7, onde a formulação anterior — "aproximou de um
+   * próximo passo válido" — foi a única divergência que sobrou entre dois
+   * revisores honestos depois de corrigidos régua e renderer. Ela não dizia se
+   * reconhecer aproxima.
    */
   advancedTheJourney: boolean;
   /** Você mandaria exatamente isso hoje, para este lead, neste ponto? */
@@ -54,7 +71,7 @@ export const REVIEW_CHECKLIST_QUESTIONS: ReadonlyArray<{
   {
     field: "advancedTheJourney",
     question:
-      "A conversa ficou mais perto de um próximo passo válido, relevante e executável com os fatos e o estado disponíveis? Passo fabricado (horário inventado, desconto inexistente) NÃO conta como avanço.",
+      "A resposta reduz de forma relevante a distância até uma resolução ou um próximo passo válido? Conta: responder informação necessária, reduzir ambiguidade, coletar informação necessária para a próxima ação, tratar uma objeção de forma útil, executar ou confirmar uma ação válida. NÃO conta: mero reconhecimento, saudação ou encerramento social. Pergunta de clarificação conta quando coleta informação realmente necessária. Ação ou disponibilidade fabricada (horário inventado, desconto inexistente, agendamento não realizado) NUNCA conta.",
   },
   {
     field: "wouldRepeatToday",
