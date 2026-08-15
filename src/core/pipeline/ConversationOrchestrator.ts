@@ -3990,6 +3990,7 @@ export class ConversationOrchestrator {
           conversationExperience: clinicExperience,
           conciergeVerbosity: conciergeConfig?.verbosity,
           conciergeDrive: conciergeConfig?.drive,
+          maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
           resumedFromHumanTakeover: false,
         },
         planInput: {
@@ -5246,6 +5247,7 @@ export class ConversationOrchestrator {
             conversationExperience: experience,
             conciergeVerbosity: conciergeConfig?.verbosity,
             conciergeDrive: conciergeConfig?.drive,
+            maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
             resumedFromHumanTakeover,
             voiceResponseEnabled: voiceEnabled,
           },
