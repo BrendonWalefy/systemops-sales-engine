@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { CorpusCase } from "@/application/corpus/corpus-case";
+import type { CorpusCase, Journey } from "@/application/corpus/corpus-case";
 import { REVIEW_CHECKLIST_QUESTIONS } from "@/application/corpus/review-checklist";
 
 /**
@@ -54,6 +55,69 @@ function quote(text: string | null): string {
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n");
+}
+
+/**
+ * Amostra estratificada de calibração.
+ *
+ * Existe porque a primeira folha saiu na ordem alfabética dos shards e não
+ * continha `price` nem `objection` — as duas jornadas de julgamento mais difícil
+ * ficaram fora justamente da amostra que serve para calibrar o julgamento.
+ *
+ * Um grupo pode reunir jornadas vizinhas (agenda e agendamento; ambiguidade e
+ * comparação) porque o que se calibra é o tipo de decisão, não o shard.
+ */
+export type CalibrationQuota = ReadonlyArray<{
+  journeys: readonly Journey[];
+  count: number;
+}>;
+
+export function selectCalibrationSample(
+  cases: readonly CorpusCase[],
+  quota: CalibrationQuota,
+): CorpusCase[] {
+  const selected: CorpusCase[] = [];
+
+  for (const group of quota) {
+    const pool = cases.filter((entry) => group.journeys.includes(entry.journey));
+
+    // Agrupa por origem e serve em rodízio: um grupo servido só por casos
+    // sintéticos ensina o revisor a reconhecer o formato do defeito em vez de
+    // julgar a resposta. Ordenação por hash estável do caseId, nunca aleatória.
+    const byKind = new Map<CorpusCase["source"]["kind"], CorpusCase[]>();
+    for (const entry of pool) {
+      const bucket = byKind.get(entry.source.kind) ?? [];
+      bucket.push(entry);
+      byKind.set(entry.source.kind, bucket);
+    }
+    const kinds = [...byKind.keys()].sort();
+    for (const kind of kinds) {
+      byKind.get(kind)!.sort((a, b) =>
+        stableRank(a.caseId).localeCompare(stableRank(b.caseId)),
+      );
+    }
+
+    const taken: CorpusCase[] = [];
+    for (let round = 0; taken.length < group.count; round += 1) {
+      let progressed = false;
+      for (const kind of kinds) {
+        if (taken.length >= group.count) break;
+        const entry = byKind.get(kind)?.[round];
+        if (entry) {
+          taken.push(entry);
+          progressed = true;
+        }
+      }
+      if (!progressed) break;
+    }
+    selected.push(...taken);
+  }
+
+  return selected;
+}
+
+function stableRank(caseId: string): string {
+  return createHash("sha256").update(caseId).digest("hex");
 }
 
 export function renderReviewSheet(params: {

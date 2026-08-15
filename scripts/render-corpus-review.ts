@@ -1,13 +1,37 @@
 import { writeFileSync } from "node:fs";
 import { loadCorpus } from "@/application/corpus/corpus-index";
-import { renderReviewSheet } from "@/application/corpus/review-sheet";
+import {
+  renderReviewSheet,
+  selectCalibrationSample,
+  type CalibrationQuota,
+} from "@/application/corpus/review-sheet";
 
 /**
  * Gera a folha de revisão em Markdown. Não toca banco e não altera o corpus.
  *
- * Por padrão emite os 20 primeiros casos, que são os de calibração: é neles que
- * a concordância entre revisores é medida antes de o resto ser revisado.
+ * `--stratified` emite a amostra de calibração: 20 casos escolhidos por cota de
+ * jornada e com rodízio de origem, em vez dos 20 primeiros na ordem alfabética
+ * dos shards — que deixava `price` e `objection` de fora, justamente as duas
+ * jornadas de julgamento mais difícil.
  */
+
+/**
+ * Cota de calibração, calibrada pelo risco real do produto e não pelo volume:
+ * preço e objeção pesam mais do que aparecem, porque é onde um julgamento errado
+ * custa dinheiro ou reclamação.
+ */
+const CALIBRATION_QUOTA: CalibrationQuota = [
+  { journeys: ["price"], count: 4 },
+  { journeys: ["objection"], count: 3 },
+  { journeys: ["availability", "scheduling"], count: 3 },
+  { journeys: ["other"], count: 2 },
+  { journeys: ["burst"], count: 2 },
+  { journeys: ["ambiguity", "comparison"], count: 2 },
+  { journeys: ["media"], count: 1 },
+  { journeys: ["first-contact"], count: 1 },
+  { journeys: ["handoff"], count: 1 },
+  { journeys: ["injection"], count: 1 },
+];
 function main(): void {
   const argv = process.argv.slice(2);
   const out = value(argv, "--out") ?? "corpus-review.md";
@@ -15,9 +39,11 @@ function main(): void {
   const journey = value(argv, "--journey");
 
   const corpus = loadCorpus("evals/corpus");
-  const selected = corpus.cases
-    .filter((entry) => (journey ? entry.journey === journey : true))
-    .slice(0, limit);
+  const selected = argv.includes("--stratified")
+    ? selectCalibrationSample(corpus.cases, CALIBRATION_QUOTA)
+    : corpus.cases
+        .filter((entry) => (journey ? entry.journey === journey : true))
+        .slice(0, limit);
 
   writeFileSync(
     out,

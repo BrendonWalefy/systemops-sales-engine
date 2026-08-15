@@ -127,6 +127,31 @@ function git(args: string[]): string {
 
 function main(): void {
   const argv = process.argv.slice(2);
+
+  // `--file` audita um artefato solto — tipicamente uma folha de revisão que
+  // vive fora do repositório e vai para um terceiro. Mesmos detectores, mesma
+  // deny-list; auditar isso com um script paralelo seria auditar outra coisa.
+  const singleFile = value(argv, "--file");
+  if (singleFile) {
+    const terms = identityTerms();
+    const findings = scan(`file:${singleFile}`, readFileSync(singleFile, "utf8"), terms);
+    const blocking = findings.filter((finding) => isAccepted(finding) === null);
+    console.log(
+      JSON.stringify(
+        {
+          file: singleFile,
+          identityTermsConfigured: terms.length,
+          findings,
+          verdict: blocking.length === 0 ? "clean" : "PII FOUND — do not share",
+        },
+        null,
+        2,
+      ),
+    );
+    if (blocking.length > 0) process.exitCode = 1;
+    return;
+  }
+
   const base = value(argv, "--base") ?? "origin/main";
   const paths = (value(argv, "--paths") ?? "evals/corpus,docs/ai-system").split(",");
   const terms = identityTerms();
