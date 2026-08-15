@@ -89,6 +89,35 @@ describe("barreira de PII do corpus", () => {
     );
   });
 
+  // O operador escreveu "Weberson" para um lead cadastrado como "Cleberson".
+  // Redação por token exato não alcança variante grafada errado, e o nome
+  // sobreviveu até a folha que ia para um revisor externo. O vocativo depois da
+  // saudação é a defesa que não depende de o nome bater com o cadastro.
+  it("redige nome usado como vocativo depois da saudação", () => {
+    expect(redactCorpusText("Olá Weberson boa tarde")).toBe(
+      "Olá [PACIENTE] boa tarde",
+    );
+    expect(redactCorpusText("Oi Camila, tudo bem?")).toBe(
+      "Oi [PACIENTE], tudo bem?",
+    );
+    expect(redactCorpusText("Bom dia Thiago")).toBe("Bom dia [PACIENTE]");
+    expect(redactCorpusText("Fala Danilo")).toBe("Fala [PACIENTE]");
+  });
+
+  // Saudação seguida de palavra comum não é vocativo, e engolir isso destruiria
+  // o texto que o revisor precisa julgar.
+  it("não confunde continuação de frase com vocativo", () => {
+    for (const text of [
+      "Boa tarde! Tudo bem?",
+      "Olá! Como posso ajudar?",
+      "Bom dia. Nosso horário é das 8h às 18h",
+      "Oi, quanto custa a lente?",
+      "Boa noite, Sei que é tarde",
+    ]) {
+      expect(redactCorpusText(text)).toBe(text);
+    }
+  });
+
   it("preserva o texto de conversa que interessa avaliar", () => {
     expect(redactCorpusText("quanto custa a lente de resina? fica R$ 2.000")).toBe(
       "quanto custa a lente de resina? fica R$ 2.000",

@@ -116,6 +116,22 @@ describe("schema do caso de corpus", () => {
     expect(() => parseCorpusCase(withPhone)).toThrow(/PII/i);
   });
 
+  // A redação por token exato não alcança nome grafado errado, e um primeiro
+  // nome atravessou a barreira até uma folha entregue a revisor externo. O
+  // parse é a última chance de barrar: se o texto ainda tem vocativo, não foi
+  // sanitizado.
+  it("recusa primeiro nome sobrevivente como vocativo depois da saudação", () => {
+    const withName = validCase() as { observed: { humanResponse: string } };
+    withName.observed.humanResponse = "Olá Weberson boa tarde";
+    expect(() => parseCorpusCase(withName)).toThrow(/PII/i);
+  });
+
+  it("aceita saudação seguida de palavra comum, que não é nome", () => {
+    const withoutName = validCase() as { observed: { humanResponse: string } };
+    withoutName.observed.humanResponse = "Bom dia Nosso horário é das 8h às 18h";
+    expect(() => parseCorpusCase(withoutName)).not.toThrow();
+  });
+
   it("exige referência de config de tenant, nunca o tenant real", () => {
     const withoutRef = validCase() as { input: Record<string, unknown> };
     delete withoutRef.input.tenantConfigRef;

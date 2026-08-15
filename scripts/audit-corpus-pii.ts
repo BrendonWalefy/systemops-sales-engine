@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { CORPUS_RESIDUAL_PII_DETECTORS } from "@/application/corpus/redact-corpus-text";
 
 /**
  * Auditoria de PII sobre tudo que será publicado.
@@ -36,6 +37,10 @@ const DETECTORS: ReadonlyArray<{ kind: string; pattern: RegExp }> = [
     pattern: /[\p{L}\p{N}_-]+\.(?:pdf|docx?|xlsx?|pptx?|csv|jpe?g|png|heic|mp4|mp3|ogg|opus|zip)\b/giu,
   },
   { kind: "payload-longo", pattern: /\b\d{20,}/g },
+  // Primeiro nome em vocativo. Vem da barreira, não de uma cópia: foi
+  // justamente um detector que não existia aqui que deixou "Olá <Nome>" chegar
+  // a uma folha entregue a terceiro.
+  { kind: "nome-apos-saudacao", pattern: CORPUS_RESIDUAL_PII_DETECTORS.greetingVocative! },
   {
     kind: "endereco",
     pattern: /\b(?:rua|avenida|av\.|alameda|travessa|rodovia|estrada)\s+\p{Lu}/giu,

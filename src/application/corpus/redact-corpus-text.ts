@@ -40,6 +40,55 @@ const FILENAME_RE =
 const UUID_ANYWHERE_RE =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\d*/gi;
 
+/**
+ * Palavras que aparecem depois de uma saudação e não são nome de pessoa.
+ *
+ * A lista é empírica e nunca estará completa — e não precisa estar. Os dois
+ * erros possíveis não custam a mesma coisa: uma palavra faltando aqui redige um
+ * termo comum, o que aparece na revisão e se conserta; um nome que passa é
+ * irreversível assim que o commit sai. Na dúvida, sobra-redigir.
+ */
+const NOT_A_NAME = [
+  "tudo", "como", "que", "qual", "quanto", "quando", "onde", "preciso",
+  "posso", "pode", "queria", "quero", "gostaria", "sei", "estou", "estamos",
+  "nosso", "nossa", "aqui", "sou", "seja", "seria", "segue", "sem", "com",
+  "para", "por", "obrigado", "obrigada", "perfeito", "entendi", "claro",
+  "desculpa", "perdão", "muito", "meu", "minha", "temos", "tenho", "você",
+  "vocês", "boa", "bom", "dia", "tarde", "noite", "doutor", "doutora",
+  "atendimento", "time", "equipe", "clínica", "não", "sim", "ainda", "então",
+  "mas", "vou", "vamos", "vai", "tem", "ele", "ela", "isso", "esse", "essa",
+  "esta", "este", "uma", "aqui", "agora", "hoje", "amanhã", "sobre", "vim",
+  "consegue", "poderia", "tudo", "somos", "estamos", "estava", "fico", "fica",
+];
+
+/**
+ * Vocativo depois da saudação: "Olá <Nome>", "Bom dia <Nome>", "Fala <Nome>".
+ *
+ * Existe porque redigir por token exato não alcança nome grafado errado. Um
+ * operador escreveu "Weberson" para um lead cadastrado como "Cleberson", e o
+ * nome atravessou a sanitização até uma folha destinada a revisor externo. O
+ * vocativo não depende de o nome bater com o cadastro.
+ *
+ * A saudação precisa terminar sem pontuação — "Boa tarde! Tudo bem?" não é
+ * vocativo — e a palavra seguinte não pode ser uma continuação comum de frase,
+ * senão a regra comeria justamente o texto que o revisor precisa ler.
+ *
+ * A regex é sensível a caixa de propósito: o nome vem capitalizado. Por isso a
+ * saudação lista as duas grafias em vez de ligar a flag `i`, que apagaria a
+ * exigência de maiúscula, e a exclusão usa a forma capitalizada das palavras
+ * comuns — é a única que pode ocupar a posição do vocativo.
+ */
+function greetingVocativeRe(): RegExp {
+  const stop = NOT_A_NAME.map(
+    (word) => word[0]!.toUpperCase() + word.slice(1),
+  ).join("|");
+  return new RegExp(
+    "([Oo]l[áa]|[Oo]i|[Bb]om dia|[Bb]oa tarde|[Bb]oa noite|[Ff]ala|[Ee] a[íi])" +
+      `\\s+(?!(?:${stop})\\b)(\\p{Lu}\\p{Ll}{2,})\\b`,
+    "gu",
+  );
+}
+
 const SCHEMELESS_URL_RE =
   /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|br|io|app|me|gov)(?:\.[a-z]{2})?(?:\/[^\s]*)?/gi;
 
@@ -94,6 +143,7 @@ export function redactCorpusText(
     )
     .replace(FILENAME_RE, "[ARQUIVO]")
     .replace(SCHEMELESS_URL_RE, "[URL]")
+    .replace(greetingVocativeRe(), "$1 [PACIENTE]")
     // Um bloco contínuo redigido por mais de uma regra vira uma marca só. O Pix
     // casa UUID e payload, e "[PAGAMENTO][ID]" só faria o leitor procurar dois
     // segredos onde havia um.
@@ -122,4 +172,8 @@ export const CORPUS_RESIDUAL_PII_DETECTORS: Readonly<Record<string, RegExp>> = {
   schemelessUrl:
     /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|br|io|app|me|gov)(?:\.[a-z]{2})?\//gi,
   uuid: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+  // Mesma regra da redação, e de propósito a mesma fonte: detector e barreira
+  // que divergem deixam passar exatamente o que um dos dois acha que o outro
+  // pegou.
+  greetingVocative: greetingVocativeRe(),
 };
