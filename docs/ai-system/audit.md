@@ -102,6 +102,43 @@ o caminho onde a proteção existente seria mais barata de aplicar — a
 
 **Classificação.** ARCHITECTURE + BUSINESS LOGIC + OBSERVABILITY.
 
+#### Correção do Ciclo B (15/08) — a contagem por chamador estava medindo a coisa errada
+
+Fechados: lembrete, follow-up e a Server Action passam por plano + validador +
+fallback. `ResponseComposer.compose()` tem hoje **3** chamadores — o planner e os
+dois internos (`playbook/simulate`, `generate-demo-conversation`), verificados por
+`grep` como incapazes de enviar: nenhum dos dois chama `enqueueOutboundMessage`
+nem `appendMessage`.
+
+Duas correções na tabela acima, derivadas do código e não da auditoria:
+
+1. `app/actions.ts:153` foi classificado como "lead". **Não é.** É
+   `runAutonomousReceptionistTurn`, a demo pública consumida por
+   `src/app/demo-flow.tsx` — clínica fictícia, slots gerados, retorno para o
+   navegador. Foi roteado pelo planner mesmo assim, porque preço inventado em
+   material de venda é uma promessa comercial.
+
+2. **A premissa da tabela estava errada.** Contar chamadores de
+   `ResponseComposer.compose()` mede quem usa *aquela classe*, não quem manda
+   texto de LLM para o lead. Três caminhos escrevem o próprio prompt, chamam a
+   OpenAI direto e enfileiram o resultado, sem nunca tocar no composer — e por
+   isso nunca apareceram na auditoria:
+
+   | Caminho | Gate hoje | Plano/validador |
+   |---|---|---|
+   | [`cron/recovery-campaign/route.ts:263`](../../src/app/api/cron/recovery-campaign/route.ts#L263) | **nenhum** — cron agendado 2×/dia em `vercel.json`, só `shouldSendAutomatedClinicOutbound` | não |
+   | [`inbox/recovery-actions.ts:171`](../../src/app/(clinic)/app/inbox/recovery-actions.ts#L171) | operador dispara pelo inbox | não |
+   | [`reactivation/dispatch-campaign.ts:263`](../../src/application/reactivation/dispatch-campaign.ts#L263) | dupla aprovação humana (campanha + alvo) | não |
+
+   O primeiro é o que importa: `composeRecoveryMessage` monta um prompt próprio,
+   chama `chat.completions.create` e o texto vai para a outbox sem plano, sem
+   validador, sem revisão e sem humano nenhum no caminho. É o mesmo defeito do
+   P0-2, num caminho que o P0-2 não enxergou.
+
+   Não foi corrigido no Ciclo B: fechá-lo exige projetar um `ActionResult` e um
+   plano para reengajamento de recuperação, que é desenho e não fiação. Fica
+   registrado como decisão do autor, não como pendência esquecida.
+
 ---
 
 ### P1-3 — `handle()` tem 4.572 linhas em um único método
