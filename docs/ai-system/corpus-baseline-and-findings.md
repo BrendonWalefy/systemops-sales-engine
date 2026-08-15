@@ -350,13 +350,61 @@ de que o core ramifica por domínio.
 
 ---
 
+## Segunda revisão do C.7 e o que ela mede
+
+Pacote cego final, 20 casos, revisor de outra família de modelo, depois de as
+fixtures ganharem fatos com proveniência e de o corpus registrar side effects.
+24 pares (caso × respondente) comparados; casos marcados como inválidos ficam
+fora. Números em [`agreement-r1-r2.json`](../../evals/corpus/agreement-r1-r2.json).
+
+| Pergunta | Concordância | Limiar |
+|---|---|---|
+| `factuallyCorrect` | 18/24 — 75,0% | 80% |
+| `addressedWhatTheLeadRaised` | 24/24 — 100,0% | 80% |
+| `advancedTheJourney` | 17/24 — 70,8% | 80% |
+| `wouldRepeatToday` | 17/24 — 70,8% | 80% |
+
+As 20 divergências têm a mesma direção — primeiro revisor `sim`, segundo `não` —
+e três causas distintas. A direção única é o achado: não é ruído entre dois
+julgamentos, é um revisor sendo mais permissivo que o outro de forma sistemática.
+
+**Régua nunca aplicada (11 divergências, 5 casos).** `price-0006`, `price-0007`,
+`scheduling-0003`, `handoff-0002` e `burst-0002` estão marcados `golden` desde a
+primeira revisão e **nunca passaram** pela re-derivação do C.6 — a régua estrita
+existe, mas não os alcançou. A re-derivação foi dirigida por varredura minha, não
+por passagem sistemática, e 25 dos 66 casos ficaram de fora. Dez das 15
+avaliações `golden` do corpus estão nesse grupo; cinco delas caíram na amostra
+desta revisão e o segundo revisor derrubou **as cinco**.
+
+**Evidência que existe e a folha não mostra (6 divergências, 2 casos).** Dois
+defeitos do renderer, não do corpus:
+
+- `media-0004` tem o side effect `media_sent` gravado com fonte, e
+  `renderReviewSheet` não imprime `observed.sideEffects`. O revisor julgou "te
+  enviei um vídeo" como afirmação sem lastro porque a folha não tinha o lastro.
+- `comparison-0001` roda sobre uma fixture cujo `services[].description` diz, em
+  texto, "Simplificada (resina nacional)" e "Estratificada (resina importada)".
+  A folha imprime só o agregado — "12 de 17 serviços têm descrição cadastrada" —
+  e o tipo `TenantConfig` do renderer nem carrega o campo `description`.
+
+**Desacordo real (3 divergências, 3 casos).** `price-0001`, `availability-0001` e
+`burst-0002`, todos no mesmo eixo: `advancedTheJourney` quando a resposta
+reconhece, estreita ou confirma sem que exista passo executável. A definição do
+C.6 diz que passo fabricado não avança; ela não diz se reconhecer avança. É a
+única divergência que sobra depois de corrigir régua e renderer, e é uma lacuna
+de definição — resolvê-la é decidir o que a pergunta quer dizer, não quem acertou.
+
 ## O que falta para o Ciclo C estar completo
 
-1. **Dupla revisão.** O corpus tem um revisor só. Material em
-   [`corpus-review-guide.md`](./corpus-review-guide.md); a concordância entre
-   revisores é desconhecida até a segunda passagem.
-2. **Judge par a par.** Bloqueado por crédito na conta Anthropic.
-3. **Repetição do baseline.** Rodada única; a variação observada entre duas
+1. **Régua aplicada ao corpus inteiro.** 25 casos nunca foram re-derivados sob a
+   definição estrita do C.6, entre eles 10 das 15 avaliações `golden`. Enquanto
+   isso não for uma passagem sistemática, o baseline mede duas réguas misturadas.
+2. **Renderer que mostra a evidência que o corpus tem.** `observed.sideEffects` e
+   o conteúdo de `services[].description` não chegam à folha.
+3. **`advancedTheJourney` definida para o caso "reconhece sem passo".**
+4. **Concordância acima de 80% em todas as quatro perguntas.** Hoje: 75,0 / 100,0
+   / 70,8 / 70,8.
+5. **Repetição do baseline.** Rodada única; a variação observada entre duas
    execuções foi de 1,6 ponto.
 
 ## Correções aplicadas no C.5

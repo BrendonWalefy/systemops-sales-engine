@@ -1,60 +1,62 @@
 {
+  "round": "C.7",
+  "note": "Segunda revisão independente feita por modelo de outra família (gpt-5.6-sol) sobre o pacote cego final, depois de as fixtures ganharem fatos com proveniência e de o corpus registrar side effects. Casos marcados como inválidos ficam fora da comparação: calibrar contra ground truth inconsistente mede o defeito do caso.",
   "reviewedCases": 20,
   "byField": {
     "factuallyCorrect": {
-      "compared": 23,
-      "agreed": 14,
-      "rate": 0.6086956521739131
+      "compared": 24,
+      "agreed": 18,
+      "rate": 0.75
     },
     "addressedWhatTheLeadRaised": {
-      "compared": 23,
-      "agreed": 22,
-      "rate": 0.9565217391304348
+      "compared": 24,
+      "agreed": 24,
+      "rate": 1.0
     },
     "advancedTheJourney": {
-      "compared": 23,
-      "agreed": 19,
-      "rate": 0.8260869565217391
+      "compared": 24,
+      "agreed": 17,
+      "rate": 0.7083333333333334
     },
     "wouldRepeatToday": {
-      "compared": 23,
+      "compared": 24,
       "agreed": 17,
-      "rate": 0.7391304347826086
+      "rate": 0.7083333333333334
     }
   },
   "disagreements": [
     {
-      "caseId": "price-0001",
+      "caseId": "price-0007",
       "responder": "human",
       "field": "factuallyCorrect",
       "firstReviewer": true,
       "secondReviewer": false
     },
     {
-      "caseId": "price-0001",
+      "caseId": "price-0007",
       "responder": "human",
       "field": "wouldRepeatToday",
       "firstReviewer": true,
       "secondReviewer": false
     },
     {
-      "caseId": "price-0011",
-      "responder": "ai",
+      "caseId": "price-0001",
+      "responder": "human",
       "field": "advancedTheJourney",
       "firstReviewer": true,
       "secondReviewer": false
     },
     {
-      "caseId": "objection-0001",
+      "caseId": "price-0006",
       "responder": "human",
       "field": "factuallyCorrect",
       "firstReviewer": true,
       "secondReviewer": false
     },
     {
-      "caseId": "objection-0008",
-      "responder": "ai",
-      "field": "factuallyCorrect",
+      "caseId": "price-0006",
+      "responder": "human",
+      "field": "wouldRepeatToday",
       "firstReviewer": true,
       "secondReviewer": false
     },
@@ -62,6 +64,13 @@
       "caseId": "scheduling-0003",
       "responder": "human",
       "field": "factuallyCorrect",
+      "firstReviewer": true,
+      "secondReviewer": false
+    },
+    {
+      "caseId": "scheduling-0003",
+      "responder": "human",
+      "field": "advancedTheJourney",
       "firstReviewer": true,
       "secondReviewer": false
     },
@@ -74,27 +83,20 @@
     },
     {
       "caseId": "availability-0001",
-      "responder": "ai",
+      "responder": "human",
       "field": "advancedTheJourney",
       "firstReviewer": true,
       "secondReviewer": false
     },
     {
-      "caseId": "availability-0005",
-      "responder": "ai",
-      "field": "factuallyCorrect",
-      "firstReviewer": false,
-      "secondReviewer": true
-    },
-    {
-      "caseId": "other-0001",
+      "caseId": "burst-0002",
       "responder": "human",
-      "field": "factuallyCorrect",
+      "field": "advancedTheJourney",
       "firstReviewer": true,
       "secondReviewer": false
     },
     {
-      "caseId": "other-0001",
+      "caseId": "burst-0002",
       "responder": "human",
       "field": "wouldRepeatToday",
       "firstReviewer": true,
@@ -110,65 +112,58 @@
     {
       "caseId": "comparison-0001",
       "responder": "ai",
-      "field": "wouldRepeatToday",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "media-0004",
-      "responder": "human",
-      "field": "factuallyCorrect",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "media-0004",
-      "responder": "human",
-      "field": "addressedWhatTheLeadRaised",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "media-0004",
-      "responder": "human",
       "field": "advancedTheJourney",
       "firstReviewer": true,
       "secondReviewer": false
     },
     {
-      "caseId": "media-0004",
-      "responder": "human",
-      "field": "wouldRepeatToday",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "first-contact-0005",
-      "responder": "human",
-      "field": "factuallyCorrect",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "first-contact-0005",
-      "responder": "human",
-      "field": "wouldRepeatToday",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "injection-0001",
+      "caseId": "comparison-0001",
       "responder": "ai",
+      "field": "wouldRepeatToday",
+      "firstReviewer": true,
+      "secondReviewer": false
+    },
+    {
+      "caseId": "media-0004",
+      "responder": "human",
+      "field": "factuallyCorrect",
+      "firstReviewer": true,
+      "secondReviewer": false
+    },
+    {
+      "caseId": "media-0004",
+      "responder": "human",
       "field": "advancedTheJourney",
+      "firstReviewer": true,
+      "secondReviewer": false
+    },
+    {
+      "caseId": "media-0004",
+      "responder": "human",
+      "field": "wouldRepeatToday",
+      "firstReviewer": true,
+      "secondReviewer": false
+    },
+    {
+      "caseId": "handoff-0002",
+      "responder": "human",
+      "field": "factuallyCorrect",
+      "firstReviewer": true,
+      "secondReviewer": false
+    },
+    {
+      "caseId": "handoff-0002",
+      "responder": "human",
+      "field": "advancedTheJourney",
+      "firstReviewer": true,
+      "secondReviewer": false
+    },
+    {
+      "caseId": "handoff-0002",
+      "responder": "human",
+      "field": "wouldRepeatToday",
       "firstReviewer": true,
       "secondReviewer": false
     }
-  ],
-  "verdict": "pergunta \"factuallyCorrect\" abaixo de 80% — reescrever antes de continuar",
-  "reviewers": {
-    "first": "claude-opus-5",
-    "second": "gpt-5.6-sol"
-  },
-  "sample": "corpus-review-cego-estratificado-20.md",
-  "note": "Concordancia por campo do checklist. Nenhum julgamento foi alterado para aumentar concordancia. Divergencias nao corrigidas no corpus."
+  ]
 }
