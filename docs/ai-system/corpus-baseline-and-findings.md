@@ -136,7 +136,37 @@ empate), mas a conta Anthropic está sem crédito:
 
 Não foi substituído por OpenAI de propósito: o composer roda OpenAI, e usar a
 mesma família removeria o controle de autopreferência que o judge existe para ter.
-Destrava com crédito na conta; a rodada é de 28 julgamentos sobre 14 pares.
+**O baseline semântico permanece PENDENTE** até a rodada existir de verdade.
+
+### Escopo e custo da rodada (medido no C.5)
+
+| Item | Valor |
+| --- | ---: |
+| Provider/modelo configurado | Anthropic · `claude-sonnet-5` (`CORPUS_JUDGE_MODEL` sobrescreve) |
+| Pares com resposta da IA **e** do humano | 14 de 66 |
+| Julgamentos (cada par nos dois sentidos) | 28 |
+| Tokens de entrada estimados | ~10.800 |
+| Tokens de saída (`max_tokens: 16`) | ~450 |
+| **Custo estimado da rodada** | **~US$ 0,03** (preço introdutório do Sonnet 5, US$ 2/US$ 10 por milhão até 31/08) |
+
+O custo não é o obstáculo — a conta está sem crédito. Com `claude-haiku-4-5`
+(US$ 1/US$ 5) a rodada sairia por ~US$ 0,01, mas Haiku é fraco demais para
+julgamento comparativo aberto e não vale a economia de dois centavos.
+
+### Quais casos precisam de judge
+
+Dos 66 casos, **52 não têm par para julgar**: 19 têm só resposta da IA, 30 só
+resposta humana, 3 não têm resposta nenhuma. O judge par a par só se aplica aos
+14 restantes.
+
+Desses 14, **2 já são decidíveis deterministicamente** — uma das duas respostas
+viola uma regra objetiva (preço fora do catálogo, bloco repetido, mídia sem
+texto, tamanho, excesso de perguntas) e a outra não, então a régua determinística
+já separa as duas sem opinião de modelo. **12 precisam de judge**: as duas
+respostas passam em todas as checagens objetivas e a diferença é qualitativa.
+
+Isso reduz a rodada mínima de 28 para **24 julgamentos**, e é a fronteira que a
+spec do judge pede: determinístico onde dá, judge só no resto.
 
 ### Custo
 
@@ -196,9 +226,15 @@ de objeção pode sair daqui.
 sinal mais rico". Dos 7.720 turnos, só **273 (3,5%)** têm resposta da IA e do
 humano dentro de duas horas. O corpus tem 14, e é quase tudo o que dava para ter.
 
-**Metade dos turnos não é respondida.** 3.770 de 7.720 (48,8%) ficaram sem
-qualquer resposta em duas horas. Nenhuma discussão de qualidade conversacional
-toca o maior problema de conversão que o dado mostra.
+**~~Metade dos turnos não é respondida.~~ CORRIGIDO no C.5 — ver abaixo.** A
+primeira versão deste relatório afirmava que 3.770 de 7.720 turnos (48,8%)
+ficaram sem resposta em duas horas. **O número estava errado** e a causa era do
+extrator, não do produto: ele credita a resposta ao *último* turno antes dela, de
+modo que numa rajada as mensagens anteriores do próprio lead apareciam como não
+respondidas. Medido direto no banco, **6.123 de 7.720 (79,3%) são respondidos em
+até duas horas** e apenas 264 (3,4%) nunca recebem resposta alguma. A análise
+descritiva dos 1.597 restantes está em
+[`corpus-unanswered-and-other.md`](./corpus-unanswered-and-other.md).
 
 **A V1 não persiste estado por turno.** Descoberto ao montar o corpus: não há de
 onde recuperar o `ConversationState` no momento de cada turno histórico, então os
@@ -302,3 +338,11 @@ de que o core ramifica por domínio.
 2. **Judge par a par.** Bloqueado por crédito na conta Anthropic.
 3. **Repetição do baseline.** Rodada única; a variação observada entre duas
    execuções foi de 1,6 ponto.
+
+## Correções aplicadas no C.5
+
+- O número de turnos sem resposta estava errado por artefato do extrator, e foi
+  corrigido acima. Nenhuma outra medida deste relatório depende dele.
+- Identidade de tenant (nome comercial, prédio, bairro, estação) foi removida do
+  corpus e do histórico da branch. Nenhum caso mudou de rótulo e o baseline foi
+  remedido sem alteração.
