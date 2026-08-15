@@ -86,12 +86,29 @@ declarados (`transport_only`, `no_llm_text`) em vez de filtrados no analisador.
 grafo. `reactivation/dispatch-campaign` é esse caso e está no registro com `manualOnly: true`, com
 teste garantindo que entradas manuais são exatamente as que o grafo não vê.
 
-## Limitações conhecidas, não fechadas no B6
+## Catálogo autorizado (Ciclo B7)
 
-1. **Nome de tratamento continua sendo regra de prompt.** No plano de recuperação, preço, agenda e
-   garantia são verificados pelo validador; "use apenas os nomes exatos dos procedimentos" segue
-   só na prosa do prompt. Fechar isso exige um código de violação novo no validador compartilhado,
-   que afeta todos os caminhos — decisão de desenho, não de fiação.
-2. **`validateDraft` da reativação não é o `ResponseValidator`.** Tem checagem própria de menção a
+`AuthorizedResponsePlan` carrega `allowedServices` — nome do catálogo, aliases cadastrados e o
+preço **daquele** serviço, preenchido só quando a clínica o marcou cotável em chat. Dois códigos
+de violação usam isso:
+
+| Código | Quando dispara | Onde está ligado |
+| --- | --- | --- |
+| `service_price_mismatch` | Preço citado cuja janela nomeia outro serviço e não o dono | Todo caminho que declara catálogo |
+| `unauthorized_service` | Token do catálogo sobrevive depois de mascarar os termos autorizados | Só onde `strictServiceVocabulary: true` (recuperação) |
+
+`strictServiceVocabulary` fica **desligado** na conversa aberta de propósito: lá o composer discute
+procedimentos em prosa livre, e falso positivo custa uma resposta boa a um lead real. Ligá-lo
+depende de medir falso positivo contra o corpus — Ciclo C.
+
+## Limitações conhecidas
+
+1. **Serviço inventado sem vocabulário do catálogo não é detectado.** A checagem é ancorada nos
+   termos autorizados; pegar um substantivo de serviço arbitrário exigiria conhecer o universo de
+   nomes de procedimento. Registrado como teste em `AuthorizedServiceFacts.test.ts`.
+2. **O caminho de resposta a mídia não declara catálogo.** Ele compõe antes de `clinicTreatments`
+   ser carregado (`ConversationOrchestrator:4319`); cobrir exigiria uma query nova naquele ramo,
+   sem medição.
+3. **`validateDraft` da reativação não é o `ResponseValidator`.** Tem checagem própria de menção a
    dinheiro (`extractMoneyMentions`) e limite de tamanho. É mais fraco que o plano autorizado, e
    aceitável só enquanto a dupla aprovação humana existir.
