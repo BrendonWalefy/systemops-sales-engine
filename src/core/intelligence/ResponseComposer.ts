@@ -15,7 +15,7 @@ import { DEFAULT_CONCIERGE_DRIVE } from "@/application/modules/module-configs";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
-type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
+export type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
   raw: string;
   inputTokens: number;

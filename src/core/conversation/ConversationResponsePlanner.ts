@@ -34,6 +34,12 @@ export type PlannedResponse = {
   violations: readonly ResponsePlanViolationCode[];
   requiresHandoff: boolean;
   fallbackReason: SafeResponseFallback["reason"] | null;
+  /**
+   * Tempo de parede da chamada ao composer, em ms. `0` quando ele nem chegou a
+   * ser chamado (curto-circuito determinístico), o que é informação: distingue
+   * "o modelo demorou" de "o modelo não entrou na jogada".
+   */
+  composerLatencyMs: number;
 };
 
 function snapshotActionResult(
@@ -70,10 +76,12 @@ export class ConversationResponsePlanner {
         violations: [],
         requiresHandoff: fallback.requiresHandoff,
         fallbackReason: fallback.reason,
+        composerLatencyMs: 0,
       };
     }
 
     let response: ComposedResponse;
+    const composerStartedAt = Date.now();
     try {
       response = await this.composer.compose({
         ...input.composerInput,
@@ -92,8 +100,10 @@ export class ConversationResponsePlanner {
         violations: [],
         requiresHandoff: fallback.requiresHandoff,
         fallbackReason: fallback.reason,
+        composerLatencyMs: Date.now() - composerStartedAt,
       };
     }
+    const composerLatencyMs = Date.now() - composerStartedAt;
     const validation = validateComposedResponse({ plan, response });
 
     if (!validation.ok) {
@@ -112,6 +122,7 @@ export class ConversationResponsePlanner {
           violations: validation.violations,
           requiresHandoff: false,
           fallbackReason: null,
+          composerLatencyMs,
         };
       }
 
@@ -127,6 +138,7 @@ export class ConversationResponsePlanner {
         violations: validation.violations,
         requiresHandoff: fallback.requiresHandoff,
         fallbackReason: fallback.reason,
+        composerLatencyMs,
       };
     }
 
@@ -137,6 +149,7 @@ export class ConversationResponsePlanner {
       violations: [],
       requiresHandoff: false,
       fallbackReason: null,
+      composerLatencyMs,
     };
   }
 }

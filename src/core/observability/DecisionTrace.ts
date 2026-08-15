@@ -54,6 +54,15 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     // quantas regras quebraram e nunca quais — e a investigação para aí.
     "violations",
     "requiresHandoff",
+    // Telemetria da invocação do composer. Fica em `validated` e não em
+    // `plan_built` porque o plano é construído ANTES da chamada — modelo, tokens
+    // e latência só existem depois dela. Todos são identificadores técnicos ou
+    // números; nenhum carrega texto de conversa.
+    "model",
+    "promptVersion",
+    "inputTokens",
+    "outputTokens",
+    "latencyMs",
   ],
   "response.fallback_applied": [
     "action",

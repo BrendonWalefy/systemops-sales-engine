@@ -325,6 +325,7 @@ const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
 import { shouldDiscardComposedReply } from "@/core/pipeline/composed-reply-supersession";
 import { resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
+import { buildComposerTelemetryMetadata } from "@/core/conversation/composer-telemetry";
 export { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
@@ -3023,6 +3024,10 @@ export class ConversationOrchestrator {
         violationCount: planned.violations.length,
         violations: planned.violations.join(","),
         requiresHandoff: planned.requiresHandoff,
+        ...buildComposerTelemetryMetadata({
+          response: planned.response,
+          latencyMs: planned.composerLatencyMs,
+        }),
       },
     });
 
