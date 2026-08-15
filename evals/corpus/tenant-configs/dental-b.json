@@ -1,0 +1,21 @@
+{
+  "ref": "dental-b",
+  "segment": "dental",
+  "timezone": "America/Sao_Paulo",
+  "businessHours": "Segunda a sexta das 8h às 19h. Sábado das 8h às 13h.",
+  "note": "Config sanitizada de um tenant real, lida em 15/08/2026.",
+  "services": [
+    { "name": "Avaliação", "priceCents": 10000 },
+    { "name": "Lentes de resina composta simplificada", "priceCents": 200000 },
+    { "name": "Lentes de resina composta estratificada", "priceCents": 400000 },
+    { "name": "Conserto lentes", "priceCents": 20000 },
+    { "name": "Manutenção periódicas lentes", "priceCents": 50000 },
+    { "name": "Clareamento caseiro", "priceCents": 90000 },
+    { "name": "Clareamento de consultório", "priceCents": 150000 },
+    { "name": "Limpeza dental", "priceCents": 25000 },
+    { "name": "Restauração em resina", "priceCents": 25000 },
+    { "name": "Gengivoplastia", "priceCents": 50000 },
+    { "name": "Implante dentário", "priceCents": 250000 }
+  ],
+  "knownAmbiguity": "\"lentes\" cobre simplificada (R$ 2.000) e estratificada (R$ 4.000). Preço de campanha divulgado por arte pode divergir do catálogo, e o catálogo é a referência auditável."
+}

@@ -60,6 +60,12 @@ export type BetterResponder = "ai" | "human" | "tie" | "not_applicable";
 
 export function deriveProseLabel(checklist: ReviewChecklist): ProseLabel {
   if (!checklist.factuallyCorrect) return "anti-pattern";
+  // Turno morto: não tratou o que o lead levantou e não avançou nada. Sem esta
+  // regra a única forma de chegar a anti-pattern era errar um fato, e a resposta
+  // que ignora a pergunta e devolve menu de saudação saía como "aceitável".
+  if (!checklist.addressedWhatTheLeadRaised && !checklist.advancedTheJourney) {
+    return "anti-pattern";
+  }
   if (
     checklist.addressedWhatTheLeadRaised &&
     checklist.advancedTheJourney &&
@@ -126,4 +132,13 @@ export function deriveBetterResponder(
  * mesmo custo de revisão, mesma derivação, e o turno sem pergunta passa a ser
  * avaliável. Nenhuma outra das quatro mostrou insuficiência demonstrável com
  * exemplo real, então nenhuma outra mudou.
+ *
+ * **Segunda insuficiência, achada rotulando o histórico real.** Com a regra
+ * original, o único caminho para `anti-pattern` era errar um fato. No caso
+ * `price-0001` — Ximendes, 15/06 — o lead pergunta o valor pela segunda vez e a
+ * IA devolve o menu de saudação ("valores, agendamento ou algum serviço
+ * específico?"). Nada falso foi dito, então a regra de fato não pega, e o turno
+ * saía `acceptable`. Um turno que não trata o que o lead levantou **e** não
+ * avança nada é "nunca faça isso", não "aceitável". A derivação ganhou essa
+ * segunda regra; as quatro perguntas continuam as mesmas.
  */

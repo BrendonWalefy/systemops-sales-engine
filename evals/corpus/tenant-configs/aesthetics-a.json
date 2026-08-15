@@ -1,0 +1,26 @@
+{
+  "ref": "aesthetics-a",
+  "segment": "aesthetics",
+  "timezone": "America/Sao_Paulo",
+  "businessHours": "Terça a sexta das 13h às 19h. Sábado das 10h às 17h.",
+  "note": "Config sanitizada de um tenant real, lida em 15/08/2026.",
+  "services": [
+    { "name": "Limpeza de Pele", "priceCents": 15000 },
+    { "name": "SPA Facial Premium", "priceCents": 10000 },
+    { "name": "Designer de Sobrancelha", "priceCents": 4000 },
+    { "name": "Designer com Henna ou Tintura", "priceCents": 6500 },
+    { "name": "Reconstrução de Sobrancelhas", "priceCents": 8000 },
+    { "name": "Brow Lamination", "priceCents": 15000 },
+    { "name": "Extensão de cílios — Técnicas Comuns", "priceCents": 15000 },
+    { "name": "Extensão de cílios — Técnicas Gringas", "priceCents": 18000 },
+    { "name": "Volume Express", "priceCents": 10000 },
+    { "name": "Volume Sirena", "priceCents": 12000 },
+    { "name": "Lash Lifting", "priceCents": 15000 },
+    { "name": "Manutenção de cílios (até 15 dias)", "priceCents": 8000 },
+    { "name": "Manutenção de cílios (16 a 21 dias)", "priceCents": 9000 },
+    { "name": "Microagulhamento Facial", "priceCents": 10000 },
+    { "name": "Hydra Gloss", "priceCents": 8000 },
+    { "name": "Peeling + Nano", "priceCents": 15000 }
+  ],
+  "knownAmbiguity": "\"cílios\" cobre seis técnicas com preços de R$ 100 a R$ 180; sem a técnica, não há preço único correto."
+}

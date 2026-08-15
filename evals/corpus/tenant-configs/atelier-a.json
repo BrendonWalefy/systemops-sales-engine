@@ -1,0 +1,12 @@
+{
+  "ref": "atelier-a",
+  "segment": "atelier",
+  "timezone": "America/Sao_Paulo",
+  "businessHours": "Seg-Sex 8h-18h, Sáb 8h-12h",
+  "note": "Config sanitizada de um tenant real, lida em 15/08/2026. Não é clínica: serve para provar que o corpus não é só odontologia.",
+  "services": [
+    { "name": "Encomendas", "priceCents": null },
+    { "name": "Orçamentos", "priceCents": null }
+  ],
+  "knownAmbiguity": "Catálogo sem preço cadastrado: qualquer valor citado pela IA é, por construção, não autorizado."
+}

@@ -41,6 +41,20 @@ describe("derivação de rótulo de prosa", () => {
       deriveProseLabel({ ...allTrue, addressedWhatTheLeadRaised: false }),
     ).toBe("acceptable");
   });
+
+  // Segundo achado do C2, contra caso real: no turno em que o lead perguntou o
+  // valor pela segunda vez, a IA respondeu o menu de saudação. Não disse nada
+  // falso, então a regra de fato não pega; não tratou o que foi levantado e não
+  // avançou nada. Turno morto é "nunca faça isso", não "aceitável".
+  it("turno que não trata nem avança é anti-pattern, não acceptable", () => {
+    expect(
+      deriveProseLabel({
+        ...allTrue,
+        addressedWhatTheLeadRaised: false,
+        advancedTheJourney: false,
+      }),
+    ).toBe("anti-pattern");
+  });
 });
 
 describe("comparação entre respondentes", () => {

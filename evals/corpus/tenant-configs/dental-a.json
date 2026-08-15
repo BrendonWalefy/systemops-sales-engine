@@ -1,0 +1,23 @@
+{
+  "ref": "dental-a",
+  "segment": "dental",
+  "timezone": "America/Sao_Paulo",
+  "businessHours": "Seg-Sáb 8h-18h",
+  "note": "Config sanitizada de um tenant real, lida em 15/08/2026. Existe para que a pergunta 'o dado dito estava correto?' tenha resposta verificável. Nenhum identificador do tenant aparece aqui.",
+  "services": [
+    { "name": "Avaliação Clínica Inicial", "priceCents": null, "freeEvaluation": true },
+    { "name": "Lente em Resina Estratificada", "priceCents": 200000 },
+    { "name": "Lente em Resina Premium", "priceCents": 170000 },
+    { "name": "Manutenção Preventiva de lentes", "priceCents": 40000 },
+    { "name": "Substituição de lente (un)", "priceCents": 20000 },
+    { "name": "Remoção de lentes", "priceCents": 40000 },
+    { "name": "Clareamento caseiro", "priceCents": 60000 },
+    { "name": "Clareamento consultório", "priceCents": 120000 },
+    { "name": "Profilaxia Odontológica (Limpeza Dental)", "priceCents": 25000 },
+    { "name": "Placa miorrelaxante (bruxismo)", "priceCents": 70000 },
+    { "name": "Implante", "priceCents": 250000 }
+  ],
+  "paymentPolicy": "Até 21x no cartão. Pix com 5% de desconto. Não trabalha com boleto.",
+  "priceDeliveredAsImage": true,
+  "knownAmbiguity": "\"lente de resina\" cobre Estratificada (R$ 2.000) e Premium (R$ 1.700); pacotes de 10 e 20 elementos existem e são cotados por arte."
+}

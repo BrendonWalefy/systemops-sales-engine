@@ -1,0 +1,20 @@
+{
+  "ref": "demo-dental",
+  "segment": "dental",
+  "timezone": "America/Sao_Paulo",
+  "businessHours": "Seg-Sex 8h-19h, Sáb 8h-13h",
+  "note": "Clínica inventada da demo curada. Não é tenant real: existe para que os casos golden de tom tenham fatos verificáveis por trás, sem carregar dado de cliente.",
+  "services": [
+    { "name": "Avaliação estética", "priceCents": 15000 },
+    { "name": "Lentes em resina", "priceCents": 95000, "priceUnit": "por dente" },
+    { "name": "Lentes em porcelana", "priceCents": 180000, "priceUnit": "por dente" },
+    { "name": "Prótese protocolo", "priceCents": 240000 },
+    { "name": "Implante dentário", "priceCents": 290000 },
+    { "name": "Remoção de siso", "priceCents": 65000 },
+    { "name": "Botox", "priceCents": 89000 },
+    { "name": "Alinhadores invisíveis", "priceCents": 35000, "priceUnit": "por mês" },
+    { "name": "Clareamento dental", "priceCents": 80000 }
+  ],
+  "paymentPolicy": "Parcelamento no cartão.",
+  "knownAmbiguity": "Nenhuma: os casos curados foram escritos com o serviço já identificado."
+}
