@@ -32,6 +32,7 @@ import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { FollowUp } from "@/domain/entities/follow-up";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
 export const dynamic = "force-dynamic";
 
@@ -274,7 +275,7 @@ async function processOneFollowUp(
         commercialPolicy: editorial?.commercialPolicy ?? null,
         receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
       },
-      leadName: lead.name,
+      leadName: extractFirstName(lead.name),
       timezone,
       isFirstMessage: false,
     },

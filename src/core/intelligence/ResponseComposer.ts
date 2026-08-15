@@ -13,6 +13,7 @@ import { formatReferencedPrice } from "@/core/intelligence/price-reference";
 import type { ConciergeVerbosity, ConciergeDrive } from "@/application/modules/module-configs";
 import { DEFAULT_CONCIERGE_DRIVE } from "@/application/modules/module-configs";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
 type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
@@ -557,7 +558,13 @@ function fenceClinicContent(content: string): string {
 }
 
 export function buildComposerSystemPrompt(input: ComposerInput): string {
-  const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover, voiceResponseEnabled } = input;
+  const { clinic, timezone, isFirstMessage, resumedFromHumanTakeover, voiceResponseEnabled } = input;
+  // O nome de exibição vem do WhatsApp, é escolhido pelo dono do número e é a
+  // única string controlada pelo atacante que este prompt interpola sem fence.
+  // Sanitizar aqui, e não só em cada chamador, é o que faz a defesa valer para
+  // caminhos que ainda não existem — e alinha o nome citado no prompt com o que
+  // a saudação determinística realmente insere.
+  const leadName = extractFirstName(input.leadName);
   const ctx = input.context;
   const agentRole = ctx?.agentRole ?? "recepcionista virtual";
   const businessDescriptor = ctx?.businessDescriptor ?? `negócio de ${clinic.specialty}`;

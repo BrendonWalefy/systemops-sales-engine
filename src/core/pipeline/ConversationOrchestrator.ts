@@ -260,46 +260,10 @@ function getMenuItemsForExperience(clinic: Organization, experience: Conversatio
   return clinic.menuItems ?? (experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS);
 }
 
-// Retorna apenas o primeiro nome do lead para saudações — evita usar nome completo
-// ou apelidos de contato como "Tânia Mara/Sinal Verde" na conversa.
-// Guard: rejeita nomes de WhatsApp que não são nomes próprios de pessoa:
-// frases religiosas ("Deus Ele É Deus."), siglas, nomes de negócios, etc.
-export function extractFirstName(fullName: string | null | undefined): string | null {
-  if (!fullName) return null;
-  const first = fullName.split(/[\s\/]+/)[0] ?? null;
-  if (!first) return null;
-
-  // Menos de 2 caracteres → sem sentido como nome
-  if (first.replace(/\./g, "").length < 2) return null;
-
-  const cleanFirst = first.replace(/\./g, "");
-
-  // Nomes de perfil com números não são tratados como nomes pessoais válidos (ex: "LOJA123")
-  if (/\d/.test(cleanFirst)) return null;
-
-  // Token precisa ter ao menos uma letra "de nome" (não pode ser só emoji/pontuação/
-  // decoração), senão "🌻✨" ou "★" viraria saudação. Exige 2+ letras latinas.
-  const letters = cleanFirst.match(/[A-Za-zÀ-ÿ]/g);
-  if (!letters || letters.length < 2) return null;
-
-  // Prefixos que indicam não ser nome de pessoa: religiosos, negócios, títulos
-  const INVALID_FIRST_NAME_PREFIX_RE =
-    /^(deus|senhor|sra?|nosso|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|atendimento|dr|dra)/i;
-  if (INVALID_FIRST_NAME_PREFIX_RE.test(cleanFirst)) return null;
-
-  // Palavras comuns / status de WhatsApp que não são nome próprio. O nome de exibição
-  // do WhatsApp é livre — leads reais aparecem como "ocupado", "Seja Forte", "trabalho",
-  // "2D". Saudar "Boa tarde, ocupado" soa robótico; melhor saudar sem nome. Casos reais
-  // do histórico Vitalli: "ocupado", "Seja Forte E Corajoso", "2D".
-  const COMMON_WORD_NAMES = new Set([
-    "ocupado", "ocupada", "disponivel", "disponível", "trabalho", "trabalhando",
-    "vida", "paz", "amor", "fe", "fé", "deus", "casa", "sim", "nao", "não",
-    "seja", "eu", "voce", "você", "gente", "amigo", "amiga", "cliente",
-  ]);
-  if (COMMON_WORD_NAMES.has(cleanFirst.toLowerCase())) return null;
-
-  return first;
-}
+// `extractFirstName` mudou para `core/intelligence/lead-display-name` para que o
+// ResponseComposer possa aplicá-lo sem importar o orquestrador. Reexportado aqui
+// porque é a origem histórica do símbolo e vários caminhos já o importam daqui.
+export { extractFirstName };
 
 // A9 — Detecta reenvio idêntico do lead: mesma mensagem (≥ minChars) já enviada antes,
 // dentro da janela, e que JÁ recebeu resposta do agente. Casos reais: duplo clique no
@@ -360,6 +324,7 @@ const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
  */
 import { shouldDiscardComposedReply } from "@/core/pipeline/composed-reply-supersession";
 import { resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 export { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
@@ -3984,7 +3949,7 @@ export class ConversationOrchestrator {
             mediaLibrary: mediaProjection.composerMediaLibrary,
             receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
-          leadName: lead.name,
+          leadName: extractFirstName(lead.name),
           timezone,
           isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
           conversationExperience: clinicExperience,

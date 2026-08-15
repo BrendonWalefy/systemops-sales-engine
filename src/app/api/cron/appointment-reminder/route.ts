@@ -27,6 +27,7 @@ import {
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
 export const dynamic = "force-dynamic";
 
@@ -172,7 +173,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
             commercialPolicy: editorial?.commercialPolicy ?? null,
             receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
-          leadName: lead.name,
+          leadName: extractFirstName(lead.name),
           timezone: clinic.timezone,
         }),
         planInput: buildReminderPlanInput({
