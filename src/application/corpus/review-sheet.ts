@@ -32,6 +32,7 @@ type TenantConfig = {
     priceCents: number | null;
     priceUnit?: string;
     freeEvaluation?: boolean;
+    description?: string;
   }>;
   knownAmbiguity?: string;
   paymentPolicy?: string;
@@ -51,12 +52,60 @@ const FACT_LABELS: Readonly<Record<string, string>> = {
   commercialPolicy: "política comercial",
 };
 
+function fold(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+/**
+ * Descrição de serviço entra na folha quando o turno fala **daquele** serviço.
+ *
+ * A segunda revisão marcou uma comparação de técnicas como inventada porque a
+ * folha dizia só "12 de 17 serviços têm descrição cadastrada". O atributo estava
+ * escrito na fixture; o revisor é que não podia vê-lo.
+ *
+ * O casamento é por token distintivo — a palavra que separa este serviço dos
+ * outros do mesmo catálogo. "Resina" aparece em meia dúzia de serviços de uma
+ * clínica e não identifica nenhum; "simplificada" identifica. Sem esse corte, um
+ * turno que diz "resina" arrastaria o catálogo inteiro para a folha e afogaria o
+ * fato que decide o julgamento.
+ */
+function relevantDescriptions(
+  services: NonNullable<TenantConfig["services"]>,
+  turnText: string,
+): Array<{ name: string; description: string }> {
+  const tokensOf = (name: string): string[] =>
+    fold(name)
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 5);
+
+  const frequency = new Map<string, number>();
+  for (const service of services) {
+    for (const token of new Set(tokensOf(service.name))) {
+      frequency.set(token, (frequency.get(token) ?? 0) + 1);
+    }
+  }
+
+  const haystack = fold(turnText);
+  return services.flatMap((service) => {
+    if (!service.description) return [];
+    const distinctive = tokensOf(service.name).filter(
+      (token) => (frequency.get(token) ?? 0) <= 2,
+    );
+    return distinctive.some((token) => haystack.includes(token))
+      ? [{ name: service.name, description: service.description }]
+      : [];
+  });
+}
+
 function formatPrice(cents: number | null): string {
   if (cents === null) return "sem preço cadastrado";
   return `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 }
 
-export function renderTenantFacts(config: TenantConfig): string {
+export function renderTenantFacts(config: TenantConfig, turnText = ""): string {
   const lines = [`- Horário: ${config.businessHours ?? "não declarado"}`];
   for (const service of config.services ?? []) {
     // A flag comercial vai junto do serviço: sem ela, "sem preço cadastrado"
@@ -68,6 +117,14 @@ export function renderTenantFacts(config: TenantConfig): string {
     ].filter(Boolean);
     lines.push(
       `- ${service.name}: ${formatPrice(service.priceCents)}${flags.length ? ` (${flags.join("; ")})` : ""}`,
+    );
+  }
+  for (const { name, description } of relevantDescriptions(
+    config.services ?? [],
+    turnText,
+  )) {
+    lines.push(
+      `- Descrição cadastrada de "${name}" (fonte: treatments.description): ${description.replace(/\n/g, " ")}`,
     );
   }
   if (config.paymentPolicy) lines.push(`- Pagamento: ${config.paymentPolicy}`);
@@ -125,6 +182,15 @@ function renderTurnEvidence(entry: CorpusCase): string[] {
   mediaOf("resposta da IA", entry.observed.aiResponse);
   mediaOf("resposta humana", entry.observed.humanResponse);
 
+  // Side effect é a diferença entre a resposta *afirmar* que algo aconteceu e
+  // algo ter acontecido. Sem ele na folha, "te enviei um vídeo" e "agendei
+  // quarta às 15h" são só texto, e o revisor não tem como julgar lastro.
+  for (const effect of entry.observed.sideEffects ?? []) {
+    lines.push(
+      `- Registrado neste turno — ${effect.kind}: ${effect.detail} (fonte: ${effect.source})`,
+    );
+  }
+
   const clocks = new Set<string>();
   for (const turn of entry.input.history) {
     if (turn.author === "lead") continue;
@@ -135,6 +201,16 @@ function renderTurnEvidence(entry: CorpusCase): string[] {
   }
 
   return lines;
+}
+
+/** Todo o texto do turno, que é onde se descobre de qual serviço se fala. */
+function turnText(entry: CorpusCase): string {
+  return [
+    entry.input.leadMessage,
+    ...entry.input.history.map((turn) => turn.body),
+    entry.observed.aiResponse ?? "",
+    entry.observed.humanResponse ?? "",
+  ].join(" ");
 }
 
 function quote(text: string | null): string {
@@ -260,7 +336,7 @@ ${history}
 
 **Fatos disponíveis do tenant \`${entry.input.tenantConfigRef}\`**
 
-${[renderTenantFacts(config), ...renderTurnEvidence(entry), ...(params.extraFacts?.[entry.caseId] ?? []).map((fact) => `- ${fact}`)].join("\n")}
+${[renderTenantFacts(config, turnText(entry)), ...renderTurnEvidence(entry), ...(params.extraFacts?.[entry.caseId] ?? []).map((fact) => `- ${fact}`)].join("\n")}
 
 **Resposta da IA**
 
