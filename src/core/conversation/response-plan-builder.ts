@@ -1,6 +1,7 @@
 import {
   RESPONSE_PLAN_VERSION,
   type AuthorizedResponsePlan,
+  type AuthorizedService,
   type BuildResponsePlanInput,
 } from "@/core/conversation/response-plan";
 
@@ -30,6 +31,7 @@ export function buildAuthorizedResponsePlan(
     ]),
     allowedScheduleFacts: normalizeStrings(extractScheduleFacts(input)),
     allowedMediaIds: normalizeStrings(input.allowedMediaIds),
+    allowedServices: normalizeServices(input.authorizedServices ?? []),
     maxQuestions: 1,
     maxCharacters: input.maxCharacters,
     expectedState: input.expectedState ?? "none",
@@ -64,6 +66,13 @@ function extractScheduleFacts(input: BuildResponsePlanInput): string[] {
 
 function normalizeNumbers(values: readonly number[]): number[] {
   return [...new Set(values.filter(Number.isFinite))].sort((left, right) => left - right);
+}
+
+/** Ordem estável por nome, para o plano ser comparável entre execuções (replay). */
+function normalizeServices(services: readonly AuthorizedService[]): AuthorizedService[] {
+  return [...services]
+    .filter((service) => service.name.trim().length > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function normalizeStrings(values: readonly string[]): string[] {

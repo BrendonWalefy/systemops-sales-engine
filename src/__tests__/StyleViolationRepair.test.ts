@@ -24,6 +24,7 @@ const plano = (overrides: Partial<AuthorizedResponsePlan> = {}): AuthorizedRespo
   allowedPriceCents: [],
   allowedScheduleFacts: [],
   allowedMediaIds: [],
+  allowedServices: [],
   maxQuestions: 1,
   maxCharacters: 280,
   expectedState: "none",
