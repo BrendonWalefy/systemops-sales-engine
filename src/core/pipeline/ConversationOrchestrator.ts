@@ -260,46 +260,10 @@ function getMenuItemsForExperience(clinic: Organization, experience: Conversatio
   return clinic.menuItems ?? (experience === "concierge" ? CONCIERGE_MENU_ITEMS : DEFAULT_MENU_ITEMS);
 }
 
-// Retorna apenas o primeiro nome do lead para saudações — evita usar nome completo
-// ou apelidos de contato como "Tânia Mara/Sinal Verde" na conversa.
-// Guard: rejeita nomes de WhatsApp que não são nomes próprios de pessoa:
-// frases religiosas ("Deus Ele É Deus."), siglas, nomes de negócios, etc.
-export function extractFirstName(fullName: string | null | undefined): string | null {
-  if (!fullName) return null;
-  const first = fullName.split(/[\s\/]+/)[0] ?? null;
-  if (!first) return null;
-
-  // Menos de 2 caracteres → sem sentido como nome
-  if (first.replace(/\./g, "").length < 2) return null;
-
-  const cleanFirst = first.replace(/\./g, "");
-
-  // Nomes de perfil com números não são tratados como nomes pessoais válidos (ex: "LOJA123")
-  if (/\d/.test(cleanFirst)) return null;
-
-  // Token precisa ter ao menos uma letra "de nome" (não pode ser só emoji/pontuação/
-  // decoração), senão "🌻✨" ou "★" viraria saudação. Exige 2+ letras latinas.
-  const letters = cleanFirst.match(/[A-Za-zÀ-ÿ]/g);
-  if (!letters || letters.length < 2) return null;
-
-  // Prefixos que indicam não ser nome de pessoa: religiosos, negócios, títulos
-  const INVALID_FIRST_NAME_PREFIX_RE =
-    /^(deus|senhor|sra?|nosso|loja|empresa|grupo|barbearia|clinica|clínica|salao|salão|studio|estudio|escritório|escritorio|atendimento|dr|dra)/i;
-  if (INVALID_FIRST_NAME_PREFIX_RE.test(cleanFirst)) return null;
-
-  // Palavras comuns / status de WhatsApp que não são nome próprio. O nome de exibição
-  // do WhatsApp é livre — leads reais aparecem como "ocupado", "Seja Forte", "trabalho",
-  // "2D". Saudar "Boa tarde, ocupado" soa robótico; melhor saudar sem nome. Casos reais
-  // do histórico Vitalli: "ocupado", "Seja Forte E Corajoso", "2D".
-  const COMMON_WORD_NAMES = new Set([
-    "ocupado", "ocupada", "disponivel", "disponível", "trabalho", "trabalhando",
-    "vida", "paz", "amor", "fe", "fé", "deus", "casa", "sim", "nao", "não",
-    "seja", "eu", "voce", "você", "gente", "amigo", "amiga", "cliente",
-  ]);
-  if (COMMON_WORD_NAMES.has(cleanFirst.toLowerCase())) return null;
-
-  return first;
-}
+// `extractFirstName` mudou para `core/intelligence/lead-display-name` para que o
+// ResponseComposer possa aplicá-lo sem importar o orquestrador. Reexportado aqui
+// porque é a origem histórica do símbolo e vários caminhos já o importam daqui.
+export { extractFirstName };
 
 // A9 — Detecta reenvio idêntico do lead: mesma mensagem (≥ minChars) já enviada antes,
 // dentro da janela, e que JÁ recebeu resposta do agente. Casos reais: duplo clique no
@@ -360,6 +324,10 @@ const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
  */
 import { shouldDiscardComposedReply } from "@/core/pipeline/composed-reply-supersession";
 import { resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
+import { buildComposerTelemetryMetadata } from "@/core/conversation/composer-telemetry";
+import { buildTurnFailureReport } from "@/core/pipeline/turn-failure-report";
+import { buildAuthorizedServices } from "@/core/conversation/response-plan-builder";
 export { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
@@ -3058,6 +3026,10 @@ export class ConversationOrchestrator {
         violationCount: planned.violations.length,
         violations: planned.violations.join(","),
         requiresHandoff: planned.requiresHandoff,
+        ...buildComposerTelemetryMetadata({
+          response: planned.response,
+          latencyMs: planned.composerLatencyMs,
+        }),
       },
     });
 
@@ -3984,7 +3956,7 @@ export class ConversationOrchestrator {
             mediaLibrary: mediaProjection.composerMediaLibrary,
             receptionistName: editorial?.receptionistName ?? inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
           },
-          leadName: lead.name,
+          leadName: extractFirstName(lead.name),
           timezone,
           isFirstMessage: mediaHistory.filter(m => m.author !== "lead").length === 0,
           conversationExperience: clinicExperience,
@@ -3999,6 +3971,9 @@ export class ConversationOrchestrator {
           allowedMediaIds: mediaProjection.allowedMediaIds,
           expectedState: "none",
           maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+          // Sem catálogo: `clinicTreatments` só é carregado adiante (:4319), e ler
+          // tratamentos aqui acrescentaria uma query ao caminho de mídia sem
+          // medição. Fica registrado como lacuna em docs/architecture.
         },
         turnId,
         clinicId,
@@ -4464,6 +4439,10 @@ export class ConversationOrchestrator {
                 allowedMediaIds: [],
                 expectedState: currentConversationState?.state ?? "none",
                 maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+                // Catálogo entra para o validador saber de QUAL serviço é cada preço
+                // autorizado. `strictServiceVocabulary` fica desligado aqui: a conversa
+                // aberta discute procedimentos em prosa, e medir falso positivo é Ciclo C.
+                authorizedServices: buildAuthorizedServices(clinicTreatments),
               },
               turnId,
               clinicId,
@@ -5257,6 +5236,10 @@ export class ConversationOrchestrator {
             allowedMediaIds: mediaProjection.allowedMediaIds,
             expectedState: currentConversationState?.state ?? "none",
             maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+            // Catálogo entra para o validador saber de QUAL serviço é cada preço
+            // autorizado. `strictServiceVocabulary` fica desligado aqui: a conversa
+            // aberta discute procedimentos em prosa, e medir falso positivo é Ciclo C.
+            authorizedServices: buildAuthorizedServices(clinicTreatments),
           },
           turnId,
           clinicId,
@@ -7783,8 +7766,22 @@ export class ConversationOrchestrator {
         timestamp: runtimeNow().toISOString(),
       };
       console.error("[Orchestrator] Falha no processamento — needs_human silencioso:", errorContext);
-      // TODO: Sentry.captureException(err, { tags: { clinicId }, extra: errorContext })
-      // Agregação por org, alerta só se taxa de erro > 3%/hora (ver P0.6-CRASH-TIMEOUT-FALLBACK.md)
+      // Captura real: `log.error` é o único canal que encaminha para o Sentry, e
+      // já aplica a redação de PII de `scrubEvent`. clinicId e conversationId
+      // viram tags pelo LogContext; o corpo da conversa não entra em lugar nenhum.
+      buildTurnFailureReport({
+        clinicId,
+        conversationId: conversation.id,
+        leadId: lead.id,
+        messageId,
+        error: err,
+        log: createLogger({
+          scope: "Orchestrator",
+          correlationId: messageId,
+          clinicId,
+          conversationId: conversation.id,
+        }),
+      });
 
       try {
         await db

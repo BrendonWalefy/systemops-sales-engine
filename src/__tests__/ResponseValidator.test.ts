@@ -8,6 +8,8 @@ const basePlan: AuthorizedResponsePlan = {
   allowedPriceCents: [],
   allowedScheduleFacts: [],
   allowedMediaIds: [],
+  allowedServices: [],
+  strictServiceVocabulary: false,
   maxQuestions: 1,
   maxCharacters: 420,
   expectedState: "idle",

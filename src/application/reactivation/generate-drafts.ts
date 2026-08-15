@@ -35,6 +35,7 @@ import {
 } from "@/application/reactivation/cost-guard";
 import { trackUsageSafely } from "@/application/reactivation/track-usage-safely";
 import { randomUUID } from "crypto";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
 const MAX_OUTPUT_TOKENS = 400;
 const HISTORY_LIMIT = 8;
@@ -206,7 +207,7 @@ export async function generateDraftsForCampaign(input: {
         clinicName: clinic.name,
         receptionistName,
         specialty: clinic.specialty ?? "odontologia estética",
-        leadName: target.name,
+        leadName: extractFirstName(target.name),
         treatmentInterest: target.treatment_interest,
         outcomeReason: target.outcome_reason,
         evidenceExcerpt: target.evidence_excerpt,

@@ -1,5 +1,9 @@
 import { asc, desc, eq, and } from "drizzle-orm";
 import { fingerprintReplayConfig } from "@/application/replay/fingerprint-replay-config";
+import {
+  resolveComposerModel,
+  type ComposerPlan,
+} from "@/core/intelligence/ResponseComposer";
 import { db } from "@/infrastructure/db/client";
 import {
   clinicModules,
@@ -93,6 +97,13 @@ export async function loadReplayClinicManifest(clinicKey: string) {
       bookingWindows: treatment.bookingWindows,
     })),
     modules,
+    // O modelo efetivamente resolvido entra no fingerprint porque duas execuções
+    // com a mesma config de clínica e modelos diferentes NÃO são comparáveis. Sem
+    // isso, uma troca de default num alias da OpenAI passaria por mudança de
+    // comportamento do sistema — que é o erro que este programa existe para
+    // acabar. É o modelo resolvido, não o alias: `resolveComposerModel` já aplica
+    // overrides de env e plano.
+    composerModel: resolveComposerModel(resolvedClinic.plan as ComposerPlan | null),
   });
   const playbookFingerprint = activePlaybook
     ? fingerprintReplayConfig({

@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:db": "dotenv -e .env.test.local -- vitest run src/__tests__/calendar-import.test.ts",
     "db:check": "tsx scripts/check-drizzle-meta.ts",
     "verify": "npm run db:check && npm run lint && npm run typecheck && npm test",
     "verify:agenda": "vitest run src/__tests__/SlotEngine.test.ts src/__tests__/BookingDoubleBooking.test.ts src/__tests__/SlotDayPreference.test.ts src/__tests__/ClinicTimezone.test.ts",

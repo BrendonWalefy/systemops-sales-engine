@@ -13,8 +13,9 @@ import { formatReferencedPrice } from "@/core/intelligence/price-reference";
 import type { ConciergeVerbosity, ConciergeDrive } from "@/application/modules/module-configs";
 import { DEFAULT_CONCIERGE_DRIVE } from "@/application/modules/module-configs";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
-type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
+export type ComposerPlan = "start" | "growth" | "scale" | "enterprise";
 type OpenAiInvocationResult = {
   raw: string;
   inputTokens: number;
@@ -210,7 +211,11 @@ export type ActionResult =
   | { type: "patient_arrived"; appointmentTime: Date | null }
   | { type: "media_received"; mediaType: "image" | "video" | "document" }
   | { type: "pipeline_photo_received" }
-  | { type: "video_sent_followup"; videoTitle: string };
+  | { type: "video_sent_followup"; videoTitle: string }
+  // Retomada de conversa que ficou sem resposta (cron recovery-campaign). Os
+  // únicos fatos que a mensagem pode usar são os nomes de tratamento
+  // cadastrados; preço, agenda e mídia ficam fora do plano por construção.
+  | { type: "conversation_recovery"; treatmentNames: string[] };
 
 export type ComposerInput = {
   actionResult: ActionResult;
@@ -557,7 +562,13 @@ function fenceClinicContent(content: string): string {
 }
 
 export function buildComposerSystemPrompt(input: ComposerInput): string {
-  const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover, voiceResponseEnabled } = input;
+  const { clinic, timezone, isFirstMessage, resumedFromHumanTakeover, voiceResponseEnabled } = input;
+  // O nome de exibição vem do WhatsApp, é escolhido pelo dono do número e é a
+  // única string controlada pelo atacante que este prompt interpola sem fence.
+  // Sanitizar aqui, e não só em cada chamador, é o que faz a defesa valer para
+  // caminhos que ainda não existem — e alinha o nome citado no prompt com o que
+  // a saudação determinística realmente insere.
+  const leadName = extractFirstName(input.leadName);
   const ctx = input.context;
   const agentRole = ctx?.agentRole ?? "recepcionista virtual";
   const businessDescriptor = ctx?.businessDescriptor ?? `negócio de ${clinic.specialty}`;
@@ -1041,6 +1052,20 @@ REGRAS OBRIGATÓRIAS:
 Exemplos de tom:
 - "Oi! Conseguiu dar uma olhada no vídeo? Temos horários disponíveis essa semana — quer que eu verifique um para você?"
 - "Passou a ver o vídeo? Ainda temos agenda disponível — posso checar o horário que fica melhor para você."`;
+
+    case "conversation_recovery":
+      // A campanha de recuperação tem gerador próprio
+      // (`cron/recovery-campaign/recovery-response.ts`), com prompt já ajustado
+      // ao caso. Este ramo existe para o tipo ficar total e para o dia em que a
+      // recuperação for unificada no composer principal — as regras aqui são as
+      // mesmas que o plano de recuperação verifica.
+      return `AÇÃO EXECUTADA: Retomada de conversa que ficou sem resposta.
+PROCEDIMENTOS CADASTRADOS: ${result.treatmentNames.join(", ") || "nenhum"}
+REGRAS OBRIGATÓRIAS:
+1. Não mencione demora, falha ou problema técnico.
+2. Máximo 3 frases. Prosa natural.
+3. Não informe preço, não prometa agendamento e não cite datas ou horários.
+4. Use apenas os nomes exatos dos procedimentos cadastrados.`;
 
     case "appointment_reminder":
       return `AÇÃO EXECUTADA: Lembrete de atendimento agendado para amanhã.
