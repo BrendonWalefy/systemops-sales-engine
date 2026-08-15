@@ -185,6 +185,36 @@ const corpusCaseSchema = z
       .strict(),
     observed: z
       .object({
+        /**
+         * O que de fato aconteceu no turno, com a fonte de onde se sabe.
+         *
+         * Existe para separar **afirmação** de **evidência**: "agendei quarta
+         * às 15h" e o agendamento existir são coisas diferentes, e sem este
+         * campo as duas são a mesma linha de texto. O vocabulário é fechado e
+         * curto de propósito — só o que já aparece nas evidências do corpus.
+         * Não é event bus: é o registro mínimo que a pergunta de lastro exige.
+         */
+        sideEffects: z
+          .array(
+            z
+              .object({
+                kind: z.enum([
+                  "availability_queried",
+                  "slots_returned",
+                  "slot_offered",
+                  "appointment_created",
+                  "appointment_updated",
+                  "appointment_cancelled",
+                  "media_sent",
+                  "handoff_occurred",
+                ]),
+                detail: z.string().trim().min(1),
+                /** Coluna, tabela ou arquivo que comprova. Sem isso não entra. */
+                source: z.string().trim().min(1),
+              })
+              .strict(),
+          )
+          .optional(),
         // Hipótese, nunca verdade: é o que a V1 respondeu, e é justamente o que
         // está sob julgamento.
         aiResponse: z.string().nullable(),

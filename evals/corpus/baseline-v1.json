@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-15T20:45:32.176Z",
+  "generatedAt": "2026-08-15T20:59:57.287Z",
   "corpus": {
     "totalCases": 66,
     "shardHashes": {
@@ -32,8 +32,8 @@
         "axis": "request",
         "expected": 66,
         "produced": 64,
-        "correct": 45,
-        "accuracy": 0.6818181818181818
+        "correct": 47,
+        "accuracy": 0.7121212121212122
       },
       {
         "axis": "dialogueMove",
@@ -78,7 +78,7 @@
         "accuracy": 0
       }
     ],
-    "intentAccuracyOnV1Vocabulary": 0.703125,
+    "intentAccuracyOnV1Vocabulary": 0.734375,
     "comparableCases": 64,
     "skipped": 2,
     "confusions": [
@@ -105,12 +105,7 @@
       {
         "caseId": "burst-0003",
         "expected": "general_question",
-        "got": "greeting"
-      },
-      {
-        "caseId": "discount-0001",
-        "expected": "needs_human",
-        "got": "price_inquiry"
+        "got": "acknowledgment"
       },
       {
         "caseId": "discount-0003",
@@ -121,11 +116,6 @@
         "caseId": "first-contact-0003",
         "expected": "confirm_slot",
         "got": "acknowledgment"
-      },
-      {
-        "caseId": "first-contact-0005",
-        "expected": "general_question",
-        "got": "greeting"
       },
       {
         "caseId": "handoff-0001",
@@ -150,7 +140,7 @@
       {
         "caseId": "media-0003",
         "expected": "needs_human",
-        "got": "unclear"
+        "got": "acknowledgment"
       },
       {
         "caseId": "objection-0002",
@@ -239,7 +229,7 @@
       "medianCharacters": 156,
       "responsesOver400Characters": 6,
       "responsesWithTwoOrMoreQuestions": 9,
-      "responsesQuotingUnauthorizedPrice": 3,
+      "responsesQuotingUnauthorizedPrice": 0,
       "responsesRepeatingPreviousBlock": 2,
       "mediaOnlyResponses": 0
     },
@@ -257,28 +247,19 @@
       "medianCharacters": 251,
       "responsesOver400Characters": 0,
       "responsesWithTwoOrMoreQuestions": 0,
-      "responsesQuotingUnauthorizedPrice": 0,
+      "responsesQuotingUnauthorizedPrice": 2,
       "responsesRepeatingPreviousBlock": 0,
       "mediaOnlyResponses": 0
     },
     "judge": {
-      "model": "claude-sonnet-5",
-      "pairs": 14,
-      "judgements": 28,
-      "aiWins": 0,
-      "humanWins": 0,
-      "ties": 14,
-      "unstableVerdicts": 6,
-      "unstableRate": 0.42857142857142855,
-      "longerAnswerWonRate": 0,
-      "averageAiCharacters": 308,
-      "averageHumanCharacters": 155,
-      "errors": 0
+      "status": "experimental_non_gating",
+      "rationale": "14/14 empates e 42,9% de instabilidade ao inverter a ordem, acima do teto de 25% da spec. Não separou casos em que só um lado tinha lastro. Nenhum gate depende deste número.",
+      "lastRun": null
     }
   },
   "cost": {
     "classifierCalls": 64,
-    "averageClassifierLatencyMs": 1161,
-    "wallClockMs": 112535
+    "averageClassifierLatencyMs": 1147,
+    "wallClockMs": 73541
   }
 }

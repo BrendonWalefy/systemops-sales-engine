@@ -130,6 +130,36 @@ describe("schema do caso de corpus", () => {
     );
   });
 
+  // "Agendei quarta às 15h" só é verificável se o corpus puder dizer que um
+  // agendamento foi de fato criado. Sem isso, afirmação e evidência são a mesma
+  // linha de texto, e a pergunta de lastro não tem como ser respondida.
+  it("registra side effect com o que aconteceu e de onde se sabe", () => {
+    const withEffect = validCase() as { observed: Record<string, unknown> };
+    withEffect.observed.sideEffects = [
+      { kind: "media_sent", detail: "vídeo", source: "messages.media_type" },
+    ];
+
+    const parsed = parseCorpusCase(withEffect);
+
+    expect(parsed.observed.sideEffects?.[0]?.kind).toBe("media_sent");
+  });
+
+  it("recusa side effect sem proveniência", () => {
+    const noSource = validCase() as { observed: Record<string, unknown> };
+    noSource.observed.sideEffects = [{ kind: "media_sent", detail: "vídeo" }];
+
+    expect(() => parseCorpusCase(noSource)).toThrow(/source/);
+  });
+
+  it("recusa side effect fora do vocabulário mínimo", () => {
+    const unknown = validCase() as { observed: Record<string, unknown> };
+    unknown.observed.sideEffects = [
+      { kind: "enviou_email", detail: "x", source: "y" },
+    ];
+
+    expect(() => parseCorpusCase(unknown)).toThrow(/kind/);
+  });
+
   // Um caso cuja premissa contradiz a própria fixture não tem ground truth
   // consistente: calibrar uma pergunta contra ele mede o defeito do caso, não a
   // pergunta. O caso continua no corpus como evidência; o campo é o que impede

@@ -28,19 +28,19 @@
     "synthetic_regression": 12
   },
   "countsByAiProseLabel": {
-    "golden": 1,
-    "acceptable": 4,
-    "anti-pattern": 28
+    "golden": 2,
+    "acceptable": 7,
+    "anti-pattern": 24
   },
   "countsByHumanProseLabel": {
-    "golden": 10,
-    "acceptable": 3,
-    "anti-pattern": 28
+    "golden": 13,
+    "acceptable": 6,
+    "anti-pattern": 22
   },
   "countsByBetterResponder": {
     "ai": 3,
-    "human": 3,
-    "tie": 7,
+    "human": 5,
+    "tie": 5,
     "not_applicable": 53
   },
   "requestVocabulary": {
@@ -99,20 +99,20 @@
   ],
   "shardHashes": {
     "ambiguity": "35f845fb5e557916",
-    "audio": "dc97aa303579d299",
+    "audio": "13bd858d87469bc6",
     "availability": "d38baa1d4f76525d",
     "burst": "f01cc91f5b72c164",
-    "comparison": "a42dafc8b6026aac",
+    "comparison": "0a22d18c26f849f0",
     "discount": "50397059ca7ceebb",
-    "first-contact": "038ab0a93a198a92",
+    "first-contact": "c2fd39f319c1435e",
     "follow-up": "2e6755e18d1bcb8c",
-    "handoff": "71ce129603e08131",
+    "handoff": "5dc581b7615f0c25",
     "injection": "9c8ce878cb1d9d92",
-    "location": "e52a8525ad110f04",
-    "media": "d6b2c5ba8e54917c",
-    "objection": "918849b472818c8e",
-    "other": "d07b17e1f79c0361",
-    "price": "0a911e976d8a682f",
+    "location": "51281cf0d4fbd7b0",
+    "media": "06a8d2e47f824d5d",
+    "objection": "4fa0db7b72d5d7d4",
+    "other": "578aec6e182486af",
+    "price": "fd1e18467d46226e",
     "procedure": "084b66417d894422",
     "reschedule": "6669ca09f920b5b7",
     "scheduling": "823e0561a490830c",

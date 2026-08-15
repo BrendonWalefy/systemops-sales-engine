@@ -224,7 +224,12 @@ async function main(): Promise<void> {
       curatedReferences: proseFor((entry) =>
         entry.source.kind === "curated_demo" ? entry.observed.humanResponse : null,
       ),
-      judge: flag("judge") ? await runJudge(corpus.cases) : null,
+      judge: {
+        status: "experimental_non_gating",
+        rationale:
+          "14/14 empates e 42,9% de instabilidade ao inverter a ordem, acima do teto de 25% da spec. Não separou casos em que só um lado tinha lastro. Nenhum gate depende deste número.",
+        lastRun: flag("judge") ? await runJudge(corpus.cases) : null,
+      },
     },
     cost: {
       classifierCalls,
@@ -243,9 +248,26 @@ async function main(): Promise<void> {
 }
 
 /**
- * Judge par a par, com o controle de viés de posição da spec já aprovada: cada
- * par é julgado duas vezes com a ordem invertida, e veredito que muda ao inverter
- * conta como empate, nunca como vitória.
+ * Judge par a par — **EXPERIMENTAL, NÃO É GATE**.
+ *
+ * Duas rodadas mostraram que ele não discrimina no corpus atual:
+ *
+ * - rubrica original: 13 empates em 14 pares;
+ * - rubrica de cinco dimensões com regra forte e os fatos do tenant à vista:
+ *   14 empates em 14, e a instabilidade ao inverter a ordem subiu de 21,4% para
+ *   42,9% — acima do teto de 25% que a própria spec define;
+ * - em 7 dos 14 pares apenas um lado falha no lastro, e mesmo assim ele empatou.
+ *
+ * A máquina funciona: sondado direto, escolhe o preço do catálogo sobre um
+ * desconto de 50% não autorizado. O que falta é poder discriminativo nesta
+ * escala. **Nenhum baseline depende deste número.**
+ *
+ * Factualidade e ação são medidas pelas métricas determinísticas; qualidade de
+ * prosa, pelo checklist humano calibrado. Este judge fica como diagnóstico.
+ *
+ * Revisitar quando houver corpus maior, mais pares realmente contrastantes,
+ * evidência mais completa e necessidade demonstrada — não antes, e sem ajustar
+ * prompt ou modelo até "dar certo".
  */
 async function runJudge(cases: CorpusCase[]) {
   if (!process.env.ANTHROPIC_API_KEY) return { skipped: "no ANTHROPIC_API_KEY" };

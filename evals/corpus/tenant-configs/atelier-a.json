@@ -4,9 +4,47 @@
   "timezone": "America/Sao_Paulo",
   "businessHours": "Seg-Sex 8h-18h, Sáb 8h-12h",
   "note": "Config sanitizada de um tenant real, lida em 15/08/2026. Não é clínica: serve para provar que o corpus não é só odontologia.",
+  "facts": {
+    "address": {
+      "status": "known",
+      "value": "endereço registrado na configuração do tenant, sem link de mapa",
+      "source": "organizations.address / address_complement / maps_url"
+    },
+    "businessHours": {
+      "status": "known",
+      "value": "Seg-Sex 8h-18h, Sáb 8h-12h",
+      "source": "organizations.business_hours"
+    },
+    "serviceAttributes": {
+      "status": "not_provided",
+      "value": null,
+      "source": null
+    },
+    "mediaLibrary": {
+      "status": "not_provided",
+      "value": null,
+      "source": null
+    },
+    "commercialPolicy": {
+      "status": "known",
+      "value": "Pix, débito e crédito parcelado de acordo com taxas da máquina operadora",
+      "source": "playbook_versions.commercial_policy (versão ativa)"
+    }
+  },
   "services": [
-    { "name": "Encomendas", "priceCents": null },
-    { "name": "Orçamentos", "priceCents": null }
+    {
+      "name": "Encomendas",
+      "priceCents": null
+    },
+    {
+      "name": "Orçamentos",
+      "priceCents": null
+    }
   ],
-  "knownAmbiguity": "Catálogo sem preço cadastrado: qualquer valor citado pela IA é, por construção, não autorizado."
+  "knownAmbiguity": "Catálogo sem preço cadastrado: qualquer valor citado pela IA é, por construção, não autorizado.",
+  "provenance": {
+    "exportedAt": "2026-08-15T20:54:56.404Z",
+    "readOnly": true,
+    "note": "Fatos derivados da configuração do tenant por SELECT. Nenhum valor foi copiado de resposta de IA ou de operador."
+  }
 }

@@ -36,6 +36,19 @@ type TenantConfig = {
   knownAmbiguity?: string;
   paymentPolicy?: string;
   priceDeliveredAsImage?: boolean;
+  facts?: Record<
+    string,
+    { status: "known" | "not_provided" | "contradicted"; value: string | null; source: string | null }
+  >;
+};
+
+/** Rótulo legível de cada categoria de fato, para o revisor não ler chave. */
+const FACT_LABELS: Readonly<Record<string, string>> = {
+  address: "endereço / localização",
+  businessHours: "horário de funcionamento",
+  serviceAttributes: "atributo de serviço",
+  mediaLibrary: "mídia disponível",
+  commercialPolicy: "política comercial",
 };
 
 function formatPrice(cents: number | null): string {
@@ -62,6 +75,27 @@ export function renderTenantFacts(config: TenantConfig): string {
     lines.push("- Preço deste tenant é entregue por arte, não por texto.");
   }
   if (config.knownAmbiguity) lines.push(`- Ambiguidade conhecida: ${config.knownAmbiguity}`);
+
+  // Fato ausente é estado declarado, não silêncio: sem esta seção o revisor não
+  // consegue separar "a folha não mostrou" de "o tenant não tem", e trata a
+  // segunda como se a resposta tivesse inventado.
+  const facts = Object.entries(config.facts ?? {});
+  const known = facts.filter(([, fact]) => fact.status === "known");
+  const missing = facts.filter(([, fact]) => fact.status !== "known");
+  for (const [key, fact] of known) {
+    lines.push(
+      `- ${FACT_LABELS[key] ?? key}: ${fact.value ?? "registrado"} (fonte: ${fact.source})`,
+    );
+  }
+  if (missing.length > 0) {
+    lines.push(
+      `- **Não fornecido pela configuração** — ${missing
+        .map(([key, fact]) =>
+          `${FACT_LABELS[key] ?? key}${fact.status === "contradicted" ? " (contradito)" : ""}`,
+        )
+        .join(", ")}. Afirmação da resposta sobre isso **não tem lastro**; ausência na folha não é o mesmo que fato falso.`,
+    );
+  }
   return lines.join("\n");
 }
 

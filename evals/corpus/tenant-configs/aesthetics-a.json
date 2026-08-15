@@ -4,23 +4,144 @@
   "timezone": "America/Sao_Paulo",
   "businessHours": "Terça a sexta das 13h às 19h. Sábado das 10h às 17h.",
   "note": "Config sanitizada de um tenant real, lida em 15/08/2026.",
+  "facts": {
+    "address": {
+      "status": "known",
+      "value": "endereço registrado na configuração do tenant, sem link de mapa",
+      "source": "organizations.address / address_complement / maps_url"
+    },
+    "businessHours": {
+      "status": "known",
+      "value": "Terça a sexta das 13h às 19h. Sábado das 10h às 17h.",
+      "source": "organizations.business_hours"
+    },
+    "serviceAttributes": {
+      "status": "known",
+      "value": "21 de 21 serviços têm descrição cadastrada",
+      "source": "treatments.description"
+    },
+    "mediaLibrary": {
+      "status": "known",
+      "value": "1 video, 2 image, 1 document",
+      "source": "media_assets"
+    },
+    "commercialPolicy": {
+      "status": "known",
+      "value": "Formas de pagamento: Pix, dinheiro e cartão. Os pacotes de tratamento podem ser parcelados em até seis vezes no cartão, com juros da operadora. Sinal para clientes novas: o horário só é confirmado com um sinal de 30% do valor do procedimento, pago por Pix, e esse valor é abatido do total no dia do atendimento. Cancelamento com menos de 24 horas de antecedência: o sinal não é devolvido. Com mais de 24 horas: é possível reagendar, mas o sinal não é devolvido em dinheiro. A pré-reserva segura o horário até 3 dias antes do atendimento; se o sinal não for pago até lá, o horário é liberado para outr",
+      "source": "playbook_versions.commercial_policy (versão ativa)"
+    }
+  },
   "services": [
-    { "name": "Limpeza de Pele", "priceCents": 15000 },
-    { "name": "SPA Facial Premium", "priceCents": 10000 },
-    { "name": "Designer de Sobrancelha", "priceCents": 4000 },
-    { "name": "Designer com Henna ou Tintura", "priceCents": 6500 },
-    { "name": "Reconstrução de Sobrancelhas", "priceCents": 8000 },
-    { "name": "Brow Lamination", "priceCents": 15000 },
-    { "name": "Extensão de cílios — Técnicas Comuns", "priceCents": 15000 },
-    { "name": "Extensão de cílios — Técnicas Gringas", "priceCents": 18000 },
-    { "name": "Volume Express", "priceCents": 10000 },
-    { "name": "Volume Sirena", "priceCents": 12000 },
-    { "name": "Lash Lifting", "priceCents": 15000 },
-    { "name": "Manutenção de cílios (até 15 dias)", "priceCents": 8000 },
-    { "name": "Manutenção de cílios (16 a 21 dias)", "priceCents": 9000 },
-    { "name": "Microagulhamento Facial", "priceCents": 10000 },
-    { "name": "Hydra Gloss", "priceCents": 8000 },
-    { "name": "Peeling + Nano", "priceCents": 15000 }
+    {
+      "name": "Brow Lamination",
+      "priceCents": 15000,
+      "description": "Alinhamento e fixação dos fios da sobrancelha para efeito preenchido e penteado. Não é combinada com henna — quando necessário, usamos tintura."
+    },
+    {
+      "name": "Capping 40 dias",
+      "priceCents": 20000,
+      "description": "Volume com duração estendida de até 40 dias. Não possui manutenção — ao final do período é feita uma nova aplicação."
+    },
+    {
+      "name": "Designer com Henna ou Tintura",
+      "priceCents": 6500,
+      "description": "Designer personalizado com aplicação de henna ou tintura, para efeito mais marcado. A durabilidade da henna varia conforme a pele."
+    },
+    {
+      "name": "Designer de Sobrancelha",
+      "priceCents": 4000,
+      "description": "Designer personalizado conforme a estrutura da sobrancelha e do rosto da cliente."
+    },
+    {
+      "name": "Extensão de cílios — Técnicas Comuns",
+      "priceCents": 15000,
+      "description": "Extensão de cílios nas técnicas Clássico, Brasileiro, Egípcio 3D, Árabe 4D e Inglês 5D. Efeito do natural ao volumoso, escolhido conforme a estrutura do olhar da cliente."
+    },
+    {
+      "name": "Extensão de cílios — Técnicas Gringas",
+      "priceCents": 18000,
+      "description": "Extensão de cílios nas técnicas Fox Eyes, Wispy, Efeito Rímel, Anime e CostaLash, técnica exclusiva da casa. Olhar mais marcado, moderno e sofisticado."
+    },
+    {
+      "name": "Hydra Gloss",
+      "priceCents": 8000,
+      "description": "Hidratação profunda com efeito glow imediato. Sessão avulsa; também disponível em pacote de três sessões."
+    },
+    {
+      "name": "Lash Lifting",
+      "priceCents": 15000,
+      "description": "Curvatura e alinhamento dos fios naturais, sem extensão. Efeito de cílios levantados e alongados com o que a cliente já tem."
+    },
+    {
+      "name": "Limpeza de Pele",
+      "priceCents": 15000,
+      "description": "Limpeza de pele completa. Indicada a cada 2 ou 3 meses para manter a pele saudável."
+    },
+    {
+      "name": "Manutenção de cílios (16 a 21 dias)",
+      "priceCents": 9000,
+      "description": "Manutenção da extensão feita de 16 a 21 dias após a aplicação. Exige pelo menos 40% dos fios preservados. Acima de 21 dias é cobrada uma nova aplicação."
+    },
+    {
+      "name": "Manutenção de cílios (até 15 dias)",
+      "priceCents": 8000,
+      "description": "Manutenção da extensão feita até 15 dias após a aplicação. Exige pelo menos 40% dos fios preservados."
+    },
+    {
+      "name": "Manutenção de cílios — técnicas gringas",
+      "priceCents": 10000,
+      "description": "Manutenção das técnicas gringas (Fox Eyes, Wispy, CostaLash, Anime, Efeito Rímel). Exige pelo menos 40% dos fios preservados."
+    },
+    {
+      "name": "Microagulhamento Facial",
+      "priceCents": 10000,
+      "description": "Estímulo de colágeno com microagulhas para textura, cicatrizes de acne e rejuvenescimento."
+    },
+    {
+      "name": "Pacote Hydra Gloss (3 sessões)",
+      "priceCents": 22000,
+      "description": "Pacote de Hydra Gloss com três sessões."
+    },
+    {
+      "name": "Pacote Reconstrução de Sobrancelhas (5 sessões)",
+      "priceCents": 38000,
+      "description": "Pacote completo de reconstrução de sobrancelhas com cinco sessões."
+    },
+    {
+      "name": "Peeling + Nano",
+      "priceCents": 15000,
+      "description": "Peeling com nanotecnologia para renovação da pele, textura e viço."
+    },
+    {
+      "name": "Reconstrução de Sobrancelhas",
+      "priceCents": 8000,
+      "description": "Tratamento para recuperar falhas e estimular o crescimento dos fios. Sessão avulsa; também disponível em pacote de cinco sessões."
+    },
+    {
+      "name": "SPA Facial Premium",
+      "priceCents": 10000,
+      "description": "Protocolo de relaxamento e hidratação profunda da pele do rosto."
+    },
+    {
+      "name": "Tratamento de Manchas e Espinhas (pacote)",
+      "priceCents": 70000,
+      "description": "Programa completo para manchas e espinhas: cinco peelings e cinco microagulhamentos, com um SPA Facial Premium de brinde. Indicado para acne ativa e manchas deixadas por espinhas."
+    },
+    {
+      "name": "Volume Express",
+      "priceCents": 10000,
+      "description": "Volume Express, aplicação mais rápida. Não possui manutenção — ao final é feita uma nova aplicação."
+    },
+    {
+      "name": "Volume Sirena",
+      "priceCents": 12000,
+      "description": "Volume Sirena. Não possui manutenção — ao final é feita uma nova aplicação."
+    }
   ],
-  "knownAmbiguity": "\"cílios\" cobre seis técnicas com preços de R$ 100 a R$ 180; sem a técnica, não há preço único correto."
+  "knownAmbiguity": "\"cílios\" cobre seis técnicas com preços de R$ 100 a R$ 180; sem a técnica, não há preço único correto.",
+  "provenance": {
+    "exportedAt": "2026-08-15T20:54:54.922Z",
+    "readOnly": true,
+    "note": "Fatos derivados da configuração do tenant por SELECT. Nenhum valor foi copiado de resposta de IA ou de operador."
+  }
 }

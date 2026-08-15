@@ -4,18 +4,129 @@
   "timezone": "America/Sao_Paulo",
   "businessHours": "Segunda a sexta das 8h às 19h. Sábado das 8h às 13h.",
   "note": "Config sanitizada de um tenant real, lida em 15/08/2026.",
+  "facts": {
+    "address": {
+      "status": "known",
+      "value": "endereço registrado na configuração do tenant, com link de mapa",
+      "source": "organizations.address / address_complement / maps_url"
+    },
+    "businessHours": {
+      "status": "known",
+      "value": "Segunda a sexta das 8h às 19h. Sábado das 8h às 13h.",
+      "source": "organizations.business_hours"
+    },
+    "serviceAttributes": {
+      "status": "known",
+      "value": "12 de 17 serviços têm descrição cadastrada",
+      "source": "treatments.description"
+    },
+    "mediaLibrary": {
+      "status": "known",
+      "value": "4 video, 4 image",
+      "source": "media_assets"
+    },
+    "commercialPolicy": {
+      "status": "known",
+      "value": "Ao falar da avaliação inicial com o [PROFISSIONAL], mencione o abatimento integral informado pelo sistema, mas somente na etapa de agendamento ou quando o lead perguntar sobre o custo da avaliação. Para lentes de resina, informe somente os valores fornecidos pelo sistema. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade. Parcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos ",
+      "source": "playbook_versions.commercial_policy (versão ativa)"
+    }
+  },
   "services": [
-    { "name": "Avaliação", "priceCents": 10000 },
-    { "name": "Lentes de resina composta simplificada", "priceCents": 200000 },
-    { "name": "Lentes de resina composta estratificada", "priceCents": 400000 },
-    { "name": "Conserto lentes", "priceCents": 20000 },
-    { "name": "Manutenção periódicas lentes", "priceCents": 50000 },
-    { "name": "Clareamento caseiro", "priceCents": 90000 },
-    { "name": "Clareamento de consultório", "priceCents": 150000 },
-    { "name": "Limpeza dental", "priceCents": 25000 },
-    { "name": "Restauração em resina", "priceCents": 25000 },
-    { "name": "Gengivoplastia", "priceCents": 50000 },
-    { "name": "Implante dentário", "priceCents": 250000 }
+    {
+      "name": "Avaliação",
+      "priceCents": 10000,
+      "description": "Consulta inicial com o [PROFISSIONAL]: análise do sorriso e plano de tratamento personalizado."
+    },
+    {
+      "name": "Botox odontológico",
+      "priceCents": null,
+      "description": "Para bruxismo, DTM e harmonização do sorriso gengival. Complementa tratamentos estéticos.",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Clareamento caseiro",
+      "priceCents": 90000,
+      "description": "A laser (resultado na mesma sessão) ou caseiro com moldeiras (7-14 dias). Clareia até 8 tons, seguro para o esmalte.",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Clareamento de consultório",
+      "priceCents": 150000
+    },
+    {
+      "name": "Conserto lentes",
+      "priceCents": 20000
+    },
+    {
+      "name": "Exodontia (extração)",
+      "priceCents": null,
+      "description": "Extração simples ou cirúrgica, incluindo siso incluso. Anestesia local, pós-operatório orientado pelo [PROFISSIONAL].",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Gengivoplastia",
+      "priceCents": 50000,
+      "description": "Remodelamento do contorno gengival para equilibrar o sorriso. A laser ou bisturi, recuperação rápida.",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Harmonização orofacial",
+      "priceCents": null,
+      "description": "Preenchimento labial, bichectomia, bioestimuladores e toxina botulínica. Protocolo seguro, resultado natural.",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Implante dentário",
+      "priceCents": 250000,
+      "description": "Titânio biocompatível com osseointegração. Substitui raiz e coroa como um dente natural. Alta durabilidade.",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Lentes de resina composta estratificada",
+      "priceCents": 400000
+    },
+    {
+      "name": "Lentes de resina composta simplificada",
+      "priceCents": 200000,
+      "description": "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado m",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Lentes em Resina Composta",
+      "priceCents": null
+    },
+    {
+      "name": "Limpeza dental",
+      "priceCents": 25000,
+      "description": "Profilaxia completa com remoção de tártaro e biofilme. Indicada a cada 6 meses."
+    },
+    {
+      "name": "Manutenção periódicas lentes",
+      "priceCents": 50000
+    },
+    {
+      "name": "Prótese dentária",
+      "priceCents": null,
+      "description": "Fixa, removível ou protocolo All-on-4. Laboratório próprio, entrega em 48h.",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Restauração em resina",
+      "priceCents": 25000,
+      "description": "Resina composta para dentes trincados, lascados ou com cárie. Estético e natural, em sessão única.",
+      "requiresEvaluationFirst": true
+    },
+    {
+      "name": "Tratamento de canal",
+      "priceCents": null,
+      "description": "Preserva o dente natural eliminando a infecção da polpa. Indolor com anestesia local.",
+      "requiresEvaluationFirst": true
+    }
   ],
-  "knownAmbiguity": "\"lentes\" cobre simplificada (R$ 2.000) e estratificada (R$ 4.000). Preço de campanha divulgado por arte pode divergir do catálogo, e o catálogo é a referência auditável."
+  "knownAmbiguity": "\"lentes\" cobre simplificada (R$ 2.000) e estratificada (R$ 4.000). Preço de campanha divulgado por arte pode divergir do catálogo, e o catálogo é a referência auditável.",
+  "provenance": {
+    "exportedAt": "2026-08-15T20:54:53.284Z",
+    "readOnly": true,
+    "note": "Fatos derivados da configuração do tenant por SELECT. Nenhum valor foi copiado de resposta de IA ou de operador."
+  }
 }

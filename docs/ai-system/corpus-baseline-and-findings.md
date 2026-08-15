@@ -125,7 +125,7 @@ Três leituras:
    violação determinística. O alvo de qualidade não é "resposta curta" — é
    resposta que responde antes de conduzir.
 
-**Judge par a par: bloqueado.** Está implementado, com o controle de viés de
+**Judge par a par: EXPERIMENTAL, NÃO É GATE.** Está implementado, com o controle de viés de
 posição da spec (cada par julgado nos dois sentidos; veredito que inverte conta
 empate), mas a conta Anthropic está sem crédito:
 
@@ -137,6 +137,26 @@ empate), mas a conta Anthropic está sem crédito:
 Não foi substituído por OpenAI de propósito: o composer roda OpenAI, e usar a
 mesma família removeria o controle de autopreferência que o judge existe para ter.
 **O baseline semântico permanece PENDENTE** até a rodada existir de verdade.
+
+### Estado final (C.7): experimental, não-gate
+
+Duas rodadas, e a segunda foi pior que a primeira:
+
+| | Rubrica original | Cinco dimensões + regra forte + fatos à vista |
+| --- | ---: | ---: |
+| Empates | 13/14 | **14/14** |
+| Instabilidade ao inverter | 21,4% | **42,9%** (teto da spec: 25%) |
+| Erros | 0 | 0 |
+
+Em **7 dos 14 pares** apenas um lado falha no lastro sob os rótulos re-derivados,
+e ainda assim ele empatou. A máquina não é o problema: sondado direto, escolhe o
+preço do catálogo sobre um desconto de 50% não autorizado, com 8 tokens de saída.
+
+**Nenhum gate depende deste número.** Factualidade e ação passam a ser medidas
+pelas métricas determinísticas; qualidade de prosa, pelo checklist humano
+calibrado. O judge fica como diagnóstico experimental, com implementação
+preservada, para revisitar quando houver corpus maior, mais pares contrastantes
+e evidência mais completa.
 
 ### Escopo e custo da rodada (medido no C.5)
 
