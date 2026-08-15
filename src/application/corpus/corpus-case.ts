@@ -46,6 +46,9 @@ export const CORPUS_JOURNEYS = [
   "ambiguity",
   "silence-recovery",
   "integration-error",
+  // Balde declarado de sobra na amostragem. Existe para que a distribuição do
+  // corpus não invente jornada onde só houve "nenhuma regra reconheceu isto".
+  "other",
 ] as const;
 
 export type Journey = (typeof CORPUS_JOURNEYS)[number];

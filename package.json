@@ -22,6 +22,7 @@
     "seed:demo": "dotenv -e .env.local -- tsx scripts/seed-demo.ts",
     "demo:roteiro": "dotenv -e .env.local -- tsx scripts/demo-roteiro.ts",
     "eval:intent": "dotenv -e .env.local -- tsx scripts/eval-intent.ts",
+    "corpus:export": "dotenv -e .env.local -- tsx scripts/export-corpus-candidates.ts",
     "replay:export": "dotenv -e .env.local -- tsx scripts/export-sanitized-replay-corpus.ts",
     "replay:review": "tsx scripts/render-replay-review.ts",
     "replay:keys": "tsx scripts/generate-replay-approval-keypair.ts",
