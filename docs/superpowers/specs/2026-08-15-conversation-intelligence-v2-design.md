@@ -14,11 +14,11 @@ Base de comparação: `d6730d5` (reparo de estilo do Ciclo 1, já commitado).
 Reconstruir do zero a camada que **interpreta linguagem e decide comportamento**, preservando
 os contratos determinísticos, as features e a infraestrutura que já se provaram corretos.
 
-O que é reconstruído sem herança: Conversation Understanding, classificação/intents,
-DecisionCore, heurísticas de decisão, keywords, regex sobre linguagem aberta, coercions e
-overrides, prompts, estratégia conversacional, estratégia de vendas, o composer e suas
-instruções, regras de domínio e segmento, construção de contexto para o LLM, e os
-agents/commands/skills que descrevem essa camada.
+O que é reconstruído sem herança: Conversation Understanding, classificação/intents, a camada de
+decisão, heurísticas de decisão, keywords, regex sobre linguagem aberta, coercions e overrides,
+prompts, estratégia conversacional, estratégia de vendas, o composer e suas instruções, regras de
+domínio e segmento, construção de contexto para o LLM, e os agents/commands/skills que descrevem
+essa camada.
 
 O que é preservado e pode evoluir com evidência: `AuthorizedResponsePlan`, `ResponseValidator`,
 `SafeResponseFallback`, `ActionResult` e os contratos estruturados, state machine persistida,
@@ -75,8 +75,10 @@ Operacionalização, para que o invariante não seja só intenção:
 ### I2 — Existe coordenação mínima, e ela é proibida de crescer
 
 Turnos multi-capability são reais — "quanto custa e tem amanhã?" é um turno só com duas
-demandas. Existe um `CapabilityCoordinator` para selecionar, compor e resolver dependências e
-conflitos. Ele **não** concentra regra de negócio e não pode virar o novo orquestrador.
+demandas. Existe um `CapabilityCoordinator` para selecionar, compor, resolver dependências e
+conflitos, e aplicar ritmo de diálogo mecanicamente. Ele **não** concentra regra de negócio e não
+pode virar o novo orquestrador. A distribuição completa de responsabilidades — e a razão de não
+existir um `DecisionCore` — está na seção 6.1.
 
 Restrições estruturais, verificadas por teste arquitetural:
 
@@ -242,6 +244,69 @@ flowchart TD
 O `Gate` merece destaque: hoje essa lógica está espalhada dentro de `handle()`. Na V2 é a única
 origem de `suppress`, roda antes de qualquer chamada de modelo, e é inteiramente determinística.
 
+### 6.1 Quem decide o quê — e por que não existe `DecisionCore`
+
+Versões anteriores desta spec citavam um `DecisionCore` sem nunca defini-lo. Ele era resíduo da
+análise de opções, e é precisamente o formato que o próximo `handle()` teria: um componente
+horizontal que começa calculando "o próximo passo" e termina contendo pricing, scheduling,
+objeção e catálogo.
+
+**O conceito está removido.** Ao distribuir suas responsabilidades, não sobra nenhuma:
+
+| Responsabilidade | Dono | Por quê |
+| --- | --- | --- |
+| Interpretar linguagem | `Understanding` (estágio do core) | única etapa que chama modelo para entender |
+| Selecionar capabilities | `CapabilityCoordinator` | escolhe por `claim`, na ordem que o pack declarou |
+| Conter regra de negócio | **Capability**, sempre | é o único lugar vertical; qualquer outro acumula |
+| Decidir a ação | a capability que ganhou o claim | quem conhece a regra decide |
+| Resolver turno multi-capability | Coordinator | compõe ou escala; nunca arbitra por regra de negócio |
+| Calcular `nextBestStep` | a capability que decide | ver abaixo |
+| Consultar política comercial | Capability | política é dado de tenant; o core não lê tenant |
+| Produzir `Decision` | Capability, em `decide()` | |
+| Converter `Decision` → `ActionResult` | Capability, em `execute()` | é o ponto que o shadow substitui |
+| Ritmo de diálogo (não repetir CTA pendente) | Coordinator, mecanicamente | é regra de conversa, não de negócio — agnóstica a domínio |
+
+**`nextBestStep` não é um cálculo central.** É um campo do `Decision` produzido pela capability
+que decidiu, porque só ela conhece o próximo passo dentro do seu escopo — o pack declarou a
+jornada, e a capability a percorre. Centralizar esse cálculo seria reconstruir o acúmulo: as
+regras de preço, agenda e objeção convergiriam para um lugar só.
+
+Quando duas capabilities propõem passos diferentes no mesmo turno, o Coordinator resolve
+**estruturalmente**, pela prioridade que o pack declarou, ou escala. Nunca por heurística.
+
+O ritmo — não repetir um convite que o lead ainda não respondeu — hoje vive como texto no prompt
+(`REGRA DE RITMO — CTA JÁ FEITO`, ResponseComposer.ts:708). É regra de diálogo, não de negócio:
+vale igual para clínica e para ateliê. Vai para o Coordinator como dedupe mecânico sobre
+`nextBestStep`, com a política de repetição **declarada pela capability** no próprio `Decision`,
+não decidida pelo Coordinator.
+
+### 6.2 Contrato de capability
+
+Três métodos, e a separação entre o segundo e o terceiro é o que torna o shadow do I3 possível:
+
+```
+claim(understanding, state) → Claim | null      // puro, sem I/O, barato
+decide(claim, context)      → Decision          // lê policy e config; NUNCA escreve
+execute(decision, context)  → ActionResult      // executa I/O
+```
+
+`decide` e `execute` são separados porque são momentos diferentes: `Decision` é intenção de agir,
+`ActionResult` é o que aconteceu depois de agir. Em shadow, `execute` é trocado por um executor
+simulado e a V2 produz `Decision` real com `ActionResult` simulado — que é exatamente o que I3
+exige. Fundir os dois tornaria o shadow impossível sem efeito colateral.
+
+### 6.3 O core recebe dado de tenant, nunca o resolve
+
+Regra que remove a contradição aparente entre a tabela da seção 9 ("o core não conhece tenant") e
+os diagramas, que mostram configuração chegando ao plano e ao composer:
+
+> O core **recebe** dado de tenant como argumento. O core **não importa nem resolve**
+> configuração de tenant.
+
+Isto não é invenção: `response-plan-builder.ts` já funciona assim hoje — não importa nada de
+tenant e recebe `commercialPolicy`, `installmentTable` e `allowedMediaIds` por parâmetro. A regra
+descreve o pedaço da V1 que está certo, e o teste de importação da seção 9.1 a torna verificável.
+
 ## 7. Fronteira entre decisão e linguagem
 
 Esta é a fronteira que a V1 já acerta e que a V2 preserva. A mudança é que a **estratégia
@@ -272,10 +337,10 @@ flowchart LR
     V -->|"disse o que ninguém liberou"| FB["fallback determinístico"]
 ```
 
-`nextBestStep` passa a ser calculado pelo DecisionCore a partir de estado, sinais e política, e
-entra no plano como opção autorizada. O composer escolhe **como dizer**, nunca **o que propor**.
-Consequência direta: objeção cadastrada ganha dono responsável por respondê-la antes de
-qualquer pivô para agendamento, e isso é testável sem chamar o modelo.
+`nextBestStep` é produzido pela capability que decidiu (ver 6.1) e entra no plano como opção
+autorizada. O composer escolhe **como dizer**, nunca **o que propor**. Consequência direta:
+objeção cadastrada ganha uma capability responsável por respondê-la antes de qualquer pivô para
+agendamento, e isso é testável sem chamar o modelo.
 
 ## 8. ActionResult até outbound
 
@@ -308,6 +373,20 @@ sequenceDiagram
 
 Esse caminho é preservado tal como está hoje, incluindo o `composer_repaired` introduzido em
 `d6730d5`. A V2 muda quem produz o `ActionResult` e quem escreve o prompt — não muda a fronteira.
+
+**Uma evolução de contrato é necessária, e tem evidência.** `BuildResponsePlanInput` recebe hoje
+um único `actionResult` (response-plan.ts:26). Um turno multi-capability — "quanto custa e tem
+amanhã?" — produz dois. O contrato passa a aceitar uma lista, e o plano resultante é a **união**
+dos fatos autorizados: `allowedPriceCents`, `allowedScheduleFacts` e `allowedMediaIds` unem;
+`maxQuestions` e `maxCharacters` não somam. Esta é a única mudança prevista nos contratos
+preservados, e ela se enquadra na regra da seção 1: evolui porque há evidência, não para a V2
+poder dizer que nasceu do zero.
+
+Risco a vigiar: união de preços afrouxa a validação, porque um preço autorizado para o serviço A
+passaria a ser aceitável numa frase sobre o serviço B. Esse buraco **já existe** hoje — a
+auditoria registra que `allowedPriceCents` é lista plana sem vínculo com tratamento. A união não
+o cria, mas amplia sua superfície, então amarrar preço a serviço entra como caso de teste do
+ciclo G em vez de ficar para depois.
 
 ## 9. Domain Packs e a propriedade de custo zero
 
@@ -388,7 +467,9 @@ ninguém acima. Capability não conhece pack (é o pack que compõe capabilities
 
 ## 10. Política comercial como estrutura
 
-Sai do prompt, vira dado consultável pelo DecisionCore:
+Sai do prompt e vira dado de tenant, lido **pelas capabilities** — nunca pelo core (ver 6.3).
+`CatalogCapability` lê `pricing`, `SchedulingCapability` lê `scheduling`, `EscalationCapability`
+lê `requiresHumanApproval`:
 
 ```
 {
@@ -524,7 +605,7 @@ Um de cada vez, cada um com baseline, alteração e evidência. Gate obrigatóri
 | D | Instrumentar a camada de keywords | lista ordenada: quais predicados são feature e quais são cicatriz |
 | E | Core V2 + `fixture-pack` + testes arquiteturais | pipeline verde sem nenhum substantivo de negócio no core |
 | F | Domain pack dental | Understanding ≥ 95,2% e ≥ paridade nos predicados medidos em D |
-| G | DecisionCore, coordinator e política estruturada | Decision ≥ V1 nos golden; divergências justificadas caso a caso |
+| G | Capabilities do dental, coordinator e política estruturada | Decision ≥ V1 nos golden; divergências justificadas caso a caso |
 | H | Composer V2 e prompt minimalista | judge ≥ V1; custo por turno ≤ V1 |
 | I | Shadow e comparação | critérios da seção 14 |
 | J | Cutover por tenant e limpeza | 7 dias sem regressão crítica antes de apagar qualquer linha |
