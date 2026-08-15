@@ -32,6 +32,7 @@ export function buildAuthorizedResponsePlan(
     allowedScheduleFacts: normalizeStrings(extractScheduleFacts(input)),
     allowedMediaIds: normalizeStrings(input.allowedMediaIds),
     allowedServices: normalizeServices(input.authorizedServices ?? []),
+    strictServiceVocabulary: input.strictServiceVocabulary ?? false,
     maxQuestions: 1,
     maxCharacters: input.maxCharacters,
     expectedState: input.expectedState ?? "none",
@@ -77,4 +78,26 @@ function normalizeServices(services: readonly AuthorizedService[]): AuthorizedSe
 
 function normalizeStrings(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
+}
+
+/**
+ * Catálogo do tenant no formato que o plano entende.
+ *
+ * `priceCents` só é preenchido quando a clínica marcou o preço como cotável em
+ * chat: preço que a IA não pode dizer não é preço autorizado, e registrá-lo aqui
+ * transformaria `service_price_mismatch` em permissão para citá-lo.
+ */
+export function buildAuthorizedServices(
+  treatments: readonly {
+    name: string;
+    aliases?: string[] | null;
+    priceCents?: number | null;
+    priceQuotableInChat?: boolean | null;
+  }[],
+): AuthorizedService[] {
+  return treatments.map((treatment) => ({
+    name: treatment.name,
+    aliases: treatment.aliases ?? [],
+    priceCents: treatment.priceQuotableInChat ? treatment.priceCents ?? null : null,
+  }));
 }

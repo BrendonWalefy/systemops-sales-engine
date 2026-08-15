@@ -59,7 +59,10 @@ export function validateComposedResponse(input: {
 
   // Catálogo vazio = caminho que ainda não declara serviços; ambas ficam inertes.
   if (input.plan.allowedServices.length > 0) {
-    if (mentionsUnauthorizedService(textToValidate, input.plan.allowedServices)) {
+    if (
+      input.plan.strictServiceVocabulary
+      && mentionsUnauthorizedService(textToValidate, input.plan.allowedServices)
+    ) {
       violations.add("unauthorized_service");
     }
     if (hasServicePriceMismatch(textToValidate, input.plan.allowedServices)) {

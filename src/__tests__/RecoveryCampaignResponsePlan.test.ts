@@ -42,7 +42,13 @@ const composerInput: ComposerInput = buildRecoveryComposerInput({
   timezone: "America/Sao_Paulo",
 });
 
-const planInput = buildRecoveryPlanInput({ maxCharacters: RECOVERY_MAX_CHARACTERS });
+const planInput = buildRecoveryPlanInput({
+  maxCharacters: RECOVERY_MAX_CHARACTERS,
+  authorizedServices: [
+    { name: "Lentes de resina", aliases: ["lente de resina"], priceCents: null },
+    { name: "Clareamento", aliases: [], priceCents: null },
+  ],
+});
 
 describe("campanha de recuperação", () => {
   it("não deixa preço inventado chegar ao lead", async () => {
@@ -107,6 +113,22 @@ describe("campanha de recuperação", () => {
     const result = await planner.execute({ composerInput, planInput });
 
     expect(result.response.text).not.toContain("chamar nossa equipe");
+    expect(result.requiresHandoff).toBe(false);
+  });
+
+  it("não deixa tratamento inventado chegar ao lead", async () => {
+    // A regra vivia na prosa do prompt: "use APENAS os nomes exatos dos
+    // procedimentos — nunca 'lentes de contato dental'". Agora é verificada.
+    const planner = new ConversationResponsePlanner(
+      generatorReturning("Oi, João! Temos lentes de contato dental prontas para você."),
+    );
+
+    const result = await planner.execute({ composerInput, planInput });
+
+    expect(result.source).toBe("deterministic_fallback");
+    expect(result.violations).toContain("unauthorized_service");
+    expect(result.response.text).not.toContain("contato dental");
+    // O fallback continua sendo uma retomada, não um pedido de socorro.
     expect(result.requiresHandoff).toBe(false);
   });
 

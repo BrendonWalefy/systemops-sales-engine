@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, messages, treatments } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
@@ -17,6 +17,7 @@ import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import OpenAI from "openai";
 import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import { buildAuthorizedServices } from "@/core/conversation/response-plan-builder";
 import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import type { ComposedResponse } from "@/core/intelligence/ResponseComposer";
@@ -249,6 +250,18 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
   const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? "Marina";
   const specialty = editorial?.specialty ?? clinic.specialty ?? "odontologia estética";
   const treatmentNames = (editorial?.procedures ?? []).map((p) => p.name);
+  // O catálogo entra no plano com aliases e preço cotável: é o que permite ao
+  // validador recusar "lentes de contato dental" onde só existe "Lentes de resina".
+  const clinicTreatments = await db
+    .select({
+      name: treatments.name,
+      aliases: treatments.aliases,
+      priceCents: treatments.priceCents,
+      priceQuotableInChat: treatments.priceQuotableInChat,
+    })
+    .from(treatments)
+    .where(eq(treatments.clinicId, clinicId));
+  const authorizedServices = buildAuthorizedServices(clinicTreatments);
   const now = new Date();
 
   // Quiet hours: reengajamento fora da janela de contato local é adiado —
@@ -322,7 +335,10 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
           leadName: lead.name,
           timezone: clinic.timezone,
         }),
-        planInput: buildRecoveryPlanInput({ maxCharacters: RECOVERY_MAX_CHARACTERS }),
+        planInput: buildRecoveryPlanInput({
+          maxCharacters: RECOVERY_MAX_CHARACTERS,
+          authorizedServices,
+        }),
       });
 
       // Sem histórico não há o que retomar: o gerador lançou, o planner devolveu

@@ -25,6 +25,7 @@ const makePlan = (
   allowedScheduleFacts: [],
   allowedMediaIds: [],
   allowedServices: [],
+  strictServiceVocabulary: false,
   maxQuestions: 1,
   maxCharacters: 500,
   expectedState: "slots_offered",

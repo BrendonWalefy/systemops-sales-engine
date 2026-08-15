@@ -327,6 +327,7 @@ import { resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
 import { buildComposerTelemetryMetadata } from "@/core/conversation/composer-telemetry";
 import { buildTurnFailureReport } from "@/core/pipeline/turn-failure-report";
+import { buildAuthorizedServices } from "@/core/conversation/response-plan-builder";
 export { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 // Fallback quando a clínica não tem conversationRestartHours definido.
@@ -3970,6 +3971,9 @@ export class ConversationOrchestrator {
           allowedMediaIds: mediaProjection.allowedMediaIds,
           expectedState: "none",
           maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+          // Sem catálogo: `clinicTreatments` só é carregado adiante (:4319), e ler
+          // tratamentos aqui acrescentaria uma query ao caminho de mídia sem
+          // medição. Fica registrado como lacuna em docs/architecture.
         },
         turnId,
         clinicId,
@@ -4435,6 +4439,10 @@ export class ConversationOrchestrator {
                 allowedMediaIds: [],
                 expectedState: currentConversationState?.state ?? "none",
                 maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+                // Catálogo entra para o validador saber de QUAL serviço é cada preço
+                // autorizado. `strictServiceVocabulary` fica desligado aqui: a conversa
+                // aberta discute procedimentos em prosa, e medir falso positivo é Ciclo C.
+                authorizedServices: buildAuthorizedServices(clinicTreatments),
               },
               turnId,
               clinicId,
@@ -5228,6 +5236,10 @@ export class ConversationOrchestrator {
             allowedMediaIds: mediaProjection.allowedMediaIds,
             expectedState: currentConversationState?.state ?? "none",
             maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
+            // Catálogo entra para o validador saber de QUAL serviço é cada preço
+            // autorizado. `strictServiceVocabulary` fica desligado aqui: a conversa
+            // aberta discute procedimentos em prosa, e medir falso positivo é Ciclo C.
+            authorizedServices: buildAuthorizedServices(clinicTreatments),
           },
           turnId,
           clinicId,

@@ -1,4 +1,7 @@
-import type { BuildResponsePlanInput } from "@/core/conversation/response-plan";
+import type {
+  AuthorizedService,
+  BuildResponsePlanInput,
+} from "@/core/conversation/response-plan";
 import type { ComposerInput } from "@/core/intelligence/ResponseComposer";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 
@@ -39,6 +42,11 @@ export function buildRecoveryComposerInput(input: {
 
 export function buildRecoveryPlanInput(input: {
   maxCharacters: number;
+  /**
+   * Catálogo do tenant. A regra "use APENAS os nomes exatos dos procedimentos"
+   * vivia na prosa do prompt; entregue aqui, ela passa a ser verificada.
+   */
+  authorizedServices?: readonly AuthorizedService[];
 }): Omit<BuildResponsePlanInput, "actionResult"> {
   return {
     commercialPolicy: null,
@@ -46,5 +54,9 @@ export function buildRecoveryPlanInput(input: {
     allowedMediaIds: [],
     expectedState: null,
     maxCharacters: input.maxCharacters,
+    authorizedServices: input.authorizedServices ?? [],
+    // Retomada é mensagem curta de propósito fixo: não há por que nomear
+    // serviço fora do catálogo, então o vocabulário é fechado aqui.
+    strictServiceVocabulary: true,
   };
 }

@@ -44,6 +44,20 @@ export type AuthorizedResponsePlan = {
    * serviços, e as duas checagens ficam inertes — zero regressão por omissão.
    */
   allowedServices: readonly AuthorizedService[];
+  /**
+   * `true` = a resposta só pode nomear serviços do catálogo, e o validador acusa
+   * vocabulário do catálogo usado para montar um serviço inexistente.
+   *
+   * Ligado nos outbounds de propósito fixo (retomada de conversa), onde a
+   * mensagem é curta e não há por que nomear nada fora da lista. Desligado na
+   * conversa aberta, onde o composer discute procedimentos em prosa livre e um
+   * falso positivo custa uma resposta boa a um lead real. Ligar lá depende da
+   * medição de falso positivo contra o corpus — decisão do Ciclo C, não daqui.
+   *
+   * `service_price_mismatch` não depende deste campo: ele exige preço citado e
+   * dono ausente, e vale em todo caminho que declare catálogo.
+   */
+  strictServiceVocabulary: boolean;
   maxQuestions: number;
   maxCharacters: number;
   expectedState: string;
@@ -57,4 +71,5 @@ export type BuildResponsePlanInput = {
   expectedState: string | null;
   maxCharacters: number;
   authorizedServices?: readonly AuthorizedService[];
+  strictServiceVocabulary?: boolean;
 };

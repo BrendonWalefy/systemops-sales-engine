@@ -14,8 +14,12 @@ const SERVICES: AuthorizedService[] = [
   { name: "Manutenção", aliases: [], priceCents: null },
 ];
 
-function planFor(services: readonly AuthorizedService[]): AuthorizedResponsePlan {
+function planFor(
+  services: readonly AuthorizedService[],
+  strictServiceVocabulary = true,
+): AuthorizedResponsePlan {
   return buildAuthorizedResponsePlan({
+    strictServiceVocabulary,
     actionResult: { type: "price_inquiry", referencedPriceCents: 200_000 },
     commercialPolicy: "Clareamento por R$ 800,00.",
     installmentTable: null,
@@ -105,6 +109,36 @@ describe("preço não se transplanta entre serviços", () => {
     expect(
       check("As lentes de resina saem por R$ 2.000,00 e o clareamento por R$ 800,00.").ok,
     ).toBe(true);
+  });
+});
+
+describe("vocabulário fechado é opt-in", () => {
+  it("desligado por padrão, para conversa aberta não regredir", () => {
+    // Na conversa livre o composer discute procedimentos em prosa, e um falso
+    // positivo custaria uma resposta boa a um lead real. Ligar lá depende de
+    // medir falso positivo contra o corpus — decisão do Ciclo C.
+    const plan = buildAuthorizedResponsePlan({
+      actionResult: { type: "general_question", clinicContext: "x" },
+      commercialPolicy: null,
+      installmentTable: null,
+      allowedMediaIds: [],
+      expectedState: null,
+      maxCharacters: 600,
+      authorizedServices: SERVICES,
+    });
+
+    expect(plan.strictServiceVocabulary).toBe(false);
+    expect(check("Trabalhamos com lentes de contato dental.", plan).ok).toBe(true);
+  });
+
+  it("a troca de preço entre serviços é acusada mesmo com vocabulário aberto", () => {
+    // `service_price_mismatch` não depende do modo estrito: exige preço citado e
+    // dono ausente, então vale em todo caminho que declare catálogo.
+    const openPlan = planFor(SERVICES, false);
+
+    expect(check("O clareamento sai por R$ 2.000,00.", openPlan).violations).toContain(
+      "service_price_mismatch",
+    );
   });
 });
 
