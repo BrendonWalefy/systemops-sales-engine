@@ -2,7 +2,12 @@
 
 import type { Message } from "@/domain/entities/conversation";
 import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
-import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
+import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import {
+  DEMO_TURN_MAX_CHARACTERS,
+  buildDemoTurnPlanInput,
+} from "@/app/demo-turn-response";
+import type { ComposerInput } from "@/core/intelligence/ResponseComposer";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { estimateAiCostUsdMicros } from "@/application/services/cost-estimator";
 
@@ -84,7 +89,7 @@ export async function runAutonomousReceptionistTurn(
   input: DemoConversationInput,
 ): Promise<AutonomousDemoResult> {
   const classifier = new IntentClassifier();
-  const composer = new ResponseComposer();
+  const planner = new ConversationResponsePlanner();
   const timezone = new ClinicTimezone("America/Sao_Paulo");
 
   const domainMessages = input.messages.map<Message>((m, i) => ({
@@ -106,7 +111,7 @@ export async function runAutonomousReceptionistTurn(
 
   const classification = await classifier.classify(latestText, domainMessages, hasPendingOffer);
 
-  let actionResult: Parameters<ResponseComposer["compose"]>[0]["actionResult"];
+  let actionResult: ComposerInput["actionResult"];
   let appointmentStatus = "none";
   let handoffRequired = false;
 
@@ -150,14 +155,20 @@ export async function runAutonomousReceptionistTurn(
   }
 
   const clinic = { ...DEMO_CLINIC, name: input.clinicName ?? DEMO_CLINIC.name };
-  const composed = await composer.compose({
-    actionResult,
-    conversationHistory: domainMessages,
-    clinic,
-    leadName: input.leadName,
-    timezone,
-    isFirstMessage: domainMessages.filter((m) => m.author === "agent").length === 0,
+  // Mesmo plano → composer → validador → fallback do caminho real. A demo é
+  // material de venda: um preço inventado aqui é promessa feita ao prospect.
+  const planned = await planner.execute({
+    composerInput: {
+      actionResult,
+      conversationHistory: domainMessages,
+      clinic,
+      leadName: input.leadName,
+      timezone,
+      isFirstMessage: domainMessages.filter((m) => m.author === "agent").length === 0,
+    },
+    planInput: buildDemoTurnPlanInput({ maxCharacters: DEMO_TURN_MAX_CHARACTERS }),
   });
+  const composed = planned.response;
 
   const aiCost = estimateAiCostUsdMicros({
     clinicId: "demo",

@@ -8,7 +8,7 @@ import { buildReminderComposerInput, buildReminderPlanInput } from "@/app/api/cr
 // existe, e a clínica descobriria pela cadeira vazia.
 function composerThatLiesAboutTime(text: string) {
   return {
-    async compose(_input: ComposerInput): Promise<ComposedResponse> {
+    async compose(): Promise<ComposedResponse> {
       return { text, parts: [{ type: "text", content: text }] } as ComposedResponse;
     },
   };
