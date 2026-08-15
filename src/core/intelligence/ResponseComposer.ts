@@ -32,6 +32,28 @@ const OPENAI_TIMEOUT_MS = 30_000;
 const CHAT_MAX_TOKENS = 350;
 const RESPONSES_MAX_OUTPUT_TOKENS = 700;
 
+/** Português rende ~3,5 caracteres por token na prática. */
+const CHARS_PER_TOKEN = 3.5;
+/** Folga para o modelo fechar a frase em vez de ser cortado pela API. */
+const TOKEN_HEADROOM = 1.25;
+/** Abaixo disso não cabe uma frase completa, e o corte fica pior que o excesso. */
+const MIN_COMPOSER_TOKENS = 60;
+
+/**
+ * Teto de saída derivado do orçamento de caracteres.
+ *
+ * Instrução de prompt é pedido; `max_tokens` é limite. Medido em 13/08: com o
+ * teto fixo em 350 tokens (~1.200 caracteres) contra orçamento de 280, dizer o
+ * número ao modelo no prompt não reduziu violação nenhuma — ele tinha espaço de
+ * sobra e usava. Resposta longa demais é a reclamação recorrente dos clientes,
+ * então aperta-se a trava, não se afrouxa o limite.
+ */
+export function resolveComposerMaxTokens(maxCharacters: number | undefined): number {
+  if (!maxCharacters || maxCharacters <= 0) return CHAT_MAX_TOKENS;
+  const derived = Math.ceil((maxCharacters / CHARS_PER_TOKEN) * TOKEN_HEADROOM);
+  return Math.min(Math.max(derived, MIN_COMPOSER_TOKENS), CHAT_MAX_TOKENS);
+}
+
 function envModel(name: string): string | null {
   const value = process.env[name]?.trim();
   return value || null;
@@ -217,6 +239,12 @@ export type ComposerInput = {
   voiceResponseEnabled?: boolean;
   conciergeVerbosity?: ConciergeVerbosity;
   conciergeDrive?: ConciergeDrive;
+  /**
+   * Orçamento de caracteres que o validator vai cobrar. Sem ele o modelo
+   * escrevia livre e era reprovado por uma régua que ninguém mostrou — 45% dos
+   * turnos no corpus real de 13/08.
+   */
+  maxCharacters?: number;
 };
 
 // Um bloco de entrega: texto puro ou mídia a ser enviada.
@@ -528,7 +556,7 @@ function fenceClinicContent(content: string): string {
   return content.replace(/<\/?dados_da_clinica>/gi, "");
 }
 
-function buildSystemPrompt(input: ComposerInput): string {
+export function buildComposerSystemPrompt(input: ComposerInput): string {
   const { clinic, leadName, timezone, isFirstMessage, resumedFromHumanTakeover, voiceResponseEnabled } = input;
   const ctx = input.context;
   const agentRole = ctx?.agentRole ?? "recepcionista virtual";
@@ -539,7 +567,7 @@ function buildSystemPrompt(input: ComposerInput): string {
   if (conversationExperience === "concierge") {
     let verbosityRule = "";
     if (input.conciergeVerbosity === "concisa") {
-      verbosityRule = "- REGRA DE VERBOSIDADE: Seja o mais breve possível — no máximo 1 ou 2 frases curtas, direto ao ponto, sem rodeio. Exceção: se a REGRA ABSOLUTA de fidelidade editorial exigir preservar valores, condições ou dados autorizados, mantenha-os mesmo que a resposta fique um pouco maior.\n";
+      verbosityRule = `- REGRA DE VERBOSIDADE: seja breve e direto, no máximo 1 ou 2 frases curtas.\n`;
     } else if (input.conciergeVerbosity === "detalhada") {
       verbosityRule = "- REGRA DE VERBOSIDADE: Forneça uma explicação detalhada e consultiva sobre o procedimento ou dúvida levantada.\n";
     }
@@ -567,6 +595,14 @@ ${verbosityRule}${driveRule}`;
 - Não repita o menu depois de responder preço, pagamento, endereço ou tratamento.
 - Máximo 1 pergunta no final.`;
   }
+
+  // O orçamento vale em qualquer modo de experiência: o validator cobra o
+  // número sempre, então o prompt tem de dizê-lo sempre. E a ordem de
+  // prioridade é explícita — cortar explicação, nunca o dado autorizado, que é
+  // como `price_omitted` nasceu.
+  const budgetRule = input.maxCharacters
+    ? `\n\nORÇAMENTO DE TAMANHO: sua resposta precisa caber em no máximo ${input.maxCharacters} caracteres. Planeje antes de escrever. Se o dado autorizado (valor, condição, horário) não couber junto com a explicação, PRIORIZE o dado e encurte a explicação — nunca omita o dado para caber.`
+    : "";
 
   return `Você é ${clinic.receptionistName ?? "a assistente virtual"}, ${agentRole} de ${businessDescriptor}, do ${clinic.name}.
 
@@ -641,7 +677,7 @@ Esta resposta será convertida em áudio e enviada pelo WhatsApp. Cuide apenas d
 2. Prosa corrida — sem listas numeradas, tabelas ou tópicos. Para horários, mencione em linguagem natural ("temos segunda às catorze horas ou terça às nove, qual fica melhor?"), nunca em lista.
 3. Português brasileiro natural e conversacional — fale como uma pessoa real, sem linguagem de call center.
 4. Quando houver vídeos relevantes na biblioteca, copie o token completo correspondente ao final — cada vídeo será enviado separadamente após o áudio. Não escreva o título do vídeo em texto, apenas o token.
-(Não se preocupe com markdown, emojis, símbolos, abreviações, horários ou valores: são normalizados automaticamente antes da síntese de voz.)` : ""}`;
+(Não se preocupe com markdown, emojis, símbolos, abreviações, horários ou valores: são normalizados automaticamente antes da síntese de voz.)` : ""}${budgetRule}`;
 }
 
 function isPriceObjectionHandoff(reason?: string | null): boolean {
@@ -1062,7 +1098,7 @@ export class ResponseComposer {
     if (deterministicSafetyResponse) return deterministicSafetyResponse;
 
     const model = resolveComposerModel(input.clinic.plan);
-    const systemPrompt = buildSystemPrompt(input);
+    const systemPrompt = buildComposerSystemPrompt(input);
     const actionContext = buildActionContext(
       input.actionResult,
       input.conversationExperience ?? DEFAULT_CONVERSATION_EXPERIENCE,
@@ -1100,8 +1136,8 @@ export class ResponseComposer {
     for (let attempt = 0; attempt < 2 && !raw; attempt++) {
       try {
         invocation = shouldUseResponsesApi(model)
-          ? await this.createWithResponsesApi(model, systemPrompt, recentHistory, actionContext)
-          : await this.createWithChatCompletions(model, messages);
+          ? await this.createWithResponsesApi(model, systemPrompt, recentHistory, actionContext, input.maxCharacters)
+          : await this.createWithChatCompletions(model, messages, input.maxCharacters);
         raw = invocation.raw.trim();
       } catch (err) {
         lastError = err;
@@ -1127,7 +1163,7 @@ export class ResponseComposer {
       const retryContext = `${actionContext}\n\nCORREÇÃO OBRIGATÓRIA: sua primeira proposta repetiu literalmente uma mensagem que o lead já recebeu. Não reinicie a conversa, não repita apresentação nem pergunta anterior. Responda somente à última mensagem do lead em uma frase curta e natural.`;
       try {
         const retry = shouldUseResponsesApi(model)
-          ? await this.createWithResponsesApi(model, systemPrompt, recentHistory, retryContext)
+          ? await this.createWithResponsesApi(model, systemPrompt, recentHistory, retryContext, input.maxCharacters)
           : await this.createWithChatCompletions(model, [
               { role: "system", content: systemPrompt },
               ...recentHistory.map((message): OpenAI.Chat.ChatCompletionMessageParam => ({
@@ -1138,7 +1174,7 @@ export class ResponseComposer {
                 role: "user",
                 content: `[INSTRUÇÃO INTERNA — NÃO VISÍVEL AO LEAD]\n${retryContext}\n\nEscreva a resposta corrigida agora:`,
               },
-            ]);
+            ], input.maxCharacters);
         invocation = {
           raw: retry.raw,
           inputTokens: invocation.inputTokens + retry.inputTokens,
@@ -1197,11 +1233,12 @@ export class ResponseComposer {
   private async createWithChatCompletions(
     model: string,
     messages: OpenAI.Chat.ChatCompletionMessageParam[],
+    maxCharacters?: number,
   ): Promise<OpenAiInvocationResult> {
     const response = await this.client.chat.completions.create({
       model,
       temperature: 0.5,
-      max_tokens: CHAT_MAX_TOKENS,
+      max_tokens: resolveComposerMaxTokens(maxCharacters),
       messages,
     });
 
@@ -1217,6 +1254,7 @@ export class ResponseComposer {
     systemPrompt: string,
     recentHistory: Message[],
     actionContext: string,
+    maxCharacters?: number,
   ): Promise<OpenAiInvocationResult> {
     const input: OpenAI.Responses.ResponseInput = [
       ...recentHistory.map((m): OpenAI.Responses.EasyInputMessage => ({
@@ -1233,9 +1271,14 @@ export class ResponseComposer {
       model,
       instructions: systemPrompt,
       input,
-      max_output_tokens: RESPONSES_MAX_OUTPUT_TOKENS,
+      // O teto acompanha o orçamento; `verbosity` é o controle nativo do modelo
+      // para tamanho e estava fixo em "medium" mesmo com orçamento apertado.
+      max_output_tokens: Math.max(
+        resolveComposerMaxTokens(maxCharacters),
+        MIN_COMPOSER_TOKENS,
+      ),
       reasoning: { effort: "low" },
-      text: { verbosity: "medium" },
+      text: { verbosity: maxCharacters && maxCharacters <= 320 ? "low" : "medium" },
     });
 
     return {

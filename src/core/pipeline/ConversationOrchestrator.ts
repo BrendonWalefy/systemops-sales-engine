@@ -3056,6 +3056,7 @@ export class ConversationOrchestrator {
         action: planned.plan.action,
         valid: planned.source === "composer",
         violationCount: planned.violations.length,
+        violations: planned.violations.join(","),
         requiresHandoff: planned.requiresHandoff,
       },
     });
@@ -3989,6 +3990,7 @@ export class ConversationOrchestrator {
           conversationExperience: clinicExperience,
           conciergeVerbosity: conciergeConfig?.verbosity,
           conciergeDrive: conciergeConfig?.drive,
+          maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
           resumedFromHumanTakeover: false,
         },
         planInput: {
@@ -5245,6 +5247,7 @@ export class ConversationOrchestrator {
             conversationExperience: experience,
             conciergeVerbosity: conciergeConfig?.verbosity,
             conciergeDrive: conciergeConfig?.drive,
+            maxCharacters: resolveResponseMaxCharacters(conciergeConfig?.verbosity),
             resumedFromHumanTakeover,
             voiceResponseEnabled: voiceEnabled,
           },
