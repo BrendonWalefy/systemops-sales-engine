@@ -8,6 +8,7 @@ import {
   assertClinicAllowedForReplayExport,
   assertReplayOutputOutsideGitRepository,
 } from "@/application/replay/replay-export-policy";
+import { redactCorpusText } from "@/application/corpus/redact-corpus-text";
 import { sanitizeReplayText } from "@/application/replay/sanitize-replay-text";
 import { db } from "@/infrastructure/db/client";
 import {
@@ -266,7 +267,11 @@ function joinReplies(
 }
 
 function sanitize(row: SourceRow, leadName: string | null): string {
-  const sanitized = sanitizeReplayText(row.body, leadName);
+  // Duas barreiras, não uma. A do replay foi escrita para artefato que fica fora
+  // do Git; a do corpus existe porque o caso rotulado é commitado, e cobre as
+  // formas que a primeira deixou passar — nome dentro de nome de arquivo,
+  // payload de Pix, UUID grudado em dígitos, domínio sem esquema.
+  const sanitized = redactCorpusText(sanitizeReplayText(row.body, leadName));
   const marker = row.mediaType ? `[MIDIA:${row.mediaType.toUpperCase()}]` : "";
   return [marker, sanitized].filter(Boolean).join(" ") || "[SEM_TEXTO]";
 }

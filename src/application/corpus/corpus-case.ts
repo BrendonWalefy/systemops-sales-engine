@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CORPUS_RESIDUAL_PII_DETECTORS } from "@/application/corpus/redact-corpus-text";
 import {
   deriveBetterResponder,
   deriveProseLabel,
@@ -268,7 +269,10 @@ function assertNoSurvivingPii(corpusCase: CorpusCase): void {
     corpusCase.observed.humanResponse ?? "",
   ].join("\n");
 
-  for (const [kind, detector] of Object.entries(CORPUS_PII_DETECTORS)) {
+  for (const [kind, detector] of Object.entries({
+    ...CORPUS_PII_DETECTORS,
+    ...CORPUS_RESIDUAL_PII_DETECTORS,
+  })) {
     detector.lastIndex = 0;
     if (detector.test(texts)) {
       throw new Error(
