@@ -54,10 +54,21 @@ Avoid large mixed commits unless the pieces must ship together.
 
 ## Required Verification
 
-Before every push, PR, merge, or deploy:
+Before every push, PR, merge, or deploy, the canonical command is:
 
 ```bash
 npm run verify
+```
+
+Run it exactly like that. Never wrap it in `dotenv -e .env.local` — `.env.local` carries the
+production `DATABASE_URL`, and the wrapped form is what let the integration tests write to the
+shared database. `npm run verify` deliberately runs with no database, so the tests that touch one
+are skipped. See [`docs/operations/test-database-safety.md`](docs/operations/test-database-safety.md).
+
+To run the database integration tests on purpose, use the separate command and its own env file:
+
+```bash
+npm run test:db   # reads .env.test.local, which must point at a Neon test branch
 ```
 
 For scheduling/calendar changes, also make sure the relevant agenda tests are covered:
