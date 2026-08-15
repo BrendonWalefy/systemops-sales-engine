@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-15T19:52:03.886Z",
+  "generatedAt": "2026-08-15T20:31:26.566Z",
   "corpus": {
     "totalCases": 66,
     "shardHashes": {
@@ -263,8 +263,8 @@
       "aiWins": 1,
       "humanWins": 0,
       "ties": 13,
-      "unstableVerdicts": 2,
-      "unstableRate": 0.14285714285714285,
+      "unstableVerdicts": 3,
+      "unstableRate": 0.21428571428571427,
       "longerAnswerWonRate": 1,
       "averageAiCharacters": 308,
       "averageHumanCharacters": 155,
@@ -274,6 +274,6 @@
   "cost": {
     "classifierCalls": 64,
     "averageClassifierLatencyMs": 1273,
-    "wallClockMs": 120636
+    "wallClockMs": 120358
   }
 }
