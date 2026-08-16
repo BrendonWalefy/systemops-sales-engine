@@ -8,6 +8,20 @@
 
 **Tech Stack:** TypeScript 5.8, Vitest 3.2, OpenAI structured output, JSONL eval datasets.
 
+## Superseding execution note (2026-08-16)
+
+The latest Cycle F instruction overrides two parts of this earlier plan:
+
+1. Behavioral model quality is reported per axis with population, numerator, denominator,
+   model/version, skipped cases, and critical errors. A probabilistic mismatch is **not** turned
+   into a 100% architectural invariant. Safety and architecture remain absolute.
+2. Catalog, Scheduling, and Escalation are contract stubs only in F. They may claim and decide
+   structured values, but return `not_executable_until_cycle_g`; authorized reads, calendar I/O,
+   real catalog resolution, and operational escalation remain Cycle G.
+
+Consequently, the 100%-per-run requirements later in this document are historical plan text, not
+the executed gate. No V1 diagnostic or V1×V2 comparison is run in F.
+
 ## Global Constraints
 
 - The canonical design spec wins over this plan if they diverge.
