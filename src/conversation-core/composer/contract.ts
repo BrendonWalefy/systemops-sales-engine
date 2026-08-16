@@ -19,9 +19,9 @@ export type DraftSpeechAct =
       subjectRef: string;
       factRefs: readonly string[];
     }
-  | { kind: "communicate_failure"; outcomeRef: string }
-  | { kind: "inform_required_action"; outcomeRef: string }
-  | { kind: "ask_clarification"; outcomeRef: string };
+  | { kind: "communicate_failure"; outcomeRef: string; subjectRef: string | null }
+  | { kind: "inform_required_action"; outcomeRef: string; subjectRef: string | null }
+  | { kind: "ask_clarification"; outcomeRef: string; subjectRef: string | null };
 
 export type DraftResponse = { acts: readonly DraftSpeechAct[] };
 export type CoreResponse = { text: string; parts: readonly unknown[] };

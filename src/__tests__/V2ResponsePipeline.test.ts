@@ -69,7 +69,7 @@ describe("pipeline de resposta V2", () => {
     await expect(runV2ResponsePipeline({
       plan: emptyResponsePlanFixture,
       style,
-      composer: composer({ acts: [{ kind: "communicate_failure", outcomeRef: "missing" }] }),
+      composer: composer({ acts: [{ kind: "communicate_failure", outcomeRef: "missing", subjectRef: null }] }),
     })).resolves.toEqual(expect.objectContaining({
       status: "no_safe_response",
       reason: "no_valid_draft",

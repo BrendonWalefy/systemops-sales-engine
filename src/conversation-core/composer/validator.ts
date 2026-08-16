@@ -114,8 +114,12 @@ function copyAct(value: unknown): DraftSpeechAct | null {
     kind === "ask_clarification"
   ) {
     const outcomeRef: unknown = value.outcomeRef;
-    if (typeof outcomeRef !== "string") return null;
-    return Object.freeze({ kind, outcomeRef });
+    const subjectRef: unknown = value.subjectRef;
+    if (
+      typeof outcomeRef !== "string" ||
+      (typeof subjectRef !== "string" && subjectRef !== null)
+    ) return null;
+    return Object.freeze({ kind, outcomeRef, subjectRef });
   }
 
   return null;
@@ -310,6 +314,14 @@ export function validateDraft<OutcomeType extends string>(
           actIndex,
         });
       }
+      return;
+    }
+
+    if (act.subjectRef !== null && !subjects.has(act.subjectRef)) {
+      push(violations, actIndex, "unknown_subject_ref");
+    }
+    if (outcome && outcome.subjectRef !== act.subjectRef) {
+      push(violations, actIndex, "subject_mismatch");
     }
   });
 

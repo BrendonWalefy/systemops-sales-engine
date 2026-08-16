@@ -57,7 +57,7 @@ describe("validator semântico V2", () => {
       get(): readonly DraftSpeechAct[] {
         reads += 1;
         if (reads <= 2) {
-          return [{ kind: "communicate_failure", outcomeRef: refs.failed }];
+          return [{ kind: "communicate_failure", outcomeRef: refs.failed, subjectRef: null }];
         }
         return [{
           kind: "confirm_effect",
@@ -73,7 +73,7 @@ describe("validator semântico V2", () => {
     expect(result.valid).toBe(true);
     if (!result.valid) throw new Error("expected the failure draft to validate");
     expect(result.draft.acts).toEqual([
-      { kind: "communicate_failure", outcomeRef: refs.failed },
+      { kind: "communicate_failure", outcomeRef: refs.failed, subjectRef: null },
     ]);
     expect(reads).toBe(1);
     expect(Object.isFrozen(result.draft)).toBe(true);
@@ -85,6 +85,7 @@ describe("validator semântico V2", () => {
     const sourceAct: DraftSpeechAct = {
       kind: "communicate_failure",
       outcomeRef: refs.failed,
+      subjectRef: null,
     };
     const source: DraftResponse = { acts: [sourceAct] };
 
@@ -100,13 +101,13 @@ describe("validator semântico V2", () => {
     });
 
     expect(result.draft.acts).toEqual([
-      { kind: "communicate_failure", outcomeRef: refs.failed },
+      { kind: "communicate_failure", outcomeRef: refs.failed, subjectRef: null },
     ]);
   });
 
   it("materializa accessors e proxies uma única vez e falha fechado quando lançam", () => {
     let kindReads = 0;
-    const shiftingAct = Object.defineProperty({ outcomeRef: refs.failed }, "kind", {
+    const shiftingAct = Object.defineProperty({ outcomeRef: refs.failed, subjectRef: null }, "kind", {
       enumerable: true,
       get() {
         kindReads += 1;
@@ -125,7 +126,7 @@ describe("validator semântico V2", () => {
     expect(result.valid).toBe(true);
     if (!result.valid) throw new Error("expected canonical draft to validate");
     expect(result.draft.acts).toEqual([
-      { kind: "communicate_failure", outcomeRef: refs.failed },
+      { kind: "communicate_failure", outcomeRef: refs.failed, subjectRef: null },
     ]);
     expect({ actsReads, kindReads }).toEqual({ actsReads: 1, kindReads: 1 });
 
@@ -153,6 +154,7 @@ describe("validator semântico V2", () => {
   it("rejeita troca de subject", () => {
     expect(codes(draft({ kind: "inform_fact", outcomeRef: refs.informationA, factRef: refs.factA, subjectRef: refs.subjectB }))).toContain("subject_mismatch");
     expect(codes(draft({ kind: "offer_options", outcomeRef: refs.options, subjectRef: refs.subjectA, optionRefs: ["option-0"] }))).toContain("subject_mismatch");
+    expect(codes(draft({ kind: "communicate_failure", outcomeRef: refs.failed, subjectRef: refs.subjectA }))).toContain("subject_mismatch");
   });
 
   it("rejeita opção pertencente a outro outcome", () => {
@@ -209,11 +211,11 @@ describe("validator semântico V2", () => {
     [{ kind: "offer_options", outcomeRef: refs.options, subjectRef: refs.subjectB, optionRefs: ["option-0"] }, true],
     [{ kind: "confirm_effect", outcomeRef: refs.options, subjectRef: refs.subjectB, factRefs: [] }, false],
     [{ kind: "confirm_effect", outcomeRef: refs.completed, subjectRef: refs.subjectA, factRefs: ["fact-4"] }, true],
-    [{ kind: "communicate_failure", outcomeRef: refs.failed }, true],
+    [{ kind: "communicate_failure", outcomeRef: refs.failed, subjectRef: null }, true],
     [{ kind: "confirm_effect", outcomeRef: refs.failed, subjectRef: refs.subjectA, factRefs: [] }, false],
-    [{ kind: "inform_required_action", outcomeRef: refs.human }, true],
+    [{ kind: "inform_required_action", outcomeRef: refs.human, subjectRef: null }, true],
     [{ kind: "confirm_effect", outcomeRef: refs.human, subjectRef: refs.subjectA, factRefs: [] }, false],
-    [{ kind: "ask_clarification", outcomeRef: refs.clarify }, true],
+    [{ kind: "ask_clarification", outcomeRef: refs.clarify, subjectRef: null }, true],
   ] as const)("aplica compatibilidade estruturada para %#", (act, expected) => {
     expect(validateDraft(plan, draft(act)).valid).toBe(expected);
   });

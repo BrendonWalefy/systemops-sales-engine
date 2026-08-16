@@ -54,16 +54,16 @@ export function buildDeterministicDraft(
     }
 
     if (outcome.semanticClass === "effect_failed") {
-      acts.push({ kind: "communicate_failure", outcomeRef: outcome.ref });
+      acts.push({ kind: "communicate_failure", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
       continue;
     }
 
     if (outcome.semanticClass === "human_action_required") {
-      acts.push({ kind: "inform_required_action", outcomeRef: outcome.ref });
+      acts.push({ kind: "inform_required_action", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
       continue;
     }
 
-    acts.push({ kind: "ask_clarification", outcomeRef: outcome.ref });
+    acts.push({ kind: "ask_clarification", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
   }
 
   return { acts };

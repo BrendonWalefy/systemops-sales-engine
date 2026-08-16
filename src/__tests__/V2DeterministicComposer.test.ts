@@ -39,9 +39,9 @@ describe("composer determinístico V2", () => {
         { kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" },
         { kind: "offer_options", outcomeRef: "outcome-1", subjectRef: null, optionRefs: ["option-0"] },
         { kind: "confirm_effect", outcomeRef: "outcome-2", subjectRef: "subject-0", factRefs: ["fact-3"] },
-        { kind: "communicate_failure", outcomeRef: "outcome-3" },
-        { kind: "inform_required_action", outcomeRef: "outcome-4" },
-        { kind: "ask_clarification", outcomeRef: "outcome-5" },
+        { kind: "communicate_failure", outcomeRef: "outcome-3", subjectRef: null },
+        { kind: "inform_required_action", outcomeRef: "outcome-4", subjectRef: null },
+        { kind: "ask_clarification", outcomeRef: "outcome-5", subjectRef: null },
       ],
     });
   });

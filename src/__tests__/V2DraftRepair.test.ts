@@ -23,7 +23,7 @@ describe("repair semântico V2", () => {
 
   it("remove duplicatas sem alterar a ordem dos atos sobreviventes", () => {
     const factAct = { kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" } as const;
-    const failureAct = { kind: "communicate_failure", outcomeRef: "outcome-1" } as const;
+    const failureAct = { kind: "communicate_failure", outcomeRef: "outcome-1", subjectRef: null } as const;
 
     expect(repairDraft(responsePlanFixture, { acts: [factAct, factAct, failureAct] })).toEqual({
       acts: [factAct, failureAct],

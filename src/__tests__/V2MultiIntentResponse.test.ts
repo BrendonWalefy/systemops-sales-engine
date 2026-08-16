@@ -9,6 +9,7 @@ import type { ActionResult, Subject } from "@/conversation-core/decision";
 const outcomeSchema = defineOutcomeSchema({
   price_ready: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
   options_found: { semanticClass: "options_found", subjectRequirement: "required", evidenceRequirement: "required" },
+  operation_failed: { semanticClass: "effect_failed", subjectRequirement: "required", evidenceRequirement: "required" },
 } as const);
 
 const evidence = { source: "read", reference: "snapshot" } as const;
@@ -60,5 +61,28 @@ describe("resposta multi-intent V2", () => {
     if (!sameSubject && !crossLinked.valid) {
       expect(crossLinked.violations.map(({ code }) => code)).toContain("subject_mismatch");
     }
+  });
+
+  it("distingue no texto falhas pertencentes a subjects diferentes", async () => {
+    const subjectA = { type: "service", id: "a", displayName: "Limpeza" } as const;
+    const subjectB = { type: "service", id: "b", displayName: "Implante" } as const;
+    const plan = buildV2AuthorizedResponsePlan(outcomeSchema, [
+      {
+        type: "operation_failed", semanticClass: "effect_failed", origin: { capabilityId: "operation-a" },
+        subject: subjectA, evidence: [evidence], facts: [],
+      },
+      {
+        type: "operation_failed", semanticClass: "effect_failed", origin: { capabilityId: "operation-b" },
+        subject: subjectB, evidence: [evidence], facts: [],
+      },
+    ]);
+
+    const draft = await new DeterministicResponseComposer().compose({ plan, style });
+    const validation = validateDraft(plan, draft);
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+
+    expect(renderDeterministicResponse({ draft: validation.draft }).text).toBe(
+      "Para Limpeza, não foi possível concluir a ação. Para Implante, não foi possível concluir a ação.",
+    );
   });
 });

@@ -24,14 +24,8 @@ export function renderDeterministicResponse(input: {
   const facts = new Map(plan.facts.map((item) => [item.ref, item]));
   const subjects = new Map(plan.subjects.map((item) => [item.ref, item]));
 
-  const actSubjectRef = (act: ValidatedDraftResponse["acts"][number]): string | null => {
-    if (
-      act.kind === "inform_fact" ||
-      act.kind === "offer_options" ||
-      act.kind === "confirm_effect"
-    ) return act.subjectRef;
-    return null;
-  };
+  const actSubjectRef = (act: ValidatedDraftResponse["acts"][number]): string | null =>
+    act.subjectRef;
   const relevantSubjectRefs = new Set(
     input.draft.acts.map(actSubjectRef).filter((ref): ref is string => ref !== null),
   );
@@ -71,12 +65,12 @@ export function renderDeterministicResponse(input: {
       );
     }
     if (act.kind === "communicate_failure") {
-      return "Não foi possível concluir a ação.";
+      return qualify(act.subjectRef, "Não foi possível concluir a ação.");
     }
     if (act.kind === "inform_required_action") {
-      return "É necessário atendimento humano.";
+      return qualify(act.subjectRef, "É necessário atendimento humano.");
     }
-    return "Pode confirmar os dados?";
+    return qualify(act.subjectRef, "Pode confirmar os dados?");
   });
 
   return { text: sentences.join(" "), parts: [] };

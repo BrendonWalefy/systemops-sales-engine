@@ -83,18 +83,18 @@ describe("renderer determinístico V2", () => {
   });
 
   it("comunica falha sem texto de sucesso", () => {
-    const text = render({ kind: "communicate_failure", outcomeRef: "outcome-3" });
+    const text = render({ kind: "communicate_failure", outcomeRef: "outcome-3", subjectRef: null });
     expect(text).toBe("Não foi possível concluir a ação.");
     expect(text).not.toMatch(/confirmad|concluíd/i);
   });
 
   it("informa ação humana necessária sem alegar handoff", () => {
-    expect(render({ kind: "inform_required_action", outcomeRef: "outcome-4" }))
+    expect(render({ kind: "inform_required_action", outcomeRef: "outcome-4", subjectRef: null }))
       .toBe("É necessário atendimento humano.");
   });
 
   it("pede clarificação sem inventar fact", () => {
-    expect(render({ kind: "ask_clarification", outcomeRef: "outcome-5" }))
+    expect(render({ kind: "ask_clarification", outcomeRef: "outcome-5", subjectRef: null }))
       .toBe("Pode confirmar os dados?");
   });
 

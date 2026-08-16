@@ -10,7 +10,7 @@ describe("fallback semântico V2", () => {
     expect(fallback).not.toBeNull();
     expect(fallback?.acts).toEqual([
       { kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" },
-      { kind: "communicate_failure", outcomeRef: "outcome-1" },
+      { kind: "communicate_failure", outcomeRef: "outcome-1", subjectRef: null },
     ]);
     expect(fallback && validateDraft(responsePlanFixture, fallback).valid).toBe(true);
   });
