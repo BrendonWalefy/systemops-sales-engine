@@ -62,10 +62,20 @@ export async function runTurnPipeline<
     policy: input.policy,
     now: input.now,
   } as CapabilityContext<Policy>;
-  const actionResults: ActionResult[] = [];
+  // All authorized reads and deterministic decisions finish before the first
+  // effect. A later read failure therefore cannot leave an earlier capability
+  // partially executed.
+  const decided = [];
   for (const item of claimed) {
-    const decision = await item.capability.decide(item.claim, context);
-    actionResults.push(await item.capability.execute(decision, context));
+    decided.push({
+      capability: item.capability,
+      decision: await item.capability.decide(item.claim, context),
+    });
+  }
+
+  const actionResults: ActionResult[] = [];
+  for (const item of decided) {
+    actionResults.push(await item.capability.execute(item.decision, context));
   }
 
   const plan = input.buildPlan(actionResults);
