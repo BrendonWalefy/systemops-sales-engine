@@ -508,13 +508,52 @@ Quatro guardas impedem a volta de cada defeito: fato cortado no meio da frase,
 mídia sem título nem declaração de desconhecido, fixture sem completude
 declarada, e as duas regras ausentes do texto da pergunta 1.
 
-## O que falta para o Ciclo C estar completo
+## Rodada final — a régua está calibrada
 
-1. **Última rodada cega** — 20 casos, 16 inéditos, 4 mantidos porque são
-   exatamente os que as correções do C.9 decidem.
-2. **Repetição do baseline.** Rodada única, variação de 1,6 ponto entre duas
-   execuções. O baseline continua medido sobre os rótulos antigos e só deve ser
-   remedido quando o gate fechar.
+Amostra cega com 16 de 20 casos inéditos, R1 re-derivado sob a régua do C.9,
+22 pares comparáveis... 24 pares comparados.
+
+| Pergunta | C.7 | C.8 | **C.9** | Limiar |
+|---|---|---|---|---|
+| `factuallyCorrect` | 75,0% | 68,2% | **91,7%** | 80% |
+| `addressedWhatTheLeadRaised` | 100,0% | 90,9% | **91,7%** | 80% |
+| `advancedTheJourney` | 70,8% | 81,8% | **87,5%** | 80% |
+| `wouldRepeatToday` | 70,8% | 72,7% | **87,5%** | 80% |
+
+As quatro passaram. As divergências caíram de 19 para 10, e os quatro casos
+mantidos de propósito — os que cada correção do C.9 decide — confirmaram as
+correções: `other-0001`, `price-0005` e `objection-0005` passaram a concordar
+integralmente, e `price-0002` diverge só na pergunta 2.
+
+**Metade das 10 divergências é julgamento humano legítimo** e metade é erro do
+primeiro revisor, do mesmo tipo nos dois casos: `procedure-0001` e `media-0002`
+afirmam ação que ninguém registrou ("depois vou te mandar msg", "realizamos uma
+pré-avaliação"), e eu abri para eles uma exceção que a rubrica não concede e que
+eu mesmo não abri em `audio-0001`, `handoff-0003` e `location-0001`. Ficam
+registrados como erro conhecido; corrigi-los na mesma respiração em que se mede
+a concordância seria fabricar o número.
+
+Nenhuma divergência é evidência contraditória, fixture inválida, PII ou defeito
+mecânico.
+
+### A régua está congelada
+
+`review-checklist.v2-calibrada`, com digest das quatro perguntas travado em
+teste. Mudar uma palavra quebra o build: a concordância medida é propriedade
+deste texto, e alterá-lo invalida a medida e todos os rótulos derivados dela.
+
+## Baseline V1 remedido sobre os 65 casos válidos
+
+Eixo `request`: **68,8%**, 64 casos comparáveis, `gpt-5.4-mini`, 20 confusões.
+Camada de decisão inalterada: 89,1% nos 55 casos puros, 11 com I/O.
+
+**Uma ressalva que importa para o Ciclo D.** A medida anterior deu 73,4%; esta
+deu 68,8% e repetiu 68,8% em três execuções seguidas. Modelo idêntico, nomes de
+serviço idênticos nas fixtures, rótulos de entendimento intocados pelo C.8 e
+pelo C.9 — não consegui determinar a causa dos 4,7 pontos. Enquanto isso não for
+explicado, **uma execução única do baseline carrega pelo menos ~5 pontos de
+incerteza**, e uma "melhoria" da V2 dessa ordem seria indistinguível de ruído.
+Comparar V2 contra V1 exige repetição, não uma rodada de cada lado.
 
 ## Correções aplicadas no C.5
 

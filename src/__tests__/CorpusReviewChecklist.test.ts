@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  CALIBRATED_QUESTIONS_DIGEST,
   REVIEW_CHECKLIST_QUESTIONS,
+  REVIEW_CHECKLIST_VERSION,
   compareProseLabels,
   deriveBetterResponder,
   deriveProseLabel,
@@ -15,6 +18,19 @@ const allTrue = {
 } satisfies ReviewChecklist;
 
 describe("derivação de rótulo de prosa", () => {
+  // A régua foi calibrada no C.9 e está congelada: 91,7 / 91,7 / 87,5 / 87,5 de
+  // concordância entre dois revisores independentes. Mudar o texto de uma
+  // pergunta invalida essa medida e todos os rótulos derivados dela, então a
+  // mudança tem de vir acompanhada de nova versão — e de nova calibração.
+  it("mantém as perguntas congeladas na versão calibrada", () => {
+    expect(REVIEW_CHECKLIST_VERSION).toBe("review-checklist.v2-calibrada");
+    expect(
+      createHash("sha256")
+        .update(REVIEW_CHECKLIST_QUESTIONS.map((q) => `${q.field}:${q.question}`).join("\n"))
+        .digest("hex"),
+    ).toBe(CALIBRATED_QUESTIONS_DIGEST);
+  });
+
   // Duas respostas idênticas em forma foram julgadas de modos opostos porque a
   // rubrica não dizia se catálogo ausente prova inexistência. A regra tem de
   // estar escrita na pergunta, não na cabeça de quem julga.

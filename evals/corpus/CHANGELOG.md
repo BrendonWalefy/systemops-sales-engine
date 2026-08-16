@@ -98,3 +98,12 @@ procedimento — o que devolveu `other-0001` a `golden` depois de duas rodadas
 julgando-o sem lastro por defeito da fixture, não da resposta.
 
 65/65 re-derivados. `golden` 8 → 7, `anti-pattern` 51 → 55.
+
+## C.9 final — régua calibrada e congelada
+
+91,7 / 91,7 / 87,5 / 87,5 entre dois revisores independentes, com 16 de 20 casos
+inéditos. As perguntas estão congeladas em `review-checklist.v2-calibrada`, com
+digest travado em teste.
+
+Baseline V1 remedido sobre os 65 válidos: 68,8% no eixo `request`, 89,1% na
+camada de decisão.

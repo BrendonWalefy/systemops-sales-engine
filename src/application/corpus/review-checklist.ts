@@ -10,7 +10,19 @@
  * checklist e re-derivar tudo — nunca abrir exceção para aquele caso.
  */
 
-export const REVIEW_CHECKLIST_VERSION = "review-checklist.v1" as const;
+export const REVIEW_CHECKLIST_VERSION = "review-checklist.v2-calibrada" as const;
+
+/**
+ * Impressão digital das quatro perguntas na versão calibrada.
+ *
+ * A régua fechou o C.9 com 91,7 / 91,7 / 87,5 / 87,5 de concordância entre dois
+ * revisores independentes. Esse número é uma propriedade **deste** texto: mudar
+ * uma palavra de uma pergunta invalida a medida e todos os rótulos derivados
+ * dela. O digest existe para que a mudança seja impossível de fazer em silêncio
+ * — quem alterar a pergunta quebra o teste e tem de versionar e recalibrar.
+ */
+export const CALIBRATED_QUESTIONS_DIGEST =
+  "93882ca73baa8c3c08576995fbf4ef4cb4babe507dcb7eabc2c88a176d3a58ed" as const;
 
 export type ReviewChecklist = {
   /**

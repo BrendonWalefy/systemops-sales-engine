@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-15T20:59:57.287Z",
+  "generatedAt": "2026-08-16T04:16:16.849Z",
   "corpus": {
     "totalCases": 66,
     "shardHashes": {
@@ -32,8 +32,8 @@
         "axis": "request",
         "expected": 66,
         "produced": 64,
-        "correct": 47,
-        "accuracy": 0.7121212121212122
+        "correct": 44,
+        "accuracy": 0.6666666666666666
       },
       {
         "axis": "dialogueMove",
@@ -78,7 +78,7 @@
         "accuracy": 0
       }
     ],
-    "intentAccuracyOnV1Vocabulary": 0.734375,
+    "intentAccuracyOnV1Vocabulary": 0.6875,
     "comparableCases": 64,
     "skipped": 2,
     "confusions": [
@@ -118,6 +118,11 @@
         "got": "acknowledgment"
       },
       {
+        "caseId": "first-contact-0005",
+        "expected": "general_question",
+        "got": "greeting"
+      },
+      {
         "caseId": "handoff-0001",
         "expected": "needs_human",
         "got": "unclear"
@@ -153,9 +158,19 @@
         "got": "general_question"
       },
       {
+        "caseId": "objection-0006",
+        "expected": "general_question",
+        "got": "acknowledgment"
+      },
+      {
         "caseId": "objection-0008",
         "expected": "price_inquiry",
         "got": "acknowledgment"
+      },
+      {
+        "caseId": "price-0003",
+        "expected": "general_question",
+        "got": "book_appointment"
       },
       {
         "caseId": "price-0004",
@@ -259,7 +274,7 @@
   },
   "cost": {
     "classifierCalls": 64,
-    "averageClassifierLatencyMs": 1147,
-    "wallClockMs": 73541
+    "averageClassifierLatencyMs": 1647,
+    "wallClockMs": 105579
   }
 }
