@@ -35,7 +35,7 @@
 - Consumes: existing `Fact`, capability `execute()` results and `buildV2AuthorizedResponsePlan()`.
 - Produces: `OutcomeSemanticClass`, relationship-preserving `ActionResult`, and a referential `V2AuthorizedResponsePlan` used by every later task.
 
-- [ ] **Step 1: Write the failing plan-graph tests**
+- [x] **Step 1: Write the failing plan-graph tests**
 
 Add literal fixtures proving that two outcomes keep distinct fact and subject refs, internal facts retain `disclosure: "internal"`, and options remain grouped:
 
@@ -73,7 +73,7 @@ expect(plan.facts[0]?.subjectRef).not.toBe(plan.options[0]?.subjectRef);
 Add separate tests for a disclosable fact without subject and for options attached to a
 non-`options_found` result; both must throw.
 
-- [ ] **Step 2: Run the focused test and confirm RED**
+- [x] **Step 2: Run the focused test and confirm RED**
 
 Run:
 
@@ -83,7 +83,7 @@ npx vitest run src/__tests__/V2AuthorizedResponsePlan.test.ts
 
 Expected: FAIL because `ActionResult` has no semantic class/options and the plan has only flattened `actionTypes`/`authorizedFacts`.
 
-- [ ] **Step 3: Implement the minimal generic result contract**
+- [x] **Step 3: Implement the minimal generic result contract**
 
 Define shared references in `decision.ts`:
 
@@ -129,7 +129,7 @@ export type ActionResult =
 
 Reuse `Subject` and `Evidence` inside `Fact`.
 
-- [ ] **Step 4: Build the referential plan graph**
+- [x] **Step 4: Build the referential plan graph**
 
 Replace the flat plan with these exact public shapes:
 
@@ -171,7 +171,7 @@ Assign deterministic refs in encounter order (`outcome-0`, `option-0`, `fact-0`,
 `evidence-0`). Deduplicate subjects by exact type/id and evidence by exact source/reference. Reject
 allowed facts without a subject, empty `options_found`, and options on other classes.
 
-- [ ] **Step 5: Migrate the fixture and dental ActionResults without new decisions**
+- [x] **Step 5: Migrate the fixture and dental ActionResults without new decisions**
 
 Map existing concrete results exactly:
 
@@ -189,7 +189,7 @@ wind_window_reserved              -> effect_completed
 Use the capability id as origin, write evidence for completed/failed writes, and preserve each
 slot as an `ActionResultOption` instead of flattening it.
 
-- [ ] **Step 6: Run plan and G regression tests GREEN**
+- [x] **Step 6: Run plan and G regression tests GREEN**
 
 Run:
 
@@ -199,7 +199,7 @@ npx vitest run src/__tests__/V2AuthorizedResponsePlan.test.ts src/__tests__/Dent
 
 Expected: all tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/conversation-core/decision.ts src/conversation-core/authorized-response-plan.ts src/domain-packs/dental/capabilities.ts src/domain-packs/fixture/index.ts src/__tests__
@@ -221,7 +221,7 @@ git commit -m "feat(conversation-core): preserve authorized outcome relationship
 - Consumes: referential `V2AuthorizedResponsePlan` from Task 1.
 - Produces: `DraftResponse`, `ResponseComposerPort`, `ValidatedDraftResponse`, validation violations and deterministic draft composition.
 
-- [ ] **Step 1: Write referential-integrity tests first**
+- [x] **Step 1: Write referential-integrity tests first**
 
 Use literal plans/drafts. Add one test per break:
 
@@ -237,7 +237,7 @@ expect(validateDraft(plan, internalFactDraft).valid).toBe(false);
 Each assertion must check the exact structured violation code, such as `unknown_fact_ref`,
 `fact_outcome_mismatch`, `subject_mismatch` or `fact_not_disclosable`.
 
-- [ ] **Step 2: Write speech-act compatibility tests**
+- [x] **Step 2: Write speech-act compatibility tests**
 
 Cover the complete matrix with hand-authored drafts:
 
@@ -253,7 +253,7 @@ human_action_required + confirm_effect      -> invalid
 clarification_required + ask_clarification -> valid
 ```
 
-- [ ] **Step 3: Run validator tests and confirm RED**
+- [x] **Step 3: Run validator tests and confirm RED**
 
 Run:
 
@@ -263,7 +263,7 @@ npx vitest run src/__tests__/V2SemanticDraftValidator.test.ts
 
 Expected: FAIL because the draft and validator modules do not exist.
 
-- [ ] **Step 4: Implement the typed draft contract**
+- [x] **Step 4: Implement the typed draft contract**
 
 Define only these acts:
 
@@ -296,7 +296,7 @@ export interface ResponseComposerPort {
 Keep the brand symbol private to `validator.ts`; export the branded type from that module and
 return it only from a successful validation result.
 
-- [ ] **Step 5: Implement deterministic validation**
+- [x] **Step 5: Implement deterministic validation**
 
 Index the plan collections by ref, reject duplicates, and validate each act against an explicit
 compatibility map. Never inspect text or domain-specific strings. Return every violation as:
@@ -317,30 +317,30 @@ export type DraftViolation = {
 };
 ```
 
-- [ ] **Step 6: Run validator tests GREEN**
+- [x] **Step 6: Run validator tests GREEN**
 
 Run the same focused command and confirm all cases pass.
 
-- [ ] **Step 7: Write deterministic-composer tests and confirm RED**
+- [x] **Step 7: Write deterministic-composer tests and confirm RED**
 
 Assert literal acts for a plan containing information, options, completed effect, failed effect,
 required human action and clarification. Include a two-outcome test proving fact refs remain under
 their original outcome.
 
-- [ ] **Step 8: Implement the minimal deterministic composer**
+- [x] **Step 8: Implement the minimal deterministic composer**
 
 Create `DeterministicResponseComposer implements ResponseComposerPort`. Iterate outcomes in plan
 order and emit the single compatible speech act for the semantic class. Include only facts with
 `disclosure === "allowed"`; include all options owned by the outcome. Do not inspect concrete
 outcome types, fact keys, values or subject types.
 
-- [ ] **Step 9: Run composer and validator tests GREEN**
+- [x] **Step 9: Run composer and validator tests GREEN**
 
 ```bash
 npx vitest run src/__tests__/V2SemanticDraftValidator.test.ts src/__tests__/V2DeterministicComposer.test.ts
 ```
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/conversation-core/composer src/__tests__/V2SemanticDraftValidator.test.ts src/__tests__/V2DeterministicComposer.test.ts
@@ -363,7 +363,7 @@ git commit -m "feat(conversation-core): validate typed semantic response drafts"
 - Consumes: draft validation and deterministic composition from Task 2.
 - Produces: redactive repair, plan-subset fallback and a gate that cannot render an unvalidated draft.
 
-- [ ] **Step 1: Write repair monotonicity tests and confirm RED**
+- [x] **Step 1: Write repair monotonicity tests and confirm RED**
 
 Test real `repairDraft(plan, draft)` behavior:
 
@@ -379,23 +379,23 @@ Run:
 npx vitest run src/__tests__/V2DraftRepair.test.ts
 ```
 
-- [ ] **Step 2: Implement redactive repair**
+- [x] **Step 2: Implement redactive repair**
 
 For each act, validate a one-act draft with the real validator and retain it only when valid. Remove
 exact duplicate acts by a stable structural key. Do not synthesize or rewrite an act.
 
-- [ ] **Step 3: Write fallback monotonicity tests and confirm RED**
+- [x] **Step 3: Write fallback monotonicity tests and confirm RED**
 
 Assert that fallback uses only refs present in the plan, never changes an outcome class, may omit
 content, and returns `null` for a plan with no safely renderable/disclosable material.
 
-- [ ] **Step 4: Implement minimal fallback**
+- [x] **Step 4: Implement minimal fallback**
 
 Build a conservative draft using the same class-to-act mapping as deterministic composition, but
 select at most one safe act per outcome. Return `null` when no act can be built. Validate fallback
 inside its public function and return only a branded draft.
 
-- [ ] **Step 5: Write response-pipeline tests and confirm RED**
+- [x] **Step 5: Write response-pipeline tests and confirm RED**
 
 Use small in-memory composer implementations and the real validator/repair/fallback:
 
@@ -405,7 +405,7 @@ Use small in-memory composer implementations and the real validator/repair/fallb
 - composer error uses fallback without external reads;
 - empty/incoherent authority returns `no_safe_response` and never calls render.
 
-- [ ] **Step 6: Implement response orchestration**
+- [x] **Step 6: Implement response orchestration**
 
 Expose:
 
@@ -425,13 +425,13 @@ export async function runV2ResponsePipeline(input: {
 Every branch must validate before invoking `render`. A composer exception skips directly to the
 same-plan fallback. No exception path may return text.
 
-- [ ] **Step 7: Run repair/fallback/pipeline tests GREEN**
+- [x] **Step 7: Run repair/fallback/pipeline tests GREEN**
 
 ```bash
 npx vitest run src/__tests__/V2DraftRepair.test.ts src/__tests__/V2SafeFallback.test.ts src/__tests__/V2ResponsePipeline.test.ts
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/conversation-core/composer src/__tests__/V2DraftRepair.test.ts src/__tests__/V2SafeFallback.test.ts src/__tests__/V2ResponsePipeline.test.ts
@@ -454,7 +454,7 @@ git commit -m "feat(conversation-core): repair invalid drafts without new author
 - Consumes: branded validated drafts and authorized-plan refs.
 - Produces: pure `CoreResponse` text with no semantic expansion and declarative dental terminology outside the core.
 
-- [ ] **Step 1: Write renderer safety tests and confirm RED**
+- [x] **Step 1: Write renderer safety tests and confirm RED**
 
 Build validated drafts through the real validator, never by casting. Assert hand-derived text for:
 
@@ -469,7 +469,7 @@ ask_clarification      -> one conservative question
 
 Also assert renderer input cannot be a plain `DraftResponse` with `expectTypeOf`.
 
-- [ ] **Step 2: Define structured presentation contracts**
+- [x] **Step 2: Define structured presentation contracts**
 
 ```ts
 export type ValueFormat = "text" | "integer" | "currency_minor_brl" | "boolean";
@@ -484,32 +484,32 @@ export type ResponseLanguageContribution = {
 Validate duplicate keys and reject empty/multiline/sentence-like labels. Do not allow callbacks,
 templates, prompts, arbitrary style instructions or instance-specific values.
 
-- [ ] **Step 3: Implement the pure renderer**
+- [x] **Step 3: Implement the pure renderer**
 
 Resolve only refs present in the validated draft. Pass only allowed facts to value formatting.
 Use fixed core templates keyed exclusively by speech-act kind. Structured style may select among a
 closed set of punctuation/connective/greeting variants but must not omit or add semantic acts.
 
-- [ ] **Step 4: Run renderer tests GREEN**
+- [x] **Step 4: Run renderer tests GREEN**
 
 ```bash
 npx vitest run src/__tests__/V2DeterministicRenderer.test.ts
 ```
 
-- [ ] **Step 5: Add declarative Dental terminology under TDD**
+- [x] **Step 5: Add declarative Dental terminology under TDD**
 
 Create a failing test that passes `DENTAL_RESPONSE_LANGUAGE` through the generic renderer and
 expects safe price, slot, completed booking, failed booking and required-human-action surfaces.
 Then add only noun labels and closed formats in `src/domain-packs/dental/response-language.ts`.
 Do not add provider imports, I/O, callbacks or operational conditions.
 
-- [ ] **Step 6: Run dental language and architectural tests GREEN**
+- [x] **Step 6: Run dental language and architectural tests GREEN**
 
 ```bash
 npx vitest run src/__tests__/DentalResponseLanguage.test.ts src/__tests__/arch/CoreImportBoundary.test.ts src/__tests__/arch/CoreDomainLexicon.test.ts src/__tests__/arch/DentalPackBoundary.test.ts
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/conversation-core/composer src/domain-packs/dental/response-language.ts src/domain-packs/dental/index.ts src/__tests__/V2DeterministicRenderer.test.ts src/__tests__/DentalResponseLanguage.test.ts
@@ -534,7 +534,7 @@ git commit -m "feat(conversation-core): render validated semantic drafts"
 - Consumes: `runV2ResponsePipeline` from Task 3 and deterministic renderer from Task 4.
 - Produces: an end-to-end in-memory H flow where raw compose/boolean validate callbacks cannot deliver text.
 
-- [ ] **Step 1: Write bypass and semantic-regression tests first**
+- [x] **Step 1: Write bypass and semantic-regression tests first**
 
 Add literal plans/drafts covering these breaks:
 
@@ -549,7 +549,7 @@ Add literal plans/drafts covering these breaks:
 
 Assert validator codes and that `runV2ResponsePipeline` renders only repair/fallback output.
 
-- [ ] **Step 2: Write multi-intent tests first**
+- [x] **Step 2: Write multi-intent tests first**
 
 Use two literal plans:
 
@@ -559,26 +559,26 @@ Use two literal plans:
 Assert distinct outcome/option/fact refs survive composition, validation and rendering, and that a
 cross-linked draft is rejected in both cases.
 
-- [ ] **Step 3: Run new tests and confirm RED**
+- [x] **Step 3: Run new tests and confirm RED**
 
 ```bash
 npx vitest run src/__tests__/V2SemanticRegression.test.ts src/__tests__/V2MultiIntentResponse.test.ts
 ```
 
-- [ ] **Step 4: Remove the raw response bypass from `runTurnPipeline`**
+- [x] **Step 4: Remove the raw response bypass from `runTurnPipeline`**
 
 Replace the independent `compose(plan)` and boolean `validate({ plan, response })` callbacks with a
 single response boundary that returns `V2ResponsePipelineResult`. Deliver only `status:
 "rendered"`; map `no_safe_response` to the existing rejected turn outcome. Keep gate,
 coordination, decide-all-before-execute and ActionResults unchanged.
 
-- [ ] **Step 5: Migrate pipeline tests to the real H response pipeline**
+- [x] **Step 5: Migrate pipeline tests to the real H response pipeline**
 
 Use `DeterministicResponseComposer`, real validator/repair/fallback and deterministic renderer in
 fixture/dental delivered paths. Conflict/read-failure tests must continue proving the response
 stage is unreachable.
 
-- [ ] **Step 6: Run all H, G and architecture tests GREEN**
+- [x] **Step 6: Run all H, G and architecture tests GREEN**
 
 ```bash
 npx vitest run \
@@ -601,7 +601,7 @@ npx vitest run \
   src/__tests__/arch/DentalPackBoundary.test.ts
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/conversation-core/turn-pipeline.ts src/__tests__
@@ -620,14 +620,14 @@ git commit -m "test(conversation-core): block semantic response escalation"
 - Consumes: complete H implementation and test evidence.
 - Produces: review report source, verified checkpoint and explicit gaps for I without starting it.
 
-- [ ] **Step 1: Perform adversarial self-review**
+- [x] **Step 1: Perform adversarial self-review**
 
 Try to construct typed drafts that transform options into completion, failure into success,
 required action into completed handoff, media information into sent media, unknown into false,
 cross subjects/outcomes, elevate disclosure, or add authority through repair/fallback/style. Add a
 failing regression test before fixing any discovered bypass.
 
-- [ ] **Step 2: Audit architectural boundaries**
+- [x] **Step 2: Audit architectural boundaries**
 
 Run:
 
@@ -640,17 +640,17 @@ rg -n 'dental|dentist|treatment|appointment|service|price|slot' src/conversation
 Expected: zero V1 diff and zero provider/I/O/domain behavior in core H. Generic words appearing
 only in test fixtures or type comments must be removed when they encode domain behavior.
 
-- [ ] **Step 3: Write the Cycle H report document**
+- [x] **Step 3: Write the Cycle H report document**
 
 Document contracts, the entailment proof, repair/fallback monotonicity, renderer constraints,
 critical cases, multi-intent, domain/provider independence, RED→GREEN evidence, deviations and
 gaps for I. State explicitly that no production adapter, provider or outbound path was added.
 
-- [ ] **Step 4: Run focused and architectural suites**
+- [x] **Step 4: Run focused and architectural suites**
 
 Run the complete Task 5 focused command and record exact file/test totals.
 
-- [ ] **Step 5: Run relevant scheduling regressions**
+- [x] **Step 5: Run relevant scheduling regressions**
 
 Because G scheduling result shapes changed, run:
 
@@ -658,7 +658,7 @@ Because G scheduling result shapes changed, run:
 npm test -- src/__tests__/SlotEngine.test.ts src/__tests__/BookingDoubleBooking.test.ts src/__tests__/SlotDayPreference.test.ts src/__tests__/ClinicTimezone.test.ts
 ```
 
-- [ ] **Step 6: Run the canonical verification**
+- [x] **Step 6: Run the canonical verification**
 
 ```bash
 npm run verify
@@ -667,7 +667,7 @@ npm run verify
 Expected: database meta check, lint, typecheck and full Vitest suite all pass. Report any existing
 warning separately; do not fix unrelated V1 warnings.
 
-- [ ] **Step 7: Commit documentation and final checkpoint**
+- [x] **Step 7: Commit documentation and final checkpoint**
 
 ```bash
 git add docs/ai-system/cycle-h-composer-validator.md docs/superpowers/plans/2026-08-16-conversation-intelligence-v2-cycle-h.md
@@ -675,7 +675,7 @@ git commit -m "docs(ai-system): close cycle h"
 git commit --allow-empty -m "chore(checkpoint): close cycle h"
 ```
 
-- [ ] **Step 8: Confirm terminal state**
+- [x] **Step 8: Confirm terminal state**
 
 Run:
 
