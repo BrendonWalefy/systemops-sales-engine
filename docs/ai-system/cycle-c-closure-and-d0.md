@@ -270,10 +270,11 @@ demonstrado"** — não é vitória nem derrota, e a resposta é aumentar n, nã
 
 ---
 
-## 7. BLOCKER DO CICLO F — a ambiguidade dos 95,2% × 69%
+## 7. BLOCKER DO CICLO F — a ambiguidade dos 95,2% × 69% (resolvido no Ciclo E)
 
-> **Estado: aberto. Não resolver agora.** Este item é registrado, não fechado. Nenhuma tentativa
-> de reconciliação foi feita neste documento, e nenhuma deve ser feita antes do Ciclo F.
+> **Estado histórico nesta seção: aberto. Estado atual: resolvido.** A investigação e o plano
+> executável estão em
+> [`2026-08-16-conversation-intelligence-v2-cycle-f.md`](../superpowers/plans/2026-08-16-conversation-intelligence-v2-cycle-f.md).
 
 O gate do Ciclo F, no plano canônico, diz:
 
@@ -305,8 +306,16 @@ e é exatamente o que o Ciclo F precisa determinar antes de começar:
 que é conteúdo do Ciclo F. Decidi-la aqui seria escolher o alvo antes de saber o que a V2 mede — e
 qualquer número escolhido hoje viraria justificativa retroativa depois.
 
-**Condição de desbloqueio.** O Ciclo F não abre enquanto os quatro pontos acima não tiverem
-resposta escrita e um limiar declarado com a população a que se aplica.
+**Resolução.** Git não contém baseline de 95,2%. A baseline persistida do harness tem dois
+estratos que não se somam: 73,0% em 21 incidentes reais e 92,5% em 58 frases de regra do prompt,
+ambos como média de três rodadas. O corpus mede outra taxonomia: 44/64 (68,75%) no vocabulário
+comparável da V1, ou 44/66 (66,67%) usando o denominador do eixo e contando os dois casos sem
+produção. Unidade, população e rótulo diferem; não existe tradução válida entre os números.
+
+O gate semanticamente correto passa a ser um vetor por população: aceitação integral por eixo
+no recorte mínimo suportado pelo F; zero erro crítico; paridade determinística das três features
+estruturais; e diagnóstico legado não inferior às duas baselines realmente persistidas. O F não
+executa V1 e não faz a comparação V1×V2 do Ciclo I.
 
 ---
 

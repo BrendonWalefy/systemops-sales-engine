@@ -833,9 +833,11 @@ quando o corpus mostrar volume que as justifique, não antes.
 **Arquivos:** `src/domain-packs/dental/` — vocabulário, jornadas, ordem de capabilities, regra de
 urgência clínica (que sai do core e vem para cá).
 
-**Gate:** eval de Understanding ≥ 95,2% e ≥ paridade nos predicados que o Ciclo D classificou
-como *feature*. Zero alteração em `src/conversation-core/` para adicionar o pack — provado pelo
-diff do PR.
+**Gate:** gate vetorial por população detalhado em
+[`2026-08-16-conversation-intelligence-v2-cycle-f.md`](./2026-08-16-conversation-intelligence-v2-cycle-f.md):
+aceitação integral por eixo no recorte suportado, zero erro crítico, diagnóstico legado sem
+regressão contra 73,0%/92,5%, e paridade nas 3 features estruturais de D. Zero alteração em
+`src/conversation-core/` para adicionar o pack — provado pelo diff do PR.
 
 ## CICLO G — Capabilities, coordinator e política estruturada
 
@@ -885,7 +887,7 @@ CORPUS / BASELINE    ciclo C · ~60 casos, 3 camadas, baseline-v1.json
       ↓
 CORE V2 MÍNIMO       ciclo E · pipeline fecha, 4 testes arquiteturais
       ↓
-UNDERSTANDING        ciclo F · eixos ≥ 95,2%
+UNDERSTANDING        ciclo F · gate vetorial por população e por eixo
       ↓
 CAPABILITY MODEL     ciclo F · Catalog, Scheduling, Escalation
       ↓

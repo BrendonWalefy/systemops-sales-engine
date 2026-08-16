@@ -32,8 +32,9 @@ requisitos.
 
 A auditoria mediu o mecanismo que produz a dívida. `handle()` tem 4.571 linhas em um escopo
 único, com 529 `if` e 296 regex literais. Ao lado dele existem 30 predicados de palavra-chave e
-uma função — `coerceBusinessIntent` — cuja finalidade declarada é sobrescrever um classificador
-que acerta 95,2%.
+uma função — `coerceBusinessIntent` — cuja finalidade declarada é sobrescrever um classificador.
+A baseline persistida mede 73,0% nos 21 incidentes reais e 92,5% nas 58 frases derivadas do
+próprio prompt; o antigo número de 95,2% não possui baseline persistida e foi retirado do gate.
 
 Refatorar extraindo helpers reduz o tamanho do *arquivo* e não toca o problema, que é o
 *escopo*. Enquanto toda decisão conversacional couber no mesmo lugar, cada bug novo continua
@@ -604,7 +605,7 @@ Um de cada vez, cada um com baseline, alteração e evidência. Gate obrigatóri
 | C | **Corpus e as três camadas de eval** (I4) | V1 medida em todas as camadas; demo curada convertida em golden |
 | D | Instrumentar a camada de keywords | lista ordenada: quais predicados são feature e quais são cicatriz |
 | E | Core V2 + `fixture-pack` + testes arquiteturais | pipeline verde sem nenhum substantivo de negócio no core |
-| F | Domain pack dental | Understanding ≥ 95,2% e ≥ paridade nos predicados medidos em D |
+| F | Domain pack dental | gate vetorial por população do plano detalhado do F; zero erro crítico e paridade das 3 features estruturais de D |
 | G | Capabilities do dental, coordinator e política estruturada | Decision ≥ V1 nos golden; divergências justificadas caso a caso |
 | H | Composer V2 e prompt minimalista | judge ≥ V1; custo por turno ≤ V1 |
 | I | Shadow e comparação | critérios da seção 14 |
@@ -627,7 +628,7 @@ O grupo de segurança é bloqueante: regressão ali cancela o cutover independen
 | | cobertura de validação | 1 de 6 chamadores | 6 de 6 |
 | | injeção via nome de exibição | 1 caminho exposto | 0, com regressão |
 | Conversa | fallback determinístico | 45% dos turnos | **nenhum por violação de estilo** — a cláusula vinculante. O alvo de < 10% é indicativo e será recalibrado no ciclo C, quando se souber quanto do fallback é correto por ser fato de fato não autorizado |
-| | acerto de Understanding | 95,2% em 79 casos | ≥ 95,2% + paridade nos predicados de D |
+| | acerto de Understanding | harness: 73,0% em 21 incidentes e 92,5% em 58 regras; corpus V1: 44/64 comparáveis | aceitação por eixo no recorte F + diagnóstico legado sem regressão + paridade das 3 features estruturais de D |
 | | Decision correta no corpus golden | a medir no ciclo C | ≥ V1, sem regressão em agendamento |
 | | prosa — judge par a par | a medir no ciclo C | ≥ V1 |
 | Arquitetura | maior escopo de decisão | 4.571 linhas | nenhuma função > 200 linhas |

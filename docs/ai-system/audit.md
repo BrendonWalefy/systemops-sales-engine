@@ -169,7 +169,8 @@ elegância.
 apesar de o classificador ter acertado.
 
 **Evidência.** Existe o `IntentClassifier` (17 intents, `json_schema` com
-`strict: true`, `temperature: 0`, 95,2% medido no eval). E existe, dentro do
+`strict: true`, `temperature: 0`; a baseline persistida mede 73,0% nos 21 incidentes e 92,5%
+nas 58 frases de regra do prompt). E existe, dentro do
 orquestrador, uma segunda camada de intenção por palavra-chave: **30 predicados**
 (`isBusinessHoursQuestion`, `isPriceRequestText`, `isLocationRequest`,
 `isWarrantyQuestion`, `isMaintenanceInquiryText`, `isProcedureCatalogRequest`,
