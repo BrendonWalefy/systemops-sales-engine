@@ -54,6 +54,18 @@ describe("folha de revisão", () => {
     expect(sheet).toContain(effect.source);
   });
 
+  // Sem saber se o catálogo é completo, o revisor não consegue julgar uma
+  // negativa: "não trabalhamos com porcelana" tem lastro em catálogo fechado e
+  // não tem em catálogo de completude desconhecida.
+  it("diz se o catálogo do tenant é fechado ou de completude desconhecida", () => {
+    const sheet = renderReviewSheet({
+      cases: corpus.cases.slice(0, 3),
+      tenantConfigDirectory: "evals/corpus/tenant-configs",
+    });
+
+    expect(sheet).toMatch(/completude do catálogo/i);
+  });
+
   // Ausência precisa ser estado declarado, não silêncio. Sem esta linha, "o
   // turno não registrou agendamento" e "a folha não mostra side effect" ficam
   // indistinguíveis — e o revisor não tem como julgar "Agendado!".

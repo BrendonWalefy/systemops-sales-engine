@@ -41,6 +41,7 @@ type TenantConfig = {
     string,
     { status: "known" | "not_provided" | "contradicted"; value: string | null; source: string | null }
   >;
+  catalogCompleteness?: { status: "closed" | "unknown"; source: string };
 };
 
 /** Rótulo legível de cada categoria de fato, para o revisor não ler chave. */
@@ -125,6 +126,15 @@ export function renderTenantFacts(config: TenantConfig, turnText = ""): string {
   )) {
     lines.push(
       `- Descrição cadastrada de "${name}" (fonte: treatments.description): ${description.replace(/\n/g, " ")}`,
+    );
+  }
+  // Sem isto, uma negativa não se julga: "não trabalhamos com porcelana" tem
+  // lastro em catálogo fechado e não tem em catálogo de completude desconhecida.
+  if (config.catalogCompleteness) {
+    lines.push(
+      config.catalogCompleteness.status === "closed"
+        ? `- Completude do catálogo: **fechado** — a lista acima é tudo o que existe, então a ausência de um serviço prova que ele não é oferecido (fonte: ${config.catalogCompleteness.source})`
+        : `- Completude do catálogo: **desconhecida** — a lista acima é o que está cadastrado, não uma declaração de tudo o que a clínica faz; negar um serviço ausente não tem mais lastro do que afirmá-lo (fonte: ${config.catalogCompleteness.source})`,
     );
   }
   if (config.paymentPolicy) lines.push(`- Pagamento: ${config.paymentPolicy}`);

@@ -86,3 +86,15 @@ silêncio.
 
 Os 66 foram re-derivados sob a régua vigente, 65 válidos mais um declarado
 inválido. `golden` cai de 15 para 8, `anti-pattern` sobe de 46 para 51.
+
+## C.9 — fixtures sem corte, régua com as duas regras que faltavam
+
+A política comercial e a descrição de serviço deixaram de ser truncadas; mídia
+passou a entrar por título; toda fixture declara se o catálogo é fechado ou de
+completude desconhecida.
+
+O texto que estava sendo cortado continha o sinal de reserva abatido no dia do
+procedimento — o que devolveu `other-0001` a `golden` depois de duas rodadas
+julgando-o sem lastro por defeito da fixture, não da resposta.
+
+65/65 re-derivados. `golden` 8 → 7, `anti-pattern` 51 → 55.

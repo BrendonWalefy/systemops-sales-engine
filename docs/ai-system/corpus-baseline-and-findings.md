@@ -477,15 +477,42 @@ Uma divergência é erro do R1, não da régua: em `location-0001` a promessa de
 pré-avaliação por foto passou sem lastro, enquanto a mesma forma de promessa foi
 reprovada em `audio-0001` e `handoff-0002`.
 
+## C.9 — as quatro correções e o que elas revelaram
+
+**Truncamento eliminado.** A política comercial ia inteira para a fixture. A do
+`dental-a` passou de 600 para 1752 caracteres — e o texto escondido continha
+duas coisas que já tinham custado julgamento: o parcelamento em 21x com 5% no
+Pix, e o **sinal de reserva integralmente abatido no dia do procedimento**. Esta
+segunda devolveu `other-0001` a `golden`: a resposta da operadora estava certa
+desde sempre, e a fixture é que a fazia parecer inventada.
+
+**Mídia nomeada.** Cada asset entra pelo título cadastrado. O `dental-b` tem
+vídeo "Lentes – Técnica Estratificada" e "Lentes – Técnica Simplificada", o que
+sustenta a oferta de `comparison-0001`; o manifesto da demo tem um vídeo
+"Lentes", o que **não** sustenta a afirmação de `media-0004` de que o vídeo
+mostra o planejamento e que o resultado mantém a naturalidade.
+
+**Completude do catálogo declarada.** `closed` no seed da demo, que é a clínica
+inteira; `unknown` em `treatments` de tenant real, que é o que está cadastrado e
+não uma declaração do que a clínica faz. Com isso `price-0005` cai: negar
+porcelana num catálogo de completude desconhecida não tem mais lastro do que
+afirmá-la.
+
+**Pergunta 2 mede relevância.** Seis avaliações passaram a "tratou": resposta
+errada sobre o assunto certo trata, e o acerto é a pergunta 1.
+
+10 avaliações mudaram no total. `golden` 8 → 7, `acceptable` 15 → 12,
+`anti-pattern` 51 → 55.
+
+Quatro guardas impedem a volta de cada defeito: fato cortado no meio da frase,
+mídia sem título nem declaração de desconhecido, fixture sem completude
+declarada, e as duas regras ausentes do texto da pergunta 1.
+
 ## O que falta para o Ciclo C estar completo
 
-1. **Fixture que não esconde lastro** — truncamento da política comercial e
-   granularidade de mídia.
-2. **Pergunta 2 redigida para separar "tratou" de "resolveu".**
-3. **Regra escrita para catálogo ausente e para distância de paráfrase.**
-4. **Concordância acima de 80% nas quatro perguntas.** Hoje 68,2 / 90,9 / 81,8 /
-   72,7.
-5. **Repetição do baseline.** Rodada única, variação de 1,6 ponto entre duas
+1. **Última rodada cega** — 20 casos, 16 inéditos, 4 mantidos porque são
+   exatamente os que as correções do C.9 decidem.
+2. **Repetição do baseline.** Rodada única, variação de 1,6 ponto entre duas
    execuções. O baseline continua medido sobre os rótulos antigos e só deve ser
    remedido quando o gate fechar.
 
