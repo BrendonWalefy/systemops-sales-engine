@@ -28,5 +28,10 @@ describe("Cycle I human review", () => {
   it("keeps a V2-first blind order even when the two texts are identical", () => {
     const runDigest = Array.from({ length: 20 }, (_, index) => `hmac:${"a".repeat(63)}${index.toString(16)}`).find((value) => deriveBlindArmOrder(value, pair.pairDigest, "1:price-0001")[0] === "v2")!;
     expect(deriveBlindArmOrder(runDigest, pair.pairDigest, "1:price-0001")).toEqual(["v2", "v1"]);
+    const identical = { ...pair, v1: { ...pair.v1, outputText: "igual" }, v2: { ...pair.v2, outputText: "igual" } };
+    const sheet = buildBlindHumanReviewSheet({ runDigest, pairs: [identical] });
+    const asymmetric = (reviewerRef: string) => ({ reviewerRef, calibrationDigest: ref, pairs: [{ run: 1, caseId: "price-0001", ratings: [{ factuallyCorrect: true, addressedWhatTheLeadRaised: true, advancedTheJourney: true, wouldRepeatToday: true }, { factuallyCorrect: false, addressedWhatTheLeadRaised: false, advancedTheJourney: false, wouldRepeatToday: false }] }] });
+    const score = scoreHumanReview({ sheet, pairs: [identical], runDigest, calibrationManifest: calibration(), reviewerA: asymmetric(ref), reviewerB: asymmetric(`hmac:${"b".repeat(64)}`) });
+    expect(score.dimensions.factuallyCorrect).toMatchObject({ v1: 0, v2: 2 });
   });
 });
