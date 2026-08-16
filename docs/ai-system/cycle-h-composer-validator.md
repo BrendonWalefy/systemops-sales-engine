@@ -39,7 +39,9 @@ semantics(finalText) ⊆ semantics(validatedDraft) ⊆ semantics(authorizedPlan)
 
 O `turn-pipeline` recebe apenas composer, style e linguagem validados e chama o pipeline H
 diretamente. Não aceita callback capaz de devolver texto pronto. O pipeline H também não aceita
-callback arbitrário de renderer.
+callback arbitrário de renderer. Antes de chamar o composer, ele cria um snapshot congelado do
+plano e do style e usa esse mesmo snapshot em validação, repair, fallback e renderização; assim o
+composer não consegue ampliar a autoridade que receberá validação depois.
 
 ## ActionResult e identidade do outcome
 
@@ -201,18 +203,21 @@ OpenAI, modelo ou provider concreto. O core H também não conhece provider conc
   GREEN;
 - hardening: callback arbitrário, mutação pós-validação e linguagem forjada produziram RED;
   snapshots, registro runtime e renderer interno fecharam GREEN;
+- mutação pré-validação: um composer adversarial anexou um fact de desconto ao plano e o
+  renderer chegou a emitir `Desconto: 50.`; snapshot congelado antes de `compose()` fechou GREEN
+  e forçou fallback do plano original;
 - outcome concreto: o teste de tipo mostrou widening para `string`; o genérico `OutcomeType`
   fechou GREEN sem vocabulário de domínio no core.
 
 ## Verificação
 
-- Suíte focada H/G/arquitetura: 18 arquivos, 75 testes, todos verdes.
+- Suíte focada H/G/arquitetura: 18 arquivos, 76 testes, todos verdes.
 - Regressões de agenda exigidas: 4 arquivos, 86 testes, todos verdes.
 - `npm run verify`:
   - Drizzle meta: OK;
   - lint: 0 erros e 1 warning legado em `src/core/intelligence/ResponseComposer.ts`;
   - typecheck: verde;
-  - Vitest completo: 331 arquivos, 2.848 passes e 11 skips (2.859 total).
+  - Vitest completo: 331 arquivos, 2.849 passes e 11 skips (2.860 total).
 - Diff de `src/core/**` contra `7fb114f0`: zero.
 
 ## Surpresas e desvios
@@ -223,6 +228,8 @@ OpenAI, modelo ou provider concreto. O core H também não conhece provider conc
   motivo e substituído por dependências H estruturadas.
 - Draft, plano e linguagem validados inicialmente mantinham aliases mutáveis; substituídos por
   snapshots congelados registrados em runtime.
+- O composer inicialmente recebia o plano original mutável; o pipeline agora congela uma cópia
+  antes de `compose()` e nunca volta ao objeto de entrada durante aquele fluxo.
 - O outcome concreto era preservado em valor, mas alargado para `string` no contrato de
   capability; `OutcomeType` agora permanece tipado genericamente.
 - O plano previa um callback de renderer em pseudocódigo. O contrato final é propositalmente mais
