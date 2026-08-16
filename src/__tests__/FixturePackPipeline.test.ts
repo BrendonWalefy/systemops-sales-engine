@@ -3,6 +3,13 @@ import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { fixturePack, fixtureUnderstanding } from "@/domain-packs/fixture";
 
 describe("fixture-pack no pipeline V2", () => {
+  it("declara jornadas e ordem sem ensinar o domínio ao core", () => {
+    expect(fixturePack.journeys).toEqual([
+      { id: "quote", capabilityIds: ["glow-kite-quote"] },
+      { id: "reservation", capabilityIds: ["wind-window-reservation"] },
+    ]);
+  });
+
   it("fecha o turno inteiro por composição sem conhecimento do domínio no core", async () => {
     const result = await runTurnPipeline({
       gateInput: {

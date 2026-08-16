@@ -13,6 +13,10 @@ export type ClaimedCapability<
   claim: CapabilityClaim;
 };
 
+export type CoordinationResult<Request extends string, Policy extends object> =
+  | { outcome: "selected"; claimed: ClaimedCapability<Request, Policy>[] }
+  | { outcome: "conflict"; capabilityIds: string[] };
+
 export function coordinateCapabilities<
   Request extends string,
   Policy extends object,
@@ -20,10 +24,10 @@ export function coordinateCapabilities<
   capabilities: readonly Capability<Request, Policy>[];
   understanding: Understanding<Request>;
   state: ConversationState;
-}): ClaimedCapability<Request, Policy>[] {
+}): CoordinationResult<Request, Policy> {
   const seen = new Set<string>();
 
-  return input.capabilities.flatMap((capability) => {
+  const claimed = input.capabilities.flatMap((capability) => {
     if (seen.has(capability.id)) {
       throw new Error(`duplicate capability id: ${capability.id}`);
     }
@@ -36,4 +40,16 @@ export function coordinateCapabilities<
     }
     return [{ capability, claim }];
   });
+
+  const selectedIds = new Set(claimed.map((item) => item.capability.id));
+  const hasConflict = claimed.some((item) =>
+    item.claim.conflictsWith?.some((id) => selectedIds.has(id)),
+  );
+  const hasMissingDependency = claimed.some((item) =>
+    item.claim.dependsOn?.some((id) => !selectedIds.has(id)),
+  );
+
+  return hasConflict || hasMissingDependency
+    ? { outcome: "conflict", capabilityIds: [...selectedIds] }
+    : { outcome: "selected", claimed };
 }

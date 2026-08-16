@@ -63,6 +63,7 @@ This retires the unsupported `95.2%` claim rather than lowering it, and preserve
 
 **Files:**
 - Create: `evals/understanding/cycle-f-dental.json`
+- Create: `evals/understanding/v2-to-legacy-request-map.json`
 - Create: `src/application/corpus/cycle-f-acceptance.ts`
 - Create: `src/__tests__/CycleFAcceptanceManifest.test.ts`
 
@@ -74,7 +75,8 @@ This retires the unsupported `95.2%` claim rather than lowering it, and preserve
   outside dental tenant fixtures, and an empty required-axis list.
 - [ ] **Step 2: Run** `npx vitest run src/__tests__/CycleFAcceptanceManifest.test.ts` and confirm
   failure because the loader does not exist.
-- [ ] **Step 3: Implement the loader** with the exact supported slice: identified-service price
+- [ ] **Step 3: Implement the loader** with the exact supported slice and freeze the complete
+  V2-request-to-legacy-intent diagnostic mapping before any model run: identified-service price
   plus availability, booking, and pending-slot answers. Keep all other journeys out with a
   written `excludedReason` in the manifest.
 - [ ] **Step 4: Re-run the focused test** and confirm PASS.

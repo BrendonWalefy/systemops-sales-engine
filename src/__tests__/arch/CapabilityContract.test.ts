@@ -19,13 +19,13 @@ describe("contrato de capability", () => {
 
   it("recusa texto livre escondido dentro da política", () => {
     type UnsafeContext = CapabilityContext<{ leadMessage: string }>;
-    type StructuredContext = CapabilityContext<{
-      disclose: "always" | "never";
-      unitAmount: number;
-    }>;
+    type LiteralProseContext = CapabilityContext<{ instruction: "reinterpret this" }>;
 
     expectTypeOf<UnsafeContext["policy"]["leadMessage"]>().toEqualTypeOf<never>();
-    expectTypeOf<StructuredContext["policy"]["disclose"]>()
-      .toEqualTypeOf<"always" | "never">();
+    expectTypeOf<LiteralProseContext["policy"]["instruction"]>().toEqualTypeOf<never>();
+    // Deliberate adversarial input: the boundary must reject an untyped adapter.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type AnyIsRejected = [CapabilityContext<any>] extends [never] ? true : false;
+    expectTypeOf<AnyIsRejected>().toEqualTypeOf<true>();
   });
 });

@@ -16,16 +16,18 @@ function sourceFiles(dir: string): string[] {
 function violationsIn(source: string): string[] {
   const specifiers = [
     ...source.matchAll(
-      /(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)["']([^"']+)["']/g,
+      /(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)["'`]([^"'`]+)["'`]/g,
     ),
   ].map((match) => match[1]!);
 
-  return specifiers.filter((specifier) =>
-    specifier === "openai"
-    || specifier === "@anthropic-ai/sdk"
+  const violations = specifiers.filter((specifier) =>
+    specifier === "openai" || specifier.startsWith("openai/")
+    || specifier === "@anthropic-ai/sdk" || specifier.startsWith("@anthropic-ai/sdk/")
     || /(?:^|\/)(?:domain-packs|infrastructure|providers)(?:\/|$)/.test(specifier)
     || /(?:^|\/)application\/config(?:\/|$)/.test(specifier),
   );
+  if (/import\s*\(\s*[^"'`\s]/.test(source)) violations.push("nonliteral dynamic import");
+  return violations;
 }
 
 describe("fronteira de importação do core V2", () => {
@@ -44,8 +46,12 @@ describe("fronteira de importação do core V2", () => {
       'require("../../domain-packs/fixture")',
       'export { adapter } from "../providers/adapter"',
       'import OpenAI from "openai"',
+      'import(`@/infrastructure/db/client`)',
+      'import(providerPath)',
+      'import helper from "openai/helpers/zod"',
     ];
 
-    expect(bypassAttempts.map(violationsIn).map((items) => items.length)).toEqual([1, 1, 1, 1]);
+    expect(bypassAttempts.map(violationsIn).map((items) => items.length))
+      .toEqual([1, 1, 1, 1, 1, 1, 1]);
   });
 });

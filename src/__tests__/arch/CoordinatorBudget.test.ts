@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const COORDINATOR = "src/conversation-core/capability/coordinator.ts";
-const CONCRETE_OR_EXTERNAL_IMPORT = /from\s+["']@\/(?:domain-packs|infrastructure|application)(?:\/|["'])/;
+const CONCRETE_OR_EXTERNAL_IMPORT = /(?:from\s+|import\s*\(|require\s*\()[^\n]*(?:domain-packs|infrastructure|application\/ports)/;
 
 describe("orçamento do CapabilityCoordinator", () => {
   it("permanece em até 150 linhas", () => {

@@ -11,13 +11,17 @@ export type CapabilityClaim = {
   capabilityId: string;
   confidence: number;
   reason: string;
+  conflictsWith?: readonly string[];
+  dependsOn?: readonly string[];
 };
 
+type IsAny<Value> = 0 extends (1 & Value) ? true : false;
+
 type StructuredPolicyValue<Value> =
-  Value extends string
-    ? string extends Value
+  IsAny<Value> extends true
+    ? never
+    : Value extends string
       ? never
-      : Value
     : Value extends boolean | number | null
       ? Value
       : Value extends readonly (infer Item)[]
@@ -30,11 +34,14 @@ export type StructuredPolicy<Policy extends object> = {
   readonly [Key in keyof Policy]: StructuredPolicyValue<Policy[Key]>;
 };
 
-export type CapabilityContext<Policy extends object = Record<string, never>> = {
-  state: ConversationState;
-  policy: StructuredPolicy<Policy>;
-  now: Date;
-};
+export type CapabilityContext<Policy extends object = Record<string, never>> =
+  unknown extends Policy
+    ? never
+    : {
+        state: ConversationState;
+        policy: StructuredPolicy<Policy>;
+        now: Date;
+      };
 
 export interface Capability<
   Request extends string = string,

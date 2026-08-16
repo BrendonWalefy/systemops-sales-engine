@@ -62,6 +62,10 @@ const reservationCapability: Capability<FixtureRequest, FixturePolicy> = {
 export const fixturePack: DomainPack<FixtureRequest, FixturePolicy> = {
   id: "glow-kite-library",
   capabilities: [quoteCapability, reservationCapability],
+  journeys: [
+    { id: "quote", capabilityIds: ["glow-kite-quote"] },
+    { id: "reservation", capabilityIds: ["wind-window-reservation"] },
+  ],
 };
 
 export function fixtureUnderstanding(request: FixtureRequest): Understanding<FixtureRequest> {

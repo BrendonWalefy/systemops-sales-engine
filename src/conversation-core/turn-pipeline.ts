@@ -1,5 +1,6 @@
 import type {
   Capability,
+  CapabilityContext,
   ConversationState,
   StructuredPolicy,
 } from "@/conversation-core/capability/contract";
@@ -13,6 +14,7 @@ export type CoreResponse = { text: string; parts: readonly unknown[] };
 export type TurnPipelineResult =
   | { status: "suppressed"; reason: string }
   | { status: "needs_clarification" }
+  | { status: "escalated"; reason: "capability_conflict"; capabilityIds: readonly string[] }
   | { status: "rejected"; actionResults: readonly ActionResult[] }
   | {
       status: "delivered";
@@ -40,14 +42,26 @@ export async function runTurnPipeline<
   if (gate.outcome === "suppress") return { status: "suppressed", reason: gate.reason };
 
   const understanding = await input.understand();
-  const claimed = coordinateCapabilities({
+  const coordination = coordinateCapabilities({
     capabilities: input.capabilities,
     understanding,
     state: input.state,
   });
+  if (coordination.outcome === "conflict") {
+    return {
+      status: "escalated",
+      reason: "capability_conflict",
+      capabilityIds: coordination.capabilityIds,
+    };
+  }
+  const claimed = coordination.claimed;
   if (claimed.length === 0) return { status: "needs_clarification" };
 
-  const context = { state: input.state, policy: input.policy, now: input.now };
+  const context = {
+    state: input.state,
+    policy: input.policy,
+    now: input.now,
+  } as CapabilityContext<Policy>;
   const actionResults: ActionResult[] = [];
   for (const item of claimed) {
     const decision = await item.capability.decide(item.claim, context);
