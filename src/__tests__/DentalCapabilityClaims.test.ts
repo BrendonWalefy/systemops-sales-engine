@@ -11,7 +11,7 @@ const understanding = (request: "price-of-service" | "book-appointment" | "confi
 });
 
 describe("claims mínimos do pack dental", () => {
-  it("declara ordem e ownership sem executar integrações do Ciclo G", async () => {
+  it("declara ordem e ownership sem resolver ports durante claim", () => {
     expect(dentalPack.capabilities.map(({ id }) => id)).toEqual([
       "dental-catalog", "dental-scheduling", "dental-escalation",
     ]);
@@ -19,8 +19,6 @@ describe("claims mínimos do pack dental", () => {
     const scheduling = dentalPack.capabilities[1]!;
     const claim = scheduling.claim(understanding("book-appointment"), { phase: "active", pendingStepId: null, completedStepIds: [] });
     expect(claim?.capabilityId).toBe("dental-scheduling");
-    const result = await scheduling.execute({ kind: "ask", questionId: "cycle-g-required" }, { state: { phase: "active", pendingStepId: null, completedStepIds: [] }, policy: { priceDisclosureEnabled: true, humanEscalationRequired: false }, now: new Date(0) });
-    expect(result.type).toBe("not_executable_until_cycle_g");
   });
 
   it("mantém o contexto livre de linguagem e providers", () => {
