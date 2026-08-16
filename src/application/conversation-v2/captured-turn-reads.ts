@@ -80,6 +80,7 @@ function dataSnapshot(value: unknown): unknown {
     if (array) assertDenseArrayKeys(source);
     for (const key of Reflect.ownKeys(source)) {
       if (array && key === "length") continue;
+      if (typeof key !== "string") invalid();
       const descriptor = Object.getOwnPropertyDescriptor(source, key);
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) invalid();
       inspect(descriptor.value, seen);

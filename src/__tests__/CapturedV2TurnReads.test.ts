@@ -47,6 +47,15 @@ describe("Captured V2 turn reads", () => {
     const withUnknown = fixture();
     withUnknown.extra = true;
     expect(() => parseCapturedV2TurnReads(withUnknown)).toThrow(/invalid captured/i);
+    const withSymbolKey = fixture();
+    Object.defineProperty(withSymbolKey, Symbol("unexpected"), { enumerable: true, value: "data" });
+    expect(() => parseCapturedV2TurnReads(withSymbolKey)).toThrow(/invalid captured/i);
+    const nestedSymbolKey = fixture();
+    Object.defineProperty((nestedSymbolKey.history as object[])[0]!, Symbol("unexpected"), { enumerable: true, value: "data" });
+    expect(() => parseCapturedV2TurnReads(nestedSymbolKey)).toThrow(/invalid captured/i);
+    const arraySymbolKey = fixture();
+    Object.defineProperty(arraySymbolKey.history as object, Symbol("unexpected"), { enumerable: true, value: "data" });
+    expect(() => parseCapturedV2TurnReads(arraySymbolKey)).toThrow(/invalid captured/i);
     const arrayWithUnknown = fixture();
     (arrayWithUnknown.history as { author: string; body: string }[] & { unexpected?: boolean }).unexpected = true;
     expect(() => parseCapturedV2TurnReads(arrayWithUnknown)).toThrow(/invalid captured/i);
