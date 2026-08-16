@@ -573,6 +573,44 @@ Garantias, todas necessárias para o shadow não virar risco:
 comportamento sob rajada. Isso só aparece com a V2 executando de verdade, e é a razão de o
 cutover ser por tenant, começando pelo de menor volume.
 
+### 11.1 Decisão canônica do Ciclo I
+
+Decisão `CI-V2-I-SHADOW-2026-08-16`, registrada antes da execução e de qualquer resultado final
+V1×V2 do Ciclo I:
+
+- o caminho selecionado é **captured-read shadow + recording execution**: a V1 continua sendo o
+  controle e expõe snapshots plain-data, imutáveis e turn-local das leituras que efetivamente
+  usou; a V2 só pode consultar adapters alimentados por esses snapshots;
+- ausência de uma leitura capturada falha como `shared_read_unavailable`. É proibido completar o
+  shadow com uma nova consulta à produção;
+- outcome, resposta ou side effect da V1 não são autoridade nem entrada da V2. Eles entram apenas
+  no braço de controle do registro comparativo;
+- toda porta de escrita da V2 em shadow registra `would_have_executed` e nunca delega a um writer
+  real. Se a decisão for `execute`, o shadow para antes de `Capability.execute`, registra a
+  intenção tipada e não produz `ActionResult` ou texto. Uma escrita simulada não pode ser
+  promovida a sucesso/failure executado nem verbalizada como tal;
+- persistir o registro comparativo é um efeito de observabilidade explicitamente autorizado,
+  posterior e best-effort. Não é efeito de capability e não altera estado conversacional,
+  agendamento, outbox, canal, CRM ou provider. O registro live não contém input, histórico ou
+  resposta em texto; esses conteúdos só existem no corpus sanitizado ou replay aprovado;
+- o selector V2 é distinto de `shadowModeEnabled`, que conserva seu significado legado. Os
+  estados fechados são `v1`, `v1_with_v2_shadow` e `v2_internal`, com default `v1`;
+- `v2_internal` é restrito a tenants `isTest`, exige aprovação derivada de um gate report válido e
+  volta imediatamente a `v1` se qualquer precondição faltar. Depois que uma escrita V2 começa, o
+  mesmo turno não pode cair para V1;
+- na implementação inicial do I, `v2_internal` permanece fail-closed em V1 até existir shell
+  produtivo que preserve dedupe, estado, outbox e delivery, além de todos os gates. Shadow roda
+  somente depois que o caminho V1 e seu sender terminam;
+- o protocolo final usa pares intercalados `V1_i → V2_i`, o mesmo conjunto de casos e `N = 6` em
+  cada braço. Casos estáveis são a análise primária e casos D0 instáveis, a sensibilidade;
+- o judge atual continua `experimental_non_gating`. GO qualitativo exige instrumento previamente
+  calibrado ou revisão humana estruturada com a rubrica congelada;
+- custo e p95 comparam o turno completo, nunca usam o custo zero do estágio H como proxy.
+
+O desenho operacional, schema de persistência, critérios de privacidade, rollback e gates desta
+decisão estão em
+[`2026-08-16-conversation-intelligence-v2-cycle-i-design.md`](./2026-08-16-conversation-intelligence-v2-cycle-i-design.md).
+
 ## 12. Corpus e evals
 
 Três camadas. A do meio é a que a V1 nunca teve, e é onde os bugs vivem.
@@ -688,7 +726,8 @@ Registrado para não ser confundido com decisão tomada:
 
 - **Provider e modelo de cada estágio.** Depende de medição no ciclo C. Fallback de provider é
   desejável — `@anthropic-ai/sdk` já é dependência — mas não está desenhado aqui.
-- **Formato de persistência do resultado de shadow.** Definido no ciclo I, junto do consumo.
+- **Formato de persistência do resultado de shadow.** Decidido no Ciclo I pela decisão
+  `CI-V2-I-SHADOW-2026-08-16`; detalhes no design específico linkado na seção 11.1.
 - **Se `conversation-response-parts.ts` (927 linhas) é decomposto ou reescrito.** Marcado para
   medir: separar seleção de mídia, que é assunto de plano, de divisão de partes, que é assunto
   de entrega.
