@@ -1,0 +1,35 @@
+{
+  "version": "cycle-f-dental.v1",
+  "population": "cycle-f-supported-dental-corpus",
+  "cases": [
+    { "caseId": "injection-0001", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": true },
+    { "caseId": "media-0005", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "objection-0001", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": true },
+    { "caseId": "price-0001", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "price-0002", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "price-0005", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": true },
+    { "caseId": "price-0006", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "price-0007", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "price-0008", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "price-0009", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": true },
+    { "caseId": "price-0010", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "audio-0002", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": false },
+    { "caseId": "first-contact-0005", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": true },
+    { "caseId": "availability-0001", "requiredAxes": ["request", "dialogueMove"], "critical": true },
+    { "caseId": "scheduling-0001", "requiredAxes": ["request", "dialogueMove", "entities.service"], "critical": true },
+    { "caseId": "scheduling-0003", "requiredAxes": ["request", "dialogueMove"], "critical": true },
+    { "caseId": "burst-0002", "requiredAxes": ["request", "dialogueMove"], "critical": true }
+  ],
+  "exclusions": [
+    {
+      "requests": [
+        "challenge-claim", "clinic-address", "clinic-city", "clinical-advice",
+        "clinical-suitability", "compare-services", "confirm-intent", "defer-answer",
+        "evaluation-cost", "installment-terms", "postpone", "price-objection",
+        "procedure-duration", "procedure-safety", "reengage", "referral-intro",
+        "see-media", "send-media", "service-information", "treatment-timeline"
+      ],
+      "reason": "fora das jornadas mínimas de preço, disponibilidade e agendamento do Ciclo F"
+    }
+  ]
+}
