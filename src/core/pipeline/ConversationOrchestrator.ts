@@ -3,7 +3,7 @@
 //
 // Fluxo: mensagem → deduplicação → lead/conversa → intent → ação → resposta
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests, slotReservations } from "@/infrastructure/db/schema";
 import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
@@ -141,6 +141,10 @@ import {
 } from "@/application/config/runtime-config-fingerprint";
 import { NamedDecisionOverrideTracker } from "@/core/observability/NamedDecisionOverride";
 import {
+  recordV1TurnObservation,
+  type V1TurnObservationSink,
+} from "@/core/observability/V1TurnObservation";
+import {
   evaluateKeywordPredicate,
   type KeywordPredicateObserver,
 } from "@/core/observability/KeywordPredicateEvaluation";
@@ -197,6 +201,7 @@ type ConversationDeterministicTraceCompletion = Omit<
 >;
 
 const RESPONSE_PLAN_ATTENTION_REASON = "Resposta segura requer revisão humana";
+const V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS = 2;
 
 export function resolveResponseMaxCharacters(
   verbosity: ConciergeVerbosity | undefined,
@@ -3077,6 +3082,7 @@ export class ConversationOrchestrator {
     turnId: string;
     clinicId: string;
     conversationId: string;
+    turnObservationSink?: V1TurnObservationSink;
     safetyHandoffGuard?: TurnSafetyHandoffGuard;
     onRequiresHandoff: (reason: string) => Promise<void>;
   }): Promise<PlannedResponse> {
@@ -3084,6 +3090,20 @@ export class ConversationOrchestrator {
       composerInput: input.composerInput,
       planInput: input.planInput,
     });
+    if (input.turnObservationSink) {
+      recordV1TurnObservation(input.turnObservationSink, {
+        kind: "v1_response_plan",
+        turnId: input.turnId,
+        actionType: planned.plan.action,
+        outcomeSummary: input.composerInput.actionResult.type,
+        responseDigest: `sha256:${createHash("sha256").update(planned.response.text).digest("hex")}`,
+        responseCharacters: planned.response.text.length,
+        latencyMs: planned.composerLatencyMs,
+        modelId: planned.response.model || null,
+        inputTokens: planned.response.inputTokens,
+        outputTokens: planned.response.outputTokens,
+      });
+    }
     const traceBase = {
       turnId: input.turnId,
       occurredAt: runtimeNow().toISOString(),
@@ -3311,6 +3331,7 @@ export class ConversationOrchestrator {
     observationOnly?: boolean;
     mediaUrl?: string;
     mediaType?: "image" | "video" | "audio" | "document";
+    turnObservationSink?: V1TurnObservationSink;
     // Reprocessa uma mensagem de lead JÁ REGISTRADA como se tivesse acabado de
     // chegar (ação guiada do operador: "entrar no trilho do pipeline"). Pula
     // dedup, registro e debounce — a mensagem não é nova; só a resposta é.
@@ -3318,10 +3339,17 @@ export class ConversationOrchestrator {
   }): Promise<{ replied: boolean; reason?: string }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
     const turnId = params.turnId ?? messageId;
+    const turnStartedAt = runtimeNow();
+    recordV1TurnObservation(params.turnObservationSink, {
+      kind: "turn_input",
+      turnId,
+      now: turnStartedAt.toISOString(),
+      leadMessage: params.messageText,
+    });
     await recordDecisionTrace(this.decisionTraceSink, {
       turnId,
       stage: "orchestrator.started",
-      occurredAt: runtimeNow().toISOString(),
+      occurredAt: turnStartedAt.toISOString(),
       clinicId,
       metadata: {
         replay: Boolean(params.replayOfMessageDbId),
@@ -3353,6 +3381,13 @@ export class ConversationOrchestrator {
         .limit(1);
 
       if (alreadyProcessed.length > 0) {
+        recordV1TurnObservation(params.turnObservationSink, {
+          kind: "turn_gate_fact",
+          turnId,
+          field: "duplicate",
+          value: true,
+          source: "v1_dedupe",
+        });
         return { replied: false, reason: "duplicate_provider_message" };
       }
 
@@ -3393,9 +3428,23 @@ export class ConversationOrchestrator {
         .limit(1);
 
       if (contentDupe) {
+        recordV1TurnObservation(params.turnObservationSink, {
+          kind: "turn_gate_fact",
+          turnId,
+          field: "duplicate",
+          value: true,
+          source: "v1_dedupe",
+        });
         console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
         return { replied: false, reason: "duplicate_content" };
       }
+      recordV1TurnObservation(params.turnObservationSink, {
+        kind: "turn_gate_fact",
+        turnId,
+        field: "duplicate",
+        value: false,
+        source: "v1_dedupe",
+      });
     }
 
     // ── 2. Busca clínica ──
@@ -4065,6 +4114,7 @@ export class ConversationOrchestrator {
         turnId,
         clinicId,
         conversationId: conversation.id,
+        turnObservationSink: params.turnObservationSink,
         onRequiresHandoff: async (reason) => {
           responsePlanAttentionReason = reason;
         },
@@ -4280,6 +4330,13 @@ export class ConversationOrchestrator {
     // Se há TTL expirado → retoma automaticamente e sinaliza ao Composer para contextualizar.
     // Se pausada sem TTL (pause manual) ou TTL ainda vigente → silêncio.
     let resumedFromHumanTakeover = false;
+    recordV1TurnObservation(params.turnObservationSink, {
+      kind: "turn_gate_fact",
+      turnId,
+      field: "humanControlled",
+      value: conversation.aiPaused,
+      source: "v1_human_control",
+    });
     if (conversation.aiPaused) {
       const now = runtimeNow();
       if (conversation.takeoverExpiresAt && conversation.takeoverExpiresAt < now) {
@@ -4374,6 +4431,19 @@ export class ConversationOrchestrator {
     const allMessagesForContext = lastResetBoundary
       ? allMessages.filter((m) => m.sentAt >= lastResetBoundary)
       : allMessages;
+    if (params.turnObservationSink) {
+      recordV1TurnObservation(params.turnObservationSink, {
+        kind: "turn_context",
+        turnId,
+        phase: currentConversationState?.state ?? "none",
+        pendingStepId: currentConversationState?.id ?? null,
+        completedStepIds: [],
+        history: allMessagesForContext.map((message) => ({
+          author: message.author === "lead" ? "lead" : "agent",
+          body: message.body,
+        })),
+      });
+    }
 
     // Mapa id→título da biblioteca de mídia. O dedup de content step de mídia
     // (hasPipelineContentStepBeenSent) casa pelo TÍTULO — que é o que fica gravado
@@ -4396,6 +4466,18 @@ export class ConversationOrchestrator {
 
     // ── 8. Verifica oferta de slots pendente ──
     const pendingSlots = await this.stateMachine.getPendingSlotOffer(conversation.id, stateAsOf);
+    if (params.turnObservationSink) {
+      recordV1TurnObservation(params.turnObservationSink, {
+        kind: "pending_slot_offer",
+        turnId,
+        pendingStepId: pendingSlots ? currentConversationState?.id ?? null : null,
+        slots: (pendingSlots ?? []).map((slot) => ({
+          id: slot.startsAt,
+          label: slot.label,
+          evidenceRef: `${currentConversationState?.id ?? turnId}:slot:${slot.index}`,
+        })),
+      });
+    }
     const hasPendingOffer = pendingSlots !== null;
 
     // ── 8.5. Verifica pipeline de tratamento ativo ──
@@ -4534,6 +4616,7 @@ export class ConversationOrchestrator {
               turnId,
               clinicId,
               conversationId: conversation.id,
+              turnObservationSink: params.turnObservationSink,
               onRequiresHandoff: async (reason) => {
                 await db
                   .update(conversationsTable)
@@ -4821,6 +4904,29 @@ export class ConversationOrchestrator {
       clinicTreatments,
       { treatmentName: slotPreference.identifiedTreatment },
     );
+    if (params.turnObservationSink) {
+      recordV1TurnObservation(params.turnObservationSink, {
+        kind: "tenant_snapshot",
+        turnId,
+        configFingerprint: runtimeConfigFingerprint.fingerprint,
+        policy: {
+          priceDisclosureEnabled: true,
+          humanEscalationRequired: false,
+          schedulingMinimumLeadTimeHours: V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS,
+          schedulingRequiresEvaluationFirst:
+            classifiedActiveTreatment?.requiresEvaluationFirst ?? false,
+        },
+        catalog: clinicTreatments.map((treatment) => {
+          const priceCents = treatment.priceCents ?? treatment.minPriceCents;
+          return {
+            id: treatment.id,
+            name: treatment.name,
+            priceCents,
+            priceDisclosable: treatment.priceQuotableInChat && priceCents !== null,
+          };
+        }),
+      });
+    }
     const activeTreatmentId = resolveMediaScopeTreatmentId({
       pipelineTreatmentId: pipelineState?.treatmentId,
       classifiedTreatment: classifiedActiveTreatment,
@@ -4861,7 +4967,15 @@ export class ConversationOrchestrator {
     // confirmação é texto fixo de propósito — nunca deixar o LLM tentar
     // reengajar quem acabou de pedir para sair. Reply a inbound não é gated,
     // então esta confirmação sai normalmente.
-    if (intent === "stop_contact") {
+    const optedOut = intent === "stop_contact";
+    recordV1TurnObservation(params.turnObservationSink, {
+      kind: "turn_gate_fact",
+      turnId,
+      field: "optedOut",
+      value: optedOut,
+      source: "v1_opt_out",
+    });
+    if (optedOut) {
       const decision = stopContactDecision;
       if (!decision) {
         return { replied: false, reason: "stop_contact_decision_missing" };
@@ -5241,6 +5355,39 @@ export class ConversationOrchestrator {
       new DrizzleFollowUpRepository(),
     );
 
+    const fetchAndOfferSlots = this.fetchAndOfferSlots.bind(this);
+    const fetchAndOfferObservedSlots = async (
+      ...args: Parameters<typeof fetchAndOfferSlots>
+    ): ReturnType<typeof fetchAndOfferSlots> => {
+      const result = await fetchAndOfferSlots(...args);
+      const preferredDate = args[5];
+      const preferredPeriod = args[6];
+      const treatmentName = args[8];
+      const observedService = params.turnObservationSink && treatmentName
+        ? clinicTreatments.find((treatment) => treatment.name === treatmentName)
+        : null;
+      if (observedService) {
+        recordV1TurnObservation(params.turnObservationSink, {
+          kind: "slot_search",
+          turnId,
+          query: {
+            service: treatmentName ?? null,
+            date: preferredDate ?? null,
+            period: preferredPeriod ?? null,
+            minimumLeadTimeHours: V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS,
+            now: turnStartedAt.toISOString(),
+          },
+          service: { id: observedService.id, name: observedService.name },
+          slots: result.slots.map((slot, index) => ({
+            id: slot.startsAt,
+            label: slot.label,
+            evidenceRef: `slot-search:${turnId}:${index + 1}`,
+          })),
+        });
+      }
+      return result;
+    };
+
     // Helper para compor resposta
     let composedMediaIds: string[] = [];
     let composedParts: import("@/core/intelligence/ResponseComposer").ResponsePart[] = [];
@@ -5331,6 +5478,7 @@ export class ConversationOrchestrator {
           turnId,
           clinicId,
           conversationId: conversation.id,
+          turnObservationSink: params.turnObservationSink,
           safetyHandoffGuard: turnSafetyHandoff,
           onRequiresHandoff: async (reason) => {
             await db
@@ -5406,7 +5554,7 @@ export class ConversationOrchestrator {
       if (!bookingTreatment) return false;
 
       turnTouchedScheduling = true;
-      const { slots } = await this.fetchAndOfferSlots(
+      const { slots } = await fetchAndOfferObservedSlots(
         conversation.id,
         clinic,
         calendarGateway,
@@ -5637,7 +5785,7 @@ export class ConversationOrchestrator {
         )
       ) {
         turnTouchedScheduling = true;
-        const { slots: saturdaySlots, preferredDayEmpty: saturdayFull } = await this.fetchAndOfferSlots(
+        const { slots: saturdaySlots, preferredDayEmpty: saturdayFull } = await fetchAndOfferObservedSlots(
           conversation.id,
           clinic,
           calendarGateway,
@@ -5755,7 +5903,7 @@ export class ConversationOrchestrator {
         if (pendingChoice.kind === "no_match" && !slotPreference.preferredDate) {
           await this.stateMachine.invalidate(conversation.id);
           turnTouchedScheduling = true;
-          const { slots: prefSlots, preferredDayEmpty: prefEmpty } = await this.fetchAndOfferSlots(
+          const { slots: prefSlots, preferredDayEmpty: prefEmpty } = await fetchAndOfferObservedSlots(
             conversation.id, clinic, calendarGateway, timezone, businessHours,
             undefined,
             slotPreference.preferredPeriod ?? undefined,
@@ -5786,7 +5934,7 @@ export class ConversationOrchestrator {
             if (!dateMatchesPending) {
               await this.stateMachine.invalidate(conversation.id);
               turnTouchedScheduling = true;
-              const { slots: redirectSlots, preferredDayEmpty: rdEmpty, outsideBookingWindow: rdOutside, outsideBusinessHours: rdNotOpen, preferredPeriodUnavailable: rdPeriod } = await this.fetchAndOfferSlots(
+              const { slots: redirectSlots, preferredDayEmpty: rdEmpty, outsideBookingWindow: rdOutside, outsideBusinessHours: rdNotOpen, preferredPeriodUnavailable: rdPeriod } = await fetchAndOfferObservedSlots(
                 conversation.id, clinic, calendarGateway, timezone, businessHours,
                 slotPreference.preferredDate, slotPreference.preferredPeriod ?? undefined,
                 undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
@@ -5824,7 +5972,7 @@ export class ConversationOrchestrator {
           // Lead escolheu (por número OU expressando dia/hora) mas a oferta expirou (15 min TTL)
           if (slotPreference.slotChoice !== null || slotPreference.preferredTime || slotPreference.preferredDate) {
             turnTouchedScheduling = true;
-            const { slots: freshSlots } = await this.fetchAndOfferSlots(
+            const { slots: freshSlots } = await fetchAndOfferObservedSlots(
               conversation.id,
               clinic,
               calendarGateway,
@@ -5893,7 +6041,7 @@ export class ConversationOrchestrator {
           if (!held) {
             // Slot tomado entre a oferta e a escolha → reoferta.
             turnTouchedScheduling = true;
-            const { slots: newSlots } = await this.fetchAndOfferSlots(
+            const { slots: newSlots } = await fetchAndOfferObservedSlots(
               conversation.id, clinic, calendarGateway, timezone, businessHours,
               undefined, undefined, undefined, offeredTreatment?.treatmentName, offeredTreatment?.durationMinutes, voiceEnabled,
             );
@@ -5976,7 +6124,7 @@ export class ConversationOrchestrator {
         } else if (result.reason === "slot_taken") {
           // Slot foi tomado por outro lead entre a oferta e a confirmação
           turnTouchedScheduling = true;
-          const { slots: newSlots } = await this.fetchAndOfferSlots(
+          const { slots: newSlots } = await fetchAndOfferObservedSlots(
             conversation.id,
             clinic,
             calendarGateway,
@@ -6008,7 +6156,7 @@ export class ConversationOrchestrator {
         // busca imediatamente para aquele dia em vez de perguntar novamente.
         if (slotPreference.preferredDate || slotPreference.preferredPeriod) {
           turnTouchedScheduling = true;
-          const { slots: preferredSlots, preferredDayEmpty: rejectDayEmpty, outsideBookingWindow: rejectOutside, outsideBusinessHours: rejectNotOpen, preferredPeriodUnavailable: rejectPeriodUnavail } = await this.fetchAndOfferSlots(
+          const { slots: preferredSlots, preferredDayEmpty: rejectDayEmpty, outsideBookingWindow: rejectOutside, outsideBusinessHours: rejectNotOpen, preferredPeriodUnavailable: rejectPeriodUnavail } = await fetchAndOfferObservedSlots(
             conversation.id,
             clinic,
             calendarGateway,
@@ -6132,7 +6280,7 @@ export class ConversationOrchestrator {
             const evalDuration = evalTreatment?.durationMinutes ?? 60;
             const evalName = evalTreatment?.name ?? "Avaliação";
             turnTouchedScheduling = true;
-            const { slots: evalSlots } = await this.fetchAndOfferSlots(
+            const { slots: evalSlots } = await fetchAndOfferObservedSlots(
               conversation.id, clinic, calendarGateway, timezone, businessHours,
               slotPreference.preferredDate ?? undefined,
               slotPreference.preferredPeriod ?? undefined,
@@ -6152,7 +6300,7 @@ export class ConversationOrchestrator {
         const resolvedDurationMinutes = resolution.durationMinutes;
 
         turnTouchedScheduling = true;
-        const { slots: formattedSlots, preferredDayEmpty, outsideBookingWindow, outsideBusinessHours, preferredPeriodUnavailable } = await this.fetchAndOfferSlots(
+        const { slots: formattedSlots, preferredDayEmpty, outsideBookingWindow, outsideBusinessHours, preferredPeriodUnavailable } = await fetchAndOfferObservedSlots(
           conversation.id,
           clinic,
           calendarGateway,
@@ -6260,7 +6408,7 @@ export class ConversationOrchestrator {
         }
 
         turnTouchedScheduling = true;
-        const { slots: newSlots, preferredDayEmpty: rescheduleEmpty, outsideBookingWindow: rescheduleOutside, outsideBusinessHours: rescheduleNotOpen, preferredPeriodUnavailable: reschedulePeriodUnavail } = await this.fetchAndOfferSlots(
+        const { slots: newSlots, preferredDayEmpty: rescheduleEmpty, outsideBookingWindow: rescheduleOutside, outsideBusinessHours: rescheduleNotOpen, preferredPeriodUnavailable: reschedulePeriodUnavail } = await fetchAndOfferObservedSlots(
           conversation.id,
           clinic,
           calendarGateway,
@@ -6708,7 +6856,7 @@ export class ConversationOrchestrator {
           const bookingTargetDuration = evalTreatment?.durationMinutes ?? matchedPriceTreatment.durationMinutes;
 
           turnTouchedScheduling = true;
-          const { slots: priceFollowSlots, preferredDayEmpty: priceFollowEmpty } = await this.fetchAndOfferSlots(
+          const { slots: priceFollowSlots, preferredDayEmpty: priceFollowEmpty } = await fetchAndOfferObservedSlots(
             conversation.id, clinic, calendarGateway, timezone, businessHours,
             undefined, undefined, undefined,
             bookingTargetName, bookingTargetDuration, voiceEnabled,
@@ -8187,7 +8335,7 @@ export class ConversationOrchestrator {
   // Snapa para a próxima hora cheia com antecedência mínima de 2h.
   // Evita que o cursor do SlotEngine gere slots em :51 ou :37.
   private slotWindowStart(): Date {
-    const minAdvanceMs = 2 * 60 * 60_000;
+    const minAdvanceMs = V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS * 60 * 60_000;
     const earliest = new Date(runtimeNow().getTime() + minAdvanceMs);
     const hourMs = 60 * 60_000;
     return new Date(Math.ceil(earliest.getTime() / hourMs) * hourMs);

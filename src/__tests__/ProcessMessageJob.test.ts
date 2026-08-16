@@ -3,6 +3,7 @@ import { ProcessMessageJobHandler } from "@/application/jobs/process-message-job
 import type { InboundEvent } from "@/application/ports/inbound-event-store";
 import type { JobRecord } from "@/application/ports/job-queue";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
+import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
 
 const event: InboundEvent = {
   id: "event-1",
@@ -94,6 +95,7 @@ describe("ProcessMessageJobHandler", () => {
         replyEnabled: true,
       }),
     );
+    expect(conversationHandler.handle.mock.calls[0]![0]).not.toHaveProperty("turnObservationSink");
     expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
     expect(decisionTraceSink.getEvents("event-1").map((entry) => entry.stage)).toEqual([
       "ingress.received",
@@ -293,6 +295,7 @@ describe("ProcessMessageJobHandler", () => {
   });
 
   it("registra falha técnica tratada como failed, não como silêncio intencional", async () => {
+    const observations: V1TurnObservationEvent[] = [];
     const conversationHandler = {
       handle: vi.fn().mockResolvedValue({
         replied: false,
@@ -301,6 +304,9 @@ describe("ProcessMessageJobHandler", () => {
     };
     const { handler, decisionTraceSink, inboundEventStore } = makeHandler({
       conversationHandler,
+      createTurnObservationSink: () => ({
+        record: (observation) => observations.push(observation),
+      }),
     });
 
     await expect(handler.processJob(job)).resolves.toEqual({
@@ -323,6 +329,7 @@ describe("ProcessMessageJobHandler", () => {
         .getEvents("event-1")
         .some((event) => event.stage === "turn.ignored"),
     ).toBe(false);
+    expect(observations.some((event) => event.kind === "turn_terminal")).toBe(false);
   });
 
   it("shadow registra a mensagem em modo observação sem autorizar efeitos da IA", async () => {
@@ -341,5 +348,118 @@ describe("ProcessMessageJobHandler", () => {
       replyEnabled: false,
       observationOnly: true,
     }));
+  });
+
+  it("cria uma seam por turn live e só emite terminal depois do handle e acknowledgement", async () => {
+    const order: string[] = [];
+    const events: V1TurnObservationEvent[] = [];
+    const createTurnObservationSink = vi.fn((input: { turnId: string; clinicId: string }) => {
+      expect(input).toEqual({ turnId: "event-1", clinicId: "clinic-1" });
+      return {
+        record(observation: V1TurnObservationEvent) {
+          events.push(observation);
+          order.push(observation.kind);
+        },
+      };
+    });
+    const conversationHandler = {
+      handle: vi.fn(async (input: Record<string, unknown>) => {
+        expect(input.turnId).toBe("event-1");
+        expect(input.turnObservationSink).toBeDefined();
+        order.push("handle");
+        return { replied: false, reason: "intentional_silence" };
+      }),
+    };
+    const inboundEventStore = {
+      findInboundEvent: vi.fn().mockResolvedValue(event),
+      markInboundEventProcessing: vi.fn().mockResolvedValue(undefined),
+      markInboundEventProcessed: vi.fn(async () => { order.push("acknowledgement"); }),
+      markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
+    };
+    const { handler } = makeHandler({
+      inboundEventStore: inboundEventStore as never,
+      conversationHandler,
+      createTurnObservationSink,
+    });
+
+    await handler.processJob(job);
+
+    expect(createTurnObservationSink).toHaveBeenCalledTimes(1);
+    expect(events[0]).toEqual({
+      kind: "turn_gate_fact",
+      turnId: "event-1",
+      field: "automationEnabled",
+      value: true,
+      source: "job_automation",
+    });
+    expect(events.at(-1)).toEqual({
+      kind: "turn_terminal",
+      turnId: "event-1",
+      replied: false,
+      reason: "intentional_silence",
+    });
+    expect(order.indexOf("turn_terminal")).toBeGreaterThan(order.indexOf("handle"));
+    expect(order.indexOf("turn_terminal")).toBeGreaterThan(order.indexOf("acknowledgement"));
+  });
+
+  it("não emite terminal quando V1 ou acknowledgement falha", async () => {
+    for (const failure of ["handle", "acknowledgement"] as const) {
+      const events: V1TurnObservationEvent[] = [];
+      const conversationHandler = {
+        handle: failure === "handle"
+          ? vi.fn().mockRejectedValue(new Error("V1 failed"))
+          : vi.fn().mockResolvedValue({ replied: true }),
+      };
+      const inboundEventStore = {
+        findInboundEvent: vi.fn().mockResolvedValue(event),
+        markInboundEventProcessing: vi.fn().mockResolvedValue(undefined),
+        markInboundEventProcessed: failure === "acknowledgement"
+          ? vi.fn().mockRejectedValue(new Error("ack failed"))
+          : vi.fn().mockResolvedValue(undefined),
+        markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
+      };
+      const { handler } = makeHandler({
+        inboundEventStore: inboundEventStore as never,
+        conversationHandler,
+        createTurnObservationSink: () => ({ record: (observation) => events.push(observation) }),
+      });
+
+      await expect(handler.processJob(job)).rejects.toThrow();
+      expect(events.some((observation) => observation.kind === "turn_terminal")).toBe(false);
+    }
+  });
+
+  it.each(["observe", "disabled"] as const)(
+    "não cria nem finaliza seam em automation %s",
+    async (automationMode) => {
+      const createTurnObservationSink = vi.fn();
+      const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue(automationMode) };
+      const { handler, conversationHandler } = makeHandler({
+        automationPolicy,
+        createTurnObservationSink,
+      });
+
+      await handler.processJob(job);
+
+      expect(conversationHandler.handle).toHaveBeenCalled();
+      expect(createTurnObservationSink).not.toHaveBeenCalled();
+      expect(conversationHandler.handle.mock.calls[0]![0]).not.toHaveProperty("turnObservationSink");
+    },
+  );
+
+  it("não deixa exceção do observer alterar o resultado V1", async () => {
+    const { handler, inboundEventStore } = makeHandler({
+      createTurnObservationSink: () => ({
+        record() {
+          throw new Error("observation sink unavailable");
+        },
+      }),
+    });
+
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "processed",
+      inboundEventId: "event-1",
+    });
+    expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
   });
 });
