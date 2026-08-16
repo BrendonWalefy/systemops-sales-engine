@@ -5,7 +5,6 @@ import {
   createDentalSchedulingCapability,
   DENTAL_OUTCOME_SCHEMA,
   type DentalClaimPayload,
-  type DentalOutcomeType,
   type DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
 import type {
