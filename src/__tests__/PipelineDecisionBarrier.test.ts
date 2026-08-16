@@ -20,7 +20,10 @@ describe("barreira entre decisão e efeitos", () => {
       },
       execute: async () => {
         writes += 1;
-        return { type: `${id}_done`, facts: [] };
+        return {
+          type: `${id}_done`, semanticClass: "effect_completed",
+          origin: { capabilityId: id }, subject: { type: "work", id }, evidence: [], facts: [],
+        };
       },
     });
 

@@ -24,7 +24,8 @@ describe("Dental Scheduling capability", () => {
     expect(listSlots).toHaveBeenCalledOnce();
     expect(bookSlot).not.toHaveBeenCalled();
     expect(result.type).toBe("slots_found");
-    expect(result.facts[0]).toEqual(expect.objectContaining({ subject: { type: "slot", id: "slot-1" }, disclosure: "allowed" }));
+    expect(result.semanticClass).toBe("options_found");
+    expect(result.semanticClass === "options_found" && result.options[0]?.facts[0]).toEqual(expect.objectContaining({ subject: { type: "slot", id: "slot-1" }, disclosure: "allowed" }));
   });
 
   it("confirma slot resolvido e só afirma sucesso com evidence do write", async () => {
@@ -40,9 +41,11 @@ describe("Dental Scheduling capability", () => {
     expect(bookSlot).not.toHaveBeenCalled();
     const result = await capability.execute(decision, { state, policy, now: new Date(0) });
     expect(bookSlot).toHaveBeenCalledOnce();
-    expect(result).toEqual({ type: "appointment_created", facts: [expect.objectContaining({
+    expect(result).toEqual(expect.objectContaining({
+      type: "appointment_created", semanticClass: "effect_completed",
+      subject: { type: "appointment", id: "appt-1" }, facts: [expect.objectContaining({
       subject: { type: "appointment", id: "appt-1" }, evidence: { source: "write", reference: "booking-1" },
-    })] });
+    })] }));
   });
 
   it("sem pending state não lê nem escreve", async () => {
@@ -68,7 +71,9 @@ describe("Dental Scheduling capability", () => {
     const state = { phase: "awaiting_slot", pendingStepId: "offer-1", completedStepIds: [] };
     const claim = capability.claim(understanding("confirm-slot", { ordinal: 2 }), state)!;
     const result = await capability.execute(await capability.decide(claim, { state, policy, now: new Date(0) }), { state, policy, now: new Date(0) });
-    expect(result).toEqual({ type: "appointment_create_failed", facts: [] });
+    expect(result).toEqual(expect.objectContaining({
+      type: "appointment_create_failed", semanticClass: "effect_failed", subject: null, facts: [],
+    }));
   });
 
   it("confirma appointment pendente com evidence do write", async () => {
@@ -97,7 +102,9 @@ describe("Dental Scheduling capability", () => {
     const result = await capability.execute({
       kind: "execute", action: { type: "foreign-action", parameters: { appointmentId: "appt-1" } }, nextBestStep: null,
     }, { state, policy, now: new Date(0) });
-    expect(result).toEqual({ type: "scheduling_failed", facts: [] });
+    expect(result).toEqual(expect.objectContaining({
+      type: "scheduling_failed", semanticClass: "effect_failed", facts: [],
+    }));
     expect(bookSlot).not.toHaveBeenCalled();
     expect(confirmAppointment).not.toHaveBeenCalled();
   });

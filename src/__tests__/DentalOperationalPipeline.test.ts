@@ -70,7 +70,10 @@ describe("pipeline operacional dental", () => {
       decide: async () => ({ kind: "close" }),
       execute: async () => {
         writes += 1;
-        return { type: "written", facts: [] };
+        return {
+          type: "written", semanticClass: "effect_completed",
+          origin: { capabilityId: "dependent" }, subject: { type: "work", id: "written" }, evidence: [], facts: [],
+        };
       },
     };
     const result = await runTurnPipeline({

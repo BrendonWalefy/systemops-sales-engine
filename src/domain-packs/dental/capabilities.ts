@@ -165,13 +165,28 @@ export function createDentalCatalogCapability(
       };
     },
     async execute(decision): Promise<ActionResult> {
-      if (decision.kind === "answer")
-        return { type: "catalog_answered", facts: decision.facts };
+      if (decision.kind === "answer") {
+        return {
+          type: "catalog_answered",
+          semanticClass: "information_authorized",
+          origin: { capabilityId: "dental-catalog" },
+          subject: decision.facts[0]?.subject ?? null,
+          evidence: decision.facts.map(({ evidence }) => evidence),
+          facts: decision.facts,
+        };
+      }
       return {
         type:
           decision.kind === "escalate"
             ? "escalation_required"
             : "clarification_required",
+        semanticClass:
+          decision.kind === "escalate"
+            ? "human_action_required"
+            : "clarification_required",
+        origin: { capabilityId: "dental-catalog" },
+        subject: null,
+        evidence: [],
         facts: [],
       };
     },
@@ -282,24 +297,59 @@ export function createDentalSchedulingCapability(
         : { kind: "ask", questionId: "appointment-not-found" };
     },
     async execute(decision): Promise<ActionResult> {
-      if (decision.kind === "offer")
+      if (decision.kind === "offer") {
         return {
           type: "slots_found",
-          facts: decision.options.flatMap(({ facts }) => facts),
+          semanticClass: "options_found",
+          origin: { capabilityId: "dental-scheduling" },
+          subject: null,
+          evidence: decision.options.flatMap(({ facts }) =>
+            facts.map(({ evidence }) => evidence),
+          ),
+          facts: [],
+          options: decision.options.map((option) => {
+            const subject = option.facts[0]?.subject;
+            if (!subject) throw new Error(`option ${option.id} requires a subject`);
+            return { id: option.id, subject, facts: option.facts };
+          }),
         };
-      if (decision.kind !== "execute")
-        return { type: "clarification_required", facts: [] };
+      }
+      if (decision.kind !== "execute") {
+        return {
+          type: "clarification_required",
+          semanticClass: "clarification_required",
+          origin: { capabilityId: "dental-scheduling" },
+          subject: null,
+          evidence: [],
+          facts: [],
+        };
+      }
       if (
         decision.action.type !== "book-slot" &&
         decision.action.type !== "confirm-appointment"
       ) {
-        return { type: "scheduling_failed", facts: [] };
+        return {
+          type: "scheduling_failed",
+          semanticClass: "effect_failed",
+          origin: { capabilityId: "dental-scheduling" },
+          subject: null,
+          evidence: [],
+          facts: [],
+        };
       }
       const parameter =
         decision.action.type === "book-slot" ? "slotId" : "appointmentId";
       const id = decision.action.parameters[parameter];
-      if (typeof id !== "string")
-        return { type: "scheduling_failed", facts: [] };
+      if (typeof id !== "string") {
+        return {
+          type: "scheduling_failed",
+          semanticClass: "effect_failed",
+          origin: { capabilityId: "dental-scheduling" },
+          subject: null,
+          evidence: [],
+          facts: [],
+        };
+      }
       const outcome =
         decision.action.type === "book-slot"
           ? await writePort.bookSlot(id)
@@ -310,21 +360,28 @@ export function createDentalSchedulingCapability(
             decision.action.type === "book-slot"
               ? "appointment_create_failed"
               : "appointment_confirmation_failed",
+          semanticClass: "effect_failed",
+          origin: { capabilityId: "dental-scheduling" },
+          subject: null,
+          evidence: [{ source: "write", reference: outcome.evidenceRef }],
           facts: [],
         };
       }
+      const fact = appointmentFact(
+        outcome.appointmentId,
+        outcome.label,
+        outcome.evidenceRef,
+      );
       return {
         type:
           decision.action.type === "book-slot"
             ? "appointment_created"
             : "appointment_confirmed",
-        facts: [
-          appointmentFact(
-            outcome.appointmentId,
-            outcome.label,
-            outcome.evidenceRef,
-          ),
-        ],
+        semanticClass: "effect_completed",
+        origin: { capabilityId: "dental-scheduling" },
+        subject: fact.subject,
+        evidence: [fact.evidence],
+        facts: [fact],
       };
     },
   };
@@ -374,7 +431,14 @@ export function createDentalEscalationCapability(): Capability<
       return { kind: "escalate", reason: "structured_safety_signal" };
     },
     async execute(): Promise<ActionResult> {
-      return { type: "escalation_required", facts: [] };
+      return {
+        type: "escalation_required",
+        semanticClass: "human_action_required",
+        origin: { capabilityId: "dental-escalation" },
+        subject: null,
+        evidence: [],
+        facts: [],
+      };
     },
   };
 }

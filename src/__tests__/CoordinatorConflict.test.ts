@@ -21,7 +21,10 @@ describe("conflitos entre capabilities", () => {
       decide: async () => ({ kind: "close" }),
       execute: async () => {
         executions += 1;
-        return { type: `${id}_executed`, facts: [] };
+        return {
+          type: `${id}_executed`, semanticClass: "effect_completed",
+          origin: { capabilityId: id }, subject: { type: "work", id }, evidence: [], facts: [],
+        };
       },
     });
 

@@ -57,9 +57,14 @@ const quoteCapability: Capability<
     };
   },
   async execute(decision): Promise<ActionResult> {
+    const facts = decision.kind === "answer" ? decision.facts : [];
     return {
       type: "quote_prepared",
-      facts: decision.kind === "answer" ? decision.facts : [],
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "glow-kite-quote" },
+      subject: facts[0]?.subject ?? null,
+      evidence: facts.map(({ evidence }) => evidence),
+      facts,
     };
   },
 };
@@ -80,7 +85,14 @@ const reservationCapability: Capability<
     };
   },
   async execute(): Promise<ActionResult> {
-    return { type: "wind_window_reserved", facts: [] };
+    return {
+      type: "wind_window_reserved",
+      semanticClass: "effect_completed",
+      origin: { capabilityId: "wind-window-reservation" },
+      subject: { type: "fixture_window", id: "wind-window" },
+      evidence: [{ source: "derived", reference: "fixture-reservation" }],
+      facts: [],
+    };
   },
 };
 

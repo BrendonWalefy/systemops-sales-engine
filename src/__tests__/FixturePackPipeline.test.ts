@@ -36,15 +36,17 @@ describe("fixture-pack no pipeline V2", () => {
     expect(result).toEqual({
       status: "delivered",
       capabilityIds: ["glow-kite-quote"],
-      actionResults: [{
+      actionResults: [expect.objectContaining({
         type: "quote_prepared",
+        semanticClass: "information_authorized",
+        subject: { type: "fixture_item", id: "glow-kite" },
         facts: [{
           key: "unit_amount", value: 37,
           subject: { type: "fixture_item", id: "glow-kite" },
           evidence: { source: "policy", reference: "quote_unit_amount" },
           disclosure: "allowed",
         }],
-      }],
+      })],
       response: { text: "A unidade luminosa custa 37 créditos.", parts: [] },
     });
   });
@@ -70,6 +72,9 @@ describe("fixture-pack no pipeline V2", () => {
     expect(result.status).toBe("delivered");
     if (result.status !== "delivered") throw new Error("expected delivered result");
     expect(result.capabilityIds).toEqual(["wind-window-reservation"]);
-    expect(result.actionResults).toEqual([{ type: "wind_window_reserved", facts: [] }]);
+    expect(result.actionResults).toEqual([expect.objectContaining({
+      type: "wind_window_reserved", semanticClass: "effect_completed",
+      subject: { type: "fixture_window", id: "wind-window" }, facts: [],
+    })]);
   });
 });

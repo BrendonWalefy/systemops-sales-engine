@@ -1,11 +1,15 @@
+export type Subject = { type: string; id: string };
+
+export type Evidence = {
+  source: "policy" | "read" | "write" | "derived";
+  reference: string;
+};
+
 export type Fact = {
   key: string;
   value: string | number | boolean;
-  subject: null | { type: string; id: string };
-  evidence: {
-    source: "policy" | "read" | "write" | "derived";
-    reference: string;
-  };
+  subject: Subject | null;
+  evidence: Evidence;
   disclosure: "allowed" | "internal";
 };
 
@@ -33,7 +37,35 @@ export type Decision =
   | { kind: "close" }
   | { kind: "suppress"; reason: string };
 
-export type ActionResult = {
-  type: string;
+export type OutcomeSemanticClass =
+  | "information_authorized"
+  | "options_found"
+  | "effect_completed"
+  | "effect_failed"
+  | "human_action_required"
+  | "clarification_required";
+
+export type ActionResultOption = {
+  id: string;
+  subject: Subject;
   facts: readonly Fact[];
 };
+
+type ActionResultBase = {
+  type: string;
+  semanticClass: OutcomeSemanticClass;
+  origin: { capabilityId: string };
+  subject: Subject | null;
+  evidence: readonly Evidence[];
+  facts: readonly Fact[];
+};
+
+export type ActionResult =
+  | (ActionResultBase & {
+      semanticClass: "options_found";
+      options: readonly ActionResultOption[];
+    })
+  | (ActionResultBase & {
+      semanticClass: Exclude<OutcomeSemanticClass, "options_found">;
+      options?: never;
+    });

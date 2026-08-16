@@ -1,26 +1,136 @@
-import type { ActionResult, Fact } from "@/conversation-core/decision";
+import type {
+  ActionResult,
+  Evidence,
+  Fact,
+  OutcomeSemanticClass,
+  Subject,
+} from "@/conversation-core/decision";
 
 export const V2_AUTHORIZED_RESPONSE_PLAN_VERSION = "authorized-response-plan.v2" as const;
 
+export type AuthorizedSubject = Subject & { ref: string };
+export type AuthorizedEvidence = Evidence & { ref: string };
+export type AuthorizedFact = Omit<Fact, "subject" | "evidence"> & {
+  ref: string;
+  subjectRef: string | null;
+  evidenceRef: string;
+};
+export type AuthorizedOption = {
+  ref: string;
+  id: string;
+  subjectRef: string;
+  factRefs: readonly string[];
+};
+export type AuthorizedOutcome = {
+  ref: string;
+  outcomeType: string;
+  semanticClass: OutcomeSemanticClass;
+  origin: { capabilityId: string };
+  subjectRef: string | null;
+  evidenceRefs: readonly string[];
+  factRefs: readonly string[];
+  optionRefs: readonly string[];
+};
+
 export type V2AuthorizedResponsePlan = {
   version: typeof V2_AUTHORIZED_RESPONSE_PLAN_VERSION;
-  actionTypes: readonly string[];
-  authorizedFacts: readonly Fact[];
+  outcomes: readonly AuthorizedOutcome[];
+  options: readonly AuthorizedOption[];
+  facts: readonly AuthorizedFact[];
+  subjects: readonly AuthorizedSubject[];
+  evidence: readonly AuthorizedEvidence[];
 };
 
 export function buildV2AuthorizedResponsePlan(
   actionResults: readonly ActionResult[],
 ): V2AuthorizedResponsePlan {
-  const authorizedFacts = actionResults.flatMap(({ facts }) =>
-    facts.filter(({ disclosure }) => disclosure === "allowed"),
-  );
-  const unscoped = authorizedFacts.find(({ subject }) => subject === null);
-  if (unscoped) {
-    throw new Error(`disclosable fact ${unscoped.key} requires a subject`);
+  const subjects: AuthorizedSubject[] = [];
+  const evidence: AuthorizedEvidence[] = [];
+  const facts: AuthorizedFact[] = [];
+  const options: AuthorizedOption[] = [];
+  const outcomes: AuthorizedOutcome[] = [];
+  const subjectRefs = new Map<string, string>();
+  const evidenceRefs = new Map<string, string>();
+
+  const registerSubject = (subject: Subject | null): string | null => {
+    if (!subject) return null;
+    const identity = JSON.stringify([subject.type, subject.id]);
+    const existing = subjectRefs.get(identity);
+    if (existing) return existing;
+    const ref = `subject-${subjects.length}`;
+    subjectRefs.set(identity, ref);
+    subjects.push({ ref, ...subject });
+    return ref;
+  };
+
+  const registerEvidence = (item: Evidence): string => {
+    const identity = JSON.stringify([item.source, item.reference]);
+    const existing = evidenceRefs.get(identity);
+    if (existing) return existing;
+    const ref = `evidence-${evidence.length}`;
+    evidenceRefs.set(identity, ref);
+    evidence.push({ ref, ...item });
+    return ref;
+  };
+
+  const registerFact = (fact: Fact): string => {
+    if (fact.disclosure === "allowed" && fact.subject === null) {
+      throw new Error(`disclosable fact ${fact.key} requires a subject`);
+    }
+    const ref = `fact-${facts.length}`;
+    facts.push({
+      ref,
+      key: fact.key,
+      value: fact.value,
+      subjectRef: registerSubject(fact.subject),
+      evidenceRef: registerEvidence(fact.evidence),
+      disclosure: fact.disclosure,
+    });
+    return ref;
+  };
+
+  for (const [resultIndex, result] of actionResults.entries()) {
+    const resultOptions = "options" in result ? result.options : undefined;
+    if (result.semanticClass === "options_found") {
+      if (!resultOptions || resultOptions.length === 0) {
+        throw new Error("options_found requires at least one option");
+      }
+    } else if (resultOptions !== undefined) {
+      throw new Error("options are only valid for options_found");
+    }
+
+    const outcomeSubjectRef = registerSubject(result.subject);
+    const outcomeEvidenceRefs = result.evidence.map(registerEvidence);
+    const outcomeFactRefs = result.facts.map(registerFact);
+    const optionRefs = (resultOptions ?? []).map((option) => {
+      const ref = `option-${options.length}`;
+      options.push({
+        ref,
+        id: option.id,
+        subjectRef: registerSubject(option.subject)!,
+        factRefs: option.facts.map(registerFact),
+      });
+      return ref;
+    });
+
+    outcomes.push({
+      ref: `outcome-${resultIndex}`,
+      outcomeType: result.type,
+      semanticClass: result.semanticClass,
+      origin: result.origin,
+      subjectRef: outcomeSubjectRef,
+      evidenceRefs: outcomeEvidenceRefs,
+      factRefs: outcomeFactRefs,
+      optionRefs,
+    });
   }
+
   return {
     version: V2_AUTHORIZED_RESPONSE_PLAN_VERSION,
-    actionTypes: [...new Set(actionResults.map(({ type }) => type))],
-    authorizedFacts,
+    outcomes,
+    options,
+    facts,
+    subjects,
+    evidence,
   };
 }
