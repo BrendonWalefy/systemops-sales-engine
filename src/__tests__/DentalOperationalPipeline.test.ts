@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
-import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
 import { defineOutcomeSchema } from "@/conversation-core/decision";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
@@ -50,7 +49,6 @@ describe("pipeline operacional dental", () => {
       }),
       capabilities: pack.capabilities,
       outcomeSchema: pack.outcomeSchema,
-      buildPlan: buildV2AuthorizedResponsePlan,
       response: {
         style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
         composer: new DeterministicResponseComposer(),
@@ -86,7 +84,7 @@ describe("pipeline operacional dental", () => {
         writes += 1;
         return {
           type: "written", semanticClass: "effect_completed",
-          origin: { capabilityId: "dependent" }, subject: { type: "work", id: "written" }, evidence: [], facts: [],
+          origin: { capabilityId: "dependent" }, subject: { type: "work", id: "written", displayName: "Written" }, evidence: [], facts: [],
         };
       },
     };
@@ -107,7 +105,6 @@ describe("pipeline operacional dental", () => {
       }),
       capabilities: [dependent],
       outcomeSchema,
-      buildPlan: buildV2AuthorizedResponsePlan,
       response: {
         style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
         composer: new DeterministicResponseComposer(),

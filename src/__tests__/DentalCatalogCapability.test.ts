@@ -27,7 +27,7 @@ describe("Dental Catalog capability", () => {
     const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
     expect(resolveService).toHaveBeenCalledOnce();
     expect(decision).toEqual(expect.objectContaining({ kind: "answer", facts: [expect.objectContaining({
-      key: "price_cents", value: 29_000, subject: { type: "service", id: "svc-1" }, disclosure: "allowed",
+      key: "price_cents", value: { kind: "money", amountInMinor: 29_000, currency: "BRL" }, subject: { type: "service", id: "svc-1", displayName: "Clareamento" }, disclosure: "allowed",
     })] }));
     const result = await capability.execute(decision, { state, policy, now: new Date(0) });
     expect(result.type).toBe("catalog_answered");

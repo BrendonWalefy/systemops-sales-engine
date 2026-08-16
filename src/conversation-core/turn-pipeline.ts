@@ -5,7 +5,7 @@ import type {
   StructuredPolicy,
 } from "@/conversation-core/capability/contract";
 import { coordinateCapabilities } from "@/conversation-core/capability/coordinator";
-import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import type {
   ComposerStyle,
   CoreResponse,
@@ -54,13 +54,9 @@ export async function runTurnPipeline<
     Schema
   >[];
   outcomeSchema: Schema;
-  buildPlan(
-    schema: Schema,
-    actionResults: readonly ActionResult<Schema>[],
-  ): V2AuthorizedResponsePlan<OutcomeTypeOf<Schema>>;
   response: {
     style: ComposerStyle;
-    composer: ResponseComposerPort;
+    composer: ResponseComposerPort<OutcomeTypeOf<Schema>>;
   };
 }): Promise<TurnPipelineResult<Schema>> {
   const gate = evaluateTurnGate(input.gateInput);
@@ -101,10 +97,14 @@ export async function runTurnPipeline<
 
   const actionResults: ActionResult<Schema>[] = [];
   for (const item of decided) {
-    actionResults.push(await item.capability.execute(item.decision, context));
+    const result = await item.capability.execute(item.decision, context);
+    if (result.origin.capabilityId !== item.capability.id) {
+      throw new Error(`action result owner mismatch: ${result.origin.capabilityId}`);
+    }
+    actionResults.push(result);
   }
 
-  const plan = input.buildPlan(input.outcomeSchema, actionResults);
+  const plan = buildV2AuthorizedResponsePlan(input.outcomeSchema, actionResults);
   const responseResult = await runV2ResponsePipeline({
     plan,
     style: input.response.style,

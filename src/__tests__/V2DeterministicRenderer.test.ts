@@ -1,32 +1,34 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import type { DraftSpeechAct } from "@/conversation-core/composer/contract";
 import {
   renderDeterministicResponse,
 } from "@/conversation-core/composer/deterministic-renderer";
 import { validateDraft, type ValidatedDraftResponse } from "@/conversation-core/composer/validator";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
+import type { ActionResult, Fact } from "@/conversation-core/decision";
 
-const plan: V2AuthorizedResponsePlan = {
-  version: "authorized-response-plan.v2",
-  subjects: [
-    { ref: "subject-a", type: "item", id: "a" },
-    { ref: "subject-option", type: "window", id: "w1" },
-  ],
-  evidence: [{ ref: "evidence-0", source: "read", reference: "snapshot" }],
-  facts: [
-    { ref: "fact-a", key: "amount", value: 120000, subjectRef: "subject-a", evidenceRef: "evidence-0", disclosure: "allowed" },
-    { ref: "fact-option", key: "window_label", value: "15:00", subjectRef: "subject-option", evidenceRef: "evidence-0", disclosure: "allowed" },
-  ],
-  options: [{ ref: "option-0", id: "w1", subjectRef: "subject-option", factRefs: ["fact-option"] }],
-  outcomes: [
-    { ref: "info", outcomeType: "quote-ready", semanticClass: "information_authorized", origin: { capabilityId: "quote" }, subjectRef: "subject-a", evidenceRefs: ["evidence-0"], factRefs: ["fact-a"], optionRefs: [] },
-    { ref: "options", outcomeType: "windows-found", semanticClass: "options_found", origin: { capabilityId: "reservation" }, subjectRef: null, evidenceRefs: ["evidence-0"], factRefs: [], optionRefs: ["option-0"] },
-    { ref: "completed", outcomeType: "reservation-completed", semanticClass: "effect_completed", origin: { capabilityId: "reservation" }, subjectRef: "subject-a", evidenceRefs: ["evidence-0"], factRefs: ["fact-a"], optionRefs: [] },
-    { ref: "failed", outcomeType: "reservation-failed", semanticClass: "effect_failed", origin: { capabilityId: "reservation" }, subjectRef: null, evidenceRefs: [], factRefs: [], optionRefs: [] },
-    { ref: "human", outcomeType: "operator-required", semanticClass: "human_action_required", origin: { capabilityId: "safety" }, subjectRef: null, evidenceRefs: [], factRefs: [], optionRefs: [] },
-    { ref: "clarify", outcomeType: "details-required", semanticClass: "clarification_required", origin: { capabilityId: "qualification" }, subjectRef: null, evidenceRefs: [], factRefs: [], optionRefs: [] },
-  ],
-};
+const outcomeSchema = defineOutcomeSchema({
+  quote_ready: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
+  windows_found: { semanticClass: "options_found", subjectRequirement: "optional", evidenceRequirement: "required" },
+  reservation_completed: { semanticClass: "effect_completed", subjectRequirement: "required", evidenceRequirement: "required" },
+  reservation_failed: { semanticClass: "effect_failed", subjectRequirement: "forbidden", evidenceRequirement: "optional" },
+  operator_required: { semanticClass: "human_action_required", subjectRequirement: "forbidden", evidenceRequirement: "optional" },
+  details_required: { semanticClass: "clarification_required", subjectRequirement: "forbidden", evidenceRequirement: "optional" },
+} as const);
+const subject = { type: "item", id: "a", displayName: "Item A" } as const;
+const optionSubject = { type: "window", id: "w1", displayName: "15:00" } as const;
+const evidence = { source: "read", reference: "snapshot" } as const;
+const amount = { key: "amount", value: { kind: "money", amountInMinor: 120000, currency: "BRL" }, subject, evidence, disclosure: "allowed" } as const;
+const results: ActionResult<typeof outcomeSchema>[] = [
+  { type: "quote_ready", semanticClass: "information_authorized", origin: { capabilityId: "quote" }, subject, evidence: [evidence], facts: [amount] },
+  { type: "windows_found", semanticClass: "options_found", origin: { capabilityId: "reservation" }, subject: null, evidence: [evidence], facts: [], options: [{ id: "w1", subject: optionSubject, facts: [{ key: "window_label", value: { kind: "text", value: "15:00" }, subject: optionSubject, evidence, disclosure: "allowed" }] }] },
+  { type: "reservation_completed", semanticClass: "effect_completed", origin: { capabilityId: "reservation" }, subject, evidence: [evidence], facts: [amount] },
+  { type: "reservation_failed", semanticClass: "effect_failed", origin: { capabilityId: "reservation" }, subject: null, evidence: [], facts: [] },
+  { type: "operator_required", semanticClass: "human_action_required", origin: { capabilityId: "safety" }, subject: null, evidence: [], facts: [] },
+  { type: "details_required", semanticClass: "clarification_required", origin: { capabilityId: "qualification" }, subject: null, evidence: [], facts: [] },
+];
+const plan = buildV2AuthorizedResponsePlan(outcomeSchema, results);
 
 function render(act: DraftSpeechAct): string {
   const validation = validateDraft(plan, { acts: [act] });
@@ -35,6 +37,12 @@ function render(act: DraftSpeechAct): string {
 }
 
 describe("renderer determinístico V2", () => {
+  it("não aceita valor primitivo sem tipo semântico", () => {
+    expectTypeOf<number>().not.toMatchTypeOf<Fact["value"]>();
+    expectTypeOf<string>().not.toMatchTypeOf<Fact["value"]>();
+    expectTypeOf<boolean>().not.toMatchTypeOf<Fact["value"]>();
+  });
+
   it("aceita somente draft validado no contrato", () => {
     expectTypeOf<Parameters<typeof renderDeterministicResponse>[0]["draft"]>()
       .toEqualTypeOf<ValidatedDraftResponse>();
@@ -44,61 +52,73 @@ describe("renderer determinístico V2", () => {
       .not.toHaveProperty("style");
   });
 
+  it("rejeita marca de ValidatedDraftResponse forjada por cast", () => {
+    const forged = {
+      acts: [{
+        kind: "confirm_effect",
+        outcomeRef: "outcome-2",
+        subjectRef: "subject-0",
+        factRefs: [],
+      }],
+    } as unknown as ValidatedDraftResponse;
+
+    expect(() => renderDeterministicResponse({ draft: forged }))
+      .toThrow(/not validated by the semantic validator/);
+  });
+
   it("verbaliza fact autorizado sem ampliar o valor", () => {
-    expect(render({ kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" }))
-      .toBe("Informação: 120000.");
+    expect(render({ kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" }))
+      .toBe("Valor: R$ 1.200,00.");
   });
 
   it("oferece opções sem alegar conclusão", () => {
-    const text = render({ kind: "offer_options", outcomeRef: "options", subjectRef: null, optionRefs: ["option-0"] });
+    const text = render({ kind: "offer_options", outcomeRef: "outcome-1", subjectRef: null, optionRefs: ["option-0"] });
     expect(text).toBe("Tenho estas opções: 15:00.");
     expect(text).not.toMatch(/conclu|confirm/i);
   });
 
   it("confirma somente effect_completed", () => {
-    expect(render({ kind: "confirm_effect", outcomeRef: "completed", subjectRef: "subject-a", factRefs: ["fact-a"] }))
-      .toBe("A ação foi concluída. Informação: 120000.");
+    expect(render({ kind: "confirm_effect", outcomeRef: "outcome-2", subjectRef: "subject-0", factRefs: ["fact-2"] }))
+      .toBe("A ação foi concluída. Valor: R$ 1.200,00.");
   });
 
   it("comunica falha sem texto de sucesso", () => {
-    const text = render({ kind: "communicate_failure", outcomeRef: "failed" });
+    const text = render({ kind: "communicate_failure", outcomeRef: "outcome-3" });
     expect(text).toBe("Não foi possível concluir a ação.");
     expect(text).not.toMatch(/confirmad|concluíd/i);
   });
 
   it("informa ação humana necessária sem alegar handoff", () => {
-    expect(render({ kind: "inform_required_action", outcomeRef: "human" }))
+    expect(render({ kind: "inform_required_action", outcomeRef: "outcome-4" }))
       .toBe("É necessário atendimento humano.");
   });
 
   it("pede clarificação sem inventar fact", () => {
-    expect(render({ kind: "ask_clarification", outcomeRef: "clarify" }))
+    expect(render({ kind: "ask_clarification", outcomeRef: "outcome-5" }))
       .toBe("Pode confirmar os dados?");
   });
 
   it("renderiza snapshots imutáveis do draft e do plano validados", () => {
-    const mutablePlan = structuredClone(plan) as V2AuthorizedResponsePlan;
     const acts: DraftSpeechAct[] = [
-      { kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" },
+      { kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" },
     ];
-    const validation = validateDraft(mutablePlan, { acts });
+    const validation = validateDraft(plan, { acts });
     if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
 
-    mutablePlan.facts[0]!.value = 999;
     acts.push({
       kind: "confirm_effect",
-      outcomeRef: "completed",
-      subjectRef: "subject-a",
-      factRefs: ["fact-a"],
+      outcomeRef: "outcome-2",
+      subjectRef: "subject-0",
+      factRefs: ["fact-2"],
     });
 
     expect(renderDeterministicResponse({ draft: validation.draft }).text)
-      .toBe("Informação: 120000.");
+      .toBe("Valor: R$ 1.200,00.");
   });
 
   it("ignora material lexical hostil mesmo quando chega por cast em runtime", () => {
     const validation = validateDraft(plan, {
-      acts: [{ kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" }],
+      acts: [{ kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" }],
     });
     if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
     const hostileInput = {
@@ -111,6 +131,6 @@ describe("renderer determinístico V2", () => {
 
     const text = renderDeterministicResponse(hostileInput).text;
     expect(text).not.toMatch(/desconto|garantid/i);
-    expect(text).toBe("Informação: 120000.");
+    expect(text).toBe("Valor: R$ 1.200,00.");
   });
 });

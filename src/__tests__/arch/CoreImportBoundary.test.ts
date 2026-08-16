@@ -54,4 +54,12 @@ describe("fronteira de importação do core V2", () => {
     expect(bypassAttempts.map(violationsIn).map((items) => items.length))
       .toEqual([1, 1, 1, 1, 1, 1, 1]);
   });
+
+  it("mantém composer e renderer H sem chamadas a provider, modelo, rede ou I/O", () => {
+    const forbiddenCall = /\b(?:fetch|XMLHttpRequest|WebSocket|OpenAI|Anthropic|generateContent)\b|\b(?:chat\.completions|responses\.create|process\.env)\b/;
+    const offenders = sourceFiles("src/conversation-core/composer")
+      .filter((file) => forbiddenCall.test(readFileSync(file, "utf8")));
+
+    expect(offenders).toEqual([]);
+  });
 });

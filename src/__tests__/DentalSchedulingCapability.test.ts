@@ -24,7 +24,10 @@ describe("Dental Scheduling capability", () => {
   });
 
   it("pedido de agendamento lê e oferece slots sem write", async () => {
-    const listSlots = vi.fn().mockResolvedValue([{ id: "slot-1", label: "quarta às 15h", evidenceRef: "calendar-snapshot-1" }]);
+    const listSlots = vi.fn().mockResolvedValue({
+      service: { id: "svc-1", name: "Limpeza" },
+      slots: [{ id: "slot-1", label: "quarta às 15h", evidenceRef: "calendar-snapshot-1" }],
+    });
     const bookSlot = vi.fn();
     const capability = createDentalSchedulingCapability(
       { listSlots, resolveOfferedSlot: vi.fn(), resolvePendingAppointment: vi.fn() },
@@ -38,7 +41,8 @@ describe("Dental Scheduling capability", () => {
     expect(bookSlot).not.toHaveBeenCalled();
     expect(result.type).toBe("slots_found");
     expect(result.semanticClass).toBe("options_found");
-    expect(result.semanticClass === "options_found" && result.options[0]?.facts[0]).toEqual(expect.objectContaining({ subject: { type: "slot", id: "slot-1" }, disclosure: "allowed" }));
+    expect(result.subject).toEqual({ type: "service", id: "svc-1", displayName: "Limpeza" });
+    expect(result.semanticClass === "options_found" && result.options[0]?.facts[0]).toEqual(expect.objectContaining({ subject: { type: "slot", id: "slot-1", displayName: "quarta às 15h" }, disclosure: "allowed" }));
   });
 
   it("confirma slot resolvido e só afirma sucesso com evidence do write", async () => {
@@ -56,8 +60,8 @@ describe("Dental Scheduling capability", () => {
     expect(bookSlot).toHaveBeenCalledOnce();
     expect(result).toEqual(expect.objectContaining({
       type: "appointment_created", semanticClass: "effect_completed",
-      subject: { type: "appointment", id: "appt-1" }, facts: [expect.objectContaining({
-      subject: { type: "appointment", id: "appt-1" }, evidence: { source: "write", reference: "booking-1" },
+      subject: { type: "appointment", id: "appt-1", displayName: "quarta às 15h" }, facts: [expect.objectContaining({
+      subject: { type: "appointment", id: "appt-1", displayName: "quarta às 15h" }, evidence: { source: "write", reference: "booking-1" },
     })] }));
   });
 

@@ -33,9 +33,9 @@ export type ComposerStyle = {
   emoji: "none" | "light";
 };
 
-export interface ResponseComposerPort {
+export interface ResponseComposerPort<OutcomeType extends string> {
   compose(input: {
-    plan: V2AuthorizedResponsePlan;
+    plan: V2AuthorizedResponsePlan<OutcomeType>;
     style: ComposerStyle;
-  }): Promise<DraftResponse>;
+  }): Promise<unknown>;
 }

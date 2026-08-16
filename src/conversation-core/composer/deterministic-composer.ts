@@ -6,7 +6,7 @@ import type {
 import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 
 export function buildDeterministicDraft(
-  plan: V2AuthorizedResponsePlan,
+  plan: V2AuthorizedResponsePlan<string>,
 ): DraftResponse {
   const facts = new Map(plan.facts.map((fact) => [fact.ref, fact]));
   const acts: DraftSpeechAct[] = [];
@@ -69,9 +69,9 @@ export function buildDeterministicDraft(
   return { acts };
 }
 
-export class DeterministicResponseComposer implements ResponseComposerPort {
-  async compose(
-    input: Parameters<ResponseComposerPort["compose"]>[0],
+export class DeterministicResponseComposer {
+  async compose<OutcomeType extends string>(
+    input: Parameters<ResponseComposerPort<OutcomeType>["compose"]>[0],
   ): Promise<DraftResponse> {
     return buildDeterministicDraft(input.plan);
   }

@@ -15,17 +15,17 @@ const evidence = { source: "read", reference: "snapshot" } as const;
 const style = { tone: "neutral", verbosity: "standard", greeting: "omit", emoji: "none" } as const;
 
 function multiIntentPlan(priceSubject: Subject, optionsSubject: Subject) {
-  const option = { type: "option", id: "option-1" };
+  const option = { type: "option", id: "option-1", displayName: "15:00" };
   const results: ActionResult<typeof outcomeSchema>[] = [
     {
       type: "price_ready", semanticClass: "information_authorized", origin: { capabilityId: "catalog" },
       subject: priceSubject, evidence: [evidence],
-      facts: [{ key: "amount", value: 120000, subject: priceSubject, evidence, disclosure: "allowed" }],
+      facts: [{ key: "amount", value: { kind: "money", amountInMinor: 120000, currency: "BRL" }, subject: priceSubject, evidence, disclosure: "allowed" }],
     },
     {
       type: "options_found", semanticClass: "options_found", origin: { capabilityId: "options" },
       subject: optionsSubject, evidence: [evidence], facts: [],
-      options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: "15:00", subject: option, evidence, disclosure: "allowed" }] }],
+      options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: { kind: "text", value: "15:00" }, subject: option, evidence, disclosure: "allowed" }] }],
     },
   ];
   return buildV2AuthorizedResponsePlan(outcomeSchema, results);
@@ -33,8 +33,8 @@ function multiIntentPlan(priceSubject: Subject, optionsSubject: Subject) {
 
 describe("resposta multi-intent V2", () => {
   it.each([
-    ["mesmo subject", { type: "resource", id: "a" }, { type: "resource", id: "a" }, true],
-    ["subjects distintos", { type: "resource", id: "a" }, { type: "resource", id: "b" }, false],
+    ["mesmo subject", { type: "service", id: "a", displayName: "Limpeza" }, { type: "service", id: "a", displayName: "Limpeza" }, true],
+    ["subjects distintos", { type: "service", id: "a", displayName: "Limpeza" }, { type: "service", id: "b", displayName: "Implante" }, false],
   ] as const)("preserva relações para %s", async (_case, priceSubject, optionsSubject, sameSubject) => {
     const plan = multiIntentPlan(priceSubject, optionsSubject);
     const draft = await new DeterministicResponseComposer().compose({ plan, style });
@@ -46,8 +46,11 @@ describe("resposta multi-intent V2", () => {
     }
 
     expect(priceAct.subjectRef === optionsAct.subjectRef).toBe(sameSubject);
-    expect(renderDeterministicResponse({ draft: validation.draft }).text)
-      .toBe("Informação: 120000. Tenho estas opções: 15:00.");
+    const text = renderDeterministicResponse({ draft: validation.draft }).text;
+    expect(text).toBe(sameSubject
+      ? "Valor: R$ 1.200,00. Tenho estas opções: 15:00."
+      : "Para Limpeza, valor: R$ 1.200,00. Para Implante, tenho estas opções: 15:00.");
+    expect(text).not.toMatch(/\ba\b|\bb\b/);
 
     const crossLinked = validateDraft(plan, { acts: [{
       ...optionsAct,

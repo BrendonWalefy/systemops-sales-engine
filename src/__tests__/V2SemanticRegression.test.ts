@@ -17,27 +17,27 @@ const outcomeSchema = defineOutcomeSchema({
 
 const readEvidence = { source: "read", reference: "snapshot" } as const;
 const writeEvidence = { source: "write", reference: "effect" } as const;
-const serviceA = { type: "resource", id: "a" };
-const serviceB = { type: "resource", id: "b" };
-const option = { type: "option", id: "option-1" };
-const effect = { type: "effect", id: "effect-1" };
-const media = { type: "media", id: "media-1" };
+const serviceA = { type: "resource", id: "a", displayName: "Resource A" };
+const serviceB = { type: "resource", id: "b", displayName: "Resource B" };
+const option = { type: "option", id: "option-1", displayName: "15:00" };
+const effect = { type: "effect", id: "effect-1", displayName: "Effect 1" };
+const media = { type: "media", id: "media-1", displayName: "Media 1" };
 
 const results: ActionResult<typeof outcomeSchema>[] = [
   {
     type: "price_ready", semanticClass: "information_authorized", origin: { capabilityId: "catalog" },
     subject: serviceA, evidence: [readEvidence],
-    facts: [{ key: "amount", value: 1200, subject: serviceA, evidence: readEvidence, disclosure: "allowed" }],
+    facts: [{ key: "amount", value: { kind: "integer", value: 1200 }, subject: serviceA, evidence: readEvidence, disclosure: "allowed" }],
   },
   {
     type: "other_information", semanticClass: "information_authorized", origin: { capabilityId: "catalog" },
     subject: serviceB, evidence: [readEvidence],
-    facts: [{ key: "available", value: true, subject: serviceB, evidence: readEvidence, disclosure: "allowed" }],
+    facts: [{ key: "available", value: { kind: "boolean", value: true }, subject: serviceB, evidence: readEvidence, disclosure: "allowed" }],
   },
   {
     type: "options_found", semanticClass: "options_found", origin: { capabilityId: "options" },
     subject: serviceA, evidence: [readEvidence], facts: [],
-    options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: "15:00", subject: option, evidence: readEvidence, disclosure: "allowed" }] }],
+    options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: { kind: "text", value: "15:00" }, subject: option, evidence: readEvidence, disclosure: "allowed" }] }],
   },
   {
     type: "effect_completed", semanticClass: "effect_completed", origin: { capabilityId: "effect" },
@@ -54,7 +54,7 @@ const results: ActionResult<typeof outcomeSchema>[] = [
   {
     type: "media_available", semanticClass: "information_authorized", origin: { capabilityId: "media" },
     subject: media, evidence: [readEvidence],
-    facts: [{ key: "media_available", value: true, subject: media, evidence: readEvidence, disclosure: "allowed" }],
+    facts: [{ key: "media_available", value: { kind: "boolean", value: true }, subject: media, evidence: readEvidence, disclosure: "allowed" }],
   },
 ];
 

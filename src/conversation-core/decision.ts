@@ -1,13 +1,19 @@
-export type Subject = { type: string; id: string };
+export type Subject = { type: string; id: string; displayName: string };
 
 export type Evidence = {
   source: "policy" | "read" | "write" | "derived";
   reference: string;
 };
 
+export type FactValue =
+  | { kind: "text"; value: string }
+  | { kind: "integer"; value: number }
+  | { kind: "money"; amountInMinor: number; currency: "BRL" }
+  | { kind: "boolean"; value: boolean };
+
 export type Fact = {
   key: string;
-  value: string | number | boolean;
+  value: FactValue;
   subject: Subject | null;
   evidence: Evidence;
   disclosure: "allowed" | "internal";
@@ -31,7 +37,7 @@ export type NextStep = {
 export type Decision =
   | { kind: "answer"; facts: readonly Fact[]; nextBestStep: NextStep | null }
   | { kind: "ask"; questionId: string }
-  | { kind: "offer"; options: readonly Option[]; nextBestStep: NextStep | null }
+  | { kind: "offer"; subject: Subject; options: readonly Option[]; nextBestStep: NextStep | null }
   | { kind: "execute"; action: PendingAction; nextBestStep: NextStep | null }
   | { kind: "escalate"; reason: string }
   | { kind: "close" }

@@ -32,7 +32,7 @@ describe("conflitos entre capabilities", () => {
         executions += 1;
         return {
           type: "work_completed", semanticClass: "effect_completed",
-          origin: { capabilityId: id }, subject: { type: "work", id }, evidence: [], facts: [],
+          origin: { capabilityId: id }, subject: { type: "work", id, displayName: id }, evidence: [], facts: [],
         };
       },
     });
@@ -59,7 +59,6 @@ describe("conflitos entre capabilities", () => {
       }),
       capabilities: [capability("alpha", "beta"), capability("beta", "alpha")],
       outcomeSchema,
-      buildPlan: () => { throw new Error("unreachable"); },
       response: {
         style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
         composer: new DeterministicResponseComposer(),

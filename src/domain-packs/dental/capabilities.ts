@@ -71,7 +71,7 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
   },
   slots_found: {
     semanticClass: "options_found",
-    subjectRequirement: "optional",
+    subjectRequirement: "required",
     evidenceRequirement: "required",
   },
   appointment_created: {
@@ -189,8 +189,12 @@ export function createDentalCatalogCapability(
           facts: [
             {
               key: "service_available",
-              value: true,
-              subject: { type: "service", id: resolution.service.id },
+              value: { kind: "boolean", value: true },
+              subject: {
+                type: "service",
+                id: resolution.service.id,
+                displayName: resolution.service.name,
+              },
               evidence: { source: "read", reference: resolution.evidenceRef },
               disclosure: "allowed",
             },
@@ -212,8 +216,16 @@ export function createDentalCatalogCapability(
         facts: [
           {
             key: "price_cents",
-            value: resolution.service.priceCents,
-            subject: { type: "service", id: resolution.service.id },
+            value: {
+              kind: "money",
+              amountInMinor: resolution.service.priceCents,
+              currency: "BRL",
+            },
+            subject: {
+              type: "service",
+              id: resolution.service.id,
+              displayName: resolution.service.name,
+            },
             evidence: { source: "read", reference: resolution.evidenceRef },
             disclosure: "allowed",
           },
@@ -320,18 +332,23 @@ export function createDentalSchedulingCapability(
       if (claim.payload.request === "book-appointment") {
         if (context.policy.schedulingRequiresEvaluationFirst)
           return { kind: "ask", questionId: "evaluation-required" };
-        const slots = await readPort.listSlots({
+        const availability = await readPort.listSlots({
           service: claim.payload.serviceQuery,
           date: claim.payload.requestedDate,
           period: claim.payload.requestedPeriod,
           minimumLeadTimeHours: context.policy.schedulingMinimumLeadTimeHours,
           now: context.now,
         });
-        if (slots.length === 0)
+        if (availability.slots.length === 0)
           return { kind: "ask", questionId: "no-slots-available" };
         return {
           kind: "offer",
-          options: slots.map((slot) => ({
+          subject: {
+            type: "service",
+            id: availability.service.id,
+            displayName: availability.service.name,
+          },
+          options: availability.slots.map((slot) => ({
             id: slot.id,
             facts: [slotFact(slot.id, slot.label, slot.evidenceRef)],
           })),
@@ -401,7 +418,7 @@ export function createDentalSchedulingCapability(
           type: "slots_found",
           semanticClass: "options_found",
           origin: { capabilityId: "dental-scheduling" },
-          subject: null,
+          subject: decision.subject,
           evidence: [firstEvidence, ...remainingEvidence],
           facts: [],
           options: [
@@ -486,8 +503,8 @@ export function createDentalSchedulingCapability(
 function slotFact(id: string, label: string, evidenceRef: string): Fact {
   return {
     key: "slot_label",
-    value: label,
-    subject: { type: "slot", id },
+    value: { kind: "text", value: label },
+    subject: { type: "slot", id, displayName: label },
     evidence: { source: "read", reference: evidenceRef },
     disclosure: "allowed",
   };
@@ -503,8 +520,8 @@ function appointmentFact(
 } {
   return {
     key: "appointment_label",
-    value: label,
-    subject: { type: "appointment", id },
+    value: { kind: "text", value: label },
+    subject: { type: "appointment", id, displayName: label },
     evidence: { source: "write", reference: evidenceRef },
     disclosure: "allowed",
   };

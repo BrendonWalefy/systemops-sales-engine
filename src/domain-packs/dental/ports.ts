@@ -10,6 +10,10 @@ export type DentalCatalogReadPort = {
 };
 
 export type DentalSlot = { id: string; label: string; evidenceRef: string };
+export type DentalSlotSearchResult = {
+  service: { id: string; name: string };
+  slots: readonly DentalSlot[];
+};
 export type PendingDentalAppointment = { id: string; label: string; evidenceRef: string };
 
 export type DentalSchedulingReadPort = {
@@ -19,7 +23,7 @@ export type DentalSchedulingReadPort = {
     period: string | null;
     minimumLeadTimeHours: number;
     now: Date;
-  }): Promise<readonly DentalSlot[]>;
+  }): Promise<DentalSlotSearchResult>;
   resolveOfferedSlot(input: {
     pendingStepId: string;
     ordinal: number | null;

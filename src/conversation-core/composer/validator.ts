@@ -5,6 +5,7 @@ import type {
   V2AuthorizedResponsePlan,
 } from "@/conversation-core/authorized-response-plan";
 import { snapshotV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { assertV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import type {
   DraftResponse,
   DraftSpeechAct,
@@ -37,7 +38,11 @@ export type DraftViolation = {
 
 export type DraftValidationResult =
   | { valid: true; draft: ValidatedDraftResponse }
-  | { valid: false; violations: readonly DraftViolation[] };
+  | {
+      valid: false;
+      violations: readonly DraftViolation[];
+      draft: DraftResponse | null;
+    };
 
 const authorizedPlans = new WeakMap<ValidatedDraftResponse, V2AuthorizedResponsePlan>();
 
@@ -187,6 +192,7 @@ export function validateDraft(
   plan: V2AuthorizedResponsePlan,
   draft: unknown,
 ): DraftValidationResult {
+  assertV2AuthorizedResponsePlan(plan);
   let canonicalDraft: DraftResponse | null = null;
   try {
     canonicalDraft = canonicalizeDraft(draft);
@@ -197,6 +203,7 @@ export function validateDraft(
     return {
       valid: false,
       violations: [{ actIndex: -1, code: "invalid_draft_shape" }],
+      draft: null,
     };
   }
 
@@ -296,7 +303,9 @@ export function validateDraft(
     }
   });
 
-  if (violations.length > 0) return { valid: false, violations };
+  if (violations.length > 0) {
+    return { valid: false, violations, draft: canonicalDraft };
+  }
   const validated = canonicalDraft as ValidatedDraftResponse;
   authorizedPlans.set(validated, snapshotV2AuthorizedResponsePlan(plan));
   return { valid: true, draft: validated };

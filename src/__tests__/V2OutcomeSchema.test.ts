@@ -1,14 +1,16 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import type { ResponseComposerPort } from "@/conversation-core/composer/contract";
 import {
   defineOutcomeSchema,
   type ActionResult,
 } from "@/conversation-core/decision";
 import { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
+import type { DentalOutcomeType } from "@/domain-packs/dental/capabilities";
 
 const origin = { capabilityId: "test" } as const;
 const writeEvidence = { source: "write", reference: "write-1" } as const;
-const appointment = { type: "appointment", id: "appointment-1" } as const;
+const appointment = { type: "appointment", id: "appointment-1", displayName: "Appointment 1" } as const;
 
 const syntheticSchema = defineOutcomeSchema({
   media_available: {
@@ -25,6 +27,10 @@ const syntheticSchema = defineOutcomeSchema({
 
 describe("Outcome Schema V2", () => {
   it("deriva combinações compile-time da mesma definição usada em runtime", () => {
+    expectTypeOf<Parameters<ResponseComposerPort<DentalOutcomeType>["compose"]>[0]["plan"]["outcomes"][number]["outcomeType"]>()
+      .toEqualTypeOf<DentalOutcomeType>();
+    expectTypeOf<Parameters<ResponseComposerPort<DentalOutcomeType>["compose"]>[0]["plan"]["outcomes"][number]["outcomeType"]>()
+      .not.toEqualTypeOf<string>();
     expectTypeOf<{
       type: "appointment_create_failed";
       semanticClass: "effect_completed";
@@ -56,7 +62,7 @@ describe("Outcome Schema V2", () => {
       type: "media_available";
       semanticClass: "effect_completed";
       origin: typeof origin;
-      subject: { type: "media"; id: "media-1" };
+      subject: { type: "media"; id: "media-1"; displayName: "Media 1" };
       evidence: readonly [typeof writeEvidence];
       facts: readonly [];
     }>().not.toMatchTypeOf<ActionResult<typeof syntheticSchema>>();
@@ -98,7 +104,7 @@ describe("Outcome Schema V2", () => {
   it("não deixa disponibilidade de mídia virar efeito concluído", () => {
     const forged = {
       type: "media_available", semanticClass: "effect_completed", origin,
-      subject: { type: "media", id: "media-1" },
+      subject: { type: "media", id: "media-1", displayName: "Media 1" },
       evidence: [writeEvidence], facts: [],
     };
     expect(() => buildV2AuthorizedResponsePlan(

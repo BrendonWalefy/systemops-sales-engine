@@ -1,17 +1,24 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { DraftResponse, ResponseComposerPort } from "@/conversation-core/composer/contract";
+import type { OutcomeTypeOf } from "@/conversation-core/decision";
 import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
-import { emptyResponsePlanFixture, responsePlanFixture } from "@/__tests__/fixtures/v2-response-plan";
+import {
+  emptyResponsePlanFixture,
+  RESPONSE_PLAN_FIXTURE_SCHEMA,
+  responsePlanFixture,
+} from "@/__tests__/fixtures/v2-response-plan";
+
+type FixtureOutcomeType = OutcomeTypeOf<typeof RESPONSE_PLAN_FIXTURE_SCHEMA>;
 
 const style = { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" } as const;
 const validDraft: DraftResponse = {
-  acts: [{ kind: "inform_fact", outcomeRef: "information", factRef: "fact-a", subjectRef: "subject-a" }],
+  acts: [{ kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" }],
 };
 const invalidSuccessDraft: DraftResponse = {
-  acts: [{ kind: "confirm_effect", outcomeRef: "failed", subjectRef: "subject-a", factRefs: [] }],
+  acts: [{ kind: "confirm_effect", outcomeRef: "outcome-1", subjectRef: "subject-0", factRefs: [] }],
 };
 
-function composer(draft: DraftResponse): ResponseComposerPort {
+function composer(draft: DraftResponse): ResponseComposerPort<FixtureOutcomeType> {
   return { compose: async () => draft };
 }
 
@@ -49,7 +56,7 @@ describe("pipeline de resposta V2", () => {
   });
 
   it("usa fallback do mesmo plano quando o composer falha", async () => {
-    const failingComposer: ResponseComposerPort = {
+    const failingComposer: ResponseComposerPort<FixtureOutcomeType> = {
       compose: async () => { throw new Error("composer unavailable"); },
     };
 
@@ -75,29 +82,28 @@ describe("pipeline de resposta V2", () => {
   });
 
   it("impede o composer de ampliar autoridade mutando o plano recebido", async () => {
-    const mutablePlan = structuredClone(responsePlanFixture);
-    const mutatingComposer: ResponseComposerPort = {
+    const mutatingComposer: ResponseComposerPort<FixtureOutcomeType> = {
       compose: async ({ plan }) => {
         const mutable = plan as unknown as {
-          facts: { ref: string; key: string; value: number; subjectRef: string; evidenceRef: string; disclosure: "allowed" }[];
+          facts: { ref: string; key: string; value: { kind: "integer"; value: number }; subjectRef: string; evidenceRef: string; disclosure: "allowed" }[];
           outcomes: { ref: string; factRefs: string[] }[];
         };
         mutable.facts.push({
-          ref: "fact-injected", key: "discount", value: 50,
-          subjectRef: "subject-a", evidenceRef: "evidence-a", disclosure: "allowed",
+          ref: "fact-injected", key: "discount", value: { kind: "integer", value: 50 },
+          subjectRef: "subject-0", evidenceRef: "evidence-a", disclosure: "allowed",
         });
         mutable.outcomes[0]!.factRefs.push("fact-injected");
         return {
           acts: [{
-            kind: "inform_fact", outcomeRef: "information",
-            factRef: "fact-injected", subjectRef: "subject-a",
+            kind: "inform_fact", outcomeRef: "outcome-0",
+            factRef: "fact-injected", subjectRef: "subject-0",
           }],
         };
       },
     };
 
     const result = await runV2ResponsePipeline({
-      plan: mutablePlan,
+      plan: responsePlanFixture,
       style,
       composer: mutatingComposer,
     });
@@ -105,6 +111,6 @@ describe("pipeline de resposta V2", () => {
     expect(result).toEqual(expect.objectContaining({ status: "rendered", source: "fallback" }));
     if (result.status !== "rendered") throw new Error("expected safe fallback");
     expect(result.response.text).not.toContain("Desconto");
-    expect(mutablePlan.facts).toHaveLength(responsePlanFixture.facts.length);
+    expect(responsePlanFixture.facts).toHaveLength(2);
   });
 });

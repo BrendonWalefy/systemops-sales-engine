@@ -8,26 +8,26 @@ import { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
 
 describe("renderização determinística de resultados dentais", () => {
   it("verbaliza somente classes e valores autorizados sem léxico externo", async () => {
-    const service = { type: "service", id: "service-1" };
-    const slot = { type: "slot", id: "slot-1" };
-    const appointment = { type: "appointment", id: "appointment-1" };
+    const service = { type: "service", id: "service-1", displayName: "Limpeza" };
+    const slot = { type: "slot", id: "slot-1", displayName: "quarta às 15h" };
+    const appointment = { type: "appointment", id: "appointment-1", displayName: "quarta às 15h" };
     const readEvidence = { source: "read", reference: "catalog-1" } as const;
     const writeEvidence = { source: "write", reference: "booking-1" } as const;
     const results: ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[] = [
       {
         type: "catalog_answered", semanticClass: "information_authorized",
         origin: { capabilityId: "dental-catalog" }, subject: service, evidence: [readEvidence],
-        facts: [{ key: "price_cents", value: 29000, subject: service, evidence: readEvidence, disclosure: "allowed" }],
+        facts: [{ key: "price_cents", value: { kind: "money", amountInMinor: 29000, currency: "BRL" }, subject: service, evidence: readEvidence, disclosure: "allowed" }],
       },
       {
         type: "slots_found", semanticClass: "options_found",
-        origin: { capabilityId: "dental-scheduling" }, subject: null, evidence: [readEvidence], facts: [],
-        options: [{ id: "slot-1", subject: slot, facts: [{ key: "slot_label", value: "quarta às 15h", subject: slot, evidence: readEvidence, disclosure: "allowed" }] }],
+        origin: { capabilityId: "dental-scheduling" }, subject: service, evidence: [readEvidence], facts: [],
+        options: [{ id: "slot-1", subject: slot, facts: [{ key: "slot_label", value: { kind: "text", value: "quarta às 15h" }, subject: slot, evidence: readEvidence, disclosure: "allowed" }] }],
       },
       {
         type: "appointment_created", semanticClass: "effect_completed",
         origin: { capabilityId: "dental-scheduling" }, subject: appointment, evidence: [writeEvidence],
-        facts: [{ key: "appointment_label", value: "quarta às 15h", subject: appointment, evidence: writeEvidence, disclosure: "allowed" }],
+        facts: [{ key: "appointment_label", value: { kind: "text", value: "quarta às 15h" }, subject: appointment, evidence: writeEvidence, disclosure: "allowed" }],
       },
       {
         type: "appointment_create_failed", semanticClass: "effect_failed",
@@ -49,8 +49,8 @@ describe("renderização determinística de resultados dentais", () => {
     expect(renderDeterministicResponse({
       draft: validation.draft,
     }).text).toBe(
-      "Informação: 29000. Tenho estas opções: quarta às 15h. " +
-      "A ação foi concluída. Informação: quarta às 15h. " +
+      "Para Limpeza, valor: R$ 290,00. Para Limpeza, tenho estas opções: quarta às 15h. " +
+      "Para quarta às 15h, a ação foi concluída. Informação: quarta às 15h. " +
       "Não foi possível concluir a ação. É necessário atendimento humano.",
     );
   });

@@ -21,6 +21,7 @@ export type {
   DentalOutcomeType,
   DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
+export { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
 export type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 export function createDentalPack(ports: {

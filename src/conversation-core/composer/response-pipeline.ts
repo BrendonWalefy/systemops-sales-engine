@@ -27,10 +27,10 @@ export type V2ResponsePipelineResult =
       violations: readonly DraftViolation[];
     };
 
-export async function runV2ResponsePipeline(input: {
-  plan: V2AuthorizedResponsePlan;
+export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
+  plan: V2AuthorizedResponsePlan<OutcomeType>;
   style: ComposerStyle;
-  composer: ResponseComposerPort;
+  composer: ResponseComposerPort<OutcomeType>;
 }): Promise<V2ResponsePipelineResult> {
   const plan = snapshotV2AuthorizedResponsePlan(input.plan);
   const style = Object.freeze({ ...input.style });
@@ -64,7 +64,9 @@ export async function runV2ResponsePipeline(input: {
     }
     violations = original.violations;
 
-    const repaired = repairDraft(plan, draft);
+    const repaired = original.draft
+      ? repairDraft(plan, original.draft)
+      : { acts: [] };
     if (repaired.acts.length > 0) {
       const repairedResult = validateDraft(plan, repaired);
       if (repairedResult.valid) {

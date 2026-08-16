@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
-import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
 import { defineOutcomeSchema } from "@/conversation-core/decision";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
@@ -34,7 +33,7 @@ describe("barreira entre decisão e efeitos", () => {
         writes += 1;
         return {
           type: "work_completed", semanticClass: "effect_completed",
-          origin: { capabilityId: id }, subject: { type: "work", id }, evidence: [], facts: [],
+          origin: { capabilityId: id }, subject: { type: "work", id, displayName: id }, evidence: [], facts: [],
         };
       },
     });
@@ -62,7 +61,6 @@ describe("barreira entre decisão e efeitos", () => {
         }),
         capabilities: [capability("first", false), capability("second", true)],
         outcomeSchema,
-        buildPlan: buildV2AuthorizedResponsePlan,
         response: {
           style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
           composer: new DeterministicResponseComposer(),

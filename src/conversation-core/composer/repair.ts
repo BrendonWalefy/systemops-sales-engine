@@ -9,12 +9,15 @@ export function repairDraft(
   const seen = new Set<string>();
   const acts: DraftSpeechAct[] = [];
 
-  for (const act of draft.acts) {
+  for (const candidate of draft.acts) {
+    const validation = validateDraft(plan, { acts: [candidate] });
+    if (!validation.valid) continue;
+    const act = validation.draft.acts[0]!;
     const identity = JSON.stringify(act);
     if (seen.has(identity)) continue;
     seen.add(identity);
-    if (validateDraft(plan, { acts: [act] }).valid) acts.push(act);
+    acts.push(act);
   }
 
-  return { acts };
+  return Object.freeze({ acts: Object.freeze(acts) });
 }

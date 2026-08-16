@@ -61,8 +61,8 @@ const quoteCapability: Capability<
       facts: [
         {
           key: "unit_amount",
-          value: context.policy.quoteUnitAmount,
-          subject: { type: "fixture_item", id: "glow-kite" },
+          value: { kind: "integer", value: context.policy.quoteUnitAmount },
+          subject: { type: "fixture_item", id: "glow-kite", displayName: "Glow kite" },
           evidence: { source: "policy", reference: "quote_unit_amount" },
           disclosure: "allowed",
         },
@@ -106,7 +106,7 @@ const reservationCapability: Capability<
       type: "wind_window_reserved",
       semanticClass: "effect_completed",
       origin: { capabilityId: "wind-window-reservation" },
-      subject: { type: "fixture_window", id: "wind-window" },
+      subject: { type: "fixture_window", id: "wind-window", displayName: "Wind window" },
       evidence: [{ source: "derived", reference: "fixture-reservation" }],
       facts: [],
     };
