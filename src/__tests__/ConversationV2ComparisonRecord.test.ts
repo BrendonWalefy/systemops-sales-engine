@@ -41,6 +41,18 @@ describe("Cycle I comparison records", () => {
     expect(() => (parsed.v1.capabilityIds as string[]).push("dental-escalation")).toThrow();
   });
 
+  it("rejects raw PII, free text, provider fields, and invalid versions from live records", () => {
+    for (const field of [
+      { leadMessage: "+55 11 99999-9999" },
+      { history: "ana@example.com" },
+      { prompt: "https://private.example/prompt" },
+      { responseText: "resposta" },
+      { providerPayload: { id: "provider-1" } },
+      { turnId: "550e8400-e29b-41d4-a716-446655440000" },
+    ]) expect(() => parseLiveComparisonRecord(live(field), new Set(["gpt-5.4-mini"]))).toThrow();
+    expect(() => parseLiveComparisonRecord(live({ version: "conversation-v2-live-comparison.v9" }), new Set(["gpt-5.4-mini"]))).toThrow();
+  });
+
   it("derives keyed references deterministically without sharing keys", () => {
     expect(keyedRef("turn", "one")).toBe(keyedRef("turn", "one"));
     expect(keyedRef("turn", "one")).not.toBe(keyedRef("turn", "two"));
