@@ -22,12 +22,12 @@
     },
     "mediaLibrary": {
       "status": "known",
-      "value": "10 image, 1 video",
+      "value": "image \"20 lentes estratificadas 10x230 220726\"; image \"Cores BL1, BL2 e BL3\"; image \"Cuidados Pós Lentes\"; image \"Cuidados Pós Lentes — guia\"; image \"Exemplo Foto Avaliação (frontal e perfil)\"; image \"Plástica Gengival — antes\"; image \"Plástica Gengival — antes e depois\"; image \"Plástica Gengival — depois\"; image \"Valores Lente em Resina Estratificada\"; image \"Valores Lente em Resina Premium\"; video \"Cuidados Pós Lentes — vídeo\"",
       "source": "media_assets"
     },
     "commercialPolicy": {
       "status": "known",
-      "value": "Éramos [LOCAL], hoje somos [NEGOCIO]. Antes ficávamos no bairro [LOCAL], próximo a [LOCAL]; hoje estamos na [ENDERECO] Trabalhamos com duas técnicas de lentes em resina. A Lente em Resina Premium usa uma única resina de alta qualidade, para um sorriso bonito e natural com excelente acabamento — é o investimento mais acessível. A Lente em Resina Estratificada combina duas resinas de alta qualidade com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. Nossos pacotes fechados são de 10 ou 20 lentes, e o tratamento é totalmente personalizado: o paciente escolhe a cor e ",
+      "value": "Éramos [LOCAL], hoje somos [NEGOCIO]. Antes ficávamos no bairro [LOCAL], próximo a [LOCAL]; hoje estamos na [ENDERECO] Trabalhamos com duas técnicas de lentes em resina. A Lente em Resina Premium usa uma única resina de alta qualidade, para um sorriso bonito e natural com excelente acabamento — é o investimento mais acessível. A Lente em Resina Estratificada combina duas resinas de alta qualidade com bordas translúcidas, para máxima naturalidade e o resultado mais sofisticado. Nossos pacotes fechados são de 10 ou 20 lentes, e o tratamento é totalmente personalizado: o paciente escolhe a cor e o formato dos dentes junto com o [PROFISSIONAL] de pagamento: à vista (Pix, débito ou crédito), com 5% de desconto no pagamento via Pix, ou parcelado em até 21x no cartão (taxas e condições consultadas na clínica). Não trabalhamos com boleto. Caso você já possua lentes antigas e precise fazer a troca, também realizamos remoção, prótese adesiva e limpeza. Nossa manutenção preventiva periódica já inclui profilaxia, polimento e nova aplicação da película protetora, que mantém o brilho e a limpeza dos dentes. Também realizamos plástica gengival, que dá simetria ao sorriso corrigindo a gengiva para que todos os dentes fiquem do mesmo tamanho (procedimento totalmente indolor), clareamento dental com protocolo caseiro, de consultório ou os dois combinados, e tratamento de canal. Para reservar a agenda e garantir o seu horário com o Doutor — que é muito concorrido — cobramos um sinal de reserva. A avaliação em si não tem custo. Esse sinal não é uma cobrança pela avaliação: ele é integralmente abatido no dia do procedimento e não é reembolsável caso o paciente não compareça. O pagamento é feito via Pix no CNPJ [CNPJ] em nome de [PROFISSIONAL].",
       "source": "playbook_versions.commercial_policy (versão ativa)"
     }
   },
@@ -35,8 +35,7 @@
     {
       "name": "Avaliação Clínica Inicial",
       "priceCents": null,
-      "description": "Consulta clínica completa para planejamento do tratamento.",
-      "freeEvaluation": true
+      "description": "Consulta clínica completa para planejamento do tratamento."
     },
     {
       "name": "Clareamento caseiro",
@@ -62,7 +61,7 @@
     {
       "name": "Lente em Resina Estratificada",
       "priceCents": 200000,
-      "description": "É confeccionada com a combinação de duas resinas de alta qualidade, incluindo uma camada translúcida nas bordas, reproduzindo com mais fidelidade as características de um dente natural. Essa técnica oferece um resultado com maior riqueza de detalhes, profundidade e estética, sendo a opção mais sofis",
+      "description": "É confeccionada com a combinação de duas resinas de alta qualidade, incluindo uma camada translúcida nas bordas, reproduzindo com mais fidelidade as características de um dente natural. Essa técnica oferece um resultado com maior riqueza de detalhes, profundidade e estética, sendo a opção mais sofisticada para quem busca máxima naturalidade.",
       "requiresEvaluationFirst": true
     },
     {
@@ -179,9 +178,13 @@
   ],
   "knownAmbiguity": "\"lente de resina\" cobre Estratificada (R$ 2.000) e Premium (R$ 1.700); pacotes de 10 e 20 elementos existem e são cotados por arte.",
   "provenance": {
-    "exportedAt": "2026-08-15T20:54:51.814Z",
+    "exportedAt": "2026-08-16T03:42:52.087Z",
     "readOnly": true,
     "note": "Fatos derivados da configuração do tenant por SELECT. Nenhum valor foi copiado de resposta de IA ou de operador."
   },
-  "priceDeliveredAsImage": true
+  "priceDeliveredAsImage": true,
+  "catalogCompleteness": {
+    "status": "unknown",
+    "source": "treatments (a tabela não declara exaustividade do que a clínica faz)"
+  }
 }

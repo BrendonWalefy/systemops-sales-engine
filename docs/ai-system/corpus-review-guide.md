@@ -33,10 +33,31 @@ Escreva `S` ou `N` dentro de cada colchete, na ordem das quatro perguntas:
 
 | # | Pergunta | Responda `N` quando |
 | --- | --- | --- |
-| 1 | O dado afirmado estava correto no momento? | preço, horário, serviço, garantia ou endereço divergem dos fatos listados no caso |
-| 2 | A resposta tratou o que o lead levantou? | a pergunta, a objeção, a reclamação ou a foto ficaram sem tratamento |
+| 1 | Toda afirmação tem lastro nos fatos do turno? | preço, horário, serviço, garantia ou endereço não aparecem nos fatos — ausência de evidência já basta para `N` |
+| 2 | A resposta engajou com a necessidade principal? | a resposta desvia do assunto, ignora o que foi levantado ou responde outra coisa |
 | 3 | A resposta reduz de forma relevante a distância até uma resolução ou próximo passo válido? | o turno só reconhece, cumprimenta ou encerra socialmente — ou o passo que ele oferece é fabricado |
 | 4 | Você mandaria exatamente isso hoje? | você reescreveria antes de enviar |
+
+### Pergunta 1 — duas regras que a rodada final obrigou a escrever
+
+**Catálogo ausente não prova inexistência.** A fixture de cada tenant declara
+`catalogCompleteness`. Só quando ela diz `closed` a ausência de um serviço prova
+que ele não existe. Em catálogo `unknown`, "não trabalhamos com porcelana" é tão
+sem lastro quanto "trabalhamos" — a lista não responde a pergunta, e a resposta
+certa é dizer que precisa confirmar.
+
+**Paráfrase vale enquanto for conservadoramente implicada pela fonte.** Reescrever
+com outras palavras, sim; acrescentar mecanismo, garantia ou resultado, não. Uma
+descrição que registra "reabilitação com prótese fixa, removível ou sobre
+implantes" não sustenta "parafusada", "não sai do lugar" nem "volta a comer
+carne com segurança" — cada uma dessas é uma afirmação nova.
+
+### Pergunta 2 — relevância, não acerto
+
+Mede se a resposta engajou com a necessidade principal. Resposta **errada sobre o
+assunto certo trata**; a factualidade dela é problema da pergunta 1, e medir a
+mesma coisa duas vezes foi o que fez esta pergunta ser a única a regredir entre
+duas rodadas. Clarificação necessária trata, porque engaja em vez de desviar.
 
 ### Pergunta 3 — o que conta como avanço
 

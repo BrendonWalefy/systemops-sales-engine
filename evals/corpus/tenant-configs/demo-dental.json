@@ -22,7 +22,7 @@
     },
     "mediaLibrary": {
       "status": "known",
-      "value": "1 assets no manifesto da demo",
+      "value": "video \"Implante\"; video \"Lentes\"; video \"Porcelana\"; image \"Sorriso antes depois\"",
       "source": "src/application/demo/demo-media-manifest.ts"
     },
     "commercialPolicy": {
@@ -83,5 +83,9 @@
     "exportedAt": "2026-08-15T20:55:33.680Z",
     "readOnly": true,
     "note": "Clínica inventada da demo. Fatos derivados do seed e do manifesto de mídia — nunca copiados das respostas curadas."
+  },
+  "catalogCompleteness": {
+    "status": "closed",
+    "source": "src/application/demo/seed-demo-clinic.ts (o seed define a clínica inteira; não existe serviço fora dele)"
   }
 }

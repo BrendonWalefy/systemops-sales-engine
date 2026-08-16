@@ -94,7 +94,8 @@ async function main(): Promise<void> {
   const assets = await db
     .select({ type: mediaAssets.type, title: mediaAssets.title })
     .from(mediaAssets)
-    .where(eq(mediaAssets.clinicId, clinic.id));
+    .where(eq(mediaAssets.clinicId, clinic.id))
+    .orderBy(mediaAssets.type, mediaAssets.title);
 
   const [playbook] = await db
     .select({ commercialPolicy: playbookVersions.commercialPolicy })
@@ -108,10 +109,22 @@ async function main(): Promise<void> {
     .orderBy(desc(playbookVersions.createdAt))
     .limit(1);
 
-  const mediaByType = assets.reduce<Record<string, number>>((acc, asset) => {
-    acc[asset.type] = (acc[asset.type] ?? 0) + 1;
-    return acc;
-  }, {});
+  // Contagem por tipo não diz o que a mídia mostra, e foi por isso que duas
+  // afirmações sobre o conteúdo de um vídeo ficaram sem como ser julgadas. O
+  // título é o que o tenant cadastrou; quando ele falta, a fixture declara o
+  // conteúdo desconhecido em vez de deixar o revisor supor.
+  const describeAssets = (): string => {
+    const named = assets
+      .filter((asset) => asset.title?.trim())
+      .map((asset) => `${asset.type} "${clean(asset.title!)}"`);
+    const untitled = assets.length - named.length;
+    return [
+      ...named,
+      ...(untitled > 0
+        ? [`${untitled} sem título cadastrado (conteúdo não registrado)`]
+        : []),
+    ].join("; ");
+  };
 
   const facts: Record<string, TenantFact> = {
     address: clinic.address
@@ -140,16 +153,18 @@ async function main(): Promise<void> {
       assets.length > 0
         ? {
             status: "known",
-            value: Object.entries(mediaByType)
-              .map(([type, count]) => `${count} ${type}`)
-              .join(", "),
+            value: describeAssets(),
             source: "media_assets",
           }
         : { status: "not_provided", value: null, source: null },
     commercialPolicy: playbook?.commercialPolicy
       ? {
           status: "known",
-          value: clean(playbook.commercialPolicy).slice(0, 600),
+          // Sem corte: a política do primeiro tenant tem 1818 caracteres e a
+          // condição de parcelamento vive na posição 744. Truncar em 600
+          // apagava o lastro e transformava resposta correta em resposta sem
+          // fonte aos olhos de quem revisa.
+          value: clean(playbook.commercialPolicy),
           source: "playbook_versions.commercial_policy (versão ativa)",
         }
       : { status: "not_provided", value: null, source: null },
@@ -159,12 +174,22 @@ async function main(): Promise<void> {
     ref: args.ref,
     segment: clinic.segment,
     timezone: clinic.timezone,
+    /**
+     * Ausência no catálogo só prova inexistência se o catálogo for completo.
+     * `treatments` é o que o tenant cadastrou, não uma declaração de que é tudo
+     * o que ele faz — então aqui a completude é desconhecida, e negar um serviço
+     * ausente não tem mais lastro do que afirmá-lo.
+     */
+    catalogCompleteness: {
+      status: "unknown" as const,
+      source: "treatments (a tabela não declara exaustividade do que a clínica faz)",
+    },
     facts,
     services: treatmentRows.map((row) => ({
       name: clean(row.name),
       priceCents: row.priceCents,
       ...(row.description
-        ? { description: clean(row.description).slice(0, 300) }
+        ? { description: clean(row.description) }
         : {}),
       ...(row.requiresEvaluationFirst ? { requiresEvaluationFirst: true } : {}),
     })),

@@ -15,6 +15,43 @@ const allTrue = {
 } satisfies ReviewChecklist;
 
 describe("derivação de rótulo de prosa", () => {
+  // Duas respostas idênticas em forma foram julgadas de modos opostos porque a
+  // rubrica não dizia se catálogo ausente prova inexistência. A regra tem de
+  // estar escrita na pergunta, não na cabeça de quem julga.
+  it("a pergunta de lastro diz quando catálogo ausente prova inexistência", () => {
+    const question = REVIEW_CHECKLIST_QUESTIONS.find(
+      (item) => item.field === "factuallyCorrect",
+    )!.question;
+
+    expect(question).toMatch(/fechado|completo/);
+    expect(question).toContain("ausência");
+  });
+
+  // "Parafusada", "não sai do lugar" e "voltar a comer carne" saíram de uma
+  // descrição que só fala em prótese sobre implantes. Paráfrase que acrescenta
+  // mecanismo, garantia ou resultado deixa de ser a fonte.
+  it("a pergunta de lastro limita a paráfrase ao que a fonte implica", () => {
+    const question = REVIEW_CHECKLIST_QUESTIONS.find(
+      (item) => item.field === "factuallyCorrect",
+    )!.question;
+
+    expect(question).toMatch(/paráfrase|parafrase/i);
+    expect(question).toMatch(/mecanismo/);
+    expect(question).toMatch(/garantia/);
+  });
+
+  // A pergunta 2 estava sendo lida como "resolveu?" por um revisor e
+  // "engajou?" pelo outro, e foi a única que regrediu na rodada do C.8.
+  it("a pergunta de tratamento mede engajamento, não acerto", () => {
+    const question = REVIEW_CHECKLIST_QUESTIONS.find(
+      (item) => item.field === "addressedWhatTheLeadRaised",
+    )!.question;
+
+    expect(question).toMatch(/clarifica/i);
+    expect(question).toMatch(/relevância, não acerto|independe|mesmo que/i);
+    expect(question).toMatch(/pergunta 1|factual/i);
+  });
+
   // A pergunta é a régua: se ela não distingue reconhecer de avançar, dois
   // revisores honestos divergem para sempre. Foi a única divergência que sobrou
   // depois de corrigir régua e renderer no C.7.

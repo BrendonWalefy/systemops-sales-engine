@@ -22,12 +22,12 @@
     },
     "mediaLibrary": {
       "status": "known",
-      "value": "1 video, 2 image, 1 document",
+      "value": "document \"Guia de Serviços NC\"; image \"Cuidados pós procedimento\"; image \"cuidados pós extensão de cilios\"; video \"Limpeza Facial Premium\"",
       "source": "media_assets"
     },
     "commercialPolicy": {
       "status": "known",
-      "value": "Formas de pagamento: Pix, dinheiro e cartão. Os pacotes de tratamento podem ser parcelados em até seis vezes no cartão, com juros da operadora. Sinal para clientes novas: o horário só é confirmado com um sinal de 30% do valor do procedimento, pago por Pix, e esse valor é abatido do total no dia do atendimento. Cancelamento com menos de 24 horas de antecedência: o sinal não é devolvido. Com mais de 24 horas: é possível reagendar, mas o sinal não é devolvido em dinheiro. A pré-reserva segura o horário até 3 dias antes do atendimento; se o sinal não for pago até lá, o horário é liberado para outr",
+      "value": "Formas de pagamento: Pix, dinheiro e cartão. Os pacotes de tratamento podem ser parcelados em até seis vezes no cartão, com juros da operadora. Sinal para clientes novas: o horário só é confirmado com um sinal de 30% do valor do procedimento, pago por Pix, e esse valor é abatido do total no dia do atendimento. Cancelamento com menos de 24 horas de antecedência: o sinal não é devolvido. Com mais de 24 horas: é possível reagendar, mas o sinal não é devolvido em dinheiro. A pré-reserva segura o horário até 3 dias antes do atendimento; se o sinal não for pago até lá, o horário é liberado para outras clientes. Clientes da casa, a partir do quarto atendimento, não precisam de sinal. Manutenção de extensão de cílios: até 15 dias e de 16 a 21 dias após a aplicação têm valores próprios, e técnicas gringas têm valor próprio de manutenção (os valores estão no cadastro de cada procedimento). Acima de 21 dias é cobrada uma nova aplicação. A manutenção exige pelo menos 40% dos fios preservados. Os volumes Sirena, Express e Capping não possuem manutenção. Após 120 dias da aplicação é sempre um procedimento novo. Retornos recomendados: extensão de cílios costuma pedir retorno em cerca de 20 dias; limpeza de pele, a cada 2 ou 3 meses.",
       "source": "playbook_versions.commercial_policy (versão ativa)"
     }
   },
@@ -140,8 +140,12 @@
   ],
   "knownAmbiguity": "\"cílios\" cobre seis técnicas com preços de R$ 100 a R$ 180; sem a técnica, não há preço único correto.",
   "provenance": {
-    "exportedAt": "2026-08-15T20:54:54.922Z",
+    "exportedAt": "2026-08-16T03:42:53.276Z",
     "readOnly": true,
     "note": "Fatos derivados da configuração do tenant por SELECT. Nenhum valor foi copiado de resposta de IA ou de operador."
+  },
+  "catalogCompleteness": {
+    "status": "unknown",
+    "source": "treatments (a tabela não declara exaustividade do que a clínica faz)"
   }
 }

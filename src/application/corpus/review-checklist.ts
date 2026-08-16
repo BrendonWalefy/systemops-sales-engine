@@ -13,15 +13,36 @@
 export const REVIEW_CHECKLIST_VERSION = "review-checklist.v1" as const;
 
 export type ReviewChecklist = {
-  /** O dado afirmado estava correto no momento em que foi dito? */
+  /**
+   * Toda afirmação factual ou operacional tem lastro nos fatos do turno?
+   *
+   * Duas regras que a rodada final do C.8 obrigou a escrever, porque sem elas
+   * dois revisores honestos julgavam a mesma frase de formas opostas:
+   *
+   * 1. **Ausência no catálogo não prova inexistência**, a menos que a fixture
+   *    declare o catálogo fechado. Num catálogo de completude desconhecida,
+   *    "não trabalhamos com porcelana" é afirmação sem lastro tanto quanto
+   *    "trabalhamos" seria — a lista simplesmente não responde a pergunta.
+   * 2. **Paráfrase vale enquanto for conservadoramente implicada pela fonte.**
+   *    Acrescentar mecanismo, garantia ou resultado não é reformular: uma
+   *    descrição que registra "prótese sobre implantes" não sustenta
+   *    "parafusada", "não sai do lugar" nem "volta a comer carne".
+   */
   factuallyCorrect: boolean;
   /**
-   * A resposta tratou o que o lead efetivamente levantou — a pergunta, a
-   * objeção, a reclamação ou a foto?
+   * A resposta engajou com a necessidade principal do lead?
    *
-   * Formulada assim, e não como "respondeu a pergunta?", porque a maioria dos
-   * turnos difíceis do histórico não tem pergunta nenhuma. Ver a nota de
-   * self-review no fim deste arquivo.
+   * Mede **relevância**, não acerto. Resposta errada sobre o assunto certo
+   * trata; resposta impecável sobre outro assunto não trata. Clarificação
+   * necessária trata, porque engaja com a necessidade em vez de desviar dela.
+   *
+   * A separação é deliberada: factualidade é a pergunta 1, e medir a mesma
+   * coisa duas vezes fez esta pergunta ser a única a regredir no C.8 — um
+   * revisor lia "tratou?" como "resolveu?" e o outro como "engajou?".
+   *
+   * Formulada sobre "o que o lead levantou", e não sobre "a pergunta", porque a
+   * maioria dos turnos difíceis do histórico não tem pergunta nenhuma. Ver a
+   * nota de self-review no fim deste arquivo.
    */
   addressedWhatTheLeadRaised: boolean;
   /**
@@ -61,12 +82,12 @@ export const REVIEW_CHECKLIST_QUESTIONS: ReadonlyArray<{
   {
     field: "factuallyCorrect",
     question:
-      "Toda afirmação factual ou operacional da resposta está sustentada pelos fatos disponíveis neste turno? (preço, desconto, pagamento, serviço e seus atributos, horário, disponibilidade, agendamento, endereço, garantia, condição comercial, ação que o sistema diz ter feito, capacidade prometida). Não demonstrado falso NÃO basta — sem evidência, responda N. Frase puramente social não precisa de lastro; frase social que promete capacidade operacional precisa.",
+      "Toda afirmação factual ou operacional da resposta está sustentada pelos fatos disponíveis neste turno? (preço, desconto, pagamento, serviço e seus atributos, horário, disponibilidade, agendamento, endereço, garantia, condição comercial, ação que o sistema diz ter feito, capacidade prometida). Não demonstrado falso NÃO basta — sem evidência, responda N. Frase puramente social não precisa de lastro; frase social que promete capacidade operacional precisa. CATÁLOGO: a ausência de um serviço só prova que ele não existe se a fixture declarar o catálogo fechado/completo; em catálogo de completude desconhecida, negar o serviço é tão sem lastro quanto afirmá-lo. PARÁFRASE: vale quando conservadoramente implicada pela fonte — acrescentar mecanismo, garantia ou resultado que a fonte não traz é afirmação nova, não reformulação.",
   },
   {
     field: "addressedWhatTheLeadRaised",
     question:
-      "A resposta tratou o que o lead levantou — pergunta, objeção, reclamação ou mídia?",
+      "A resposta engajou com a necessidade principal que o lead levantou — pergunta, objeção, reclamação ou mídia? Mede relevância, não acerto: resposta errada sobre o assunto certo trata, e a factualidade dela é julgada na pergunta 1. Clarificação necessária trata. Responda N quando a resposta desvia do assunto, ignora o que foi levantado ou responde outra coisa.",
   },
   {
     field: "advancedTheJourney",

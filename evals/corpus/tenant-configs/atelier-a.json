@@ -43,8 +43,12 @@
   ],
   "knownAmbiguity": "Catálogo sem preço cadastrado: qualquer valor citado pela IA é, por construção, não autorizado.",
   "provenance": {
-    "exportedAt": "2026-08-15T20:54:56.404Z",
+    "exportedAt": "2026-08-16T03:42:55.644Z",
     "readOnly": true,
     "note": "Fatos derivados da configuração do tenant por SELECT. Nenhum valor foi copiado de resposta de IA ou de operador."
+  },
+  "catalogCompleteness": {
+    "status": "unknown",
+    "source": "treatments (a tabela não declara exaustividade do que a clínica faz)"
   }
 }

@@ -22,12 +22,12 @@
     },
     "mediaLibrary": {
       "status": "known",
-      "value": "4 video, 4 image",
+      "value": "image \"Clareamento branco\"; image \"Cores BL1 2 e 3\"; image \"Cuidados pós colocaçao das lentes\"; image \"foto para pré avaliaçao\"; video \"Lentes – Técnica Estratificada\"; video \"Lentes – Técnica Simplificada\"; video \"Video estratificada\"; video \"Video simplificada\"",
       "source": "media_assets"
     },
     "commercialPolicy": {
       "status": "known",
-      "value": "Ao falar da avaliação inicial com o [PROFISSIONAL], mencione o abatimento integral informado pelo sistema, mas somente na etapa de agendamento ou quando o lead perguntar sobre o custo da avaliação. Para lentes de resina, informe somente os valores fornecidos pelo sistema. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade. Parcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos ",
+      "value": "Ao falar da avaliação inicial com o [PROFISSIONAL], mencione o abatimento integral informado pelo sistema, mas somente na etapa de agendamento ou quando o lead perguntar sobre o custo da avaliação. Para lentes de resina, informe somente os valores fornecidos pelo sistema. Sempre diga \"a partir de\" e que o valor exato depende da avaliação presencial. Responda primeiro a dúvida principal do lead e só conduza para a avaliação quando houver interesse real ou quando ele pedir disponibilidade. Parcelamento em até 12 vezes. Quando o sistema fornecer simulações de parcelas, apresente-as como exemplos de referência e deixe explícito que a clínica pode parcelar em até 12 vezes. Use uma formulação natural, como \"Aqui estão algumas simulações de valores\", sem mencionar taxa adicional nem tratar os exemplos como condição única. Para todos os outros procedimentos: não informe valores por mensagem. Oriente que os valores são definidos na avaliação.",
       "source": "playbook_versions.commercial_policy (versão ativa)"
     }
   },
@@ -88,7 +88,7 @@
     {
       "name": "Lentes de resina composta simplificada",
       "priceCents": 200000,
-      "description": "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado m",
+      "description": "Facetas em resina para transformar o sorriso, em duas técnicas:\n• Simplificada (resina nacional) — sorriso harmonioso e natural, abordagem mais prática e acessível.\n• Estratificada (resina importada/premium) — resina em múltiplas camadas, reproduzindo translucidez, profundidade e brilho; resultado mais refinado e personalizado.\nA indicação e o valor do caso são definidos na avaliação com o [PROFISSIONAL].",
       "requiresEvaluationFirst": true
     },
     {
@@ -125,8 +125,12 @@
   ],
   "knownAmbiguity": "\"lentes\" cobre simplificada (R$ 2.000) e estratificada (R$ 4.000). Preço de campanha divulgado por arte pode divergir do catálogo, e o catálogo é a referência auditável.",
   "provenance": {
-    "exportedAt": "2026-08-15T20:54:53.284Z",
+    "exportedAt": "2026-08-16T03:42:54.470Z",
     "readOnly": true,
     "note": "Fatos derivados da configuração do tenant por SELECT. Nenhum valor foi copiado de resposta de IA ou de operador."
+  },
+  "catalogCompleteness": {
+    "status": "unknown",
+    "source": "treatments (a tabela não declara exaustividade do que a clínica faz)"
   }
 }
