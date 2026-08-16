@@ -22,12 +22,12 @@ describe("renderização determinística de resultados dentais", () => {
       {
         type: "slots_found", semanticClass: "options_found",
         origin: { capabilityId: "dental-scheduling" }, subject: service, evidence: [readEvidence], facts: [],
-        options: [{ id: "slot-1", subject: slot, facts: [{ key: "slot_label", value: { kind: "text", value: "quarta às 15h" }, subject: slot, evidence: readEvidence, disclosure: "allowed" }] }],
+        options: [{ id: "slot-1", subject: slot, facts: [{ key: "slot_label", value: { kind: "display_text", value: "quarta às 15h" }, subject: slot, evidence: readEvidence, disclosure: "allowed" }] }],
       },
       {
         type: "appointment_created", semanticClass: "effect_completed",
         origin: { capabilityId: "dental-scheduling" }, subject: appointment, evidence: [writeEvidence],
-        facts: [{ key: "appointment_label", value: { kind: "text", value: "quarta às 15h" }, subject: appointment, evidence: writeEvidence, disclosure: "allowed" }],
+        facts: [{ key: "appointment_label", value: { kind: "display_text", value: "quarta às 15h" }, subject: appointment, evidence: writeEvidence, disclosure: "allowed" }],
       },
       {
         type: "appointment_create_failed", semanticClass: "effect_failed",
@@ -49,8 +49,8 @@ describe("renderização determinística de resultados dentais", () => {
     expect(renderDeterministicResponse({
       draft: validation.draft,
     }).text).toBe(
-      "Para Limpeza, valor: R$ 290,00. Para Limpeza, tenho estas opções: quarta às 15h. " +
-      "Para quarta às 15h, a ação foi concluída. Informação: quarta às 15h. " +
+      'Para "Limpeza", valor: R$ 290,00. Para "Limpeza", tenho estas opções: "quarta às 15h". ' +
+      'Para "quarta às 15h", a ação foi concluída. Informação: "quarta às 15h". ' +
       "Não foi possível concluir a ação. É necessário atendimento humano.",
     );
   });

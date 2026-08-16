@@ -5,7 +5,10 @@ import type {
   StructuredPolicy,
 } from "@/conversation-core/capability/contract";
 import { coordinateCapabilities } from "@/conversation-core/capability/coordinator";
-import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import {
+  buildV2AuthorizedResponsePlan,
+  canonicalizeActionResults,
+} from "@/conversation-core/authorized-response-plan";
 import type {
   ComposerStyle,
   CoreResponse,
@@ -14,6 +17,7 @@ import type {
 import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
 import type {
   ActionResult,
+  Decision,
   OutcomeSchema,
   OutcomeTypeOf,
 } from "@/conversation-core/decision";
@@ -87,7 +91,10 @@ export async function runTurnPipeline<
   // All authorized reads and deterministic decisions finish before the first
   // effect. A later read failure therefore cannot leave an earlier capability
   // partially executed.
-  const decided = [];
+  const decided: Array<{
+    capability: Capability<Request, Policy, ClaimPayload, Schema>;
+    decision: Decision;
+  }> = [];
   for (const item of claimed) {
     decided.push({
       capability: item.capability,
@@ -95,13 +102,24 @@ export async function runTurnPipeline<
     });
   }
 
-  const actionResults: ActionResult<Schema>[] = [];
+  const untrustedActionResults: ActionResult<Schema>[] = [];
   for (const item of decided) {
     const result = await item.capability.execute(item.decision, context);
-    if (result.origin.capabilityId !== item.capability.id) {
+    untrustedActionResults.push(result);
+  }
+  const actionResults = canonicalizeActionResults(
+    input.outcomeSchema,
+    untrustedActionResults,
+  );
+  actionResults.forEach((result, index) => {
+    const expectedOwner = decided[index]!.capability.id;
+    if (result.origin.capabilityId !== expectedOwner) {
       throw new Error(`action result owner mismatch: ${result.origin.capabilityId}`);
     }
-    actionResults.push(result);
+  });
+
+  if (actionResults.length !== decided.length) {
+    throw new Error("action result count mismatch");
   }
 
   const plan = buildV2AuthorizedResponsePlan(input.outcomeSchema, actionResults);

@@ -24,7 +24,7 @@ function fact(input: {
   disclosure?: "allowed" | "internal";
 }): Fact {
   const value: Fact["value"] = typeof input.value === "string"
-    ? { kind: "text", value: input.value }
+    ? { kind: "display_text", value: input.value }
     : typeof input.value === "boolean"
       ? { kind: "boolean", value: input.value }
       : { kind: "integer", value: input.value };
@@ -172,6 +172,67 @@ describe("plano autorizado V2", () => {
     expect(() => buildV2AuthorizedResponsePlan(outcomeSchema, [result])).toThrow(/subject/);
   });
 
+  it("preserva nomes públicos reais; o renderer é responsável por delimitá-los", () => {
+    const punctuatedSubject = {
+      type: "item",
+      id: "item-a",
+      displayName: "Lentes de resina (Simplificada)",
+    } as const;
+    const result: ActionResult<typeof outcomeSchema> = {
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "quote" },
+      subject: punctuatedSubject,
+      evidence: [{ source: "read", reference: "catalog-a" }],
+      facts: [{
+        key: "amount",
+        value: { kind: "integer", value: 10 },
+        subject: punctuatedSubject,
+        evidence: { source: "read", reference: "catalog-a" },
+        disclosure: "allowed",
+      }],
+    };
+
+    expect(buildV2AuthorizedResponsePlan(outcomeSchema, [result]).subjects[0]?.displayName)
+      .toBe("Lentes de resina (Simplificada)");
+  });
+
+  it("recusa controles e separadores de linha no display público", () => {
+    const subject = { type: "item", id: "item-a", displayName: "Item\u2028Injetado" } as const;
+    const result: ActionResult<typeof outcomeSchema> = {
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "quote" },
+      subject,
+      evidence: [{ source: "read", reference: "catalog-a" }],
+      facts: [],
+    };
+
+    expect(() => buildV2AuthorizedResponsePlan(outcomeSchema, [result]))
+      .toThrow(/public display name/i);
+  });
+
+  it("aceita display_text real de agenda para renderização literal delimitada", () => {
+    const subject = { type: "item", id: "item-a", displayName: "Item A" } as const;
+    const result = {
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "quote" },
+      subject,
+      evidence: [{ source: "read", reference: "catalog-a" }],
+      facts: [{
+        key: "label",
+        value: { kind: "display_text", value: "Seg 26/05 às 14h" },
+        subject,
+        evidence: { source: "read", reference: "catalog-a" },
+        disclosure: "allowed",
+      }],
+    } satisfies ActionResult<typeof outcomeSchema>;
+
+    expect(buildV2AuthorizedResponsePlan(outcomeSchema, [result]).facts[0]?.value)
+      .toEqual({ kind: "display_text", value: "Seg 26/05 às 14h" });
+  });
+
   it("recusa options fora de options_found", () => {
     const result = {
       type: "unsafe_options",
@@ -226,7 +287,7 @@ describe("plano autorizado V2", () => {
         id: "window-1",
         subject: subjectA,
         facts: [{
-          key: "window", value: { kind: "text", value: "15:00" }, subject: subjectB,
+          key: "window", value: { kind: "display_text", value: "15:00" }, subject: subjectB,
           evidence: evidenceA, disclosure: "allowed",
         }],
       }],
@@ -259,6 +320,28 @@ describe("plano autorizado V2", () => {
     expect(semanticClassReads).toBe(1);
   });
 
+  it("rejeita shapes runtime que fingem cumprir os tipos de provenance e grafo", () => {
+    const forged = {
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: 7 },
+      subject: { type: 3, id: 4, displayName: "Item A" },
+      evidence: [{ source: "bogus", reference: "" }],
+      facts: [{
+        key: 9,
+        value: { kind: "integer", value: 10 },
+        subject: { type: 3, id: 4, displayName: "Item A" },
+        evidence: { source: "bogus", reference: "" },
+        disclosure: "maybe",
+      }],
+    };
+
+    expect(() => buildV2AuthorizedResponsePlan(
+      outcomeSchema,
+      [forged] as unknown as readonly ActionResult<typeof outcomeSchema>[],
+    )).toThrow(/invalid action result shape/i);
+  });
+
   it("recusa option vazia ou id de option duplicado", () => {
     const subject = { type: "item", id: "a", displayName: "Item A" } as const;
     const optionSubject = { type: "window", id: "w", displayName: "15:00" } as const;
@@ -279,7 +362,7 @@ describe("plano autorizado V2", () => {
 
     const optionFact = {
       key: "window",
-      value: { kind: "text", value: "15:00" } as const,
+      value: { kind: "display_text", value: "15:00" } as const,
       subject: optionSubject,
       evidence,
       disclosure: "allowed" as const,

@@ -6,6 +6,7 @@ import {
 } from "@/conversation-core/composer/validator";
 
 function formatValue(value: FactValue): string {
+  if (value.kind === "display_text") return JSON.stringify(value.value);
   if (value.kind === "money") {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
@@ -16,25 +17,37 @@ function formatValue(value: FactValue): string {
   return String(value.value);
 }
 
-export function renderDeterministicResponse(input: {
-  draft: ValidatedDraftResponse;
+export function renderDeterministicResponse<OutcomeType extends string>(input: {
+  draft: ValidatedDraftResponse<OutcomeType>;
 }): CoreResponse {
   const plan = authorizedPlanFor(input.draft);
   const options = new Map(plan.options.map((item) => [item.ref, item]));
   const facts = new Map(plan.facts.map((item) => [item.ref, item]));
   const subjects = new Map(plan.subjects.map((item) => [item.ref, item]));
 
-  const actSubjectRef = (act: ValidatedDraftResponse["acts"][number]): string | null =>
+  const actSubjectRef = (act: ValidatedDraftResponse<OutcomeType>["acts"][number]): string | null =>
     act.subjectRef;
   const relevantSubjectRefs = new Set(
     input.draft.acts.map(actSubjectRef).filter((ref): ref is string => ref !== null),
   );
+  if (relevantSubjectRefs.size > 1) {
+    const publicNames = new Set<string>();
+    for (const subjectRef of relevantSubjectRefs) {
+      const subject = subjects.get(subjectRef);
+      if (!subject) throw new Error(`missing subject ${subjectRef}`);
+      const publicName = subject.displayName.normalize("NFKC").toLocaleLowerCase("pt-BR");
+      if (publicNames.has(publicName)) {
+        throw new Error("ambiguous public subject display name");
+      }
+      publicNames.add(publicName);
+    }
+  }
   const qualify = (subjectRef: string | null, sentence: string): string => {
     if (subjectRef === null || relevantSubjectRefs.size <= 1) return sentence;
     const subject = subjects.get(subjectRef);
     if (!subject) throw new Error(`missing subject ${subjectRef}`);
     const continuation = sentence.charAt(0).toLocaleLowerCase("pt-BR") + sentence.slice(1);
-    return `Para ${subject.displayName}, ${continuation}`;
+    return `Para ${JSON.stringify(subject.displayName)}, ${continuation}`;
   };
 
   const factText = (factRef: string, includeLabel: boolean): string => {

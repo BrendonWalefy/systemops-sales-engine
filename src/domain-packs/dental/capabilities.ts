@@ -503,7 +503,7 @@ export function createDentalSchedulingCapability(
 function slotFact(id: string, label: string, evidenceRef: string): Fact {
   return {
     key: "slot_label",
-    value: { kind: "text", value: label },
+    value: { kind: "display_text", value: label },
     subject: { type: "slot", id, displayName: label },
     evidence: { source: "read", reference: evidenceRef },
     disclosure: "allowed",
@@ -520,7 +520,7 @@ function appointmentFact(
 } {
   return {
     key: "appointment_label",
-    value: { kind: "text", value: label },
+    value: { kind: "display_text", value: label },
     subject: { type: "appointment", id, displayName: label },
     evidence: { source: "write", reference: evidenceRef },
     disclosure: "allowed",

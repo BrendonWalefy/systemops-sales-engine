@@ -13,8 +13,8 @@ import type {
 import type { OutcomeSemanticClass } from "@/conversation-core/decision";
 
 declare const validatedDraft: unique symbol;
-export type ValidatedDraftResponse = DraftResponse & {
-  readonly [validatedDraft]: true;
+export type ValidatedDraftResponse<OutcomeType extends string> = DraftResponse & {
+  readonly [validatedDraft]: OutcomeType;
 };
 
 export type DraftViolationCode =
@@ -37,18 +37,15 @@ export type DraftViolation = {
   code: DraftViolationCode;
 };
 
-export type DraftValidationResult =
-  | { valid: true; draft: ValidatedDraftResponse }
+export type DraftValidationResult<OutcomeType extends string> =
+  | { valid: true; draft: ValidatedDraftResponse<OutcomeType> }
   | {
       valid: false;
       violations: readonly DraftViolation[];
       draft: DraftResponse | null;
     };
 
-const authorizedPlans = new WeakMap<
-  ValidatedDraftResponse,
-  V2AuthorizedResponsePlan<string>
->();
+const authorizedPlans = new WeakMap<object, V2AuthorizedResponsePlan<string>>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -140,12 +137,12 @@ function canonicalizeDraft(value: unknown): DraftResponse | null {
   return Object.freeze({ acts: Object.freeze(acts) });
 }
 
-export function authorizedPlanFor(
-  draft: ValidatedDraftResponse,
-): V2AuthorizedResponsePlan<string> {
+export function authorizedPlanFor<OutcomeType extends string>(
+  draft: ValidatedDraftResponse<OutcomeType>,
+): V2AuthorizedResponsePlan<OutcomeType> {
   const plan = authorizedPlans.get(draft);
   if (!plan) throw new Error("draft was not validated by the semantic validator");
-  return plan;
+  return plan as V2AuthorizedResponsePlan<OutcomeType>;
 }
 
 const compatibleClass: Record<DraftSpeechAct["kind"], OutcomeSemanticClass> = {
@@ -199,7 +196,7 @@ function validateFact(input: {
 export function validateDraft<OutcomeType extends string>(
   plan: V2AuthorizedResponsePlan<OutcomeType>,
   draft: unknown,
-): DraftValidationResult {
+): DraftValidationResult<OutcomeType> {
   assertV2AuthorizedResponsePlan(plan);
   let canonicalDraft: DraftResponse | null = null;
   try {
@@ -220,10 +217,17 @@ export function validateDraft<OutcomeType extends string>(
   const facts = new Map(plan.facts.map((item) => [item.ref, item]));
   const subjects = new Set(plan.subjects.map(({ ref }) => ref));
   const violations: DraftViolation[] = [];
+  const seenActs = new Set<string>();
 
   if (canonicalDraft.acts.length === 0) push(violations, -1, "empty_draft");
 
   canonicalDraft.acts.forEach((act, actIndex) => {
+    const actIdentity = JSON.stringify(act);
+    if (seenActs.has(actIdentity)) {
+      push(violations, actIndex, "duplicate_reference");
+    } else {
+      seenActs.add(actIdentity);
+    }
     const outcome = outcomes.get(act.outcomeRef);
     if (!outcome) {
       push(violations, actIndex, "unknown_outcome_ref");
@@ -328,7 +332,7 @@ export function validateDraft<OutcomeType extends string>(
   if (violations.length > 0) {
     return { valid: false, violations, draft: canonicalDraft };
   }
-  const validated = canonicalDraft as ValidatedDraftResponse;
+  const validated = canonicalDraft as ValidatedDraftResponse<OutcomeType>;
   authorizedPlans.set(validated, snapshotV2AuthorizedResponsePlan(plan));
   return { valid: true, draft: validated };
 }

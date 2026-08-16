@@ -26,7 +26,7 @@ function multiIntentPlan(priceSubject: Subject, optionsSubject: Subject) {
     {
       type: "options_found", semanticClass: "options_found", origin: { capabilityId: "options" },
       subject: optionsSubject, evidence: [evidence], facts: [],
-      options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: { kind: "text", value: "15:00" }, subject: option, evidence, disclosure: "allowed" }] }],
+      options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: { kind: "display_text", value: "15:00" }, subject: option, evidence, disclosure: "allowed" }] }],
     },
   ];
   return buildV2AuthorizedResponsePlan(outcomeSchema, results);
@@ -49,8 +49,8 @@ describe("resposta multi-intent V2", () => {
     expect(priceAct.subjectRef === optionsAct.subjectRef).toBe(sameSubject);
     const text = renderDeterministicResponse({ draft: validation.draft }).text;
     expect(text).toBe(sameSubject
-      ? "Valor: R$ 1.200,00. Tenho estas opções: 15:00."
-      : "Para Limpeza, valor: R$ 1.200,00. Para Implante, tenho estas opções: 15:00.");
+      ? 'Valor: R$ 1.200,00. Tenho estas opções: "15:00".'
+      : 'Para "Limpeza", valor: R$ 1.200,00. Para "Implante", tenho estas opções: "15:00".');
     expect(text).not.toMatch(/\ba\b|\bb\b/);
 
     const crossLinked = validateDraft(plan, { acts: [{
@@ -82,7 +82,35 @@ describe("resposta multi-intent V2", () => {
     if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
 
     expect(renderDeterministicResponse({ draft: validation.draft }).text).toBe(
-      "Para Limpeza, não foi possível concluir a ação. Para Implante, não foi possível concluir a ação.",
+      'Para "Limpeza", não foi possível concluir a ação. Para "Implante", não foi possível concluir a ação.',
+    );
+  });
+
+  it("falha fechado quando subjectRefs distintos têm o mesmo display público", async () => {
+    const plan = multiIntentPlan(
+      { type: "service", id: "a", displayName: "Consulta" },
+      { type: "service", id: "b", displayName: "Consulta" },
+    );
+    const draft = await new DeterministicResponseComposer().compose({ plan, style });
+    const validation = validateDraft(plan, draft);
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+
+    expect(() => renderDeterministicResponse({ draft: validation.draft }))
+      .toThrow(/ambiguous public subject/i);
+  });
+
+  it("delimita display público hostil como nome autorizado, sem permitir escape gramatical", async () => {
+    const plan = multiIntentPlan(
+      { type: "service", id: "a", displayName: "Limpeza, desconto garantido. Para todos" },
+      { type: "service", id: "b", displayName: "Implante" },
+    );
+    const draft = await new DeterministicResponseComposer().compose({ plan, style });
+    const validation = validateDraft(plan, draft);
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+
+    expect(renderDeterministicResponse({ draft: validation.draft }).text).toBe(
+      'Para "Limpeza, desconto garantido. Para todos", valor: R$ 1.200,00. ' +
+      'Para "Implante", tenho estas opções: "15:00".',
     );
   });
 });

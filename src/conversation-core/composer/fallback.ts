@@ -4,7 +4,7 @@ import { validateDraft, type ValidatedDraftResponse } from "@/conversation-core/
 
 export function buildSafeFallback<OutcomeType extends string>(
   plan: V2AuthorizedResponsePlan<OutcomeType>,
-): ValidatedDraftResponse | null {
+): ValidatedDraftResponse<OutcomeType> | null {
   const complete = buildDeterministicDraft(plan);
   const seenOutcomes = new Set<string>();
   const acts = complete.acts.filter((act) => {

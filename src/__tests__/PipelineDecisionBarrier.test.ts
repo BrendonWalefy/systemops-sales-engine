@@ -69,4 +69,58 @@ describe("barreira entre decisão e efeitos", () => {
     ).rejects.toThrow("authorized read failed");
     expect(writes).toBe(0);
   });
+
+  it("valida provenance no mesmo snapshot usado para construir o plano", async () => {
+    let originReads = 0;
+    const outcomeSchema = defineOutcomeSchema({
+      work_completed: {
+        semanticClass: "effect_completed",
+        subjectRequirement: "required",
+        evidenceRequirement: "optional",
+      },
+    } as const);
+    const capability: Capability<
+      "work", Record<string, never>, Record<never, never>, typeof outcomeSchema
+    > = {
+      id: "cap",
+      claim: () => ({ capabilityId: "cap", confidence: 1, reason: "test", payload: {} }),
+      decide: async () => ({ kind: "close" }),
+      execute: async () => Object.defineProperty({
+        type: "work_completed",
+        semanticClass: "effect_completed",
+        subject: { type: "work", id: "work", displayName: "Work" },
+        evidence: [],
+        facts: [],
+      }, "origin", {
+        enumerable: true,
+        get() {
+          originReads += 1;
+          return { capabilityId: originReads === 1 ? "cap" : "other" };
+        },
+      }) as never,
+    };
+
+    const result = await runTurnPipeline({
+      gateInput: { automationEnabled: true, duplicate: false, humanControlled: false, optedOut: false },
+      state: { phase: "ready", pendingStepId: null, completedStepIds: [] },
+      policy: {},
+      now: new Date(0),
+      understand: async () => ({
+        version: UNDERSTANDING_VERSION,
+        request: "work",
+        dialogueMove: "new_topic",
+        entities: {}, signals: {}, safety: {}, confidence: 1, ambiguity: null,
+      }),
+      capabilities: [capability],
+      outcomeSchema,
+      response: {
+        style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
+        composer: new DeterministicResponseComposer(),
+      },
+    });
+    expect(result.status).toBe("delivered");
+    if (result.status !== "delivered") throw new Error("expected delivered");
+    expect(result.actionResults[0]?.origin.capabilityId).toBe("cap");
+    expect(originReads).toBe(1);
+  });
 });

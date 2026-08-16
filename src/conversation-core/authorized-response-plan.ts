@@ -54,6 +54,122 @@ export type V2AuthorizedResponsePlan<OutcomeType extends string> =
   };
 
 const validatedPlans = new WeakSet<object>();
+const canonicalActionResultSets = new WeakSet<object>();
+const unsafeDisplayControlPattern = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
+declare const canonicalActionResultsBrand: unique symbol;
+export type CanonicalActionResults<Schema extends OutcomeSchema> =
+  readonly ActionResult<Schema>[] & { readonly [canonicalActionResultsBrand]: true };
+
+function deepFreeze(value: unknown, seen = new WeakSet<object>()): void {
+  if (typeof value !== "object" || value === null || seen.has(value)) return;
+  seen.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    deepFreeze(Reflect.get(value, key), seen);
+  }
+  Object.freeze(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function hasSubjectShape(value: unknown): boolean {
+  return isRecord(value)
+    && isNonEmptyString(value.type)
+    && isNonEmptyString(value.id)
+    && isNonEmptyString(value.displayName);
+}
+
+function hasEvidenceShape(value: unknown): boolean {
+  return isRecord(value)
+    && (value.source === "policy"
+      || value.source === "read"
+      || value.source === "write"
+      || value.source === "derived")
+    && isNonEmptyString(value.reference);
+}
+
+function hasFactValueShape(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.kind === "display_text") return typeof value.value === "string";
+  if (value.kind === "integer") return typeof value.value === "number";
+  if (value.kind === "money") {
+    return typeof value.amountInMinor === "number" && value.currency === "BRL";
+  }
+  return value.kind === "boolean" && typeof value.value === "boolean";
+}
+
+function hasFactShape(value: unknown): boolean {
+  return isRecord(value)
+    && isNonEmptyString(value.key)
+    && hasFactValueShape(value.value)
+    && (value.subject === null || hasSubjectShape(value.subject))
+    && hasEvidenceShape(value.evidence)
+    && (value.disclosure === "allowed" || value.disclosure === "internal");
+}
+
+function assertActionResultRuntimeShape(value: unknown): void {
+  if (
+    !isRecord(value)
+    || !isNonEmptyString(value.type)
+    || !semanticClassValues.has(value.semanticClass)
+    || !isRecord(value.origin)
+    || !isNonEmptyString(value.origin.capabilityId)
+    || (value.subject !== null && !hasSubjectShape(value.subject))
+    || !Array.isArray(value.evidence)
+    || !value.evidence.every(hasEvidenceShape)
+    || !Array.isArray(value.facts)
+    || !value.facts.every(hasFactShape)
+  ) {
+    throw new Error("invalid action result shape");
+  }
+  if (value.options !== undefined) {
+    if (
+      !Array.isArray(value.options)
+      || !value.options.every((option) => isRecord(option)
+        && isNonEmptyString(option.id)
+        && hasSubjectShape(option.subject)
+        && Array.isArray(option.facts)
+        && option.facts.every(hasFactShape))
+    ) {
+      throw new Error("invalid action result shape");
+    }
+  }
+}
+
+const semanticClassValues: ReadonlySet<unknown> = new Set<OutcomeSemanticClass>([
+  "information_authorized",
+  "options_found",
+  "effect_completed",
+  "effect_failed",
+  "human_action_required",
+  "clarification_required",
+]);
+
+export function canonicalizeActionResults<Schema extends OutcomeSchema>(
+  schema: Schema,
+  actionResults: readonly ActionResult<Schema>[],
+): CanonicalActionResults<Schema> {
+  let snapshot: ActionResult<Schema>[];
+  try {
+    snapshot = structuredClone(actionResults) as ActionResult<Schema>[];
+  } catch {
+    throw new Error("action results could not be canonicalized");
+  }
+  for (const result of snapshot) {
+    assertActionResultRuntimeShape(result);
+    assertActionResultMatchesOutcomeSchema(schema, result);
+  }
+  deepFreeze(snapshot);
+  const canonical = snapshot as unknown as CanonicalActionResults<Schema>;
+  canonicalActionResultSets.add(canonical);
+  return canonical;
+}
 
 export function assertV2AuthorizedResponsePlan<OutcomeType extends string>(
   plan: V2AuthorizedResponsePlan<OutcomeType>,
@@ -70,9 +186,14 @@ function assertUnique(values: readonly string[], label: string): void {
 }
 
 function snapshotFactValue(value: FactValue): FactValue {
-  if (value.kind === "text") {
-    if (value.value.length === 0 || /[\r\n]/.test(value.value)) {
-      throw new Error("authorized plan text value is invalid");
+  if (value.kind === "display_text") {
+    if (
+      value.value.length === 0 ||
+      value.value.length > 240 ||
+      value.value !== value.value.trim() ||
+      unsafeDisplayControlPattern.test(value.value)
+    ) {
+      throw new Error("authorized plan display text value is invalid");
     }
     return Object.freeze({ kind: value.kind, value: value.value });
   }
@@ -224,12 +345,9 @@ export function buildV2AuthorizedResponsePlan<Schema extends OutcomeSchema>(
   schema: Schema,
   actionResults: readonly ActionResult<Schema>[],
 ): V2AuthorizedResponsePlan<OutcomeTypeOf<Schema>> {
-  let canonicalResults: readonly ActionResult<Schema>[];
-  try {
-    canonicalResults = structuredClone(actionResults) as readonly ActionResult<Schema>[];
-  } catch {
-    throw new Error("action results could not be canonicalized");
-  }
+  const canonicalResults = canonicalActionResultSets.has(actionResults as object)
+    ? actionResults as CanonicalActionResults<Schema>
+    : canonicalizeActionResults(schema, actionResults);
   const subjects: AuthorizedSubject[] = [];
   const evidence: AuthorizedEvidence[] = [];
   const facts: AuthorizedFact[] = [];
@@ -246,9 +364,9 @@ export function buildV2AuthorizedResponsePlan<Schema extends OutcomeSchema>(
       subject.displayName.length === 0 ||
       subject.displayName.length > 120 ||
       subject.displayName !== subject.displayName.trim() ||
-      /[\r\n]/.test(subject.displayName)
+      unsafeDisplayControlPattern.test(subject.displayName)
     ) {
-      throw new Error("authorized subject requires a valid public display name");
+      throw new Error("authorized subject requires a safe nominal public display name");
     }
     const identity = JSON.stringify([subject.type, subject.id]);
     const existing = subjectRefs.get(identity);

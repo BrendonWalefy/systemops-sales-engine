@@ -37,7 +37,7 @@ const results: ActionResult<typeof outcomeSchema>[] = [
   {
     type: "options_found", semanticClass: "options_found", origin: { capabilityId: "options" },
     subject: serviceA, evidence: [readEvidence], facts: [],
-    options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: { kind: "text", value: "15:00" }, subject: option, evidence: readEvidence, disclosure: "allowed" }] }],
+    options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: { kind: "display_text", value: "15:00" }, subject: option, evidence: readEvidence, disclosure: "allowed" }] }],
   },
   {
     type: "effect_completed", semanticClass: "effect_completed", origin: { capabilityId: "effect" },

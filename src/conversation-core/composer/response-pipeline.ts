@@ -13,6 +13,7 @@ import { repairDraft } from "@/conversation-core/composer/repair";
 import {
   validateDraft,
   type DraftViolation,
+  type ValidatedDraftResponse,
 } from "@/conversation-core/composer/validator";
 
 export type V2ResponsePipelineResult =
@@ -37,7 +38,7 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
   let violations: readonly DraftViolation[] = [];
 
   const render = (
-    draft: Parameters<typeof renderDeterministicResponse>[0]["draft"],
+    draft: ValidatedDraftResponse<OutcomeType>,
     source: "draft" | "repair" | "fallback",
   ): V2ResponsePipelineResult => {
     try {

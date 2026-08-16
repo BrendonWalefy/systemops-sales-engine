@@ -22,7 +22,7 @@ const evidence = { source: "read", reference: "snapshot-1" } as const;
 const factA = { key: "amount", value: { kind: "integer", value: 1200 }, subject: subjectA, evidence, disclosure: "allowed" } as const;
 const factB = { key: "amount", value: { kind: "integer", value: 1800 }, subject: subjectB, evidence, disclosure: "allowed" } as const;
 const internalFact = { key: "score", value: { kind: "integer", value: 1 }, subject: null, evidence, disclosure: "internal" } as const;
-const optionFact = { key: "window_label", value: { kind: "text", value: "15:00" }, subject: optionSubject, evidence, disclosure: "allowed" } as const;
+const optionFact = { key: "window_label", value: { kind: "display_text", value: "15:00" }, subject: optionSubject, evidence, disclosure: "allowed" } as const;
 const results: ActionResult<typeof outcomeSchema>[] = [
   { type: "quote_a", semanticClass: "information_authorized", origin: { capabilityId: "quote" }, subject: subjectA, evidence: [evidence], facts: [factA, internalFact] },
   { type: "quote_b", semanticClass: "information_authorized", origin: { capabilityId: "quote" }, subject: subjectB, evidence: [evidence], facts: [factB] },

@@ -44,6 +44,18 @@ describe("pipeline de resposta V2", () => {
     });
   });
 
+  it("não deixa duplicatas válidas contornarem o repair e ampliarem o output", async () => {
+    const duplicated = { acts: Array.from({ length: 1_000 }, () => validDraft.acts[0]!) };
+    const result = await runV2ResponsePipeline({
+      plan: responsePlanFixture, style, composer: composer(duplicated),
+    });
+
+    expect(result).toEqual({
+      status: "rendered", source: "repair",
+      response: { text: "Informação: 1200.", parts: [] },
+    });
+  });
+
   it("usa fallback do mesmo plano quando nenhum ato original sobrevive", async () => {
     const result = await runV2ResponsePipeline({
       plan: responsePlanFixture, style, composer: composer(invalidSuccessDraft),

@@ -6,7 +6,7 @@ import {
 } from "@/conversation-core/composer/deterministic-renderer";
 import { validateDraft, type ValidatedDraftResponse } from "@/conversation-core/composer/validator";
 import { defineOutcomeSchema } from "@/conversation-core/decision";
-import type { ActionResult, Fact } from "@/conversation-core/decision";
+import type { ActionResult, Fact, OutcomeTypeOf } from "@/conversation-core/decision";
 
 const outcomeSchema = defineOutcomeSchema({
   quote_ready: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
@@ -22,13 +22,14 @@ const evidence = { source: "read", reference: "snapshot" } as const;
 const amount = { key: "amount", value: { kind: "money", amountInMinor: 120000, currency: "BRL" }, subject, evidence, disclosure: "allowed" } as const;
 const results: ActionResult<typeof outcomeSchema>[] = [
   { type: "quote_ready", semanticClass: "information_authorized", origin: { capabilityId: "quote" }, subject, evidence: [evidence], facts: [amount] },
-  { type: "windows_found", semanticClass: "options_found", origin: { capabilityId: "reservation" }, subject: null, evidence: [evidence], facts: [], options: [{ id: "w1", subject: optionSubject, facts: [{ key: "window_label", value: { kind: "text", value: "15:00" }, subject: optionSubject, evidence, disclosure: "allowed" }] }] },
+  { type: "windows_found", semanticClass: "options_found", origin: { capabilityId: "reservation" }, subject: null, evidence: [evidence], facts: [], options: [{ id: "w1", subject: optionSubject, facts: [{ key: "window_label", value: { kind: "display_text", value: "15:00" }, subject: optionSubject, evidence, disclosure: "allowed" }] }] },
   { type: "reservation_completed", semanticClass: "effect_completed", origin: { capabilityId: "reservation" }, subject, evidence: [evidence], facts: [amount] },
   { type: "reservation_failed", semanticClass: "effect_failed", origin: { capabilityId: "reservation" }, subject: null, evidence: [], facts: [] },
   { type: "operator_required", semanticClass: "human_action_required", origin: { capabilityId: "safety" }, subject: null, evidence: [], facts: [] },
   { type: "details_required", semanticClass: "clarification_required", origin: { capabilityId: "qualification" }, subject: null, evidence: [], facts: [] },
 ];
 const plan = buildV2AuthorizedResponsePlan(outcomeSchema, results);
+type RendererOutcomeType = OutcomeTypeOf<typeof outcomeSchema>;
 
 function render(act: DraftSpeechAct): string {
   const validation = validateDraft(plan, { acts: [act] });
@@ -44,8 +45,8 @@ describe("renderer determinístico V2", () => {
   });
 
   it("aceita somente draft validado no contrato", () => {
-    expectTypeOf<Parameters<typeof renderDeterministicResponse>[0]["draft"]>()
-      .toEqualTypeOf<ValidatedDraftResponse>();
+    expectTypeOf<Parameters<typeof renderDeterministicResponse<RendererOutcomeType>>[0]["draft"]>()
+      .toEqualTypeOf<ValidatedDraftResponse<RendererOutcomeType>>();
     expectTypeOf<Parameters<typeof renderDeterministicResponse>[0]>()
       .not.toHaveProperty("language");
     expectTypeOf<Parameters<typeof renderDeterministicResponse>[0]>()
@@ -60,7 +61,7 @@ describe("renderer determinístico V2", () => {
         subjectRef: "subject-0",
         factRefs: [],
       }],
-    } as unknown as ValidatedDraftResponse;
+    } as unknown as ValidatedDraftResponse<RendererOutcomeType>;
 
     expect(() => renderDeterministicResponse({ draft: forged }))
       .toThrow(/not validated by the semantic validator/);
@@ -73,7 +74,7 @@ describe("renderer determinístico V2", () => {
 
   it("oferece opções sem alegar conclusão", () => {
     const text = render({ kind: "offer_options", outcomeRef: "outcome-1", subjectRef: null, optionRefs: ["option-0"] });
-    expect(text).toBe("Tenho estas opções: 15:00.");
+    expect(text).toBe('Tenho estas opções: "15:00".');
     expect(text).not.toMatch(/conclu|confirm/i);
   });
 
@@ -146,5 +147,29 @@ describe("renderer determinístico V2", () => {
     const text = renderDeterministicResponse(hostileInput).text;
     expect(text).not.toMatch(/desconto|garantid/i);
     expect(text).toBe("Valor: R$ 1.200,00.");
+  });
+
+  it("mantém display_text arbitrário delimitado como literal autorizado", () => {
+    const literalPlan = buildV2AuthorizedResponsePlan(outcomeSchema, [{
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "quote" },
+      subject,
+      evidence: [evidence],
+      facts: [{
+        key: "public_label",
+        value: { kind: "display_text", value: "Desconto garantido. Posso agendar?" },
+        subject,
+        evidence,
+        disclosure: "allowed",
+      }],
+    }]);
+    const validation = validateDraft(literalPlan, {
+      acts: [{ kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" }],
+    });
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+
+    expect(renderDeterministicResponse({ draft: validation.draft }).text)
+      .toBe('Informação: "Desconto garantido. Posso agendar?".');
   });
 });

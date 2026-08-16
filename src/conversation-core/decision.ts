@@ -6,7 +6,7 @@ export type Evidence = {
 };
 
 export type FactValue =
-  | { kind: "text"; value: string }
+  | { kind: "display_text"; value: string }
   | { kind: "integer"; value: number }
   | { kind: "money"; amountInMinor: number; currency: "BRL" }
   | { kind: "boolean"; value: boolean };
@@ -88,20 +88,27 @@ export function defineOutcomeSchema<const Definitions extends OutcomeDefinitions
   if (entries.length === 0) throw new Error("outcome schema must not be empty");
   const snapshot: Record<string, OutcomeDefinition> = {};
   for (const [type, definition] of entries) {
+    if (typeof definition !== "object" || definition === null) {
+      throw new Error(`invalid outcome schema definition: ${type}`);
+    }
+    const semanticClass: unknown = definition.semanticClass;
+    const subjectRequirement: unknown = definition.subjectRequirement;
+    const evidenceRequirement: unknown = definition.evidenceRequirement;
     if (
       type.length === 0 ||
-      typeof definition !== "object" ||
-      definition === null ||
-      !semanticClasses.has(definition.semanticClass) ||
-      !subjectRequirements.has(definition.subjectRequirement) ||
-      !evidenceRequirements.has(definition.evidenceRequirement)
+      typeof semanticClass !== "string" ||
+      typeof subjectRequirement !== "string" ||
+      typeof evidenceRequirement !== "string" ||
+      !semanticClasses.has(semanticClass) ||
+      !subjectRequirements.has(subjectRequirement) ||
+      !evidenceRequirements.has(evidenceRequirement)
     ) {
       throw new Error(`invalid outcome schema definition: ${type}`);
     }
     snapshot[type] = Object.freeze({
-      semanticClass: definition.semanticClass,
-      subjectRequirement: definition.subjectRequirement,
-      evidenceRequirement: definition.evidenceRequirement,
+      semanticClass: semanticClass as OutcomeSemanticClass,
+      subjectRequirement: subjectRequirement as OutcomeDefinition["subjectRequirement"],
+      evidenceRequirement: evidenceRequirement as OutcomeDefinition["evidenceRequirement"],
     });
   }
   const schema = Object.freeze(snapshot) as OutcomeSchema<Definitions>;

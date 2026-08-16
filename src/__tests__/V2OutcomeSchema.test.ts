@@ -1,6 +1,8 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import type { ResponseComposerPort } from "@/conversation-core/composer/contract";
+import { buildDeterministicDraft } from "@/conversation-core/composer/deterministic-composer";
+import { authorizedPlanFor, validateDraft } from "@/conversation-core/composer/validator";
 import {
   defineOutcomeSchema,
   type ActionResult,
@@ -26,11 +28,51 @@ const syntheticSchema = defineOutcomeSchema({
 } as const);
 
 describe("Outcome Schema V2", () => {
+  it("valida e registra a mesma canonicalização diante de accessors mutáveis", () => {
+    let reads = 0;
+    const definition = Object.defineProperty({
+      semanticClass: "effect_completed",
+      subjectRequirement: "required",
+    }, "evidenceRequirement", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? "write_required" : "optional";
+      },
+    });
+    const schema = defineOutcomeSchema({ completed: definition } as unknown as {
+      completed: {
+        semanticClass: "effect_completed";
+        subjectRequirement: "required";
+        evidenceRequirement: "write_required";
+      };
+    });
+
+    expect(schema.completed.evidenceRequirement).toBe("write_required");
+    expect(reads).toBe(1);
+    expect(() => buildV2AuthorizedResponsePlan(schema, [{
+      type: "completed",
+      semanticClass: "effect_completed",
+      origin,
+      subject: appointment,
+      evidence: [],
+      facts: [],
+    }] as unknown as readonly ActionResult<typeof schema>[])).toThrow(/write evidence/i);
+  });
+
   it("deriva combinações compile-time da mesma definição usada em runtime", () => {
     expectTypeOf<Parameters<ResponseComposerPort<DentalOutcomeType>["compose"]>[0]["plan"]["outcomes"][number]["outcomeType"]>()
       .toEqualTypeOf<DentalOutcomeType>();
     expectTypeOf<Parameters<ResponseComposerPort<DentalOutcomeType>["compose"]>[0]["plan"]["outcomes"][number]["outcomeType"]>()
       .not.toEqualTypeOf<string>();
+    expectTypeOf<Parameters<typeof buildDeterministicDraft<DentalOutcomeType>>[0]["outcomes"][number]["outcomeType"]>()
+      .not.toEqualTypeOf<string>();
+    type DentalValidation = ReturnType<typeof validateDraft<DentalOutcomeType>>;
+    type DentalValidatedDraft = Extract<DentalValidation, { valid: true }>["draft"];
+    expectTypeOf<ReturnType<typeof authorizedPlanFor<DentalOutcomeType>>["outcomes"][number]["outcomeType"]>()
+      .toEqualTypeOf<DentalOutcomeType>();
+    expectTypeOf<DentalValidatedDraft>()
+      .toMatchTypeOf<Parameters<typeof authorizedPlanFor<DentalOutcomeType>>[0]>();
     expectTypeOf<{
       type: "appointment_create_failed";
       semanticClass: "effect_completed";

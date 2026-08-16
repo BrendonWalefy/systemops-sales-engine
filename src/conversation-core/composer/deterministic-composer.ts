@@ -5,8 +5,8 @@ import type {
 } from "@/conversation-core/composer/contract";
 import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 
-export function buildDeterministicDraft(
-  plan: V2AuthorizedResponsePlan<string>,
+export function buildDeterministicDraft<OutcomeType extends string>(
+  plan: V2AuthorizedResponsePlan<OutcomeType>,
 ): DraftResponse {
   const facts = new Map(plan.facts.map((fact) => [fact.ref, fact]));
   const acts: DraftSpeechAct[] = [];

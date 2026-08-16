@@ -19,7 +19,7 @@ const amount = { key: "amount", value: { kind: "integer", value: 1200 }, subject
 const internal = { key: "score", value: { kind: "integer", value: 1 }, subject: null, evidence, disclosure: "internal" } as const;
 const results: ActionResult<typeof outcomeSchema>[] = [
   { type: "opaque_info", semanticClass: "information_authorized", origin: { capabilityId: "one" }, subject, evidence: [evidence], facts: [amount, internal] },
-  { type: "opaque_options", semanticClass: "options_found", origin: { capabilityId: "two" }, subject: null, evidence: [evidence], facts: [], options: [{ id: "w1", subject: optionSubject, facts: [{ key: "window_label", value: { kind: "text", value: "15:00" }, subject: optionSubject, evidence, disclosure: "allowed" }] }] },
+  { type: "opaque_options", semanticClass: "options_found", origin: { capabilityId: "two" }, subject: null, evidence: [evidence], facts: [], options: [{ id: "w1", subject: optionSubject, facts: [{ key: "window_label", value: { kind: "display_text", value: "15:00" }, subject: optionSubject, evidence, disclosure: "allowed" }] }] },
   { type: "opaque_completed", semanticClass: "effect_completed", origin: { capabilityId: "three" }, subject, evidence: [evidence], facts: [amount] },
   { type: "opaque_failed", semanticClass: "effect_failed", origin: { capabilityId: "four" }, subject: null, evidence: [], facts: [] },
   { type: "opaque_human", semanticClass: "human_action_required", origin: { capabilityId: "five" }, subject: null, evidence: [], facts: [] },
