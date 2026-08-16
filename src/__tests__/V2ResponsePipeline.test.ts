@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { DraftResponse, ResponseComposerPort } from "@/conversation-core/composer/contract";
+import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
 import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
-import type { ValidatedDraftResponse } from "@/conversation-core/composer/validator";
 import { emptyResponsePlanFixture, responsePlanFixture } from "@/__tests__/fixtures/v2-response-plan";
 
 const style = { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" } as const;
+const language = createResponseLanguageContribution({
+  locale: "pt-BR",
+  factTerms: [{ factKey: "amount", label: "Valor", format: "integer" }],
+  outcomeTerms: [
+    { outcomeType: "quote-ready", label: "cotação", gender: "feminine" },
+    { outcomeType: "operation-failed", label: "operação", gender: "feminine" },
+  ],
+  subjectTerms: [{ subjectType: "item", label: "item" }],
+});
 const validDraft: DraftResponse = {
   acts: [{ kind: "inform_fact", outcomeRef: "information", factRef: "fact-a", subjectRef: "subject-a" }],
 };
@@ -16,40 +25,36 @@ function composer(draft: DraftResponse): ResponseComposerPort {
   return { compose: async () => draft };
 }
 
-function render(draft: ValidatedDraftResponse) {
-  return { text: draft.acts.map(({ kind }) => kind).join(","), parts: [] };
-}
-
 describe("pipeline de resposta V2", () => {
   it("renderiza o draft original somente depois da validação", async () => {
     await expect(runV2ResponsePipeline({
-      plan: responsePlanFixture, style, composer: composer(validDraft), render,
+      plan: responsePlanFixture, style, language, composer: composer(validDraft),
     })).resolves.toEqual({
       status: "rendered", source: "draft",
-      response: { text: "inform_fact", parts: [] },
+      response: { text: "Valor: 1200.", parts: [] },
     });
   });
 
   it("remove ato inválido antes de renderizar o repair", async () => {
     const mixed = { acts: [...validDraft.acts, ...invalidSuccessDraft.acts] };
     const result = await runV2ResponsePipeline({
-      plan: responsePlanFixture, style, composer: composer(mixed), render,
+      plan: responsePlanFixture, style, language, composer: composer(mixed),
     });
 
     expect(result).toEqual({
       status: "rendered", source: "repair",
-      response: { text: "inform_fact", parts: [] },
+      response: { text: "Valor: 1200.", parts: [] },
     });
   });
 
   it("usa fallback do mesmo plano quando nenhum ato original sobrevive", async () => {
     const result = await runV2ResponsePipeline({
-      plan: responsePlanFixture, style, composer: composer(invalidSuccessDraft), render,
+      plan: responsePlanFixture, style, language, composer: composer(invalidSuccessDraft),
     });
 
     expect(result).toEqual({
       status: "rendered", source: "fallback",
-      response: { text: "inform_fact,communicate_failure", parts: [] },
+      response: { text: "Valor: 1200. Não foi possível concluir operação.", parts: [] },
     });
   });
 
@@ -59,23 +64,32 @@ describe("pipeline de resposta V2", () => {
     };
 
     await expect(runV2ResponsePipeline({
-      plan: responsePlanFixture, style, composer: failingComposer, render,
+      plan: responsePlanFixture, style, language, composer: failingComposer,
     })).resolves.toEqual(expect.objectContaining({ status: "rendered", source: "fallback" }));
   });
 
-  it("não chama renderer quando não existe resposta segura", async () => {
-    let rendered = false;
-    const result = await runV2ResponsePipeline({
+  it("não renderiza quando não existe resposta segura", async () => {
+    await expect(runV2ResponsePipeline({
       plan: emptyResponsePlanFixture,
       style,
+      language,
       composer: composer({ acts: [{ kind: "communicate_failure", outcomeRef: "missing" }] }),
-      render: (draft) => {
-        rendered = true;
-        return render(draft);
-      },
+    })).resolves.toEqual(expect.objectContaining({
+      status: "no_safe_response",
+      reason: "no_valid_draft",
+    }));
+  });
+
+  it("falha fechado quando a linguagem não cobre o material validado", async () => {
+    const emptyLanguage = createResponseLanguageContribution({
+      locale: "pt-BR", factTerms: [], outcomeTerms: [], subjectTerms: [],
     });
 
-    expect(result.status).toBe("no_safe_response");
-    expect(rendered).toBe(false);
+    await expect(runV2ResponsePipeline({
+      plan: responsePlanFixture, style, language: emptyLanguage, composer: composer(validDraft),
+    })).resolves.toEqual(expect.objectContaining({
+      status: "no_safe_response",
+      reason: "render_failed",
+    }));
   });
 });

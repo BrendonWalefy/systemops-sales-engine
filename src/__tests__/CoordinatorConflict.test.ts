@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
+import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
+import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 
@@ -50,7 +52,11 @@ describe("conflitos entre capabilities", () => {
       }),
       capabilities: [capability("alpha", "beta"), capability("beta", "alpha")],
       buildPlan: () => { throw new Error("unreachable"); },
-      respond: async () => { throw new Error("unreachable"); },
+      response: {
+        style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
+        language: createResponseLanguageContribution({ locale: "pt-BR", factTerms: [], outcomeTerms: [], subjectTerms: [] }),
+        composer: new DeterministicResponseComposer(),
+      },
     });
 
     expect(result).toEqual({

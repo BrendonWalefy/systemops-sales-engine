@@ -22,6 +22,21 @@ export type ResponseLanguageContribution = {
   }[];
 };
 
+declare const validatedLanguageContribution: unique symbol;
+export type ValidatedResponseLanguageContribution = ResponseLanguageContribution & {
+  readonly [validatedLanguageContribution]: true;
+};
+
+const validatedContributions = new WeakSet<object>();
+
+export function assertValidatedResponseLanguageContribution(
+  contribution: ValidatedResponseLanguageContribution,
+): void {
+  if (!validatedContributions.has(contribution)) {
+    throw new Error("language contribution was not validated");
+  }
+}
+
 function assertTerms(
   terms: readonly { label: string }[],
   identities: readonly string[],
@@ -43,7 +58,7 @@ function assertTerms(
 
 export function createResponseLanguageContribution(
   contribution: ResponseLanguageContribution,
-): ResponseLanguageContribution {
+): ValidatedResponseLanguageContribution {
   assertTerms(
     contribution.factTerms,
     contribution.factTerms.map(({ factKey }) => factKey),
@@ -56,5 +71,12 @@ export function createResponseLanguageContribution(
     contribution.subjectTerms,
     contribution.subjectTerms.map(({ subjectType }) => subjectType),
   );
-  return contribution;
+  const snapshot = Object.freeze({
+    locale: contribution.locale,
+    factTerms: Object.freeze(contribution.factTerms.map((term) => Object.freeze({ ...term }))),
+    outcomeTerms: Object.freeze(contribution.outcomeTerms.map((term) => Object.freeze({ ...term }))),
+    subjectTerms: Object.freeze(contribution.subjectTerms.map((term) => Object.freeze({ ...term }))),
+  }) as ValidatedResponseLanguageContribution;
+  validatedContributions.add(snapshot);
+  return snapshot;
 }

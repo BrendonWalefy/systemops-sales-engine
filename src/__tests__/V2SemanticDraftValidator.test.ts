@@ -52,6 +52,27 @@ describe("validator semântico V2", () => {
 
   it("rejeita troca de subject", () => {
     expect(codes(draft({ kind: "inform_fact", outcomeRef: "information-a", factRef: "fact-a", subjectRef: "subject-b" }))).toContain("subject_mismatch");
+    expect(codes(draft({ kind: "offer_options", outcomeRef: "options", subjectRef: "subject-a", optionRefs: ["option-0"] }))).toContain("subject_mismatch");
+  });
+
+  it("rejeita opção pertencente a outro outcome", () => {
+    const crossOutcomePlan: V2AuthorizedResponsePlan = {
+      ...plan,
+      options: [...plan.options, {
+        ref: "option-1", id: "w2", subjectRef: "subject-option", factRefs: ["fact-option"],
+      }],
+      outcomes: [...plan.outcomes, {
+        ref: "options-other", outcomeType: "other-windows-found",
+        semanticClass: "options_found", origin: { capabilityId: "other-reservation" },
+        subjectRef: "subject-b", evidenceRefs: ["evidence-0"], factRefs: [], optionRefs: ["option-1"],
+      }],
+    };
+    const result = validateDraft(crossOutcomePlan, draft({
+      kind: "offer_options", outcomeRef: "options-other", subjectRef: "subject-b", optionRefs: ["option-0"],
+    }));
+
+    expect(result.valid ? [] : result.violations.map(({ code }) => code))
+      .toContain("option_outcome_mismatch");
   });
 
   it("rejeita fact interno", () => {

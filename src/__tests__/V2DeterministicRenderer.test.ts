@@ -6,6 +6,7 @@ import {
 } from "@/conversation-core/composer/deterministic-renderer";
 import {
   createResponseLanguageContribution,
+  type ValidatedResponseLanguageContribution,
 } from "@/conversation-core/composer/language";
 import { validateDraft, type ValidatedDraftResponse } from "@/conversation-core/composer/validator";
 
@@ -95,5 +96,66 @@ describe("renderer determinístico V2", () => {
   it("pede clarificação sem inventar fact", () => {
     expect(render({ kind: "ask_clarification", outcomeRef: "clarify" }))
       .toBe("Pode confirmar os dados?");
+  });
+
+  it("renderiza snapshots imutáveis do draft e do plano validados", () => {
+    const mutablePlan = structuredClone(plan) as V2AuthorizedResponsePlan;
+    const acts: DraftSpeechAct[] = [
+      { kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" },
+    ];
+    const validation = validateDraft(mutablePlan, { acts });
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+
+    mutablePlan.facts[0]!.value = 999;
+    acts.push({
+      kind: "confirm_effect",
+      outcomeRef: "completed",
+      subjectRef: "subject-a",
+      factRefs: ["fact-a"],
+    });
+
+    expect(renderDeterministicResponse({ draft: validation.draft, language, style }).text)
+      .toBe("Valor: R$ 1.200,00.");
+  });
+
+  it("isola a linguagem validada de mutações no objeto de origem", () => {
+    const contribution = {
+      locale: "pt-BR" as const,
+      factTerms: [{ factKey: "amount", label: "Valor", format: "currency_minor_brl" as const }],
+      outcomeTerms: [{ outcomeType: "quote-ready", label: "cotação", gender: "feminine" as const }],
+      subjectTerms: [{ subjectType: "item", label: "item" }],
+    };
+    const isolatedLanguage = createResponseLanguageContribution(contribution);
+    contribution.factTerms[0]!.label = "Preço promocional";
+
+    const validation = validateDraft(plan, {
+      acts: [{ kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" }],
+    });
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+
+    expect(renderDeterministicResponse({
+      draft: validation.draft,
+      language: isolatedLanguage,
+      style,
+    }).text).toBe("Valor: R$ 1.200,00.");
+  });
+
+  it("recusa linguagem que não passou pelo factory de validação", () => {
+    const validation = validateDraft(plan, {
+      acts: [{ kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" }],
+    });
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+    const forgedLanguage = {
+      locale: "pt-BR",
+      factTerms: [{ factKey: "amount", label: "Desconto garantido", format: "currency_minor_brl" }],
+      outcomeTerms: [],
+      subjectTerms: [],
+    } as unknown as ValidatedResponseLanguageContribution;
+
+    expect(() => renderDeterministicResponse({
+      draft: validation.draft,
+      language: forgedLanguage,
+      style,
+    })).toThrow(/language contribution was not validated/);
   });
 });

@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildV2AuthorizedResponsePlan, type V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
-import { renderDeterministicResponse } from "@/conversation-core/composer/deterministic-renderer";
 import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
-import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { fixturePack, fixtureUnderstanding } from "@/domain-packs/fixture";
 
@@ -21,12 +19,7 @@ const language = createResponseLanguageContribution({
   ],
 });
 const composer = new DeterministicResponseComposer();
-const respond = (plan: V2AuthorizedResponsePlan) => runV2ResponsePipeline({
-  plan,
-  style,
-  composer,
-  render: (draft) => renderDeterministicResponse({ draft, language, style }),
-});
+const response = { style, language, composer };
 
 describe("fixture-pack no pipeline V2", () => {
   it("declara jornadas e ordem sem ensinar o domínio ao core", () => {
@@ -50,7 +43,7 @@ describe("fixture-pack no pipeline V2", () => {
       understand: async () => fixtureUnderstanding("quote_glow_kite"),
       capabilities: fixturePack.capabilities,
       buildPlan: buildV2AuthorizedResponsePlan,
-      respond,
+      response,
     });
 
     expect(result).toEqual({
@@ -85,7 +78,7 @@ describe("fixture-pack no pipeline V2", () => {
       understand: async () => fixtureUnderstanding("reserve_wind_window"),
       capabilities: fixturePack.capabilities,
       buildPlan: buildV2AuthorizedResponsePlan,
-      respond,
+      response,
     });
 
     expect(result.status).toBe("delivered");

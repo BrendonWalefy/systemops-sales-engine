@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
+import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 
@@ -51,7 +53,11 @@ describe("barreira entre decisão e efeitos", () => {
         }),
         capabilities: [capability("first", false), capability("second", true)],
         buildPlan: buildV2AuthorizedResponsePlan,
-        respond: async () => { throw new Error("unreachable"); },
+        response: {
+          style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
+          language: createResponseLanguageContribution({ locale: "pt-BR", factTerms: [], outcomeTerms: [], subjectTerms: [] }),
+          composer: new DeterministicResponseComposer(),
+        },
       }),
     ).rejects.toThrow("authorized read failed");
     expect(writes).toBe(0);

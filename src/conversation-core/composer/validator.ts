@@ -39,6 +39,39 @@ export type DraftValidationResult =
 
 const authorizedPlans = new WeakMap<ValidatedDraftResponse, V2AuthorizedResponsePlan>();
 
+function snapshotPlan(plan: V2AuthorizedResponsePlan): V2AuthorizedResponsePlan {
+  return Object.freeze({
+    version: plan.version,
+    subjects: Object.freeze(plan.subjects.map((subject) => Object.freeze({ ...subject }))),
+    evidence: Object.freeze(plan.evidence.map((item) => Object.freeze({ ...item }))),
+    facts: Object.freeze(plan.facts.map((fact) => Object.freeze({ ...fact }))),
+    options: Object.freeze(plan.options.map((option) => Object.freeze({
+      ...option,
+      factRefs: Object.freeze([...option.factRefs]),
+    }))),
+    outcomes: Object.freeze(plan.outcomes.map((outcome) => Object.freeze({
+      ...outcome,
+      origin: Object.freeze({ ...outcome.origin }),
+      evidenceRefs: Object.freeze([...outcome.evidenceRefs]),
+      factRefs: Object.freeze([...outcome.factRefs]),
+      optionRefs: Object.freeze([...outcome.optionRefs]),
+    }))),
+  });
+}
+
+function snapshotDraft(draft: DraftResponse): ValidatedDraftResponse {
+  const acts = draft.acts.map((act): DraftSpeechAct => {
+    if (act.kind === "offer_options") {
+      return Object.freeze({ ...act, optionRefs: Object.freeze([...act.optionRefs]) });
+    }
+    if (act.kind === "confirm_effect") {
+      return Object.freeze({ ...act, factRefs: Object.freeze([...act.factRefs]) });
+    }
+    return Object.freeze({ ...act });
+  });
+  return Object.freeze({ acts: Object.freeze(acts) }) as ValidatedDraftResponse;
+}
+
 export function authorizedPlanFor(
   draft: ValidatedDraftResponse,
 ): V2AuthorizedResponsePlan {
@@ -196,7 +229,7 @@ export function validateDraft(
   });
 
   if (violations.length > 0) return { valid: false, violations };
-  const validated = draft as ValidatedDraftResponse;
-  authorizedPlans.set(validated, plan);
+  const validated = snapshotDraft(draft);
+  authorizedPlans.set(validated, snapshotPlan(plan));
   return { valid: true, draft: validated };
 }

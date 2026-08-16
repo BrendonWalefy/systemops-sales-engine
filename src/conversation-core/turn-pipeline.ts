@@ -6,8 +6,13 @@ import type {
 } from "@/conversation-core/capability/contract";
 import { coordinateCapabilities } from "@/conversation-core/capability/coordinator";
 import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
-import type { CoreResponse } from "@/conversation-core/composer/contract";
-import type { V2ResponsePipelineResult } from "@/conversation-core/composer/response-pipeline";
+import type {
+  ComposerStyle,
+  CoreResponse,
+  ResponseComposerPort,
+} from "@/conversation-core/composer/contract";
+import type { ValidatedResponseLanguageContribution } from "@/conversation-core/composer/language";
+import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
 import type { ActionResult } from "@/conversation-core/decision";
 import { evaluateTurnGate, type TurnGateInput } from "@/conversation-core/gate";
 import type { Understanding } from "@/conversation-core/understanding/schema";
@@ -40,7 +45,11 @@ export async function runTurnPipeline<
   understand(): Promise<Understanding<Request>>;
   capabilities: readonly Capability<Request, Policy, ClaimPayload>[];
   buildPlan(actionResults: readonly ActionResult[]): V2AuthorizedResponsePlan;
-  respond(plan: V2AuthorizedResponsePlan): Promise<V2ResponsePipelineResult>;
+  response: {
+    style: ComposerStyle;
+    language: ValidatedResponseLanguageContribution;
+    composer: ResponseComposerPort;
+  };
 }): Promise<TurnPipelineResult> {
   const gate = evaluateTurnGate(input.gateInput);
   if (gate.outcome === "suppress")
@@ -84,7 +93,12 @@ export async function runTurnPipeline<
   }
 
   const plan = input.buildPlan(actionResults);
-  const responseResult = await input.respond(plan);
+  const responseResult = await runV2ResponsePipeline({
+    plan,
+    style: input.response.style,
+    language: input.response.language,
+    composer: input.response.composer,
+  });
   if (responseResult.status === "no_safe_response")
     return { status: "rejected", actionResults };
 

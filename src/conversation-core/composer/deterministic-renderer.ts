@@ -1,7 +1,8 @@
 import type { CoreResponse, ComposerStyle } from "@/conversation-core/composer/contract";
-import type {
-  ResponseLanguageContribution,
-  ValueFormat,
+import {
+  assertValidatedResponseLanguageContribution,
+  type ValidatedResponseLanguageContribution,
+  type ValueFormat,
 } from "@/conversation-core/composer/language";
 import {
   authorizedPlanFor,
@@ -36,9 +37,10 @@ function capitalize(value: string): string {
 
 export function renderDeterministicResponse(input: {
   draft: ValidatedDraftResponse;
-  language: ResponseLanguageContribution;
+  language: ValidatedResponseLanguageContribution;
   style: ComposerStyle;
 }): CoreResponse {
+  assertValidatedResponseLanguageContribution(input.language);
   const plan = authorizedPlanFor(input.draft);
   const outcomes = new Map(plan.outcomes.map((item) => [item.ref, item]));
   const options = new Map(plan.options.map((item) => [item.ref, item]));
