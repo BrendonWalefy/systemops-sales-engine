@@ -1,6 +1,10 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
-import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
+import {
+  completeTurnPipeline,
+  prepareTurnPipeline,
+  runTurnPipeline,
+} from "@/conversation-core/turn-pipeline";
 import { fixturePack, fixtureUnderstanding } from "@/domain-packs/fixture";
 
 const style = { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" } as const;
@@ -53,6 +57,33 @@ describe("fixture-pack no pipeline V2", () => {
       })],
       response: { text: "Informação: 37.", parts: [] },
     });
+  });
+
+  it("mantém a resposta byte-idêntica quando o wrapper compõe prepare e complete", async () => {
+    const input = {
+      gateInput: {
+        automationEnabled: true,
+        duplicate: false,
+        humanControlled: false,
+        optedOut: false,
+      },
+      state: { phase: "ready", pendingStepId: null, completedStepIds: [] },
+      policy: { quoteUnitAmount: 37 },
+      now: new Date("2026-08-16T12:00:00.000Z"),
+      understand: async () => fixtureUnderstanding("quote_glow_kite"),
+      capabilities: fixturePack.capabilities,
+    };
+    const legacy = await runTurnPipeline({ ...input, outcomeSchema: fixturePack.outcomeSchema, response });
+    const preparation = await prepareTurnPipeline(input);
+    expect(preparation.status).toBe("prepared");
+    if (preparation.status !== "prepared") throw new Error("expected prepared");
+    const split = await completeTurnPipeline({
+      prepared: preparation.prepared,
+      outcomeSchema: fixturePack.outcomeSchema,
+      response,
+    });
+
+    expect(JSON.stringify(split)).toBe(JSON.stringify(legacy));
   });
 
   it("troca de jornada usando a segunda capability sem alteração no core", async () => {
