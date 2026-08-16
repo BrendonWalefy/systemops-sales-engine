@@ -49,9 +49,8 @@ describe("conflitos entre capabilities", () => {
         ambiguity: null,
       }),
       capabilities: [capability("alpha", "beta"), capability("beta", "alpha")],
-      buildPlan: () => ({}),
-      compose: async () => ({ text: "unreachable", parts: [] }),
-      validate: () => true,
+      buildPlan: () => { throw new Error("unreachable"); },
+      respond: async () => { throw new Error("unreachable"); },
     });
 
     expect(result).toEqual({

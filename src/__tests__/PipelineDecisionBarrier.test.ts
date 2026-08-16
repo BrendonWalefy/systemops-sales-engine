@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
+import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 
@@ -49,9 +50,8 @@ describe("barreira entre decisão e efeitos", () => {
           ambiguity: null,
         }),
         capabilities: [capability("first", false), capability("second", true)],
-        buildPlan: () => ({}),
-        compose: async () => ({ text: "", parts: [] }),
-        validate: () => true,
+        buildPlan: buildV2AuthorizedResponsePlan,
+        respond: async () => { throw new Error("unreachable"); },
       }),
     ).rejects.toThrow("authorized read failed");
     expect(writes).toBe(0);

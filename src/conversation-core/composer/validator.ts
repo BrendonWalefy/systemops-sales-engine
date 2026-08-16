@@ -24,6 +24,8 @@ export type DraftViolationCode =
   | "option_outcome_mismatch"
   | "subject_mismatch"
   | "fact_not_disclosable"
+  | "empty_draft"
+  | "empty_reference_set"
   | "incompatible_speech_act";
 
 export type DraftViolation = {
@@ -103,6 +105,8 @@ export function validateDraft(
   const subjects = new Set(plan.subjects.map(({ ref }) => ref));
   const violations: DraftViolation[] = [];
 
+  if (draft.acts.length === 0) push(violations, -1, "empty_draft");
+
   draft.acts.forEach((act, actIndex) => {
     const outcome = outcomes.get(act.outcomeRef);
     if (!outcome) {
@@ -132,6 +136,9 @@ export function validateDraft(
     }
 
     if (act.kind === "offer_options") {
+      if (act.optionRefs.length === 0) {
+        push(violations, actIndex, "empty_reference_set");
+      }
       if (act.subjectRef !== null && !subjects.has(act.subjectRef)) {
         push(violations, actIndex, "unknown_subject_ref");
       }

@@ -5,11 +5,12 @@ import type {
   StructuredPolicy,
 } from "@/conversation-core/capability/contract";
 import { coordinateCapabilities } from "@/conversation-core/capability/coordinator";
+import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import type { CoreResponse } from "@/conversation-core/composer/contract";
+import type { V2ResponsePipelineResult } from "@/conversation-core/composer/response-pipeline";
 import type { ActionResult } from "@/conversation-core/decision";
 import { evaluateTurnGate, type TurnGateInput } from "@/conversation-core/gate";
 import type { Understanding } from "@/conversation-core/understanding/schema";
-
-export type CoreResponse = { text: string; parts: readonly unknown[] };
 
 export type TurnPipelineResult =
   | { status: "suppressed"; reason: string }
@@ -31,7 +32,6 @@ export async function runTurnPipeline<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
-  Plan,
 >(input: {
   gateInput: TurnGateInput;
   state: ConversationState;
@@ -39,9 +39,8 @@ export async function runTurnPipeline<
   now: Date;
   understand(): Promise<Understanding<Request>>;
   capabilities: readonly Capability<Request, Policy, ClaimPayload>[];
-  buildPlan(actionResults: readonly ActionResult[]): Plan;
-  compose(plan: Plan): Promise<CoreResponse>;
-  validate(input: { plan: Plan; response: CoreResponse }): boolean;
+  buildPlan(actionResults: readonly ActionResult[]): V2AuthorizedResponsePlan;
+  respond(plan: V2AuthorizedResponsePlan): Promise<V2ResponsePipelineResult>;
 }): Promise<TurnPipelineResult> {
   const gate = evaluateTurnGate(input.gateInput);
   if (gate.outcome === "suppress")
@@ -85,14 +84,14 @@ export async function runTurnPipeline<
   }
 
   const plan = input.buildPlan(actionResults);
-  const response = await input.compose(plan);
-  if (!input.validate({ plan, response }))
+  const responseResult = await input.respond(plan);
+  if (responseResult.status === "no_safe_response")
     return { status: "rejected", actionResults };
 
   return {
     status: "delivered",
     capabilityIds: claimed.map((item) => item.capability.id),
     actionResults,
-    response,
+    response: responseResult.response,
   };
 }

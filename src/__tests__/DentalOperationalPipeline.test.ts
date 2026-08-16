@@ -48,8 +48,7 @@ describe("pipeline operacional dental", () => {
       }),
       capabilities: pack.capabilities,
       buildPlan: buildV2AuthorizedResponsePlan,
-      compose: async () => ({ text: "unreachable", parts: [] }),
-      validate: () => true,
+      respond: async () => { throw new Error("unreachable"); },
     });
     expect(result.status).toBe("escalated");
     expect(resolveService).not.toHaveBeenCalled();
@@ -93,8 +92,7 @@ describe("pipeline operacional dental", () => {
       }),
       capabilities: [dependent],
       buildPlan: buildV2AuthorizedResponsePlan,
-      compose: async () => ({ text: "unreachable", parts: [] }),
-      validate: () => true,
+      respond: async () => { throw new Error("unreachable"); },
     });
     expect(result.status).toBe("escalated");
     expect(writes).toBe(0);

@@ -1,6 +1,32 @@
 import { describe, expect, it } from "vitest";
+import { buildV2AuthorizedResponsePlan, type V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
+import { renderDeterministicResponse } from "@/conversation-core/composer/deterministic-renderer";
+import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
+import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { fixturePack, fixtureUnderstanding } from "@/domain-packs/fixture";
+
+const style = { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" } as const;
+const language = createResponseLanguageContribution({
+  locale: "pt-BR",
+  factTerms: [{ factKey: "unit_amount", label: "Valor unitário", format: "integer" }],
+  outcomeTerms: [
+    { outcomeType: "quote_prepared", label: "cotação", gender: "feminine" },
+    { outcomeType: "wind_window_reserved", label: "reserva", gender: "feminine" },
+  ],
+  subjectTerms: [
+    { subjectType: "fixture_item", label: "item" },
+    { subjectType: "fixture_window", label: "janela" },
+  ],
+});
+const composer = new DeterministicResponseComposer();
+const respond = (plan: V2AuthorizedResponsePlan) => runV2ResponsePipeline({
+  plan,
+  style,
+  composer,
+  render: (draft) => renderDeterministicResponse({ draft, language, style }),
+});
 
 describe("fixture-pack no pipeline V2", () => {
   it("declara jornadas e ordem sem ensinar o domínio ao core", () => {
@@ -23,14 +49,8 @@ describe("fixture-pack no pipeline V2", () => {
       now: new Date("2026-08-16T12:00:00.000Z"),
       understand: async () => fixtureUnderstanding("quote_glow_kite"),
       capabilities: fixturePack.capabilities,
-      buildPlan: (actionResults) => ({
-        facts: actionResults.flatMap((actionResult) => actionResult.facts),
-      }),
-      compose: async (plan) => ({
-        text: `A unidade luminosa custa ${String(plan.facts[0]?.value)} créditos.`,
-        parts: [],
-      }),
-      validate: ({ response }) => response.text === "A unidade luminosa custa 37 créditos.",
+      buildPlan: buildV2AuthorizedResponsePlan,
+      respond,
     });
 
     expect(result).toEqual({
@@ -47,7 +67,7 @@ describe("fixture-pack no pipeline V2", () => {
           disclosure: "allowed",
         }],
       })],
-      response: { text: "A unidade luminosa custa 37 créditos.", parts: [] },
+      response: { text: "Valor unitário: 37.", parts: [] },
     });
   });
 
@@ -64,9 +84,8 @@ describe("fixture-pack no pipeline V2", () => {
       now: new Date("2026-08-16T12:00:00.000Z"),
       understand: async () => fixtureUnderstanding("reserve_wind_window"),
       capabilities: fixturePack.capabilities,
-      buildPlan: (actionResults) => ({ facts: actionResults.flatMap((item) => item.facts) }),
-      compose: async () => ({ text: "Janela de vento reservada.", parts: [] }),
-      validate: () => true,
+      buildPlan: buildV2AuthorizedResponsePlan,
+      respond,
     });
 
     expect(result.status).toBe("delivered");
