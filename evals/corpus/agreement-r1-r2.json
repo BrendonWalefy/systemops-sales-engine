@@ -1,169 +1,181 @@
 {
-  "round": "C.7",
-  "note": "Segunda revisão independente feita por modelo de outra família (gpt-5.6-sol) sobre o pacote cego final, depois de as fixtures ganharem fatos com proveniência e de o corpus registrar side effects. Casos marcados como inválidos ficam fora da comparação: calibrar contra ground truth inconsistente mede o defeito do caso.",
   "reviewedCases": 20,
   "byField": {
     "factuallyCorrect": {
-      "compared": 24,
-      "agreed": 18,
-      "rate": 0.75
+      "compared": 22,
+      "agreed": 15,
+      "rate": 0.6818181818181818
     },
     "addressedWhatTheLeadRaised": {
-      "compared": 24,
-      "agreed": 24,
-      "rate": 1.0
+      "compared": 22,
+      "agreed": 20,
+      "rate": 0.9090909090909091
     },
     "advancedTheJourney": {
-      "compared": 24,
-      "agreed": 17,
-      "rate": 0.7083333333333334
+      "compared": 22,
+      "agreed": 18,
+      "rate": 0.8181818181818182
     },
     "wouldRepeatToday": {
-      "compared": 24,
-      "agreed": 17,
-      "rate": 0.7083333333333334
+      "compared": 22,
+      "agreed": 16,
+      "rate": 0.7272727272727273
     }
   },
   "disagreements": [
     {
-      "caseId": "price-0007",
+      "caseId": "price-0005",
       "responder": "human",
       "field": "factuallyCorrect",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "rubrica-catalogo-mundo-fechado"
     },
     {
-      "caseId": "price-0007",
-      "responder": "human",
-      "field": "wouldRepeatToday",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "price-0001",
+      "caseId": "price-0005",
       "responder": "human",
       "field": "advancedTheJourney",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "rubrica-catalogo-mundo-fechado"
     },
     {
-      "caseId": "price-0006",
+      "caseId": "price-0008",
+      "responder": "ai",
+      "field": "factuallyCorrect",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "rubrica-addressed / rubrica-catalogo-mundo-fechado"
+    },
+    {
+      "caseId": "price-0008",
+      "responder": "ai",
+      "field": "addressedWhatTheLeadRaised",
+      "firstReviewer": false,
+      "secondReviewer": true,
+      "cause": "rubrica-addressed / rubrica-catalogo-mundo-fechado"
+    },
+    {
+      "caseId": "price-0008",
+      "responder": "ai",
+      "field": "advancedTheJourney",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "rubrica-addressed / rubrica-catalogo-mundo-fechado"
+    },
+    {
+      "caseId": "price-0002",
       "responder": "human",
       "field": "factuallyCorrect",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "fixture-truncada"
     },
     {
-      "caseId": "price-0006",
+      "caseId": "price-0002",
       "responder": "human",
-      "field": "wouldRepeatToday",
+      "field": "advancedTheJourney",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "fixture-truncada"
     },
     {
-      "caseId": "scheduling-0003",
+      "caseId": "objection-0005",
       "responder": "human",
       "field": "factuallyCorrect",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "rubrica-distancia-da-parafrase"
     },
     {
-      "caseId": "scheduling-0003",
+      "caseId": "objection-0005",
       "responder": "human",
       "field": "advancedTheJourney",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "rubrica-distancia-da-parafrase"
     },
     {
-      "caseId": "scheduling-0003",
+      "caseId": "objection-0005",
       "responder": "human",
       "field": "wouldRepeatToday",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "rubrica-distancia-da-parafrase"
     },
     {
-      "caseId": "availability-0001",
-      "responder": "human",
-      "field": "advancedTheJourney",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "burst-0002",
-      "responder": "human",
-      "field": "advancedTheJourney",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "burst-0002",
+      "caseId": "reschedule-0001",
       "responder": "human",
       "field": "wouldRepeatToday",
+      "firstReviewer": false,
+      "secondReviewer": true,
+      "cause": "julgamento"
+    },
+    {
+      "caseId": "scheduling-0001",
+      "responder": "human",
+      "field": "wouldRepeatToday",
+      "firstReviewer": false,
+      "secondReviewer": true,
+      "cause": "julgamento"
+    },
+    {
+      "caseId": "availability-0004",
+      "responder": "ai",
+      "field": "addressedWhatTheLeadRaised",
+      "firstReviewer": false,
+      "secondReviewer": true,
+      "cause": "rubrica-addressed / julgamento"
+    },
+    {
+      "caseId": "availability-0004",
+      "responder": "ai",
+      "field": "wouldRepeatToday",
+      "firstReviewer": false,
+      "secondReviewer": true,
+      "cause": "rubrica-addressed / julgamento"
+    },
+    {
+      "caseId": "location-0001",
+      "responder": "ai",
+      "field": "factuallyCorrect",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "inconsistencia-do-R1-capacidade-prometida"
     },
     {
       "caseId": "comparison-0001",
       "responder": "ai",
       "field": "factuallyCorrect",
       "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "comparison-0001",
-      "responder": "ai",
-      "field": "advancedTheJourney",
-      "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "fixture-granularidade-de-midia"
     },
     {
       "caseId": "comparison-0001",
       "responder": "ai",
       "field": "wouldRepeatToday",
       "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "fixture-granularidade-de-midia"
     },
     {
       "caseId": "media-0004",
       "responder": "human",
       "field": "factuallyCorrect",
       "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "media-0004",
-      "responder": "human",
-      "field": "advancedTheJourney",
-      "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "fixture-granularidade-de-midia"
     },
     {
       "caseId": "media-0004",
       "responder": "human",
       "field": "wouldRepeatToday",
       "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "handoff-0002",
-      "responder": "human",
-      "field": "factuallyCorrect",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "handoff-0002",
-      "responder": "human",
-      "field": "advancedTheJourney",
-      "firstReviewer": true,
-      "secondReviewer": false
-    },
-    {
-      "caseId": "handoff-0002",
-      "responder": "human",
-      "field": "wouldRepeatToday",
-      "firstReviewer": true,
-      "secondReviewer": false
+      "secondReviewer": false,
+      "cause": "fixture-granularidade-de-midia"
     }
-  ]
+  ],
+  "round": "C.8",
+  "note": "R1 = corpus re-derivado no C.8 sob a régua vigente; R2 = revisor independente de outra família de modelo sobre a amostra cega nova (16 casos inéditos de 20). Nenhum julgamento foi alterado dos dois lados. media-0001/human ficou fora da conta: o R2 julgou um lado que o corpus não tem."
 }

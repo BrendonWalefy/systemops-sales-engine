@@ -435,15 +435,59 @@ endereço que estava julgado de formas opostas em `audio-0002` e `location-0002`
 capacidade prometida sem lastro: "vou acionar a equipe" e "vou acionar o doutor"
 em turnos que não registram handoff nenhum.
 
+## Rodada final do C.8 — o que a régua nova consertou e o que ela expôs
+
+Amostra cega nova (16 de 20 casos inéditos), R1 já re-derivado sob a mesma régua,
+22 pares comparáveis.
+
+| Pergunta | C.7 | C.8 | Limiar |
+|---|---|---|---|
+| `factuallyCorrect` | 75,0% | **68,2%** | 80% |
+| `addressedWhatTheLeadRaised` | 100,0% | **90,9%** | 80% |
+| `advancedTheJourney` | 70,8% | **81,8%** | 80% |
+| `wouldRepeatToday` | 70,8% | **72,7%** | 80% |
+
+`advancedTheJourney` subiu 11 pontos e passou o limiar: a definição do C.8
+resolveu a divergência que era só falta de definição. As outras três continuam
+abaixo, e as 19 divergências desta rodada têm quatro causas estruturais e três
+casos de julgamento puro.
+
+**Fixture trunca o que a resposta cita.** `export-tenant-facts.ts` corta
+`commercialPolicy` em 600 caracteres. A política real do `dental-a` tem 1818, e
+"21x / 5% no Pix" está na posição 744 — fora do corte. Em `price-0002` os dois
+revisores acertaram coisas diferentes: o lastro existe no tenant, e não na folha.
+
+**Fixture registra mídia por contagem, não por conteúdo.** `mediaLibrary` diz
+"4 video, 4 image" e o side effect diz "video anexado ao turno". Nenhum dos dois
+permite julgar se o vídeo mostra *o que a resposta afirma que ele mostra*
+(`comparison-0001`, `media-0004`).
+
+**A pergunta 2 não separa tratar de resolver.** Em `price-0008` e
+`availability-0004`, uma resposta que engaja o tema mas erra ou clarifica foi
+lida como "tratou" por um revisor e "não tratou" pelo outro. É a única pergunta
+que regrediu, e regrediu porque a amostra nova finalmente tocou o caso.
+
+**O catálogo é mundo fechado ou aberto?** Negar um serviço ausente do catálogo
+(`price-0005`: "não trabalhamos com porcelana") tem lastro se a lista for
+completa, e não tem se ela for parcial. A rubrica não diz. O mesmo vale para a
+distância que uma paráfrase pode tomar da descrição cadastrada
+(`objection-0005`).
+
+Uma divergência é erro do R1, não da régua: em `location-0001` a promessa de
+pré-avaliação por foto passou sem lastro, enquanto a mesma forma de promessa foi
+reprovada em `audio-0001` e `handoff-0002`.
+
 ## O que falta para o Ciclo C estar completo
 
-1. **Concordância acima de 80% em todas as quatro perguntas.** Última medida:
-   75,0 / 100,0 / 70,8 / 70,8. A rodada final roda sobre uma amostra cega nova,
-   com 16 casos inéditos e 4 mantidos só para conferir o que o renderer passou a
-   mostrar.
-2. **Repetição do baseline.** Rodada única; a variação observada entre duas
-   execuções foi de 1,6 ponto. O baseline também precisa ser remedido sobre os
-   rótulos re-derivados.
+1. **Fixture que não esconde lastro** — truncamento da política comercial e
+   granularidade de mídia.
+2. **Pergunta 2 redigida para separar "tratou" de "resolveu".**
+3. **Regra escrita para catálogo ausente e para distância de paráfrase.**
+4. **Concordância acima de 80% nas quatro perguntas.** Hoje 68,2 / 90,9 / 81,8 /
+   72,7.
+5. **Repetição do baseline.** Rodada única, variação de 1,6 ponto entre duas
+   execuções. O baseline continua medido sobre os rótulos antigos e só deve ser
+   remedido quando o gate fechar.
 
 ## Correções aplicadas no C.5
 
