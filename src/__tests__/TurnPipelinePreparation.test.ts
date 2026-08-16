@@ -17,6 +17,13 @@ const outcomeSchema = defineOutcomeSchema({
     evidenceRequirement: "optional",
   },
 } as const);
+const noSafeResponseSchema = defineOutcomeSchema({
+  no_safe_response: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+} as const);
 type WorkCapability = Capability<
   "work",
   Record<string, never>,
@@ -174,7 +181,7 @@ describe("preparação do turno V2", () => {
     }));
   });
 
-  it("rejeita decisões com accessor ou proxy antes de registrar preparação", async () => {
+  it("rejeita getter e proxy antes de criar um PreparedTurn", async () => {
     let accessorReads = 0;
     const accessor = Object.defineProperty({}, "kind", {
       enumerable: true,
@@ -277,6 +284,48 @@ describe("preparação do turno V2", () => {
       status: "escalated",
       reason: "capability_conflict",
       capabilityIds: ["alpha", "beta"],
+    });
+  });
+
+  it("mantém rejected e os actionResults quando o composer não tem resposta segura", async () => {
+    const capabilityWithoutSafeResponse: Capability<
+      "work",
+      Record<string, never>,
+      Record<never, never>,
+      typeof noSafeResponseSchema
+    > = {
+      id: "no-safe-response",
+      claim: () => ({ capabilityId: "no-safe-response", confidence: 1, reason: "test", payload: {} }),
+      decide: async () => ({ kind: "close" }),
+      execute: async () => ({
+        type: "no_safe_response",
+        semanticClass: "information_authorized",
+        origin: { capabilityId: "no-safe-response" },
+        subject: null,
+        evidence: [],
+        facts: [],
+      }),
+    };
+
+    await expect(runTurnPipeline({
+      gateInput,
+      state,
+      policy: {},
+      now: new Date(0),
+      understand: async () => understand(),
+      capabilities: [capabilityWithoutSafeResponse],
+      outcomeSchema: noSafeResponseSchema,
+      response: { style, composer: { compose: async () => ({ acts: [] }) } },
+    })).resolves.toEqual({
+      status: "rejected",
+      actionResults: [{
+        type: "no_safe_response",
+        semanticClass: "information_authorized",
+        origin: { capabilityId: "no-safe-response" },
+        subject: null,
+        evidence: [],
+        facts: [],
+      }],
     });
   });
 });
