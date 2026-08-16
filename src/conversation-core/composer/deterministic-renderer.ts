@@ -73,5 +73,8 @@ export function renderDeterministicResponse(input: {
     return qualify(act.subjectRef, "Pode confirmar os dados?");
   });
 
-  return { text: sentences.join(" "), parts: [] };
+  return Object.freeze({
+    text: sentences.join(" "),
+    parts: Object.freeze([]),
+  });
 }

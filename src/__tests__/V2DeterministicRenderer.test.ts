@@ -116,6 +116,20 @@ describe("renderer determinístico V2", () => {
       .toBe("Valor: R$ 1.200,00.");
   });
 
+  it("entrega FinalText em um snapshot imutável", () => {
+    const validation = validateDraft(plan, {
+      acts: [{ kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" }],
+    });
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+
+    const response = renderDeterministicResponse({ draft: validation.draft });
+
+    expect(Object.isFrozen(response)).toBe(true);
+    expect(Object.isFrozen(response.parts)).toBe(true);
+    expect(Reflect.set(response, "text", "Desconto garantido.")).toBe(false);
+    expect(response.text).toBe("Valor: R$ 1.200,00.");
+  });
+
   it("ignora material lexical hostil mesmo quando chega por cast em runtime", () => {
     const validation = validateDraft(plan, {
       acts: [{ kind: "inform_fact", outcomeRef: "outcome-0", factRef: "fact-0", subjectRef: "subject-0" }],
