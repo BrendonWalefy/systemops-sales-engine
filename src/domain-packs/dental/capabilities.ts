@@ -61,6 +61,17 @@ export type DentalClaimPayload =
   | DentalSchedulingClaimPayload
   | DentalEscalationClaimPayload;
 
+export type DentalOutcomeType =
+  | "catalog_answered"
+  | "slots_found"
+  | "appointment_created"
+  | "appointment_confirmed"
+  | "appointment_create_failed"
+  | "appointment_confirmation_failed"
+  | "scheduling_failed"
+  | "escalation_required"
+  | "clarification_required";
+
 function stringEntity(
   understanding: Understanding<DentalRequest>,
   key: "service" | "date" | "period" | "time",
@@ -92,7 +103,12 @@ function ownedClaim(
 
 export function createDentalCatalogCapability(
   readPort: DentalCatalogReadPort,
-): Capability<DentalRequest, DentalPolicy, DentalClaimPayload> {
+): Capability<
+  DentalRequest,
+  DentalPolicy,
+  DentalClaimPayload,
+  DentalOutcomeType
+> {
   return {
     id: "dental-catalog",
     claim(understanding) {
@@ -164,7 +180,7 @@ export function createDentalCatalogCapability(
         nextBestStep: null,
       };
     },
-    async execute(decision): Promise<ActionResult> {
+    async execute(decision): Promise<ActionResult<DentalOutcomeType>> {
       if (decision.kind === "answer") {
         return {
           type: "catalog_answered",
@@ -202,7 +218,12 @@ const schedulingRequests = new Set<DentalRequest>([
 export function createDentalSchedulingCapability(
   readPort: DentalSchedulingReadPort,
   writePort: DentalSchedulingWritePort,
-): Capability<DentalRequest, DentalPolicy, DentalClaimPayload> {
+): Capability<
+  DentalRequest,
+  DentalPolicy,
+  DentalClaimPayload,
+  DentalOutcomeType
+> {
   return {
     id: "dental-scheduling",
     claim(understanding, state) {
@@ -296,7 +317,7 @@ export function createDentalSchedulingCapability(
           }
         : { kind: "ask", questionId: "appointment-not-found" };
     },
-    async execute(decision): Promise<ActionResult> {
+    async execute(decision): Promise<ActionResult<DentalOutcomeType>> {
       if (decision.kind === "offer") {
         return {
           type: "slots_found",
@@ -410,7 +431,8 @@ function appointmentFact(id: string, label: string, evidenceRef: string): Fact {
 export function createDentalEscalationCapability(): Capability<
   DentalRequest,
   DentalPolicy,
-  DentalClaimPayload
+  DentalClaimPayload,
+  DentalOutcomeType
 > {
   return {
     id: "dental-escalation",
@@ -430,7 +452,7 @@ export function createDentalEscalationCapability(): Capability<
     async decide(): Promise<Decision> {
       return { kind: "escalate", reason: "structured_safety_signal" };
     },
-    async execute(): Promise<ActionResult> {
+    async execute(): Promise<ActionResult<DentalOutcomeType>> {
       return {
         type: "escalation_required",
         semanticClass: "human_action_required",

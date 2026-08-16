@@ -21,9 +21,9 @@ export type AuthorizedOption = {
   subjectRef: string;
   factRefs: readonly string[];
 };
-export type AuthorizedOutcome = {
+export type AuthorizedOutcome<OutcomeType extends string = string> = {
   ref: string;
-  outcomeType: string;
+  outcomeType: OutcomeType;
   semanticClass: OutcomeSemanticClass;
   origin: { capabilityId: string };
   subjectRef: string | null;
@@ -32,23 +32,23 @@ export type AuthorizedOutcome = {
   optionRefs: readonly string[];
 };
 
-export type V2AuthorizedResponsePlan = {
+export type V2AuthorizedResponsePlan<OutcomeType extends string = string> = {
   version: typeof V2_AUTHORIZED_RESPONSE_PLAN_VERSION;
-  outcomes: readonly AuthorizedOutcome[];
+  outcomes: readonly AuthorizedOutcome<OutcomeType>[];
   options: readonly AuthorizedOption[];
   facts: readonly AuthorizedFact[];
   subjects: readonly AuthorizedSubject[];
   evidence: readonly AuthorizedEvidence[];
 };
 
-export function buildV2AuthorizedResponsePlan(
-  actionResults: readonly ActionResult[],
-): V2AuthorizedResponsePlan {
+export function buildV2AuthorizedResponsePlan<OutcomeType extends string>(
+  actionResults: readonly ActionResult<OutcomeType>[],
+): V2AuthorizedResponsePlan<OutcomeType> {
   const subjects: AuthorizedSubject[] = [];
   const evidence: AuthorizedEvidence[] = [];
   const facts: AuthorizedFact[] = [];
   const options: AuthorizedOption[] = [];
-  const outcomes: AuthorizedOutcome[] = [];
+  const outcomes: AuthorizedOutcome<OutcomeType>[] = [];
   const subjectRefs = new Map<string, string>();
   const evidenceRefs = new Map<string, string>();
 

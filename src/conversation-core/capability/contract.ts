@@ -55,6 +55,7 @@ export interface Capability<
   Request extends string = string,
   Policy extends object = Record<string, never>,
   ClaimPayload extends object = Record<never, never>,
+  OutcomeType extends string = string,
 > {
   readonly id: string;
   claim(
@@ -68,5 +69,5 @@ export interface Capability<
   execute(
     decision: Decision,
     context: CapabilityContext<Policy>,
-  ): Promise<ActionResult>;
+  ): Promise<ActionResult<OutcomeType>>;
 }

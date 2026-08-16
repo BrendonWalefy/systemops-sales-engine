@@ -4,6 +4,7 @@ import {
   createDentalEscalationCapability,
   createDentalSchedulingCapability,
   type DentalClaimPayload,
+  type DentalOutcomeType,
   type DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
 import type {
@@ -17,6 +18,7 @@ export { DENTAL_RESPONSE_LANGUAGE } from "@/domain-packs/dental/response-languag
 
 export type {
   DentalClaimPayload,
+  DentalOutcomeType,
   DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
 export type { DentalRequest } from "@/domain-packs/dental/vocabulary";
@@ -25,7 +27,12 @@ export function createDentalPack(ports: {
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
-}): DomainPack<DentalRequest, DentalPolicy, DentalClaimPayload> {
+}): DomainPack<
+  DentalRequest,
+  DentalPolicy,
+  DentalClaimPayload,
+  DentalOutcomeType
+> {
   return {
     id: "dental",
     capabilities: [

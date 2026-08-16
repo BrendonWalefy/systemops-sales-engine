@@ -51,8 +51,8 @@ export type ActionResultOption = {
   facts: readonly Fact[];
 };
 
-type ActionResultBase = {
-  type: string;
+type ActionResultBase<OutcomeType extends string> = {
+  type: OutcomeType;
   semanticClass: OutcomeSemanticClass;
   origin: { capabilityId: string };
   subject: Subject | null;
@@ -60,12 +60,12 @@ type ActionResultBase = {
   facts: readonly Fact[];
 };
 
-export type ActionResult =
-  | (ActionResultBase & {
+export type ActionResult<OutcomeType extends string = string> =
+  | (ActionResultBase<OutcomeType> & {
       semanticClass: "options_found";
       options: readonly ActionResultOption[];
     })
-  | (ActionResultBase & {
+  | (ActionResultBase<OutcomeType> & {
       semanticClass: Exclude<OutcomeSemanticClass, "options_found">;
       options?: never;
     });

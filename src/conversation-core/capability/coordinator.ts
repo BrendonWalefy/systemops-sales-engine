@@ -9,8 +9,9 @@ export type ClaimedCapability<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
+  OutcomeType extends string = string,
 > = {
-  capability: Capability<Request, Policy, ClaimPayload>;
+  capability: Capability<Request, Policy, ClaimPayload, OutcomeType>;
   claim: CapabilityClaim<ClaimPayload>;
 };
 
@@ -18,10 +19,16 @@ export type CoordinationResult<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
+  OutcomeType extends string = string,
 > =
   | {
       outcome: "selected";
-      claimed: ClaimedCapability<Request, Policy, ClaimPayload>[];
+      claimed: ClaimedCapability<
+        Request,
+        Policy,
+        ClaimPayload,
+        OutcomeType
+      >[];
     }
   | { outcome: "conflict"; capabilityIds: string[] };
 
@@ -29,11 +36,17 @@ export function coordinateCapabilities<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
+  OutcomeType extends string,
 >(input: {
-  capabilities: readonly Capability<Request, Policy, ClaimPayload>[];
+  capabilities: readonly Capability<
+    Request,
+    Policy,
+    ClaimPayload,
+    OutcomeType
+  >[];
   understanding: Understanding<Request>;
   state: ConversationState;
-}): CoordinationResult<Request, Policy, ClaimPayload> {
+}): CoordinationResult<Request, Policy, ClaimPayload, OutcomeType> {
   const seen = new Set<string>();
 
   const claimed = input.capabilities.flatMap((capability) => {

@@ -17,7 +17,7 @@ import type { ActionResult } from "@/conversation-core/decision";
 import { evaluateTurnGate, type TurnGateInput } from "@/conversation-core/gate";
 import type { Understanding } from "@/conversation-core/understanding/schema";
 
-export type TurnPipelineResult =
+export type TurnPipelineResult<OutcomeType extends string = string> =
   | { status: "suppressed"; reason: string }
   | { status: "needs_clarification" }
   | {
@@ -25,11 +25,11 @@ export type TurnPipelineResult =
       reason: "capability_conflict";
       capabilityIds: readonly string[];
     }
-  | { status: "rejected"; actionResults: readonly ActionResult[] }
+  | { status: "rejected"; actionResults: readonly ActionResult<OutcomeType>[] }
   | {
       status: "delivered";
       capabilityIds: readonly string[];
-      actionResults: readonly ActionResult[];
+      actionResults: readonly ActionResult<OutcomeType>[];
       response: CoreResponse;
     };
 
@@ -37,20 +37,28 @@ export async function runTurnPipeline<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
+  OutcomeType extends string,
 >(input: {
   gateInput: TurnGateInput;
   state: ConversationState;
   policy: StructuredPolicy<Policy>;
   now: Date;
   understand(): Promise<Understanding<Request>>;
-  capabilities: readonly Capability<Request, Policy, ClaimPayload>[];
-  buildPlan(actionResults: readonly ActionResult[]): V2AuthorizedResponsePlan;
+  capabilities: readonly Capability<
+    Request,
+    Policy,
+    ClaimPayload,
+    OutcomeType
+  >[];
+  buildPlan(
+    actionResults: readonly ActionResult<OutcomeType>[],
+  ): V2AuthorizedResponsePlan<OutcomeType>;
   response: {
     style: ComposerStyle;
     language: ValidatedResponseLanguageContribution;
     composer: ResponseComposerPort;
   };
-}): Promise<TurnPipelineResult> {
+}): Promise<TurnPipelineResult<OutcomeType>> {
   const gate = evaluateTurnGate(input.gateInput);
   if (gate.outcome === "suppress")
     return { status: "suppressed", reason: gate.reason };
@@ -87,7 +95,7 @@ export async function runTurnPipeline<
     });
   }
 
-  const actionResults: ActionResult[] = [];
+  const actionResults: ActionResult<OutcomeType>[] = [];
   for (const item of decided) {
     actionResults.push(await item.capability.execute(item.decision, context));
   }

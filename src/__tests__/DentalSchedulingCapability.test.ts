@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { UNDERSTANDING_VERSION, type Understanding } from "@/conversation-core/understanding/schema";
-import { createDentalSchedulingCapability, type DentalPolicy } from "@/domain-packs/dental/capabilities";
+import {
+  createDentalSchedulingCapability,
+  type DentalOutcomeType,
+  type DentalPolicy,
+} from "@/domain-packs/dental/capabilities";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 const policy: DentalPolicy = { priceDisclosureEnabled: true, humanEscalationRequired: false, schedulingMinimumLeadTimeHours: 2, schedulingRequiresEvaluationFirst: false };
@@ -10,6 +14,15 @@ const understanding = (request: DentalRequest, entities: Record<string, string |
 });
 
 describe("Dental Scheduling capability", () => {
+  it("preserva o outcome concreto como união tipada do Domain Pack", () => {
+    type ExecuteResult = Awaited<ReturnType<
+      ReturnType<typeof createDentalSchedulingCapability>["execute"]
+    >>;
+
+    expectTypeOf<ExecuteResult["type"]>().toEqualTypeOf<DentalOutcomeType>();
+    expectTypeOf<ExecuteResult["type"]>().not.toEqualTypeOf<string>();
+  });
+
   it("pedido de agendamento lê e oferece slots sem write", async () => {
     const listSlots = vi.fn().mockResolvedValue([{ id: "slot-1", label: "quarta às 15h", evidenceRef: "calendar-snapshot-1" }]);
     const bookSlot = vi.fn();
