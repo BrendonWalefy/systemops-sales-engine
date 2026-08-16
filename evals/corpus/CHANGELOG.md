@@ -73,3 +73,16 @@ Rodada sobre os 66 casos, achou um segundo nome que ninguém tinha visto, em
 
 **Nenhum caso mudou de rótulo.** Só dois textos mudaram, e a mudança é a troca do
 nome por `[PACIENTE]`.
+
+## C.8 — régua única, renderer completo, purga de histórico
+
+A barreira de nome em vocativo entrou nos três lugares a partir de uma fonte só,
+e os blobs que ainda carregavam os dois nomes foram removidos dos 18 commits não
+publicados da branch. `main` e as branches já publicadas não foram tocadas.
+
+A folha passou a mostrar side effect com fonte, descrição do serviço que o turno
+menciona, e — quando não há ação registrada — a ausência declarada em vez de
+silêncio.
+
+Os 66 foram re-derivados sob a régua vigente, 65 válidos mais um declarado
+inválido. `golden` cai de 15 para 8, `anti-pattern` sobe de 46 para 51.

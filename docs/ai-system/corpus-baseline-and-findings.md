@@ -394,18 +394,56 @@ C.6 diz que passo fabricado não avança; ela não diz se reconhecer avança. É
 única divergência que sobra depois de corrigir régua e renderer, e é uma lacuna
 de definição — resolvê-la é decidir o que a pergunta quer dizer, não quem acertou.
 
+## C.8 — o corpus sob uma régua só
+
+Os três primeiros itens da lista anterior foram fechados; o quarto depende da
+próxima rodada cega e o quinto continua aberto.
+
+**Re-derivação total.** 65/65 casos válidos relidos contra o mesmo pacote de
+evidência, com `availability-0005` fora pela invalidez que ele próprio declara.
+O script passou a recusar revisão parcial (`--require-full-coverage`): sem
+checklist explícito para cada lado que existe, ele falha nomeando o que faltou.
+
+29 avaliações mudaram. A distribuição de rótulos:
+
+| Rótulo | Antes | Depois |
+|---|---|---|
+| `golden` | 15 | 8 |
+| `acceptable` | 13 | 15 |
+| `anti-pattern` | 46 | 51 |
+
+A queda do `golden` não é o corpus piorando — é a régua alcançando os casos que
+nunca tinham passado por ela. Das 15 avaliações `golden`, 10 vinham da primeira
+revisão; sete caíram.
+
+**O que a definição nova de `advancedTheJourney` mudou.** 25 das 29 mudanças
+estão nessa pergunta, e quase todas na mesma direção:
+
+- confirmação sem agendamento registrado (`scheduling-0003`, `burst-0001`)
+  deixou de avançar — ação não evidenciada não é passo válido;
+- disponibilidade sem consulta de agenda (`availability-0001` a `-0003`,
+  `follow-up-0001`) idem;
+- cortesia e adiamento (`burst-0002`, `procedure-0001`, `other-0003`) deixaram
+  de avançar por serem reconhecimento social;
+- na direção contrária, responder a pergunta com fato do catálogo passou a
+  avançar mesmo sem virar agendamento (`comparison-0002`), e clarificação que
+  coleta o que falta passou a contar (`availability-0004`, `other-0005`).
+
+**Sete mudanças em `factuallyCorrect`**, e duas delas são o mesmo texto de
+endereço que estava julgado de formas opostas em `audio-0002` e `location-0002`
+— inconsistência que só uma passagem completa encontra. As outras cinco são
+capacidade prometida sem lastro: "vou acionar a equipe" e "vou acionar o doutor"
+em turnos que não registram handoff nenhum.
+
 ## O que falta para o Ciclo C estar completo
 
-1. **Régua aplicada ao corpus inteiro.** 25 casos nunca foram re-derivados sob a
-   definição estrita do C.6, entre eles 10 das 15 avaliações `golden`. Enquanto
-   isso não for uma passagem sistemática, o baseline mede duas réguas misturadas.
-2. **Renderer que mostra a evidência que o corpus tem.** `observed.sideEffects` e
-   o conteúdo de `services[].description` não chegam à folha.
-3. **`advancedTheJourney` definida para o caso "reconhece sem passo".**
-4. **Concordância acima de 80% em todas as quatro perguntas.** Hoje: 75,0 / 100,0
-   / 70,8 / 70,8.
-5. **Repetição do baseline.** Rodada única; a variação observada entre duas
-   execuções foi de 1,6 ponto.
+1. **Concordância acima de 80% em todas as quatro perguntas.** Última medida:
+   75,0 / 100,0 / 70,8 / 70,8. A rodada final roda sobre uma amostra cega nova,
+   com 16 casos inéditos e 4 mantidos só para conferir o que o renderer passou a
+   mostrar.
+2. **Repetição do baseline.** Rodada única; a variação observada entre duas
+   execuções foi de 1,6 ponto. O baseline também precisa ser remedido sobre os
+   rótulos re-derivados.
 
 ## Correções aplicadas no C.5
 
