@@ -13,6 +13,8 @@ import type {
 } from "@/domain-packs/dental/ports";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
+export { DENTAL_RESPONSE_LANGUAGE } from "@/domain-packs/dental/response-language";
+
 export type {
   DentalClaimPayload,
   DentalPolicy,

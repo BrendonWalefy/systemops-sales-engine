@@ -35,6 +35,16 @@ export type DraftValidationResult =
   | { valid: true; draft: ValidatedDraftResponse }
   | { valid: false; violations: readonly DraftViolation[] };
 
+const authorizedPlans = new WeakMap<ValidatedDraftResponse, V2AuthorizedResponsePlan>();
+
+export function authorizedPlanFor(
+  draft: ValidatedDraftResponse,
+): V2AuthorizedResponsePlan {
+  const plan = authorizedPlans.get(draft);
+  if (!plan) throw new Error("draft was not validated by the semantic validator");
+  return plan;
+}
+
 const compatibleClass: Record<DraftSpeechAct["kind"], OutcomeSemanticClass> = {
   inform_fact: "information_authorized",
   offer_options: "options_found",
@@ -178,7 +188,8 @@ export function validateDraft(
     }
   });
 
-  return violations.length === 0
-    ? { valid: true, draft: draft as ValidatedDraftResponse }
-    : { valid: false, violations };
+  if (violations.length > 0) return { valid: false, violations };
+  const validated = draft as ValidatedDraftResponse;
+  authorizedPlans.set(validated, plan);
+  return { valid: true, draft: validated };
 }
