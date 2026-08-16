@@ -24,6 +24,7 @@ export type DraftSpeechAct =
   | { kind: "ask_clarification"; outcomeRef: string };
 
 export type DraftResponse = { acts: readonly DraftSpeechAct[] };
+export type CoreResponse = { text: string; parts: readonly unknown[] };
 
 export type ComposerStyle = {
   tone: "neutral" | "warm";
