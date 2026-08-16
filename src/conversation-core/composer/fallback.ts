@@ -2,8 +2,8 @@ import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-re
 import { buildDeterministicDraft } from "@/conversation-core/composer/deterministic-composer";
 import { validateDraft, type ValidatedDraftResponse } from "@/conversation-core/composer/validator";
 
-export function buildSafeFallback(
-  plan: V2AuthorizedResponsePlan,
+export function buildSafeFallback<OutcomeType extends string>(
+  plan: V2AuthorizedResponsePlan<OutcomeType>,
 ): ValidatedDraftResponse | null {
   const complete = buildDeterministicDraft(plan);
   const seenOutcomes = new Set<string>();

@@ -160,7 +160,7 @@ type ActionResultForDefinition<
 > = ActionResultBase<OutcomeType, Definition> &
   OptionsFor<Definition["semanticClass"]>;
 
-export type ActionResult<Schema extends OutcomeSchema = OutcomeSchema> = {
+export type ActionResult<Schema extends OutcomeSchema> = {
   [OutcomeType in OutcomeTypeOf<Schema>]: Schema[OutcomeType] extends OutcomeDefinition
     ? ActionResultForDefinition<OutcomeType, Schema[OutcomeType]>
     : never;

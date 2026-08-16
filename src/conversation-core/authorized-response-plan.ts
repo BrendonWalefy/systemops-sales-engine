@@ -27,7 +27,7 @@ export type AuthorizedOption = {
   subjectRef: string;
   factRefs: readonly string[];
 };
-export type AuthorizedOutcome<OutcomeType extends string = string> = {
+export type AuthorizedOutcome<OutcomeType extends string> = {
   ref: string;
   outcomeType: OutcomeType;
   semanticClass: OutcomeSemanticClass;
@@ -38,7 +38,7 @@ export type AuthorizedOutcome<OutcomeType extends string = string> = {
   optionRefs: readonly string[];
 };
 
-type V2AuthorizedResponsePlanData<OutcomeType extends string = string> = {
+type V2AuthorizedResponsePlanData<OutcomeType extends string> = {
   version: typeof V2_AUTHORIZED_RESPONSE_PLAN_VERSION;
   outcomes: readonly AuthorizedOutcome<OutcomeType>[];
   options: readonly AuthorizedOption[];
@@ -48,15 +48,15 @@ type V2AuthorizedResponsePlanData<OutcomeType extends string = string> = {
 };
 
 declare const validatedAuthorizedResponsePlan: unique symbol;
-export type V2AuthorizedResponsePlan<OutcomeType extends string = string> =
+export type V2AuthorizedResponsePlan<OutcomeType extends string> =
   V2AuthorizedResponsePlanData<OutcomeType> & {
     readonly [validatedAuthorizedResponsePlan]: true;
   };
 
 const validatedPlans = new WeakSet<object>();
 
-export function assertV2AuthorizedResponsePlan(
-  plan: V2AuthorizedResponsePlan,
+export function assertV2AuthorizedResponsePlan<OutcomeType extends string>(
+  plan: V2AuthorizedResponsePlan<OutcomeType>,
 ): void {
   if (!validatedPlans.has(plan)) {
     throw new Error("validated plan required");

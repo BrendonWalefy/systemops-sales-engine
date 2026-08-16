@@ -29,6 +29,7 @@ export type DraftViolationCode =
   | "fact_not_disclosable"
   | "empty_draft"
   | "empty_reference_set"
+  | "duplicate_reference"
   | "incompatible_speech_act";
 
 export type DraftViolation = {
@@ -44,7 +45,10 @@ export type DraftValidationResult =
       draft: DraftResponse | null;
     };
 
-const authorizedPlans = new WeakMap<ValidatedDraftResponse, V2AuthorizedResponsePlan>();
+const authorizedPlans = new WeakMap<
+  ValidatedDraftResponse,
+  V2AuthorizedResponsePlan<string>
+>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -134,7 +138,7 @@ function canonicalizeDraft(value: unknown): DraftResponse | null {
 
 export function authorizedPlanFor(
   draft: ValidatedDraftResponse,
-): V2AuthorizedResponsePlan {
+): V2AuthorizedResponsePlan<string> {
   const plan = authorizedPlans.get(draft);
   if (!plan) throw new Error("draft was not validated by the semantic validator");
   return plan;
@@ -161,7 +165,7 @@ function push(
 
 function validateFact(input: {
   factRef: string;
-  outcome: AuthorizedOutcome | undefined;
+  outcome: AuthorizedOutcome<string> | undefined;
   expectedSubjectRef: string | null;
   facts: ReadonlyMap<string, AuthorizedFact>;
   allowedFactRefs: readonly string[];
@@ -188,8 +192,8 @@ function validateFact(input: {
   }
 }
 
-export function validateDraft(
-  plan: V2AuthorizedResponsePlan,
+export function validateDraft<OutcomeType extends string>(
+  plan: V2AuthorizedResponsePlan<OutcomeType>,
   draft: unknown,
 ): DraftValidationResult {
   assertV2AuthorizedResponsePlan(plan);
@@ -247,6 +251,9 @@ export function validateDraft(
       if (act.optionRefs.length === 0) {
         push(violations, actIndex, "empty_reference_set");
       }
+      if (new Set(act.optionRefs).size !== act.optionRefs.length) {
+        push(violations, actIndex, "duplicate_reference");
+      }
       if (act.subjectRef !== null && !subjects.has(act.subjectRef)) {
         push(violations, actIndex, "unknown_subject_ref");
       }
@@ -282,6 +289,9 @@ export function validateDraft(
     }
 
     if (act.kind === "confirm_effect") {
+      if (new Set(act.factRefs).size !== act.factRefs.length) {
+        push(violations, actIndex, "duplicate_reference");
+      }
       if (!subjects.has(act.subjectRef)) {
         push(violations, actIndex, "unknown_subject_ref");
       }

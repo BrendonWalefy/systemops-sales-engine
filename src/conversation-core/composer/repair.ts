@@ -2,8 +2,8 @@ import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-re
 import type { DraftResponse, DraftSpeechAct } from "@/conversation-core/composer/contract";
 import { validateDraft } from "@/conversation-core/composer/validator";
 
-export function repairDraft(
-  plan: V2AuthorizedResponsePlan,
+export function repairDraft<OutcomeType extends string>(
+  plan: V2AuthorizedResponsePlan<OutcomeType>,
   draft: DraftResponse,
 ): DraftResponse {
   const seen = new Set<string>();

@@ -180,6 +180,30 @@ describe("validator semântico V2", () => {
     expect(codes(draft({ kind: "inform_fact", outcomeRef: refs.informationA, factRef: refs.internalFact, subjectRef: refs.subjectA }))).toContain("fact_not_disclosable");
   });
 
+  it("rejeita refs duplicadas dentro do mesmo speech act", () => {
+    const duplicateOptions = validateDraft(plan, {
+      acts: [{
+        kind: "offer_options",
+        outcomeRef: refs.options,
+        subjectRef: refs.subjectB,
+        optionRefs: ["option-0", "option-0"],
+      }],
+    });
+    expect(duplicateOptions.valid ? [] : duplicateOptions.violations.map(({ code }) => code))
+      .toContain("duplicate_reference");
+
+    const duplicateFacts = validateDraft(plan, {
+      acts: [{
+        kind: "confirm_effect",
+        outcomeRef: refs.completed,
+        subjectRef: refs.subjectA,
+        factRefs: ["fact-4", "fact-4"],
+      }],
+    });
+    expect(duplicateFacts.valid ? [] : duplicateFacts.violations.map(({ code }) => code))
+      .toContain("duplicate_reference");
+  });
+
   it.each([
     [{ kind: "inform_fact", outcomeRef: refs.informationA, factRef: refs.factA, subjectRef: refs.subjectA }, true],
     [{ kind: "offer_options", outcomeRef: refs.options, subjectRef: refs.subjectB, optionRefs: ["option-0"] }, true],

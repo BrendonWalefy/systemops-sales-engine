@@ -48,12 +48,12 @@ describe("plano autorizado V2", () => {
       facts: readonly [];
       subjects: readonly [];
       evidence: readonly [];
-    }>().not.toMatchTypeOf<V2AuthorizedResponsePlan>();
+    }>().not.toMatchTypeOf<V2AuthorizedResponsePlan<string>>();
 
     const forged = {
       version: "authorized-response-plan.v2",
       outcomes: [], options: [], facts: [], subjects: [], evidence: [],
-    } as unknown as V2AuthorizedResponsePlan;
+    } as unknown as V2AuthorizedResponsePlan<string>;
     expect(() => assertV2AuthorizedResponsePlan(forged)).toThrow(/validated plan/i);
   });
 
@@ -82,7 +82,7 @@ describe("plano autorizado V2", () => {
     }],
   ])("rejeita plano estrutural não validado: %s", (_case, raw) => {
     expect(() => assertV2AuthorizedResponsePlan(
-      raw as unknown as V2AuthorizedResponsePlan,
+      raw as unknown as V2AuthorizedResponsePlan<string>,
     )).toThrow(/validated plan/i);
   });
 
