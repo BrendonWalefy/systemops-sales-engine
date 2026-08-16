@@ -41,6 +41,28 @@ export type V2AuthorizedResponsePlan<OutcomeType extends string = string> = {
   evidence: readonly AuthorizedEvidence[];
 };
 
+export function snapshotV2AuthorizedResponsePlan<OutcomeType extends string>(
+  plan: V2AuthorizedResponsePlan<OutcomeType>,
+): V2AuthorizedResponsePlan<OutcomeType> {
+  return Object.freeze({
+    version: plan.version,
+    subjects: Object.freeze(plan.subjects.map((subject) => Object.freeze({ ...subject }))),
+    evidence: Object.freeze(plan.evidence.map((item) => Object.freeze({ ...item }))),
+    facts: Object.freeze(plan.facts.map((fact) => Object.freeze({ ...fact }))),
+    options: Object.freeze(plan.options.map((option) => Object.freeze({
+      ...option,
+      factRefs: Object.freeze([...option.factRefs]),
+    }))),
+    outcomes: Object.freeze(plan.outcomes.map((outcome) => Object.freeze({
+      ...outcome,
+      origin: Object.freeze({ ...outcome.origin }),
+      evidenceRefs: Object.freeze([...outcome.evidenceRefs]),
+      factRefs: Object.freeze([...outcome.factRefs]),
+      optionRefs: Object.freeze([...outcome.optionRefs]),
+    }))),
+  });
+}
+
 export function buildV2AuthorizedResponsePlan<OutcomeType extends string>(
   actionResults: readonly ActionResult<OutcomeType>[],
 ): V2AuthorizedResponsePlan<OutcomeType> {

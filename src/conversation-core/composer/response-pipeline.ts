@@ -1,4 +1,7 @@
-import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import {
+  snapshotV2AuthorizedResponsePlan,
+  type V2AuthorizedResponsePlan,
+} from "@/conversation-core/authorized-response-plan";
 import type {
   ComposerStyle,
   CoreResponse,
@@ -31,6 +34,8 @@ export async function runV2ResponsePipeline(input: {
   composer: ResponseComposerPort;
   language: ValidatedResponseLanguageContribution;
 }): Promise<V2ResponsePipelineResult> {
+  const plan = snapshotV2AuthorizedResponsePlan(input.plan);
+  const style = Object.freeze({ ...input.style });
   let violations: readonly DraftViolation[] = [];
 
   const render = (
@@ -44,7 +49,7 @@ export async function runV2ResponsePipeline(input: {
         response: renderDeterministicResponse({
           draft,
           language: input.language,
-          style: input.style,
+          style,
         }),
       };
     } catch {
@@ -54,18 +59,18 @@ export async function runV2ResponsePipeline(input: {
 
   try {
     const draft = await input.composer.compose({
-      plan: input.plan,
-      style: input.style,
+      plan,
+      style,
     });
-    const original = validateDraft(input.plan, draft);
+    const original = validateDraft(plan, draft);
     if (original.valid) {
       return render(original.draft, "draft");
     }
     violations = original.violations;
 
-    const repaired = repairDraft(input.plan, draft);
+    const repaired = repairDraft(plan, draft);
     if (repaired.acts.length > 0) {
-      const repairedResult = validateDraft(input.plan, repaired);
+      const repairedResult = validateDraft(plan, repaired);
       if (repairedResult.valid) {
         return render(repairedResult.draft, "repair");
       }
@@ -75,7 +80,7 @@ export async function runV2ResponsePipeline(input: {
     // Composer failure carries no authority. Continue with the same-plan fallback.
   }
 
-  const fallback = buildSafeFallback(input.plan);
+  const fallback = buildSafeFallback(plan);
   if (fallback) {
     return render(fallback, "fallback");
   }

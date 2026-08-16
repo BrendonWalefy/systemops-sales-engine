@@ -92,4 +92,51 @@ describe("pipeline de resposta V2", () => {
       reason: "render_failed",
     }));
   });
+
+  it("impede o composer de ampliar autoridade mutando o plano recebido", async () => {
+    const mutablePlan = structuredClone(responsePlanFixture);
+    const languageWithUnauthorizedTerm = createResponseLanguageContribution({
+      locale: "pt-BR",
+      factTerms: [
+        { factKey: "amount", label: "Valor", format: "integer" },
+        { factKey: "discount", label: "Desconto", format: "integer" },
+      ],
+      outcomeTerms: [
+        { outcomeType: "quote-ready", label: "cotação", gender: "feminine" },
+        { outcomeType: "operation-failed", label: "operação", gender: "feminine" },
+      ],
+      subjectTerms: [{ subjectType: "item", label: "item" }],
+    });
+    const mutatingComposer: ResponseComposerPort = {
+      compose: async ({ plan }) => {
+        const mutable = plan as unknown as {
+          facts: { ref: string; key: string; value: number; subjectRef: string; evidenceRef: string; disclosure: "allowed" }[];
+          outcomes: { ref: string; factRefs: string[] }[];
+        };
+        mutable.facts.push({
+          ref: "fact-injected", key: "discount", value: 50,
+          subjectRef: "subject-a", evidenceRef: "evidence-a", disclosure: "allowed",
+        });
+        mutable.outcomes[0]!.factRefs.push("fact-injected");
+        return {
+          acts: [{
+            kind: "inform_fact", outcomeRef: "information",
+            factRef: "fact-injected", subjectRef: "subject-a",
+          }],
+        };
+      },
+    };
+
+    const result = await runV2ResponsePipeline({
+      plan: mutablePlan,
+      style,
+      language: languageWithUnauthorizedTerm,
+      composer: mutatingComposer,
+    });
+
+    expect(result).toEqual(expect.objectContaining({ status: "rendered", source: "fallback" }));
+    if (result.status !== "rendered") throw new Error("expected safe fallback");
+    expect(result.response.text).not.toContain("Desconto");
+    expect(mutablePlan.facts).toHaveLength(responsePlanFixture.facts.length);
+  });
 });

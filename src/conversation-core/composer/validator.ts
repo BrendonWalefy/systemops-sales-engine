@@ -4,6 +4,7 @@ import type {
   AuthorizedOutcome,
   V2AuthorizedResponsePlan,
 } from "@/conversation-core/authorized-response-plan";
+import { snapshotV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import type {
   DraftResponse,
   DraftSpeechAct,
@@ -38,26 +39,6 @@ export type DraftValidationResult =
   | { valid: false; violations: readonly DraftViolation[] };
 
 const authorizedPlans = new WeakMap<ValidatedDraftResponse, V2AuthorizedResponsePlan>();
-
-function snapshotPlan(plan: V2AuthorizedResponsePlan): V2AuthorizedResponsePlan {
-  return Object.freeze({
-    version: plan.version,
-    subjects: Object.freeze(plan.subjects.map((subject) => Object.freeze({ ...subject }))),
-    evidence: Object.freeze(plan.evidence.map((item) => Object.freeze({ ...item }))),
-    facts: Object.freeze(plan.facts.map((fact) => Object.freeze({ ...fact }))),
-    options: Object.freeze(plan.options.map((option) => Object.freeze({
-      ...option,
-      factRefs: Object.freeze([...option.factRefs]),
-    }))),
-    outcomes: Object.freeze(plan.outcomes.map((outcome) => Object.freeze({
-      ...outcome,
-      origin: Object.freeze({ ...outcome.origin }),
-      evidenceRefs: Object.freeze([...outcome.evidenceRefs]),
-      factRefs: Object.freeze([...outcome.factRefs]),
-      optionRefs: Object.freeze([...outcome.optionRefs]),
-    }))),
-  });
-}
 
 function snapshotDraft(draft: DraftResponse): ValidatedDraftResponse {
   const acts = draft.acts.map((act): DraftSpeechAct => {
@@ -230,6 +211,6 @@ export function validateDraft(
 
   if (violations.length > 0) return { valid: false, violations };
   const validated = snapshotDraft(draft);
-  authorizedPlans.set(validated, snapshotPlan(plan));
+  authorizedPlans.set(validated, snapshotV2AuthorizedResponsePlan(plan));
   return { valid: true, draft: validated };
 }
