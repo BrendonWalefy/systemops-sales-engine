@@ -16,4 +16,16 @@ describe("contrato de capability", () => {
     expectTypeOf<CapabilityContext>().not.toHaveProperty("transcript");
     expectTypeOf<CapabilityContext>().not.toHaveProperty("input");
   });
+
+  it("recusa texto livre escondido dentro da política", () => {
+    type UnsafeContext = CapabilityContext<{ leadMessage: string }>;
+    type StructuredContext = CapabilityContext<{
+      disclose: "always" | "never";
+      unitAmount: number;
+    }>;
+
+    expectTypeOf<UnsafeContext["policy"]["leadMessage"]>().toEqualTypeOf<never>();
+    expectTypeOf<StructuredContext["policy"]["disclose"]>()
+      .toEqualTypeOf<"always" | "never">();
+  });
 });

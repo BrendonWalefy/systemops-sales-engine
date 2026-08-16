@@ -1,4 +1,8 @@
-import type { Capability, ConversationState } from "@/conversation-core/capability/contract";
+import type {
+  Capability,
+  ConversationState,
+  StructuredPolicy,
+} from "@/conversation-core/capability/contract";
 import { coordinateCapabilities } from "@/conversation-core/capability/coordinator";
 import type { ActionResult } from "@/conversation-core/decision";
 import { evaluateTurnGate, type TurnGateInput } from "@/conversation-core/gate";
@@ -24,7 +28,7 @@ export async function runTurnPipeline<
 >(input: {
   gateInput: TurnGateInput;
   state: ConversationState;
-  policy: Readonly<Policy>;
+  policy: StructuredPolicy<Policy>;
   now: Date;
   understand(): Promise<Understanding<Request>>;
   capabilities: readonly Capability<Request, Policy>[];

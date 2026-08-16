@@ -13,22 +13,39 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-const FORBIDDEN_FROM_CORE = [
-  /from\s+["']@\/domain-packs(?:\/|["'])/,
-  /from\s+["']@\/application\/config(?:\/|["'])/,
-  /from\s+["'](?:openai|@anthropic-ai\/sdk)["']/,
-  /from\s+["']@\/infrastructure(?:\/|["'])/,
-];
+function violationsIn(source: string): string[] {
+  const specifiers = [
+    ...source.matchAll(
+      /(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)["']([^"']+)["']/g,
+    ),
+  ].map((match) => match[1]!);
+
+  return specifiers.filter((specifier) =>
+    specifier === "openai"
+    || specifier === "@anthropic-ai/sdk"
+    || /(?:^|\/)(?:domain-packs|infrastructure|providers)(?:\/|$)/.test(specifier)
+    || /(?:^|\/)application\/config(?:\/|$)/.test(specifier),
+  );
+}
 
 describe("fronteira de importação do core V2", () => {
   it("não importa packs, configuração de tenant, providers ou infraestrutura", () => {
     const offenders = sourceFiles("src/conversation-core").flatMap((file) => {
       const source = readFileSync(file, "utf8");
-      return FORBIDDEN_FROM_CORE
-        .filter((pattern) => pattern.test(source))
-        .map((pattern) => `${file} -> ${pattern}`);
+      return violationsIn(source).map((violation) => `${file} -> ${violation}`);
     });
 
     expect(offenders).toEqual([]);
+  });
+
+  it("detecta imports estáticos, dinâmicos, require e caminhos relativos", () => {
+    const bypassAttempts = [
+      'import("@/infrastructure/db/client")',
+      'require("../../domain-packs/fixture")',
+      'export { adapter } from "../providers/adapter"',
+      'import OpenAI from "openai"',
+    ];
+
+    expect(bypassAttempts.map(violationsIn).map((items) => items.length)).toEqual([1, 1, 1, 1]);
   });
 });

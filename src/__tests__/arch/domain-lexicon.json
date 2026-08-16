@@ -8,5 +8,14 @@
   "saude",
   "estetica",
   "atelier",
-  "procedimento"
+  "procedimento",
+  "patient",
+  "appointment",
+  "dentist",
+  "treatment",
+  "clinic",
+  "dental",
+  "health",
+  "aesthetic",
+  "procedure"
 ]

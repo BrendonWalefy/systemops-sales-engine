@@ -18,15 +18,22 @@ function normalize(source: string): string {
   return source.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+function termsIn(source: string): string[] {
+  const normalized = normalize(source);
+  return forbiddenTerms.filter((term) => normalized.includes(term));
+}
+
 describe("léxico do core V2", () => {
   it("não contém vocabulário de um vertical real", () => {
     const offenders = sourceFiles("src/conversation-core").flatMap((file) => {
-      const source = normalize(readFileSync(file, "utf8"));
-      return forbiddenTerms
-        .filter((term) => new RegExp(`\\b${term}\\w*`, "i").test(source))
-        .map((term) => `${file} -> ${term}`);
+      return termsIn(readFileSync(file, "utf8")).map((term) => `${file} -> ${term}`);
     });
 
     expect(offenders).toEqual([]);
+  });
+
+  it("detecta o léxico dentro de identificadores compostos", () => {
+    expect(termsIn('const prepareDentalTreatment = "customerHealthProfile"'))
+      .toEqual(["treatment", "dental", "health"]);
   });
 });
