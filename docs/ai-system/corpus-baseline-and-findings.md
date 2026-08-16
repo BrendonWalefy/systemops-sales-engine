@@ -547,13 +547,16 @@ deste texto, e alterá-lo invalida a medida e todos os rótulos derivados dela.
 Eixo `request`: **68,8%**, 64 casos comparáveis, `gpt-5.4-mini`, 20 confusões.
 Camada de decisão inalterada: 89,1% nos 55 casos puros, 11 com I/O.
 
-**Uma ressalva que importa para o Ciclo D.** A medida anterior deu 73,4%; esta
-deu 68,8% e repetiu 68,8% em três execuções seguidas. Modelo idêntico, nomes de
-serviço idênticos nas fixtures, rótulos de entendimento intocados pelo C.8 e
-pelo C.9 — não consegui determinar a causa dos 4,7 pontos. Enquanto isso não for
-explicado, **uma execução única do baseline carrega pelo menos ~5 pontos de
-incerteza**, e uma "melhoria" da V2 dessa ordem seria indistinguível de ruído.
-Comparar V2 contra V1 exige repetição, não uma rodada de cada lado.
+**Uma ressalva que importa.** A medida anterior deu 73,4%; esta deu 68,8%. O D0
+investigou os 4,7 pontos com seis execuções e decompôs a diferença: dois casos
+são regressão estável (errados em 6/6 hoje, certos no histórico) e o restante é
+churn estocástico de cinco casos que oscilam mesmo a `temperature: 0`. Tudo sob
+controle do repositório é idêntico entre as duas medidas, e a causa **não foi
+determinada**.
+
+Dentro da mesma sessão a amplitude é 1,6 ponto; entre sessões, 4,7. Comparar V1
+medido num dia com V2 medido em outro é inválido. Investigação completa em
+[`cycle-c-closure-and-d0.md`](./cycle-c-closure-and-d0.md).
 
 ## Correções aplicadas no C.5
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T04:16:16.849Z",
+  "generatedAt": "2026-08-16T04:31:13.636Z",
   "corpus": {
     "totalCases": 66,
     "shardHashes": {
@@ -108,13 +108,13 @@
         "got": "acknowledgment"
       },
       {
-        "caseId": "discount-0003",
-        "expected": "price_inquiry",
-        "got": "acknowledgment"
+        "caseId": "discount-0001",
+        "expected": "needs_human",
+        "got": "price_inquiry"
       },
       {
-        "caseId": "first-contact-0003",
-        "expected": "confirm_slot",
+        "caseId": "discount-0003",
+        "expected": "price_inquiry",
         "got": "acknowledgment"
       },
       {
@@ -274,7 +274,7 @@
   },
   "cost": {
     "classifierCalls": 64,
-    "averageClassifierLatencyMs": 1647,
-    "wallClockMs": 105579
+    "averageClassifierLatencyMs": 1587,
+    "wallClockMs": 101745
   }
 }
