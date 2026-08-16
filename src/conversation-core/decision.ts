@@ -1,6 +1,12 @@
 export type Fact = {
   key: string;
   value: string | number | boolean;
+  subject: null | { type: string; id: string };
+  evidence: {
+    source: "policy" | "read" | "write" | "derived";
+    reference: string;
+  };
+  disclosure: "allowed" | "internal";
 };
 
 export type Option = {

@@ -11,7 +11,7 @@ describe("conflitos entre capabilities", () => {
       conflictsWith: string,
     ): Capability<"work", Record<string, never>> => ({
       id,
-      claim: () => ({ capabilityId: id, confidence: 1, reason: "fixture", conflictsWith: [conflictsWith] }),
+      claim: () => ({ capabilityId: id, confidence: 1, reason: "fixture", attributes: {}, conflictsWith: [conflictsWith] }),
       decide: async () => ({ kind: "close" }),
       execute: async () => {
         executions += 1;

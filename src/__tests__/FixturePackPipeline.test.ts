@@ -38,7 +38,12 @@ describe("fixture-pack no pipeline V2", () => {
       capabilityIds: ["glow-kite-quote"],
       actionResults: [{
         type: "quote_prepared",
-        facts: [{ key: "unit_amount", value: 37 }],
+        facts: [{
+          key: "unit_amount", value: 37,
+          subject: { type: "fixture_item", id: "glow-kite" },
+          evidence: { source: "policy", reference: "quote_unit_amount" },
+          disclosure: "allowed",
+        }],
       }],
       response: { text: "A unidade luminosa custa 37 créditos.", parts: [] },
     });

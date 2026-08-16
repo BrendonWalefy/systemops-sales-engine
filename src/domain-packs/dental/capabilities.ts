@@ -9,7 +9,7 @@ export type DentalPolicy = {
 };
 
 function claim(capabilityId: string, confidence: number): CapabilityClaim {
-  return { capabilityId, confidence, reason: "structured_dental_request" };
+  return { capabilityId, confidence, reason: "structured_dental_request", attributes: {} };
 }
 
 const noExecution = async (): Promise<ActionResult> => ({
@@ -23,7 +23,12 @@ export const dentalCatalogCapability: Capability<DentalRequest, DentalPolicy> = 
     ? claim("dental-catalog", understanding.confidence)
     : null,
   async decide(_claim, context): Promise<Decision> {
-    return { kind: "answer", facts: [{ key: "price_disclosure_enabled", value: context.policy.priceDisclosureEnabled }], nextBestStep: null };
+    return { kind: "answer", facts: [{
+      key: "price_disclosure_enabled", value: context.policy.priceDisclosureEnabled,
+      subject: null,
+      evidence: { source: "policy", reference: "price_disclosure_enabled" },
+      disclosure: "internal",
+    }], nextBestStep: null };
   },
   execute: noExecution,
 };

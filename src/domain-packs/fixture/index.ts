@@ -18,7 +18,7 @@ function claimFor(
   understanding: Understanding<FixtureRequest>,
 ): CapabilityClaim | null {
   return understanding.request === expectedRequest
-    ? { capabilityId, confidence: understanding.confidence, reason: "structured_request_match" }
+    ? { capabilityId, confidence: understanding.confidence, reason: "structured_request_match", attributes: {} }
     : null;
 }
 
@@ -28,7 +28,12 @@ const quoteCapability: Capability<FixtureRequest, FixturePolicy> = {
   async decide(_claim, context): Promise<Decision> {
     return {
       kind: "answer",
-      facts: [{ key: "unit_amount", value: context.policy.quoteUnitAmount }],
+      facts: [{
+        key: "unit_amount", value: context.policy.quoteUnitAmount,
+        subject: { type: "fixture_item", id: "glow-kite" },
+        evidence: { source: "policy", reference: "quote_unit_amount" },
+        disclosure: "allowed",
+      }],
       nextBestStep: null,
     };
   },

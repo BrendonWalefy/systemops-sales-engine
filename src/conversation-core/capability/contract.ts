@@ -11,6 +11,7 @@ export type CapabilityClaim = {
   capabilityId: string;
   confidence: number;
   reason: string;
+  attributes: Readonly<Record<string, string | number | boolean | null>>;
   conflictsWith?: readonly string[];
   dependsOn?: readonly string[];
 };
