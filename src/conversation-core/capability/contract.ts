@@ -1,4 +1,4 @@
-import type { ActionResult, Decision } from "@/conversation-core/decision";
+import type { ActionResult, Decision, OutcomeSchema } from "@/conversation-core/decision";
 import type { Understanding } from "@/conversation-core/understanding/schema";
 
 export type ConversationState = {
@@ -55,7 +55,7 @@ export interface Capability<
   Request extends string = string,
   Policy extends object = Record<string, never>,
   ClaimPayload extends object = Record<never, never>,
-  OutcomeType extends string = string,
+  Schema extends OutcomeSchema = OutcomeSchema,
 > {
   readonly id: string;
   claim(
@@ -69,5 +69,5 @@ export interface Capability<
   execute(
     decision: Decision,
     context: CapabilityContext<Policy>,
-  ): Promise<ActionResult<OutcomeType>>;
+  ): Promise<ActionResult<Schema>>;
 }

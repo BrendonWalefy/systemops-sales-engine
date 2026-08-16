@@ -2,7 +2,18 @@ import { describe, expect, it } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import type { DraftResponse } from "@/conversation-core/composer/contract";
 import { validateDraft } from "@/conversation-core/composer/validator";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import type { ActionResult } from "@/conversation-core/decision";
+
+const outcomeSchema = defineOutcomeSchema({
+  price_ready: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
+  other_information: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
+  options_found: { semanticClass: "options_found", subjectRequirement: "required", evidenceRequirement: "required" },
+  effect_completed: { semanticClass: "effect_completed", subjectRequirement: "required", evidenceRequirement: "write_required" },
+  effect_failed: { semanticClass: "effect_failed", subjectRequirement: "optional", evidenceRequirement: "optional" },
+  operator_required: { semanticClass: "human_action_required", subjectRequirement: "forbidden", evidenceRequirement: "optional" },
+  media_available: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
+} as const);
 
 const readEvidence = { source: "read", reference: "snapshot" } as const;
 const writeEvidence = { source: "write", reference: "effect" } as const;
@@ -12,7 +23,7 @@ const option = { type: "option", id: "option-1" };
 const effect = { type: "effect", id: "effect-1" };
 const media = { type: "media", id: "media-1" };
 
-const results: ActionResult[] = [
+const results: ActionResult<typeof outcomeSchema>[] = [
   {
     type: "price_ready", semanticClass: "information_authorized", origin: { capabilityId: "catalog" },
     subject: serviceA, evidence: [readEvidence],
@@ -47,7 +58,7 @@ const results: ActionResult[] = [
   },
 ];
 
-const plan = buildV2AuthorizedResponsePlan(results);
+const plan = buildV2AuthorizedResponsePlan(outcomeSchema, results);
 const outcome = (type: string) => plan.outcomes.find(({ outcomeType }) => outcomeType === type)!;
 const subjectRef = (id: string) => plan.subjects.find((subject) => subject.id === id)!.ref;
 const factRef = (key: string) => plan.facts.find((fact) => fact.key === key)!.ref;

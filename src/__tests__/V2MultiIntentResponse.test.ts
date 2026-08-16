@@ -2,31 +2,21 @@ import { describe, expect, it } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
 import { renderDeterministicResponse } from "@/conversation-core/composer/deterministic-renderer";
-import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
 import { validateDraft } from "@/conversation-core/composer/validator";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import type { ActionResult, Subject } from "@/conversation-core/decision";
 
+const outcomeSchema = defineOutcomeSchema({
+  price_ready: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
+  options_found: { semanticClass: "options_found", subjectRequirement: "required", evidenceRequirement: "required" },
+} as const);
+
 const evidence = { source: "read", reference: "snapshot" } as const;
-const language = createResponseLanguageContribution({
-  locale: "pt-BR",
-  factTerms: [
-    { factKey: "amount", label: "Valor", format: "currency_minor_brl" },
-    { factKey: "option_label", label: "Horário", format: "text" },
-  ],
-  outcomeTerms: [
-    { outcomeType: "price_ready", label: "cotação", gender: "feminine" },
-    { outcomeType: "options_found", label: "horários", gender: "masculine" },
-  ],
-  subjectTerms: [
-    { subjectType: "resource", label: "serviço" },
-    { subjectType: "option", label: "horário" },
-  ],
-});
 const style = { tone: "neutral", verbosity: "standard", greeting: "omit", emoji: "none" } as const;
 
 function multiIntentPlan(priceSubject: Subject, optionsSubject: Subject) {
   const option = { type: "option", id: "option-1" };
-  const results: ActionResult[] = [
+  const results: ActionResult<typeof outcomeSchema>[] = [
     {
       type: "price_ready", semanticClass: "information_authorized", origin: { capabilityId: "catalog" },
       subject: priceSubject, evidence: [evidence],
@@ -38,7 +28,7 @@ function multiIntentPlan(priceSubject: Subject, optionsSubject: Subject) {
       options: [{ id: "option-1", subject: option, facts: [{ key: "option_label", value: "15:00", subject: option, evidence, disclosure: "allowed" }] }],
     },
   ];
-  return buildV2AuthorizedResponsePlan(results);
+  return buildV2AuthorizedResponsePlan(outcomeSchema, results);
 }
 
 describe("resposta multi-intent V2", () => {
@@ -56,8 +46,8 @@ describe("resposta multi-intent V2", () => {
     }
 
     expect(priceAct.subjectRef === optionsAct.subjectRef).toBe(sameSubject);
-    expect(renderDeterministicResponse({ draft: validation.draft, language, style }).text)
-      .toBe("Valor: R$ 1.200,00. Tenho estas opções: 15:00.");
+    expect(renderDeterministicResponse({ draft: validation.draft }).text)
+      .toBe("Informação: 120000. Tenho estas opções: 15:00.");
 
     const crossLinked = validateDraft(plan, { acts: [{
       ...optionsAct,

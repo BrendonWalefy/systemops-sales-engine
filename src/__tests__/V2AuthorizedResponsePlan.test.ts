@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import type { ActionResult, Fact } from "@/conversation-core/decision";
+
+const outcomeSchema = defineOutcomeSchema({
+  quote_ready: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
+  windows_found: { semanticClass: "options_found", subjectRequirement: "required", evidenceRequirement: "required" },
+  catalog_resolved: { semanticClass: "information_authorized", subjectRequirement: "required", evidenceRequirement: "required" },
+  unsafe: { semanticClass: "information_authorized", subjectRequirement: "optional", evidenceRequirement: "optional" },
+  unsafe_options: { semanticClass: "effect_completed", subjectRequirement: "required", evidenceRequirement: "optional" },
+} as const);
 
 function fact(input: {
   key: string;
@@ -23,7 +32,7 @@ function fact(input: {
 
 describe("plano autorizado V2", () => {
   it("preserva outcomes, subjects, evidence e facts como grafo referencial", () => {
-    const results: ActionResult[] = [
+    const results: ActionResult<typeof outcomeSchema>[] = [
       {
         type: "quote_ready",
         semanticClass: "information_authorized",
@@ -47,7 +56,7 @@ describe("plano autorizado V2", () => {
       },
     ];
 
-    const plan = buildV2AuthorizedResponsePlan(results);
+    const plan = buildV2AuthorizedResponsePlan(outcomeSchema, results);
 
     expect(plan.outcomes).toEqual([
       {
@@ -71,7 +80,7 @@ describe("plano autorizado V2", () => {
   });
 
   it("preserva disclosure interno para o validator bloquear a referência", () => {
-    const result: ActionResult = {
+    const result: ActionResult<typeof outcomeSchema> = {
       type: "catalog_resolved",
       semanticClass: "information_authorized",
       origin: { capabilityId: "catalog" },
@@ -83,13 +92,13 @@ describe("plano autorizado V2", () => {
       })],
     };
 
-    expect(buildV2AuthorizedResponsePlan([result]).facts[0]).toEqual(expect.objectContaining({
+    expect(buildV2AuthorizedResponsePlan(outcomeSchema, [result]).facts[0]).toEqual(expect.objectContaining({
       ref: "fact-0", key: "match_score", disclosure: "internal", subjectRef: null,
     }));
   });
 
   it("recusa fact divulgável sem subject", () => {
-    const result: ActionResult = {
+    const result: ActionResult<typeof outcomeSchema> = {
       type: "unsafe",
       semanticClass: "information_authorized",
       origin: { capabilityId: "unsafe" },
@@ -97,7 +106,7 @@ describe("plano autorizado V2", () => {
       evidence: [],
       facts: [fact({ key: "amount", value: 1200, subjectType: null, subjectId: null, evidenceRef: "catalog" })],
     };
-    expect(() => buildV2AuthorizedResponsePlan([result])).toThrow(/subject/);
+    expect(() => buildV2AuthorizedResponsePlan(outcomeSchema, [result])).toThrow(/subject/);
   });
 
   it("recusa options fora de options_found", () => {
@@ -109,7 +118,7 @@ describe("plano autorizado V2", () => {
       evidence: [],
       facts: [],
       options: [{ id: "option-1", subject: { type: "option", id: "option-1" }, facts: [] }],
-    } as unknown as ActionResult;
-    expect(() => buildV2AuthorizedResponsePlan([result])).toThrow(/options_found/);
+    } as unknown as ActionResult<typeof outcomeSchema>;
+    expect(() => buildV2AuthorizedResponsePlan(outcomeSchema, [result])).toThrow(/options/);
   });
 });

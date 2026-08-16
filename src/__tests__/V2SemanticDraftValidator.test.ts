@@ -39,6 +39,94 @@ function codes(response: DraftResponse): string[] {
 }
 
 describe("validator semântico V2", () => {
+  it("valida e registra exatamente uma canonicalização do draft não confiável", () => {
+    let reads = 0;
+    const shiftingDraft = Object.defineProperty({}, "acts", {
+      enumerable: true,
+      get(): readonly DraftSpeechAct[] {
+        reads += 1;
+        if (reads <= 2) {
+          return [{ kind: "communicate_failure", outcomeRef: "failed" }];
+        }
+        return [{
+          kind: "confirm_effect",
+          outcomeRef: "completed",
+          subjectRef: "subject-a",
+          factRefs: ["fact-a"],
+        }];
+      },
+    }) as DraftResponse;
+
+    const result = validateDraft(plan, shiftingDraft);
+
+    expect(result.valid).toBe(true);
+    if (!result.valid) throw new Error("expected the failure draft to validate");
+    expect(result.draft.acts).toEqual([
+      { kind: "communicate_failure", outcomeRef: "failed" },
+    ]);
+    expect(reads).toBe(1);
+    expect(Object.isFrozen(result.draft)).toBe(true);
+    expect(Object.isFrozen(result.draft.acts)).toBe(true);
+    expect(Object.isFrozen(result.draft.acts[0])).toBe(true);
+  });
+
+  it("não preserva aliases mutáveis depois da validação", () => {
+    const sourceAct: DraftSpeechAct = {
+      kind: "communicate_failure",
+      outcomeRef: "failed",
+    };
+    const source: DraftResponse = { acts: [sourceAct] };
+
+    const result = validateDraft(plan, source);
+    expect(result.valid).toBe(true);
+    if (!result.valid) throw new Error("expected draft to validate");
+
+    Object.assign(sourceAct, {
+      kind: "confirm_effect",
+      outcomeRef: "completed",
+      subjectRef: "subject-a",
+      factRefs: ["fact-a"],
+    });
+
+    expect(result.draft.acts).toEqual([
+      { kind: "communicate_failure", outcomeRef: "failed" },
+    ]);
+  });
+
+  it("materializa accessors e proxies uma única vez e falha fechado quando lançam", () => {
+    let kindReads = 0;
+    const shiftingAct = Object.defineProperty({ outcomeRef: "failed" }, "kind", {
+      enumerable: true,
+      get() {
+        kindReads += 1;
+        return kindReads === 1 ? "communicate_failure" : "confirm_effect";
+      },
+    });
+    let actsReads = 0;
+    const proxyDraft = new Proxy({ acts: [shiftingAct] }, {
+      get(target, property, receiver) {
+        if (property === "acts") actsReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    const result = validateDraft(plan, proxyDraft);
+    expect(result.valid).toBe(true);
+    if (!result.valid) throw new Error("expected canonical draft to validate");
+    expect(result.draft.acts).toEqual([
+      { kind: "communicate_failure", outcomeRef: "failed" },
+    ]);
+    expect({ actsReads, kindReads }).toEqual({ actsReads: 1, kindReads: 1 });
+
+    const throwingDraft = Object.defineProperty({}, "acts", {
+      get() { throw new Error("hostile accessor"); },
+    });
+    expect(validateDraft(plan, throwingDraft)).toEqual({
+      valid: false,
+      violations: [{ actIndex: -1, code: "invalid_draft_shape" }],
+    });
+  });
+
   it("rejeita refs inexistentes de outcome, fact, subject e option", () => {
     expect(codes(draft({ kind: "inform_fact", outcomeRef: "missing", factRef: "fact-a", subjectRef: "subject-a" }))).toContain("unknown_outcome_ref");
     expect(codes(draft({ kind: "inform_fact", outcomeRef: "information-a", factRef: "missing", subjectRef: "subject-a" }))).toContain("unknown_fact_ref");

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
-import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 import { createDentalPack, type DentalPolicy } from "@/domain-packs/dental";
@@ -49,10 +49,10 @@ describe("pipeline operacional dental", () => {
         ambiguity: null,
       }),
       capabilities: pack.capabilities,
+      outcomeSchema: pack.outcomeSchema,
       buildPlan: buildV2AuthorizedResponsePlan,
       response: {
         style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
-        language: createResponseLanguageContribution({ locale: "pt-BR", factTerms: [], outcomeTerms: [], subjectTerms: [] }),
         composer: new DeterministicResponseComposer(),
       },
     });
@@ -63,7 +63,16 @@ describe("pipeline operacional dental", () => {
 
   it("dependency ausente bloqueia execute", async () => {
     let writes = 0;
-    const dependent: Capability<"work", Record<string, never>> = {
+    const outcomeSchema = defineOutcomeSchema({
+      written: {
+        semanticClass: "effect_completed",
+        subjectRequirement: "required",
+        evidenceRequirement: "optional",
+      },
+    } as const);
+    const dependent: Capability<
+      "work", Record<string, never>, Record<never, never>, typeof outcomeSchema
+    > = {
       id: "dependent",
       claim: () => ({
         capabilityId: "dependent",
@@ -97,10 +106,10 @@ describe("pipeline operacional dental", () => {
         ambiguity: null,
       }),
       capabilities: [dependent],
+      outcomeSchema,
       buildPlan: buildV2AuthorizedResponsePlan,
       response: {
         style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
-        language: createResponseLanguageContribution({ locale: "pt-BR", factTerms: [], outcomeTerms: [], subjectTerms: [] }),
         composer: new DeterministicResponseComposer(),
       },
     });

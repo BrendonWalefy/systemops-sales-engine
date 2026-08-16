@@ -2,6 +2,7 @@ import type {
   Capability,
   CapabilityClaim,
 } from "@/conversation-core/capability/contract";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import type { ActionResult, Decision } from "@/conversation-core/decision";
 import {
   UNDERSTANDING_VERSION,
@@ -14,7 +15,18 @@ type FixturePolicy = { quoteUnitAmount: number };
 type FixtureClaimPayload =
   | { kind: "quote"; request: "quote_glow_kite" }
   | { kind: "reservation"; request: "reserve_wind_window" };
-type FixtureOutcomeType = "quote_prepared" | "wind_window_reserved";
+export const FIXTURE_OUTCOME_SCHEMA = defineOutcomeSchema({
+  quote_prepared: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  wind_window_reserved: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+} as const);
 
 function claimFor(
   capabilityId: string,
@@ -38,7 +50,7 @@ const quoteCapability: Capability<
   FixtureRequest,
   FixturePolicy,
   FixtureClaimPayload,
-  FixtureOutcomeType
+  typeof FIXTURE_OUTCOME_SCHEMA
 > = {
   id: "glow-kite-quote",
   claim: (understanding) =>
@@ -58,14 +70,16 @@ const quoteCapability: Capability<
       nextBestStep: null,
     };
   },
-  async execute(decision): Promise<ActionResult<FixtureOutcomeType>> {
+  async execute(decision): Promise<ActionResult<typeof FIXTURE_OUTCOME_SCHEMA>> {
     const facts = decision.kind === "answer" ? decision.facts : [];
+    const firstFact = facts[0];
+    if (!firstFact?.subject) throw new Error("quote_prepared requires a subject");
     return {
       type: "quote_prepared",
       semanticClass: "information_authorized",
       origin: { capabilityId: "glow-kite-quote" },
-      subject: facts[0]?.subject ?? null,
-      evidence: facts.map(({ evidence }) => evidence),
+      subject: firstFact.subject,
+      evidence: [firstFact.evidence],
       facts,
     };
   },
@@ -75,7 +89,7 @@ const reservationCapability: Capability<
   FixtureRequest,
   FixturePolicy,
   FixtureClaimPayload,
-  FixtureOutcomeType
+  typeof FIXTURE_OUTCOME_SCHEMA
 > = {
   id: "wind-window-reservation",
   claim: (understanding) =>
@@ -87,7 +101,7 @@ const reservationCapability: Capability<
       nextBestStep: null,
     };
   },
-  async execute(): Promise<ActionResult<FixtureOutcomeType>> {
+  async execute(): Promise<ActionResult<typeof FIXTURE_OUTCOME_SCHEMA>> {
     return {
       type: "wind_window_reserved",
       semanticClass: "effect_completed",
@@ -103,9 +117,10 @@ export const fixturePack: DomainPack<
   FixtureRequest,
   FixturePolicy,
   FixtureClaimPayload,
-  FixtureOutcomeType
+  typeof FIXTURE_OUTCOME_SCHEMA
 > = {
   id: "glow-kite-library",
+  outcomeSchema: FIXTURE_OUTCOME_SCHEMA,
   capabilities: [quoteCapability, reservationCapability],
   journeys: [
     { id: "quote", capabilityIds: ["glow-kite-quote"] },

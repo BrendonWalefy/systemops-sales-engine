@@ -6,7 +6,9 @@ import type {
   ActionResult,
   Decision,
   Fact,
+  OutcomeTypeOf,
 } from "@/conversation-core/decision";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import type { Understanding } from "@/conversation-core/understanding/schema";
 import type {
   DentalCatalogReadPort,
@@ -61,16 +63,55 @@ export type DentalClaimPayload =
   | DentalSchedulingClaimPayload
   | DentalEscalationClaimPayload;
 
-export type DentalOutcomeType =
-  | "catalog_answered"
-  | "slots_found"
-  | "appointment_created"
-  | "appointment_confirmed"
-  | "appointment_create_failed"
-  | "appointment_confirmation_failed"
-  | "scheduling_failed"
-  | "escalation_required"
-  | "clarification_required";
+export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
+  catalog_answered: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  slots_found: {
+    semanticClass: "options_found",
+    subjectRequirement: "optional",
+    evidenceRequirement: "required",
+  },
+  appointment_created: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_confirmed: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_create_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "write_required",
+  },
+  appointment_confirmation_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "write_required",
+  },
+  scheduling_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
+  },
+  escalation_required: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+  clarification_required: {
+    semanticClass: "clarification_required",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+} as const);
+
+export type DentalOutcomeType = OutcomeTypeOf<typeof DENTAL_OUTCOME_SCHEMA>;
 
 function stringEntity(
   understanding: Understanding<DentalRequest>,
@@ -107,7 +148,7 @@ export function createDentalCatalogCapability(
   DentalRequest,
   DentalPolicy,
   DentalClaimPayload,
-  DentalOutcomeType
+  typeof DENTAL_OUTCOME_SCHEMA
 > {
   return {
     id: "dental-catalog",
@@ -180,26 +221,40 @@ export function createDentalCatalogCapability(
         nextBestStep: null,
       };
     },
-    async execute(decision): Promise<ActionResult<DentalOutcomeType>> {
+    async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
       if (decision.kind === "answer") {
+        const firstFact = decision.facts[0];
+        if (!firstFact?.subject) {
+          throw new Error("catalog_answered requires a subject");
+        }
+        const [firstEvidence, ...remainingEvidence] = decision.facts.map(
+          ({ evidence }) => evidence,
+        );
+        if (!firstEvidence) {
+          throw new Error("catalog_answered requires evidence");
+        }
         return {
           type: "catalog_answered",
           semanticClass: "information_authorized",
           origin: { capabilityId: "dental-catalog" },
-          subject: decision.facts[0]?.subject ?? null,
-          evidence: decision.facts.map(({ evidence }) => evidence),
+          subject: firstFact.subject,
+          evidence: [firstEvidence, ...remainingEvidence],
           facts: decision.facts,
         };
       }
+      if (decision.kind === "escalate") {
+        return {
+          type: "escalation_required",
+          semanticClass: "human_action_required",
+          origin: { capabilityId: "dental-catalog" },
+          subject: null,
+          evidence: [],
+          facts: [],
+        };
+      }
       return {
-        type:
-          decision.kind === "escalate"
-            ? "escalation_required"
-            : "clarification_required",
-        semanticClass:
-          decision.kind === "escalate"
-            ? "human_action_required"
-            : "clarification_required",
+        type: "clarification_required",
+        semanticClass: "clarification_required",
         origin: { capabilityId: "dental-catalog" },
         subject: null,
         evidence: [],
@@ -222,7 +277,7 @@ export function createDentalSchedulingCapability(
   DentalRequest,
   DentalPolicy,
   DentalClaimPayload,
-  DentalOutcomeType
+  typeof DENTAL_OUTCOME_SCHEMA
 > {
   return {
     id: "dental-scheduling",
@@ -317,22 +372,42 @@ export function createDentalSchedulingCapability(
           }
         : { kind: "ask", questionId: "appointment-not-found" };
     },
-    async execute(decision): Promise<ActionResult<DentalOutcomeType>> {
+    async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
       if (decision.kind === "offer") {
+        const [firstOption, ...remainingOptions] = decision.options;
+        if (!firstOption) {
+          return {
+            type: "clarification_required",
+            semanticClass: "clarification_required",
+            origin: { capabilityId: "dental-scheduling" },
+            subject: null,
+            evidence: [],
+            facts: [],
+          };
+        }
+        const toResultOption = (option: typeof firstOption) => {
+          const subject = option.facts[0]?.subject;
+          if (!subject) throw new Error(`option ${option.id} requires a subject`);
+          return { id: option.id, subject, facts: option.facts };
+        };
+        const evidence = decision.options.flatMap(({ facts }) =>
+          facts.map((fact) => fact.evidence),
+        );
+        const [firstEvidence, ...remainingEvidence] = evidence;
+        if (!firstEvidence) {
+          throw new Error("slots_found requires evidence");
+        }
         return {
           type: "slots_found",
           semanticClass: "options_found",
           origin: { capabilityId: "dental-scheduling" },
           subject: null,
-          evidence: decision.options.flatMap(({ facts }) =>
-            facts.map(({ evidence }) => evidence),
-          ),
+          evidence: [firstEvidence, ...remainingEvidence],
           facts: [],
-          options: decision.options.map((option) => {
-            const subject = option.facts[0]?.subject;
-            if (!subject) throw new Error(`option ${option.id} requires a subject`);
-            return { id: option.id, subject, facts: option.facts };
-          }),
+          options: [
+            toResultOption(firstOption),
+            ...remainingOptions.map(toResultOption),
+          ],
         };
       }
       if (decision.kind !== "execute") {
@@ -418,7 +493,14 @@ function slotFact(id: string, label: string, evidenceRef: string): Fact {
   };
 }
 
-function appointmentFact(id: string, label: string, evidenceRef: string): Fact {
+function appointmentFact(
+  id: string,
+  label: string,
+  evidenceRef: string,
+): Fact & {
+  subject: NonNullable<Fact["subject"]>;
+  evidence: Fact["evidence"] & { source: "write" };
+} {
   return {
     key: "appointment_label",
     value: label,
@@ -432,7 +514,7 @@ export function createDentalEscalationCapability(): Capability<
   DentalRequest,
   DentalPolicy,
   DentalClaimPayload,
-  DentalOutcomeType
+  typeof DENTAL_OUTCOME_SCHEMA
 > {
   return {
     id: "dental-escalation",
@@ -452,7 +534,7 @@ export function createDentalEscalationCapability(): Capability<
     async decide(): Promise<Decision> {
       return { kind: "escalate", reason: "structured_safety_signal" };
     },
-    async execute(): Promise<ActionResult<DentalOutcomeType>> {
+    async execute(): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
       return {
         type: "escalation_required",
         semanticClass: "human_action_required",

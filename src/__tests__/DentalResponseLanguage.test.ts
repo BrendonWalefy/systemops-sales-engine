@@ -4,16 +4,16 @@ import { DeterministicResponseComposer } from "@/conversation-core/composer/dete
 import { renderDeterministicResponse } from "@/conversation-core/composer/deterministic-renderer";
 import { validateDraft } from "@/conversation-core/composer/validator";
 import type { ActionResult } from "@/conversation-core/decision";
-import { DENTAL_RESPONSE_LANGUAGE } from "@/domain-packs/dental/response-language";
+import { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
 
-describe("contribuição declarativa de linguagem dental", () => {
-  it("verbaliza resultados autorizados sem adicionar regra operacional", async () => {
+describe("renderização determinística de resultados dentais", () => {
+  it("verbaliza somente classes e valores autorizados sem léxico externo", async () => {
     const service = { type: "service", id: "service-1" };
     const slot = { type: "slot", id: "slot-1" };
     const appointment = { type: "appointment", id: "appointment-1" };
     const readEvidence = { source: "read", reference: "catalog-1" } as const;
     const writeEvidence = { source: "write", reference: "booking-1" } as const;
-    const results: ActionResult[] = [
+    const results: ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[] = [
       {
         type: "catalog_answered", semanticClass: "information_authorized",
         origin: { capabilityId: "dental-catalog" }, subject: service, evidence: [readEvidence],
@@ -38,7 +38,7 @@ describe("contribuição declarativa de linguagem dental", () => {
         origin: { capabilityId: "dental-escalation" }, subject: null, evidence: [], facts: [],
       },
     ];
-    const plan = buildV2AuthorizedResponsePlan(results);
+    const plan = buildV2AuthorizedResponsePlan(DENTAL_OUTCOME_SCHEMA, results);
     const draft = await new DeterministicResponseComposer().compose({
       plan,
       style: { tone: "warm", verbosity: "standard", greeting: "omit", emoji: "none" },
@@ -48,12 +48,10 @@ describe("contribuição declarativa de linguagem dental", () => {
 
     expect(renderDeterministicResponse({
       draft: validation.draft,
-      language: DENTAL_RESPONSE_LANGUAGE,
-      style: { tone: "warm", verbosity: "standard", greeting: "omit", emoji: "none" },
     }).text).toBe(
-      "Valor: R$ 290,00. Tenho estas opções: quarta às 15h. " +
-      "Agendamento concluído. Horário: quarta às 15h. " +
-      "Não foi possível concluir agendamento. É necessário atendimento humano.",
+      "Informação: 29000. Tenho estas opções: quarta às 15h. " +
+      "A ação foi concluída. Informação: quarta às 15h. " +
+      "Não foi possível concluir a ação. É necessário atendimento humano.",
     );
   });
 });

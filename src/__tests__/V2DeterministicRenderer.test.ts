@@ -4,10 +4,6 @@ import type { DraftSpeechAct } from "@/conversation-core/composer/contract";
 import {
   renderDeterministicResponse,
 } from "@/conversation-core/composer/deterministic-renderer";
-import {
-  createResponseLanguageContribution,
-  type ValidatedResponseLanguageContribution,
-} from "@/conversation-core/composer/language";
 import { validateDraft, type ValidatedDraftResponse } from "@/conversation-core/composer/validator";
 
 const plan: V2AuthorizedResponsePlan = {
@@ -32,43 +28,25 @@ const plan: V2AuthorizedResponsePlan = {
   ],
 };
 
-const language = createResponseLanguageContribution({
-  locale: "pt-BR",
-  factTerms: [
-    { factKey: "amount", label: "Valor", format: "currency_minor_brl" },
-    { factKey: "window_label", label: "Horário", format: "text" },
-  ],
-  outcomeTerms: [
-    { outcomeType: "quote-ready", label: "cotação", gender: "feminine" },
-    { outcomeType: "windows-found", label: "horários", gender: "masculine" },
-    { outcomeType: "reservation-completed", label: "reserva", gender: "feminine" },
-    { outcomeType: "reservation-failed", label: "reserva", gender: "feminine" },
-    { outcomeType: "operator-required", label: "atendimento humano", gender: "masculine" },
-    { outcomeType: "details-required", label: "os dados", gender: "masculine" },
-  ],
-  subjectTerms: [
-    { subjectType: "item", label: "item" },
-    { subjectType: "window", label: "horário" },
-  ],
-});
-
-const style = { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" } as const;
-
 function render(act: DraftSpeechAct): string {
   const validation = validateDraft(plan, { acts: [act] });
   if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
-  return renderDeterministicResponse({ draft: validation.draft, language, style }).text;
+  return renderDeterministicResponse({ draft: validation.draft }).text;
 }
 
 describe("renderer determinístico V2", () => {
   it("aceita somente draft validado no contrato", () => {
     expectTypeOf<Parameters<typeof renderDeterministicResponse>[0]["draft"]>()
       .toEqualTypeOf<ValidatedDraftResponse>();
+    expectTypeOf<Parameters<typeof renderDeterministicResponse>[0]>()
+      .not.toHaveProperty("language");
+    expectTypeOf<Parameters<typeof renderDeterministicResponse>[0]>()
+      .not.toHaveProperty("style");
   });
 
   it("verbaliza fact autorizado sem ampliar o valor", () => {
     expect(render({ kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" }))
-      .toBe("Valor: R$ 1.200,00.");
+      .toBe("Informação: 120000.");
   });
 
   it("oferece opções sem alegar conclusão", () => {
@@ -79,12 +57,12 @@ describe("renderer determinístico V2", () => {
 
   it("confirma somente effect_completed", () => {
     expect(render({ kind: "confirm_effect", outcomeRef: "completed", subjectRef: "subject-a", factRefs: ["fact-a"] }))
-      .toBe("Reserva concluída. Valor: R$ 1.200,00.");
+      .toBe("A ação foi concluída. Informação: 120000.");
   });
 
   it("comunica falha sem texto de sucesso", () => {
     const text = render({ kind: "communicate_failure", outcomeRef: "failed" });
-    expect(text).toBe("Não foi possível concluir reserva.");
+    expect(text).toBe("Não foi possível concluir a ação.");
     expect(text).not.toMatch(/confirmad|concluíd/i);
   });
 
@@ -114,48 +92,25 @@ describe("renderer determinístico V2", () => {
       factRefs: ["fact-a"],
     });
 
-    expect(renderDeterministicResponse({ draft: validation.draft, language, style }).text)
-      .toBe("Valor: R$ 1.200,00.");
+    expect(renderDeterministicResponse({ draft: validation.draft }).text)
+      .toBe("Informação: 120000.");
   });
 
-  it("isola a linguagem validada de mutações no objeto de origem", () => {
-    const contribution = {
-      locale: "pt-BR" as const,
-      factTerms: [{ factKey: "amount", label: "Valor", format: "currency_minor_brl" as const }],
-      outcomeTerms: [{ outcomeType: "quote-ready", label: "cotação", gender: "feminine" as const }],
-      subjectTerms: [{ subjectType: "item", label: "item" }],
-    };
-    const isolatedLanguage = createResponseLanguageContribution(contribution);
-    contribution.factTerms[0]!.label = "Preço promocional";
-
+  it("ignora material lexical hostil mesmo quando chega por cast em runtime", () => {
     const validation = validateDraft(plan, {
       acts: [{ kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" }],
     });
     if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
-
-    expect(renderDeterministicResponse({
+    const hostileInput = {
       draft: validation.draft,
-      language: isolatedLanguage,
-      style,
-    }).text).toBe("Valor: R$ 1.200,00.");
-  });
+      language: {
+        factTerms: [{ factKey: "amount", label: "Desconto garantido" }],
+      },
+      style: { greeting: "include", emoji: "light" },
+    } as unknown as Parameters<typeof renderDeterministicResponse>[0];
 
-  it("recusa linguagem que não passou pelo factory de validação", () => {
-    const validation = validateDraft(plan, {
-      acts: [{ kind: "inform_fact", outcomeRef: "info", factRef: "fact-a", subjectRef: "subject-a" }],
-    });
-    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
-    const forgedLanguage = {
-      locale: "pt-BR",
-      factTerms: [{ factKey: "amount", label: "Desconto garantido", format: "currency_minor_brl" }],
-      outcomeTerms: [],
-      subjectTerms: [],
-    } as unknown as ValidatedResponseLanguageContribution;
-
-    expect(() => renderDeterministicResponse({
-      draft: validation.draft,
-      language: forgedLanguage,
-      style,
-    })).toThrow(/language contribution was not validated/);
+    const text = renderDeterministicResponse(hostileInput).text;
+    expect(text).not.toMatch(/desconto|garantid/i);
+    expect(text).toBe("Informação: 120000.");
   });
 });

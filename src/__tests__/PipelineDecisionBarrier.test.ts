@@ -2,14 +2,23 @@ import { describe, expect, it } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
-import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 
 describe("barreira entre decisão e efeitos", () => {
   it("não executa a primeira capability quando uma decisão posterior falha", async () => {
     let writes = 0;
-    const capability = (id: string, fails: boolean): Capability<"work"> => ({
+    const outcomeSchema = defineOutcomeSchema({
+      work_completed: {
+        semanticClass: "effect_completed",
+        subjectRequirement: "required",
+        evidenceRequirement: "optional",
+      },
+    } as const);
+    const capability = (id: string, fails: boolean): Capability<
+      "work", Record<string, never>, Record<never, never>, typeof outcomeSchema
+    > => ({
       id,
       claim: () => ({
         capabilityId: id,
@@ -24,7 +33,7 @@ describe("barreira entre decisão e efeitos", () => {
       execute: async () => {
         writes += 1;
         return {
-          type: `${id}_done`, semanticClass: "effect_completed",
+          type: "work_completed", semanticClass: "effect_completed",
           origin: { capabilityId: id }, subject: { type: "work", id }, evidence: [], facts: [],
         };
       },
@@ -52,10 +61,10 @@ describe("barreira entre decisão e efeitos", () => {
           ambiguity: null,
         }),
         capabilities: [capability("first", false), capability("second", true)],
+        outcomeSchema,
         buildPlan: buildV2AuthorizedResponsePlan,
         response: {
           style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
-          language: createResponseLanguageContribution({ locale: "pt-BR", factTerms: [], outcomeTerms: [], subjectTerms: [] }),
           composer: new DeterministicResponseComposer(),
         },
       }),

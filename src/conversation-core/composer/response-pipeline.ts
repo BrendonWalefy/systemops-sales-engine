@@ -9,7 +9,6 @@ import type {
 } from "@/conversation-core/composer/contract";
 import { buildSafeFallback } from "@/conversation-core/composer/fallback";
 import { renderDeterministicResponse } from "@/conversation-core/composer/deterministic-renderer";
-import type { ValidatedResponseLanguageContribution } from "@/conversation-core/composer/language";
 import { repairDraft } from "@/conversation-core/composer/repair";
 import {
   validateDraft,
@@ -32,7 +31,6 @@ export async function runV2ResponsePipeline(input: {
   plan: V2AuthorizedResponsePlan;
   style: ComposerStyle;
   composer: ResponseComposerPort;
-  language: ValidatedResponseLanguageContribution;
 }): Promise<V2ResponsePipelineResult> {
   const plan = snapshotV2AuthorizedResponsePlan(input.plan);
   const style = Object.freeze({ ...input.style });
@@ -48,8 +46,6 @@ export async function runV2ResponsePipeline(input: {
         source,
         response: renderDeterministicResponse({
           draft,
-          language: input.language,
-          style,
         }),
       };
     } catch {

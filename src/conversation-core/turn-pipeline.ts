@@ -11,13 +11,16 @@ import type {
   CoreResponse,
   ResponseComposerPort,
 } from "@/conversation-core/composer/contract";
-import type { ValidatedResponseLanguageContribution } from "@/conversation-core/composer/language";
 import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
-import type { ActionResult } from "@/conversation-core/decision";
+import type {
+  ActionResult,
+  OutcomeSchema,
+  OutcomeTypeOf,
+} from "@/conversation-core/decision";
 import { evaluateTurnGate, type TurnGateInput } from "@/conversation-core/gate";
 import type { Understanding } from "@/conversation-core/understanding/schema";
 
-export type TurnPipelineResult<OutcomeType extends string = string> =
+export type TurnPipelineResult<Schema extends OutcomeSchema = OutcomeSchema> =
   | { status: "suppressed"; reason: string }
   | { status: "needs_clarification" }
   | {
@@ -25,11 +28,11 @@ export type TurnPipelineResult<OutcomeType extends string = string> =
       reason: "capability_conflict";
       capabilityIds: readonly string[];
     }
-  | { status: "rejected"; actionResults: readonly ActionResult<OutcomeType>[] }
+  | { status: "rejected"; actionResults: readonly ActionResult<Schema>[] }
   | {
       status: "delivered";
       capabilityIds: readonly string[];
-      actionResults: readonly ActionResult<OutcomeType>[];
+      actionResults: readonly ActionResult<Schema>[];
       response: CoreResponse;
     };
 
@@ -37,7 +40,7 @@ export async function runTurnPipeline<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
-  OutcomeType extends string,
+  Schema extends OutcomeSchema,
 >(input: {
   gateInput: TurnGateInput;
   state: ConversationState;
@@ -48,17 +51,18 @@ export async function runTurnPipeline<
     Request,
     Policy,
     ClaimPayload,
-    OutcomeType
+    Schema
   >[];
+  outcomeSchema: Schema;
   buildPlan(
-    actionResults: readonly ActionResult<OutcomeType>[],
-  ): V2AuthorizedResponsePlan<OutcomeType>;
+    schema: Schema,
+    actionResults: readonly ActionResult<Schema>[],
+  ): V2AuthorizedResponsePlan<OutcomeTypeOf<Schema>>;
   response: {
     style: ComposerStyle;
-    language: ValidatedResponseLanguageContribution;
     composer: ResponseComposerPort;
   };
-}): Promise<TurnPipelineResult<OutcomeType>> {
+}): Promise<TurnPipelineResult<Schema>> {
   const gate = evaluateTurnGate(input.gateInput);
   if (gate.outcome === "suppress")
     return { status: "suppressed", reason: gate.reason };
@@ -95,16 +99,15 @@ export async function runTurnPipeline<
     });
   }
 
-  const actionResults: ActionResult<OutcomeType>[] = [];
+  const actionResults: ActionResult<Schema>[] = [];
   for (const item of decided) {
     actionResults.push(await item.capability.execute(item.decision, context));
   }
 
-  const plan = input.buildPlan(actionResults);
+  const plan = input.buildPlan(input.outcomeSchema, actionResults);
   const responseResult = await runV2ResponsePipeline({
     plan,
     style: input.response.style,
-    language: input.response.language,
     composer: input.response.composer,
   });
   if (responseResult.status === "no_safe_response")

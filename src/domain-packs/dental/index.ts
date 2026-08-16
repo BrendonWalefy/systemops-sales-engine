@@ -3,6 +3,7 @@ import {
   createDentalCatalogCapability,
   createDentalEscalationCapability,
   createDentalSchedulingCapability,
+  DENTAL_OUTCOME_SCHEMA,
   type DentalClaimPayload,
   type DentalOutcomeType,
   type DentalPolicy,
@@ -14,7 +15,6 @@ import type {
 } from "@/domain-packs/dental/ports";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
-export { DENTAL_RESPONSE_LANGUAGE } from "@/domain-packs/dental/response-language";
 
 export type {
   DentalClaimPayload,
@@ -31,10 +31,11 @@ export function createDentalPack(ports: {
   DentalRequest,
   DentalPolicy,
   DentalClaimPayload,
-  DentalOutcomeType
+  typeof DENTAL_OUTCOME_SCHEMA
 > {
   return {
     id: "dental",
+    outcomeSchema: DENTAL_OUTCOME_SCHEMA,
     capabilities: [
       createDentalCatalogCapability(ports.catalogRead),
       createDentalSchedulingCapability(

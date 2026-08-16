@@ -17,6 +17,7 @@ export type ValidatedDraftResponse = DraftResponse & {
 };
 
 export type DraftViolationCode =
+  | "invalid_draft_shape"
   | "unknown_outcome_ref"
   | "unknown_fact_ref"
   | "unknown_subject_ref"
@@ -40,17 +41,90 @@ export type DraftValidationResult =
 
 const authorizedPlans = new WeakMap<ValidatedDraftResponse, V2AuthorizedResponsePlan>();
 
-function snapshotDraft(draft: DraftResponse): ValidatedDraftResponse {
-  const acts = draft.acts.map((act): DraftSpeechAct => {
-    if (act.kind === "offer_options") {
-      return Object.freeze({ ...act, optionRefs: Object.freeze([...act.optionRefs]) });
-    }
-    if (act.kind === "confirm_effect") {
-      return Object.freeze({ ...act, factRefs: Object.freeze([...act.factRefs]) });
-    }
-    return Object.freeze({ ...act });
-  });
-  return Object.freeze({ acts: Object.freeze(acts) }) as ValidatedDraftResponse;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function copyStringArray(value: unknown): readonly string[] | null {
+  if (!Array.isArray(value)) return null;
+  const length = value.length;
+  const copied: string[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const item: unknown = value[index];
+    if (typeof item !== "string") return null;
+    copied.push(item);
+  }
+  return Object.freeze(copied);
+}
+
+function copyAct(value: unknown): DraftSpeechAct | null {
+  if (!isRecord(value)) return null;
+  const kind: unknown = value.kind;
+
+  if (kind === "inform_fact") {
+    const outcomeRef: unknown = value.outcomeRef;
+    const factRef: unknown = value.factRef;
+    const subjectRef: unknown = value.subjectRef;
+    if (
+      typeof outcomeRef !== "string" ||
+      typeof factRef !== "string" ||
+      typeof subjectRef !== "string"
+    ) return null;
+    return Object.freeze({ kind, outcomeRef, factRef, subjectRef });
+  }
+
+  if (kind === "offer_options") {
+    const outcomeRef: unknown = value.outcomeRef;
+    const subjectRef: unknown = value.subjectRef;
+    const rawOptionRefs: unknown = value.optionRefs;
+    const optionRefs = copyStringArray(rawOptionRefs);
+    if (
+      typeof outcomeRef !== "string" ||
+      (typeof subjectRef !== "string" && subjectRef !== null) ||
+      optionRefs === null
+    ) return null;
+    return Object.freeze({ kind, outcomeRef, subjectRef, optionRefs });
+  }
+
+  if (kind === "confirm_effect") {
+    const outcomeRef: unknown = value.outcomeRef;
+    const subjectRef: unknown = value.subjectRef;
+    const rawFactRefs: unknown = value.factRefs;
+    const factRefs = copyStringArray(rawFactRefs);
+    if (
+      typeof outcomeRef !== "string" ||
+      typeof subjectRef !== "string" ||
+      factRefs === null
+    ) return null;
+    return Object.freeze({ kind, outcomeRef, subjectRef, factRefs });
+  }
+
+  if (
+    kind === "communicate_failure" ||
+    kind === "inform_required_action" ||
+    kind === "ask_clarification"
+  ) {
+    const outcomeRef: unknown = value.outcomeRef;
+    if (typeof outcomeRef !== "string") return null;
+    return Object.freeze({ kind, outcomeRef });
+  }
+
+  return null;
+}
+
+function canonicalizeDraft(value: unknown): DraftResponse | null {
+  if (!isRecord(value)) return null;
+  const rawActs: unknown = value.acts;
+  if (!Array.isArray(rawActs)) return null;
+  const length = rawActs.length;
+  const acts: DraftSpeechAct[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const rawAct: unknown = rawActs[index];
+    const act = copyAct(rawAct);
+    if (!act) return null;
+    acts.push(act);
+  }
+  return Object.freeze({ acts: Object.freeze(acts) });
 }
 
 export function authorizedPlanFor(
@@ -111,17 +185,30 @@ function validateFact(input: {
 
 export function validateDraft(
   plan: V2AuthorizedResponsePlan,
-  draft: DraftResponse,
+  draft: unknown,
 ): DraftValidationResult {
+  let canonicalDraft: DraftResponse | null = null;
+  try {
+    canonicalDraft = canonicalizeDraft(draft);
+  } catch {
+    canonicalDraft = null;
+  }
+  if (!canonicalDraft) {
+    return {
+      valid: false,
+      violations: [{ actIndex: -1, code: "invalid_draft_shape" }],
+    };
+  }
+
   const outcomes = new Map(plan.outcomes.map((item) => [item.ref, item]));
   const options = new Map(plan.options.map((item) => [item.ref, item]));
   const facts = new Map(plan.facts.map((item) => [item.ref, item]));
   const subjects = new Set(plan.subjects.map(({ ref }) => ref));
   const violations: DraftViolation[] = [];
 
-  if (draft.acts.length === 0) push(violations, -1, "empty_draft");
+  if (canonicalDraft.acts.length === 0) push(violations, -1, "empty_draft");
 
-  draft.acts.forEach((act, actIndex) => {
+  canonicalDraft.acts.forEach((act, actIndex) => {
     const outcome = outcomes.get(act.outcomeRef);
     if (!outcome) {
       push(violations, actIndex, "unknown_outcome_ref");
@@ -210,7 +297,7 @@ export function validateDraft(
   });
 
   if (violations.length > 0) return { valid: false, violations };
-  const validated = snapshotDraft(draft);
+  const validated = canonicalDraft as ValidatedDraftResponse;
   authorizedPlans.set(validated, snapshotV2AuthorizedResponsePlan(plan));
   return { valid: true, draft: validated };
 }

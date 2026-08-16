@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
-import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
+import { defineOutcomeSchema } from "@/conversation-core/decision";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 
 describe("conflitos entre capabilities", () => {
   it("escala antes de qualquer efeito quando claims são incompatíveis", async () => {
     let executions = 0;
+    const outcomeSchema = defineOutcomeSchema({
+      work_completed: {
+        semanticClass: "effect_completed",
+        subjectRequirement: "required",
+        evidenceRequirement: "optional",
+      },
+    } as const);
     const capability = (
       id: string,
       conflictsWith: string,
-    ): Capability<"work", Record<string, never>> => ({
+    ): Capability<"work", Record<string, never>, Record<never, never>, typeof outcomeSchema> => ({
       id,
       claim: () => ({
         capabilityId: id,
@@ -24,7 +31,7 @@ describe("conflitos entre capabilities", () => {
       execute: async () => {
         executions += 1;
         return {
-          type: `${id}_executed`, semanticClass: "effect_completed",
+          type: "work_completed", semanticClass: "effect_completed",
           origin: { capabilityId: id }, subject: { type: "work", id }, evidence: [], facts: [],
         };
       },
@@ -51,10 +58,10 @@ describe("conflitos entre capabilities", () => {
         ambiguity: null,
       }),
       capabilities: [capability("alpha", "beta"), capability("beta", "alpha")],
+      outcomeSchema,
       buildPlan: () => { throw new Error("unreachable"); },
       response: {
         style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
-        language: createResponseLanguageContribution({ locale: "pt-BR", factTerms: [], outcomeTerms: [], subjectTerms: [] }),
         composer: new DeterministicResponseComposer(),
       },
     });

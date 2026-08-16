@@ -1,25 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
-import { createResponseLanguageContribution } from "@/conversation-core/composer/language";
 import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { fixturePack, fixtureUnderstanding } from "@/domain-packs/fixture";
 
 const style = { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" } as const;
-const language = createResponseLanguageContribution({
-  locale: "pt-BR",
-  factTerms: [{ factKey: "unit_amount", label: "Valor unitário", format: "integer" }],
-  outcomeTerms: [
-    { outcomeType: "quote_prepared", label: "cotação", gender: "feminine" },
-    { outcomeType: "wind_window_reserved", label: "reserva", gender: "feminine" },
-  ],
-  subjectTerms: [
-    { subjectType: "fixture_item", label: "item" },
-    { subjectType: "fixture_window", label: "janela" },
-  ],
-});
 const composer = new DeterministicResponseComposer();
-const response = { style, language, composer };
+const response = { style, composer };
 
 describe("fixture-pack no pipeline V2", () => {
   it("declara jornadas e ordem sem ensinar o domínio ao core", () => {
@@ -42,6 +29,7 @@ describe("fixture-pack no pipeline V2", () => {
       now: new Date("2026-08-16T12:00:00.000Z"),
       understand: async () => fixtureUnderstanding("quote_glow_kite"),
       capabilities: fixturePack.capabilities,
+      outcomeSchema: fixturePack.outcomeSchema,
       buildPlan: buildV2AuthorizedResponsePlan,
       response,
     });
@@ -60,7 +48,7 @@ describe("fixture-pack no pipeline V2", () => {
           disclosure: "allowed",
         }],
       })],
-      response: { text: "Valor unitário: 37.", parts: [] },
+      response: { text: "Informação: 37.", parts: [] },
     });
   });
 
@@ -77,6 +65,7 @@ describe("fixture-pack no pipeline V2", () => {
       now: new Date("2026-08-16T12:00:00.000Z"),
       understand: async () => fixtureUnderstanding("reserve_wind_window"),
       capabilities: fixturePack.capabilities,
+      outcomeSchema: fixturePack.outcomeSchema,
       buildPlan: buildV2AuthorizedResponsePlan,
       response,
     });

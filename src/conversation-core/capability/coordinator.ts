@@ -4,14 +4,15 @@ import type {
   ConversationState,
 } from "@/conversation-core/capability/contract";
 import type { Understanding } from "@/conversation-core/understanding/schema";
+import type { OutcomeSchema } from "@/conversation-core/decision";
 
 export type ClaimedCapability<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
-  OutcomeType extends string = string,
+  Schema extends OutcomeSchema = OutcomeSchema,
 > = {
-  capability: Capability<Request, Policy, ClaimPayload, OutcomeType>;
+  capability: Capability<Request, Policy, ClaimPayload, Schema>;
   claim: CapabilityClaim<ClaimPayload>;
 };
 
@@ -19,7 +20,7 @@ export type CoordinationResult<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
-  OutcomeType extends string = string,
+  Schema extends OutcomeSchema = OutcomeSchema,
 > =
   | {
       outcome: "selected";
@@ -27,7 +28,7 @@ export type CoordinationResult<
         Request,
         Policy,
         ClaimPayload,
-        OutcomeType
+        Schema
       >[];
     }
   | { outcome: "conflict"; capabilityIds: string[] };
@@ -36,17 +37,17 @@ export function coordinateCapabilities<
   Request extends string,
   Policy extends object,
   ClaimPayload extends object,
-  OutcomeType extends string,
+  Schema extends OutcomeSchema,
 >(input: {
   capabilities: readonly Capability<
     Request,
     Policy,
     ClaimPayload,
-    OutcomeType
+    Schema
   >[];
   understanding: Understanding<Request>;
   state: ConversationState;
-}): CoordinationResult<Request, Policy, ClaimPayload, OutcomeType> {
+}): CoordinationResult<Request, Policy, ClaimPayload, Schema> {
   const seen = new Set<string>();
 
   const claimed = input.capabilities.flatMap((capability) => {

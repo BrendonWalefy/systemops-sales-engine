@@ -2,8 +2,13 @@ import type {
   ActionResult,
   Evidence,
   Fact,
+  OutcomeSchema,
+  OutcomeTypeOf,
   OutcomeSemanticClass,
   Subject,
+} from "@/conversation-core/decision";
+import {
+  assertActionResultMatchesOutcomeSchema,
 } from "@/conversation-core/decision";
 
 export const V2_AUTHORIZED_RESPONSE_PLAN_VERSION = "authorized-response-plan.v2" as const;
@@ -63,14 +68,15 @@ export function snapshotV2AuthorizedResponsePlan<OutcomeType extends string>(
   });
 }
 
-export function buildV2AuthorizedResponsePlan<OutcomeType extends string>(
-  actionResults: readonly ActionResult<OutcomeType>[],
-): V2AuthorizedResponsePlan<OutcomeType> {
+export function buildV2AuthorizedResponsePlan<Schema extends OutcomeSchema>(
+  schema: Schema,
+  actionResults: readonly ActionResult<Schema>[],
+): V2AuthorizedResponsePlan<OutcomeTypeOf<Schema>> {
   const subjects: AuthorizedSubject[] = [];
   const evidence: AuthorizedEvidence[] = [];
   const facts: AuthorizedFact[] = [];
   const options: AuthorizedOption[] = [];
-  const outcomes: AuthorizedOutcome<OutcomeType>[] = [];
+  const outcomes: AuthorizedOutcome<OutcomeTypeOf<Schema>>[] = [];
   const subjectRefs = new Map<string, string>();
   const evidenceRefs = new Map<string, string>();
 
@@ -112,6 +118,7 @@ export function buildV2AuthorizedResponsePlan<OutcomeType extends string>(
   };
 
   for (const [resultIndex, result] of actionResults.entries()) {
+    assertActionResultMatchesOutcomeSchema(schema, result);
     const resultOptions = "options" in result ? result.options : undefined;
     if (result.semanticClass === "options_found") {
       if (!resultOptions || resultOptions.length === 0) {
